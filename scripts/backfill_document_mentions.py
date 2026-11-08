@@ -94,17 +94,25 @@ def run(table: str, limit: int, apply: bool, mark=None, deadline: float | None =
         conn=None, registry=None, persist_fn=None) -> dict:
     from lib import research_identity as RI
     from lib.document_mentions import SOURCES, extract, persist, subject_from_symbol
-    from scripts.lib.document_mention_matcher import names_from_registry
+    from scripts.lib.document_mention_matcher import names_from_profile_rows, names_from_registry
 
     spec = SOURCES[table]
     doc = registry if registry is not None else RI.load_registry()
-    if not legacy and names is None:
-        names = names_from_registry(doc)
     own_conn = conn is None
     if conn is None:
         conn = _conn()
     writer = persist_fn or persist
     cur = conn.cursor()
+    if not legacy and names is None:
+        names = names_from_registry(doc)
+        if not names:
+            cur.execute(
+                "SELECT upper(symbol) AS symbol, description_1s FROM symbol_profiles "
+                "WHERE description_1s IS NOT NULL"
+            )
+            names = names_from_profile_rows(
+                [{"symbol": row[0], "description_1s": row[1]} for row in cur.fetchall()]
+            )
 
     # ::text because some sources store JSON (research_insights.structured_thesis,
     # key_arguments) and COALESCE(json, '') is an invalid-input error, not an empty

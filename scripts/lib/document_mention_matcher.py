@@ -1,8 +1,10 @@
 """Document mention matcher. The desk tagger is not used and is not modified.
 
-A company phrase binds only when its content tokens equal the registry name's
-content tokens, and that name has at least two content tokens. A ticker binds
-when it appears as $SYM or (SYM). One shared word is not a company.
+A company phrase binds only when its content tokens equal the profile name's
+content tokens, and that name has at least two content tokens. A bare ticker
+does not bind. Company names are not on the identity registry; they are the
+leading phrase of symbol_profiles.description_1s, the same sentence the old
+company-name index reads.
 """
 
 from __future__ import annotations
@@ -14,7 +16,6 @@ _LEGAL = frozenset({
     "inc", "incorporated", "corp", "corporation", "ltd", "llc", "lp", "co", "company", "plc", "the", "and",
 })
 _TOKEN = re.compile(r"[a-z0-9]+")
-_TICKER = re.compile(r"\$([A-Z]{1,5})\b|\(([A-Z]{1,5})\)")
 
 
 def content_tokens(name: str) -> list[str]:
@@ -82,21 +83,22 @@ def names_from_registry(doc: Mapping[str, Any] | None) -> dict[str, list[str]]:
     return out
 
 
-def _ticker_symbol(match: re.Match[str]) -> str:
-    return match.group(1) or match.group(2) or ""
+def names_from_profile_rows(rows: Iterable[Mapping[str, Any]]) -> dict[str, list[str]]:
+    """Issuer phrases from symbol_profiles.description_1s. Same cut as company_phrase."""
+    from scripts.lib.company_name_index import company_phrase
 
-
-def _ticker_near(text: str, symbol: str, official: str) -> bool:
-    tokens = content_tokens(official)
-    if len(tokens) < 2:
-        return False
-    phrase = re.compile(r"\b" + r"\W+".join(re.escape(tok) for tok in tokens) + r"\b", re.I)
-    mark = re.compile(rf"\${symbol}\b|\({symbol}\)")
-    for found in phrase.finditer(text or ""):
-        window = (text or "")[max(0, found.start() - 80):found.end() + 80]
-        if mark.search(window):
-            return True
-    return False
+    out: dict[str, list[str]] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        symbol = str(row.get("symbol") or "").strip().upper()
+        phrase = company_phrase(row.get("description_1s") or row.get("description"))
+        if not symbol or not phrase:
+            continue
+        bucket = out.setdefault(symbol, [])
+        if phrase not in bucket:
+            bucket.append(phrase)
+    return out
 
 
 def agreement_ratio(phrase: str, symbol: str, names: Mapping[str, Iterable[str]]) -> float | None:
@@ -136,12 +138,6 @@ def match_mentions(
             confidence = agreement_ratio(official, symbol, book)
             by_symbol.setdefault(symbol, _row(symbol, via="company_name", matched=official, role=None, confidence=confidence))
             break
-    # A ticker counts only in uppercase and only beside that same registry name.
-    for match in _TICKER.finditer(text or ""):
-        symbol = _ticker_symbol(match)
-        official = next((row["matched_text"] for row in [by_symbol.get(symbol)] if row), None)
-        if symbol not in book or not official or not _ticker_near(text or "", symbol, official):
-            continue
     found = list(by_symbol.values())
     own = (own_symbol or "").strip().upper()
     if own and found and all(row["symbol"] != own for row in found):

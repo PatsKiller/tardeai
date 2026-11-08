@@ -68,6 +68,24 @@ def test_a_foreign_name_is_not_the_subject_of_another_filing():
     assert agreed[0]["role_confidence"] == 1.0
 
 
+def test_a_registry_shaped_like_production_needs_symbol_profiles_for_names():
+    """The live identity registry has aliases, not company names. Profiles do."""
+    from scripts.lib.document_mention_matcher import names_from_profile_rows, names_from_registry
+
+    registry = {
+        "by_symbol": {"JKHY": "g-jkhy"},
+        "entities": {"g-jkhy": {"aliases": ["JKHY"], "identity_status": "CONFIRMED", "active": True}},
+    }
+    assert names_from_registry(registry) == {}
+    names = names_from_profile_rows([{
+        "symbol": "JKHY",
+        "description_1s": "Jack Henry & Associates, Inc. operates as a financial technology company.",
+    }])
+    assert len(names) > 0 and "JKHY" in names
+    rows = match_mentions("Jack Henry & Associates, Inc. reported.", names=names)
+    assert [row["symbol"] for row in rows] == ["JKHY"]
+
+
 def test_run_loads_names_from_the_registry_and_writes_jkhy_only():
     from scripts.backfill_document_mentions import run
 
