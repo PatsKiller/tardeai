@@ -493,6 +493,156 @@ def sync_quotes_to_ticker_prices(symbols: list[str] | None = None) -> int:
     return n
 
 
+# ── the session close, for the lanes that read it the same evening ───────────────────────────
+#
+# ticker_prices gains a session's bars from exactly one full-universe writer — this file's
+# main() -> sync_daily_prices() -> sync_daily_watchlist_prices() -> sync_quotes_to_ticker_prices()
+# — and it runs at ~06:10 ET (measured: 2026-11-06T11:10:31Z), hours before the session it would
+# capture. At that hour the newest quote date is the PREVIOUS session: the first quote of the new
+# day lands at 07:15. So the table's newest full-coverage date is always one session behind the
+# one the evening desks ask about. Every other caller is per-symbol (proposal enrichment, the
+# curator, remediation, three API endpoints, the watchlist sweep), so a symbol acquires a
+# session bar only when an unrelated lane happens to touch it, and at whatever price that touch
+# saw. Measured 2026-11-06: 5,577 symbols quoted, 1,101 session bars, and NO bar for SPY — the
+# benchmark sector_momentum_engine date-aligns every sector to — so the 17:25 run dated the
+# whole table 2026-11-05 again, raised nothing, and /v3/defense/classic read "STALE AS OF
+# 2026-11-05". Of the 659 quote-derived 11-06 bars, 289 differ from that session's own post-close
+# quote by more than 5 bp (QQQ: 660.79 written at 11:39, post-close 656.31) — the intraday touch.
+#
+# This fills the missing session bars from the same source the 06:10 lane uses — market_quotes,
+# the broker read, never yfinance — for the session whose LAST quote is at/after the 16:00 ET
+# close. It writes only where no bar exists for (symbol, session), so it cannot displace finviz,
+# holdings, portfolio_repricer, or the consolidated close eod_consolidated_close_sync wrote, and
+# it cannot replace an intraday-written bar with a better one either (a separate, larger change).
+POST_CLOSE_HOUR_ET = 16
+SECTOR_UNIVERSE = ("XLK", "XLF", "XLV", "XLE", "XLI", "XLY", "XLP", "XLU", "XLB", "XLRE", "XLC",
+                   "SPY", "QQQ")
+
+
+def _et():
+    from zoneinfo import ZoneInfo
+    return ZoneInfo("America/New_York")
+
+
+def resolve_session_close_date(cur, symbols, *, today=None):
+    """The newest session whose LAST quote for these symbols is at/after the 16:00 ET close.
+
+    A date whose last quote is a premarket or intraday print is not a closed session and is
+    never returned as the session to fill — writing one stores an intraday price as that day's
+    close, which is what the per-symbol callers do all day (on 11-06, 289 of the 659
+    quote-derived bars differed from that session's own post-close quote by more than 5 bp).
+    A date that is not closed is skipped, not fatal: at 08:00 ET on a trading day the newest
+    date is today (premarket) and yesterday is the answer.
+    """
+    syms = [str(s).upper() for s in (symbols or []) if s]
+    if not syms:
+        return None, "no symbols"
+    cur.execute(
+        """SELECT fetched_at::date AS d,
+                  max(fetched_at) AS last_q,
+                  count(*) AS n,
+                  EXTRACT(ISODOW FROM fetched_at::date) AS dow
+           FROM market_quotes
+           WHERE UPPER(symbol) = ANY(%s) AND price IS NOT NULL AND price > 0
+             AND fetched_at::date <= COALESCE(%s, CURRENT_DATE)
+           GROUP BY 1
+           ORDER BY 1 DESC
+           LIMIT 10""",
+        (syms, today),
+    )
+    skipped = []
+    for d, last_q, n, dow in cur.fetchall() or []:
+        if int(dow) >= 6:                       # a weekend print is not a session
+            skipped.append(f"{d} is a weekend")
+            continue
+        local = last_q.astimezone(_et()) if getattr(last_q, "tzinfo", None) else last_q
+        if local.hour >= POST_CLOSE_HOUR_ET:
+            why = f"last quote {local:%H:%M} ET on {d} ({n} quotes)"
+            return d, (f"{why}; skipped {'; '.join(skipped)}" if skipped else why)
+        skipped.append(f"{d} last quoted {local:%H:%M} ET (pre-close)")
+    return None, "; ".join(skipped[:3]) or "no quoted session date"
+
+
+def plan_session_closes(cur, session, symbols):
+    """Read-only: what a session fill would write, one row per symbol. Never writes."""
+    syms = [str(s).upper() for s in (symbols or []) if s]
+    cur.execute(
+        """WITH last_q AS (
+               SELECT DISTINCT ON (UPPER(symbol))
+                      UPPER(symbol) AS symbol, price, fetched_at
+               FROM market_quotes
+               WHERE UPPER(symbol) = ANY(%(syms)s) AND price IS NOT NULL AND price > 0
+                 AND fetched_at::date = %(session)s
+               ORDER BY UPPER(symbol), fetched_at DESC
+           )
+           SELECT q.symbol, q.price, q.fetched_at,
+                  tp.close_price AS bar_close, tp.source AS bar_source,
+                  (SELECT p.close_price FROM ticker_prices p
+                    WHERE p.symbol = q.symbol AND p.price_date < %(session)s
+                    ORDER BY p.price_date DESC LIMIT 1) AS prior_close
+           FROM last_q q
+           LEFT JOIN ticker_prices tp
+             ON tp.symbol = q.symbol AND tp.price_date = %(session)s
+           ORDER BY q.symbol""",
+        {"syms": syms, "session": session},
+    )
+    rows = []
+    for sym, price, fetched_at, bar_close, bar_source, prior_close in cur.fetchall() or []:
+        if bar_close is not None:
+            action, detail = "has_bar", f"{bar_source} {float(bar_close):.4f}"
+        else:
+            outlier, reason = is_price_outlier(price, prior_close)
+            action = "outlier" if outlier else "would_write"
+            detail = reason if outlier else f"prior {prior_close}"
+        rows.append({"symbol": sym, "session": str(session), "close": float(price),
+                     "quoted_at": str(fetched_at)[:19], "action": action, "detail": detail})
+    missing = sorted(set(syms) - {r["symbol"] for r in rows})
+    return {"session": str(session), "rows": rows,
+            "would_write": [r["symbol"] for r in rows if r["action"] == "would_write"],
+            "has_bar": [r["symbol"] for r in rows if r["action"] == "has_bar"],
+            "outliers": [r["symbol"] for r in rows if r["action"] == "outlier"],
+            "no_quote": missing}
+
+
+def sync_session_closes(symbols=None, *, session=None, dry_run=False) -> dict:
+    """Fill the missing session bars for ``symbols`` (default: the sector universe).
+
+    Broker-read closes only (``market_quotes``); yfinance is never consulted. ``dry_run``
+    reports the plan and writes nothing.
+    """
+    from datetime import date as _date
+    syms = [str(s).upper() for s in (symbols or SECTOR_UNIVERSE) if s]
+    if isinstance(session, str) and session.strip():
+        session = _date.fromisoformat(session.strip()[:10])
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        why = "session given"
+        if session is None:
+            session, why = resolve_session_close_date(cur, syms)
+        if session is None:
+            return {"ok": False, "session": None, "reason": why, "symbols": len(syms),
+                    "written": 0, "would_write": [], "has_bar": [], "outliers": [], "no_quote": []}
+        plan = plan_session_closes(cur, session, syms)
+        written = 0
+        if plan["would_write"] and not dry_run:
+            receipt = sync_ticker_prices_from_market_quotes(
+                cur, plan["would_write"],
+                min_ratio=PRICE_OUTLIER_MIN_RATIO, max_ratio=PRICE_OUTLIER_MAX_RATIO,
+                session=session, only_missing=True,
+            )
+            written = receipt.rows_written
+            conn.commit()
+        return {"ok": True, "session": str(session), "reason": why, "symbols": len(syms),
+                "dry_run": bool(dry_run), "written": written, **plan}
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
 def backfill_yfinance_history(
     symbols: list[str],
     *,
@@ -554,7 +704,26 @@ def sync_watchlist_prices(symbols: list[str] | None = None, *, min_rows: int = 6
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--dry-run", action="store_true", help="offline price-sync plan")
+    ap.add_argument("--session-close", action="store_true",
+                    help="fill missing session bars for --symbols (default: the sector universe) "
+                         "from market_quotes; writes nothing with --dry-run")
+    ap.add_argument("--session", metavar="YYYY-MM-DD",
+                    help="the session --session-close fills (default: the newest post-close session)")
+    ap.add_argument("--symbols", metavar="CSV", help="symbols for --session-close")
     args = ap.parse_args(argv)
+    if args.session_close:
+        syms = [s.strip().upper() for s in (args.symbols or "").split(",") if s.strip()] or None
+        res = sync_session_closes(syms, session=args.session, dry_run=args.dry_run)
+        print(json.dumps(res, indent=2, sort_keys=True))
+        if not res.get("ok"):
+            print(f"{LANE_ID}: no closed session to fill — {res.get('reason')}", file=sys.stderr)
+            return 1
+        filled = len(res["would_write"]) if args.dry_run else res["written"]
+        print(f"{'DRY-RUN' if args.dry_run else 'APPLIED'} {LANE_ID} --session-close "
+              f"{res['session']}: {'would write' if args.dry_run else 'wrote'} {filled} bars; "
+              f"{len(res['has_bar'])} already had one, {len(res['outliers'])} out of bounds, "
+              f"{len(res['no_quote'])} unquoted")
+        return 0
     if args.dry_run:
         print(f"DRY-RUN {LANE_ID}: would persist daily cache/holdings prices, sync market_quotes "
               "and fill short watchlist history via yfinance; reject outliers before ticker_prices writes")

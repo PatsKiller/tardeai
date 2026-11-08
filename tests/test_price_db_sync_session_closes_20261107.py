@@ -1,0 +1,228 @@
+"""LQ-20261107-406: the session close the evening lanes read has to exist before they read it.
+
+Measured on 2026-11-07 (read-only): ``ticker_prices`` held 1,101 bars for 2026-11-06 out of
+5,577 quoted symbols, and **SPY had none** — the benchmark ``sector_momentum_engine`` dates
+every sector against. It intersected each ETF's dates with SPY's, took 2026-11-05 as "today",
+upserted 11-05 again, and the desk served a one-session-stale close with no error. The one
+full-universe writer runs at 07:20 ET, before the session, so it can only ever write *yesterday*
+(11-05: 5,493 bars, all off the morning print); every other caller is per-symbol.
+
+These tests pin the fill that closes the gap: broker-read closes (``market_quotes``) only, the
+session resolved as the newest weekday whose LAST quote is post-close, and a write that cannot
+displace a bar another lane already wrote for that session.
+"""
+
+from __future__ import annotations
+
+import inspect
+import re
+import sys
+from datetime import date, datetime, timezone
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from lib.writers import ticker_prices_writer as tp  # noqa: E402
+from scripts import price_db_sync as pds  # noqa: E402
+
+ET = __import__("zoneinfo").ZoneInfo("America/New_York")
+
+
+def norm(sql: str) -> str:
+    return re.sub(r"\s+", " ", sql).strip()
+
+
+def at(y, m, d, hh, mm):
+    return datetime(y, m, d, hh, mm, tzinfo=ET)
+
+
+class ScriptedCursor:
+    """Returns one scripted result per execute(), in order; records every statement."""
+
+    def __init__(self, results=None, rowcount: int = 0):
+        self.results = list(results or [])
+        self.calls: list[tuple[str, object]] = []
+        self.rowcount = rowcount
+        self._last = []
+        self.closed = False
+
+    def execute(self, sql, params=None):
+        self.calls.append((norm(sql), params))
+        self._last = self.results.pop(0) if self.results else []
+
+    def fetchall(self):
+        return list(self._last)
+
+    def fetchone(self):
+        return self._last[0] if self._last else None
+
+    def close(self):
+        self.closed = True
+
+    @property
+    def sqls(self):
+        return [s for s, _ in self.calls]
+
+
+class FakeConn:
+    def __init__(self, cur: ScriptedCursor):
+        self.cur = cur
+        self.committed = 0
+        self.rolled_back = 0
+        self.closed = False
+
+    def cursor(self, *a, **k):
+        return self.cur
+
+    def commit(self):
+        self.committed += 1
+
+    def rollback(self):
+        self.rolled_back += 1
+
+    def close(self):
+        self.closed = True
+
+
+def writes(cur: ScriptedCursor) -> list[str]:
+    return [s for s in cur.sqls if "INSERT" in s.upper()]
+
+
+# ── which date is a session close ────────────────────────────────────────────
+
+
+def test_a_weekend_date_is_never_a_session():
+    """2026-11-07 is a Saturday and has 48 quote rows; Friday 11-06 is the closed session."""
+    cur = ScriptedCursor([[
+        (date(2026, 11, 7), at(2026, 11, 7, 9, 14), 48, 6),
+        (date(2026, 11, 6), at(2026, 11, 6, 16, 45), 5511, 5),
+    ]])
+    d, why = pds.resolve_session_close_date(cur, ["SPY", "XLK"], today=date(2026, 11, 8))
+    assert d == date(2026, 11, 6)
+    assert "16:45" in why
+
+
+def test_a_premarket_or_intraday_last_quote_is_not_a_close():
+    """The defect in one line: a date whose last quote is at 11:39 has no close to write."""
+    cur = ScriptedCursor([[
+        (date(2026, 11, 6), at(2026, 11, 6, 11, 39), 41, 5),
+        (date(2026, 11, 5), at(2026, 11, 5, 16, 45), 5500, 4),
+    ]])
+    d, why = pds.resolve_session_close_date(cur, ["SPY"], today=date(2026, 11, 7))
+    assert d == date(2026, 11, 5)
+    assert "11:39" in why and "pre-close" in why
+
+
+def test_the_newest_post_close_session_wins():
+    cur = ScriptedCursor([[
+        (date(2026, 11, 6), at(2026, 11, 6, 19, 59), 5511, 5),
+        (date(2026, 11, 5), at(2026, 11, 5, 16, 45), 5500, 4),
+    ]])
+    d, _ = pds.resolve_session_close_date(cur, ["SPY"], today=date(2026, 11, 7))
+    assert d == date(2026, 11, 6)
+
+
+def test_no_quoted_date_returns_none_with_a_reason():
+    cur = ScriptedCursor([[]])
+    d, why = pds.resolve_session_close_date(cur, ["SPY"], today=date(2026, 11, 7))
+    assert d is None and why
+
+
+# ── the plan is read-only and classifies every symbol ────────────────────────
+
+
+def test_the_plan_writes_nothing_and_names_every_symbol_it_cannot_fill():
+    session = date(2026, 11, 6)
+    cur = ScriptedCursor([[
+        # symbol, price, quoted_at, bar_close, bar_source, prior_close
+        ("SPY", 735.53, at(2026, 11, 6, 16, 45), None, None, 732.29),
+        ("XLK", 164.80, at(2026, 11, 6, 16, 45), None, None, 161.75),
+        ("RSP", 216.025, at(2026, 11, 6, 16, 8), 216.025, "market_quotes", 216.86),
+        ("XLF", 1000.0, at(2026, 11, 6, 16, 45), None, None, 57.53),
+    ]])
+    plan = pds.plan_session_closes(cur, session, ["SPY", "XLK", "RSP", "XLF", "XLU"])
+    assert writes(cur) == []
+    assert plan["would_write"] == ["SPY", "XLK"]
+    assert plan["has_bar"] == ["RSP"]
+    assert plan["outliers"] == ["XLF"]
+    assert plan["no_quote"] == ["XLU"]
+    by = {r["symbol"]: r for r in plan["rows"]}
+    assert by["SPY"]["close"] == 735.53 and by["SPY"]["quoted_at"].startswith("2026-11-06")
+
+
+# ── the fill: dry run writes nothing, apply fills only the missing bars ──────
+
+
+def _plan_rows():
+    return [
+        ("SPY", 735.53, at(2026, 11, 6, 16, 45), None, None, 732.29),
+        ("XLK", 164.80, at(2026, 11, 6, 16, 45), None, None, 161.75),
+        ("RSP", 216.025, at(2026, 11, 6, 16, 8), 216.025, "market_quotes", 216.86),
+    ]
+
+
+def test_a_dry_run_reports_the_plan_and_executes_no_write(monkeypatch):
+    cur = ScriptedCursor([_plan_rows()])
+    conn = FakeConn(cur)
+    monkeypatch.setattr(pds, "_get_conn", lambda: conn)
+
+    res = pds.sync_session_closes(["SPY", "XLK", "RSP"], session=date(2026, 11, 6), dry_run=True)
+
+    assert res["ok"] is True and res["dry_run"] is True and res["written"] == 0
+    assert res["would_write"] == ["SPY", "XLK"] and res["has_bar"] == ["RSP"]
+    assert writes(cur) == []
+    assert conn.committed == 0                              # a dry run commits nothing
+
+
+def test_apply_is_narrowed_to_the_session_and_cannot_displace_an_existing_bar(monkeypatch):
+    cur = ScriptedCursor([_plan_rows()], rowcount=2)
+    conn = FakeConn(cur)
+    monkeypatch.setattr(pds, "_get_conn", lambda: conn)
+
+    res = pds.sync_session_closes(["SPY", "XLK", "RSP"], session=date(2026, 11, 6))
+
+    assert res["ok"] is True and res["written"] == 2
+    assert len(writes(cur)) == 1
+    sql, params = cur.calls[-1]
+    assert "fetched_at::date = %(session)s" in sql      # one session, not every day
+    assert "DO NOTHING" in sql.upper()                  # never displaces a bar already written
+    assert "DO UPDATE" not in sql.upper()
+    assert params["session"] == date(2026, 11, 6)
+    assert params["syms"] == ["SPY", "XLK"]             # RSP already had its bar
+    assert conn.committed == 1
+
+
+def test_an_unresolvable_session_returns_not_ok_and_writes_nothing(monkeypatch):
+    cur = ScriptedCursor([[]])                          # no quoted date at all
+    conn = FakeConn(cur)
+    monkeypatch.setattr(pds, "_get_conn", lambda: conn)
+
+    res = pds.sync_session_closes(["SPY"])
+
+    assert res["ok"] is False and res["written"] == 0
+    assert writes(cur) == [] and conn.committed == 0
+
+
+# ── the source and the default statement ────────────────────────────────────
+
+
+def test_the_fill_reads_broker_quotes_only_never_yfinance():
+    src = (inspect.getsource(pds.plan_session_closes)
+           + inspect.getsource(pds.sync_session_closes)
+           + inspect.getsource(pds.resolve_session_close_date))
+    assert "import yfinance" not in src and "yf.Ticker" not in src
+    assert "'market_quotes'" in tp._quotes_sync_sql("", "\n AND fetched_at::date = %(session)s")
+
+
+def test_the_default_quotes_sync_statement_is_unchanged_by_the_new_bounds():
+    """The 07:20 full sync must emit exactly the statement it emitted before (golden test)."""
+    default = tp._quotes_sync_sql("AND UPPER(symbol) = ANY(%(syms)s)")
+    explicit = tp._quotes_sync_sql("AND UPPER(symbol) = ANY(%(syms)s)", "",
+                                   only_missing=False)
+    assert norm(default) == norm(explicit)
+    assert "%(session)s" not in default and "DO UPDATE SET" in default.upper()
+    assert "DO NOTHING" in tp._quotes_sync_sql("", only_missing=True).upper()

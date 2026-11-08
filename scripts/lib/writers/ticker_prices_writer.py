@@ -25,7 +25,11 @@ repricer's UPDATE-then-INSERT is the same effect as ``overwrite`` under the
 ``restore_ticker_prices_from_quarantine`` and
 ``sync_ticker_prices_from_market_quotes`` carry the two set-based statements
 verbatim -- they are distinct row kinds (rows come from another table, not
-from the producer), not a second path for the same rows.
+from the producer), not a second path for the same rows. The quotes->closes
+statement grew two optional bounds in 2026-11 (``session``: one session date;
+``only_missing``: DO NOTHING instead of the authoritative-source upsert) for a
+caller filling a session nobody wrote; with both defaulted it emits the
+original text byte for byte, which the golden test pins.
 
 Rails (the ``px <= 0: continue`` / ``price > 0`` checks each writer had, made
 one rule): close_price must be a finite number strictly greater than zero;
@@ -214,14 +218,25 @@ def restore_ticker_prices_from_quarantine(conn_or_cursor: Any, symbol: str, *,
     return receipt
 
 
-def _quotes_sync_sql(symbol_filter: str) -> str:
+def _quotes_sync_sql(symbol_filter: str, session_filter: str = "", *,
+                     only_missing: bool = False) -> str:
     keep = ", ".join(f"'{s}'" for s in AUTHORITATIVE_SOURCES)
+    # ``only_missing`` is for a caller filling a session that was never written (the sector
+    # engine at 17:25). It must not displace a row another lane already decided on for that
+    # session -- least of all the consolidated close eod_consolidated_close_sync wrote at 17:15.
+    conflict = ("ON CONFLICT (symbol, price_date) DO NOTHING" if only_missing else f"""ON CONFLICT (symbol, price_date) DO UPDATE SET
+             close_price = EXCLUDED.close_price,
+             source = CASE
+               WHEN ticker_prices.source IN ({keep})
+               THEN ticker_prices.source
+               ELSE EXCLUDED.source
+             END""")
     return f"""WITH candidates AS (
                SELECT DISTINCT ON (UPPER(symbol), fetched_at::date)
                       UPPER(symbol) AS symbol, fetched_at::date AS price_date, price
                FROM market_quotes
                WHERE price IS NOT NULL AND price > 0
-                 {symbol_filter}
+                 {symbol_filter}{session_filter}
                ORDER BY UPPER(symbol), fetched_at::date, fetched_at DESC
            ),
            bounded AS (
@@ -238,18 +253,14 @@ def _quotes_sync_sql(symbol_filter: str) -> str:
            FROM bounded
            WHERE prior_price IS NULL
               OR price BETWEEN prior_price * %(min_ratio)s AND prior_price * %(max_ratio)s
-           ON CONFLICT (symbol, price_date) DO UPDATE SET
-             close_price = EXCLUDED.close_price,
-             source = CASE
-               WHEN ticker_prices.source IN ({keep})
-               THEN ticker_prices.source
-               ELSE EXCLUDED.source
-             END"""
+           {conflict}"""
 
 
 def sync_ticker_prices_from_market_quotes(conn_or_cursor: Any, symbols: list[str] | None, *,
                                           min_ratio: float, max_ratio: float,
-                                          run_id: str | None = None) -> WriteReceipt:
+                                          run_id: str | None = None,
+                                          session: date | None = None,
+                                          only_missing: bool = False) -> WriteReceipt:
     """Daily closes from the last quote per symbol per day (price_db_sync), SQL unchanged.
 
     Bounded inline against the prior close: a candidate outside
@@ -257,15 +268,25 @@ def sync_ticker_prices_from_market_quotes(conn_or_cursor: Any, symbols: list[str
     not written (the producer separately lists and quarantines those). A symbol
     with no prior row always passes. An authoritative source already on the row
     (finviz / holdings / portfolio_repricer) is kept over 'market_quotes'.
+
+    ``session`` narrows the derivation to ONE session date (the last quote of that day);
+    ``only_missing`` turns the conflict rule into DO NOTHING so a caller that is filling a
+    session nobody wrote cannot displace a row another lane already wrote for it. Defaults
+    (``session=None, only_missing=False``) are the original statement, byte for byte.
     """
     syms = [str(s).upper() for s in (symbols or []) if s]
     symbol_filter = "AND UPPER(symbol) = ANY(%(syms)s)" if syms else ""
+    session_filter = "\n                 AND fetched_at::date = %(session)s" if session else ""
+    params: dict[str, Any] = {"syms": syms, "min_ratio": min_ratio, "max_ratio": max_ratio}
+    if session:
+        params["session"] = session
+    rule = ("ON CONFLICT (symbol, price_date) DO NOTHING" if only_missing else
+            "ON CONFLICT (symbol, price_date) DO UPDATE SET close_price, "
+            "source kept when authoritative")
     receipt = WriteReceipt(table=TABLE, source="market_quotes", written_by=WRITTEN_BY, run_id=run_id,
-                           conflict_rule="ON CONFLICT (symbol, price_date) DO UPDATE SET close_price, "
-                                         "source kept when authoritative", rows_in=len(syms))
+                           conflict_rule=rule, rows_in=len(syms))
     cur = cursor_of(conn_or_cursor)
-    cur.execute(_quotes_sync_sql(symbol_filter),
-                {"syms": syms, "min_ratio": min_ratio, "max_ratio": max_ratio})
+    cur.execute(_quotes_sync_sql(symbol_filter, session_filter, only_missing=only_missing), params)
     receipt.statements = 1
     receipt.rows_written = receipt.rows_accepted = rowcount_of(cur)
     if syms:

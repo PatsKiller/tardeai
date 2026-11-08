@@ -284,6 +284,44 @@ def _book_weights():
         return {}
 
 
+def _ensure_session_closes(*, apply: bool = True) -> dict:
+    """Fill the missing session bars for the sector universe BEFORE the states are computed.
+
+    ``ticker_prices`` gains a session's bars from exactly one full-universe writer, and it runs
+    at ~06:10 ET — hours before the session it would capture, so its newest quote date is the
+    previous one. A symbol therefore only gets today's bar if an unrelated per-symbol lane
+    happens to touch it. On 2026-11-06, 1,101 of 5,577 quoted symbols got one and **SPY did
+    not**; ``compute_states`` aligns every sector to SPY's dates, so the whole table was
+    re-dated 2026-11-05 and the desk served a stale close with no error.
+
+    The fill is broker-read closes only (``market_quotes``), writes ONLY where no bar exists for
+    the session (so it cannot displace the 17:15 consolidated close), and runs on its own
+    connection so a failure here cannot abort the engine's transaction. Fail-soft in the one
+    direction that stays honest: it prints what it did, and the arithmetic below still sees the
+    dates it actually has.
+    """
+    try:  # nosemgrep: tq-py-broad-except-returns-default -- a price fill must never abort the states
+        import price_db_sync
+
+        res = price_db_sync.sync_session_closes(dry_run=not apply)
+        # "written" absent is UNKNOWN, not zero: a report that says "wrote 0" when the fill
+        # returned nothing readable is the same lie the stale page told.
+        filled = (len(res.get("would_write") or []) if not apply else res.get("written"))
+        shown = filled if filled is not None else "an unrecorded number of"
+        verb = "would write" if not apply else "wrote"
+        if not res.get("ok"):
+            print(f"[momentum] session closes: no closed session — {res.get('reason')}", file=sys.stderr)
+        else:
+            print(f"[momentum] session closes {res['session']}: {verb} {shown}, "
+                  f"{len(res.get('has_bar') or [])} already present, "
+                  f"{len(res.get('outliers') or [])} out of bounds, "
+                  f"{len(res.get('no_quote') or [])} unquoted")
+        return res
+    except Exception as exc:  # noqa: BLE001 -- fail-soft: the states still compute from what exists
+        print(f"[momentum] session closes: skipped ({type(exc).__name__}: {exc})", file=sys.stderr)
+        return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--backfill", type=int, default=0)
@@ -331,6 +369,9 @@ def main() -> int:
         return 0
 
     weights = _book_weights()
+    # The states below are dated by SPY's own closes (compute_states intersects every sector's
+    # dates with SPY's), so the session has to be in ticker_prices BEFORE they are computed.
+    _ensure_session_closes(apply=not args.dry_run)
     rows = compute_states(cur)
     market = compute_market(cur)
     # style spreads join the SAME debounce/transition mechanism (etf = STYLE:<key>)

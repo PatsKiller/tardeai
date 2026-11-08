@@ -1,0 +1,24 @@
+{
+  "schema": "CiGate@v1",
+  "name": "SESSION_CLOSE_FILL_20261107",
+  "files": [
+    "tests/test_price_db_sync_session_closes_20261107.py",
+    "tests/test_sector_momentum_engine_session_closes_20261107.py"
+  ],
+  "anchor": "SESSION_CLOSE_FILL_20261107",
+  "comment": [
+    "ANCHOR: SESSION_CLOSE_FILL_20261107 — LQ-20261107-406. /v3/defense/classic read 'STALE AS OF",
+    "2026-11-05' on 2026-11-06 because sector_momentum_state held only the 2 STYLE rows for 11-06.",
+    "DB truth: ticker_prices had 1,101 bars for 11-06 out of 5,577 quoted symbols and NO bar for SPY,",
+    "the benchmark compute_states date-aligns every sector to; it therefore took 11-05 as 'today' and",
+    "re-upserted it with no error. The one full-universe writer (price_db_sync.main -> sync_quotes_",
+    "to_ticker_prices) runs on the 20 7 * * 1-5 cron, before the session it would capture, so it can",
+    "only ever write the PREVIOUS session off a premarket print; every other caller is per-symbol.",
+    "These tests pin the fill: the session resolved as the newest weekday whose last quote is",
+    "post-close (a weekend or a premarket-only date is never a close), the plan read-only, a dry run",
+    "issuing no write, an applied fill narrowed to one session with DO NOTHING so it cannot displace",
+    "a bar another lane wrote, broker quotes only, and the sector engine filling before it computes.",
+    "Registered because a new pytest file that no gate names is not run by CI (check_test_coverage",
+    "--fail-on-new)."
+  ]
+}
