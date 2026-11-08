@@ -73,8 +73,10 @@ def _connect_ledger_rw(ledger: Path) -> sqlite3.Connection:
     """``C.connect_rw`` (DDL + migration) with this lane's busy timeout — see :data:`LEDGER_BUSY_TIMEOUT_MS`."""
     conn = C.connect_rw(ledger)
     try:
-        # PRAGMA takes a literal, not a bound parameter: %d of a module int constant.
-        conn.execute("PRAGMA busy_timeout=%d" % LEDGER_BUSY_TIMEOUT_MS)
+        # PRAGMA takes a literal, never a bound parameter: %d of a module int constant, no caller input.
+        conn.execute(  # nosemgrep: tq-py-sql-fstring -- PRAGMA busy_timeout takes no bind parameter; %d of an int constant
+            "PRAGMA busy_timeout=%d" % LEDGER_BUSY_TIMEOUT_MS
+        )
     except BaseException:
         conn.close()
         raise
