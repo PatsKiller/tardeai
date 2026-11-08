@@ -58,6 +58,7 @@ KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY"
 PREVIOUS_KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY_PREVIOUS"
 N8N_KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N"
 N8N_PREVIOUS_KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N_PREVIOUS"
+OPERATOR_KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY_OPERATOR"
 RUN_ALLOWLIST_SCHEMA = "N8nRunAllowlist@v1"
 DEFAULT_RUN_ALLOWLIST = ROOT / "config" / "n8n_run_allowlist.json"
 BLOCKED_PORTS = frozenset({5432, 5433, 55432, 5678, 7776, 7777, 8088, 8766, 18090})
@@ -128,6 +129,18 @@ def load_n8n_previous_key(environ: dict[str, str] | None = None) -> bytes | None
     key = raw.encode("utf-8")
     if len(key) < MIN_KEY_BYTES:
         raise BindRefused("refusing a short previous n8n gateway key")
+    return key
+
+
+def load_operator_key(environ: dict[str, str] | None = None) -> bytes | None:
+    """The operator-manual caller's key (LQ-611). Optional: absent means manual runs are unavailable."""
+    source = environ if environ is not None else os.environ
+    raw = source.get(OPERATOR_KEY_ENV, "")
+    if not raw:
+        return None
+    key = raw.encode("utf-8")
+    if len(key) < MIN_KEY_BYTES:
+        raise BindRefused("refusing a short operator gateway key")
     return key
 
 
@@ -241,11 +254,13 @@ def dispatch_http(
     durable = bool(getattr(idempotency_store, "durable", False))
     if method == "GET" and path == "/healthz":
         run_scope = bool(caller_keys and "n8n-relay" in caller_keys) and run_store is not None
+        operator_scope = bool(caller_keys and "operator-manual" in caller_keys) and run_store is not None
         return 200, {
             "ok": True,
             "durable": durable,
             "ledger": str(ledger_path) if ledger_path else None,
             "run_scope": run_scope,
+            "operator_scope": operator_scope,
             "run_lanes": len((run_allowlist() if callable(run_allowlist) else run_allowlist) or ()),
             "run_allowlist_version": getattr(run_allowlist, "version", None),
         }
@@ -309,6 +324,7 @@ def make_handler(
     due_sources: Any = None,
     momentum_provider: Any = None,
     intent_routes_path: Path | None = None,
+    operator_key: bytes | None = None,
 ):
     nonce_store: Any = LedgerNonceStore(ledger) if ledger is not None else {}
     idempotency_store: Any = LedgerReceiptStore(ledger) if ledger is not None else {}
@@ -317,7 +333,9 @@ def make_handler(
     # 2026-10-14 (n8n fabric Phase 1): run outcomes (read) and comms send-intents (queued, never sent); durable or off
     outcome_store: Any = RunOutcomeStore(ledger) if ledger is not None else None
     intent_store: Any = CommsIntentStore(ledger, routes_path=intent_routes_path) if ledger is not None else None
-    caller_keys = build_caller_keys(key, previous_key=previous_key, n8n_key=n8n_key, n8n_previous_key=n8n_previous_key)
+    caller_keys = build_caller_keys(
+        key, previous_key=previous_key, n8n_key=n8n_key, n8n_previous_key=n8n_previous_key, operator_key=operator_key
+    )
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -396,6 +414,7 @@ def serve(
     run_allowlist_path: Path | None = None,
     registry_path: Path | None = None,
     retry_policies_path: Path | None = None,
+    operator_key: bytes | None = None,
 ) -> ThreadingHTTPServer:
     guard_bind(host, port)
     if len(key) < MIN_KEY_BYTES:
@@ -438,6 +457,7 @@ def serve(
             n8n_key=n8n_key,
             run_allowlist=run_allow,
             n8n_previous_key=n8n_previous_key,
+            operator_key=operator_key,
             due_sources=due,
             momentum_provider=momentum_provider,
             intent_routes_path=code_root / INTENT_ROUTES_REL,
@@ -484,6 +504,7 @@ def main(argv: list[str] | None = None) -> int:
         previous = load_previous_key()
         n8n_key = load_n8n_key()
         n8n_previous = load_n8n_previous_key()
+        operator_key = load_operator_key()
         ledger_path = None if args.no_ledger else (Path(args.ledger) if args.ledger else default_ledger_path())
         httpd = serve(
             args.host,
@@ -495,6 +516,7 @@ def main(argv: list[str] | None = None) -> int:
             extra_lanes=frozenset(args.allow_lane),
             n8n_key=n8n_key,
             n8n_previous_key=n8n_previous,
+            operator_key=operator_key,
             run_allowlist_path=Path(args.run_allowlist),
             registry_path=Path(args.registry),
             retry_policies_path=Path(args.retry_policies),
@@ -507,6 +529,7 @@ def main(argv: list[str] | None = None) -> int:
                     "ledger": str(ledger_path) if ledger_path else None,
                     "run_scope": n8n_key is not None and ledger_path is not None,
                     "n8n_key_previous": n8n_previous is not None,
+                    "operator_scope": operator_key is not None and ledger_path is not None,
                     "run_lanes": sorted(httpd.run_allowlist()),
                     "run_allowlist_version": httpd.run_allowlist.version,
                 }

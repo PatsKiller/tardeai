@@ -15,6 +15,9 @@ After=network.target postgresql.service
 Type=simple
 WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
 EnvironmentFile=-%t/tradeai/env
+# LQ-20261107-611: the operator-manual caller's HMAC key (TRADEAI_N8N_GATEWAY_HMAC_KEY_OPERATOR), in its own 0600 file so the
+# shared rendered env (loaded by many units) never carries it. Absent file = the manual-run scope stays unavailable (fail closed).
+EnvironmentFile=-%h/.config/tradeai/operator-manual.env
 Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
 ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/ops/operator_controls_applier.py serve
 Restart=on-failure
