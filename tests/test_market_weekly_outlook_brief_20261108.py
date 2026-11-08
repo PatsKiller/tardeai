@@ -201,6 +201,22 @@ def test_the_telegram_brief_refuses_rather_than_cutting_a_long_message():
     assert "over the 200-character policy cap" in str(excinfo.value)
 
 
+def test_all_three_renderings_give_the_same_confidence_detractors():
+    """§4.3 item 1 puts confidence and *why* in the header of every rendering, so they cannot disagree.
+
+    The three numbers are the ones a reader acts on: a Telegram header that said only "confidence LOW (14%)" leaves
+    the operator unable to tell a thin reading from a disputed one.
+    """
+    record = load_record()
+    conf = record["confidence"]
+    why = (f"coverage {round(conf['coverage'] * 100)}%, freshness {round(conf['freshness'] * 100)}%, "
+           f"agreement {round(conf['agreement'] * 100)}%, event-risk factor {round(conf['u_event'] * 100)}%")
+    assert why in mob.render_html(record, policy=policy())
+    assert why in mob.render_telegram(record, policy=policy())
+    assert why in mob.render_email_text(record, policy=policy())
+    assert mob._conf_why(conf) == why
+
+
 def test_the_telegram_brief_is_plain_text_with_no_tags():
     """The raw Telegram sender carries no parse mode: an HTML tag would be shown to the operator as text."""
     text = mob.render_telegram(load_record(), policy=policy())

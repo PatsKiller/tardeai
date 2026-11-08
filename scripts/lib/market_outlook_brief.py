@@ -307,6 +307,19 @@ def _coverage_text(cat: Mapping[str, Any]) -> str:
         return "-"
 
 
+def _conf_why(conf: Mapping[str, Any]) -> str:
+    """The confidence detractors, as §4.3 item 1 requires them in the header of every rendering.
+
+    One builder so the HTML, the plain-text MIME alternative and the Telegram message cannot disagree about why the
+    confidence is what it is. A missing component prints 0%, which the schema forbids for a real record — a record
+    without them fails ``validate_record`` before any renderer is reached.
+    """
+    return (f"coverage {round(float(conf.get('coverage') or 0) * 100)}%, "
+            f"freshness {round(float(conf.get('freshness') or 0) * 100)}%, "
+            f"agreement {round(float(conf.get('agreement') or 0) * 100)}%, "
+            f"event-risk factor {round(float(conf.get('u_event') or 0) * 100)}%")
+
+
 def _not_measured(record: Mapping[str, Any]) -> list[str]:
     """UNKNOWN categories with the first named reason, then the partial categories' refused indicators."""
     lines: list[str] = []
@@ -516,10 +529,7 @@ def render_html(record: Mapping[str, Any], *, policy: Mapping[str, Any], max_cha
 
     # 1. header
     headline = f"{_day(record['as_of'])} {str(record['as_of'])[:10]} - {record['band']} (S {score_int(record)})"
-    conf_why = (f"coverage {round(float(conf.get('coverage') or 0) * 100)}%, "
-                f"freshness {round(float(conf.get('freshness') or 0) * 100)}%, "
-                f"agreement {round(float(conf.get('agreement') or 0) * 100)}%, "
-                f"event-risk factor {round(float(conf.get('u_event') or 0) * 100)}%")
+    conf_why = _conf_why(conf)
     episode = _clean(regime.get("episode_id"))
     parts.append(
         f'<h1 style="font-size:19px;margin:0 0 6px;color:{colour}">{_e(headline)}</h1>'
@@ -675,7 +685,8 @@ def render_email_text(record: Mapping[str, Any], *, policy: Mapping[str, Any],
     ctx = context or BriefContext()
     conf = record["confidence"]
     lines = [subject(record, policy), "",
-             f"Confidence {_clean(conf.get('band')).upper()} ({round(float(conf.get('value') or 0) * 100)}%).",
+             f"Confidence {_clean(conf.get('band')).upper()} ({round(float(conf.get('value') or 0) * 100)}%) - "
+             f"{_conf_why(conf)}.",
              f"Market Risk Engine: {(record.get('regime') or {}).get('mre_tier') or 'UNKNOWN'}.", "",
              "THE VIEW"]
     for name in ("base", "bull", "bear"):
@@ -739,7 +750,7 @@ def render_telegram(record: Mapping[str, Any], *, policy: Mapping[str, Any],
 
     lines.append(f"MARKET OUTLOOK - {_day(record['as_of'])} {str(record['as_of'])[:10]} ({(record.get('mode') or '').upper()})")
     lines.append(f"S {score_int(record)} - {record['band']} - confidence {_clean(conf.get('band')).upper()} "
-                 f"({round(float(conf.get('value') or 0) * 100)}%)")
+                 f"({round(float(conf.get('value') or 0) * 100)}%) - {_conf_why(conf)}")
     regime = record.get("regime") or {}
     episode = _clean(regime.get("episode_id"))
     lines.append(f"MRE {_clean(regime.get('mre_tier')) or 'UNKNOWN'}"
