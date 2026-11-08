@@ -223,6 +223,7 @@ def _state_root(tmp_path: Path) -> Path:
     state_dir = st / "data/portfolios/state"
     state_dir.mkdir(parents=True, exist_ok=True)
     # A synthetic quote snapshot in the shape build_moves reads: one held name, one watchlist name.
+    # nosemgrep: tq-py-nonatomic-store-write -- synthetic ZZ fixture inside pytest's tmp_path, not a live store
     (state_dir / "ticker_snapshot_latest.json").write_text(json.dumps({
         "_meta": {"generated_at": "2026-11-06T20:05:00Z"},
         "tickers": {
