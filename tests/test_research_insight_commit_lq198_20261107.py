@@ -1,7 +1,10 @@
 """LQ-20261107-198: the batch path shared one connection and never committed, so close() rolled back every row
 while the receipt reported them as produced. Each successful row must be committed; a failed row rolls back alone."""
+import os
 import sys
 from pathlib import Path
+
+os.environ.setdefault("TRADE_AI_CI", "1")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import research_insight_extractor as rie  # noqa: E402

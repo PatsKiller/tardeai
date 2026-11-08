@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "RESEARCH_INSIGHT_SYMBOL_EVIDENCE_20261108",
+  "files": [
+    "tests/test_research_insight_symbol_evidence_lq1081_20261108.py"
+  ],
+  "anchor": "RESEARCH_INSIGHT_SYMBOL_EVIDENCE_20261108",
+  "comment": [
+    "ANCHOR: RESEARCH_INSIGHT_SYMBOL_EVIDENCE_20261108 — LQ-20261107-1081. research-insight-extractor was writing",
+    "COLA and RMD from bare headline acronyms, and a topic-slug news row still produced an insight. A symbol is",
+    "accepted only from a cashtag, a company name, or a held/watch source symbol. A topic-slug source row is",
+    "skipped and not inserted. Hermetic: fake cursor, synthetic rows, no database and no holdings file.",
+    "LQ-20261107-1141: a one-word issuer name that is a common word (Target, Visa, Apple, Gap) needs its",
+    "legal form, or a second signal (source/held/watch) plus a mid-sentence capital: 'price target' is not TGT."
+  ]
+}

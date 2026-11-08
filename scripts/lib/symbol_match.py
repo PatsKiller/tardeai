@@ -122,6 +122,81 @@ def _occurrence_problem(text: str, start: int, end: int) -> Optional[str]:
     return None
 
 
+def _phrase_in_body(body: str, phrase: str) -> bool:
+    words = [re.escape(w) for w in phrase.split()]
+    return bool(words) and re.search(_NB + r"[\s\-_]+".join(words) + _NA, body, re.I) is not None
+
+
+def _company_match(body: str, company_names: Iterable[str]) -> bool:
+    """True when a house name-phrase for this issuer occurs in ``body``. ``mention`` uses every phrase,
+    including the bare first word ``name_phrases`` adds."""
+    for phrase in name_phrases(company_names):
+        if _phrase_in_body(body, phrase):
+            return True
+    return False
+
+
+#: One-word issuer names that are also ordinary English words. "price target", "visa policy", "Apple orchard",
+#: "the gap widens" are not the issuer. LQ-20261107-1141.
+COMMON_WORD_ISSUER_NAMES = frozenset("""
+target visa apple gap chase ford block square shell meta alphabet amazon oracle match snap zoom coach
+progressive travelers sonic general dollar express box signal ally discover
+""".split())
+COMMON_WORD_ISSUER = "common_word_issuer_name"
+_ISSUER_SUFFIX = r"[\s,]+(?:corp|corporation|inc|incorporated|co|company|ltd|limited|plc|holdings|group)\b"
+
+
+def _title_case_text(body: str) -> bool:
+    """A headline in Title Case: a capital letter on a word says nothing about whether it is a name."""
+    words = [w for w in re.findall(r"[A-Za-z][A-Za-z'\-]*", body) if len(w) > 3]
+    return len(words) >= 3 and sum(w[0].isupper() for w in words) / len(words) >= 0.6
+
+
+def _common_word_named(body: str, word: str, corroborated: bool) -> bool:
+    """A one-word issuer name that is also a common word is the issuer only when it is written as a name.
+
+    Either the legal form follows it ("Target Corporation", "Visa Inc."), or another signal names this symbol
+    (the source symbol, or a held/watch symbol) AND the word is capitalised mid-sentence in text that is not
+    shouting or Title Case. A sentence-initial capital ("Apple orchard yields fall") is not a name.
+    """
+    for m in re.finditer(_NB + re.escape(word) + _NA, body, re.I):
+        tok = m.group(0)
+        if not (tok[0].isupper() and tok[1:].islower()):
+            continue
+        if re.match(_ISSUER_SUFFIX, body[m.end():], re.I):
+            return True
+        if not corroborated or _shouting(body) or _title_case_text(body):
+            continue
+        if re.search(r"(^|[.!?:;\n]\s*|[\"'(\[]\s*)$", body[:m.start()]):
+            continue  # sentence-initial
+        return True
+    return False
+
+
+def _core_company_match(body: str, company_names: Iterable[str], *, corroborated: bool = False) -> Optional[str]:
+    """The full issuer phrase only -> "company", COMMON_WORD_ISSUER, or None.
+
+    ``name_phrases`` also returns a bare first word ("income" from "INCOME OPPORTUNITY", "rising" from
+    "RISING DRAGON"). That word is not the company. ``evidence`` asks for the phrase legal suffixes were
+    stripped from, which is one word when the name is one word ("RESMED INC" -> "resmed"). A one-word phrase
+    that is a common English word ("TARGET CORP" -> "target") must also be written as a name; see
+    ``_common_word_named``.
+    """
+    refused: Optional[str] = None
+    for raw in company_names or []:
+        phrases = name_phrases([raw])
+        if not phrases or not _phrase_in_body(body, phrases[0]):
+            continue
+        core = phrases[0]
+        if " " not in core and core in COMMON_WORD_ISSUER_NAMES:
+            if _common_word_named(body, core, corroborated):
+                return "company"
+            refused = COMMON_WORD_ISSUER
+            continue
+        return "company"
+    return refused
+
+
 def mention(text: Any, symbol: Any, *, company_names: Iterable[str] = ()) -> dict[str, Any]:
     """Does ``text`` name ``symbol``? -> {"matched", "how": cashtag|ticker|company|None, "reason"}."""
     sym = normalize(symbol)
@@ -145,11 +220,36 @@ def mention(text: Any, symbol: Any, *, company_names: Iterable[str] = ()) -> dic
             bare_ok = True
     if bare_ok:
         return {"matched": True, "how": "ticker", "reason": None}
-    for phrase in name_phrases(company_names):
-        words = [re.escape(w) for w in phrase.split()]
-        if re.search(_NB + r"[\s\-_]+".join(words) + _NA, body, re.I):
-            return {"matched": True, "how": "company", "reason": None}
+    if _company_match(body, company_names):
+        return {"matched": True, "how": "company", "reason": None}
     return {"matched": False, "how": None, "reason": blocked or NO_MENTION}
+
+
+def evidence(text: Any, symbol: Any, *, company_names: Iterable[str] = (), corroborated: bool = False) -> dict[str, Any]:
+    """Cashtag or company-name evidence only.
+
+    A bare ticker word is not evidence, including a parenthetical ``(SYM)`` or an exchange prefix. ``mention``
+    returns ``how=ticker`` before it looks at the company name, so a headline that says both "COLA" and
+    "Coca-Cola Consolidated" would hide the name. This asks for the full issuer phrase anyway, not the bare
+    first word ``name_phrases`` also returns. LQ-20261107-1081.
+
+    ``corroborated`` is the caller saying a second signal names this symbol (it is the source symbol, or held
+    or on the watchlist). Only a common-word issuer name ("Target", "Visa", "Apple", "Gap") reads it; any other
+    name stands alone. LQ-20261107-1141.
+    """
+    hit = mention(text, symbol, company_names=company_names)
+    if hit.get("how") == "cashtag":
+        return hit
+    body = str(text or "").translate(_CURLY)
+    # mention() answers "company" for a bare first word. That is not issuer evidence.
+    core = _core_company_match(body, company_names, corroborated=corroborated)
+    if core == "company":
+        return {"matched": True, "how": "company", "reason": None}
+    if core == COMMON_WORD_ISSUER:
+        return {"matched": False, "how": None, "reason": COMMON_WORD_ISSUER}
+    if hit.get("how") == "ticker":
+        return {"matched": False, "how": None, "reason": "bare_ticker_not_evidence"}
+    return {"matched": False, "how": None, "reason": hit.get("reason") or NO_MENTION}
 
 
 def mentions(text: Any, symbol: Any, *, company_names: Iterable[str] = ()) -> bool:
