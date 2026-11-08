@@ -131,10 +131,15 @@ def _snap(**kw):
     return c.build_snapshot(now=TUE_0555, ticker_snapshot=TICKERS, articles=ARTS, futures=None, llm=None, **kw)
 
 
-def test_feed_is_newest_first_with_exposure_and_so_what_and_macro_item():
+def test_feed_is_ranked_with_exposure_and_so_what_and_macro_item():
+    # LQ-20261107-1283 changed the order from newest-first to ranked-by-the-book; the ranking's own ties still run
+    # newest first, which the second assertion covers. The rest of the LQ-1253 contract below is unchanged.
     feed = _snap()["feed"]
-    times = [c._ts(i["published_at"]) for i in feed]
-    assert times == sorted(times, reverse=True)
+    scores = [i["score"] for i in feed]
+    assert scores == sorted(scores, reverse=True) and [i["rank"] for i in feed] == list(range(1, len(feed) + 1))
+    for sc in {i["score"] for i in feed}:
+        ts = [c._ts(i["published_at"]) for i in feed if i["score"] == sc]
+        assert ts == sorted(ts, reverse=True), f"equal scores ({sc}) are newest first"
     top = next(i for i in feed if i["title"] == "AAA founder plans to sell shares")
     assert top["kind"] == "holding" and top["exposure"] == 1086.0
     assert top["so_what"] == "You hold $1,086 here; AAA is +8.6% since Mon close."
@@ -229,3 +234,172 @@ def test_today_section_only_while_the_session_is_open_and_has_news_since_open():
 def test_cli_cio_path_is_the_lq1257_runtime_file():
     import since_close_snapshot as cli
     assert str(cli.CIO_BRIEF_REL) == "data/runtime/cio_overnight_brief/latest.json"
+
+
+# ---- LQ-20261107-1282: what printed since the close -------------------------------------------------------------
+CLOSE_MON = datetime(2026, 11, 9, 16, 0, tzinfo=ET)   # the window TUE_0555 is about (Mon 16:00 ET)
+
+
+def _row(sym, session, bar_end, price, pct=None, ref_date="2026-11-09", ref_close=9.0):
+    return {"symbol": sym, "session": session, "bar_end": bar_end, "price": price, "change_pct": pct,
+            "reference_date": ref_date, "reference_close": ref_close, "reference_basis": "schwab_test"}
+
+
+def _moves():
+    return c.build_moves(TICKERS, close_tag="Mon close")
+
+
+def test_no_print_after_the_close_says_so_and_keeps_the_close_percentage():
+    out = c.attach_extended(_moves(), [], close_date="2026-11-09", close_at=CLOSE_MON, now=TUE_0555)
+    aaa = next(m for m in out if m["symbol"] == "AAA")
+    assert aaa["extended"] is None and aaa["extended_note"] == "no print since Mon"
+    assert aaa["move_now_pct"] == 8.6 and aaa["dollar_impact_now"] == aaa["dollar_impact"]
+
+
+def test_an_extended_print_dated_to_this_close_is_a_percentage():
+    rows = [_row("AAA", "afterhours", datetime(2026, 11, 9, 18, 5, tzinfo=ET), 11.0, 2.5)]
+    aaa = next(m for m in c.attach_extended(_moves(), rows, close_date="2026-11-09", close_at=CLOSE_MON, now=TUE_0555) if m["symbol"] == "AAA")
+    ext = aaa["extended"]
+    assert ext["state"] == "print" and ext["change_pct"] == 2.5 and ext["session_label"] == "after-hours"
+    assert ext["printed_text"] == "Mon 6:05 PM ET" and aaa["move_now_pct"] == 2.5
+    # $ moved = shares x extended price x pct, not the Friday dollars
+    assert abs(aaa["dollar_impact_now"] - (1086.0 / 10.0) * 11.0 * 0.025) < 0.01
+
+
+def test_a_print_referencing_another_close_is_a_level_never_a_percentage():
+    rows = [_row("AAA", "premarket", datetime(2026, 11, 9, 18, 5, tzinfo=ET), 11.0, 2.5, ref_date="2026-11-06")]
+    aaa = next(m for m in c.attach_extended(_moves(), rows, close_date="2026-11-09", close_at=CLOSE_MON, now=TUE_0555) if m["symbol"] == "AAA")
+    ext = aaa["extended"]
+    assert ext["state"] == "level_only" and ext["change_pct"] is None and ext["price"] == 11.0
+    assert aaa["move_now_pct"] == 8.6, "a level does not inherit the close percentage"
+
+
+def test_a_store_row_with_no_change_is_a_level_and_a_pre_close_row_is_not_a_print_since_the_close():
+    rows = [_row("AAA", "overnight", datetime(2026, 11, 9, 15, 59, tzinfo=ET), 11.0, 2.5),
+            _row("BBB", "overnight", datetime(2026, 11, 9, 22, 0, tzinfo=ET), 9.5, None)]
+    out = {m["symbol"]: m for m in c.attach_extended(_moves(), rows, close_date="2026-11-09", close_at=CLOSE_MON, now=TUE_0555)}
+    assert out["AAA"]["extended"] is None, "15:59 is before the close"
+    assert out["BBB"]["extended"]["state"] == "level_only" and out["BBB"]["extended"]["session_label"] == "overnight"
+
+
+def test_the_newest_print_wins():
+    rows = [_row("AAA", "overnight", datetime(2026, 11, 9, 22, 0, tzinfo=ET), 10.2, 1.0),
+            _row("AAA", "premarket", datetime(2026, 11, 10, 5, 0, tzinfo=ET), 10.4, 3.0)]
+    aaa = next(m for m in c.attach_extended(_moves(), rows, close_date="2026-11-09", close_at=CLOSE_MON, now=TUE_0555) if m["symbol"] == "AAA")
+    assert aaa["extended"]["change_pct"] == 3.0 and aaa["extended"]["session_label"] == "pre-market"
+
+
+def test_held_chips_sort_by_the_newest_sessions_dollars():
+    rows = [_row("CCC", "overnight", datetime(2026, 11, 9, 22, 0, tzinfo=ET), 12.5, 25.0)]   # 5000 held, Friday 0%
+    moves = c.sort_by_now(c.attach_extended(_moves(), rows, close_date="2026-11-09", close_at=CLOSE_MON, now=TUE_0555))
+    held = [m["symbol"] for m in moves if m["held"]]
+    assert held[0] == "CCC", "CCC moved 25% after the close; its Friday dollars were 0"
+    assert set(held) == {"AAA", "BBB", "CCC"}
+
+
+def test_market_now_reads_futures_and_indices_and_names_what_it_cannot_see():
+    rows = [
+        _row("/ES", "futures_open", datetime(2026, 11, 9, 18, 45, tzinfo=ET), 7400.0, None),
+        _row("/YM", "futures_open", datetime(2026, 11, 9, 18, 44, tzinfo=ET), 51521.0, 0.26),
+        _row("$VIX", "overnight", datetime(2026, 11, 9, 18, 40, tzinfo=ET), 17.1, None),
+    ]
+    blk = c.build_market_now(rows, close_date="2026-11-09", close_at=CLOSE_MON, now=TUE_0555,
+                             labels={"/ES": "S&P 500 futures"})
+    assert blk["status"] == "available"
+    assert [r["symbol"] for r in blk["futures"]] == ["/ES", "/YM"], "FUTURES_ORDER, and only what printed"
+    es, ym = blk["futures"]
+    assert es["level"] == 7400.0 and es["change_pct"] is None and es["level_only"] and es["label"] == "S&P 500 futures"
+    assert ym["change_pct"] == 0.26 and not ym["level_only"]
+    assert [r["symbol"] for r in blk["indices"]] == ["$VIX"]
+    assert "/NQ" in blk["missing"] and "$SPX" in blk["missing"]
+    assert blk["as_of_text"] == "Mon 6:45 PM ET"
+    assert blk["overseas"]["status"] == "no_feed" and blk["overseas"]["rows"] == []
+
+
+def test_the_futures_block_stops_saying_pending_once_a_print_exists():
+    assert _snap()["macro"]["futures"]["status"] == "pending"
+    rows = [_row("/ES", "futures_open", datetime(2026, 11, 9, 18, 45, tzinfo=ET), 7400.0, 0.4)]
+    snap = c.build_snapshot(now=TUE_0555, ticker_snapshot=TICKERS, articles=ARTS, futures=None, llm=None, extended_rows=rows)
+    assert snap["macro"]["futures"]["status"] == "available" and snap["macro"]["futures"]["quotes"][0]["symbol"] == "/ES"
+    assert snap["macro"]["now"]["as_of_text"] == "Mon 6:45 PM ET"
+
+
+def test_if_changed_rebuilds_on_a_new_extended_print_and_not_without_one():
+    rows = [_row("AAA", "overnight", datetime(2026, 11, 9, 22, 0, tzinfo=ET), 10.2, 1.0)]
+    first = c.build_snapshot(now=TUE_0555, ticker_snapshot=TICKERS, articles=ARTS, futures=None, llm=None,
+                             if_changed=True, extended_rows=rows)
+    assert first is not None, "first build"
+    same = c.build_snapshot(now=TUE_0555 + timedelta(minutes=15), ticker_snapshot=TICKERS, articles=ARTS, futures=None,
+                            llm=None, if_changed=True, prior=first, extended_rows=rows)
+    assert same is None, "the same print is not a change"
+    newer = [*rows, _row("AAA", "premarket", datetime(2026, 11, 10, 5, 0, tzinfo=ET), 10.4, 3.0)]
+    moved = c.build_snapshot(now=TUE_0555 + timedelta(minutes=15), ticker_snapshot=TICKERS, articles=ARTS, futures=None,
+                             llm=None, if_changed=True, prior=same or first, extended_rows=newer)
+    assert moved is not None
+    assert next(m for m in moved["moves"] if m["symbol"] == "AAA")["extended"]["change_pct"] == 3.0
+
+
+def test_a_held_extended_print_crossing_3pct_is_material_once():
+    rows = [_row("AAA", "overnight", datetime(2026, 11, 9, 22, 0, tzinfo=ET), 10.4, 4.0)]
+    base = c.build_snapshot(now=TUE_0555, ticker_snapshot=TICKERS, articles=ARTS, futures=None, llm=None, if_changed=False)
+    snap = c.build_snapshot(now=TUE_0555 + timedelta(minutes=15), ticker_snapshot=TICKERS, articles=ARTS, futures=None,
+                            llm=lambda p: "words", prior=base, if_changed=True, extended_rows=rows)
+    assert snap["updated"]["kind"] == "move" and snap["updated"]["reason"] == "AAA +4.0% overnight"
+    later = [*rows, _row("AAA", "premarket", datetime(2026, 11, 10, 5, 0, tzinfo=ET), 10.5, 4.2)]
+    calls = []
+    again = c.build_snapshot(now=TUE_0555 + timedelta(minutes=30), ticker_snapshot=TICKERS, articles=ARTS, futures=None,
+                             llm=lambda p: calls.append(p) or "x", prior=snap, if_changed=True, extended_rows=later)
+    assert again["summary"]["source"] == "carried" and not calls, "already past 3%: a further print spends nothing"
+
+
+# ---- LQ-20261107-1283: one story per feed, ranked by the book ----------------------------------------------------
+def _rank_arts():
+    return [
+        {"symbol": "AAA", "title": "AAA founder plans to sell shares", "source": "yahoo_rss",
+         "published_at": datetime(2026, 11, 9, 20, 0, tzinfo=ET), "relevance_score": 0.9},
+        {"symbol": "BBB", "title": "BBB 13F: acquired by a family office", "source": "google_news:X",
+         "published_at": datetime(2026, 11, 9, 20, 1, tzinfo=ET), "relevance_score": 0.9},
+        {"symbol": "CCC", "title": "CCC lands a defence contract", "source": "google_news:Y",
+         "published_at": datetime(2026, 11, 9, 20, 2, tzinfo=ET), "relevance_score": 0.9},
+    ]
+
+
+def test_feed_is_ranked_by_the_book_and_sinks_appraisal_boilerplate():
+    feed = c.build_feed(*_feed_parts(_rank_arts()))
+    assert [i["rank"] for i in feed[:3]] == [1, 2, 3]
+    assert feed[0]["title"] == "AAA founder plans to sell shares", "$93 moved on a held name outranks boilerplate"
+    assert feed[0]["score"] >= feed[1]["score"] >= feed[2]["score"]
+    assert any("13F" in i["why"] for i in feed if i["title"].startswith("BBB"))
+
+
+def test_a_cio_action_lifts_a_flat_name_and_the_dollars_still_come_first():
+    """The order the lead asked for: held $ x move FIRST, then the stop/at-risk names. A CIO row lifts a name that
+    moved nothing above unrelated noise, and it does not outrank the biggest dollar move in the book."""
+    brief = {"stop_advice": [{"symbol": "CCC", "answer": "ADD_STOP", "held_qty": 9}, {"symbol": "BBB", "answer": "HOLD"}]}
+    arts = _rank_arts() + [{"symbol": "XXX", "title": "XXX appoints a new treasurer", "source": "google_news:Z",
+                            "published_at": datetime(2026, 11, 9, 20, 3, tzinfo=ET), "relevance_score": 0.9}]
+    feed = c.build_feed(*_feed_parts(arts), cio_actions=c._cio_actions(brief), at_risk=c._at_risk(brief))
+    rank = {i["title"].split()[0]: i["rank"] for i in feed}
+    assert rank["AAA"] == 1, "$93 moved on a held name is still first"
+    assert rank["CCC"] < rank["XXX"], "the CIO action lifts CCC (0% move) above a nil story on a watchlist name"
+    ccc = next(i for i in feed if i["title"].startswith("CCC"))
+    assert ccc["why"] == "CIO: CCC ADD_STOP"
+    assert c._cio_actions({"stop_advice": [{"symbol": "BBB", "answer": "HOLD"}]}) == {}, "HOLD is not an action"
+    assert c._at_risk({"stop_advice": [{"symbol": "BBB", "answer": "HOLD"}]}) == ["BBB"], "at-risk is the wider tier"
+
+
+def test_one_story_from_two_feeds_is_one_item_listing_both_sources():
+    arts = [
+        {"symbol": "AAA", "title": "AAA shares surge after an earnings beat - Yahoo Finance", "source": "google_news:Yahoo Finance",
+         "published_at": datetime(2026, 11, 9, 20, 0, tzinfo=ET), "relevance_score": 0.8},
+        {"symbol": "AAA", "title": "AAA shares surge after an earnings beat | Reuters", "source": "yahoo_rss",
+         "published_at": datetime(2026, 11, 9, 20, 5, tzinfo=ET), "relevance_score": 0.8},
+    ]
+    feed = c.build_feed(*_feed_parts(arts))
+    hits = [i for i in feed if "earnings beat" in i["title"]]
+    assert len(hits) == 1 and set(hits[0]["sources"]) == {"google_news:Yahoo Finance", "yahoo_rss"}
+
+
+def _feed_parts(arts):
+    """(moves, macro) for build_feed straight, without building a whole snapshot."""
+    return c.attach_news(c.build_moves(TICKERS, close_tag="Mon close"), arts), c.build_macro(arts, None)

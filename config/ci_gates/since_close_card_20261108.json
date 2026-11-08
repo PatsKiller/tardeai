@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "since_close_card_20261108",
+  "files": [
+    "tests/test_since_close_card_20261108.py"
+  ],
+  "anchor": "SINCE_CLOSE_CARD_20261108",
+  "comment": [
+    "ANCHOR: SINCE_CLOSE_CARD_20261108 — the Home 'Since last close' snapshot builder: the window and its label,",
+    "the held/watchlist moves, per-name news, the macro block, the cached summary, the feed, the week-ahead strip,",
+    "--if-changed materiality, and (LQ-20261107-1282/1283) the extended prints after the close, the futures/cash-index",
+    "row, the cross-feed dedupe and the CIO ranking. Synthetic fixtures only; no store, no network, no LLM."
+  ]
+}

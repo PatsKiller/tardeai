@@ -13,6 +13,20 @@ Four parts, each degrading to a visible state rather than an empty card:
   summary  4-6 sentences from the three parts above, via an injected LLM callable, cached 15 minutes under a daily
            cap; if the LLM is unavailable the deterministic list stands and ``summary.source`` says so
 
+LQ-20261107-1282 — "what has moved since Friday": a name's Friday close % is not the answer after 16:00 Friday, and
+after 20:00 Sunday (overnight) or 04:00 (pre-market) the newest print is not the Friday one either. ``attach_extended``
+gives every name the newest print STRICTLY after the close, read from ``market_quotes_extended`` (the Schwab
+extended-hours lane, and the Alpaca SIP extended feed where it exists) with the session it printed in, and
+``build_market_now`` gives the futures/cash-index row that replaces "futures feed pending". A name with no print
+since the close says exactly that; a print with no dated reference to THIS close is shown as a level, never as a
+percentage the store did not compute.
+
+LQ-20261107-1283 — the feed is deduped across feeds (one story, every source that carried it) and RANKED here, not in
+the browser: ``rank_feed`` scores every item from the book ($ exposed x |move since the close|), the CIO brief's
+per-name action, the at-risk names, the market-event group, and sinks appraisal/13F boilerplate. The score and a
+one-line reason travel with the item so the card can print ``#1 · $8.5k at risk in SPCX``.
+
+
 Pure functions take ``now`` and the data; nothing here reads the clock, the DB or the network on its own.
 """
 
@@ -43,6 +57,25 @@ SUMMARY_DAILY_CAP = 40  # n8n runs ~12/night + weekends; flash is ~$0.0005 a cal
 BIG_MOVE_PCT = 3.0
 NEWS_PER_NAME = 3
 MACRO_LIMIT = 6
+
+#: Display name per ``market_quotes_extended.session`` value (LQ-20261107-1282). The authoritative copy is
+#: ``scripts/lib/session_now.py`` (cc-deepseek-9's LQ-20261107-1264 amendment 1, in the fold queue); until it is on
+#: live this module carries the same five names so the card can label a print without waiting. When both exist the
+#: imported map wins -- one spelling, not two that drift.
+FALLBACK_SESSION_LABELS = {
+    "regular": "close",
+    "premarket": "pre-market",
+    "afterhours": "after-hours",
+    "overnight": "overnight",
+    "futures_open": "futures open",
+}
+try:  # pragma: no cover - the import path is the future state, exercised when the fold lands session_now.py
+    from lib.session_now import SESSION_LABELS
+except ImportError:  # pragma: no cover - the same module under the scripts.lib package path
+    try:
+        from scripts.lib.session_now import SESSION_LABELS
+    except ImportError:  # pragma: no cover - today's live state: the helper is not on this tree yet
+        SESSION_LABELS = FALLBACK_SESSION_LABELS
 
 # a headline is macro when its title says so; the symbol column on these rows is junk (AHEAD, WATER ...)
 MACRO_RE = re.compile(
@@ -132,6 +165,206 @@ def build_moves(snapshot: Mapping[str, Any], *, close_tag: str) -> list[dict[str
     held_rows = sorted((r for r in rows if r["held"]), key=lambda r: -abs(r["dollar_impact"] or 0.0))
     watch_rows = sorted((r for r in rows if not r["held"]), key=lambda r: -abs(r["change_pct"]))
     return held_rows + watch_rows
+
+
+# ---------------------------------------------------------------------------- what printed since the close (LQ-1282)
+
+
+def session_label(session: Any) -> str:
+    """``overnight`` / ``pre-market`` / ``after-hours`` / ``futures open``; an unknown value is shown as itself."""
+    raw = str(session or "").strip()
+    return SESSION_LABELS.get(raw, raw)
+
+
+def _print_time(bar_end: Any) -> str:
+    """``Sun 6:45 PM ET`` -- the print's own instant in the operator's zone; empty when it cannot be read."""
+    try:
+        at = bar_end if isinstance(bar_end, datetime) else datetime.fromisoformat(str(bar_end))
+    except (TypeError, ValueError):
+        return ""
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=UTC)
+    et = at.astimezone(ET)
+    return f"{et:%a} {et.hour % 12 or 12}:{et.minute:02d} {'AM' if et.hour < 12 else 'PM'} ET"
+
+
+def attach_extended(
+    moves: Sequence[Mapping[str, Any]],
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    close_date: str,
+    close_at: datetime,
+    now: datetime,
+) -> list[dict[str, Any]]:
+    """Give each move its newest print strictly after ``close_at``, from ``market_quotes_extended``.
+
+    The row's own ``change_pct`` is used ONLY when its ``reference_date`` is the close date this card is about: a
+    pre-market print on Friday references Thursday's close, and showing that as "vs Friday" would be a different
+    number wearing the same label. Everything else is a LEVEL: the price and the session, with no percentage invented.
+    """
+    by_sym: dict[str, list[Mapping[str, Any]]] = {}
+    for r in rows:
+        by_sym.setdefault(str(r.get("symbol") or "").upper(), []).append(r)
+    out = []
+    for m in moves:
+        cands = [
+            r
+            for r in by_sym.get(m["symbol"], [])
+            if (dt := _as_dt(r.get("bar_end"))) is not None and dt > close_at
+        ]
+        newest = max(cands, key=lambda r: _as_dt(r.get("bar_end")) or close_at) if cands else None
+        if newest is None:
+            out.append({**m, "extended": None, "extended_note": f"no print since {m['close_tag'].split()[0]}",
+                        "dollar_impact_now": m.get("dollar_impact"), "move_now_pct": m["change_pct"]})
+            continue
+        price = _num(newest.get("price"))
+        pct = _num(newest.get("change_pct"))
+        ref_date = str(newest.get("reference_date") or "")[:10] or None
+        uses_close = pct is not None and ref_date == close_date
+        ext = {
+            "state": "print" if uses_close else "level_only",
+            "session": str(newest.get("session") or ""),
+            "session_label": session_label(newest.get("session")),
+            "price": price,
+            "change_pct": round(pct, 2) if uses_close and pct is not None else None,
+            "printed_at": _iso(newest.get("bar_end")),
+            "printed_text": _print_time(newest.get("bar_end")),
+            "reference_close": _num(newest.get("reference_close")),
+            "reference_date": ref_date,
+            "age_minutes": _age_minutes(newest.get("bar_end"), now),
+        }
+        # a level-only print has no percentage of its own, so the dollars stay Friday's: the two numbers on the chip
+        # are always a matched pair (price with pct), never an extended price wearing the close's percentage.
+        move_pct = ext["change_pct"] if uses_close else m["change_pct"]
+        impact_now = None
+        mv, friday_px = m.get("market_value"), m.get("price")
+        if m["held"] and uses_close and mv and price and friday_px and move_pct is not None:
+            shares = mv / friday_px
+            impact_now = round(shares * price * move_pct / 100.0, 2)
+        out.append({**m, "extended": ext, "extended_note": None, "move_now_pct": move_pct,
+                    "dollar_impact_now": impact_now if impact_now is not None else m.get("dollar_impact")})
+    return out
+
+
+def sort_by_now(moves: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Held names by |$ move| in the NEWEST print (so the weekend's biggest mover is first, not Friday's); a name with
+    no print since the close falls back to its Friday dollars. Watchlist names follow, by the same rule."""
+    key = lambda m: -abs((m.get("dollar_impact_now") if m.get("dollar_impact_now") is not None else m.get("dollar_impact")) or 0.0)
+    held = sorted((m for m in moves if m["held"]), key=key)
+    watch = sorted((m for m in moves if not m["held"]),
+                   key=lambda m: -abs(m.get("move_now_pct") if m.get("move_now_pct") is not None else m["change_pct"]))
+    return held + watch
+
+
+def _as_dt(v: Any) -> datetime | None:
+    if isinstance(v, datetime):
+        return v if v.tzinfo else v.replace(tzinfo=UTC)
+    try:
+        d = datetime.fromisoformat(str(v))
+    except (TypeError, ValueError):
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=UTC)
+
+
+def _age_minutes(v: Any, now: datetime) -> float | None:
+    d = _as_dt(v)
+    if d is None:
+        return None
+    return round((now - d).total_seconds() / 60.0, 1)
+
+
+#: symbols the futures/cash-index row may carry, in the order the card draws them. A symbol absent from the store is
+#: absent from the row (never a zero), and the block says what is missing.
+FUTURES_ORDER = ("/ES", "/NQ", "/RTY", "/YM")
+INDEX_ORDER = ("$SPX", "$COMPX", "$DJI", "$RUT", "$NDX", "$VIX")
+
+#: What the card calls each root when the config carries no label. ``config/market_risk_offhours_quotes.yaml``
+#: ``schwab.labels`` owns these names and overrides every entry here; on live that block is still in the fold queue, so
+#: without these defaults the row would say "/ES" to the operator. Display only.
+DEFAULT_LABELS = {
+    "/ES": "S&P 500 futures",
+    "/NQ": "Nasdaq 100 futures",
+    "/RTY": "Russell 2000 futures",
+    "/YM": "Dow futures",
+    "$SPX": "S&P 500",
+    "$COMPX": "Nasdaq Composite",
+    "$DJI": "Dow Jones",
+    "$RUT": "Russell 2000",
+    "$NDX": "Nasdaq 100",
+    "$VIX": "VIX",
+}
+
+
+def load_labels(path: Path | None = None) -> dict[str, str]:
+    """Display names: the config's ``schwab.labels`` over ``DEFAULT_LABELS``. A missing or unreadable file is not an
+    error -- the defaults cover every symbol the row can carry, and a symbol with no name is shown as itself."""
+    labels = dict(DEFAULT_LABELS)
+    try:
+        import yaml  # noqa: PLC0415 -- a display-only dependency; the builder works without it
+
+        p = Path(path) if path else Path(__file__).resolve().parents[2] / "config" / "market_risk_offhours_quotes.yaml"
+        doc = yaml.safe_load(p.read_text()) or {}
+        labels.update({str(k): str(v) for k, v in ((doc.get("schwab") or {}).get("labels") or {}).items() if v})
+    except (OSError, ValueError, ImportError, AttributeError):  # noqa: BLE001 -- a label is cosmetic, the level is not
+        pass
+    return labels
+
+
+def build_market_now(
+    rows: Iterable[Mapping[str, Any]], *, close_date: str, close_at: datetime, now: datetime,
+    labels: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """The "Futures / overseas" row: the newest print after the close for each futures root and cash index, with the
+    arrow ONLY where the provider dated a reference to this close. Overseas cash indices have no provider on this
+    host (the Schwab feed is the US quotes service); that is said, never replaced by a guess."""
+    lab = {**DEFAULT_LABELS, **dict(labels or {})}
+    by_sym: dict[str, Mapping[str, Any]] = {}
+    for r in rows:
+        sym = str(r.get("symbol") or "").upper()
+        dt = _as_dt(r.get("bar_end"))
+        if dt is None or dt <= close_at:
+            continue
+        cur = by_sym.get(sym)
+        if cur is None or (_as_dt(cur.get("bar_end")) or close_at) < dt:
+            by_sym[sym] = r
+
+    def row(sym: str) -> dict[str, Any] | None:
+        r = by_sym.get(sym)
+        if r is None:
+            return None
+        pct = _num(r.get("change_pct"))
+        dated = str(r.get("reference_date") or "")[:10] == close_date
+        return {
+            "symbol": sym,
+            "label": lab.get(sym) or sym,
+            "level": _num(r.get("price")),
+            "change_pct": round(pct, 2) if (pct is not None and dated) else None,
+            "level_only": not (pct is not None and dated),
+            "session": str(r.get("session") or ""),
+            "session_label": session_label(r.get("session")),
+            "printed_at": _iso(r.get("bar_end")),
+            "printed_text": _print_time(r.get("bar_end")),
+            "reference_date": str(r.get("reference_date") or "")[:10] or None,
+        }
+
+    futures = [x for s in FUTURES_ORDER if (x := row(s))]
+    indices = [x for s in INDEX_ORDER if (x := row(s))]
+    as_of = max((x["printed_at"] for x in futures + indices if x["printed_at"]), default=None)
+    present = {x["symbol"] for x in futures + indices}
+    missing = [s for s in FUTURES_ORDER + INDEX_ORDER if s not in present]
+    return {
+        "status": "available" if (futures or indices) else "pending",
+        "as_of": as_of,
+        "as_of_text": _print_time(as_of),
+        "futures": futures,
+        "indices": indices,
+        "missing": missing,
+        "overseas": {
+            "status": "no_feed",
+            "label": "Overseas cash indices: no direct feed on this host — Asia/Europe moves appear as headlines below.",
+            "rows": [],
+        },
+    }
 
 
 # ---------------------------------------------------------------------------- news
@@ -301,40 +534,163 @@ def build_summary(
 # ---------------------------------------------------------------------------- the feed (amendment 2)
 
 
-def build_feed(moves: Sequence[Mapping[str, Any]], macro: Mapping[str, Any], *, limit: int = 30) -> list[dict[str, Any]]:
-    """A clean news feed, newest first: headline, source and time, the holdings it touches with $ exposure, and a
-    one-line "So what" built from those numbers (no LLM per item).  The same story under two names is one item."""
+#: Headlines that are appraisal or proxy boilerplate, not news an investor acts on: 13F "acquired by", "fair value
+#: estimate", a price-target lift, a "should you buy" listicle. They are kept (they are true) and ranked last.
+LOW_VALUE_RE = re.compile(
+    r"(13f|acquired by|acquires? \d|fair value|price target|target price|should you (buy|sell)|stock split|"
+    r"is it time to|here'?s what|what to know|analysts? (raise|lower|cut|boost)|upgraded? to|downgraded? to)",
+    re.I,
+)
+#: the market-event group the operator reads first: semis and big tech move the whole book.
+MARKET_GROUP_RE = re.compile(r"(semis?|semiconductor|chip|nvidia|nasdaq|big tech|tech (?:stocks?|shares?)|ai capex)", re.I)
+
+FEED_LIMIT = 30
+
+
+def _title_key(title: Any) -> str:
+    """A comparison key that survives a publisher suffix: ``Story - Yahoo Finance`` and ``Story | Reuters`` are the
+    same key, so one story from two feeds is one item."""
+    t = re.sub(r"\s*[|\-–—]\s*[^|\-–—]{2,40}$", "", str(title or ""))
+    return re.sub(r"\W+", " ", t.lower()).strip()
+
+
+def _tokens(title: Any) -> set[str]:
+    return {w for w in _title_key(title).split() if len(w) > 2}
+
+
+def merge_duplicates(items: Sequence[Mapping[str, Any]], *, threshold: float = 0.85) -> list[dict[str, Any]]:
+    """Fold items that are the same story under different feed wording. Two titles merge when their significant-word
+    sets overlap by at least ``threshold`` (Jaccard) AND they touch the same symbols; the earlier item keeps the
+    identity and gains every other feed's name in ``sources``. Deterministic: order of input decides the survivor."""
+    out: list[dict[str, Any]] = []
+    for it in items:
+        it = {**it, "sources": list(it.get("sources") or [it.get("source")])}
+        mine, syms = _tokens(it.get("title")), {h["symbol"] for h in it.get("holdings", [])}
+        for kept in out:
+            theirs = _tokens(kept.get("title"))
+            theirs_syms = {h["symbol"] for h in kept.get("holdings", [])}
+            union = mine | theirs
+            same_story = bool(union) and len(mine & theirs) / len(union) >= threshold
+            if not same_story or (syms and theirs_syms and not (syms & theirs_syms)):
+                continue
+            for s in it["sources"]:
+                if s and s not in kept["sources"]:
+                    kept["sources"].append(s)
+            for h in it.get("holdings", []):
+                if all(x["symbol"] != h["symbol"] for x in kept["holdings"]):
+                    kept["holdings"].append(h)
+            kept["kind"] = "holding" if (kept["kind"] == "holding" or it.get("kind") == "holding") else kept["kind"]
+            break
+        else:
+            out.append(it)
+    return out
+
+
+def rank_feed(
+    items: list[dict[str, Any]], *, cio_actions: Mapping[str, str] | None = None, at_risk: Sequence[str] = (),
+) -> list[dict[str, Any]]:
+    """Score every item, explain the score in one line, and number the list. The CIO brief is the verdict owner: a
+    held name it names an action for outranks a bigger dollar move on a name it says nothing about.
+
+    score = min(60, round($ the book moved on this story))   -- held $ exposed x |move since the close|
+          + 30 if the CIO brief names an action for a held name here
+          + 15 if a held name here is at or through its stop
+          + 10 if the story is market-wide and in the semis/big-tech group
+          +  5 if it is market-wide at all (the backdrop for the whole book)
+          +  8 if it is a watchlist name moving 3% or more
+          - 40 if it is appraisal/13F/price-target boilerplate
+    """
+    cio_actions = dict(cio_actions or {})
+    risk = {s.upper() for s in at_risk}
+    scored = []
+    for it in items:
+        held = [h for h in it.get("holdings", []) if h.get("held")]
+        dollars = sum(abs((h.get("market_value") or 0.0) * (h.get("move_now_pct") if h.get("move_now_pct") is not None
+                                                              else h.get("change_pct") or 0.0) / 100.0) for h in held)
+        score = min(60.0, round(dollars))
+        why: list[str] = []
+        cio_hit = next((s for s in (h["symbol"] for h in held) if s in cio_actions), None)
+        risk_hit = next((s for s in (h["symbol"] for h in held) if s in risk), None)
+        if cio_hit:
+            score += 30
+            why.append(f"CIO: {cio_hit} {cio_actions[cio_hit]}")
+        elif risk_hit:
+            score += 15
+            why.append(f"{risk_hit} at its stop")
+        elif held:
+            top = max(held, key=lambda h: abs((h.get("market_value") or 0.0)))
+            why.append(f"{top['symbol']} {_pct_short(top.get('move_now_pct') if top.get('move_now_pct') is not None else top.get('change_pct'))} since the close")
+        if not held and it.get("kind") == "macro":
+            if MARKET_GROUP_RE.search(str(it.get("title") or "")):
+                score += 10
+                why.append("market-wide · semis/tech")
+            else:
+                score += 5
+                why.append("market-wide")
+        watches = [h for h in it.get("holdings", []) if not h.get("held") and abs(h.get("change_pct") or 0.0) >= BIG_MOVE_PCT]
+        if not held and watches:
+            score += 8
+            why.append(f"watchlist {watches[0]['symbol']} {_pct_short(watches[0].get('change_pct'))}")
+        if LOW_VALUE_RE.search(str(it.get("title") or "")):
+            score -= 40
+            why.append("appraisal/13F boilerplate")
+        if dollars >= 1:
+            why.insert(0, f"${dollars:,.0f} moved")
+        scored.append({**it, "score": round(score, 1), "why": " · ".join(why) or "background"})
+    scored.sort(key=lambda i: (-i["score"], -_ts(i.get("published_at"))))
+    return [{**it, "rank": n} for n, it in enumerate(scored, start=1)]
+
+
+def _pct_short(v: Any) -> str:
+    n = _num(v)
+    return "—" if n is None else f"{n:+.1f}%"
+
+
+def build_feed(
+    moves: Sequence[Mapping[str, Any]], macro: Mapping[str, Any], *, limit: int = FEED_LIMIT,
+    cio_actions: Mapping[str, str] | None = None, at_risk: Sequence[str] = (),
+) -> list[dict[str, Any]]:
+    """A clean news feed, most important first (LQ-20261107-1283): headline, every source that carried it, the
+    holdings it touches with their $ move since the close, a one-line "So what" built from those numbers (no LLM per
+    item), and the rank with its reason. The same story under two feed names is one item."""
     by_key: dict[str, dict[str, Any]] = {}
     total_mv = sum(m["market_value"] or 0.0 for m in moves if m["held"])
     for m in moves:
         for n in m.get("news", []):
-            k = re.sub(r"\W+", " ", n["title"].lower()).strip()
-            it = by_key.setdefault(k, {**n, "kind": "holding" if m["held"] else "watch", "holdings": []})
+            k = _title_key(n["title"])
+            it = by_key.setdefault(k, {**n, "kind": "holding" if m["held"] else "watch", "holdings": [], "sources": []})
             if m["held"]:
                 it["kind"] = "holding"
+            src = str(n.get("source") or "")
+            if src and src not in it["sources"]:
+                it["sources"].append(src)
             it["holdings"].append(
                 {"symbol": m["symbol"], "held": m["held"], "market_value": m["market_value"], "change_pct": m["change_pct"],
-                 "dollar_impact": m["dollar_impact"], "close_tag": m["close_tag"]}
+                 "dollar_impact": m["dollar_impact"], "close_tag": m["close_tag"],
+                 "move_now_pct": m.get("move_now_pct"), "dollar_impact_now": m.get("dollar_impact_now"),
+                 "extended_label": (m.get("extended") or {}).get("session_label") if m.get("extended") else None}
             )
     for h in macro.get("headlines", []):
-        k = re.sub(r"\W+", " ", h["title"].lower()).strip()
+        k = _title_key(h["title"])
         if k not in by_key:
-            by_key[k] = {**h, "kind": "macro", "holdings": []}
+            by_key[k] = {**h, "kind": "macro", "holdings": [], "sources": [h.get("source")] if h.get("source") else []}
     items = []
-    for it in by_key.values():
+    for it in merge_duplicates(list(by_key.values())):
         held = [x for x in it["holdings"] if x["held"]]
         exposure = round(sum(x["market_value"] or 0.0 for x in held), 2)
         if held:
-            top = max(held, key=lambda x: x["market_value"] or 0.0)
-            so = f"You hold ${exposure:,.0f} here; {top['symbol']} is {top['change_pct']:+.1f}% since {top['close_tag']}."
+            top = max(held, key=lambda x: abs((x.get("market_value") or 0.0)))
+            moved = top.get("move_now_pct") if top.get("move_now_pct") is not None else top.get("change_pct")
+            basis = f"{top['extended_label']}" if top.get("extended_label") and top.get("move_now_pct") is not None else top["close_tag"]
+            so = f"You hold ${exposure:,.0f} here; {top['symbol']} is {_pct_short(moved)} since {basis}."
         elif it["holdings"]:
             w = it["holdings"][0]
-            so = f"Watchlist only, no position; {w['symbol']} is {w['change_pct']:+.1f}% since {w['close_tag']}."
+            so = f"Watchlist only, no position; {w['symbol']} is {_pct_short(w['change_pct'])} since {w['close_tag']}."
         else:
             so = f"Market backdrop for the whole book (${total_mv:,.0f} held)."
         items.append({**it, "exposure": exposure, "so_what": so})
-    items.sort(key=lambda i: -_ts(i.get("published_at")))
-    return items[:limit]
+    ranked = rank_feed(items, cio_actions=cio_actions, at_risk=at_risk)
+    return ranked[:limit]
 
 
 # ---------------------------------------------------------------------------- week ahead
@@ -398,6 +754,36 @@ def cio_brief_block(brief: Mapping[str, Any] | None) -> dict[str, Any]:
     return {"status": "available", **{k: v for k, v in brief.items() if k != "status"}}
 
 
+#: The answers that ask the operator to DO something. HOLD and NO_ACTION are answers too, and they do not raise a name
+#: in the feed ranking: "nothing to do here" is not a reason to read a story first.
+CIO_ACTIONABLE = ("RAISE", "ADD_STOP", "FIX_QTY")
+
+
+def _cio_actions(brief: Mapping[str, Any] | None) -> dict[str, str]:
+    """{symbol: answer} for the held names the CIO brief asks an action on, read from its ``stop_advice[]`` (LQ-1257's
+    per-account rows). No brief, no rows, or only HOLD/NO_ACTION: an empty map, and the ranking falls back to dollars."""
+    out: dict[str, str] = {}
+    for row in (brief or {}).get("stop_advice") or []:
+        if not isinstance(row, Mapping):
+            continue
+        sym, ans = str(row.get("symbol") or "").upper(), str(row.get("answer") or "").upper()
+        if sym and ans in CIO_ACTIONABLE:
+            out.setdefault(sym, ans)
+    return out
+
+
+def _at_risk(brief: Mapping[str, Any] | None) -> list[str]:
+    """Held names the brief says anything about at all (its rows are the names it examined on price/structure), in the
+    brief's own order. Used as the ranking's second tier, under an explicit action and over a bare dollar move."""
+    seen: list[str] = []
+    for row in (brief or {}).get("stop_advice") or []:
+        if isinstance(row, Mapping):
+            sym = str(row.get("symbol") or "").upper()
+            if sym and sym not in seen and str(row.get("answer") or "").upper() != "NO_ACTION":
+                seen.append(sym)
+    return seen
+
+
 
 # ---------------------------------------------------------------------------- intraday: "Today so far" and change detection (LQ-1260)
 
@@ -430,14 +816,29 @@ def _akey(a: Mapping[str, Any]) -> str:
 
 
 def change_state(moves: Sequence[Mapping[str, Any]], articles: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
-    """What --if-changed compares: every held/watch article id since the window start (not just the top 3 shown) and
-    each held move bucketed to 1%."""
+    """What --if-changed compares: every held/watch article id since the window start (not just the top 3 shown), each
+    held move bucketed to 1%, and -- LQ-20261107-1282 -- the newest EXTENDED print on each held name (its instant and
+    its 1-dp change). Without the prints a weekend card would go quiet exactly when the operator is watching for the
+    Sunday-night futures open: the Friday percentages do not move, so nothing else in this signature would."""
     names = {m["symbol"]: m["held"] for m in moves}
     seen = sorted({(_akey(a), str(a.get("symbol") or "").upper()) for a in articles if str(a.get("symbol") or "").upper() in names})
     held_pct = {m["symbol"]: round(m["change_pct"]) for m in moves if m["held"]}
     exact = {m["symbol"]: m["change_pct"] for m in moves if m["held"]}
-    sig = hashlib.sha256(json.dumps([seen, sorted(held_pct.items())], sort_keys=True).encode()).hexdigest()[:16]
-    return {"signature": sig, "articles": [{"k": k, "s": sym} for k, sym in seen], "held_pct": held_pct, "held_exact": exact}
+    prints = {
+        m["symbol"]: [
+            # the PRINT's own change, not move_now_pct: for a name with no print that field carries the close's
+            # percentage, and a signature built from it could not tell "no print" from "printed flat".
+            round((m.get("extended") or {}).get("change_pct"), 1) if (m.get("extended") or {}).get("change_pct") is not None else None,
+            ((m.get("extended") or {}).get("printed_at")),
+        ]
+        for m in moves
+        if m["held"]
+    }
+    sig = hashlib.sha256(
+        json.dumps([seen, sorted(held_pct.items()), sorted(prints.items())], sort_keys=True, default=str).encode()
+    ).hexdigest()[:16]
+    return {"signature": sig, "articles": [{"k": k, "s": sym} for k, sym in seen], "held_pct": held_pct,
+            "held_exact": exact, "prints": prints}
 
 
 def detect_change(
@@ -461,6 +862,17 @@ def detect_change(
     for m in moves:
         if m["held"] and abs(m["change_pct"]) >= MATERIAL_MOVE_PCT and abs(old.get(m["symbol"], 0.0)) < MATERIAL_MOVE_PCT:
             return {"changed": True, "material": True, "kind": "move", "symbol": m["symbol"], "reason": f"{m['symbol']} {m['change_pct']:+.1f}%"}
+    # LQ-20261107-1282: a NEW extended print on a held name that crosses the material line. The crossing test (the
+    # prior print was under 3%) is what stops every 15-minute print from spending a summary call for the same move.
+    old_prints = prior.get("prints") or {}
+    for m in moves:
+        ext = m.get("extended") or {}
+        if not m["held"] or ext.get("change_pct") is None:
+            continue
+        prior_row = old_prints.get(m["symbol"]) or [None, None]
+        if prior_row[1] != ext.get("printed_at") and abs(ext["change_pct"]) >= MATERIAL_MOVE_PCT and abs(prior_row[0] or 0.0) < MATERIAL_MOVE_PCT:
+            return {"changed": True, "material": True, "kind": "move", "symbol": m["symbol"],
+                    "reason": f"{m['symbol']} {ext['change_pct']:+.1f}% {ext.get('session_label') or 'extended'}"}
     return {"changed": True, "material": False, "reason": "minor change", "kind": "minor"}
 
 
@@ -482,11 +894,15 @@ def build_snapshot(
     cio_brief: Mapping[str, Any] | None = None,
     if_changed: bool = False,
     source_clocks: Mapping[str, Any] | None = None,
+    extended_rows: Iterable[Mapping[str, Any]] = (),
+    index_labels: Mapping[str, str] | None = None,
 ) -> dict[str, Any] | None:
     """The whole card.  With ``if_changed`` returns None when nothing material moved since ``prior`` (no write, no LLM
     call).  A rebuild that is not material keeps the prior summary text; only a material one may spend a call."""
     win = window(now)
+    close_at = datetime.fromisoformat(win["start"].replace("Z", "+00:00"))
     moves = attach_news(build_moves(ticker_snapshot, close_tag=win["close_tag"]), articles)
+    moves = sort_by_now(attach_extended(moves, extended_rows, close_date=win["session_date"], close_at=close_at, now=now))
     state = change_state(moves, articles)
     if if_changed:
         decision = detect_change((prior or {}).get("change_state"), state, moves, articles)
@@ -495,11 +911,17 @@ def build_snapshot(
     else:
         decision = {"changed": True, "material": True, "reason": "scheduled", "kind": "scheduled"}
     macro = build_macro(articles, futures)
+    now_block = build_market_now(extended_rows, close_date=win["session_date"], close_at=close_at, now=now, labels=index_labels)
+    if now_block["status"] == "available":
+        # the futures/overseas block stops saying "pending" the moment the store has a print after the close
+        macro["futures"] = {"status": "available", "quotes": now_block["futures"] + now_block["indices"], "as_of": now_block["as_of"]}
+    macro["now"] = now_block
+    cio_blk = cio_brief_block(cio_brief)
     summary = build_summary(
         moves, macro, now=now, llm=llm if decision["material"] else None,
         prior=(prior or {}).get("summary") if prior else None, calls_today=calls_today, carry_prior=not decision["material"],
     )
-    feed = build_feed(moves, macro)
+    feed = build_feed(moves, macro, cio_actions=_cio_actions(cio_brief), at_risk=_at_risk(cio_brief))
     if decision["kind"] in ("news", "move", "first"):
         updated = {
             "at": now.astimezone(UTC).isoformat().replace("+00:00", "Z"), "at_et": now.astimezone(ET).strftime("%H:%M ET"),
@@ -515,7 +937,7 @@ def build_snapshot(
         "updated": updated,
         "change_state": state,
         "today": build_today(now, moves, feed),
-        "cio_brief": cio_brief_block(cio_brief),
+        "cio_brief": cio_blk,
         "stamp": since_close_stamp.build_stamp(now=now, window=win, clocks={**(source_clocks or {}), "cio_brief": since_close_stamp.cio_clock(cio_brief)}),
         "feed": feed,
         "week_ahead": build_week_ahead(
@@ -556,6 +978,27 @@ def fetch_articles(conn: Any, *, since: datetime, until: datetime, symbols: Sequ
     """Held/watchlist/stopped-out names plus macro-looking titles since the close (read-only SELECT)."""
     with conn.cursor() as cur:
         cur.execute(NEWS_SQL, {"since": since, "until": until, "symbols": [s.upper() for s in symbols], "macro": MACRO_RE.pattern})
+        cols = [c[0] for c in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+EXTENDED_SQL = """
+SELECT upper(symbol) AS symbol, session, session_date, bar_start, bar_end, price,
+       reference_close, reference_date, reference_basis, change_pct, feed
+FROM market_quotes_extended
+WHERE bar_end > %(since)s
+  AND (upper(symbol) = ANY(%(symbols)s) OR symbol LIKE ANY(%(special)s))
+ORDER BY bar_end DESC
+LIMIT 5000
+"""
+
+
+def fetch_extended(conn: Any, *, symbols: Sequence[str], since: datetime) -> list[dict[str, Any]]:
+    """Prints after the close (read-only SELECT): the held/watchlist names plus every futures root and cash index the
+    extended-hours lane stores. ``sip`` and ``schwab`` rows are both returned; the newest print wins per symbol, which
+    is the operator's question ("what moved"), not a provenance question."""
+    with conn.cursor() as cur:
+        cur.execute(EXTENDED_SQL, {"since": since, "symbols": [s.upper() for s in symbols], "special": ["/%", "$%"]})
         cols = [c[0] for c in cur.description]
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 

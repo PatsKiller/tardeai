@@ -58,6 +58,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--if-changed", action="store_true", help="rebuild only on new held-name news or a held +/-3%% cross; else exit 0 untouched")
     ap.add_argument("--cio-brief", type=Path, default=None, help="LQ-1257 CIO brief JSON (default: <state root>/data/runtime/cio_overnight_brief/latest.json)")
     ap.add_argument("--now", default=None, help="ISO instant, for replay (default: the clock)")
+    ap.add_argument("--labels", type=Path, default=None,
+                    help="futures/cash-index display names (default: config/market_risk_offhours_quotes.yaml schwab.labels)")
     a = ap.parse_args(argv)
     if a.llm and not a.apply:
         print("refused: --llm needs --apply (a spend must leave a durable artifact)", file=sys.stderr)
@@ -92,6 +94,14 @@ def main(argv: list[str] | None = None) -> int:
             ex_divs = card.fetch_ex_divs(conn, today=now)
         except Exception:  # noqa: BLE001 -- a missing dividend table leaves the strip without ex-div rows, not the card
             ex_divs = []
+        try:
+            # LQ-20261107-1282: what printed after the close -- the weekend/overnight/pre-market answer. A store that
+            # cannot be read leaves the chips on Friday's numbers with "no print since Fri", never a blank card.
+            ext = card.fetch_extended(
+                conn, symbols=list(ticker["tickers"]), since=datetime.fromisoformat(win["start"].replace("Z", "+00:00"))
+            )
+        except Exception:  # noqa: BLE001 -- the card degrades to the close, it does not fail to build
+            ext = []
     finally:
         conn.close()
 
@@ -103,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
         llm=_flash if (a.apply and a.llm) else None, prior=prior, calls_today=calls,
         macro_calendar=card.load_json(_macro_path()), earnings=card.load_json(a.state_dir / "earnings_dates.json"),
         ex_divs=ex_divs, if_changed=a.if_changed, source_clocks=clocks, cio_brief=card.load_json(a.cio_brief or (a.state_dir.parents[2] / CIO_BRIEF_REL)),
+        extended_rows=ext, index_labels=card.load_labels(a.labels),
     )
     if snap is None:
         print(f"unchanged since the last build (window={win['label']!r}, articles={len(arts)}); no write, no LLM call")
@@ -117,6 +128,15 @@ def main(argv: list[str] | None = None) -> int:
         f"articles={len(arts)} macro={len(snap['macro']['headlines'])} futures={snap['macro']['futures']['status']} "
         f"feed={len(snap['feed'])} week_ahead={len(snap['week_ahead']['events'])} cio_brief={snap['cio_brief']['status']} "
         f"today={'yes' if snap['today'] else 'no'} updated={(snap['updated'] or {}).get('reason')!r} summary={s['source']}{'/' + s['reason'] if s.get('reason') else ''} llm_calls_today={calls}"
+    )
+    prints = [m["symbol"] for m in snap["moves"] if (m.get("extended") or {}).get("state") == "print"]
+    print(
+        f"prints_since_close={len(prints)}{' ' + ','.join(prints[:8]) if prints else ''} "
+        f"market_now={(snap.get('macro') or {}).get('now', {}).get('status')} "
+        f"futures={len((snap.get('macro') or {}).get('now', {}).get('futures') or [])} "
+        f"indices={len((snap.get('macro') or {}).get('now', {}).get('indices') or [])} "
+        f"feed_top={(snap['feed'][0]['holdings'][0]['symbol'] if snap['feed'] and snap['feed'][0].get('holdings') else '-')}"
+        f"{(' ' + str(snap['feed'][0].get('score'))) if snap['feed'] else ''}"
     )
     if not a.apply:
         print("DRY RUN: nothing written, no LLM call. Re-run with --apply [--llm].")
