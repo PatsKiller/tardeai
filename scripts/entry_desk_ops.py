@@ -205,14 +205,15 @@ def technical_grades_batch(symbols: list[str], *, live_prices: dict | None = Non
             lp = None
             if live_prices and sym in live_prices:
                 lp = float(live_prices[sym])
-            snap = peb.snapshot_from_enrichment(sym, live_price=lp)
-            grade = snap.get("technical_grade") or "TECH_INCOMPLETE"
-            score = int(snap.get("technical_score") or 0)
-            concerns = snap.get("technical_concerns") or []
+            # One enrichment read + one grade derivation per symbol. snapshot_from_enrichment()
+            # re-derived both (a second load_enrichment() per symbol) and LQ-20261107-515 measured
+            # that doubling at ~11 s per 40-symbol desk batch on the 10.8 MB cache file.
             tech = peb.enrichment_technicals(sym, live_price=lp)
+            grade, score, concerns = peb.grade_from_enrichment(tech)
+            grade = grade or "TECH_INCOMPLETE"
             assess = peb.build_technical_assessment(
                 tech, grade, score, concerns, graded_at=graded_at,
-                data_sources=[snap.get("enrichment_source") or "finviz"],
+                data_sources=[tech.get("source") or "finviz"],
             )
             out[sym] = {
                 "technical_grade": grade,

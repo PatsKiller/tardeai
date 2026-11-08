@@ -1020,8 +1020,14 @@ def build_intelligence():
         # ── batch enrichment over CURRENT held symbols only ──
         quote, tech, conf, sector = {}, {}, {}, {}
         if syms:
-            cur.execute("""SELECT DISTINCT ON (symbol) symbol, price, prev_close, day_change_pct, volume, avg_volume, fetched_at
-                           FROM market_quotes WHERE symbol = ANY(%s) ORDER BY symbol, fetched_at DESC""", (syms,))
+            # One row per symbol via the (symbol, fetched_at DESC) index. The previous DISTINCT ON
+            # over symbol = ANY(...) bitmap-scanned every stored quote for these symbols: 28,367 rows
+            # and ~23.8k buffers (~190 MB) for 23 symbols on every 60 s poll (LQ-20261107-515).
+            cur.execute("""SELECT q.symbol, q.price, q.prev_close, q.day_change_pct, q.volume, q.avg_volume, q.fetched_at
+                           FROM unnest(%s::text[]) AS s(symbol)
+                           JOIN LATERAL (SELECT symbol, price, prev_close, day_change_pct, volume, avg_volume, fetched_at
+                                         FROM market_quotes m WHERE m.symbol = s.symbol
+                                         ORDER BY fetched_at DESC LIMIT 1) q ON true""", (syms,))
             quote = {r["symbol"]: r for r in cur.fetchall()}
         etf_syms = list(set(SECTOR_ETF.values())) + ["SPY"]
         if tickers or etf_syms:

@@ -40716,6 +40716,85 @@ import threading as _sc_threading  # noqa: E402
 
 _SYMBOL_CARDS_LOCK = _sc_threading.Lock()
 
+# Latest perf_week_pct per symbol, narrowed. Snapshot cohorts are written on different days, so a
+# symbol's newest row can be older than the newest row in the table: read a recent window first,
+# then one indexed lookup for the few symbols the window missed. The previous form ran
+# DISTINCT ON (symbol) over the WHOLE history — 320k rows, an external-merge sort and ~82k buffers
+# (~640 MB) per rebuild — and measured 21.9 s on a cold page load (LQ-20261107-515).
+_PERF_RECENT_DAYS = 7
+
+
+def _latest_perf_week(symbols):
+    """{symbol: perf_week_pct} for the newest snapshot of each requested symbol."""
+    want = [s for s in dict.fromkeys(str(x or "").strip().upper() for x in (symbols or [])) if s]
+    if not want:
+        return {}
+    rows = (
+        _db_query(
+            """SELECT DISTINCT ON (symbol) symbol, perf_week_pct FROM ticker_snapshot_daily
+               WHERE perf_week_pct IS NOT NULL AND snapshot_date >= current_date - %s::int
+               ORDER BY symbol, snapshot_date DESC""",
+            (_PERF_RECENT_DAYS,),
+        )
+        or []
+    )
+    perf = {r["symbol"]: _json_clean(r["perf_week_pct"]) for r in rows}
+    missing = [s for s in want if s not in perf]
+    if missing:
+        rows = (
+            _db_query(
+                """SELECT DISTINCT ON (symbol) symbol, perf_week_pct FROM ticker_snapshot_daily
+                   WHERE perf_week_pct IS NOT NULL AND symbol = ANY(%s)
+                   ORDER BY symbol, snapshot_date DESC""",
+                (missing,),
+            )
+            or []
+        )
+        perf.update({r["symbol"]: _json_clean(r["perf_week_pct"]) for r in rows})
+    return perf
+
+
+# On-demand analyst backfill, OFF the request path. It writes yahoo_analyst_targets_history — which
+# the analyst query below reads — so it enriches the NEXT rebuild, never the one that kicked it.
+# Measured at ~2 s for 20 symbols (sequential provider fetches); running it inline put a network
+# round-trip inside a cached GET and pushed the cold card build toward 20 s. LQ-20261107-515.
+_ANALYST_BACKFILL_LOCK = _sc_threading.Lock()
+_ANALYST_BACKFILL_STATE: dict = {"running": False, "last_error": None}
+
+
+def _kick_analyst_backfill(symbols):
+    """Start one background analyst backfill for these symbols; a second request is a no-op."""
+    want = [s for s in dict.fromkeys(symbols or []) if s]
+    if not want:
+        return
+    with _ANALYST_BACKFILL_LOCK:
+        if _ANALYST_BACKFILL_STATE["running"]:
+            return
+        _ANALYST_BACKFILL_STATE["running"] = True
+
+    def _run():
+        conn = None
+        try:
+            import analyst_coverage as _ac
+            from session13_db import get_conn as _gc
+
+            conn = _gc()
+            _ac.ensure_analyst_batch(conn, want, limit=20)
+            _ANALYST_BACKFILL_STATE["last_error"] = None
+        except Exception as _exc:  # noqa: BLE001 -- background best-effort; the card never depends on it
+            _ANALYST_BACKFILL_STATE["last_error"] = f"{type(_exc).__name__}: {str(_exc)[:140]}"
+        finally:
+            if conn is not None:
+                import contextlib
+
+                # A close failure must not mask the backfill outcome the caller may read.
+                with contextlib.suppress(Exception):
+                    conn.close()
+            with _ANALYST_BACKFILL_LOCK:
+                _ANALYST_BACKFILL_STATE["running"] = False
+
+    _sc_threading.Thread(target=_run, daemon=True, name="symbol-cards-analyst-backfill").start()
+
 
 def _symbol_cards(query=None):
     """GET /api/v2/symbol-cards — cached wrapper. Engine Room v1: this was the top
@@ -40807,12 +40886,7 @@ def _symbol_cards_build():
         "Basic Materials": "Basic Materials",
     }
     etf_map = {**_SECTOR_ETF_MAP, **{k: _SECTOR_ETF_MAP.get(v) for k, v in _YF_ALIAS.items() if _SECTOR_ETF_MAP.get(v)}}
-    snaps = (
-        _db_query("""SELECT DISTINCT ON (symbol) symbol, perf_week_pct FROM ticker_snapshot_daily
-                         WHERE perf_week_pct IS NOT NULL ORDER BY symbol, snapshot_date DESC""")
-        or []
-    )
-    perf = {s["symbol"]: _json_clean(s["perf_week_pct"]) for s in snaps}
+    perf = _latest_perf_week(syms + sorted({_e for _e in etf_map.values() if _e}))
     for sym, c in out.items():
         etf = etf_map.get(c.get("sector") or "", None)
         c["sector_etf"] = etf
@@ -40846,21 +40920,7 @@ def _symbol_cards_build():
             and not out[s].get("analyst")
             and not _ac.is_analyst_exempt(s, instrument_type=out[s].get("instrument_type"))
         ]
-        if _need_analyst:
-            _conn = None
-            try:
-                from session13_db import get_conn as _gc
-
-                _conn = _gc()
-                _ac.ensure_analyst_batch(_conn, _need_analyst, limit=20)
-            except Exception:
-                pass
-            finally:
-                if _conn:
-                    try:
-                        _conn.close()
-                    except Exception:
-                        pass
+        _kick_analyst_backfill(_need_analyst)
     except Exception:
         pass
     # analyst consensus (latest per symbol)

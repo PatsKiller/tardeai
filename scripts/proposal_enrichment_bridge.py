@@ -8,10 +8,19 @@ All proposal technical surfaces should hydrate from here before grading or agent
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENRICH_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "ticker_enrichment_cache.json"
+
+# Parsed-once cache for ENRICH_PATH, keyed on the file's (mtime_ns, size) so a rewritten cache is
+# picked up on the next call. Before 2026-11-07 load_enrichment() re-read and re-parsed the whole
+# ~10.8 MB file on EVERY call, and entry_desk_ops.technical_grades_batch called it twice per symbol:
+# 40 visible symbols cost ~70 parses (~11 s) for one POST /api/v2/entry-desk/technical-grades.
+# LQ-20261107-515. Holding one parsed dict is far cheaper than 70 parse passes.
+_ENRICH_LOCK = threading.Lock()
+_ENRICH_CACHE: dict = {"key": None, "map": {}}
 
 
 def _f(v) -> float | None:
@@ -21,17 +30,39 @@ def _f(v) -> float | None:
         return None
 
 
+def _enrichment_map() -> dict:
+    """The parsed enrichment cache, read once per file version. {} when the file is unreadable.
+
+    A torn/unparseable rewrite keeps the last good map (a lane replaces the file mid-write); the
+    stale key makes the next call retry rather than pinning the bad read.
+    """
+    try:
+        st = ENRICH_PATH.stat()
+    except OSError:
+        return {}
+    key = (st.st_mtime_ns, st.st_size)
+    if _ENRICH_CACHE["key"] == key:
+        return _ENRICH_CACHE["map"]
+    with _ENRICH_LOCK:
+        if _ENRICH_CACHE["key"] == key:
+            return _ENRICH_CACHE["map"]
+        try:
+            data = json.loads(ENRICH_PATH.read_text())
+        except Exception:
+            return _ENRICH_CACHE["map"]
+        if not isinstance(data, dict):
+            data = {}
+        _ENRICH_CACHE["key"] = key
+        _ENRICH_CACHE["map"] = data
+        return data
+
+
 def load_enrichment(symbol: str) -> dict:
     sym = str(symbol or "").upper().strip()
     if not sym:
         return {}
-    try:
-        if ENRICH_PATH.exists():
-            row = json.loads(ENRICH_PATH.read_text()).get(sym, {})
-            return row if isinstance(row, dict) else {}
-    except Exception:
-        pass
-    return {}
+    row = _enrichment_map().get(sym, {})
+    return row if isinstance(row, dict) else {}
 
 
 def enrichment_technicals(symbol: str, *, live_price: float | None = None) -> dict:

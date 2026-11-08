@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq20261107_515_manual_execution_perf",
+  "files": [
+    "tests/test_lq20261107_515_manual_execution_perf.py"
+  ],
+  "anchor": "LQ20261107_515_MANUAL_EXECUTION_PERF",
+  "comment": [
+    "ANCHOR: LQ20261107_515_MANUAL_EXECUTION_PERF — /v3/manual-execution polled three endpoints at 10-19 s: technical-grades re-parsed the 10.8 MB enrichment cache twice per symbol, symbol-cards ran DISTINCT ON over the whole ticker_snapshot_daily history plus a synchronous analyst backfill, open-trades read every stored market_quotes row for the held symbols. Pins one parse per file version, one enrichment read per symbol, the windowed+targeted perf lookup, and the per-symbol lateral quote read. Hermetic: fake file, module, db_query and connection."
+  ]
+}
