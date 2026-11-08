@@ -9,6 +9,7 @@ import { EnsembleValidationInline } from './EnsembleValidationCard'
 import SynthesizedReportCard from './SynthesizedReportCard'
 import type { ReportCardItem } from './SynthesizedReportCard'
 import { IntelImplicationRow } from './IntelImplicationRow'
+import { intelItemId } from '../lib/intelItemId'
 
 const TEXT0 = '#f8fafc'
 const TEXT2 = '#cbd5e1'
@@ -204,14 +205,23 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
 
   const items = useMemo<IntelItem[]>(() => {
     const out: IntelItem[] = []
+    // Content identity, not list position (lib/intelItemId.ts). A positional id changed as soon as
+    // another feed resolved, which remounted every card and re-fired its ensemble and lane reads.
+    const idSeen = new Map<string, number>()
     const add = (x: Partial<IntelItem> & { raw?: any }) => {
       if (!x.title) return
       const src: any = x.raw ?? x
       const when = src?.at ?? src?.updated_at ?? src?.last_enriched_at ?? src?.created_at ?? src?.generated_at
       const a = ago(when)
+      const title = String(x.title)
+      const idInput = { source: x.source, type: x.type, symbol: x.symbol, title }
+      const baseId = intelItemId(idInput)
+      // nosemgrep: tq-ts-missing-as-zero -- an unseen Map key means "first occurrence", so 0 is the occurrence index itself, not a coerced reading.
+      const occurrence = idSeen.get(baseId) ?? 0
+      idSeen.set(baseId, occurrence + 1)
       out.push({
-        id: `${x.source}-${out.length}`, source: x.source || 'unknown', type: x.type || 'intelligence', symbol: x.symbol,
-        title: String(x.title), summary: x.summary, severity: x.severity || severityFrom(x.raw ?? x),
+        id: intelItemId(idInput, occurrence), source: x.source || 'unknown', type: x.type || 'intelligence', symbol: x.symbol,
+        title, summary: x.summary, severity: x.severity || severityFrom(x.raw ?? x),
         // Legacy scoring fields (unchanged behaviour): a normalized estimate and a clamped age.
         confidence: x.confidence ?? confidenceFrom(x.raw ?? x), freshnessH: x.freshnessH ?? a.hours,
         // The new row's uncertainty sentence reads ONLY these source-truth fields.

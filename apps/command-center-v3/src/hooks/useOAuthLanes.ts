@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { sharedGetJSON } from '../lib/sharedGet'
 
 export type OAuthLane = {
   lane: string
@@ -29,8 +30,10 @@ export function useOAuthLanes(pollMs = 120_000) {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch('/api/v2/llm/oauth-lanes', { cache: 'no-store' })
-      const json = await res.json()
+      // Every card that renders the run buttons mounts its own copy of this hook — the classic
+      // intelligence page mounts twenty in one paint — and the answer is identical for all of them.
+      // One shared read serves the burst; 21 identical GETs in 27 s were measured without it.
+      const json = await sharedGetJSON<any>('/api/v2/llm/oauth-lanes', 5_000)
       const payload = json?.data ?? json
       setData(payload)
       setError(null)

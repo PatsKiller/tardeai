@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { requestEnsemble, type EnsembleLane } from '../lib/cloudLlmRun'
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
+import { sharedGetJSON } from '../lib/sharedGet'
 import { BB } from '../lib/watchTokens'
 
 // Multi-LLM ensemble validation UI (Grok + ChatGPT OAuth + local gemma).
@@ -219,10 +220,13 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
   const [job, setJob] = useState<{ status?: string; requested_at?: string; error?: string } | null>(null)
 
   // Read the latest persisted verdict / pending-job status for this target.
+  // Shared read (lib/sharedGet.ts): the same target can be asked for twice in one paint — two cards
+  // that name the same signal, or a remount — and the mount read and the 4 s poll never overlap the
+  // 1.5 s window, so a queued job is still observed on the next poll.
   const fetchOnce = useCallback(async (): Promise<'done' | 'pending' | 'none' | 'error'> => {
     try {
-      const r = await fetch(`/api/v2/inference/ensemble?target_type=${targetType}&target_id=${targetId}`)
-      const j = await r.json()
+      const url = `/api/v2/inference/ensemble?target_type=${encodeURIComponent(targetType)}&target_id=${encodeURIComponent(String(targetId))}`
+      const j = await sharedGetJSON<any>(url)
       const norm = normalizeEnsembleResult(j.result)
       if (norm) { setResult(norm); return 'done' }
       setJob(j.job || null)
