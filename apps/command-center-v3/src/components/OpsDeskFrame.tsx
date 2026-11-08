@@ -16,8 +16,8 @@ const PAGES: Record<OpsPageKey, PageSpec> = {
     title: 'Incidents',
     purpose: 'What broke, who or what is fixing it, what was tried, and what fixed it — the coordinator’s log. Agents and watchers write it; you acknowledge or close as won’t fix.',
     sources: [
-      { id: 'watchers', label: 'Incident watchers (host timer, 5 min)', laneIds: [] },
-      { id: 'supervisor', label: 'Incident supervisor (host timer, 10 min)', laneIds: [] },
+      { id: 'watchers', label: 'Incident watchers (host timer, 5 min)', laneIds: ['tradeai-incident-watchers'] },
+      { id: 'supervisor', label: 'Incident supervisor (host timer, 10 min)', laneIds: ['tradeai-incident-supervisor'] },
     ],
   },
   jobsN8n: {

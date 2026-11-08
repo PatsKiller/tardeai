@@ -21,7 +21,7 @@ export type DeskProjection = {
   ok?: boolean
   desk: string
   as_of: string
-  sources: { id: string; label: string; as_of: string | null; lane_ids: string[]; max_age_hours?: number; gap?: string | null }[]
+  sources: { id: string; label: string; as_of: string | null; lane_ids: string[]; max_age_hours?: number; gap?: string | null; writer_note?: string }[]
   decisions: DeskDecision[]
   decision_gap?: string | null
   tabs: Record<string, { panels: DeskPanel[] }>
@@ -77,7 +77,7 @@ export default function DeskBoard({ desk, title, purpose, tabs, tabAliases, clas
   const { selected, open, close } = useW7Detail()
   const projection = data && typeof data === 'object' && 'tabs' in data ? data : null
   const sources: DeskSource[] = projection
-    ? projection.sources.map(s => ({ id: s.id, label: s.label, asOf: s.as_of, laneIds: s.lane_ids, maxAgeHours: s.max_age_hours, gap: s.gap ?? undefined }))
+    ? projection.sources.map(s => ({ id: s.id, label: s.label, asOf: s.as_of, laneIds: s.lane_ids, maxAgeHours: s.max_age_hours, gap: s.gap ?? undefined, writerNote: s.writer_note ?? undefined }))
     : [{ id: 'projection', label: `${title} projection`, gap: loading ? 'Loading the desk projection.' : 'The desk projection has not answered.' }]
   const [panelId, rowId] = (selected ?? '').split(':')
   const detailRow = projection && selected

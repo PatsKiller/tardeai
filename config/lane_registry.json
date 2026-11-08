@@ -27222,9 +27222,10 @@
       },
       "expected_cadence_hours": 0.1667,
       "output_signal": {
-        "kind": "none",
-        "reason": "JOURNAL_ONLY",
-        "detail": "scripts/incident_supervisor.py prints its triage to stdout and the unit sets no StandardOutput=append:, so systemd journal is the only record and no durable per-run artifact exists to measure."
+        "kind": "file_mtime",
+        "path": "data/coordination/incidents/supervisor_last.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/lib/incident_supervisor.py writes supervisor_last.json after each completed cycle (LQ-20261107-529)"
       }
     },
     {

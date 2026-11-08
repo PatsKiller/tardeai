@@ -20,6 +20,9 @@ export type DeskSource = {
   note?: string
   /** A receipt clock with no single writer lane. Skips the missing-writer warning. */
   clockOnly?: boolean
+  /** Why this source has no scheduled writer lane (operator-written, committed config, built on request). Shown in
+   *  place of the missing-writer warning; never set when laneIds names the writer. */
+  writerNote?: string
   /** With no asOf, headline the newest writer's last successful run (labelled as such) instead of "unavailable". */
   writerClockFallback?: boolean
 }
@@ -155,7 +158,8 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
             <strong>{source.label}</strong><div data-testid="desk-source-age" style={{ color: gap ? BB.amber : BB.text2, marginTop: 6 }}>{age.hours !== undefined ? `${writerRun ? 'Writer last ran' : 'Updated'} ${age.text}` : sentence(age.text)}</div>
             {shownAt && <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>{writerRun ? 'Last successful run at' : 'As of'} <ReadableTime value={shownAt} testId="desk-source-as-of" /></div>}
             {source.note && <div data-testid="desk-source-note" style={{ fontSize: TYPE.base, color: BB.text2, marginTop: 6 }}>{source.note}</div>}
-            {sourceWriters.length === 0 && !source.clockOnly && <p style={{ color: BB.amber, fontSize: TYPE.base }}>Writer not identified for this source.</p>}
+            {sourceWriters.length === 0 && source.writerNote && <p data-testid="desk-source-writer-note" style={{ color: BB.text2, fontSize: TYPE.base }}>{source.writerNote}</p>}
+            {sourceWriters.length === 0 && !source.writerNote && !source.clockOnly && <p style={{ color: BB.amber, fontSize: TYPE.base }}>Writer not identified for this source.</p>}
             {sourceWriters.map((writer, index) => {
               // FQ-051: the operator needs one fact — is this source still being refreshed, and what it costs if not.
               // The writer's own state code, its last successful run and the execution-evidence capture are how that is

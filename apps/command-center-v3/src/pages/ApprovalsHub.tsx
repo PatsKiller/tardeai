@@ -38,7 +38,7 @@ function Queue({ defaultTab }: { defaultTab?: string }) {
   useEffect(() => setOffset(0), [active])
   const { data, error, refresh } = useGovernance<ApprovalQueue>(`${GOVERNANCE}/approvals?offset=${offset}&kind=${active === 'waiting' || active === 'history' ? '' : active}`)
   return <div className="approvals"><DeskPage title="Approvals Center" purpose="Everything waiting for your decision. Read the exact version, then decide."
-    tabs={shown} sources={[{ id: 'approvals', label: 'Approval queue', asOf: data?.as_of,
+    tabs={shown} sources={[{ id: 'approvals', label: 'Approval queue', writerNote: 'Built on request from each approval source when this page loads. No scheduled job writes it.', asOf: data?.as_of,
       gap: data?.gaps.length ? 'Some approval sources are unavailable. The total is not yet known.' : undefined }]}
     decisionGap={data?.pending_count === null ? 'The total is unavailable until every source can be checked.' : data ? `${data.pending_count} waiting for review.` : 'Loading the latest queue.'}>
     {active => <div className="stack">

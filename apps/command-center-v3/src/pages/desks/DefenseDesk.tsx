@@ -34,7 +34,7 @@ export default function DefenseDesk() {
     ...(ep ? [{ id: 'defense-engine', label: 'Defense engine', asOf: ep.generated_at, laneIds: ['defense-inverse-stoplights'], gap: ep.served?.stale ? ep.served.fallback_reason ?? 'served stale' : undefined }]
       : [{ id: 'defense-engine', label: 'Defense engine', gap: engine.loading ? 'Loading the defense projection.' : 'The defense projection has not answered.' }]),
     ...(projection
-      ? projection.sources.map(s => ({ id: s.id, label: s.label, asOf: s.as_of, laneIds: s.lane_ids, maxAgeHours: s.max_age_hours, gap: s.gap ?? undefined }))
+      ? projection.sources.map(s => ({ id: s.id, label: s.label, asOf: s.as_of, laneIds: s.lane_ids, maxAgeHours: s.max_age_hours, gap: s.gap ?? undefined, writerNote: s.writer_note ?? undefined }))
       : [{ id: 'projection', label: 'Defense desk projection', gap: desk.loading ? 'Loading the desk projection.' : 'The desk projection has not answered.' }]),
   ]
   const openEngine = (k: string) => open(`${ENGINE_PREFIX}${k}`)

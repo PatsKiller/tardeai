@@ -154,8 +154,11 @@ def _panel(pid: str, title: str, rows: list[dict], *, sub: str | None = None, sp
 
 
 def _source(sid: str, label: str, as_of: Any, lanes: list[str], *, gap: str | None = None,
-            max_age_hours: float | None = None) -> dict:
+            max_age_hours: float | None = None, writer_note: str | None = None) -> dict:
     out = {"id": sid, "label": label, "as_of": _iso(as_of), "lane_ids": lanes, "gap": gap}
+    if writer_note and not lanes:
+        # LQ-20261107-529: a source with no scheduled writer says why, instead of "Writer not identified".
+        out["writer_note"] = writer_note
     if max_age_hours is not None:
         out["max_age_hours"] = max_age_hours
     return out
@@ -756,6 +759,7 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
         _source("options", "Options lifecycle", options.get("generated_at"), DEFENSE_LANES["options"], gap=o_gap),
         _source("cash", "Cash alternatives", cash.get("generated_at"), DEFENSE_LANES["cash"], gap=c_gap),
         _source("review", "Review console", None, DEFENSE_LANES["review"],
+                writer_note="Operator-written through the review console (config/promote_criteria.json). No scheduled job writes it.",
                 gap=v_gap or (f"Last lock {_date(review.get('locked_at'))} (recorded without a time zone, so only the date is shown)." if review.get("locked_at") else "No lock on file.")),
     ]
     decisions = _writer_decisions(sources, states, {

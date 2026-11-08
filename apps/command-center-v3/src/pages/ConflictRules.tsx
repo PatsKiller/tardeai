@@ -44,8 +44,8 @@ export default function ConflictRules() {
 
   return <div className="conflict-rules" data-testid="conflict-rules">
     <DeskPage title="Conflicts" purpose="How the Command Center decides when two data sources disagree — the resolution matrix, not AGENTS.md. Agent operating rules live in the Rulebook."
-      sources={[{id: 'rulebook', label: 'Conflict rulebook', gap: view ? undefined : 'Rulebook not loaded yet.'},
-        {id: 'ledger', label: 'Conflict ledger', asOf: view?.live.as_of ?? null, gap: view?.live.gap?.reason as string | undefined}]}
+      sources={[{id: 'rulebook', label: 'Conflict rulebook', writerNote: 'Committed configuration, changed only by a reviewed commit. No scheduled job writes it.', gap: view ? undefined : 'Rulebook not loaded yet.'},
+        {id: 'ledger', label: 'Conflict ledger', laneIds: ['conflict-resolver'], asOf: view?.live.as_of ?? null, gap: view?.live.gap?.reason as string | undefined}]}
       decisions={pending.map(proposal => ({id: proposal.proposal_id, title: `Proposed rule: ${proposal.summary || proposal.plain_rule || 'review the AI proposal'} →`,
         href: `/conflicts/rules?proposal=${encodeURIComponent(proposal.proposal_id)}`}))}
       decisionGap={decisionGapText(pending.length, unmatchedRows.length)}>

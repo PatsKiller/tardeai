@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "desk_source_writers_lq529",
+  "files": [
+    "tests/test_desk_source_writers_lq529.py"
+  ],
+  "anchor": "DESK_SOURCE_WRITERS_LQ529",
+  "comment": [
+    "ANCHOR: DESK_SOURCE_WRITERS_LQ529 — LQ-20261107-529: every /v3 desk source card names its real writer lane (registered,",
+    "ACTIVE) or states why no scheduled writer exists; no writer is invented. The incident supervisor is measured by the",
+    "supervisor_last.json receipt it writes after each completed cycle. The card's proof is a render test discovered by the",
+    "frontend build chain: apps/command-center-v3/src/lib/deskSourceWriters.test.mjs"
+  ]
+}
