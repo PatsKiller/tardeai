@@ -122,7 +122,7 @@
   "delivery": {"email": null, "text": null, "telegram": null},
   "overnight": {
     "futures_gap_pct": null,
-    "asia": "not measured (no Sunday prints before 19:00 ET)",
+    "asia": "not measured (no Sunday prints before 18:00 ET)",
     "crypto": "+0.8%",
     "headlines": ["Synthetic headline one", "Synthetic headline two"]
   }
