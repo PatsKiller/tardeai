@@ -90,7 +90,7 @@ def select_sql(table: str, spec: dict, text_expr: str, mark) -> tuple[str, tuple
 
 
 def run(table: str, limit: int, apply: bool, mark=None, deadline: float | None = None,
-        seed: bool = False) -> dict:
+        seed: bool = False, legacy: bool = False, names: dict | None = None) -> dict:
     from lib import research_identity as RI
     from lib.document_mentions import SOURCES, extract, persist, subject_from_symbol
 
@@ -129,7 +129,11 @@ def run(table: str, limit: int, apply: bool, mark=None, deadline: float | None =
             # report the row as unmentioned, which is false.
             found = subject_from_symbol(own_symbol, registry=doc)
         else:
-            found = extract(text or "", own_symbol=own_symbol, registry=doc)
+            if legacy:
+                found = extract(text or "", own_symbol=own_symbol, registry=doc)
+            else:
+                from scripts.lib.document_mention_matcher import match_mentions
+                found = match_mentions(text or "", names=names, own_symbol=own_symbol)
         if not found:
             stat["no_mention"] += 1
             continue
@@ -163,6 +167,8 @@ def main(argv=None) -> int:
     ap.add_argument("--budget-s", type=float, default=1200.0,
                     help="stop scanning after this many seconds (the hourly cron is killed at 25 min)")
     ap.add_argument("--dry-run", action="store_true", help="offline plan; overrides --apply")
+    ap.add_argument("--legacy-matcher", action="store_true",
+                    help="use the old company-name extractor; the rebuild is the default")
     a = ap.parse_args(argv)
 
     from lib.document_mentions import SOURCES
@@ -171,8 +177,13 @@ def main(argv=None) -> int:
         ap.error("--table or --all required")
 
     if a.dry_run:
-        print(f"DRY-RUN {LANE_ID}: would scan {','.join(targets)} limit={a.limit} "
-              f"budget_s={a.budget_s} rescan={a.rescan}; --apply would persist mentions and watermarks")
+        print(f"DRY-RUN {LANE_ID}")
+        print(json.dumps({
+            "matcher": "legacy" if a.legacy_matcher else "rebuild",
+            "tables": targets,
+            "rows_read": None,
+            "note": "offline plan does not open the database and does not write mentions or watermarks",
+        }, sort_keys=True))
         return 0
     lr = _receipt_lib()
     started = lr.now_iso()
@@ -200,6 +211,7 @@ def lane_output(stats: dict) -> dict:
                             "no_mention_docs": int(stats.get("no_mention") or 0),
                             "undecided_docs": int(stats.get("undecided") or 0)},
         "empty_reason": "no_new_input" if written == 0 else None,
+        "rows_read": stats.get("rows_read") or {},
     }
 
 
@@ -213,8 +225,10 @@ def _run(a, targets, stats) -> int:
         if deadline is not None and time.monotonic() >= deadline:
             print(f"  {t}: skipped (budget spent)", flush=True)
             continue
-        s = run(t, a.limit, a.apply, mark=marks.get(t), deadline=deadline, seed=not a.rescan)
+        s = run(t, a.limit, a.apply, mark=marks.get(t), deadline=deadline, seed=not a.rescan,
+                legacy=a.legacy_matcher)
         stats["scanned"] += s["scanned"]
+        stats.setdefault("rows_read", {})[t] = s["scanned"]
         stats["written"] += s["written"]
         stats["offered"] += s.get("offered", 0)
         stats["no_mention"] += s.get("no_mention", 0)
