@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "reconcile_exit_advisory_lq882_20261108",
+  "files": [
+    "tests/test_reconcile_exit_advisory_lq882_20261108.py"
+  ],
+  "comment": [
+    "LQ-882: the exit-advisory reconciler reads the research types its producers write (protection_advisory, stop_health, exit_intelligence); pending-not-age decides 'nothing to do'; empty/dead/unreadable input is named and exits 1; one bar fetch per symbol per run; operator_acted measured over the horizon window."
+  ]
+}
