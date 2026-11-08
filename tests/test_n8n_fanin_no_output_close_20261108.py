@@ -42,3 +42,13 @@ def test_same_day_detector_run_closes_nothing(tmp_path):
 def test_other_kinds_and_other_writers_untouched(tmp_path):
     rows = [_row("a", "2026-11-07", kind="STALE_OUTPUT"), _row("b", "2026-11-07", authority="HEARTBEAT")]
     assert _items(_rt(tmp_path, rows, "2026-11-08T00:32:00+00:00")) == {"a:STALE_OUTPUT", "b:NO_OUTPUT"}
+
+
+def test_detector_run_on_later_day_but_over_3h_old_closes_nothing(tmp_path):
+    # ok_at is on a later UTC day than the row, yet 3 h 55 min old at `now`: the freshness cap must hold.
+    later = datetime(2026, 11, 8, 3, 56, tzinfo=timezone.utc)
+    rt = _rt(tmp_path, [_row("a", "2026-11-07")], "2026-11-08T00:01:00+00:00")
+    assert {f["item"] for f in F._breach_findings(rt, later)} == {"a:NO_OUTPUT"}
+    # control: the same row closes when the run is under 3 h old
+    rt2 = _rt(tmp_path, [_row("a", "2026-11-07")], "2026-11-08T03:00:00+00:00")
+    assert {f["item"] for f in F._breach_findings(rt2, later)} == set()
