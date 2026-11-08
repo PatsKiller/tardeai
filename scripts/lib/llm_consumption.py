@@ -744,7 +744,10 @@ def should_call(process_id: str, lane: str, *, manual_trigger: bool = False, _an
                 "process_id": process_id}
     allowed_list = list(cfg.get("allowed_lanes") or [])
     allowed = lane in allowed_list or lane.upper() in {x.upper() for x in allowed_list}
-    if not allowed and _anthropic_route and lane in {"anthropic", "grok", "chatgpt"}:
+    if not allowed and _anthropic_route and lane == "anthropic":
+        # The promotion is the ONE lane that is not named in ``allowed_lanes``: ``anthropic_first``
+        # admits it. This used to exempt grok/chatgpt too, which is how an anthropic-first process
+        # with a deepseek-only allowlist could still be served by grok (LQ-20261107-1010).
         from . import anthropic_routing as promo
         allowed = promo.eligible(process_id, cfg)
     if not allowed:
@@ -1528,9 +1531,13 @@ def gate_and_generate(
                     from lib.anthropic_transport import AnthropicError
                     raise AnthropicError("OUTPUT_INVALID", request_sent=True, possibly_billable=True)
                 if response_json or output_schema_id:
+                    # One reader for "is this an object?": a ```json fence around a well-formed
+                    # object is NOT an OUTPUT_INVALID (LQ-20261107-1010 — 116 adjudicator answers
+                    # were discarded here in 14 days, each already sent and paid for).
+                    from lib.llm_json_contract import JsonContractError, recover_json_object
                     try:
-                        json.loads(result[0])
-                    except (ValueError, TypeError) as invalid:
+                        recover_json_object(result[0])
+                    except JsonContractError as invalid:
                         from lib.anthropic_transport import AnthropicError
                         raise AnthropicError("OUTPUT_INVALID", request_sent=True, possibly_billable=True) from invalid
             else:

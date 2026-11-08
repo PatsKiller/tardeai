@@ -108,6 +108,8 @@ def lane_status(lane: str, *, use_cache: bool = True) -> dict:
 # is a failed row on the consumption page. After such a failure the lane is held out of ``lane_available``
 # for a short, growing interval; the next caller then skips it (generate_cloud moves to the next lane)
 # instead of adding another failure. A success clears it. This never changes a spend cap.
+# A read timeout is the caller's deadline, not the proxy's state: an ``unreachable`` cooldown therefore
+# yields to a proxy that still reports /health ready — see ``lane_available`` (LQ-20261107-978).
 COOLDOWN_BASE_S = {"rate_limited": 120.0, "unreachable": 60.0}
 COOLDOWN_MAX_S = 900.0
 _COOLDOWN_FILE = (Path(__file__).resolve().parent.parent.parent / "data" / "runtime" / "oauth_lane_cooldown.json")
@@ -183,10 +185,28 @@ def cooldown_remaining(lane: str, *, now: float | None = None, path: Path | None
 
 
 def lane_available(lane: str) -> bool:
-    """True when the free OAuth proxy is authenticated, token is not expired and it is not cooling down."""
-    if cooldown_remaining(lane) > 0:
+    """True when the free OAuth proxy is authenticated, token is not expired and it is not cooling down.
+
+    One exception (LQ-20261107-978): an ``unreachable`` cooldown does not hide a lane whose proxy answers
+    ``/health`` ready. "Read timed out" is the CALLER's deadline expiring on a live proxy — the proxy keeps
+    serving to its own ceiling after the client gives up (LQ-20261107-750) — so one caller's small budget
+    must not put a working lane out of reach for every other caller. Measured 2026-11-08 10:00 ET: the
+    iris taxonomy run's first item was cut at 30.9 s while the same grok proxy was serving a 27.6 s
+    keepalive ping, the timeout set the 60 s cooldown, and the run's next six LLM calls failed instantly
+    with "no governed cloud lane available" (/health ready throughout).
+
+    The record is still written, so a proxy that is genuinely down still holds: its ``/health`` probe
+    fails, ``ready`` is false and the cooldown applies. A ``rate_limited`` cooldown is NEVER overridden —
+    ``/health`` reported ready through the whole chatgpt 429 streak, which is exactly what that cooldown
+    exists for (LQ-20261107-236).
+    """
+    entry = _read_cooldowns().get((lane or "").strip().lower()) or {}
+    until = entry.get("until")
+    cooling = isinstance(until, (int, float)) and float(until) > time.time()
+    ready = bool(lane_status(lane).get("ready"))
+    if cooling and not (entry.get("kind") == "unreachable" and ready):
         return False
-    return bool(lane_status(lane).get("ready"))
+    return ready
 
 
 def lanes_available() -> dict[str, bool]:

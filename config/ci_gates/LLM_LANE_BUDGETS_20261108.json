@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "LLM_LANE_BUDGETS_20261108",
+  "files": [
+    "tests/test_llm_lane_budgets_20261108.py"
+  ],
+  "anchor": "LLM_LANE_BUDGETS_20261108",
+  "comment": [
+    "ANCHOR: LLM_LANE_BUDGETS_20261108 — LQ-20261107-865: scheduled lanes were cut by a caller timeout smaller than their own measured successful tail (topic_curator 30 s vs p95 28.4 s / max ok 39.9 s; topic_ingestion 25 s). The budget now comes from config/llm_lane_budgets.json (p95 + 25% margin, 5 s steps, capped at 120 s) via lib.llm_lane_budgets, resolved inside generate_cloud when the caller names none. Guards: each row re-derives from its own p95_ms/max_ok_ms (a drifted file fails), the three degraded lanes are sized, generate_cloud waits the lane budget and never rewrites an explicit timeout, an unsized lane falls back to 90 s, a malformed config raises instead of silently falling back, and no call site in the three scripts pins its own timeout (AST). Hermetic."
+  ]
+}

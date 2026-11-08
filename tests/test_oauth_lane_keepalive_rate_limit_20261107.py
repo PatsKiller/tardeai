@@ -18,6 +18,13 @@ repeated for 54 runs.
 So the keepalive now classifies WHY a lane is down (rate_limited / auth / other), says what to do
 about that cause, records the kind in the status file and the receipt, and the dry run reads the
 proxy's ``serving``/``last_upstream`` instead of trusting a 200. Hermetic: fake probes, no network.
+
+SUPERSEDED IN PART by LQ-20261107-1010 / Fable Q5 (2026-11-08): a 429 is graded ``ok_rate_limited``.
+The 54-run streak was a quota wait graded as a dead lane — at the ``*/30`` cron that pinged a
+known-exhausted quota twice an hour for days. A rate-limited result now raises no alert, is not a
+regression and does not set exit 1; it records ``quota_exhausted`` and ``rate_limited_until`` so the
+ticks inside the quota's 900 s window skip the ping. The "do NOT re-login" wording still governs the
+classified alert (``_hint_line``) and the recorded kind, so both are still asserted below.
 """
 from __future__ import annotations
 
@@ -79,11 +86,16 @@ LIVE = {"chatgpt": {"last_ok": 1_791_331_230, "consec_fail": 53, "last_alert": 0
 
 def test_a_rate_limited_lane_is_not_told_to_re_login():
     alerts, out, regressions = _evaluate(lambda lane: (False, REAL_429), state=dict(LIVE))
-    assert regressions == ["chatgpt"]                       # still a real failure: exit stays 1
+    # LQ-20261107-1010: a quota wait is not a lane failure — no regression, no alert, exit stays 0.
+    assert regressions == []
+    assert alerts == []
     assert out["chatgpt"]["kind"] == "rate_limited"
-    assert out["chatgpt"]["consec_fail"] == 54              # the streak keeps counting
+    assert out["chatgpt"]["quota_exhausted"] is True
+    assert out["chatgpt"]["rate_limited_until"] == 1_800_000_000 + keep.KEEPALIVE_QUOTA_COOLDOWN_S
+    assert out["chatgpt"]["consec_fail"] == 54              # what it saw is still counted
     assert out["chatgpt"]["last_ok"] == 1_791_331_230       # last_ok is not cleared by a quota wait
-    line = alerts[0]
+    # The classified wording still exists for the alert path and never points at a credential command.
+    line = keep._hint_line("chatgpt", "rate_limited", REAL_429)
     assert "heals on its own" in line and "Do NOT re-login" in line
     assert RELOGIN not in line                              # the wrong operator action is gone
 

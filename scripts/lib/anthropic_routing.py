@@ -227,6 +227,59 @@ def selected_policy(process_id: str, cfg: dict, resolution: dict, *, reasoning_t
     return resolved
 
 
+#: The lane names the registry uses, mapped to the provider that serves them. A name not listed here
+#: (``local``, a bridge lane) is not a provider this plan can dispatch, so it is simply not enabled.
+_PROVIDER_LANES: dict[str, str] = {
+    "grok": "grok",
+    "chatgpt": "chatgpt",
+    "anthropic": "anthropic",
+    "deepseek": "deepseek",
+    "deepseek-flash": "deepseek",
+    "deepseek-v4-flash": "deepseek",
+    "deepseek-v4-pro": "deepseek",
+    "fast": "deepseek",
+    "fast_think": "deepseek",
+    "pro": "deepseek",
+    "pro_think": "deepseek",
+    "pro_max": "deepseek",
+}
+
+_ALL_PROVIDERS = frozenset(("anthropic", "grok", "chatgpt", "deepseek"))
+
+
+def provider_for_lane(lane: str) -> str | None:
+    """The provider a registry lane name is served by, or None when it is not one this plan dispatches."""
+    return _PROVIDER_LANES.get(str(lane or "").strip().lower())
+
+
+def enabled_providers(cfg: dict) -> frozenset[str]:
+    """The providers this process's allowlist admits — the gateway's binding (LQ-20261107-1010).
+
+    Before this, ``generate_in_process`` walked the whole configured provider order
+    (anthropic → deepseek → grok → chatgpt) for every process, so the registry's ``allowed_lanes``
+    was advisory: in the 14 days to 2026-11-08 ``contradiction_adjudicator`` (allowlist
+    ``[fast, deepseek-flash]``) took **129 grok calls**, ``local_llm_compat`` (``[deepseek-flash]``)
+    took 683, and ``hermes_usefulness_score`` 45 grok + 5 chatgpt. The allowlist decides.
+
+    ``anthropic`` is admitted by ``anthropic_first``: that flag is the registry's declaration that the
+    paid promotional lane is allowed for this process (DSN-20261107 §B), and it is the only way the
+    promotion is reachable at all. A process that states an allowlist and is not anthropic-first can
+    never be served by Anthropic.
+
+    A ``cfg`` that carries no allowlist at all is not a registry row (a hand-built options dict, a
+    test double); it keeps the historical full set, exactly as before. ``get_process_config`` derives
+    an allowlist for every registered process, and an unregistered one is refused by ``should_call``
+    before a plan exists.
+    """
+    lanes = [str(x).strip().lower() for x in (cfg.get("allowed_lanes") or []) if str(x).strip()]
+    if not lanes:
+        return _ALL_PROVIDERS
+    out = {p for p in (provider_for_lane(lane) for lane in lanes) if p}
+    if cfg.get("anthropic_first") is True:
+        out.add("anthropic")
+    return frozenset(out)
+
+
 def configured_plan(process_id: str, cfg: dict, selected: dict, *, enabled: set | frozenset,
                     model_for_provider, env=None, policy=None, now=None) -> list[dict]:
     policy = load_policy() if policy is None else policy
@@ -248,6 +301,13 @@ def configured_plan(process_id: str, cfg: dict, selected: dict, *, enabled: set 
                 skip = "credit_expired"
             elif not credit_admitted(cfg):
                 skip = "process_caps_not_admitted"
+            elif "anthropic" not in enabled:
+                # ``anthropic_first`` is the admission of the paid promotional lane (LQ-20261107-1010).
+                # Without it the promotion is not in this process's plan at all, even though every gate
+                # above passed — otherwise a process that is NOT anthropic-first was still dispatched to
+                # Anthropic whenever the credit was healthy, with nothing but the caller's own
+                # ``promo.active()`` check standing in the way.
+                skip = "no_transport"
         else:
             model = model_for_provider(provider, logical)
             if process_id in (policy.get("anthropic_only_processes") or {}):
@@ -403,7 +463,8 @@ def generate_in_process(prompt: str, *, process_id: str, cfg: dict, options: dic
         name: {"thinking": "enabled" if "THINK" in name or name == "PRO_MAX" else "disabled"}
         for name in ("FAST", "FAST_THINK", "PRO", "PRO_THINK", "PRO_MAX")
     }, requested_policy=requested)
-    plan = configured_plan(process_id, cfg, selected, enabled={"anthropic", "grok", "chatgpt", "deepseek"},
+    # The allowlist is binding: a provider the process does not admit is not in its plan at all.
+    plan = configured_plan(process_id, cfg, selected, enabled=enabled_providers(cfg),
                            model_for_provider=lambda provider, name: None)
     started, receipts = time.monotonic(), []
     last = None
@@ -426,9 +487,13 @@ def generate_in_process(prompt: str, *, process_id: str, cfg: dict, options: dic
             if not str(text or "").strip():
                 raise AnthropicError("EMPTY_OUTPUT")
             if options.get("response_json") or options.get("output_schema_id"):
+                # A well-formed answer inside a ```json fence is a success, not an OUTPUT_INVALID
+                # (LQ-20261107-1010: 116 adjudicator answers were discarded this way in 14 days,
+                # each already sent and paid for).
+                from .llm_json_contract import JsonContractError, recover_json_object
                 try:
-                    json.loads(text)
-                except (ValueError, TypeError) as exc:
+                    recover_json_object(text)
+                except JsonContractError as exc:
                     raise AnthropicError("OUTPUT_INVALID") from exc
             provenance.update(provider=provider, route_receipts=receipts + [{"provider": provider, "outcome": "ok"}],
                               fallback_used=bool(receipts))

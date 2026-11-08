@@ -162,8 +162,8 @@ def test_curator_dry_branch_precedes_the_real_run_in_source():
 
 def _patch_curator_steps(monkeypatch, *, rag="ok", rated=3):
     monkeypatch.setattr(tc, "_get_conn", lambda: FakeConn())
-    monkeypatch.setattr(tc, "rate_pending_content", lambda conn, topic=None: (rated, 1, 0))
-    monkeypatch.setattr(tc, "extract_and_link_entities", lambda conn, topic=None: 2)
+    monkeypatch.setattr(tc, "rate_pending_content", lambda conn, topic=None, **kw: (rated, 1, 0))
+    monkeypatch.setattr(tc, "extract_and_link_entities", lambda conn, topic=None, **kw: 2)
     monkeypatch.setattr(tc, "update_agent_context", lambda conn, topic=None: 1)
     monkeypatch.setattr(tc, "trigger_rag_reindex", lambda conn: rag)
     monkeypatch.setattr(sys, "argv", ["topic_curator.py"])
@@ -192,7 +192,7 @@ def test_curator_failed_rag_reindex_exits_1_and_keeps_previous_ok_at(monkeypatch
 def test_curator_crash_leaves_failed_receipt(monkeypatch, _state):
     _patch_curator_steps(monkeypatch)
 
-    def crash(conn, topic=None):
+    def crash(conn, topic=None, **kw):
         raise RuntimeError("SSL connection has been closed unexpectedly")
 
     monkeypatch.setattr(tc, "extract_and_link_entities", crash)

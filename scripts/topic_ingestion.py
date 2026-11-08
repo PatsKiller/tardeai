@@ -367,7 +367,7 @@ def llm_generate_queries(conn, topic: dict) -> dict:
         from lib.governed_cloud_generation import generate_cloud
         raw, _lane = generate_cloud(
             prompt, process_id="topic_ingestion",
-            task_summary=f"topic queries {topic['topic_id']}", timeout=30,
+            task_summary=f"topic queries {topic['topic_id']}",
             response_json=True, max_tokens=512,
         )
     except Exception:
@@ -515,7 +515,7 @@ def _llm_rate_quality(title: str, content_preview: str,
         from lib.governed_cloud_generation import generate_cloud
         raw, _lane = generate_cloud(
             prompt, process_id="topic_ingestion",
-            task_summary=f"RAG quality {topic_display[:80]}", timeout=25,
+            task_summary=f"RAG quality {topic_display[:80]}",
             response_json=True, max_tokens=384,
         )
     except Exception:
@@ -1076,7 +1076,7 @@ def _llm_normalize(title: str, description: str, topic_display: str,
         from lib.governed_cloud_generation import generate_cloud
         raw, _lane = generate_cloud(
             prompt, process_id="topic_ingestion",
-            task_summary=f"content normalization {topic_display[:80]}", timeout=30,
+            task_summary=f"content normalization {topic_display[:80]}",
             response_json=True, max_tokens=384,
         )
     except Exception:
