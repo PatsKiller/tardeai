@@ -17,6 +17,8 @@ replaces the matching design, not the sources:
                             script path; a line no lane claims is UNDECLARED, one several claim is AMBIGUOUS. Both are
                             enumerated from the HOST side, which is the reverse direction the old checker never ran.
 * ``disagreements()``       every way the sources disagree, as typed findings — the generator never guesses.
+* ``to_source_of_truth()``  the committed cutover form (LQ-1041): editable fields only; ``expand()`` recomputes the
+                            rest and ``validate_source_of_truth()`` refuses a derived field found in the source.
 
 Pure: no file, network, DB or subprocess access here. Callers read the sources. MBI_BEHAVIOR = 0.
 """
@@ -297,6 +299,63 @@ def registry_view(manifest: Mapping[str, Any]) -> dict[str, Any]:
 
 def render_registry(manifest: Mapping[str, Any]) -> str:
     return json.dumps(registry_view(manifest), indent=2, ensure_ascii=False) + "\n"
+
+
+# ── the cutover form: the manifest is the source of truth (LQ-20261107-1041) ───────────────────────────────────────
+# A full manifest repeats, per lane, fields derived from the registry row, the allowlist and the contracts. Committed
+# as the source of truth, those copies would be a second truth: an edit to ``schedule`` would never reach the rendered
+# registry. The committed form therefore holds only what a person may edit; everything else is recomputed by
+# ``expand()`` on every read, and ``validate_source_of_truth()`` names any derived field found in the source.
+
+#: The only keys a lane carries in the source-of-truth form (``output`` holds ``signal`` alone).
+SOT_LANE_KEYS = ("id", "owner", "state", "output", "legacy")
+
+
+def to_source_of_truth(manifest: Mapping[str, Any], *, adopted_at: str) -> dict[str, Any]:
+    """The committed form of ``manifest``: deterministic (no clock, no host source), editable fields only."""
+    reg = (manifest.get("sources") or {}).get("registry") or {}
+    return {
+        "schema": SCHEMA,
+        "authority": "SOURCE_OF_TRUTH",
+        "generated_at": adopted_at,
+        "sources": {"adopted_from": {k: reg[k] for k in ("path", "sha256", "rows_read") if k in reg}},
+        "registry_header": manifest["registry_header"],
+        "lanes": [{"id": l["id"], "owner": l["owner"], "state": l["state"],
+                   "output": {"signal": l["output"]["signal"]}, "legacy": l["legacy"]} for l in manifest["lanes"]],
+    }
+
+
+def expand(sot: Mapping[str, Any], allowlist: Mapping[str, Any], contracts: Mapping[str, Any]) -> dict[str, Any]:
+    """The full manifest of a source-of-truth document: every derived field recomputed, none read from the source."""
+    full = build_manifest(registry_view(sot), allowlist, contracts, generated_at=str(sot.get("generated_at")),
+                          sources=sot.get("sources") or {})
+    full["authority"] = sot.get("authority")
+    return full
+
+
+def validate_source_of_truth(sot: Mapping[str, Any], allowlist: Mapping[str, Any],
+                             contracts: Mapping[str, Any]) -> list[str]:
+    """Empty list = ``sot`` is a valid source of truth whose expansion validates. Never raises on a bad document."""
+    out: list[str] = []
+    if sot.get("authority") != "SOURCE_OF_TRUTH":
+        out.append(f"$.authority: {sot.get('authority')!r} is not SOURCE_OF_TRUTH")
+    lanes = sot.get("lanes")
+    if not isinstance(lanes, list) or not isinstance(sot.get("registry_header"), dict):
+        return out + ["$: lanes (list) and registry_header (object) are required"]
+    for i, lane in enumerate(lanes):
+        lid = lane.get("id", f"#{i}") if isinstance(lane, dict) else f"#{i}"
+        if not isinstance(lane, dict) or not isinstance(lane.get("legacy"), dict) or \
+                not isinstance(lane.get("output"), dict) or "_order" not in lane["legacy"]:
+            out.append(f"$.lanes[{i}] {lid}: needs id, owner, state, output.signal and legacy._order")
+            continue
+        out += [f"DERIVED_FIELD_IN_SOURCE {lid}.{k}: derived from the source, edit legacy or the allowlist instead"
+                for k in lane if k not in SOT_LANE_KEYS]
+        out += [f"DERIVED_FIELD_IN_SOURCE {lid}.output.{k}: derived from the health contract"
+                for k in lane["output"] if k != "signal"]
+        out += [f"$.lanes[{i}] {lid}: missing {k}" for k in SOT_LANE_KEYS if k not in lane]
+    if out:
+        return out
+    return validate(expand(sot, allowlist, contracts))
 
 
 # ── host attribution (pure) ──────────────────────────────────────────────────────────────────────────────────────

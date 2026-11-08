@@ -13,6 +13,14 @@ the disagreement report, --render-registry writes the LaneRegistry@v1 view rende
 --check MANIFEST exits 1 when that manifest's registry view no longer equals config/lane_registry.json (drift
 between the candidate and the live registry until the cutover makes the registry a rendered file).
 
+Cutover (LQ-20261107-1041): the committed manifest becomes the source of truth and the registry is rendered from it.
+  --adopt OUT            write the source-of-truth form of today's registry (editable fields only, no clock unless
+                         --now, no crontab/n8n source); refused unless its rendered view equals the registry
+  --from SOT --render-registry OUT
+                         render the registry from a committed source of truth; a derived field in the source is
+                         refused by name (DERIVED_FIELD_IN_SOURCE) and nothing is written
+  --check SOT            also validates a SOURCE_OF_TRUTH document, so CI fails on a hand edit of either file
+
 No crontab, systemd, n8n, DB or registry write, ever. MBI_BEHAVIOR = 0.
 """
 from __future__ import annotations
@@ -142,7 +150,12 @@ def _write(path: str, text: str) -> None:
 
 def check(root: Path, manifest_path: str) -> int:
     manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
-    errors = lm.validate(manifest)
+    if manifest.get("authority") == "SOURCE_OF_TRUTH":
+        allowlist, _ = _read(root, ALLOWLIST_REL)
+        contracts, _ = _read(root, CONTRACTS_REL)
+        errors = lm.validate_source_of_truth(manifest, allowlist, contracts)
+    else:
+        errors = lm.validate(manifest)
     registry = json.loads((root / REGISTRY_REL).read_text(encoding="utf-8"))
     view = lm.registry_view(manifest)
     same = json.dumps(view) == json.dumps(registry)
@@ -153,6 +166,35 @@ def check(root: Path, manifest_path: str) -> int:
     print(json.dumps({"schema_errors": errors[:20], "identical": same, "ids_added_or_removed": drift[:50],
                       "rows_changed": changed[:50]}, indent=2))
     return 0 if same and not errors else 1
+
+
+def adopt(root: Path, out_path: str, now: Optional[str]) -> int:
+    manifest, report = build(root, no_crontab=True, no_n8n=True, now=now)
+    if report["schema_errors"] or not report["registry_view_identical"]:
+        print(json.dumps({"adopted": False, "schema_errors": report["schema_errors"][:20],
+                          "registry_view_identical": report["registry_view_identical"]}, indent=2))
+        return 1
+    sot = lm.to_source_of_truth(manifest, adopted_at=report["generated_at"])
+    _write(out_path, json.dumps(sot, indent=1, ensure_ascii=False) + "\n")
+    print(json.dumps({"adopted": True, "wrote": [out_path], "lanes": len(sot["lanes"])}, indent=2))
+    return 0
+
+
+def render_from(root: Path, sot_path: str, out_path: Optional[str]) -> int:
+    sot = json.loads(Path(sot_path).read_text(encoding="utf-8"))
+    allowlist, _ = _read(root, ALLOWLIST_REL)
+    contracts, _ = _read(root, CONTRACTS_REL)
+    errors = lm.validate_source_of_truth(sot, allowlist, contracts)
+    if errors:
+        print(json.dumps({"errors": errors[:50], "error_count": len(errors), "wrote": []}, indent=2))
+        return 1
+    wrote = []
+    if out_path:
+        _write(out_path, lm.render_registry(sot))
+        wrote.append(out_path)
+    print(json.dumps({"errors": [], "lanes": len(sot["lanes"]), "wrote": wrote,
+                      "mode": "write" if wrote else "dry-run (nothing written)"}, indent=2))
+    return 0
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -167,10 +209,17 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--report", help="write the full disagreement report here")
     ap.add_argument("--render-registry", help="write the LaneRegistry@v1 view rendered from the manifest here")
     ap.add_argument("--check", metavar="MANIFEST", help="exit 1 if MANIFEST's registry view != the registry")
+    ap.add_argument("--adopt", metavar="OUT", help="write the source-of-truth form of the registry here")
+    ap.add_argument("--from", dest="from_sot", metavar="SOT",
+                    help="render from this committed source of truth instead of building from the registry")
     a = ap.parse_args(argv)
     root = Path(a.root)
     if a.check:
         return check(root, a.check)
+    if a.adopt:
+        return adopt(root, a.adopt, a.now)
+    if a.from_sot:
+        return render_from(root, a.from_sot, a.render_registry)
     manifest, report = build(root, crontab_file=a.crontab_file, no_crontab=a.no_crontab,
                              n8n_snapshot=a.n8n_snapshot, no_n8n=a.no_n8n, now=a.now)
     wrote = []

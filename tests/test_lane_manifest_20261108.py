@@ -294,3 +294,121 @@ def test_generator_check_detects_drift(tmp_path, capsys):
     capsys.readouterr()
     assert blm.main(["--check", str(path)]) == 1
     assert man["lanes"][0]["id"] in json.loads(capsys.readouterr().out)["rows_changed"]
+
+
+# ── LQ-20261107-1041: the cutover form — the manifest is the source of truth, the registry is rendered ──────────
+# The committed form holds only the fields a person may edit (id, owner, state, output.signal, legacy). Every derived
+# field (armed, script, command, schedule, identity, ...) is recomputed from it plus the allowlist and contracts, so a
+# derived copy can never be edited and then silently ignored by the render.
+
+ADOPTED = "2026-11-08T22:30:00+00:00"
+
+
+def _sot() -> dict:
+    return lm.to_source_of_truth(_manifest(), adopted_at=ADOPTED)
+
+
+def test_source_of_truth_form_holds_only_editable_fields_and_is_deterministic():
+    a, b = _sot(), _sot()
+    assert json.dumps(a) == json.dumps(b)
+    assert a["authority"] == "SOURCE_OF_TRUTH" and a["generated_at"] == ADOPTED
+    assert "crontab" not in a["sources"] and "n8n_db" not in a["sources"]
+    for lane in a["lanes"]:
+        assert set(lane) == set(lm.SOT_LANE_KEYS)
+        assert set(lane["output"]) == {"signal"}
+    assert lm.validate_source_of_truth(a, _allowlist(), _contracts()) == []
+
+
+def test_source_of_truth_renders_the_identical_registry():
+    assert json.dumps(lm.registry_view(_sot())) == json.dumps(_registry())
+
+
+def test_expand_recomputes_every_derived_field():
+    full = lm.expand(_sot(), _allowlist(), _contracts())
+    assert lm.validate(full) == []
+    assert full["authority"] == "SOURCE_OF_TRUTH"
+    assert full["lanes"] == _manifest()["lanes"]
+
+
+def test_an_edit_to_the_source_reaches_the_registry_and_the_derived_view():
+    sot = _sot()
+    alpha = next(l for l in sot["lanes"] if l["id"] == "alpha-agenda")
+    alpha["legacy"]["scheduler"]["expression"] = "50 7 * * *"
+    alpha["state"] = "PAUSED"
+    reg = lm.registry_view(sot)
+    row = next(r for r in reg["lanes"] if r["lane_id"] == "alpha-agenda")
+    assert row["scheduler"]["expression"] == "50 7 * * *" and row["state"] == "PAUSED"
+    full = lm.expand(sot, _allowlist(), _contracts())
+    lane = next(l for l in full["lanes"] if l["id"] == "alpha-agenda")
+    assert lane["armed"] is False
+
+
+def test_a_derived_field_in_the_source_is_refused_by_name():
+    sot = _sot()
+    sot["lanes"][0]["command"] = {"root": "CURRENT", "argv": ["scripts/x.py"], "source": "allowlist"}
+    sot["lanes"][1]["output"]["rule"] = "min_produced"
+    errs = lm.validate_source_of_truth(sot, _allowlist(), _contracts())
+    assert any("DERIVED_FIELD_IN_SOURCE alpha-agenda.command" in e for e in errs)
+    assert any("DERIVED_FIELD_IN_SOURCE beta-collector.output.rule" in e for e in errs)
+
+
+def test_a_candidate_is_not_a_source_of_truth():
+    errs = lm.validate_source_of_truth(_manifest(), _allowlist(), _contracts())
+    assert any("authority" in e for e in errs)
+
+
+def _tree(tmp_path: Path) -> Path:
+    (tmp_path / "config").mkdir(parents=True)
+    for name, doc in (("lane_registry.json", _registry()), ("n8n_run_allowlist.json", _allowlist()),
+                      ("n8n_health_contracts.json", _contracts())):
+        (tmp_path / "config" / name).write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    return tmp_path
+
+
+def test_cli_adopt_render_and_check_round_trip(tmp_path, capsys):
+    from scripts.ops import build_lane_manifest as blm
+
+    root = _tree(tmp_path / "t")
+    sot1, sot2 = tmp_path / "a.json", tmp_path / "b.json"
+    assert blm.main(["--root", str(root), "--adopt", str(sot1), "--now", ADOPTED]) == 0
+    assert blm.main(["--root", str(root), "--adopt", str(sot2), "--now", ADOPTED]) == 0
+    assert sot1.read_bytes() == sot2.read_bytes()
+    out = tmp_path / "reg.json"
+    assert blm.main(["--root", str(root), "--from", str(sot1), "--render-registry", str(out)]) == 0
+    assert json.loads(out.read_text()) == _registry()
+    (root / "config" / "lane_registry.json").write_text(out.read_text(), encoding="utf-8")
+    capsys.readouterr()
+    assert blm.main(["--root", str(root), "--check", str(sot1)]) == 0
+    assert json.loads(capsys.readouterr().out)["identical"] is True
+
+
+def test_cli_render_from_refuses_a_bad_source_and_writes_nothing(tmp_path, capsys):
+    from scripts.ops import build_lane_manifest as blm
+
+    root = _tree(tmp_path / "t")
+    sot = tmp_path / "a.json"
+    assert blm.main(["--root", str(root), "--adopt", str(sot), "--now", ADOPTED]) == 0
+    doc = json.loads(sot.read_text())
+    doc["lanes"][0]["schedule"] = {"runner": "cron"}
+    sot.write_text(json.dumps(doc), encoding="utf-8")
+    out = tmp_path / "reg.json"
+    capsys.readouterr()
+    assert blm.main(["--root", str(root), "--from", str(sot), "--render-registry", str(out)]) == 1
+    assert not out.exists()
+    assert any("DERIVED_FIELD_IN_SOURCE alpha-agenda.schedule" in e
+               for e in json.loads(capsys.readouterr().out)["errors"])
+    assert blm.main(["--root", str(root), "--check", str(sot)]) == 1
+
+
+def test_cli_check_fails_when_the_registry_was_hand_edited_after_cutover(tmp_path, capsys):
+    from scripts.ops import build_lane_manifest as blm
+
+    root = _tree(tmp_path / "t")
+    sot = tmp_path / "a.json"
+    assert blm.main(["--root", str(root), "--adopt", str(sot), "--now", ADOPTED]) == 0
+    reg = _registry()
+    reg["lanes"][1]["owner"] = "hand-edit"
+    (root / "config" / "lane_registry.json").write_text(json.dumps(reg, indent=2), encoding="utf-8")
+    capsys.readouterr()
+    assert blm.main(["--root", str(root), "--check", str(sot)]) == 1
+    assert "beta-collector" in json.loads(capsys.readouterr().out)["rows_changed"]
