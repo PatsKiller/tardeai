@@ -7,6 +7,7 @@
   ],
   "anchor": "SYNTHESIS_REFUSAL_LQ512",
   "comment": [
-    "ANCHOR: SYNTHESIS_REFUSAL_LQ512 — a refused CIO synthesis is never stored, never served (LQ-20261107-407, -512). lib/llm_refusal.is_refusal is the one synthesis-refusal predicate, measured against every live watchlist_final_synthesis row; run_synthesis keeps the prior row, marks the run failed and records a synthesis_refused event; scrub_refused_synthesis blanks every field derived from a refusing run for readers."
+    "ANCHOR: SYNTHESIS_REFUSAL_LQ512 — a refused CIO synthesis is never stored, never served (LQ-20261107-407, -512). lib/llm_refusal.is_refusal is the one synthesis-refusal predicate, measured against every live watchlist_final_synthesis row; run_synthesis keeps the prior row, marks the run failed and records a synthesis_refused event; scrub_refused_synthesis blanks every field derived from a refusing run for readers.",
+    "Every rule is bounded (LQ-522 review): a heading word needs punctuation after it, a first-person opener needs a declined object in its first sentence, profile-is markers need `default`/`non-trading`; the must-stay-real fixtures pin real analysis that opens with Declined / I cannot / As an AI / Hermes review."
   ]
 }
