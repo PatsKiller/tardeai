@@ -7,7 +7,7 @@ import {
   MODES, MODE_LABEL, MODE_TIP, MODE_TONE, N8N_CATALOG_API, catalogStats, categoryLanes, laneChips, laneHref, notInRelay, scheduleText,
   type CatalogCategory, type CatalogLane, type N8nCatalogWire,
 } from '../lib/n8nCatalog'
-import { mountApproved, resolveSub, type Nav, type SubKey } from '../lib/n8nCatalogApproved'
+import { auditNavHref, mountApproved, mountAuditHeader, resolveSub, type Nav, type SubKey } from '../lib/n8nCatalogApproved'
 
 // Ops › Jobs & n8n › n8n catalog (LQ-20261107-150). Read-only. Phone first: stacked cards, 44 px targets, every
 // mode chip / verdict chip / top stat explains itself: a tap opens the text inline (phone), hover or keyboard focus
@@ -133,6 +133,24 @@ export function N8nCatalogApprovedView({ data, sub, filter, mode = '', onNav }: 
     input?.addEventListener('input', () => { query.current = input.value })
   }, [data, sub, filter, mode])
   return <div ref={ref} data-testid="n8n-catalog-approved" data-sub={sub} style={{ minWidth: 0 }} />
+}
+
+/** LQ-20261107-506: the audit header and the six stat tiles on the Job catalog page. Same string, same CSS, same GET as the
+ *  n8n audit Overview (auditHeaderHtml), in its own shadow root; a tap opens the matching n8n audit view. */
+export function N8nAuditHeaderView({ data, onNav }: { data: N8nCatalogWire; onNav: (n: Nav) => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const navRef = useRef(onNav)
+  navRef.current = onNav
+  useEffect(() => {
+    const box = ref.current
+    if (!box) return
+    const host = document.createElement('div')
+    const theme = document.documentElement.dataset.theme
+    if (theme) host.dataset.theme = theme
+    box.replaceChildren(host)
+    mountAuditHeader(host.attachShadow({ mode: 'open' }), data, n => navRef.current(n))
+  }, [data])
+  return <div ref={ref} data-testid="n8n-audit-header" style={{ minWidth: 0 }} />
 }
 
 export function N8nCatalogTab() {

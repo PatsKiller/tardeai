@@ -113,6 +113,7 @@ export const NAV: NavSection[] = [
         { to: '/health', label: 'Health', strip: true },
         { to: '/ops/jobs-n8n', label: 'Jobs & n8n', strip: true },
         { to: '/ops/jobs-catalog', label: 'Job catalog' },
+        { to: '/ops/jobs-n8n', search: '?tab=catalog', label: 'n8n audit' },
         { to: '/ops/jobs', label: 'Jobs & health' },
         { to: '/ops/incidents', label: 'Incidents', strip: true },
       ] },

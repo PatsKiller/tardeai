@@ -95,15 +95,15 @@ export function tabsHtml(sub: SubKey): string {
     `<button type="button" role="tab" data-sub="${k}" aria-selected="${k === sub}">${label}</button>`).join('')}</nav>`
 }
 
-export function overviewHtml(w: Wire): string {
+/** The audit header and the six stat tiles. Shared verbatim by Jobs & n8n > n8n audit (Overview) and the Job catalog
+ *  page (LQ-20261107-506), so the two pages cannot disagree: both render this one string from the same GET. */
+export function auditHeaderHtml(w: Wire): string {
   const st = w.stats || {}, a = st.audit || {}, m = st.modes || {}, v = st.verdicts || {}
   const n = (x: unknown) => (typeof x === 'number' ? String(x) : '—')
   // A verdict absent from a reported tally has zero lanes; with no tally at all every count is unknown ("—").
   const vcount = (k: string): number | null => (st.verdicts ? (typeof v[k] === 'number' ? v[k] : 0) : null)
   const idle = n(vcount('PASS_IDLE'))
   const when = w.audit && w.audit.written_at ? `Audited ${esc(etFmt(w.audit.written_at))}.` : 'Not audited yet.'
-  const counts = VERDICT_ORDER.filter(k => k !== 'HALLUCINATION' || v[k]).map(k =>
-    `<button type="button" data-sub="audit" data-filter="${k}" class="${vc(k)}" title="${esc(VTIP[k])} Tap to list them.">${esc(vl(k))} <b>${n(vcount(k))}</b></button>`).join('')
   return `<header><h1>What n8n is configured to handle</h1><p style="margin:6px 0 0;padding:8px 10px;border-left:4px solid var(--shadow);background:var(--card)"><b>${when}</b> Each of the ${n(a.audited)} n8n-only lanes was checked on six points: config, runs, output, data accuracy against an independent source, AI claims against sources, and what the page shows. Only <b>PASS</b> means working. Every failure has a fix assigned (LQ id).</p>
 <p class="sub">Configuration plus audit verdicts · jobs as of ${esc(etFmt(w.computed_at))} · relay live-lane list: ${n(w.relay && w.relay.lanes)} lanes · refreshes every minute</p></header>
 <section class="stats">
@@ -111,7 +111,16 @@ export function overviewHtml(w: Wire): string {
 <button type="button" class="stat go" data-sub="lanes" data-mode="shadow"><span>n8n + cron both (cutover pending) <i class="ib" role="button" aria-label="What this means" ${tipAttr(TIP.shadow)}>ⓘ</i></span><b class="shadow">${n(m.both)}</b><em class="hint">List them ›</em></button>
 <button type="button" class="stat go" data-sub="lanes" data-mode="dry"><span>Dry run on n8n <i class="ib" role="button" aria-label="What this means" ${tipAttr(TIP.dry)}>ⓘ</i></span><b class="dry">${n(m.dry)}</b><em class="hint">List them ›</em></button>
 <button type="button" class="stat go" data-path="/ops/jobs-catalog"><span>Not on n8n <i class="ib" role="button" aria-label="What this means" ${tipAttr(TIP.none)}>ⓘ</i></span><b class="none">${n(m.none)}</b><em class="hint">Open the Job catalog ›</em></button>
-</section>
+</section>`
+}
+
+export function overviewHtml(w: Wire): string {
+  const st = w.stats || {}, v = st.verdicts || {}
+  const n = (x: unknown) => (typeof x === 'number' ? String(x) : '—')
+  const vcount = (k: string): number | null => (st.verdicts ? (typeof v[k] === 'number' ? v[k] : 0) : null)
+  const counts = VERDICT_ORDER.filter(k => k !== 'HALLUCINATION' || v[k]).map(k =>
+    `<button type="button" data-sub="audit" data-filter="${k}" class="${vc(k)}" title="${esc(VTIP[k])} Tap to list them.">${esc(vl(k))} <b>${n(vcount(k))}</b></button>`).join('')
+  return auditHeaderHtml(w) + `
 <section aria-label="Audit verdicts"><h3>Audit verdicts · tap one to list its lanes</h3><div class="counts">${counts}</div></section>
 <div class="key">
 <div><b class="live">Live</b>: n8n is the only scheduler. Being on n8n does not prove the data is correct. Each live lane shows its audit verdict.</div>
@@ -273,6 +282,28 @@ export type Nav = { sub?: SubKey; filter?: string; lane?: string; mode?: string;
 /** Render into a shadow root. Navigation (subtab, verdict filter, lane tap) goes back to React through onNav. */
 export function mountApproved(S: ShadowRoot, w: Wire, sub: SubKey = 'overview', opts: { filter?: string; q?: string; mode?: string } = {}, onNav: (n: Nav) => void = () => {}): void {
   S.innerHTML = '<style>' + APPROVED_CSS + SUBTAB_CSS + '</style><div class="page">' + pageHtml(w, sub, opts) + '</div>'
+  wireApproved(S, sub, opts, onNav)
+}
+
+/** Where a tap on the audit header or a tile goes: always Jobs & n8n > n8n audit (the subtab, verdict filter or mode the tile names). */
+export function auditNavHref(n: Nav): string {
+  if (n.lane) return `/ops/jobs-n8n?tab=n8n&lane=${encodeURIComponent(n.lane)}`
+  if (n.path) return n.path
+  const p = new URLSearchParams({ tab: 'catalog' })
+  if (n.sub && n.sub !== 'overview') p.set('sub', n.sub)
+  if (n.filter) p.set('verdict', n.filter)
+  if (n.mode) p.set('mode', n.mode)
+  return `/ops/jobs-n8n?${p.toString()}`
+}
+
+/** LQ-20261107-506: only the audit header and the six tiles (the same string the n8n audit Overview renders), for the
+ *  Job catalog page. Taps are handed to onNav exactly as on the n8n audit page. */
+export function mountAuditHeader(S: ShadowRoot, w: Wire, onNav: (n: Nav) => void = () => {}): void {
+  S.innerHTML = '<style>' + APPROVED_CSS + SUBTAB_CSS + '</style><div class="page" style="padding-block:0 8px"><main style="max-width:none"><div style="display:flex;flex-direction:column;gap:16px">' + auditHeaderHtml(w) + '</div></main></div>'
+  wireApproved(S, 'overview', {}, onNav)
+}
+
+function wireApproved(S: ShadowRoot, sub: SubKey, opts: { filter?: string; q?: string; mode?: string }, onNav: (n: Nav) => void): void {
   S.querySelectorAll('[data-tip]').forEach((e: any) => { e.title = e.dataset.tip; e.tabIndex = 0 })
   const search = S.querySelector('[data-search]') as HTMLInputElement | null
   if (search) { search.addEventListener('input', () => applySearch(S, search.value)); if (opts.q) applySearch(S, opts.q) }
