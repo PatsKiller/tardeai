@@ -188,7 +188,7 @@ def lane(monkeypatch, tmp_path):
     bars = FakeBars({"AAA": _decline(10.0, 0.1), "BBB": _decline(20.0, 0.05), "SPY": _decline(100.0, 0.0)})
     fake_gg = types.SimpleNamespace(_bars_with_volume=bars)
     monkeypatch.setitem(sys.modules, "holdings_gain_guardian", fake_gg)
-    mod.bars = bars  # type: ignore[attr-defined]
+    setattr(mod, "bars", bars)   # the test reads the fetch counter off the module it drives
     return mod
 
 
