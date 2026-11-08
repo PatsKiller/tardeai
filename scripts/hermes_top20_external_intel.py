@@ -112,15 +112,24 @@ DIRECTIVE_ARM_FACTOR = 1
 _COLUMNS = ("symbol", "hermes_rank", "hermes_composite_score", "hermes_score_components", "rsi", "trend")
 
 
-def _top(conn, n, directive_limit=None):
+def _top(conn, n, directive_limit=None, held=(), proposed=()):
     """Top-``n`` by Hermes rank (a true LIMIT — not ``hermes_rank <= n``, which returns every row sharing the rank)
     PLUS at most ``directive_limit`` operator-directive symbols, best-ranked first (2026-06-12: CIFR #326 /
-    DLR #1172 / AXTI #1627 never made the top-20 cut — operator standing instructions outrank scores).
+    DLR #1172 / AXTI #1627 never made the top-20 cut — operator standing instructions outrank scores)
+    PLUS **every** held and open-proposal symbol (LQ-20261107-1178).
 
     The directive arm reads the ``in_directive_watch`` flag and never its own operator join (the flag has one
     writer; see ``tests/test_directive_watch_flag_source_20261022.py``). Bounding it costs no research: this lane
     can only *call* T0/T1 names, and the guard's ``external_cloud_tiers`` excludes T2, which is where
     ``active_directive`` maps — so a directive name here contributes precedence and skip accounting, not a call.
+
+    The third arm exists because the first two can both miss a name that is callable: ``_trigger_for`` ranks
+    holdings ABOVE the directive flag, so a held symbol that also carries the inflated flag is T0/callable, yet a
+    held name with rank NULL is in no rank band and competes for the ``directive_limit`` slots against 2,308
+    flagged names. Measured read-only on 2026-11-08 (review of LQ-1136): 48 holdings, 43 flagged, 2 in the rank
+    band — the bounded pair selected 24 symbols and only **1** held name. This arm is bounded by its own input
+    (the portfolio / open-proposal sets), never by ``n``, so no held name can be truncated away while the SQL
+    still cannot fan out to the flag's population.
     """
     limit = n * DIRECTIVE_ARM_FACTOR if directive_limit is None else directive_limit
     cols = ", ".join(_COLUMNS)
@@ -131,6 +140,7 @@ def _top(conn, n, directive_limit=None):
         names = [d[0] for d in cur.description]
         return [dict(zip(names, r)) for r in cur.fetchall()]
 
+    priority_symbols = sorted({str(s).upper().strip() for s in (*held, *proposed)} - {""})
     ranked = rows_of(f"""SELECT {cols} FROM (
                            SELECT DISTINCT ON (symbol) {cols}
                              FROM watchlist_items WHERE hermes_rank IS NOT NULL
@@ -142,7 +152,14 @@ def _top(conn, n, directive_limit=None):
                                WHERE in_directive_watch=true AND status<>'removed' AND symbol IS NOT NULL
                                ORDER BY symbol, hermes_composite_score DESC) t
                              ORDER BY hermes_rank NULLS LAST, symbol LIMIT %s""", (limit,))
+    priority = rows_of(f"""SELECT {cols} FROM (
+                             SELECT DISTINCT ON (symbol) {cols}
+                               FROM watchlist_items WHERE symbol = ANY(%s)
+                              ORDER BY symbol, hermes_composite_score DESC) t
+                            ORDER BY hermes_rank NULLS LAST, symbol LIMIT %s""",
+                       (priority_symbols, len(priority_symbols))) if priority_symbols else []
     rows = ranked + [r for r in directive if r["symbol"] not in {x["symbol"] for x in ranked}]
+    rows += [r for r in priority if r["symbol"] not in {x["symbol"] for x in rows}]
     rows.sort(key=lambda r: (r["hermes_rank"] is None, r["hermes_rank"] or 0))
     return rows
 
@@ -260,14 +277,20 @@ def run(top=20, lanes=("chatgpt", "grok"), apply=False, symbols=None, *, run_id=
         from lib.lane_last_receipt import enforce_readonly
 
         enforce_readonly(db.conn)
-    rows = db.query(_named, symbols) if symbols else db.query(_top, top)
+    # The held / open-proposal sets are loaded BEFORE the selection: they are T0/T1 (callable) and the selector
+    # must offer every one of them (LQ-20261107-1178). Loading them after the selection was how the bounded pair
+    # came to miss 42 held names on 2026-11-08.
+    ctx = db.query(_trigger_context)
+    held_or_proposed = ctx["holdings"] | ctx["proposals"]
+    rows = (db.query(_named, symbols) if symbols else
+            db.query(_top, n=top, held=ctx["holdings"], proposed=ctx["proposals"]))
     report = {"top": len(rows), "lanes": list(lanes), "called": 0, "skipped": 0,
               "metadata_only": 0, "deferred": 0, "blocked": 0, "would_call": 0, "call_errors": 0,
               # What the scan was allowed to reach, so a bounded run never reads like a whole-watchlist one:
               # on 2026-11-08 the flag alone offered 2,308 distinct symbols to a `--top 20` run.
               "universe": ({"explicit_symbols": len(rows)} if symbols else
                            {"rank_limit": top, "directive_limit": top * DIRECTIVE_ARM_FACTOR,
-                            "scanned": len(rows)}),
+                            "held_arm": len(held_or_proposed), "scanned": len(rows)}),
               "detail": []}
     # Budget guard: broad-universe names get METADATA_ONLY (no cloud LLM); only held / proposed /
     # directive / high-rank names reach a free-OAuth lane. Eliminates the broad-universe LLM fan-out.
@@ -278,7 +301,6 @@ def run(top=20, lanes=("chatgpt", "grok"), apply=False, symbols=None, *, run_id=
     except Exception:
         _budget_decide = None
         _bpol, _tier_of = None, {}
-    ctx = db.query(_trigger_context)
     tier_count = {}            # per-tier symbols already ALLOWed this run -> enforces per-run caps
     for r in rows:
         q = _question(r)
