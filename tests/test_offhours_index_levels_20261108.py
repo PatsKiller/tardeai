@@ -43,7 +43,10 @@ from lib import offhours_quotes as oq  # noqa: E402
 from lib.writers.market_quotes_extended_writer import validate  # noqa: E402
 
 FX = ROOT / "tests" / "fixtures" / "offhours_quotes" / "schwab_quotes_weekend_20261108.json"
-CASH = ["$SPX", "$COMPX", "$DJI", "$RUT", "$NDX"]
+CASH = ["$SPX", "$COMPX", "$DJI", "$RUT", "$NDX", "$VIX"]
+#: The exact Friday print each carried level came from (VIX cash freezes at its own 16:15 ET close).
+PRINT = {"$VIX": "2026-11-06T21:15:00+00:00"}  # 16:15 EST, the VIX cash close
+PRINT_OTHER = "2026-11-06T21:47:00+00:00"
 CARRIED_BASIS = "schwab_index_level_carried_print_2026-11-06"
 NIGHT_OPEN = datetime(2026, 11, 8, 20, 0, tzinfo=oq.ET)
 
@@ -100,7 +103,8 @@ def test_sunday_2001_fire_carries_each_cash_index_level():
         assert r["reference_close"] is None and r["reference_date"] is None and r["change_pct"] is None
         # The basis names the basis AND the print's ET date: a level is never displayed as a fresh print.
         assert r["reference_basis"] == CARRIED_BASIS
-        assert r["carried_from"] == "2026-11-06T21:47:00+00:00"  # Friday 16:47 ET, the last cash print
+        # Friday's last print, per symbol: the price indices at 16:47 ET, VIX at its 16:15 ET close.
+        assert r["carried_from"] == PRINT.get(sym, PRINT_OTHER)
         assert "2026-11-06" in r["level_only_reason"]
         assert r["feed"] == "schwab"
     assert skipped == [{"symbol": "SPY", "reason": "stale_trade", "as_of": "2026-11-06T21:47:00+00:00",
@@ -206,7 +210,7 @@ def test_receipt_carries_the_levels_and_the_dry_run_writes_nothing():
     assert set(by) == {"/ES", *CASH} and len(rec["rows"]) == 1 + len(CASH)  # NON-ZERO rows on the receipt
     for sym in CASH:
         assert by[sym]["reference_basis"] == CARRIED_BASIS
-        assert by[sym]["carried_from"] == "2026-11-06T21:47:00+00:00"  # JSON-safe, the exact print
+        assert by[sym]["carried_from"] == PRINT.get(sym, PRINT_OTHER)  # JSON-safe, the exact print
         assert by[sym]["session"] == "overnight" and by[sym]["price"] > 0
     assert rec["skipped"] == [{"symbol": "SPY", "reason": "stale_trade", "as_of": "2026-11-06T21:47:00+00:00",
                                "age_minutes": 3074.0}]
