@@ -68,6 +68,7 @@ def parse_finviz_earnings(raw, today: date | None = None) -> date | None:
     if not s or s == "-":
         return None
     s = re.sub(r"\s+(AMC|BMO|DMH)\s*$", "", s, flags=re.I).strip()
+    s = re.sub(r"\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?\s*$", "", s, flags=re.I).strip()   # '11/2/2026 4:30:00 PM'
     for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%b %d, %Y"):
         try:
             return datetime.strptime(s, fmt).date()
@@ -90,11 +91,13 @@ def _next_earnings(symbol: str):
     main() exits 1 instead of reporting a quiet 'nothing announced'."""
     import finviz_enrichment as fe
 
-    rows = fe._fetch_view([symbol], 161, ROOT)
+    # A narrow col_map: the view's default map files this column under earnings_date2, which the client
+    # drops (SKIP_DUPLICATES). Other callers keep the default map.
+    rows = fe._fetch_view([symbol], 161, ROOT, col_map={"Ticker": "ticker", "Earnings Date": "earnings_date"})
     row = rows.get(symbol.upper()) or rows.get(symbol)
     if row is None:
         raise RuntimeError(f"finviz returned no row for {symbol}")
-    d = parse_finviz_earnings(row.get("earnings_date2"))
+    d = parse_finviz_earnings(row.get("earnings_date"))
     return d if d is not None and d >= date.today() else None
 
 
