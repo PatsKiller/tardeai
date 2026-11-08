@@ -1,0 +1,24 @@
+{
+  "fixture_id": "bridge-route-refused-a",
+  "signature_id": "bridge-route-refused-a",
+  "taxonomy_signature": "RUN_FAILED: <SYM>: model call failed (BridgeRouteRefused: BRIDGE_ROUTE_REFUSED: governed bridge returned no text for process <PROC>)",
+  "count_30d": 6,
+  "category": "F",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-11",
+    "exit_code": 1,
+    "status": "failed",
+    "reason": "model call failed: BRIDGE_ROUTE_REFUSED governed bridge returned no text for process synthetic_process_a",
+    "exception": "BridgeRouteRefused",
+    "failure_class": "bridge_route_refused",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "F",
+    "entry_id": "F-bridge-route-refused",
+    "action": "rerun_once_via_gateway",
+    "tier": "auto"
+  }
+}

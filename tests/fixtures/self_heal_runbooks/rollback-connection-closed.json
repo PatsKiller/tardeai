@@ -1,0 +1,24 @@
+{
+  "fixture_id": "rollback-connection-closed",
+  "signature_id": "rollback-connection-closed",
+  "taxonomy_signature": "RUN_FAILED: <TS> [daily_incubator_refresh] rollback skipped: connection already closed",
+  "count_30d": 2,
+  "category": "H",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-21",
+    "exit_code": 1,
+    "status": "failed",
+    "reason": "rollback skipped: connection already closed",
+    "exception": "psycopg2.InterfaceError: connection already closed",
+    "failure_class": "db_connection_closed",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "H",
+    "entry_id": "H-db-connection-closed-recheck",
+    "action": "noop_wait_recheck",
+    "tier": "auto"
+  }
+}

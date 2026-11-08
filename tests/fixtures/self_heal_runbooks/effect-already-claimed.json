@@ -1,0 +1,24 @@
+{
+  "fixture_id": "effect-already-claimed",
+  "signature_id": "effect-already-claimed",
+  "taxonomy_signature": "RUN_REFUSED: effect:effect_already_claimed",
+  "count_30d": 3,
+  "category": "A",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-17",
+    "exit_code": 1,
+    "status": "refused",
+    "reason": "effect_already_claimed: another run holds this effect",
+    "exception": null,
+    "failure_class": "effect_claimed",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "A",
+    "entry_id": "A-effect-already-claimed",
+    "action": "noop_wait_recheck",
+    "tier": "auto"
+  }
+}

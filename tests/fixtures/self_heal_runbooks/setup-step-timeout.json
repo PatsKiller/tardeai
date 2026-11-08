@@ -1,0 +1,24 @@
+{
+  "fixture_id": "setup-step-timeout",
+  "signature_id": "setup-step-timeout",
+  "taxonomy_signature": "RUN_TIMEOUT: <TS> [setup-prior] Loaded <N> strategy configs",
+  "count_30d": 2,
+  "category": "E",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-22",
+    "exit_code": 124,
+    "status": "timeout",
+    "reason": "run timed out after setup step loaded configs",
+    "exception": null,
+    "failure_class": "wall_timeout",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "E",
+    "entry_id": "E-run-timeout",
+    "action": "escalate_finding",
+    "tier": "auto_notify"
+  }
+}

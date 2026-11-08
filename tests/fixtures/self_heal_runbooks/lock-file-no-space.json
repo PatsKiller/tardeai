@@ -1,0 +1,24 @@
+{
+  "fixture_id": "lock-file-no-space",
+  "signature_id": "lock-file-no-space",
+  "taxonomy_signature": "RUN_FAILED: flock: cannot open lock file <PATH>: No space left on device",
+  "count_30d": 31,
+  "category": "G",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-06",
+    "exit_code": 1,
+    "status": "failed",
+    "reason": "flock: cannot open lock file /example/locks/run.lock: No space left on device",
+    "exception": "OSError: [Errno 28] No space left on device",
+    "failure_class": "disk_full",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "G",
+    "entry_id": "G-disk-full-lock-file",
+    "action": "escalate_finding",
+    "tier": "human_only"
+  }
+}

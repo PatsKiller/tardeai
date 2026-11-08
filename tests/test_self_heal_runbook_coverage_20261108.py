@@ -22,7 +22,11 @@ CATALOG = ROOT / "config" / "self_heal_runbook_catalog.json"
 ENGINE = ROOT / "scripts" / "lib" / "self_heal_runbooks.py"
 
 CATEGORIES = frozenset("ABCDEFGHIJK")
-TIERS = frozenset({None, "auto", "auto_notify", "human_only"})
+TIERS = frozenset({"auto", "auto_notify", "human_only"})
+ACTIONS = frozenset({"noop_wait_recheck", "rerun_once_via_gateway", "defer_until", "release_stale_flock",
+                     "release_stale_sqlite_wal_lock", "open_breaker_cooldown", "mark_weekend_expected",
+                     "escalate_finding"})
+ENTRY_ID = re.compile(r"[A-K]-[a-z0-9]+(-[a-z0-9]+)*")
 RECEIPT_KEYS = frozenset({"lane_id", "exit_code", "status", "reason", "exception", "failure_class", "ts_et"})
 # Public repo: no IPv4 addresses, no e-mail addresses, no token-looking strings in fixtures.
 FORBIDDEN = re.compile(r"(\b\d{1,3}(\.\d{1,3}){3}\b|[\w.+-]+@[\w-]+\.[\w.]+|\b(sk|ghp|xox[bp])[-_][A-Za-z0-9]{8,})")
@@ -46,6 +50,8 @@ def test_each_fixture_matches_schema(path: Path):
     doc = _load(path)
     assert doc["fixture_id"] == path.stem
     assert isinstance(doc["signature_id"], str) and doc["signature_id"]
+    assert isinstance(doc["taxonomy_signature"], str) and doc["taxonomy_signature"]
+    assert isinstance(doc["count_30d"], int) and doc["count_30d"] >= 2
     assert doc["category"] in CATEGORIES
     assert doc["synthetic"] is True
     receipt = doc["receipt"]
@@ -54,8 +60,18 @@ def test_each_fixture_matches_schema(path: Path):
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", receipt["ts_et"]), receipt["ts_et"]
     expect = doc["expect"]
     assert expect["classified"] is True
-    assert expect.get("tier") in TIERS
+    assert expect["category"] == doc["category"]
+    assert ENTRY_ID.fullmatch(expect["entry_id"]), expect["entry_id"]
+    assert expect["entry_id"].startswith(doc["category"] + "-"), (expect["entry_id"], doc["category"])
+    assert expect["action"] in ACTIONS, expect["action"]
+    assert expect["tier"] in TIERS
     assert FORBIDDEN.search(path.read_text(encoding="utf-8")) is None, "fixture holds a forbidden pattern"
+
+
+def test_corpus_has_one_fixture_per_signature_with_count_at_least_two():
+    ids = [_load(p)["signature_id"] for p in _fixture_paths()]
+    assert len(ids) == len(set(ids)) == 22
+
 
 
 @pytest.mark.skipif(not (TAXONOMY.exists() and CATALOG.exists() and ENGINE.exists()),
@@ -67,9 +83,10 @@ def test_replay_zero_unclassified_and_print_coverage():
     engine = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(engine)
     taxonomy = json.loads(TAXONOMY.read_text(encoding="utf-8"))
-    counted = {s["signature_id"] for s in taxonomy.get("signatures", []) if s.get("count", 0) >= 2}
-    have = {_load(p)["signature_id"] for p in _fixture_paths()}
-    assert counted <= have, sorted(counted - have)
+    # The taxonomy is a list of rows {signature, count_30d, ...}; fixtures carry sanitized copies of the text,
+    # so the check is one fixture per row with count_30d >= 2 (the README names the mapping).
+    counted = [s for s in taxonomy if s.get("count_30d", 0) >= 2]
+    assert len(counted) == len(_fixture_paths()), (len(counted), len(_fixture_paths()))
     unclassified = []
     per_category: dict[str, list[int]] = {}
     for path in _fixture_paths():

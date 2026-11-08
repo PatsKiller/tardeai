@@ -1,0 +1,24 @@
+{
+  "fixture_id": "flock-skipped-pid-running",
+  "signature_id": "flock-skipped-pid-running",
+  "taxonomy_signature": "RUN_SKIPPED_LOCK: safe_flock: skipped <LANE>; PID <N> still running; age_sec=<N>",
+  "count_30d": 2,
+  "category": "A",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-20",
+    "exit_code": 75,
+    "status": "skipped",
+    "reason": "safe_flock skipped; prior PID still running (age 3600s)",
+    "exception": null,
+    "failure_class": "lock_held",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "A",
+    "entry_id": "A-flock-held-wait-recheck",
+    "action": "noop_wait_recheck",
+    "tier": "auto"
+  }
+}

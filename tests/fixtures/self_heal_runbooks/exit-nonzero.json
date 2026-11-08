@@ -1,0 +1,24 @@
+{
+  "fixture_id": "exit-nonzero",
+  "signature_id": "exit-nonzero",
+  "taxonomy_signature": "RUN_FAILED: exit_<N>",
+  "count_30d": 76,
+  "category": "J",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-05",
+    "exit_code": 1,
+    "status": "failed",
+    "reason": "exit_1: lane exited non-zero",
+    "exception": "synthetic traceback: code defect in lane body",
+    "failure_class": "code_defect",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "J",
+    "entry_id": "J-code-defect-to-fixer",
+    "action": "escalate_finding",
+    "tier": "auto_notify"
+  }
+}

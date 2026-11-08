@@ -1,0 +1,24 @@
+{
+  "fixture_id": "json-decode-error",
+  "signature_id": "json-decode-error",
+  "taxonomy_signature": "RUN_FAILED: json.decoder.JSONDecodeError: Expecting value: line <N> column <N> (char <N>)",
+  "count_30d": 5,
+  "category": "J",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-13",
+    "exit_code": 1,
+    "status": "failed",
+    "reason": "JSON decode failure: expecting value at line 1 column 1",
+    "exception": "json.decoder.JSONDecodeError",
+    "failure_class": "parse_error",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "J",
+    "entry_id": "J-code-defect-to-fixer",
+    "action": "escalate_finding",
+    "tier": "auto_notify"
+  }
+}

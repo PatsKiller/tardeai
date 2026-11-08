@@ -1,0 +1,24 @@
+{
+  "fixture_id": "schema-table-missing",
+  "signature_id": "schema-table-missing",
+  "taxonomy_signature": "RUN_FAILED: [store-lane] FAILED (unconfigured): table synthetic_store does not exist (migration <PATH> not applied)",
+  "count_30d": 5,
+  "category": "H",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-12",
+    "exit_code": 1,
+    "status": "failed",
+    "reason": "unconfigured: table synthetic_store does not exist (migration not applied)",
+    "exception": null,
+    "failure_class": "schema_missing",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "H",
+    "entry_id": "H-schema-missing-migration",
+    "action": "escalate_finding",
+    "tier": "human_only"
+  }
+}

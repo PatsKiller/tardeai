@@ -1,0 +1,24 @@
+{
+  "fixture_id": "effect-no-owner",
+  "signature_id": "effect-no-owner",
+  "taxonomy_signature": "RUN_REFUSED: effect:effect_no_owner",
+  "count_30d": 21,
+  "category": "F",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-09",
+    "exit_code": 1,
+    "status": "refused",
+    "reason": "effect_no_owner: effect has no registered owner",
+    "exception": null,
+    "failure_class": "effect_no_owner",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "F",
+    "entry_id": "F-effect-no-owner",
+    "action": "escalate_finding",
+    "tier": "auto_notify"
+  }
+}

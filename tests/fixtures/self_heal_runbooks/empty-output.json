@@ -1,0 +1,24 @@
+{
+  "fixture_id": "empty-output",
+  "signature_id": "empty-output",
+  "taxonomy_signature": "RUN_FAILED: empty_output",
+  "count_30d": 26,
+  "category": "C",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-07",
+    "exit_code": 0,
+    "status": "failed",
+    "reason": "empty_output: run produced no output rows",
+    "exception": null,
+    "failure_class": "empty_output",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "C",
+    "entry_id": "C-empty-output-recheck",
+    "action": "noop_wait_recheck",
+    "tier": "auto"
+  }
+}

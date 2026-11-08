@@ -1,0 +1,24 @@
+{
+  "fixture_id": "env-names-missing",
+  "signature_id": "env-names-missing",
+  "taxonomy_signature": "RUN_REFUSED: env_allowlist:env_names_missing",
+  "count_30d": 3,
+  "category": "I",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-18",
+    "exit_code": 1,
+    "status": "refused",
+    "reason": "env_allowlist: env_names missing from allowlist entry",
+    "exception": null,
+    "failure_class": "config_env",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "I",
+    "entry_id": "I-env-names-missing",
+    "action": "escalate_finding",
+    "tier": "human_only"
+  }
+}

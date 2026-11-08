@@ -1,0 +1,24 @@
+{
+  "fixture_id": "flock-held-skip",
+  "signature_id": "flock-held-skip",
+  "taxonomy_signature": "RUN_SKIPPED_LOCK: flock_held",
+  "count_30d": 741,
+  "category": "A",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-01",
+    "exit_code": 75,
+    "status": "skipped",
+    "reason": "flock held by another run; skipping this slot",
+    "exception": null,
+    "failure_class": "lock_held",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "A",
+    "entry_id": "A-flock-held-wait-recheck",
+    "action": "noop_wait_recheck",
+    "tier": "auto"
+  }
+}

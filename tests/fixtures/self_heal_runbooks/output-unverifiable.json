@@ -1,0 +1,24 @@
+{
+  "fixture_id": "output-unverifiable",
+  "signature_id": "output-unverifiable",
+  "taxonomy_signature": "RUN_FAILED: output_unverifiable",
+  "count_30d": 21,
+  "category": "C",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-08",
+    "exit_code": 0,
+    "status": "failed",
+    "reason": "output_unverifiable: receipt present but output contract cannot be checked",
+    "exception": null,
+    "failure_class": "output_unverifiable",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "C",
+    "entry_id": "C-output-unverifiable",
+    "action": "escalate_finding",
+    "tier": "auto_notify"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "fixture_id": "upstream-verification-failed",
+  "signature_id": "upstream-verification-failed",
+  "taxonomy_signature": "RUN_FAILED: [macro-calendar] FAILED (verification_failed): release ids failed verification",
+  "count_30d": 3,
+  "category": "C",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-15",
+    "exit_code": 1,
+    "status": "failed",
+    "reason": "verification_failed: release ids failed verification (durable_goods)",
+    "exception": null,
+    "failure_class": "upstream_verification",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "C",
+    "entry_id": "C-upstream-verification-failed",
+    "action": "escalate_finding",
+    "tier": "auto_notify"
+  }
+}

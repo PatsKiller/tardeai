@@ -1,0 +1,24 @@
+{
+  "fixture_id": "discovery-empty-key",
+  "signature_id": "discovery-empty-key",
+  "taxonomy_signature": "RUN_FAILED: lib.hermes_discovery.inbox.DiscoveryInboxError: label normalizes to empty key",
+  "count_30d": 3,
+  "category": "J",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-16",
+    "exit_code": 1,
+    "status": "failed",
+    "reason": "DiscoveryInboxError: label normalizes to empty key",
+    "exception": "DiscoveryInboxError",
+    "failure_class": "data_defect",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "J",
+    "entry_id": "J-code-defect-to-fixer",
+    "action": "escalate_finding",
+    "tier": "auto_notify"
+  }
+}

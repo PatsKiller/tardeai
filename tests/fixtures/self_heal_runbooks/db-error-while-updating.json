@@ -1,0 +1,24 @@
+{
+  "fixture_id": "db-error-while-updating",
+  "signature_id": "db-error-while-updating",
+  "taxonomy_signature": "RUN_FAILED: CONTEXT: while updating tuple (<N>,<N>) in relation \"<TOKEN>\"",
+  "count_30d": 3,
+  "category": "H",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-14",
+    "exit_code": 1,
+    "status": "failed",
+    "reason": "CONTEXT: while updating tuple in relation synthetic_table",
+    "exception": "psycopg2 error during update",
+    "failure_class": "db_error",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "H",
+    "entry_id": "H-db-error-escalate",
+    "action": "escalate_finding",
+    "tier": "auto_notify"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "fixture_id": "log-path-not-a-directory",
+  "signature_id": "log-path-not-a-directory",
+  "taxonomy_signature": "RUN_FAILED: safe_flock: log path component is not a real directory: <PATH>",
+  "count_30d": 659,
+  "category": "I",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-02",
+    "exit_code": 1,
+    "status": "failed",
+    "reason": "safe_flock: log path component is not a real directory: /example/logs/<TOKEN>/run.log",
+    "exception": null,
+    "failure_class": "config_path",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "I",
+    "entry_id": "I-log-path-not-a-directory",
+    "action": "escalate_finding",
+    "tier": "auto_notify"
+  }
+}

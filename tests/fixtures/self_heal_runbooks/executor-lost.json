@@ -1,0 +1,24 @@
+{
+  "fixture_id": "executor-lost",
+  "signature_id": "executor-lost",
+  "taxonomy_signature": "RUN_TIMEOUT: executor_lost",
+  "count_30d": 88,
+  "category": "F",
+  "synthetic": true,
+  "receipt": {
+    "lane_id": "synthetic-lane-04",
+    "exit_code": 137,
+    "status": "timeout",
+    "reason": "executor lost after restart; effect key orphaned",
+    "exception": null,
+    "failure_class": "executor_lost",
+    "ts_et": "2026-11-08T10:00"
+  },
+  "expect": {
+    "classified": true,
+    "category": "F",
+    "entry_id": "F-executor-lost-after-restart",
+    "action": "escalate_finding",
+    "tier": "auto_notify"
+  }
+}
