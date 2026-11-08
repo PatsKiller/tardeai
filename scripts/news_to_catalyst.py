@@ -68,13 +68,37 @@ def _get_conn():
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
 
 
+# Types whose vocabulary appears routinely in an article's *body* without describing an event of
+# the issuer: a costs-and-rankings piece can say a broker thinks the shares might "outperform", an
+# earnings-call transcript can mention "buyback timing", a valuation piece can mention "tariff"
+# exposure, and an earnings-call summary can mention an "acquisition" from a prior year. A body-only
+# mention is not evidence that the event happened, so for these types _classify requires the
+# keyword in the HEADLINE. (LQ-20261107-1131: 26 of the 46 catalyst_events rows written
+# 2026-11-08 14:02-14:07 ET by the news-ingestion-tail lane matched only in the summary.)
+HEADLINE_ONLY_TYPES = frozenset({
+    "analyst_upgrade", "geopolitical", "merger_acquisition", "buyback", "contract_win",
+})
+
+
 def _classify(title: str, summary: str) -> str:
-    """Return the best catalyst_type for a headline+summary, or 'other'."""
-    text = f"{title} {summary or ''}".lower()
+    """Return the best catalyst_type for a headline+summary, or 'other'.
+
+    The headline is stronger evidence than the body, so it is scanned first for every type: a
+    body-only mention of an earlier type can no longer preempt a headline that states a later one.
+    The second pass reads the summary only for types where a body sentence genuinely states the
+    event (a results story routinely reports the beat or the guidance change under a generic
+    headline); the types in HEADLINE_ONLY_TYPES are skipped there.
+    """
+    title_text = (title or "").lower()
+    body_text = f"{title_text} {(summary or '').lower()}"
     for ctype, keywords in CATALYST_KEYWORDS.items():
-        for kw in keywords:
-            if kw in text:
-                return ctype
+        if any(kw in title_text for kw in keywords):
+            return ctype
+    for ctype, keywords in CATALYST_KEYWORDS.items():
+        if ctype in HEADLINE_ONLY_TYPES:
+            continue
+        if any(kw in body_text for kw in keywords):
+            return ctype
     return "other"
 
 
