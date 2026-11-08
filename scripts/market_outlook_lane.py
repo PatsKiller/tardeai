@@ -9,6 +9,10 @@ The n8n dispatcher fires this lane Sun 20:00 ET and Mon 07:00 ET. One run is two
    (email + Telegram + Fi text, deduped per ``record_id:channel``); dry = ``--dry-run --record-file <tmp>``,
    so a dry run renders the record it just evaluated and writes nothing durable.
 
+A live re-fire for the same ET day + mode (an executor retry, a manual rerun) reuses the stored record: the lane
+reads the newest ``outlook:<day>:<mode>:<n>`` read-only, skips the engine, and runs ``--deliver --record <id>``,
+so only unsent channels go out and no ``:<n+1>`` is minted (LQ-20261107-1177). A failed lookup refuses the run.
+
 The brief owns the lane's LANE_OUTPUT line and LaneRunReceipt@v2. This file only adds the refusal for a step
 that never reached the brief (engine failed, record id missing), so a broken engine is a refused run with a
 named reason, not a silent success.
@@ -89,7 +93,38 @@ def _tail(text: str, n: int = 400) -> str:
     return (text or "").strip()[-n:]
 
 
-def main(argv: Optional[list[str]] = None, *, runner: Runner = _run, now: Optional[datetime] = None) -> int:
+Lookup = Callable[[str, str], Optional[str]]
+
+
+def newest_record_id(day: str, mode: str) -> Optional[str]:
+    """The newest ``outlook:<day>:<mode>:<n>`` record id already stored, or None (LQ-20261107-1177).
+
+    Read-only: the engine's own reader (``sources._app_conn`` sets the session read-only), one SELECT. Newest is
+    the largest numeric suffix, compared as a number so ``:10`` beats ``:9``. Any error propagates: the caller
+    refuses rather than guessing that no record exists."""
+    from scripts.lib.market_outlook import sources  # noqa: PLC0415 — call time; tests inject a fake
+
+    conn = sources._app_conn()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT record_id FROM market_outlook_records WHERE record_id LIKE %s",
+                        [f"outlook:{day}:{mode}:%"])
+            ids = [str(r[0]) for r in cur.fetchall()]
+        finally:
+            cur.close()
+    finally:
+        conn.close()
+
+    def _n(rid: str) -> int:
+        tail = rid.rsplit(":", 1)[-1]
+        return int(tail) if tail.isdigit() else -1
+
+    return max(ids, key=_n) if ids else None
+
+
+def main(argv: Optional[list[str]] = None, *, runner: Runner = _run, now: Optional[datetime] = None,
+         lookup: Optional[Lookup] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--deliver", dest="live", action="store_true", help="apply the record and deliver the brief")
@@ -110,6 +145,21 @@ def main(argv: Optional[list[str]] = None, *, runner: Runner = _run, now: Option
                        live=args.live, started=started, state_root=state_root, exit_code=2)
 
     py = sys.executable
+    if args.live:
+        # LQ-20261107-1177: a re-fire for the same ET day + mode (executor retry, manual rerun) must not mint
+        # ``:<n+1>`` and resend. If the day's record exists, skip the engine and hand the brief that record: its
+        # per ``record_id:channel`` dedupe sends only the channels that have not gone out yet.
+        day = now.astimezone(ET).date().isoformat()  # the engine's own day (market_outlook_evaluate._seq)
+        try:
+            existing = (lookup or newest_record_id)(day, mode)
+        except Exception as exc:  # noqa: BLE001 — an unproven "no record" must not mint a duplicate
+            return _refuse(f"record lookup failed for outlook:{day}:{mode}: {type(exc).__name__}: {exc}"[:240],
+                           live=True, started=started, state_root=state_root, exit_code=3, summary={"mode": mode})
+        if existing:
+            print(f"{LANE_ID}: {existing} already recorded for {day} {mode}; engine skipped, "
+                  f"delivering unsent channels only")
+            return _brief(py, args.channels, state_root, existing, runner=runner, started=started, mode=mode)
+
     engine = [py, str(PROJECT_ROOT / "scripts/market_outlook_evaluate.py"), "--mode", mode,
               "--apply" if args.live else "--dry-run", "--json", "--state-root", str(state_root)]
     try:
@@ -134,27 +184,31 @@ def main(argv: Optional[list[str]] = None, *, runner: Runner = _run, now: Option
     print(f"{LANE_ID}: engine {'applied' if args.live else 'evaluated'} {record_id} "
           f"(S {record.get('score')}, {record.get('band')}, mode {mode})")
 
-    brief = [py, str(PROJECT_ROOT / "scripts/market_outlook_brief.py"), "--channels", args.channels,
-             "--state-root", str(state_root)]
-    tmp: Optional[Path] = None
     if args.live:
-        brief += ["--deliver", "--record", record_id]
-    else:
-        fd, name = tempfile.mkstemp(prefix="market-outlook-record-", suffix=".json")
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(record, fh, default=str)
-        tmp = Path(name)
-        brief += ["--dry-run", "--record-file", str(tmp)]
+        return _brief(py, args.channels, state_root, record_id, runner=runner, started=started, mode=mode)
+    fd, name = tempfile.mkstemp(prefix="market-outlook-record-", suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(record, fh, default=str)
+    tmp = Path(name)
     try:
-        try:
-            out = runner(brief, BRIEF_TIMEOUT_S)
-        except subprocess.TimeoutExpired:
-            return _refuse(f"brief timed out after {BRIEF_TIMEOUT_S}s for {record_id}", live=args.live,
-                           started=started, state_root=state_root, exit_code=3,
-                           summary={"mode": mode, "record_id": record_id})
+        return _brief(py, args.channels, state_root, record_id, runner=runner, started=started, mode=mode,
+                      record_file=tmp)
     finally:
-        if tmp is not None:
-            tmp.unlink(missing_ok=True)
+        tmp.unlink(missing_ok=True)
+
+
+def _brief(py: str, channels: str, state_root: Path, record_id: str, *, runner: Runner, started: str, mode: str,
+           record_file: Optional[Path] = None) -> int:
+    """Run the brief on one record: live = ``--deliver --record <id>``; dry = ``--dry-run --record-file <tmp>``."""
+    live = record_file is None
+    argv = [py, str(PROJECT_ROOT / "scripts/market_outlook_brief.py"), "--channels", channels,
+            "--state-root", str(state_root)]
+    argv += ["--deliver", "--record", record_id] if live else ["--dry-run", "--record-file", str(record_file)]
+    try:
+        out = runner(argv, BRIEF_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        return _refuse(f"brief timed out after {BRIEF_TIMEOUT_S}s for {record_id}", live=live, started=started,
+                       state_root=state_root, exit_code=3, summary={"mode": mode, "record_id": record_id})
     # The brief's own LANE_OUTPUT line (stderr) is what the executor grades, so both streams pass through unchanged.
     sys.stdout.write(out.stdout or "")
     sys.stderr.write(out.stderr or "")

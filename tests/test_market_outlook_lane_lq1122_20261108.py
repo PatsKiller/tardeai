@@ -42,6 +42,12 @@ class FakeRunner:
         return subprocess.CompletedProcess(argv, self.brief_rc, 'LANE_OUTPUT {"lane_id": "market-outlook-weekly"}\n', "")
 
 
+@pytest.fixture(autouse=True)
+def _no_db(monkeypatch):
+    """No test reaches a DB: the default lookup is a first run (no record yet) unless a test injects one."""
+    monkeypatch.setattr(lane, "newest_record_id", lambda day, mode: None)
+
+
 def _receipt(tmp_path: Path) -> Path:
     return tmp_path / "data" / "runtime" / f"{LANE}_last.json"
 
@@ -141,3 +147,81 @@ def test_the_effect_key_carries_the_sunday_and_monday_slots_staged():
     key = json.loads((ROOT / "config/n8n_effect_keys.json").read_text())["lanes"][LANE]
     assert key["schedule"] == CRON and key["slot_tz"] == "America/New_York"
     assert key["n8n_claim"] is False and key["cron_claim"] is False, "staged: no owner row is needed yet"
+
+
+# ── LQ-20261107-1177: a live re-fire for the same ET day + mode reuses the record, never mints :<n+1> ──────────
+class FakeLookup:
+    def __init__(self, result=None, exc=None):
+        self.result, self.exc, self.calls = result, exc, []
+
+    def __call__(self, day, mode):
+        self.calls.append((day, mode))
+        if self.exc:
+            raise self.exc
+        return self.result
+
+
+def test_a_live_refire_skips_the_engine_and_delivers_the_existing_record(tmp_path, capsys):
+    run, look = FakeRunner(), FakeLookup(result="outlook:2026-11-08:sunday:1")
+    rc = lane.main(["--deliver", "--state-root", str(tmp_path)], runner=run, now=SUN_2000_ET, lookup=look)
+    assert rc == 0
+    assert look.calls == [("2026-11-08", "sunday")], "the ET day (01:00 UTC Mon is Sun 20:00 ET) and the mode"
+    assert len(run.calls) == 1, "the engine must not run: it would mint outlook:2026-11-08:sunday:2"
+    (brief,) = run.calls
+    assert brief[1].endswith("market_outlook_brief.py")
+    assert brief[brief.index("--record") + 1] == "outlook:2026-11-08:sunday:1"
+    assert "--deliver" in brief and "--record-file" not in brief
+    assert "engine skipped" in capsys.readouterr().out
+
+
+def test_a_first_live_run_with_no_record_runs_the_engine_as_before(tmp_path):
+    run, look = FakeRunner(), FakeLookup(result=None)
+    rc = lane.main(["--deliver", "--state-root", str(tmp_path)], runner=run, now=MON_0700_ET, lookup=look)
+    assert rc == 0
+    assert look.calls == [("2026-11-09", "monday")]
+    engine, brief = run.calls
+    assert engine[1].endswith("market_outlook_evaluate.py") and "--apply" in engine
+    assert brief[brief.index("--record") + 1] == RECORD["record_id"]
+
+
+def test_a_failed_lookup_refuses_rather_than_minting_a_duplicate(tmp_path):
+    run, look = FakeRunner(), FakeLookup(exc=RuntimeError("connection refused"))
+    rc = lane.main(["--deliver", "--state-root", str(tmp_path)], runner=run, now=SUN_2000_ET, lookup=look)
+    assert rc == 3 and run.calls == []
+    body = json.loads(_receipt(tmp_path).read_text())
+    assert body["skipped_reasons"] == {"refused": 1} and "record lookup failed" in body["error"]
+
+
+def test_a_dry_run_never_looks_up_the_record_store(tmp_path):
+    run, look = FakeRunner(), FakeLookup(exc=AssertionError("a dry run must not read the record store"))
+    assert lane.main(["--dry-run", "--state-root", str(tmp_path)], runner=run, now=SUN_2000_ET, lookup=look) == 0
+    assert look.calls == [] and len(run.calls) == 2
+
+
+def test_the_newest_record_is_the_largest_numeric_suffix(monkeypatch):
+    import scripts.lib.market_outlook.sources as sources
+
+    class Cur:
+        def execute(self, sql, params):
+            assert sql.lstrip().upper().startswith("SELECT") and params == ["outlook:2026-11-08:sunday:%"]
+
+        def fetchall(self):
+            return [("outlook:2026-11-08:sunday:9",), ("outlook:2026-11-08:sunday:10",),
+                    ("outlook:2026-11-08:sunday:2",)]
+
+        def close(self):
+            pass
+
+    class Conn:
+        closed = False
+
+        def cursor(self):
+            return Cur()
+
+        def close(self):
+            Conn.closed = True
+
+    monkeypatch.undo()  # the real lookup, with only the connection faked
+    monkeypatch.setattr(sources, "_app_conn", lambda: Conn())
+    assert lane.newest_record_id("2026-11-08", "sunday") == "outlook:2026-11-08:sunday:10"
+    assert Conn.closed
