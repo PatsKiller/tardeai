@@ -206,8 +206,55 @@ function Review({ m }: { m: ActionableModel }) {
   )
 }
 
-function Budgets({ m }: { m: ActionableModel }) {
-  if (!m.budgets.length && m.budgetsNote) {
+/** LQ-20261107-1239: "since the close" — the news on held names and the futures/overseas levels the join read.
+ *  Additive: absent when the API sent neither block. Stacked rows (no table): nothing scrolls sideways at 412 px. */
+function SinceClose({ m }: { m: ActionableModel }) {
+  const s = m.sinceClose
+  if (!s) return null
+  if (!s.news.length && !s.markets.length && !s.marketsNote && !s.newsMore) return null
+  const count = s.news.length + s.markets.length
+  return (
+    <Section title="Since the close" one={s.window || `${count} item${count === 1 ? '' : 's'}`} testId="mr-since-close-section">
+    <div data-testid="mr-since-close">
+      <div style={{ ...sub, marginTop: 0, marginBottom: 6 }}>{s.window}</div>
+      {s.news.length > 0 && (
+        <div data-testid="mr-since-close-news" style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+          {s.news.map(n => (
+            <Link key={n.symbol} to={n.to} data-testid="mr-since-close-news-row" data-tone={n.tone}
+              style={{ ...item, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: '2px 8px', minHeight: 44, color: TOKENS.text[0], textDecoration: 'none' }}>
+              <b style={{ flex: '0 0 auto' }}>{n.symbol}</b>
+              <span style={{ flex: '1 1 160px', minWidth: 0, color: toneVars(n.tone).color, fontWeight: n.tone === 'danger' ? 700 : 600 }}>{n.text}</span>
+              <span style={{ color: TOKENS.info, fontWeight: 700 }}>Open →</span>
+            </Link>
+          ))}
+        </div>
+      )}
+      {s.newsMore && <div data-testid="mr-since-close-news-gap" style={{ ...sub, marginTop: 0, color: toneVars('warning').color }}>{s.newsMore}</div>}
+      {s.markets.length > 0 && (
+        <table className="mr-stack" data-testid="mr-since-close-markets">
+          <thead><tr><th>Market</th><th>Last</th><th>Change</th></tr></thead>
+          <tbody>
+            {s.markets.map(x => (
+              <tr key={x.symbol} data-testid="mr-since-close-market-row" data-level-only={x.level_only ? '1' : '0'}>
+                <td data-l="Market"><b>{x.label}</b><span className="mr-phone-only" style={{ fontSize: TYPE.sm, color: TOKENS.text[3] }}>{x.note}</span></td>
+                <td data-l="Last" style={numStyle}>{x.value}</td>
+                <td data-l="Change" style={{ ...numStyle, color: toneVars(x.tone).color }}>{x.change}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {s.markets.length > 0 && s.markets.some(x => x.note) && (
+        <div data-testid="mr-since-close-market-note" className="mr-hide-phone" style={sub}>{s.markets.map(x => `${x.label}: ${x.note}`).join(' · ')}</div>
+      )}
+      {s.marketsNote && <div data-testid="mr-since-close-markets-gap" style={{ ...sub, marginTop: 0, color: toneVars('warning').color }}>{s.marketsNote}</div>}
+      <div style={sub}>{s.foot}</div>
+    </div>
+    </Section>
+  )
+}
+
+function Budgets({ m }: { m: ActionableModel }) {  if (!m.budgets.length && m.budgetsNote) {
     return (
       <Section title="Budget breaches" one={m.budgetsNote} testId="mr-budgets-section">
       <div data-testid="mr-budgets">
@@ -255,7 +302,11 @@ export function ActionableBody({ m, why }: { m: ActionableModel; why: React.Reac
       {/* LQ-1240a: a container query, not a viewport one, so the two-column layout follows the width the body really has.
           Narrow: the column wrappers vanish (display:contents) and CSS order keeps the phone order of before: holdings,
           why, reentry, stopped-out names, stressed groups. Wide: two flex columns; the stopped-out block moves under
-          Multi-segment issuer on the left so both columns end together instead of leaving a dead panel. */}
+          Multi-segment issuer on the left so both columns end together instead of leaving a dead panel.
+          Fold-3f union (LQ-20261107-1239): the served line's container-query layout and the part-scoped
+          HomeV007Context wrappers win; the incoming commit's SinceClose block joins the context column, beside
+          Reentry — it is "what happened", not "what you hold". Its bare <HomeV007Context /> is not taken: the served
+          line renders both parts explicitly. */}
       <div className="mr-body-wrap" style={{ containerType: 'inline-size' }}>
         <div data-mr-actionable="" data-testid="mr-actionable-body" className="mr-body" style={{ paddingTop: 8 }}>
           <style>{ACTIONABLE_CSS}</style>
@@ -272,6 +323,7 @@ export function ActionableBody({ m, why }: { m: ActionableModel; why: React.Reac
           </div>
           <div data-testid="mr-col-context" className="mr-col">
             {why ? <Section title="Why this tier" one={m.verdict} testId="mr-why-section">{why}</Section> : null}
+            <SinceClose m={m} />
             <Reentry m={m} />
             <div data-testid="mr-row-stressed" className="mr-stressed"><HomeV007Context part="rest" /></div>
           </div>

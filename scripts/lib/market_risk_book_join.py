@@ -8,11 +8,23 @@ card, never the projection. Nothing is written.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import logging
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
+_LOG = logging.getLogger(__name__)
+
+
+def _rollback_quietly(conn: Any) -> None:
+    """Roll back after a failed read. A rollback that itself fails cannot change the outcome — the caller states
+    the gap — so the failure is recorded and never raised."""
+    try:
+        conn.rollback()
+    except Exception as exc:  # noqa: BLE001 -- the read already failed; recording is all that is left to do
+        _LOG.debug("rollback after a failed read did not complete: %s", type(exc).__name__)
 
 
 def _import(name: str):
@@ -170,6 +182,145 @@ def _home_v006_reads(conn: Any, policy: dict[str, Any], now: datetime) -> tuple[
         except Exception:  # noqa: BLE001
             pass
     return overnight, transitions
+
+
+def material_news(conn: Any, policy: dict[str, Any], now: datetime, symbols: list[str],
+                  gaps: list[dict[str, Any]] | None = None) -> dict[str, dict[str, Any]]:
+    """Held names with material company news since the last completed NYSE close (08:00 Friday → Sunday: Friday
+    16:00 ET). Reads the canonical `catalyst_events` severities; nothing is classified here (LQ-20261107-1239).
+
+    A failed read is an EMPTY map plus an explicit gap on ``gaps`` (when the caller passes one), never a 500:
+    news is additive context, and "no news" must not be what a failed read looks like.
+    """
+    cfg = ((policy or {}).get("home_review") or {}).get("material_news") or {}
+    if not cfg.get("enabled", True) or not symbols:
+        return {}
+    try:  # nosemgrep: tq-py-broad-except-returns-default -- the empty map is never shown as "no news": the handler appends an explicit read_failed gap the card renders (test_a_failed_news_read_is_stated_on_the_card_and_never_looks_like_no_news)
+        sessions = _import("market_risk.sessions")
+        day = sessions.last_closed_session(now)
+        since = datetime.combine(day, sessions.close_time(day), sessions.ET)
+        sevs = [str(s).lower() for s in (cfg.get("severities") or ["high", "critical"])]
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT upper(symbol), catalyst_type, lower(severity), COALESCE(published_at, created_at) AS at
+                     FROM catalyst_events
+                    WHERE upper(symbol) = ANY(%s) AND COALESCE(published_at, created_at) >= %s
+                      AND lower(severity) = ANY(%s)""",
+                (sorted({str(s).upper() for s in symbols}), since, sevs),
+            )
+            rows = cur.fetchall()
+    except Exception as exc:  # noqa: BLE001 -- additive: the caller states the gap, the card never 500s
+        _rollback_quietly(conn)
+        if gaps is not None:
+            gaps.append({"reason": f"read_failed: {type(exc).__name__}"})
+        return {}
+    rank = {"critical": 0, "high": 1}
+    out: dict[str, dict[str, Any]] = {}
+    for sym, ctype, sev, at in rows:
+        rec = out.setdefault(str(sym), {"count": 0, "catalyst_type": None, "severity": None, "latest": None,
+                                        "_rank": 9})
+        rec["count"] += 1
+        if rec["latest"] is None or str(at) > str(rec["latest"]):
+            rec["latest"] = str(at)
+        if rank.get(sev, 9) < rec["_rank"]:
+            rec.update(catalyst_type=ctype, severity=sev, _rank=rank.get(sev, 9))
+    for rec in out.values():
+        rec.pop("_rank", None)
+    return out
+
+
+def overnight_markets(conn: Any, now: datetime, policy: dict[str, Any]) -> dict[str, Any]:
+    """The last futures / overseas index print from `market_quotes_extended` (LQ-20261107-1239), so the Home card can
+    show what happened while the US was shut. Read-only and additive: a failed read is a stated gap, never a 500.
+
+    A row is LEVEL ONLY when the lane stored no dated reference (`reference_basis` starts with ``none_level_only``):
+    the card must say that, not show a change it cannot prove."""
+    cfg = ((policy or {}).get("home_review") or {}).get("overnight_markets") or {}
+    out: dict[str, Any] = {"schema": "OvernightMarkets@v1", "items": [], "gaps": []}
+    if not cfg.get("enabled", True):
+        out["gaps"].append({"reason": "disabled_by_config"})
+        return out
+    try:
+        import yaml
+
+        conf = yaml.safe_load((Path(__file__).resolve().parents[2] / "config" / "market_risk_offhours_quotes.yaml").read_text(encoding="utf-8")) or {}
+        schwab = conf.get("schwab") or {}
+        labels = schwab.get("labels") or {}
+        symbols = [str(s) for s in (schwab.get("futures") or []) + (schwab.get("indices") or [])]
+        if not symbols:
+            out["gaps"].append({"reason": "no_configured_symbols"})
+            return out
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT DISTINCT ON (symbol) symbol, session, session_date, price, change_pct, reference_basis,
+                          reference_date, bar_end
+                     FROM market_quotes_extended
+                    WHERE symbol = ANY(%s) AND bar_end >= %s
+                    ORDER BY symbol, bar_end DESC""",
+                (symbols, now - timedelta(hours=96)),
+            )
+            rows = cur.fetchall()
+    except Exception as exc:  # noqa: BLE001 — additive context: state the gap, keep the card
+        _rollback_quietly(conn)
+        out["gaps"].append({"reason": f"read_failed: {type(exc).__name__}"})
+        return out
+    stale_after = float(cfg.get("stale_after_hours") or 12)
+    max_items = int(cfg.get("max_items") or 11)
+    order = {s: i for i, s in enumerate(symbols)}
+    items = []
+    for sym, session, session_date, price, change_pct, basis, ref_date, bar_end in rows:
+        age_h = None
+        try:
+            ts = bar_end if bar_end.tzinfo else bar_end.replace(tzinfo=timezone.utc)
+            age_h = round((now - ts).total_seconds() / 3600.0, 2)
+        except (TypeError, ValueError):
+            pass
+        level_only = not basis or str(basis).startswith("none_level_only") or change_pct is None
+        items.append({
+            "symbol": str(sym), "label": str(labels.get(str(sym)) or sym), "session": session,
+            "session_date": str(session_date) if session_date is not None else None,
+            "price": None if price is None else float(price),
+            "change_pct": None if change_pct is None else float(change_pct),
+            "reference_date": str(ref_date) if ref_date is not None else None,
+            "reference_basis": basis, "level_only": bool(level_only),
+            "as_of": str(bar_end) if bar_end is not None else None, "age_hours": age_h,
+            "stale": bool(age_h is None or age_h > stale_after),
+        })
+    items.sort(key=lambda r: order.get(r["symbol"], 999))
+    # a configured symbol with no print in the window is NAMED: "the other index is quiet" and "nothing ever wrote
+    # it" must not look the same on the card
+    missing = [s for s in symbols if s not in {r["symbol"] for r in items}]
+    out["items"] = items[:max_items]
+    if missing:
+        out["gaps"].append({"reason": "no_recent_print: " + ",".join(missing)})
+    out["stale_after_hours"] = stale_after
+    return out
+
+
+def material_news_block(news: dict[str, dict[str, Any]], now: datetime, policy: dict[str, Any],
+                        gaps: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """The card's own list form of the news map: bounded, severity-first, with the window's floor stated. Held
+    symbols with a material item are shown even when their position is too small for the top-5 review cap.
+    ``gaps`` carries what ``material_news`` could not read, so a failed read is never rendered as "no news"."""
+    cfg = ((policy or {}).get("home_review") or {}).get("material_news") or {}
+    block: dict[str, Any] = {"schema": "MaterialNews@v1", "items": [], "gaps": list(gaps or [])}
+    if not cfg.get("enabled", True):
+        block["gaps"].append({"reason": "disabled_by_config"})
+        return block
+    try:
+        sessions = _import("market_risk.sessions")
+        day = sessions.last_closed_session(now)
+        since = datetime.combine(day, sessions.close_time(day), sessions.ET)
+        block["since"] = since.isoformat()
+        block["session"] = day.isoformat()
+    except Exception as exc:  # noqa: BLE001 -- no window: the block says so rather than claiming "today"
+        block["since"] = None
+        block["gaps"].append({"reason": f"window_unresolved: {type(exc).__name__}"})
+    rank = {"critical": 0, "high": 1}
+    items = [{"symbol": sym, **{k: v for k, v in rec.items() if k != "_rank"}} for sym, rec in (news or {}).items()]
+    items.sort(key=lambda r: (rank.get(str(r.get("severity") or "").lower(), 9), r["symbol"]))
+    block["items"] = items[: int(cfg.get("max_items") or 3)]
+    return block
 
 
 def home_actions(
@@ -415,6 +566,9 @@ def join(
     deferred_cache: dict[tuple[str, str], list[tuple[str, float]]] = {}
     overnight: set[str] | None = None  # design home/v006: symbols with a fresh overnight print (None = unread)
     transitions: list[dict[str, Any]] = []
+    news_material: dict[str, dict[str, Any]] = {}  # LQ-20261107-1239: held names with material news since the close
+    news_gaps: list[dict[str, Any]] = []  # what the news read could not see: said on the card, never "no news"
+    markets: dict[str, Any] = {"schema": "OvernightMarkets@v1", "items": [], "gaps": [{"reason": "db_unavailable"}]}
     rw = policy.get("reentry_watch") or {}
     ledger_days = int(rw.get("lookback_days", 30)) + int(rw.get("wash_sale_days", 30))
     conn = None
@@ -422,6 +576,7 @@ def join(
         conn = _ro_conn(db_bounds(policy), get_conn)
     except Exception as exc:  # noqa: BLE001 — no DB: no stops, no ledger items; the card says so
         ledger_error = f"{type(exc).__name__}: {exc}"
+        news_gaps.append({"reason": "db_unavailable"})  # the news read never ran: not the same as "no news"
     try:
         if conn is not None:
             try:
@@ -460,6 +615,13 @@ def join(
                 for sym, acct, d, pnl in cur.fetchall():
                     deferred_cache.setdefault((str(sym).upper(), str(d)[:10]), []).append((str(acct), float(pnl)))
             overnight, transitions = _home_v006_reads(conn, policy, now)
+            news_material = material_news(
+                conn, policy, now,
+                [str(h["symbol"]).upper() for h in store.get("holdings") or []
+                 if isinstance(h, dict) and h.get("symbol") and not h.get("is_cash")],
+                gaps=news_gaps,
+            )
+            markets = overnight_markets(conn, now, policy)
     except Exception as exc:  # noqa: BLE001 — no ledger: no data-conflict item and no deferred-loss amount
         ledger_error = f"{type(exc).__name__}: {exc}"
     finally:
@@ -481,7 +643,7 @@ def join(
     try:
         out = bd.build(
             proj_for_join, store, stops=stops, policy=policy, label_fn=ad.account_label, canon_fn=ad.canonical_key,
-            ledger_sells=ledger_sells, deferred_loss=deferred_loss,
+            ledger_sells=ledger_sells, deferred_loss=deferred_loss, material_news=news_material,
         )
     except Exception as exc:  # noqa: BLE001
         return {
@@ -541,4 +703,6 @@ def join(
         "card_config": card_cfg,
         "alerts": alerts,
         "home_v007": v007,
+        "material_news": material_news_block(news_material, now, policy, gaps=news_gaps),
+        "overnight_markets": markets,
     }

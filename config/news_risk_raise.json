@@ -1,0 +1,22 @@
+{
+  "schema": "NewsRiskRaisePolicy@v1",
+  "lane_id": "news-risk-raise",
+  "why": "LQ-20261107-1239: weekend and overnight company news is ingested and classified, but nothing joins it to the symbols the operator actually holds, has been stopped out of, or is watching, so it never reaches the Home market-risk card. This lane tags every such article with its scope and raises the material ones into catalyst_events (and, while a market episode is open, its candidate watch list). Advisory only; it never sizes, orders, stops or reaches a broker.",
+  "enabled": true,
+  "lookback_hours": 72,
+  "max_articles": 5000,
+  "stopped_out_days": 30,
+  "scopes": ["held", "stopped_out", "watchlist"],
+  "material_severities": ["high", "critical"],
+  "raise": {
+    "tag_articles": true,
+    "catalyst_events": true,
+    "market_event_candidates": true
+  },
+  "tag_writer": "news-risk-raise",
+  "notes": {
+    "lookback_hours": "72 h is a ceiling for a manual run. The lane's own floor is the last completed NYSE close (Friday 16:00 ET on a weekend), which is what 'since last close' means on the card.",
+    "stopped_out_days": "A loss sale in trade_closed within this many days puts the symbol in the stopped-out scope; a currently held symbol is never 'stopped out' as well.",
+    "material_severities": "The canonical severities are the ones news-to-catalyst already writes; the lane does not invent a second scale. An article with no catalyst row is classified with that lane's own keyword map and weight thresholds, so both writers agree."
+  }
+}

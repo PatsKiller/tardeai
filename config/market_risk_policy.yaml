@@ -670,6 +670,14 @@ home_review:
   stop_near_pct: 5.0
   stressed_min_usd: 1000
   reconcile_tolerance_usd: 1.0   # book total vs the Home "All accounts" total; beyond this the dollars are hidden
+  material_news:                 # weekend/overnight company news on held names (LQ-20261107-1239): one review item
+    enabled: true                # per held symbol with a material catalyst since the last completed NYSE close
+    severities: [high, critical] # the canonical news-to-catalyst scale; the lane and the card agree on it
+    max_items: 3                 # named here; the review list itself still caps at max_items above
+  overnight_markets:             # futures + major overseas indices while the US is shut (LQ-20261107-1239): the card's
+    enabled: true                # "since the close" strip, read from market_quotes_extended (never market_quotes).
+    max_items: 11                # futures (4) + indices (7) from config/market_risk_offhours_quotes.yaml's schwab lists
+    stale_after_hours: 12        # older than this the row is shown but marked stale; a level-only row says so too
   lookthrough_top_groups: 3      # groups named on a re-entry row's look-through line
   budget_drivers_shown: 3        # drivers named per budget breach, then "+N"
   db:                            # the join's dedicated read-only connection (never looser than db_adapter's 10s/180s/3s)
@@ -776,6 +784,7 @@ home_actions:
       same_issuer: "with the {other_acct} position, {usd} in {sym} across {n} accounts"
       stressed: "{s}% in stressed groups"
       rebuy: "re-bought {date} (wash sale occurred)"
+      material_news: "news since the last close: {type}"
   hedge:
     # The verdict is the Defense desk's inverse-hedge stoplight; its thresholds stay in
     # config/defense_recommendations.json (inverse_etf, inverse_stoplights). None is duplicated here.

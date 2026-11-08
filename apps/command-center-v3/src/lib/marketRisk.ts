@@ -59,7 +59,22 @@ export interface MarketRisk {
   sectors_folded?: FoldedGroup[]
   glossary?: Record<string, GlossaryTerm> | null
   segments_status?: Record<string, SegmentStatus> | null
+  /* ── LQ-20261107-1239: what moved while the US was shut (news on held names + futures/overseas levels) ── */
+  material_news?: MaterialNewsBlock | null
+  overnight_markets?: OvernightMarkets | null
 }
+
+/** Held names with a high/critical catalyst since the last completed close (`catalyst_events`, API-side join). */
+export interface MaterialNewsItem { symbol: string; count: number; catalyst_type?: string | null; severity?: string | null; latest?: string | null }
+export interface MaterialNewsBlock { schema?: string; items: MaterialNewsItem[]; since?: string | null; session?: string | null; gaps?: { reason?: string | null }[] }
+/** One futures / overseas index print from `market_quotes_extended`. LEVEL ONLY means the lane stored no dated
+ *  reference, so no change is shown — the card says so rather than inventing one. */
+export interface OvernightMarketItem {
+  symbol: string; label: string; session?: string | null; session_date?: string | null
+  price: number | null; change_pct: number | null; reference_date?: string | null; reference_basis?: string | null
+  level_only: boolean; as_of?: string | null; age_hours?: number | null; stale: boolean
+}
+export interface OvernightMarkets { schema?: string; items: OvernightMarketItem[]; gaps?: { reason?: string | null }[]; stale_after_hours?: number }
 
 export interface GlossaryTerm { label: string; text: string }
 export interface ProtectItem extends ReviewItem { pct_account?: number | null; consideration?: string | null; clauses?: { key: string; text: string }[] }
@@ -501,11 +516,76 @@ export interface ActionableModel {
   rotate: RotateModel | null
   segments: SegmentRowModel[]
   glossary: Record<string, GlossaryTerm>
+  /** LQ-20261107-1239: overnight/weekend news on held names and the futures/overseas levels. Null when the API sent
+   *  neither block (an older payload renders exactly as before). */
+  sinceClose: SinceCloseModel | null
 }
 export interface ProtectRowModel { symbol: string; account: string; usd: string; pct: string; consideration: string; to: string; linkLabel: string }
 export interface HedgeModel { verdict: string; tone: Tone; line: string; lane: string; short: string }
 export interface RotateModel { rows: { key: string; label: string; rs1: string; rs5: string; rs1n: number | null; rs5n: number | null; desk: string; usd: string }[]; foot: string; none: string | null; short: string }
 export interface SegmentRowModel { symbol: string; status: 'approved' | 'pending'; line: string; split: { label: string; pct: number }[] }
+
+/* ── LQ-20261107-1239: "since the close" — what happened while the US market was shut ─────────────────────────── */
+export interface SinceCloseNewsRow { symbol: string; text: string; tone: Tone; to: string }
+export interface SinceCloseMarketRow { symbol: string; label: string; value: string; change: string; tone: Tone; note: string; level_only: boolean }
+export interface SinceCloseModel {
+  /** "since Fri 11-06 16:00 ET" — the close the window opens from, never "today". */
+  window: string
+  news: SinceCloseNewsRow[]
+  newsMore: string
+  markets: SinceCloseMarketRow[]
+  /** Why the markets strip is empty or partial (a failed read, no configured symbols): said, never hidden. */
+  marketsNote: string
+  foot: string
+}
+
+const severityWord = (s: string | null | undefined) => (s ?? '').toLowerCase() === 'critical' ? 'critical' : 'high'
+const severityTone = (s: string | null | undefined): Tone => (s ?? '').toLowerCase() === 'critical' ? 'danger' : 'elevated'
+
+/** The two additive blocks the join sends (LQ-20261107-1239). Null when neither arrived, so an older payload is
+ *  rendered exactly as before. A level-only print shows its level and says "no dated reference" — never a change. */
+export function sinceCloseModel(mr: MarketRisk | null | undefined): SinceCloseModel | null {
+  const news = mr?.material_news ?? null
+  const markets = mr?.overnight_markets ?? null
+  if (!news && !markets) return null
+  const sinceIso = news?.since ?? null
+  const session = news?.session ?? null
+  const window = session ? `since ${shortDay(session)} close${sinceIso ? ` · ${shortTime(sinceIso).replace(/ ET$/, '')} ET` : ''}` : 'since the last close'
+  const newsRows: SinceCloseNewsRow[] = (news?.items ?? []).map(n => {
+    // an unreported count is not "0 articles": no count is printed unless the API said one
+    const nArticles = typeof n.count === 'number' ? n.count : null
+    const kind = String(n.catalyst_type ?? 'news').replace(/_/g, ' ')
+    return {
+      symbol: n.symbol,
+      text: `${kind}${nArticles !== null && nArticles > 1 ? ` (${nArticles} articles)` : ''} · ${severityWord(n.severity)}`,
+      tone: severityTone(n.severity),
+      to: `/prospectus/${encodeURIComponent(n.symbol)}`,
+    }
+  })
+  const newsMore = (news?.gaps ?? []).map(g => g?.reason).filter(Boolean).length
+    ? `news block unavailable (${(news?.gaps ?? []).map(g => g?.reason).filter(Boolean).join(', ')})`
+    : ''
+  const marketsRows: SinceCloseMarketRow[] = (markets?.items ?? []).map(x => {
+    // a change the print did not carry is "—", never 0.0% and never a neutral it has not earned
+    const pct = typeof x.change_pct === 'number' ? x.change_pct : null
+    const change = x.level_only ? 'level only' : pct === null ? '—' : fmtSignedPct(pct)
+    const tone: Tone = x.stale ? 'warning' : x.level_only || pct === null ? 'neutral' : pct < 0 ? 'danger' : pct > 0 ? 'success' : 'neutral'
+    const note = x.level_only
+      ? `no dated reference in the last print${x.session_date ? ` · session ${shortDay(x.session_date)}` : ''}`
+      : `vs ${shortDay(x.reference_date)} close${x.stale ? ' · stale print' : ''}`
+    return { symbol: x.symbol, label: x.label || x.symbol, value: fmtPrice(x.price), change, tone, note, level_only: !!x.level_only }
+  })
+  const gaps = (markets?.gaps ?? []).map(g => g?.reason).filter(Boolean)
+  const marketsNote = marketsRows.length === 0
+    ? `futures and overseas levels unavailable${gaps.length ? ` (${gaps.join(', ')})` : ''}`
+    : gaps.length ? `partial: ${gaps.join(', ')}` : ''
+  const foot = [
+    'Futures and overseas indices are read-only market data, shown at their last print.',
+    'A level without a dated reference is shown as a level — the card never infers a change it cannot prove.',
+    'News lines are catalysts already classified for names you hold.',
+  ].join(' ')
+  return { window, news: newsRows, newsMore, markets: marketsRows, marketsNote, foot }
+}
 
 const HEDGE_WORD: Record<string, { word: string; tone: Tone }> = {
   NOT_NOW: { word: 'Not now', tone: 'success' }, WATCH: { word: 'Watch', tone: 'warning' },
@@ -859,5 +939,6 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     sectors: rows, sectorsFoot: foot,
     positions: be?.rows ?? [], positionsMore,
     review, budgets, budgetsNote, stopsKnown: be?.stops_known !== false, reentry, reentryMore,
+    sinceClose: sinceCloseModel(mr),
   }
 }

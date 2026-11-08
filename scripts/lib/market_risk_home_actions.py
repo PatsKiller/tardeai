@@ -106,6 +106,9 @@ def protect(
             total = sum(_f((x.get("facts") or {}).get("value_usd") or x.get("usd")) for x in same)
             cl.append(("same_issuer", tpl.get("same_issuer", "").format(
                 other_acct=other, usd=_usd(total), sym=sym, n=len(same))))
+        if "material_news" in kinds:
+            cl.append(("material_news", tpl.get("material_news", "news since the last close: {type}").format(
+                type=str(facts.get("news_type") or "news"))))
         if "stressed_exposure" in kinds and facts.get("stressed_share") is not None:
             cl.append(("stressed", tpl.get("stressed", "{s}% in stressed groups").format(s=round(100 * _f(facts["stressed_share"])))))
         w = ((reentry or {}).get(sym) or {}).get("wash_sale") or {}

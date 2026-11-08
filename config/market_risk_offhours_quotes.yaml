@@ -54,6 +54,22 @@ schwab:
   index_levels:
     carry_max_age_hours: 120   # Fri close -> Tue 09:30 ET after a Monday holiday is 113 h; 120 covers the longest gap
     basis_prefix: schwab_index_level_carried_print
+  # Display names for the Home card's "since the close" block. A symbol absent here is shown by its raw symbol; the
+  # names live with the symbols they describe so a spelling change moves both together.
+  # LQ-20261107-1270 rebase: the four overseas cash indices LQ-20261107-1239 listed here ($NIKKEI/$DAX/$FTSE/$HSI) are
+  # NOT configured -- Schwab's quotes service is the US feed and has never returned one, so listing them would only add
+  # four permanent refusals per run. The served line's $DJI/$RUT/$NDX (WU-1) take their place and get names here.
+  labels:
+    "/ES": "S&P 500 futures"
+    "/NQ": "Nasdaq 100 futures"
+    "/RTY": "Russell 2000 futures"
+    "/YM": "Dow futures"
+    "$SPX": "S&P 500"
+    "$COMPX": "Nasdaq Composite"
+    "$DJI": "Dow Jones Industrial Average"
+    "$RUT": "Russell 2000"
+    "$NDX": "Nasdaq 100"
+    "$VIX": "VIX"
   include_universe: true       # also the universe's extended-hours prices
   # ET window: Sunday 18:00 through Friday 09:30, regular session skipped on trading days.
   window: {start_day: sun, start: "18:00", end_day: fri, end: "09:30"}

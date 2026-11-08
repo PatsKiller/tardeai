@@ -59,11 +59,14 @@ def build(
     canon_fn: Callable[[str], str],
     ledger_sells: list[dict[str, Any]] | None = None,
     deferred_loss: Callable[[str, str, str], float | None] | None = None,
+    material_news: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Return ``{book_exposure, review, scope_labels, budgets, reentry}`` for the projection. ``stops``: last-known
     resting stops ``{account, symbol, stop_price}``. ``ledger_sells``: trade-ledger sales after the holdings build
     with no later buy (``{symbol, account, date}``), for the data-conflict review item. ``deferred_loss(symbol,
-    scope, loss_sale_date)``: the loss a wash sale deferred, in dollars, when the API can read it."""
+    scope, loss_sale_date)``: the loss a wash sale deferred, in dollars, when the API can read it.
+    ``material_news``: {SYMBOL: {count, catalyst_type, severity, latest}} for held names with high/critical catalyst
+    news since the last close — the weekend/overnight item that had no path to this card (LQ-20261107-1239)."""
     pol = policy or {}
     rv_cfg = pol.get("home_review") or {}
     mat = ((pol.get("positions") or {}).get("materiality") or {})
@@ -188,6 +191,18 @@ def build(
             add(r, "stressed_exposure", f"{round(100 * r['stressed_share'])}% in stressed groups", r["usd_exposed"], page_to)
         if r["material"] and r["look_through_basis"] in ("stock_unknown", "fund_unknown", None):
             add(r, "no_lookthrough", "no look-through (sector unknown)", r["value_usd"], page_to)
+        nm = (material_news or {}).get(r["symbol"])
+        if nm:
+            n = nm.get("count")  # None when the read did not say: never rendered as "0 articles"
+            kind = str(nm.get("catalyst_type") or "news").replace("_", " ")
+            text = f"material news since the last close: {kind}" + (
+                f" ({n} articles)" if isinstance(n, int) and n > 1 else "")
+            add(r, "material_news", text, r["value_usd"], page_to)
+            # the Protect clause reads the facts, never the prose
+            it = items.get((r["symbol"], r["account_scope"]))
+            if it is not None:
+                it["facts"].update({"news_count": n, "news_type": kind,
+                                    "news_severity": nm.get("severity"), "news_latest": nm.get("latest")})
     held_keys = {(str(h["symbol"]).upper(), canon_fn(str(h.get("account")))): h for h in holdings if not h.get("is_cash")}
     # sales after the holdings build, summed per (symbol, account) — several partial sales can close a position; the
     # ledger may sign a sale's quantity either way (review of PR 2447)
