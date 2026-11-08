@@ -101,7 +101,8 @@ NOT_KEYED_OVERWRITE_ONLY = {
     "aegis-brief-regenerate": "rewrites the day's brief export; no send",
     "momentum-lifecycle-monitor": "read-only evaluate (no --write-monitor)",
 }
-SENDS = {"trade-ai-scalp-live", "hermes-pipeline-health", "update-lockup-earnings-dates"}
+SENDS = {"trade-ai-scalp-live", "hermes-pipeline-health", "update-lockup-earnings-dates",
+         "market-outlook-weekly"}  # LQ-1122: the weekly outlook brief sends email + Telegram + text
 LLM = {
     "data-gap-resolver-at-0-10-16",
     "data-gap-resolver-pre",
@@ -205,7 +206,9 @@ def test_every_append_send_llm_lane_has_a_staged_key(lane):
     if lane in ON_DEMAND:
         assert spec["slot"] == "request_minute" and spec["schedule"] is None
     else:
-        assert spec["slot"] == "scheduled_minute" and len(spec["schedule"].split()) == 5
+        # One cron, or a list of crons for a multi-slot lane (market-event-brief LQ-532, market-outlook-weekly LQ-1122).
+        crons = [spec["schedule"]] if isinstance(spec["schedule"], str) else spec["schedule"]
+        assert spec["slot"] == "scheduled_minute" and crons and all(len(c.split()) == 5 for c in crons)
     assert re.match(r"^(guarded|no):", spec["idempotent_today"])
     assert lane in _registry()
 
