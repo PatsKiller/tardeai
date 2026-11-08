@@ -2506,6 +2506,26 @@ def _capture_evidence_with_retry(
     return None, None, reason, attempt_now
 
 
+def _not_before_capture(now: datetime, evidence: Optional[Mapping]) -> datetime:
+    """``now`` lifted to the latest ``captured_at`` in ``evidence``.
+
+    A retried capture stamps its sources with the retry's time (``now`` + the real elapsed delay). A caller
+    that then validates or plans at its earlier ``now`` sees evidence from the future, which
+    ``evidence_context`` rejects as ``evidence_stale:<first source>`` (the cron source, checked first):
+    the 2026-11-08 15:17 ET live run refused with removed 0 on a capture that had in fact succeeded.
+    Lifting the time base to the capture never loosens the 2 h age bound, which still applies from there.
+    """
+    latest = now
+    for row in ((evidence or {}).get("sources") or {}).values():
+        try:
+            ts = datetime.fromisoformat(str((row or {}).get("captured_at")))
+        except (TypeError, ValueError):
+            continue
+        if ts.tzinfo is not None and ts > latest:
+            latest = ts
+    return latest
+
+
 def capture_apply_evidence(
     rules: Mapping[str, Any], now: datetime, **kw,
 ) -> tuple[Optional[dict], Optional[str]]:
@@ -2867,6 +2887,7 @@ def _apply_main(a: argparse.Namespace, rules: Mapping[str, Any], now: datetime, 
         if pass_no > 1:
             # Retried like the run-start capture: one transient opaque process must not end the sweep.
             evidence, evidence_error = capture_apply_evidence(rules, pass_now)
+        pass_now = _not_before_capture(pass_now, evidence)
         mpath = Path(a.manifest) if a.manifest else manifest_dir(rules, state_root) / rules["manifest"]["latest_name"]
         sha = a.manifest_sha256
         if a.standing and not a.manifest and evidence_error is None:
