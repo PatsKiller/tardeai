@@ -1,6 +1,6 @@
 {
   "schema": "CiGate@v1",
-  "name": "OPS_CONTROLS_N8N_OUTCOMES_DEAD_LETTER_COUNT",
+  "name": "ops_controls_dead_letter_count_20261107",
   "files": [
     "tests/test_ops_controls_n8n_outcomes_dead_letter_count_20261107.py"
   ],

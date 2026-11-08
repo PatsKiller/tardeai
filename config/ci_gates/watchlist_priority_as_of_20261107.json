@@ -1,7 +1,11 @@
 {
   "schema": "CiGate@v1",
   "name": "watchlist_priority_as_of_20261107",
-  "files": ["tests/test_watchlist_priority_as_of_20261107.py"],
+  "files": [
+    "tests/test_watchlist_priority_as_of_20261107.py"
+  ],
   "anchor": "LQ-170",
-  "comment": "LQ-170: --as-of injectable clock for watchlist_priority weekday emulation."
+  "comment": [
+    "LQ-170: --as-of injectable clock for watchlist_priority weekday emulation."
+  ]
 }

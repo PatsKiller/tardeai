@@ -1,6 +1,6 @@
 {
   "schema": "CiGate@v1",
-  "name": "ROTATION_PUBLICATION_ACCOUNT_ALIAS",
+  "name": "rotation_publication_account_alias_20261107",
   "files": [
     "tests/test_rotation_publication_account_alias_20261107.py"
   ],

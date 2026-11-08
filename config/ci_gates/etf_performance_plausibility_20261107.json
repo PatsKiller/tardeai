@@ -1,6 +1,6 @@
 {
   "schema": "CiGate@v1",
-  "name": "ETF_PERFORMANCE_PLAUSIBILITY",
+  "name": "etf_performance_plausibility_20261107",
   "files": [
     "tests/test_etf_performance_plausibility_20261107.py"
   ],

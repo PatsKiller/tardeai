@@ -1,1 +1,11 @@
-{"schema":"CiGate@v1","name":"disk_hygiene_coordination_limit_20261107","files":["tests/test_disk_hygiene_coordination_limit_20261107.py"],"anchor":"LQ-20261107-41","comment":"coordination scan caps cover the live tree; still fail closed"}
+{
+  "schema": "CiGate@v1",
+  "name": "disk_hygiene_coordination_limit_20261107",
+  "files": [
+    "tests/test_disk_hygiene_coordination_limit_20261107.py"
+  ],
+  "anchor": "LQ-20261107-41",
+  "comment": [
+    "coordination scan caps cover the live tree; still fail closed"
+  ]
+}

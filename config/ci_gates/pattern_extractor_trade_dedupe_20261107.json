@@ -1,6 +1,6 @@
 {
   "schema": "CiGate@v1",
-  "name": "PATTERN_EXTRACTOR_TRADE_DEDUPE",
+  "name": "pattern_extractor_trade_dedupe_20261107",
   "files": [
     "tests/test_pattern_extractor_trade_dedupe_20261107.py"
   ],

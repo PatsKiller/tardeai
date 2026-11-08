@@ -1,6 +1,6 @@
 {
   "schema": "CiGate@v1",
-  "name": "IDLE_TXN_POOL_20261107",
+  "name": "idle_txn_pool_20261107",
   "files": [
     "tests/test_idle_txn_pool_20261107.py"
   ],

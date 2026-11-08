@@ -1,6 +1,6 @@
 {
   "schema": "CiGate@v1",
-  "name": "BUILD_HERMES_CANONICAL_STATUS_COUNTS",
+  "name": "build_hermes_canonical_status_counts_20261107",
   "files": [
     "tests/test_build_hermes_canonical_status_counts_20261107.py"
   ],

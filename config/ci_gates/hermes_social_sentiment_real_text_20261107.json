@@ -1,6 +1,6 @@
 {
   "schema": "CiGate@v1",
-  "name": "HERMES_SOCIAL_SENTIMENT_REAL_TEXT",
+  "name": "hermes_social_sentiment_real_text_20261107",
   "files": [
     "tests/test_hermes_social_sentiment_real_text_20261107.py"
   ],

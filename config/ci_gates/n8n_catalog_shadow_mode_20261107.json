@@ -1,6 +1,6 @@
 {
   "schema": "CiGate@v1",
-  "name": "N8N_CATALOG_SHADOW_MODE_20261107",
+  "name": "n8n_catalog_shadow_mode_20261107",
   "files": [
     "tests/test_n8n_catalog_shadow_mode_20261107.py"
   ],

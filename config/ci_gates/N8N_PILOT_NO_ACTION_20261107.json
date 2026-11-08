@@ -1,7 +1,11 @@
 {
   "schema": "CiGate@v1",
   "name": "N8N_PILOT_NO_ACTION_20261107",
-  "files": ["tests/test_n8n_pilot_no_action_20261107.py"],
+  "files": [
+    "tests/test_n8n_pilot_no_action_20261107.py"
+  ],
   "anchor": "N8N_PILOT_NO_ACTION_20261107",
-  "comment": ["ANCHOR: N8N_PILOT_NO_ACTION_20261107 — LQ-20261107-210: n8n-pilot-dispatch fires no event for an approval reminder run with zero actions."]
+  "comment": [
+    "ANCHOR: N8N_PILOT_NO_ACTION_20261107 — LQ-20261107-210: n8n-pilot-dispatch fires no event for an approval reminder run with zero actions."
+  ]
 }

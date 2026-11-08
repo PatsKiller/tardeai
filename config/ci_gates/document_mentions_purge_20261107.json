@@ -1,6 +1,10 @@
 {
   "schema": "CiGate@v1",
   "name": "document_mentions_purge_20261107",
-  "files": ["tests/test_document_mentions_purge_20261107.py"],
-  "comment": "LQ-20261107-358. Pins three things the live table measured on 2026-11-07: a prose hyphenation ('Shell-company' -> SHEL, 'Cross-reference XLV' -> CRT, both written AFTER the stoplist shipped) is ambiguous and needs context, while a proper hyphenated issuer name ('T-Mobile', 'Bio-Rad') is untouched; the purge script archives before it deletes and rolls back on a short archive; and the NULL-issuer duplicate the old unique index could not see is now stopped by a COALESCE(issuer_guid) index with a writer that probes for it."
+  "files": [
+    "tests/test_document_mentions_purge_20261107.py"
+  ],
+  "comment": [
+    "LQ-20261107-358. Pins three things the live table measured on 2026-11-07: a prose hyphenation ('Shell-company' -> SHEL, 'Cross-reference XLV' -> CRT, both written AFTER the stoplist shipped) is ambiguous and needs context, while a proper hyphenated issuer name ('T-Mobile', 'Bio-Rad') is untouched; the purge script archives before it deletes and rolls back on a short archive; and the NULL-issuer duplicate the old unique index could not see is now stopped by a COALESCE(issuer_guid) index with a writer that probes for it."
+  ]
 }

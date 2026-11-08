@@ -1,6 +1,6 @@
 {
   "schema": "CiGate@v1",
-  "name": "orchestrator_stage_isolation_lq225_20261107",
+  "name": "ORCHESTRATOR_STAGE_ISOLATION_LQ225_20261107",
   "files": [
     "tests/test_orchestrator_unwrapped_stages_lq225_20261107.py"
   ],

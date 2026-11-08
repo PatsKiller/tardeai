@@ -1,6 +1,6 @@
 {
   "schema": "CiGate@v1",
-  "name": "STRATEGY_CARD_LEVELS_20261107",
+  "name": "strategy_card_levels_20261107",
   "files": [
     "tests/test_strategy_card_levels_20261107.py"
   ],

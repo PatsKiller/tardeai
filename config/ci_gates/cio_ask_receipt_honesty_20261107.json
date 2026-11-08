@@ -1,1 +1,11 @@
-{"schema":"CiGate@v1","name":"cio_ask_receipt_honesty_20261107","files":["tests/test_cio_ask_receipt_honesty_20261107.py"],"anchor":"LQ-20261107-183","comment":"cio-ask-material-events receipt: source errors never read as no_new_events"}
+{
+  "schema": "CiGate@v1",
+  "name": "cio_ask_receipt_honesty_20261107",
+  "files": [
+    "tests/test_cio_ask_receipt_honesty_20261107.py"
+  ],
+  "anchor": "LQ-20261107-183",
+  "comment": [
+    "cio-ask-material-events receipt: source errors never read as no_new_events"
+  ]
+}

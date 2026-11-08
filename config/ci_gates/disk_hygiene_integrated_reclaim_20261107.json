@@ -1,1 +1,11 @@
-{"schema":"CiGate@v1","name":"disk_hygiene_integrated_reclaim_20261107","files":["tests/test_disk_hygiene_integrated_reclaim_20261107.py"],"anchor":"LQ-20261107-190","comment":"rule C waives the 7-day idle hold for worktrees integrated into live-integration; scratch idle_hours"}
+{
+  "schema": "CiGate@v1",
+  "name": "disk_hygiene_integrated_reclaim_20261107",
+  "files": [
+    "tests/test_disk_hygiene_integrated_reclaim_20261107.py"
+  ],
+  "anchor": "LQ-20261107-190",
+  "comment": [
+    "rule C waives the 7-day idle hold for worktrees integrated into live-integration; scratch idle_hours"
+  ]
+}

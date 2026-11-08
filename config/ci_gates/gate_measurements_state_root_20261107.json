@@ -1,7 +1,11 @@
 {
   "schema": "CiGate@v1",
   "name": "gate_measurements_state_root_20261107",
-  "files": ["tests/test_gate_measurements_state_root_20261107.py"],
+  "files": [
+    "tests/test_gate_measurements_state_root_20261107.py"
+  ],
   "anchor": "LQ-109",
-  "comment": "agent_gate_measurements.json is written to and read from persistent state, never the release tree."
+  "comment": [
+    "agent_gate_measurements.json is written to and read from persistent state, never the release tree."
+  ]
 }

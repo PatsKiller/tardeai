@@ -1,7 +1,11 @@
 {
   "schema": "CiGate@v1",
   "name": "agent_performance_history_20261107",
-  "files": ["tests/test_agent_performance_history_20261107.py"],
+  "files": [
+    "tests/test_agent_performance_history_20261107.py"
+  ],
   "anchor": "LQ-20261107-264",
-  "comment": "LQ-264: agent_performance_history has one write path (update-or-insert per period) and no accuracy is shown below the agent-calibration sample bar."
+  "comment": [
+    "LQ-264: agent_performance_history has one write path (update-or-insert per period) and no accuracy is shown below the agent-calibration sample bar."
+  ]
 }

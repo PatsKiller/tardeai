@@ -1,6 +1,6 @@
 {
   "schema": "CiGate@v1",
-  "name": "ASSET_TYPE_FILL",
+  "name": "asset_type_fill_20261107",
   "files": [
     "tests/test_asset_type_fill_20261107.py"
   ],

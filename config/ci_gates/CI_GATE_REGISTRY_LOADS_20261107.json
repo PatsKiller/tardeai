@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "CI_GATE_REGISTRY_LOADS_20261107",
+  "files": [
+    "tests/test_ci_gate_registry_loads_20261107.py"
+  ],
+  "anchor": "CI_GATE_REGISTRY_LOADS_20261107",
+  "comment": [
+    "ANCHOR: CI_GATE_REGISTRY_LOADS_20261107 — the gate registry loads, or CI runs no test at all.",
+    "On 2026-11-07 the serving line held 27 malformed gate files (name != stem, comment a bare string);",
+    "load_records() fails closed on the first, so check_test_coverage.py died before auditing anything.",
+    "This gate runs the test that loads every gate file and names the one that is malformed."
+  ]
+}

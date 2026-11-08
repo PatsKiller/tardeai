@@ -1,7 +1,11 @@
 {
   "schema": "CiGate@v1",
   "name": "OAUTH_LANE_COOLDOWN_20261107",
-  "files": ["tests/test_oauth_lane_cooldown_20261107.py"],
+  "files": [
+    "tests/test_oauth_lane_cooldown_20261107.py"
+  ],
   "anchor": "OAUTH_LANE_COOLDOWN_20261107",
-  "comment": ["ANCHOR: OAUTH_LANE_COOLDOWN_20261107 — LQ-20261107-236: a rate-limited or unreachable grok/chatgpt proxy is held out of lane_available for a growing interval so callers stop adding failed LLM rows."]
+  "comment": [
+    "ANCHOR: OAUTH_LANE_COOLDOWN_20261107 — LQ-20261107-236: a rate-limited or unreachable grok/chatgpt proxy is held out of lane_available for a growing interval so callers stop adding failed LLM rows."
+  ]
 }

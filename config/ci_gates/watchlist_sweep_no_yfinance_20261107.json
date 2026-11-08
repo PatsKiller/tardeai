@@ -1,7 +1,11 @@
 {
   "schema": "CiGate@v1",
   "name": "watchlist_sweep_no_yfinance_20261107",
-  "files": ["tests/test_watchlist_sweep_no_yfinance_20261107.py"],
+  "files": [
+    "tests/test_watchlist_sweep_no_yfinance_20261107.py"
+  ],
   "anchor": "LQ-171",
-  "comment": "LQ-171: the watchlist sweep price fallback is the Finviz cache, never yfinance."
+  "comment": [
+    "LQ-171: the watchlist sweep price fallback is the Finviz cache, never yfinance."
+  ]
 }

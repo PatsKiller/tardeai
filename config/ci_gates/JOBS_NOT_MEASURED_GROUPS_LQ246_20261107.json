@@ -1,6 +1,6 @@
 {
   "schema": "CiGate@v1",
-  "name": "jobs_not_measured_groups_lq246_20261107",
+  "name": "JOBS_NOT_MEASURED_GROUPS_LQ246_20261107",
   "files": [
     "tests/test_jobs_not_measured_groups_lq246_20261107.py"
   ],

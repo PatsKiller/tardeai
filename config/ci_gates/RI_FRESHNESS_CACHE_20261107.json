@@ -1,7 +1,11 @@
 {
   "schema": "CiGate@v1",
   "name": "RI_FRESHNESS_CACHE_20261107",
-  "files": ["tests/test_ri_freshness_cache_20261107.py"],
+  "files": [
+    "tests/test_ri_freshness_cache_20261107.py"
+  ],
   "anchor": "RI_FRESHNESS_CACHE_20261107",
-  "comment": ["ANCHOR: RI_FRESHNESS_CACHE_20261107 — LQ-20261107-218: research-intelligence freshness report is served from a last-good cache with a background refresh."]
+  "comment": [
+    "ANCHOR: RI_FRESHNESS_CACHE_20261107 — LQ-20261107-218: research-intelligence freshness report is served from a last-good cache with a background refresh."
+  ]
 }

@@ -1,6 +1,6 @@
 {
   "schema": "CiGate@v1",
-  "name": "HERMES_CANONICAL_STATUS_TABLES",
+  "name": "hermes_canonical_status_tables_20261107",
   "files": [
     "tests/test_hermes_canonical_status_tables_20261107.py"
   ],
