@@ -571,6 +571,7 @@ def lane_main(argv: list[str] | None = None, *, collect_fn=None) -> int:
     """
     args = _parser(lane=True).parse_args(argv)
     args.notify, args.lane_receipt = "queue", not args.dry_run
+    args.lane = True  # LQ-1188: lane contract = findings are output (exit 0); only a failed run exits non-zero
     return _run(args, collect_fn=collect_fn, deliver=_deliver_queue)
 
 
@@ -613,7 +614,7 @@ def _run(args, *, collect_fn=None, deliver) -> int:
 
     if args.dry_run:
         print(f"\n  DRY RUN — nothing written; fingerprint would be {json.dumps(fingerprint(report), sort_keys=True)}")
-        return 1 if report["finding_count"] else 0
+        return 0 if getattr(args, "lane", False) else (1 if report["finding_count"] else 0)
 
     _write_run_receipt(report)
     alert = _alert_core(report, deliver=deliver, channel=args.notify) if args.alert else None
