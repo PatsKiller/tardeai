@@ -1,0 +1,79 @@
+{
+  "$id": "LaneManifest@v1",
+  "title": "LaneManifest@v1 — the one lane manifest (LQ-20261107-1003, Fable audit #2 + #14)",
+  "description": "One row per lane. Validated by scripts/lib/lane_manifest.py validate() (a stdlib subset of JSON Schema: type, required, properties, additionalProperties, enum, const, pattern, items, if/then). `legacy` holds the registry keys that have no canonical field yet; only the registry shim (registry_view) reads it, and it shrinks as readers migrate.",
+  "type": "object",
+  "required": ["schema", "authority", "generated_at", "sources", "registry_header", "lanes"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "LaneManifest@v1"},
+    "authority": {"enum": ["GENERATED_CANDIDATE", "SOURCE_OF_TRUTH"]},
+    "generated_at": {"type": "string"},
+    "sources": {"type": "object"},
+    "registry_header": {"type": "object", "required": ["_order"]},
+    "lanes": {"type": "array", "items": {"$ref": "#/definitions/lane"}}
+  },
+  "definitions": {
+    "lane": {
+      "type": "object",
+      "required": ["id", "state", "armed", "owner", "script", "command", "schedule", "market_hours_only",
+                   "shadow_expires_at", "output", "identity", "legacy"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"},
+        "state": {"enum": ["ACTIVE", "PAUSED", "RETIRED", "NEVER_SCHEDULED"]},
+        "armed": {"type": "boolean"},
+        "owner": {"type": "string"},
+        "script": {"type": ["string", "null"]},
+        "command": {
+          "type": ["object", "null"],
+          "required": ["root", "argv", "source"],
+          "additionalProperties": false,
+          "properties": {
+            "root": {"const": "CURRENT"},
+            "argv": {"type": "array", "items": {"type": "string", "pattern": "^(?!.*\\$PY)(?!/home/)"}},
+            "source": {"enum": ["allowlist", "registry_command_text", "registry_match"]}
+          }
+        },
+        "schedule": {
+          "type": "object",
+          "required": ["runner", "cron", "tz", "unit", "workflow", "mode"],
+          "additionalProperties": false,
+          "properties": {
+            "runner": {"enum": ["n8n", "cron", "systemd", "event", "none"]},
+            "cron": {"type": "array", "items": {"type": "string"}},
+            "tz": {"type": ["string", "null"]},
+            "unit": {"type": ["string", "null"]},
+            "workflow": {"type": ["string", "null"]},
+            "mode": {"enum": ["live", "dry_run", "off", null]}
+          }
+        },
+        "market_hours_only": {"type": ["boolean", "null"]},
+        "shadow_expires_at": {"type": ["string", "null"]},
+        "output": {
+          "type": "object",
+          "required": ["signal", "rule", "empty_allowed", "upstream_count_field"],
+          "additionalProperties": false,
+          "properties": {
+            "signal": {"type": "object", "required": ["kind"]},
+            "rule": {"enum": ["min_produced", "empty_allowed", "per_window", "none", null]},
+            "empty_allowed": {"type": "boolean"},
+            "upstream_count_field": {"type": ["string", "null"]}
+          }
+        },
+        "identity": {
+          "type": "object",
+          "required": ["effect_claim", "match"],
+          "additionalProperties": false,
+          "properties": {
+            "effect_claim": {"type": "string"},
+            "match": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "legacy": {"type": "object", "required": ["_order"]}
+      },
+      "if": {"properties": {"state": {"const": "RETIRED"}}},
+      "then": {"properties": {"armed": {"const": false}}}
+    }
+  }
+}
