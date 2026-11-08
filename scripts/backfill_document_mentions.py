@@ -90,13 +90,20 @@ def select_sql(table: str, spec: dict, text_expr: str, mark) -> tuple[str, tuple
 
 
 def run(table: str, limit: int, apply: bool, mark=None, deadline: float | None = None,
-        seed: bool = False, legacy: bool = False, names: dict | None = None) -> dict:
+        seed: bool = False, legacy: bool = False, names: dict | None = None,
+        conn=None, registry=None, persist_fn=None) -> dict:
     from lib import research_identity as RI
     from lib.document_mentions import SOURCES, extract, persist, subject_from_symbol
+    from scripts.lib.document_mention_matcher import names_from_registry
 
     spec = SOURCES[table]
-    doc = RI.load_registry()
-    conn = _conn()
+    doc = registry if registry is not None else RI.load_registry()
+    if not legacy and names is None:
+        names = names_from_registry(doc)
+    own_conn = conn is None
+    if conn is None:
+        conn = _conn()
+    writer = persist_fn or persist
     cur = conn.cursor()
 
     # ::text because some sources store JSON (research_insights.structured_thesis,
@@ -148,10 +155,12 @@ def run(table: str, limit: int, apply: bool, mark=None, deadline: float | None =
         stat["mentioned"] += sum(1 for r in found if r["role"] == "mentioned")
         stat["offered"] += len(found)
         if apply:
-            stat["written"] += persist(conn, source_table=table,
-                                       source_id=doc_id, rows=found)
+            stat["written"] += writer(conn, source_table=table,
+                                      source_id=doc_id, rows=found)
 
-    conn.close()
+    stat["rows_read"] = stat["scanned"]
+    if own_conn:
+        conn.close()
     return stat
 
 
@@ -226,7 +235,7 @@ def _run(a, targets, stats) -> int:
             print(f"  {t}: skipped (budget spent)", flush=True)
             continue
         s = run(t, a.limit, a.apply, mark=marks.get(t), deadline=deadline, seed=not a.rescan,
-                legacy=a.legacy_matcher)
+                legacy=a.legacy_matcher, names=None)
         stats["scanned"] += s["scanned"]
         stats.setdefault("rows_read", {})[t] = s["scanned"]
         stats["written"] += s["written"]

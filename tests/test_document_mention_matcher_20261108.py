@@ -50,11 +50,79 @@ def test_jack_henry_associates_binds_jkhy_not_jack():
     assert rows[0]["role_confidence"] == 1.0
 
 
-def test_ticker_plus_name_binds_and_a_lone_ticker_does_too():
+def test_ticker_must_be_uppercase_and_beside_the_same_name():
     rows = match_mentions("Jack Henry & Associates (JKHY) expanded.", names=NAMES)
     assert {row["symbol"] for row in rows} == {"JKHY"}
-    lone = match_mentions("The filing lists $JKHY only.", names=NAMES)
-    assert [row["symbol"] for row in lone] == ["JKHY"]
+    assert match_mentions("The filing lists $JKHY only.", names=NAMES) == []
+    prose = match_mentions("results (est) and (ai) trends", names={"EST": ["Eastern Standard Timekeepers"], "AI": ["Ai Holdings Group"]})
+    assert prose == []
+    assert match_mentions("results (EST) and (AI) trends", names={"EST": ["Eastern Standard Timekeepers"], "AI": ["Ai Holdings Group"]}) == []
+
+
+def test_a_foreign_name_is_not_the_subject_of_another_filing():
+    rows = match_mentions("Jack Henry & Associates reported.", names=NAMES, own_symbol="AAPL")
+    assert rows == []
+    agreed = match_mentions("Jack Henry & Associates reported.", names=NAMES, own_symbol="JKHY")
+    assert [row["symbol"] for row in agreed] == ["JKHY"]
+    assert agreed[0]["role"] == "subject"
+    assert agreed[0]["role_confidence"] == 1.0
+
+
+def test_run_loads_names_from_the_registry_and_writes_jkhy_only():
+    from scripts.backfill_document_mentions import run
+
+    registry = {
+        "by_symbol": {"JKHY": "g-jkhy", "ALRM": "g-alrm", "NDAQ": "g-ndaq"},
+        "entities": {
+            "g-jkhy": {"company": "Jack Henry & Associates, Inc."},
+            "g-alrm": {"company": "Alarm.com Holdings, Inc."},
+            "g-ndaq": {"company": "Nasdaq, Inc."},
+        },
+    }
+    documents = [
+        (1, "JKHY", "Jack Henry & Associates (JKHY) reported results."),
+        (2, None, "Alarm"),
+        (3, None, "NASDAQ"),
+        (4, None, "NEW YORK"),
+        (5, None, "GLOBE NEWSWIRE"),
+        (6, None, "YORK"),
+        (7, None, "Fortitude Family Office LLC"),
+        (8, None, "Lands Enterprise AI Partnership"),
+        (9, None, "Great Business"),
+        (10, None, "ENHANCED"),
+    ]
+
+    class Cur:
+        def execute(self, sql, params=None):
+            self.sql = sql
+
+        def fetchone(self):
+            return [None]
+
+        def fetchall(self):
+            return documents
+
+    class Conn:
+        def cursor(self):
+            return Cur()
+
+        def close(self):
+            return None
+
+    written: list[tuple] = []
+
+    def persist_fn(conn, *, source_table, source_id, rows):
+        written.append((source_id, [row["symbol"] for row in rows if row.get("role")]))
+        return len(written[-1][1])
+
+    stat = run(
+        "news_articles", 20, True, mark=0, seed=False, legacy=False, names=None,
+        conn=Conn(), registry=registry, persist_fn=persist_fn,
+    )
+    assert stat["rows_read"] == 10 or stat["scanned"] == 10
+    symbols = [sym for _doc, syms in written for sym in syms]
+    assert symbols == ["JKHY"]
+    assert stat["written"] == 1
 
 
 def test_undecided_when_two_exact_names_and_no_filed_symbol():
