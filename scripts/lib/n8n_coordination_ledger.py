@@ -283,6 +283,12 @@ class CoordinationLedger:
                 policy TEXT
             );
             CREATE INDEX IF NOT EXISTS dead_letters_lane ON dead_letters (lane_id, dead_at);
+            -- 2026-11-08 (LQ-891): ``iter_receipts`` filters project/lane_id/state and orders by updated_at. With
+            -- only the store_key primary key the plan was ``SCAN receipts`` + a temp B-tree over 16 942 rows
+            -- (14 MB, 1.76 s cold), and every gateway ``list`` paid it inside the ledger's single RLock. Built
+            -- once, at the next writable open.
+            CREATE INDEX IF NOT EXISTS receipts_projection
+                ON receipts (project, lane_id, state, updated_at);
             CREATE TABLE IF NOT EXISTS breakers (
                 lane_id TEXT PRIMARY KEY,
                 opened_at TEXT,
