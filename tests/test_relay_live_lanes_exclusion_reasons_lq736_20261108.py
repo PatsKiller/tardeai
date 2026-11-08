@@ -166,6 +166,7 @@ def test_render_persists_the_reasons(tmp_path):
     lane = next(r["lane_id"] for r in registry["lanes"]
                 if r.get("state") == "ACTIVE" and isinstance(r.get("dispatch"), dict)
                 and r["dispatch"].get("mode") == "dry_run")
+    # nosemgrep: tq-py-nonatomic-store-write -- synthetic registry/allowlist fixtures under pytest tmp_path, not a store
     (root / RLL.REGISTRY_REL).write_text(json.dumps(registry), encoding="utf-8")
     (root / RLL.ALLOWLIST_REL).write_text(json.dumps(allowlist), encoding="utf-8")
     rep = RLL.render(root)
@@ -179,6 +180,7 @@ def test_render_copy_is_never_written_on_a_registry_error(tmp_path):
     """Unchanged contract: a bad registry renders nothing (no partial file), so no reason map is half-written."""
     root = tmp_path / "release"
     (root / "config").mkdir(parents=True)
+    # nosemgrep: tq-py-nonatomic-store-write -- a malformed fixture under pytest tmp_path, not a store
     (root / RLL.REGISTRY_REL).write_text("{not json", encoding="utf-8")
     shutil.copyfile(ROOT / RLL.ALLOWLIST_REL, root / RLL.ALLOWLIST_REL)
     rep = RLL.render(root)
