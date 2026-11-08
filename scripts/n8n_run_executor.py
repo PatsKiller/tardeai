@@ -1886,7 +1886,7 @@ class ExecutorV2:
         no drain (keep working, as before)."""
         try:
             d = self.drain_check(now)
-        except Exception as exc:  # noqa: BLE001 - a broken drain check must never stop the executor
+        except Exception as exc:  # noqa: BLE001 -- a broken drain check must never stop the executor
             self._log({"executor": "drain_check_error", "error": f"{type(exc).__name__}:{str(exc)[:120]}"})
             d = None
         if d and not self._draining:
@@ -2487,7 +2487,7 @@ def main(argv: list[str] | None = None) -> int:
     def v1_draining() -> dict[str, Any] | None:
         try:
             return executor_drain.drain_state(state_root, code_root, time.time())
-        except Exception:  # noqa: BLE001 - a broken drain check is no drain
+        except Exception:  # noqa: BLE001 -- a broken drain check is no drain
             return None
 
     try:
