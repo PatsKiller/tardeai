@@ -1519,6 +1519,24 @@
       "n8n_claim": false,
       "cron_claim": false
     },
+    "market-outlook-weekly": {
+      "process": "market-outlook-weekly",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": [
+        "0 20 * * 0",
+        "0 7 * * 1"
+      ],
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "send"
+      ],
+      "idempotent_today": "guarded: the engine's record_id is the primary key (ON CONFLICT DO NOTHING) and the brief sends once per record_id:channel (notification_log dedupe); a re-run sends nothing",
+      "wave": "LQ-1122",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
     "jsonl-archive-rotate": {
       "process": "jsonl-archive-rotate",
       "input_version": "v1",

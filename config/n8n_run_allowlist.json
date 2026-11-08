@@ -4818,6 +4818,30 @@
       "source": "SPEC_MARKET_EVENT_REENTRY_20261107 4.1/4.2/4.5; dry_run first."
     },
     {
+      "lane_id": "market-outlook-weekly",
+      "command": [
+        "$PY",
+        "$CODE_ROOT/scripts/market_outlook_lane.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--deliver"
+      ],
+      "lock": "/tmp/tradeai_market_outlook_weekly.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 540,
+      "cwd": "$CODE_ROOT",
+      "market_gate": false,
+      "output_signal": "data/runtime/market-outlook-weekly_last.json",
+      "output_receipt": "v2",
+      "env_names": [],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "New lane: inventory the env NAMES from its first dry-run receipt before enforce (engine DB read/write, brief needs the gog keyring, Telegram and Fi text names).",
+      "source": "LQ-20261107-1122; FABLE-OUTLOOK-METHODOLOGY-LQ-946 4.1/4.7 (Sun 20:00 + Mon 07:00 ET, n8n scheduler of record); scripts/market_outlook_lane.py runs the engine then the brief; dry_run first (cutover standard)."
+    },
+    {
       "lane_id": "unit-run-snapshot",
       "command": [
         "$PY",

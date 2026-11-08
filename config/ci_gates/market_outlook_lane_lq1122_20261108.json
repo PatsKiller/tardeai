@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_outlook_lane_lq1122_20261108",
+  "files": [
+    "tests/test_market_outlook_lane_lq1122_20261108.py"
+  ],
+  "comment": [
+    "LQ-20261107-1122: the market-outlook-weekly lane (Sun 20:00 + Mon 07:00 ET) runs the engine then the brief."
+  ]
+}
