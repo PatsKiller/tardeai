@@ -15,6 +15,9 @@ while [ $# -gt 0 ]; do
   esac
   shift || true
 done
+# LQ-1058: one receipt per mode (diagnostic/maturity shared watchpool_alerts_cron.log), armed before the first exit.
+source "$(dirname "${BASH_SOURCE[0]}")/lib/lane_receipt_trap.sh"
+tradeai_lane_receipt_on_exit "$PY" "run-scheduled-watchpool-alerts-$MODE"
 log() { echo "$TS [watchpool-alert] $*" >> "$LOG"; echo "$TS [watchpool-alert] $*"; }
 ALPACA_MODE=$(grep '^ALPACA_MODE=' "$PROJ/.env" | cut -d= -f2-)
 LLM_DISABLE=$(grep '^LLM_DISABLE_LIVE_EXECUTION=' "$PROJ/.env" | cut -d= -f2-)

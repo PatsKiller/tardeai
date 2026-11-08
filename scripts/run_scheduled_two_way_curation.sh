@@ -29,9 +29,19 @@ if [[ "$_cli_dry_run" == 1 ]]; then
   printf 'DRY-RUN two-way-curation: would run mode=%s; no cwd, env, log or child writes\n' "$MODE"
   exit 0
 fi
+# LQ-1058: one receipt per mode lane (options-edge/desk-emit shared two_way_curation_cron.log). Armed after the
+# dry-run exit, so a preview writes nothing; `all` runs both modes and records one outcome for both lanes.
+case "$MODE" in
+  options-edge|options|edge) _receipt_lanes="run-scheduled-two-way-curation-options" ;;
+  desk-emit|desk|emit) _receipt_lanes="run-scheduled-two-way-curation-desk" ;;
+  all) _receipt_lanes="run-scheduled-two-way-curation-options run-scheduled-two-way-curation-desk" ;;
+esac
+source "$(dirname "${BASH_SOURCE[0]}")/lib/lane_receipt_trap.sh"  # before the cd: BASH_SOURCE may be relative
 PROJ="${PROJ:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}"
 cd "$PROJ"
 PY="${PY:-$PROJ/.venv/bin/python}"
+# shellcheck disable=SC2086  # two lane ids in `all` mode, deliberately word-split
+tradeai_lane_receipt_on_exit "$PY" $_receipt_lanes
 LOG_DIR="$PROJ/logs"
 mkdir -p "$LOG_DIR"
 TS="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"

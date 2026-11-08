@@ -24,6 +24,7 @@ Pure: no file, network, DB or subprocess access here. Callers read the sources. 
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
@@ -465,11 +466,65 @@ CODES = {
     "LIVE_RUNS_FOR_UNARMED_LANE": "error",    # ledger: live RUN_DONE in the window for a lane that must not run
     "N8N_LIVE_NO_RECENT_RUN": "error",        # ledger: n8n live lane, cadence inside the window, no live RUN_DONE
     "LEDGER_LANE_UNDECLARED": "warn",         # ledger lane with live runs that the manifest does not know
+    "DUPLICATE_UNIT_ROW": "error",            # two dispatchable lanes resolve to one systemd unit (LQ-1058)
+    "SHARED_OUTPUT_SIGNAL": "warn",           # several dispatchable lanes name one output; any one turns all green
 }
 
 
 def finding(code: str, lane: Optional[str], detail: str, **evidence: Any) -> dict[str, Any]:
     return {"code": code, "severity": CODES[code], "lane_id": lane, "detail": detail, "evidence": evidence}
+
+
+_UNIT_SUFFIX = re.compile(r"\.(timer|service)$")
+
+
+def systemd_unit(lane: Mapping[str, Any]) -> Optional[str]:
+    """The systemd unit a lane resolves to, suffix stripped: the first token of ``schedule.unit``
+    (``"x.timer (*:0/5)"`` and ``"x.timer"`` are one unit), else a ``.timer``/``.service`` match marker.
+    A step of a compound unit (``"x.timer step <name> (...)"``) is its own ``x#<name>``."""
+    if lane["schedule"]["runner"] != "systemd":
+        return None
+    unit = str(lane["schedule"].get("unit") or "").split()
+    tokens = unit[:1] + [m for m in lane["identity"]["match"] if _UNIT_SUFFIX.search(m)]
+    for tok in tokens:
+        if _UNIT_SUFFIX.search(tok):
+            base = _UNIT_SUFFIX.sub("", tok)
+            if tok == (unit[:1] or [None])[0] and len(unit) > 2 and unit[1] == "step":
+                return f"{base}#{unit[2]}"
+            return base
+    return None
+
+
+def _unit_and_output_findings(lanes: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """LQ-1058 (G3): one unit must be one row, and one output may prove one lane. Only dispatchable lanes count;
+    a group that is entirely one duplicated unit is reported once, as the duplicate."""
+    out: list[dict[str, Any]] = []
+    by_unit: dict[str, list[str]] = {}
+    by_path: dict[str, list[str]] = {}
+    for lid, lane in lanes.items():
+        if not dispatchable(lane):
+            continue
+        unit = systemd_unit(lane)
+        if unit:
+            by_unit.setdefault(unit, []).append(lid)
+        path = _norm_path(lane["output"]["signal"].get("path"))
+        if path:
+            by_path.setdefault(path, []).append(lid)
+    dup_groups = []
+    for unit, ids in sorted(by_unit.items()):
+        # One unit may legitimately feed several lanes, each proven by its OWN output (a compound unit writing one
+        # receipt per effect). Two rows are one lane twice when they share an output or one names none.
+        paths = [_norm_path(lanes[i]["output"]["signal"].get("path")) for i in ids]
+        if len(ids) > 1 and (not all(paths) or len(set(paths)) < len(paths)):
+            ids = sorted(ids)
+            dup_groups.append(set(ids))
+            out.append(finding("DUPLICATE_UNIT_ROW", ids[0], f"{len(ids)} ACTIVE rows for one systemd unit",
+                               unit=unit, lanes=ids))
+    for path, ids in sorted(by_path.items()):
+        if len(ids) > 1 and not any(set(ids) <= g for g in dup_groups):
+            out.append(finding("SHARED_OUTPUT_SIGNAL", ids[0], f"{len(ids)} ACTIVE lanes name one output; a run of "
+                               "any one of them is read as fresh output for all", path=path, lanes=ids))
+    return out
 
 
 def disagreements(manifest: Mapping[str, Any], *, allowlist: Mapping[str, Any], contracts: Mapping[str, Any],
@@ -540,6 +595,8 @@ def disagreements(manifest: Mapping[str, Any], *, allowlist: Mapping[str, Any], 
             if not refs and lane["state"] == "ACTIVE" and lane["schedule"]["runner"] == "cron":
                 out.append(finding("ACTIVE_CRON_NO_LINE", lid, "ACTIVE cron lane, no active crontab line claims it"))
 
+    out.extend(_unit_and_output_findings(lanes))
+
     for lid, lane in lanes.items():
         if lane["schedule"]["mode"] == "live" and not dispatchable(lane):
             out.append(finding("RETIRED_STILL_ARMED", lid, f"state {lane['state']} but dispatch.mode live",
@@ -579,6 +636,38 @@ def disagreements(manifest: Mapping[str, Any], *, allowlist: Mapping[str, Any], 
                 out.append(finding("N8N_LIVE_NO_RECENT_RUN", lid, "n8n live lane with no live RUN_DONE in the window",
                                    cadence_hours=cad, window_hours=window_hours))
     return out
+
+
+# ── registry overlay (pure) ──────────────────────────────────────────────────────────────────────────────────────
+
+
+def apply_registry_overlay(registry: Mapping[str, Any], overlay: Mapping[str, Any]) -> dict[str, Any]:
+    """A copy of ``registry`` with a ``LaneRegistryOverlay@v1`` applied: ``retire`` rows become RETIRED with
+    ``superseded_by``; ``output_signal`` replaces a row's signal whole. Every named lane must exist (ValueError
+    names the first that does not); the input is never mutated."""
+    if overlay.get("schema") != "LaneRegistryOverlay@v1":
+        raise ValueError(f"not a LaneRegistryOverlay@v1: {overlay.get('schema')!r}")
+    reg = copy.deepcopy(dict(registry))
+    rows = {str(r.get("lane_id")): r for r in reg.get("lanes") or []}
+    named = [str(r.get("lane_id")) for r in overlay.get("retire") or []]
+    named += [str(r.get("duplicate_of")) for r in overlay.get("retire") or []]
+    named += list((overlay.get("output_signal") or {}).keys())
+    missing = [lid for lid in named if lid not in rows]
+    if missing:
+        raise ValueError(f"overlay names lanes the registry lacks: {missing}")
+    since = str(overlay.get("state_since") or "")
+    for r in overlay.get("retire") or []:
+        row, keep = rows[str(r["lane_id"])], str(r["duplicate_of"])
+        row.update({
+            "state": "RETIRED", "state_since": since, "superseded_by": keep,
+            "state_reason": f"duplicate row of {keep}: one systemd unit, one lane row (LQ-1058)",
+            "reason_confidence": "ESTABLISHED", "reason_evidence": str(r.get("evidence") or ""),
+            "output_signal": {"kind": "none", "reason": f"NO_SIGNAL_WITH_REASON: duplicate of {keep}, which "
+                              "carries the signal"},
+        })
+    for lid, sig in (overlay.get("output_signal") or {}).items():
+        rows[lid]["output_signal"] = copy.deepcopy(dict(sig))
+    return reg
 
 
 def counts_by_code(findings: Iterable[Mapping[str, Any]]) -> dict[str, int]:

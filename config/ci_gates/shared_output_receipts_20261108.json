@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "shared_output_receipts_20261108",
+  "files": [
+    "tests/test_shared_output_receipts_20261108.py"
+  ],
+  "anchor": "SHARED_OUTPUT_RECEIPTS_20261108",
+  "comment": [
+    "ANCHOR: SHARED_OUTPUT_RECEIPTS_20261108 — LQ-20261107-1058 (G3 repair): the manifest names two ACTIVE rows for one",
+    "systemd unit (DUPLICATE_UNIT_ROW, error) and one output proving several lanes (SHARED_OUTPUT_SIGNAL, warn); the",
+    "deploy entrypoints and the quote-refresh/watchpool/two-way wrappers write one LaneRunReceipt per mode lane; the",
+    "proposed registry overlay leaves one row per unit and only the held shared groups."
+  ]
+}
