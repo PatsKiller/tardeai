@@ -1,0 +1,189 @@
+{
+ "schema": "CronTwinBaseline@v1",
+ "as_of": "2026-11-08T16:50:04+00:00",
+ "note": "inherited debt from the n8n cutover; shrinks as the operator retires cron lines (LQ-20261107-991)",
+ "findings": [
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:active-trader-session-review",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "active-trader-session-review",
+   "line_no": 1032,
+   "evidence": "5 12 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply >> logs/at_session_review.log 2>&1"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:aegis-evening-packet",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "aegis-evening-packet",
+   "line_no": 910,
+   "evidence": "45 19 * * * cd $HOME/trade-ai-releases/portfolio-server/CURRENT && PYTHONPATH=$HOME/trade-ai-releases/portfolio-server/CURRENT flock -n /tmp/aegis_evening_packet.lock $PY scripts/aegis_evening_packet.py >> logs/aegis_evening_packet.log 2>&1"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:agent-calibration-engine",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "agent-calibration-engine",
+   "line_no": 318,
+   "evidence": "0 12 * * 0 cd $PROJ && flock -n /tmp/agent_calibration_engine.lock env TRADEAI_EFFECT_CLAIM=agent-calibration-engine bash scripts/effect_claim_cron.sh agent-calibration-engine $PY scripts/agent_calibration_engine.py --apply >> logs/agent_ca"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:agent-watchlist-engine",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "agent-watchlist-engine",
+   "line_no": 268,
+   "evidence": "0 7 * * * cd $PROJ && $PY scripts/agent_watchlist_engine.py --status >> logs/agent_watchlist_engine.log 2>&1"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:ask-alerts",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "ask-alerts",
+   "line_no": 492,
+   "evidence": "*/30 8-18 * * 1-5 cd $PROJ && flock -n /tmp/ask_alerts.lock $PY scripts/ask_alerts.py --check >> logs/ask_alerts.log 2>&1  # fire ask-box alerts (IPO news / price) to Telegram"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:drain-discovery-backlog",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "drain-discovery-backlog",
+   "line_no": 884,
+   "evidence": "0 6 * * 1-5 cd $PROJ && $PY scripts/drain_discovery_backlog.py --apply >> logs/drain_discovery_backlog.log 2>&1"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:event-detector",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "event-detector",
+   "line_no": 331,
+   "evidence": "0 7,9,12,16,20 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/event_detector.py >> logs/event_detector.log 2>&1"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:fee-efficiency-analyzer",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "fee-efficiency-analyzer",
+   "line_no": 555,
+   "evidence": "25 7 * * 1 cd $PROJ && flock -n /tmp/fee_efficiency.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/fee_efficiency_analyzer.py --emit\" >> logs/fee_efficiency.log 2>&1  # weekly portfolio fee/cost-efficiency findings -> Reports"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:finviz-enrichment-scalp-hot",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "finviz-enrichment-scalp-hot",
+   "line_no": 650,
+   "evidence": "*/5 6-15 * * 1-5 cd $PROJ && SCALP_HOT_TIER=1 flock -n /tmp/finviz_enrichment_scalp_hot.lock timeout 240 bash scripts/market_day_gate.sh $PY scripts/finviz_enrichment.py --scalp-hot >> logs/finviz_enrichment_scalp_hot.log 2>&1  # TRADEAI_LA"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:finviz-market-movers",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "finviz-market-movers",
+   "line_no": 774,
+   "evidence": "*/15 6-16 * * 1-5 cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/finviz_market_movers.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/finviz_market_movers.py\" >> logs/finviz_market_movers.log 2>&1  # Home v2 WS-A: "
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:generate-analyst-reports-autonomous-weekly",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "generate-analyst-reports-autonomous-weekly",
+   "line_no": 578,
+   "evidence": "15 21 * * 0 cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/analyst_reports_weekly.lock $PY scripts/generate_analyst_reports_autonomous.py --mode weekly >> logs/analyst_reports_autonomous.log 2>&1"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:incubator-llm-screener",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "incubator-llm-screener",
+   "line_no": 802,
+   "evidence": "10 8 * * 1-5 cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/incubator_llm_screener.lock $PY scripts/incubator_llm_screener.py --run >> logs/incubator_llm_screener.log 2>&1"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:journal-review-builder",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "journal-review-builder",
+   "line_no": 463,
+   "evidence": "30 18 * * 1-5 cd $PROJ && flock -n /tmp/journal_review.lock $PY scripts/journal_review_builder.py >> logs/journal_review.log 2>&1  # paper-trade journal review (LLM grade+lesson, idempotent)"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:news-to-catalyst",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "news-to-catalyst",
+   "line_no": 412,
+   "evidence": "45 6,12,18 * * * cd $PROJ && flock -n /tmp/news_to_catalyst.lock env TRADEAI_EFFECT_CLAIM=news-to-catalyst bash scripts/effect_claim_cron.sh news-to-catalyst $PY scripts/news_to_catalyst.py >> logs/news_to_catalyst.log 2>&1"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:overnight-batch-tax",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "overnight-batch-tax",
+   "line_no": 346,
+   "evidence": "35 6 * * 1 cd $PROJ && flock -n /tmp/tax_sweep.lock $PY scripts/overnight_batch.py --tax-sweep >> logs/tax_sweep.log 2>&1"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:portfolio-lookthrough-themes",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "portfolio-lookthrough-themes",
+   "line_no": 490,
+   "evidence": "40 7 * * 1-5 cd $PROJ && flock -n /tmp/lookthrough_themes.lock $PY scripts/portfolio_lookthrough_themes.py --grok >> logs/lookthrough_themes.log 2>&1  # theme look-through + CIO/Risk/Steph/Grok advisories"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:proposal-llm-review-worker",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "proposal-llm-review-worker",
+   "line_no": 696,
+   "evidence": "*/30 6-19 * * 1-5 cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/proposal_llm_review_worker.lock timeout 25m $PY scripts/proposal_llm_review_worker.py --run --limit 4 >> logs/proposal_llm_review_worker.log 2>&1  # sta"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:reconcile-pullback-outcomes",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "reconcile-pullback-outcomes",
+   "line_no": 763,
+   "evidence": "45 9 * * 0 cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pullback_outcomes.lock $PY scripts/reconcile_pullback_outcomes.py >> logs/pullback_outcomes.log 2>&1  # Watch Desk v2 D1 weekly trigger-outcome reconciler"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:research-intelligence-queue",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "research-intelligence-queue",
+   "line_no": 755,
+   "evidence": "45 16 * * 1-5 cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/ri_research_queue_cron.lock $PY scripts/research_intelligence_queue.py --drain --cap 10 >> logs/ri_research_queue.log 2>&1"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:research-intelligence-queue",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "research-intelligence-queue",
+   "line_no": 756,
+   "evidence": "40 2 * * * cd $HOME/trade-ai-releases/portfolio-server/CURRENT && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- flock -n /tmp/ri_research_queue_cron.lock $PY scripts/research_intelligence_queue.py --drain --cap"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:sec-filings-feed",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "sec-filings-feed",
+   "line_no": 1021,
+   "evidence": "20 8,12,17,21 * * 1-5 CUR=$(readlink -f $HOME/trade-ai-releases/portfolio-server/CURRENT) && cd \"$CUR\" && set -a && . /run/user/1000/tradeai/env && set +a && flock -n /tmp/tradeai_sec_filings_feed.lock $PY scripts/sec_filings_feed.py --appl"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:social-scalp-scanner",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "social-scalp-scanner",
+   "line_no": 250,
+   "evidence": "0,30 6-9 * * 1-5 cd $PROJ && flock -n /tmp/social_scalp.lock $PY scripts/social_scalp_scanner.py >> logs/social_scalp_scanner.log 2>&1"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:tmp-scratch-cleanup",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "tmp-scratch-cleanup",
+   "line_no": 1082,
+   "evidence": "30 3 * * 0 cd $PROJ && flock -n /tmp/tradeai_tmp_scratch_cleanup.lock $PY scripts/tmp_scratch_cleanup.py --apply >> $HOME/trade-ai-releases/persistent-state/logs/tmp_scratch_cleanup.log 2>&1"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:trade-ai-scalp-live",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "trade-ai-scalp-live",
+   "line_no": 1072,
+   "evidence": "*/5 9-15 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py >> logs/trade_ai_scalp_live.log 2>&1  # TRADEAI_LANE trade-ai-scalp-live"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:update-lockup-earnings-dates",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "update-lockup-earnings-dates",
+   "line_no": 496,
+   "evidence": "18 8 * * * cd $PROJ && flock -n /tmp/lockup_earnings.lock env TRADEAI_EFFECT_CLAIM=update-lockup-earnings-dates bash scripts/effect_claim_cron.sh update-lockup-earnings-dates $PY scripts/update_lockup_earnings_dates.py >> logs/lockup_earnin"
+  },
+  {
+   "key": "N8N_LIVE_WITH_CRON_TWIN:validate-expense-ratios",
+   "code": "N8N_LIVE_WITH_CRON_TWIN",
+   "lane_id": "validate-expense-ratios",
+   "line_no": 556,
+   "evidence": "40 7 1 * * cd $PROJ && flock -n /tmp/expense_ratio_validate.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/validate_expense_ratios.py --apply\" >> logs/expense_ratio_validate.log 2>&1  # monthly: re-validate fund/ETF expense ratios (dat"
+  }
+ ]
+}
