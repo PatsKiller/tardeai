@@ -81,8 +81,11 @@ def read_n8n(snapshot: Optional[str], skip: bool) -> tuple[Optional[list[dict]],
 
 
 def build(root: Path, *, crontab_file: Optional[str] = None, no_crontab: bool = False,
-          n8n_snapshot: Optional[str] = None, no_n8n: bool = False, now: Optional[str] = None
-          ) -> tuple[dict[str, Any], dict[str, Any]]:
+          n8n_snapshot: Optional[str] = None, no_n8n: bool = False, now: Optional[str] = None,
+          ledger: Optional[dict[str, Any]] = None, ledger_source: Optional[dict[str, Any]] = None,
+          window_hours: float = 168.0) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Manifest + report. ``ledger``/``ledger_source`` come from scripts/ops/lane_truth.py; the generator alone does
+    not read the ledger, and then no ledger source is listed at all."""
     registry, s_reg = _read(root, REGISTRY_REL)
     allowlist, s_allow = _read(root, ALLOWLIST_REL)
     contracts, s_con = _read(root, CONTRACTS_REL)
@@ -90,9 +93,12 @@ def build(root: Path, *, crontab_file: Optional[str] = None, no_crontab: bool = 
     n8n, s_n8n = read_n8n(n8n_snapshot, no_n8n)
     generated_at = now or datetime.now(timezone.utc).isoformat(timespec="seconds")
     sources = {"registry": s_reg, "allowlist": s_allow, "contracts": s_con, "crontab": s_cron, "n8n_db": s_n8n}
+    if ledger_source is not None:
+        sources["ledger"] = ledger_source
     manifest = lm.build_manifest(registry, allowlist, contracts, generated_at=generated_at, sources=sources)
     errors = lm.validate(manifest)
-    findings = lm.disagreements(manifest, allowlist=allowlist, contracts=contracts, cron_lines=cron, n8n_active=n8n)
+    findings = lm.disagreements(manifest, allowlist=allowlist, contracts=contracts, cron_lines=cron, n8n_active=n8n,
+                                ledger=ledger, window_hours=window_hours)
     view_equal = lm.registry_view(manifest) == registry and \
         json.dumps(lm.registry_view(manifest)) == json.dumps(registry)
     report = {
