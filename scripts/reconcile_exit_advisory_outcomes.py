@@ -129,23 +129,24 @@ def _num(v) -> float | None:
     return f if f > 0 else None
 
 
-def advisory_fields(research_type, ev) -> tuple[dict, float, float | None]:
+def advisory_fields(research_type, ev) -> tuple[dict, float | None, float | None]:
     """(fields for the row, price at advisory, ATR) from the real evidence shapes.
 
-    A legacy ``evidence_json.metrics_row`` wins when present (the exit_intelligence shape)."""
+    A price the evidence does not carry stays None: the row is written NOT_EVALUABLE, never scored
+    against 0. A legacy ``evidence_json.metrics_row`` wins when present (the exit_intelligence shape)."""
     ev = ev if isinstance(ev, dict) else {}
     mr = ev.get("metrics_row")
     if isinstance(mr, dict) and mr:
-        return mr, _num(mr.get("price")) or 0.0, _num(mr.get("atr14"))
+        return mr, _num(mr.get("price")), _num(mr.get("atr14"))
     if research_type == "protection_advisory":
         inp = ev.get("inputs") if isinstance(ev.get("inputs"), dict) else {}
         rec = ev.get("recommendation") if isinstance(ev.get("recommendation"), dict) else {}
         pct = rec.get("stop_pct_below")
         label = f"stop_{pct}pct" if pct is not None else "protection_advisory"
-        return {"advisory": label}, _num(inp.get("price")) or 0.0, _num(inp.get("atr"))
+        return {"advisory": label}, _num(inp.get("price")), _num(inp.get("atr"))
     if research_type == "stop_health":
-        return {"advisory": f"stop_health:{ev.get('health')}"}, _num(ev.get("current_price")) or 0.0, None
-    return {}, 0.0, None
+        return {"advisory": f"stop_health:{ev.get('health')}"}, _num(ev.get("current_price")), None
+    return {}, None, None
 
 
 def _age_days(ts) -> int | None:
@@ -349,21 +350,21 @@ def reconcile() -> int:
         m, p0, atr = advisory_fields(a.get("research_type"), ev)
         age_days = _age_days(a.get("created_at"))
         if age_days is None:
-            skipped["advisory_at_unreadable"] = skipped.get("advisory_at_unreadable", 0) + 1
+            skipped["advisory_at_unreadable"] = skipped.get("advisory_at_unreadable", 0) + 1  # nosemgrep: tq-py-missing-as-zero -- a skip counter starts at 0; it is not a data value
             continue
         for horizon, trading_days in ((5, 5), (21, 21)):
             if age_days < int(trading_days * 1.5):  # calendar buffer around trading days
-                skipped["not_due"] = skipped.get("not_due", 0) + 1
+                skipped["not_due"] = skipped.get("not_due", 0) + 1  # nosemgrep: tq-py-missing-as-zero -- a skip counter starts at 0; it is not a data value
                 continue
             dup = ex("SELECT 1 FROM exit_advisory_outcomes WHERE advisory_id=%s AND horizon_days=%s",
                      (a["id"], horizon), fetch="one")
             if dup:
-                skipped["already_reconciled"] = skipped.get("already_reconciled", 0) + 1
+                skipped["already_reconciled"] = skipped.get("already_reconciled", 0) + 1  # nosemgrep: tq-py-missing-as-zero -- a skip counter starts at 0; it is not a data value
                 continue
             attempted += 1
             closes = _closes_since(a["symbol"], str(a["created_at"]), trading_days + 10, bars_cache)
             spy = _closes_since("SPY", str(a["created_at"]), trading_days + 10, bars_cache)
-            if len(closes) <= trading_days or len(spy) <= trading_days or p0 <= 0:
+            if len(closes) <= trading_days or len(spy) <= trading_days or not p0:
                 ret = spy_ret = dd_atr = None
                 v = "NOT_EVALUABLE"
             else:
@@ -395,7 +396,7 @@ def reconcile() -> int:
                     giveback_frac_then, operator_acted, verdict)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT (advisory_id, horizon_days) DO NOTHING""",
-                (a["id"], a["symbol"], m.get("advisory"), a["created_at"], horizon, p0 or None,
+                (a["id"], a["symbol"], m.get("advisory"), a["created_at"], horizon, p0,
                  (closes[trading_days] if ret is not None else None), ret, spy_ret, dd_atr,
                  m.get("giveback_frac"), acted, v),
                 fetch="none",

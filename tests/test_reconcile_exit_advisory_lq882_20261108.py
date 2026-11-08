@@ -217,7 +217,7 @@ def test_advisory_fields_reads_every_producer_shape(lane):
     # a legacy metrics_row wins over the type-specific shape
     assert lane.advisory_fields("protection_advisory", _exit_intel(price=7.0, atr=0.25))[1:] == (7.0, 0.25)
     # a missing/garbage price is None, never 0
-    assert lane.advisory_fields("protection_advisory", {})[1:] == (0.0, None)
+    assert lane.advisory_fields("protection_advisory", {})[1:] == (None, None)
 
 
 def test_empty_input_reason_names_the_producers(lane):
@@ -263,6 +263,19 @@ def test_create_products_advisory_rows_are_reconciled_and_reported(lane, monkeyp
     receipt = _receipt(tmp_path)
     assert receipt["status"] == "ok"
     assert receipt["produced_count"] == 4
+
+
+def test_create_an_advisory_without_a_price_is_written_not_evaluable_never_zero(
+        lane, monkeypatch, tmp_path):
+    """The producer omitted the price: the row still lands (it is due), but NULL and NOT_EVALUABLE --
+    a 0 would score every later return as an infinite loss."""
+    rows = [_ri_row(3, "stop_health", "AAA", 60, {"health": "healthy"})]
+    db = _wire(monkeypatch, lane, FakeDB(rows))
+    assert lane.reconcile() == 0
+    assert len(db.inserts) == 2
+    assert all(i["price_at_advisory"] is None for i in db.inserts)
+    assert all(i["verdict"] == "NOT_EVALUABLE" for i in db.inserts)
+    assert all(i["symbol_return_pct"] is None and i["price_at_horizon"] is None for i in db.inserts)
 
 
 def test_create_exit_intelligence_still_reconciled(lane, monkeypatch, tmp_path):
