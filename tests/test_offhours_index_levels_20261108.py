@@ -316,3 +316,45 @@ def test_stored_reference_reads_the_lanes_own_stored_settle(monkeypatch):
     calls.clear()
     assert ent.stored_reference("/ES", _t("2026-11-06").date(), {"schwab": {}}) is None
     assert calls == []
+
+
+# ── the settle reference: the lane's own stored Friday close, never yfinance ───────────────────────
+
+
+def test_same_day_futures_close_is_corroborated_by_the_stored_settle_or_stays_level_only():
+    """The state of the store today: no row carries reference_date 2026-11-06 (Friday's after-hours are never
+    collected -- the window ends Friday 09:30 ET), so a close the provider dates to the print's own session has
+    nothing to corroborate it and the row stays LEVEL ONLY. That is the safe failure: no phantom move."""
+    t = int(_t("2026-11-08T20:00:40-05:00").timestamp() * 1000)
+    p = {"/ES": {"assetMainType": "FUTURE",
+                 "quote": {"lastPrice": 6852.25, "closePrice": 6820.0, "tradeTime": t, "settleTime": t}}}
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-08T20:01:00-05:00"), oq.load_config())
+    assert skipped == [] and len(rows) == 1
+    flat = rows[0]
+    assert validate(flat) is None
+    assert flat["session"] == "overnight" and flat["price"] == 6852.25
+    assert flat["reference_close"] is None and flat["change_pct"] is None  # level only, never a guess
+    # The lane's own stored settle for the session date turns the same print into a measured move.
+    seen: list = []
+
+    def lookup(sym, d):
+        seen.append((sym, d))
+        return 6820.0
+
+    rows, _ = oq.schwab_rows(p, _t("2026-11-08T20:01:00-05:00"), oq.load_config(), reference_lookup=lookup)
+    assert seen == [("/ES", _t("2026-11-06").date())]
+    r = rows[0]
+    assert validate(r) is None
+    assert r["reference_close"] == 6820.0 and str(r["reference_date"]) == "2026-11-06"
+    assert r["reference_basis"] == "schwab_quote_close_price_settle_same_day"
+    assert r["change_pct"] == round(100.0 * (6852.25 - 6820.0) / 6820.0, 4)
+    # A corroborating value that disagrees beyond tolerance is refused, not averaged: level only.
+    rows, _ = oq.schwab_rows(p, _t("2026-11-08T20:01:00-05:00"), oq.load_config(),
+                             reference_lookup=lambda sym, d: 6800.0)
+    assert rows[0]["reference_close"] is None and validate(rows[0]) is None
+    # A lookup that raises is "no reference", never a crash and never a guess.
+    def boom(sym, d):
+        raise RuntimeError("db down")
+
+    rows, _ = oq.schwab_rows(p, _t("2026-11-08T20:01:00-05:00"), oq.load_config(), reference_lookup=boom)
+    assert rows[0]["reference_close"] is None and validate(rows[0]) is None
