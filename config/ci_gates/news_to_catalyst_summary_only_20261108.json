@@ -1,0 +1,24 @@
+{
+  "schema": "CiGate@v1",
+  "name": "news_to_catalyst_summary_only_20261108",
+  "files": [
+    "tests/test_news_to_catalyst_summary_only_20261108.py"
+  ],
+  "anchor": "NEWS_TO_CATALYST_SUMMARY_ONLY_20261108",
+  "comment": [
+    "ANCHOR: NEWS_TO_CATALYST_SUMMARY_ONLY_20261108 — a body mention is not an event.",
+    "LQ-20261107-1131. catalyst_events rows written 2026-11-08 14:02-14:07 ET by the",
+    "news-ingestion-tail lane carried types their headline never stated: an analyst upgrade from a",
+    "costs-and-rankings piece, a geopolitical tag from an earnings-growth valuation, a buyback from an",
+    "earnings-call transcript, a merger from earnings-call highlights. Replaying news_to_catalyst._classify",
+    "over those 46 rows: 26 were typed by a keyword found only in the article summary, and 24 had no",
+    "headline keyword match at all.",
+    "The gate pins the repair: a summary-only mention of analyst_upgrade, geopolitical,",
+    "merger_acquisition, buyback or contract_win types nothing (other), while the same words in the",
+    "headline still type; the headline is scanned before the body, so a body-only mention can no longer",
+    "preempt a type the headline states; and a results beat or a guidance raise stated only in the body",
+    "still types, because the repair is scoped rather than a blanket headline-only classifier.",
+    "Hermetic: synthetic headlines and summaries only, no real article text (public repo), no database,",
+    "no network, no lane call."
+  ]
+}
