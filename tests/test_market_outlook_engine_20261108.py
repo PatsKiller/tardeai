@@ -440,7 +440,30 @@ def test_coverage_is_measured_by_prior_weight_not_by_count(policy):
     assert conf.coverage != pytest.approx(2.0 / 3.0)
 
 
-# ── 13. --hitrate is refused with --apply (LQ-985 review) -------------------------------------------------------
+# ── 13. confidence band edges and the U_event floor (LQ-985 mutation survivors) ----------------------------------
+@pytest.mark.parametrize(
+    "weight,band",
+    [(70.0, "HIGH"), (69.9, "MODERATE"), (45.0, "MODERATE"), (44.9, "LOW")],
+)
+def test_confidence_band_edges_are_inclusive_at_the_stated_thresholds(policy, weight, band):
+    # one measured category of this weight: coverage is the whole product (freshness, agreement, U, hitrate all 1.0)
+    conf = conf_mod.compute([_synthetic_cat("a", weight, 0.5)], policy, SUNDAY, u_event=1.0, hitrate=1.0)
+    assert conf.value == pytest.approx(weight / 100.0)
+    assert conf.band == band  # HIGH >= 0.70, MODERATE >= 0.45
+
+
+def test_u_event_is_floored_not_compounded_away(policy):
+    # six HIGH events inside the horizon: 0.85^6 = 0.377 would sink confidence; the floor holds it at 0.60 (§2.6)
+    items = [
+        {"date_et": "2026-11-09", "time_et": "08:30", "event": f"high_{i}", "impact": "HIGH", "impact_weight": 1.0}
+        for i in range(6)
+    ]
+    u, named = cal_mod.u_event(items, policy, SUNDAY, 2)
+    assert len(named) == 6
+    assert u == pytest.approx(policy["events"]["u_event_floor"]) == pytest.approx(0.60)
+
+
+# ── 14. --hitrate is refused with --apply (LQ-985 review) -------------------------------------------------------
 def test_hitrate_override_is_refused_with_apply(capsys):
     import scripts.market_outlook_evaluate as cli
 
