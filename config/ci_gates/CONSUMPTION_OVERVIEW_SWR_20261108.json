@@ -1,0 +1,20 @@
+{
+  "schema": "CiGate@v1",
+  "name": "CONSUMPTION_OVERVIEW_SWR_20261108",
+  "files": [
+    "tests/test_consumption_overview_swr_20261108.py"
+  ],
+  "anchor": "CONSUMPTION_OVERVIEW_SWR_20261108",
+  "comment": [
+    "ANCHOR: CONSUMPTION_OVERVIEW_SWR_20261108 — LQ-20261107-822. /api/v2/consumption/overview measured",
+    "3.8-4.3 s normally and 16.9 s at load average 27, with no cache: every GET recomputed the body,",
+    "and the cold compute re-parsed the 114 MB provider_cost/events.jsonl in anthropic_monitoring._events",
+    "(617-1262 ms of CPU per miss; the file is appended continuously, so its whole-file fingerprint cache",
+    "almost never hit). The route now joins stale_serve.DEFAULT_SWR_PATHS (last good body served at once,",
+    "one background refresh, 5 minute staleness cap) and request_coalesce.DEFAULT_COALESCE_PATHS.",
+    "This gate pins what makes that safe: a warm hit never recomputes, a stale body is served with its age",
+    "and starts exactly one refresh, an error is never cached (the page keeps the real failure), a body",
+    "older than the cap is recomputed inline, and the operator's own consumption writes drop the body.",
+    "Registered because a new pytest file that no gate names is not run by CI (check_test_coverage --fail-on-new)."
+  ]
+}
