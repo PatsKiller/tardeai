@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "self_heal_triage_20261108",
+  "files": [
+    "tests/test_self_heal_triage_20261108.py"
+  ],
+  "comment": [
+    "The self-heal fixer had no reading step: nothing classified a failure, nothing linked the",
+    "FINDING-SELF-HEAL-* notes for earlier occurrences, nothing wrote a root-cause paragraph.",
+    "scripts/lib/self_heal_triage.py adds it as advisory-only triage on DeepSeek flash through the",
+    "governed client, gated to the operator's scheduled window (weekday 09:00-21:00 ET, any weekend",
+    "hour) and a pre-send $0.05 cap, 60 s, one attempt, no repair. Pins: class=None on every failure",
+    "(rules decide), schema-validated output with extra keys forbidden, linked paths only from the",
+    "supplied FINDING-SELF-HEAL candidates, embedded fence markers neutralised, and no write/command",
+    "surface in the module. The LLM is stubbed throughout; no test reaches the network."
+  ]
+}
