@@ -50,13 +50,23 @@ def test_jack_henry_associates_binds_jkhy_not_jack():
     assert rows[0]["role_confidence"] == 1.0
 
 
-def test_ticker_must_be_uppercase_and_beside_the_same_name():
+def test_the_full_name_binds_and_a_bare_ticker_or_parenthetical_does_not():
+    """A bare ticker is not a name. (est) and (ai) are not company names either."""
     rows = match_mentions("Jack Henry & Associates (JKHY) expanded.", names=NAMES)
     assert {row["symbol"] for row in rows} == {"JKHY"}
     assert match_mentions("The filing lists $JKHY only.", names=NAMES) == []
     prose = match_mentions("results (est) and (ai) trends", names={"EST": ["Eastern Standard Timekeepers"], "AI": ["Ai Holdings Group"]})
     assert prose == []
     assert match_mentions("results (EST) and (AI) trends", names={"EST": ["Eastern Standard Timekeepers"], "AI": ["Ai Holdings Group"]}) == []
+
+
+def test_a_one_token_official_name_does_not_bind():
+    """Apple Inc. is one content token. Binding that token would match the word anywhere."""
+    from scripts.lib.document_mention_matcher import content_tokens, name_agrees
+
+    assert content_tokens("Apple Inc.") == ["apple"]
+    assert name_agrees("Apple Inc.", "AAPL", {"AAPL": ["Apple Inc."]}) is False
+    assert match_mentions("Apple reported a record quarter.", names={"AAPL": ["Apple Inc."]}) == []
 
 
 def test_a_foreign_name_is_not_the_subject_of_another_filing():
@@ -141,6 +151,68 @@ def test_run_loads_names_from_the_registry_and_writes_jkhy_only():
     symbols = [sym for _doc, syms in written for sym in syms]
     assert symbols == ["JKHY"]
     assert stat["written"] == 1
+
+
+def test_instrument_description_binds_and_run_uses_that_book():
+    """An aliases-only registry has no names. run() must read the instrument book.
+
+    Replacing that read with an empty book writes nothing, so this test fails.
+    """
+    from scripts.backfill_document_mentions import run
+    from scripts.lib.document_mention_matcher import names_from_instrument_records
+    import scripts.lib.schwab_instrument_evidence as evidence
+
+    records = {"FRSH": {"description": "FRESHWORKS INC A"}, "JKHY": {"description": "JACK HENRY & ASSOCIATES INC"}}
+    names = names_from_instrument_records(records)
+    assert "FRSH" in names and "JKHY" in names
+    assert [row["symbol"] for row in match_mentions("Freshworks Inc A reported.", names=names)] == ["FRSH"]
+
+    registry = {
+        "by_symbol": {"JKHY": "g-jkhy"},
+        "entities": {"g-jkhy": {"aliases": ["JKHY"], "identity_status": "CONFIRMED", "active": True}},
+    }
+    documents = [
+        (1, "JKHY", "Jack Henry & Associates Inc reported results."),
+        (2, "SPCX", "Space Exploration Technologies Corp announced a launch."),
+    ]
+
+    class Cur:
+        def execute(self, sql, params=None):
+            self.sql = sql or ""
+
+        def fetchone(self):
+            return [None]
+
+        def fetchall(self):
+            if "symbol_profiles" in self.sql:
+                return [("SPCX", "Space Exploration Technologies Corp. provides launch service.")]
+            return documents
+
+    class Conn:
+        def cursor(self):
+            return Cur()
+
+        def close(self):
+            return None
+
+    original_load = evidence.load
+    evidence.load = lambda path=None: {"instruments": records}
+    written: list[tuple] = []
+
+    def persist_fn(conn, *, source_table, source_id, rows):
+        written.append((source_id, [row["symbol"] for row in rows if row.get("role")]))
+        return len(written[-1][1])
+
+    try:
+        stat = run(
+            "news_articles", 20, True, mark=0, seed=False, legacy=False, names=None,
+            conn=Conn(), registry=registry, persist_fn=persist_fn,
+        )
+    finally:
+        evidence.load = original_load
+    symbols = [sym for _doc, syms in written for sym in syms]
+    assert symbols == ["JKHY", "SPCX"], symbols
+    assert stat["written"] == 2
 
 
 def test_undecided_when_two_exact_names_and_no_filed_symbol():

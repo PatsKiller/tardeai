@@ -94,7 +94,7 @@ def run(table: str, limit: int, apply: bool, mark=None, deadline: float | None =
         conn=None, registry=None, persist_fn=None) -> dict:
     from lib import research_identity as RI
     from lib.document_mentions import SOURCES, extract, persist, subject_from_symbol
-    from scripts.lib.document_mention_matcher import names_from_profile_rows, names_from_registry
+    from scripts.lib.document_mention_matcher import mention_names, names_from_registry
 
     spec = SOURCES[table]
     doc = registry if registry is not None else RI.load_registry()
@@ -106,13 +106,15 @@ def run(table: str, limit: int, apply: bool, mark=None, deadline: float | None =
     if not legacy and names is None:
         names = names_from_registry(doc)
         if not names:
+            from scripts.lib.schwab_instrument_evidence import load as load_instruments
+
             cur.execute(
                 "SELECT upper(symbol) AS symbol, description_1s FROM symbol_profiles "
                 "WHERE description_1s IS NOT NULL"
             )
-            names = names_from_profile_rows(
-                [{"symbol": row[0], "description_1s": row[1]} for row in cur.fetchall()]
-            )
+            profile_rows = [{"symbol": row[0], "description_1s": row[1]} for row in cur.fetchall()]
+            instruments = (load_instruments() or {}).get("instruments") or {}
+            names = mention_names(instruments, profile_rows)
 
     # ::text because some sources store JSON (research_insights.structured_thesis,
     # key_arguments) and COALESCE(json, '') is an invalid-input error, not an empty
