@@ -41,6 +41,56 @@ def _conn():
     return _get_conn()
 
 
+#: ``_get_conn`` is not a long-lived pool: the run holds ONE socket for its whole life and, in ``--apply``, that
+#: socket sits idle across up to ``timeout=180`` researcher subprocess calls. PostgreSQL/proxy side reaping then
+#: closes it, and the next cursor read raises ``OperationalError: SSL connection has been closed unexpectedly``.
+_CONN_ERRORS = frozenset({"OperationalError", "InterfaceError"})
+
+
+def _closed_socket(exc: BaseException) -> bool:
+    """True when the failure is the CONNECTION, not the statement (retry once on those; re-raise everything else)."""
+    return type(exc).__name__ in _CONN_ERRORS or "closed" in str(exc).lower()
+
+
+class _Session:
+    """The run's read session, reopened across LLM waits.
+
+    ``query`` reopens the socket once on a connection-class error, and ``after_llm`` drops it deliberately after a
+    researcher call so the next read pays one connect instead of a guaranteed failure. No write runs through it, so
+    a retry can never double-apply anything.
+    """
+
+    def __init__(self, factory=None):
+        self._factory = factory or _conn
+        self.conn = self._factory()
+
+    def reconnect(self):
+        old, self.conn = self.conn, None
+        try:  # nosemgrep: tq-py-except-pass -- closing a socket the server already closed; nothing to report
+            if old is not None:
+                old.close()
+        except Exception:  # noqa: BLE001 -- the socket is already gone; closing it is best effort
+            pass
+        self.conn = self._factory()
+
+    def query(self, fn, *args, **kwargs):
+        for attempt in (0, 1):
+            if self.conn is None:
+                self.conn = self._factory()
+            try:
+                return fn(self.conn, *args, **kwargs)
+            except Exception as exc:
+                if attempt or not _closed_socket(exc):
+                    raise
+                print(f"[top20] reconnecting after {type(exc).__name__}: {exc}")
+                self.reconnect()
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    def after_llm(self):
+        """A researcher call just returned: the socket idled for up to its 180 s timeout. Drop it."""
+        self.reconnect()
+
+
 def _named(conn, symbols):
     """Explicit symbol list (operator runs, e.g. 'all buy/strong_buy watchlist items' 2026-06-12)."""
     cur = conn.cursor()
@@ -51,18 +101,65 @@ def _named(conn, symbols):
     return [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
 
 
-def _top(conn, n):
-    """Top-N by Hermes rank PLUS every operator-directive symbol regardless of rank (2026-06-12:
-    CIFR #326 / DLR #1172 / AXTI #1627 never made the top-20 cut — operator standing instructions
-    outrank scores)."""
+#: The directive arm is bounded to the same size as the ranked arm: ``--top N`` means one run offers at most N
+#: ranked names plus at most N operator-directive names. It is a precedence arm, not a universe to scan.
+#: 2026-11-08: 3,676 rows carried ``in_directive_watch`` (its baseline reconcile has never been applied by the
+#: operator — ``data/runtime/directive_watch_flag_reconcile_last.json`` does not exist), so every scheduled run
+#: under ``--top 20`` scanned ~2,300 distinct symbols, took ~7 minutes and died ``OperationalError: SSL connection
+#: has been closed unexpectedly``.
+DIRECTIVE_ARM_FACTOR = 1
+
+_COLUMNS = ("symbol", "hermes_rank", "hermes_composite_score", "hermes_score_components", "rsi", "trend")
+
+
+def _top(conn, n, directive_limit=None, held=(), proposed=()):
+    """Top-``n`` by Hermes rank (a true LIMIT — not ``hermes_rank <= n``, which returns every row sharing the rank)
+    PLUS at most ``directive_limit`` operator-directive symbols, best-ranked first (2026-06-12: CIFR #326 /
+    DLR #1172 / AXTI #1627 never made the top-20 cut — operator standing instructions outrank scores)
+    PLUS **every** held and open-proposal symbol (LQ-20261107-1178).
+
+    The directive arm reads the ``in_directive_watch`` flag and never its own operator join (the flag has one
+    writer; see ``tests/test_directive_watch_flag_source_20261022.py``). Bounding it costs no research: this lane
+    can only *call* T0/T1 names, and the guard's ``external_cloud_tiers`` excludes T2, which is where
+    ``active_directive`` maps — so a directive name here contributes precedence and skip accounting, not a call.
+
+    The third arm exists because the first two can both miss a name that is callable: ``_trigger_for`` ranks
+    holdings ABOVE the directive flag, so a held symbol that also carries the inflated flag is T0/callable, yet a
+    held name with rank NULL is in no rank band and competes for the ``directive_limit`` slots against 2,308
+    flagged names. Measured read-only on 2026-11-08 (review of LQ-1136): 48 holdings, 43 flagged, 2 in the rank
+    band — the bounded pair selected 24 symbols and only **1** held name. This arm is bounded by its own input
+    (the portfolio / open-proposal sets), never by ``n``, so no held name can be truncated away while the SQL
+    still cannot fan out to the flag's population.
+    """
+    limit = n * DIRECTIVE_ARM_FACTOR if directive_limit is None else directive_limit
+    cols = ", ".join(_COLUMNS)
     cur = conn.cursor()
-    cur.execute("""SELECT DISTINCT ON (symbol) symbol, hermes_rank, hermes_composite_score,
-                     hermes_score_components, rsi, trend
-                   FROM watchlist_items
-                   WHERE (hermes_rank IS NOT NULL AND hermes_rank <= %s)
-                      OR (in_directive_watch=true AND status<>'removed')
-                   ORDER BY symbol, hermes_composite_score DESC""", (n,))
-    rows = [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
+
+    def rows_of(sql, params):
+        cur.execute(sql, params)
+        names = [d[0] for d in cur.description]
+        return [dict(zip(names, r)) for r in cur.fetchall()]
+
+    priority_symbols = sorted({str(s).upper().strip() for s in (*held, *proposed)} - {""})
+    ranked = rows_of(f"""SELECT {cols} FROM (
+                           SELECT DISTINCT ON (symbol) {cols}
+                             FROM watchlist_items WHERE hermes_rank IS NOT NULL
+                            ORDER BY symbol, hermes_rank ASC, hermes_composite_score DESC) t
+                          ORDER BY hermes_rank, symbol LIMIT %s""", (n,))
+    directive = rows_of(f"""SELECT {cols} FROM (
+                              SELECT DISTINCT ON (symbol) {cols}
+                                FROM watchlist_items
+                               WHERE in_directive_watch=true AND status<>'removed' AND symbol IS NOT NULL
+                               ORDER BY symbol, hermes_composite_score DESC) t
+                             ORDER BY hermes_rank NULLS LAST, symbol LIMIT %s""", (limit,))
+    priority = rows_of(f"""SELECT {cols} FROM (
+                             SELECT DISTINCT ON (symbol) {cols}
+                               FROM watchlist_items WHERE symbol = ANY(%s)
+                              ORDER BY symbol, hermes_composite_score DESC) t
+                            ORDER BY hermes_rank NULLS LAST, symbol LIMIT %s""",
+                       (priority_symbols, len(priority_symbols))) if priority_symbols else []
+    rows = ranked + [r for r in directive if r["symbol"] not in {x["symbol"] for x in ranked}]
+    rows += [r for r in priority if r["symbol"] not in {x["symbol"] for x in rows}]
     rows.sort(key=lambda r: (r["hermes_rank"] is None, r["hermes_rank"] or 0))
     return rows
 
@@ -175,14 +272,25 @@ def run(top=20, lanes=("chatgpt", "grok"), apply=False, symbols=None, *, run_id=
         except Exception as exc:
             print(f"[top20] accounting_error={type(exc).__name__}:{exc}")
 
-    conn = _conn()
+    db = _Session()
     if dry_run:
         from lib.lane_last_receipt import enforce_readonly
 
-        enforce_readonly(conn)
-    rows = _named(conn, symbols) if symbols else _top(conn, top)
+        enforce_readonly(db.conn)
+    # The held / open-proposal sets are loaded BEFORE the selection: they are T0/T1 (callable) and the selector
+    # must offer every one of them (LQ-20261107-1178). Loading them after the selection was how the bounded pair
+    # came to miss 42 held names on 2026-11-08.
+    ctx = db.query(_trigger_context)
+    held_or_proposed = ctx["holdings"] | ctx["proposals"]
+    rows = (db.query(_named, symbols) if symbols else
+            db.query(_top, n=top, held=ctx["holdings"], proposed=ctx["proposals"]))
     report = {"top": len(rows), "lanes": list(lanes), "called": 0, "skipped": 0,
               "metadata_only": 0, "deferred": 0, "blocked": 0, "would_call": 0, "call_errors": 0,
+              # What the scan was allowed to reach, so a bounded run never reads like a whole-watchlist one:
+              # on 2026-11-08 the flag alone offered 2,308 distinct symbols to a `--top 20` run.
+              "universe": ({"explicit_symbols": len(rows)} if symbols else
+                           {"rank_limit": top, "directive_limit": top * DIRECTIVE_ARM_FACTOR,
+                            "held_arm": len(held_or_proposed), "scanned": len(rows)}),
               "detail": []}
     # Budget guard: broad-universe names get METADATA_ONLY (no cloud LLM); only held / proposed /
     # directive / high-rank names reach a free-OAuth lane. Eliminates the broad-universe LLM fan-out.
@@ -193,7 +301,6 @@ def run(top=20, lanes=("chatgpt", "grok"), apply=False, symbols=None, *, run_id=
     except Exception:
         _budget_decide = None
         _bpol, _tier_of = None, {}
-    ctx = _trigger_context(conn)
     tier_count = {}            # per-tier symbols already ALLOWed this run -> enforces per-run caps
     for r in rows:
         q = _question(r)
@@ -205,7 +312,7 @@ def run(top=20, lanes=("chatgpt", "grok"), apply=False, symbols=None, *, run_id=
                 "SCHEDULED", symbol=r["symbol"], lane=lane, call_id=call_id,
                 metadata={"tier": tier, "trigger_source": trig},
             )
-            recent = _recent(conn, r["symbol"], lane)
+            recent = db.query(_recent, r["symbol"], lane)
             decision = "ALLOW"
             if _budget_decide is not None:
                 gd = _budget_decide(symbol=r["symbol"], trigger_source=trig,
@@ -268,7 +375,11 @@ def run(top=20, lanes=("chatgpt", "grok"), apply=False, symbols=None, *, run_id=
                 report["detail"].append({"symbol": r["symbol"], "lane": lane, "error": str(e)[:80]})
                 account("ERROR", symbol=r["symbol"], lane=lane, call_id=call_id,
                         reason=f"subprocess_error:{type(e).__name__}")
-    keys = ("top", "lanes", "called", "skipped", "metadata_only", "deferred", "blocked")
+            finally:
+                # The socket idled for the whole researcher call (up to its 180 s timeout). Reconnecting here is
+                # what keeps the next symbol's read from raising "SSL connection has been closed unexpectedly".
+                db.after_llm()
+    keys = ("top", "lanes", "called", "skipped", "metadata_only", "deferred", "blocked", "universe")
     if dry_run:
         keys = keys + ("would_call",)
     elif apply:
@@ -318,6 +429,7 @@ def main(argv=None) -> int:
         return 1
     summary = {k: rep[k] for k in ("top", "called", "call_errors", "skipped", "metadata_only",
                                    "deferred", "blocked")}
+    summary["universe"] = rep.get("universe", {})
     # Calls were started and none succeeded: the lane's work did not happen. Deferrals are findings.
     failed = rep["call_errors"] > 0 and rep["called"] == 0
     write_receipt(RECEIPT_NAME, ok=not failed, summary=summary, started_at=started,
