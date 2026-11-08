@@ -90,14 +90,40 @@ def select_sql(table: str, spec: dict, text_expr: str, mark) -> tuple[str, tuple
 
 
 def run(table: str, limit: int, apply: bool, mark=None, deadline: float | None = None,
-        seed: bool = False) -> dict:
+        seed: bool = False, legacy: bool = False, names: dict | None = None,
+        conn=None, registry=None, persist_fn=None) -> dict:
     from lib import research_identity as RI
     from lib.document_mentions import SOURCES, extract, persist, subject_from_symbol
+    from scripts.lib.document_mention_matcher import mention_names, names_from_registry
 
     spec = SOURCES[table]
-    doc = RI.load_registry()
-    conn = _conn()
+    doc = registry if registry is not None else RI.load_registry()
+    own_conn = conn is None
+    if conn is None:
+        conn = _conn()
+    writer = persist_fn or persist
     cur = conn.cursor()
+    if not legacy and names is None:
+        names = names_from_registry(doc)
+        if not names:
+            from scripts.lib.schwab_instrument_evidence import load as load_instruments
+
+            cur.execute(
+                "SELECT upper(symbol) AS symbol, description_1s FROM symbol_profiles "
+                "WHERE description_1s IS NOT NULL"
+            )
+            profile_rows = [{"symbol": row[0], "description_1s": row[1]} for row in cur.fetchall()]
+            instruments = (load_instruments() or {}).get("instruments") or {}
+            names = mention_names(instruments, profile_rows)
+
+    if not legacy and not names:
+        # Matching against no names binds nothing and would still advance the watermark: refuse, scan nothing.
+        if own_conn:
+            conn.close()
+        return {"table": table, "documents": 0, "subject": 0, "mentioned": 0, "undecided_docs": 0,
+                "no_mention": 0, "written": 0, "multi": 0, "scanned": 0, "max_id": None,
+                "budget_hit": False, "offered": 0,
+                "refused": "no company names in the registry, the Schwab book or symbol_profiles"}
 
     # ::text because some sources store JSON (research_insights.structured_thesis,
     # key_arguments) and COALESCE(json, '') is an invalid-input error, not an empty
@@ -129,7 +155,11 @@ def run(table: str, limit: int, apply: bool, mark=None, deadline: float | None =
             # report the row as unmentioned, which is false.
             found = subject_from_symbol(own_symbol, registry=doc)
         else:
-            found = extract(text or "", own_symbol=own_symbol, registry=doc)
+            if legacy:
+                found = extract(text or "", own_symbol=own_symbol, registry=doc)
+            else:
+                from scripts.lib.document_mention_matcher import match_mentions
+                found = match_mentions(text or "", names=names, own_symbol=own_symbol)
         if not found:
             stat["no_mention"] += 1
             continue
@@ -144,10 +174,12 @@ def run(table: str, limit: int, apply: bool, mark=None, deadline: float | None =
         stat["mentioned"] += sum(1 for r in found if r["role"] == "mentioned")
         stat["offered"] += len(found)
         if apply:
-            stat["written"] += persist(conn, source_table=table,
-                                       source_id=doc_id, rows=found)
+            stat["written"] += writer(conn, source_table=table,
+                                      source_id=doc_id, rows=found)
 
-    conn.close()
+    stat["rows_read"] = stat["scanned"]
+    if own_conn:
+        conn.close()
     return stat
 
 
@@ -163,6 +195,8 @@ def main(argv=None) -> int:
     ap.add_argument("--budget-s", type=float, default=1200.0,
                     help="stop scanning after this many seconds (the hourly cron is killed at 25 min)")
     ap.add_argument("--dry-run", action="store_true", help="offline plan; overrides --apply")
+    ap.add_argument("--legacy-matcher", action="store_true",
+                    help="use the old company-name extractor; the rebuild is the default")
     a = ap.parse_args(argv)
 
     from lib.document_mentions import SOURCES
@@ -171,8 +205,13 @@ def main(argv=None) -> int:
         ap.error("--table or --all required")
 
     if a.dry_run:
-        print(f"DRY-RUN {LANE_ID}: would scan {','.join(targets)} limit={a.limit} "
-              f"budget_s={a.budget_s} rescan={a.rescan}; --apply would persist mentions and watermarks")
+        print(f"DRY-RUN {LANE_ID}")
+        print(json.dumps({
+            "matcher": "legacy" if a.legacy_matcher else "rebuild",
+            "tables": targets,
+            "rows_read": None,
+            "note": "offline plan does not open the database and does not write mentions or watermarks",
+        }, sort_keys=True))
         return 0
     lr = _receipt_lib()
     started = lr.now_iso()
@@ -200,6 +239,7 @@ def lane_output(stats: dict) -> dict:
                             "no_mention_docs": int(stats.get("no_mention") or 0),
                             "undecided_docs": int(stats.get("undecided") or 0)},
         "empty_reason": "no_new_input" if written == 0 else None,
+        "rows_read": stats.get("rows_read") or {},
     }
 
 
@@ -213,8 +253,13 @@ def _run(a, targets, stats) -> int:
         if deadline is not None and time.monotonic() >= deadline:
             print(f"  {t}: skipped (budget spent)", flush=True)
             continue
-        s = run(t, a.limit, a.apply, mark=marks.get(t), deadline=deadline, seed=not a.rescan)
+        s = run(t, a.limit, a.apply, mark=marks.get(t), deadline=deadline, seed=not a.rescan,
+                legacy=a.legacy_matcher, names=None)
+        if s.get("refused"):
+            print(f"REFUSED: {s['refused']}; nothing scanned", flush=True)
+            return 2
         stats["scanned"] += s["scanned"]
+        stats.setdefault("rows_read", {})[t] = s["scanned"]
         stats["written"] += s["written"]
         stats["offered"] += s.get("offered", 0)
         stats["no_mention"] += s.get("no_mention", 0)

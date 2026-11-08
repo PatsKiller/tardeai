@@ -1,0 +1,9 @@
+{
+  "schema": "CiGate@v1",
+  "name": "document_mention_matcher_lq1119_20261108",
+  "files": ["tests/test_document_mention_matcher_lq1119_20261108.py"],
+  "anchor": "DOCUMENT_MENTION_MATCHER_LQ1119_20261108",
+  "comment": [
+    "ANCHOR: DOCUMENT_MENTION_MATCHER_LQ1119_20261108 — LQ-20261107-1119 matcher: false tickers refused, name-anchored tickers bind, run() refuses without names. Synthetic rows only."
+  ]
+}
