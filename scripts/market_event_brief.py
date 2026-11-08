@@ -66,6 +66,10 @@ def fetch_active(policy: dict[str, Any]) -> dict[str, Any]:
     except ImportError:  # pragma: no cover
         from scripts.lib.cc_client import cc_headers
     url = policy["api_base"].rstrip("/") + policy["api_path"]
+    if policy.get("market_data"):
+        # Ask for the market-data block (LQ-20261107-939 part 4). The route serves it only on request, so the CC's
+        # own poll of /market-event/active does not pay for the extra reads.
+        url += ("&" if "?" in url else "?") + "market_data=1"
     resp = requests.get(url, headers=cc_headers(url), timeout=20)
     resp.raise_for_status()
     return unwrap(resp.json())
@@ -230,6 +234,103 @@ def next_tranche_by_account(payload: dict[str, Any]) -> dict[str, float]:
     return totals
 
 
+def _et(stamp: Any) -> str:
+    """An ISO stamp as ``YYYY-MM-DD HH:MM ET`` (the operator's clock), or the raw text when it does not parse."""
+    s = str(stamp or "").strip()
+    if not s:
+        return "-"
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return s
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M ET")
+
+
+def _md_state(sec: dict[str, Any]) -> str:
+    """A section's own state, stated plainly: ok / empty / unavailable (with the reason). Never silently omitted."""
+    if sec.get("state") == "unavailable":
+        return f"unavailable ({sec.get('note') or 'read failed'})"
+    if sec.get("state") == "empty":
+        return f"empty ({sec.get('note') or 'no rows'})"
+    return f"as of {_et(sec.get('as_of'))}"
+
+
+def _state_label(row: dict[str, Any], sec: dict[str, Any]) -> str:
+    """A sector's momentum state, dated when the state is older than the RS day it is shown beside.
+
+    ``sector_momentum_state`` is not rewritten for every ETF on every session (on 2026-11-06 it held only the two
+    STYLE rows), so a state one session older than the newest ``sector_rs_daily`` is still the newest state that ETF
+    has -- and it is labelled with its own date rather than passed off as the RS day's.
+    """
+    state = str(row.get("state") or "no state")
+    sa, ra = str(row.get("state_as_of") or "")[:10], str(sec.get("as_of") or "")[:10]
+    return f"{state} ({sa[5:]})" if sa and ra and sa != ra else state
+
+
+def market_data_lines(md: dict[str, Any], *, limit: int = 4) -> list[str]:
+    """The MARKET DATA section of the email brief (LQ-20261107-939 part 4).
+
+    Every section states its own as-of, because the Sunday 20:00 brief renders while the off-hours lane fires on the
+    same quarter hour: the newest futures row may still be Friday's, and a carried cash-index level is labelled with
+    the print it came from. An empty or unreadable section is named with its reason -- never rendered as zeros.
+    """
+    L = ["MARKET DATA (levels and moves only; advisory)"]
+    q = md.get("quotes") or {}
+    L.append(f"  FUTURES & CASH INDICES: {_md_state(q)}")
+    for r in (q.get("rows") or [])[: 1 + 99]:
+        if r.get("level_only"):
+            move = f"level only ({r.get('reference_basis') or 'no reference'})"
+        else:
+            move = f"{_fmt(r.get('change_pct'), '+.2f')}% vs {r.get('reference_date') or '-'}"
+        L.append(f"    {str(r.get('symbol')):7} {_fmt(r.get('price'), ',.2f'):>12}  {move}"
+                 f"  [{r.get('session')} {_et(r.get('as_of'))}]")
+    if q.get("missing"):
+        L.append(f"    no stored row: {', '.join(q['missing'])}")
+    mv = md.get("movers") or {}
+    L.append(f"  MOVERS: {_md_state(mv)}")
+    for sig, label in (("top_gainers", "gainers"), ("top_losers", "losers")):
+        names = [r for r in (mv.get("rows") or []) if r.get("signal") == sig][:limit]
+        if names:
+            L.append(f"    {label}: " + ", ".join(
+                f"{r.get('symbol')} {_fmt(r.get('change_pct'), '+.1f')}%" for r in names))
+    sec = md.get("sectors") or {}
+    L.append(f"  SECTORS (RS vs SPY, state): {_md_state(sec)}")
+    rows = sec.get("rows") or []
+    if rows:
+        L.append("    " + ", ".join(f"{r.get('etf')} {_state_label(r, sec)}" for r in rows[:6]))
+        L.append("    " + ", ".join(f"{r.get('etf')} rs {_fmt(r.get('rs'), '.2f')}" for r in rows[:6]))
+    it = md.get("international") or {}
+    L.append(f"  INTERNATIONAL (ETF proxies, not index levels): {_md_state(it)}")
+    rows = it.get("rows") or []
+    if rows:
+        L.append("    " + ", ".join(
+            f"{r.get('symbol')} {_fmt(r.get('price'), '.2f')} {_fmt(r.get('change_pct'), '+.1f')}%"
+            for r in rows[:6]))
+    if it.get("missing"):
+        L.append(f"    no quote: {', '.join(it['missing'])}")
+    return L
+
+
+def market_data_telegram_lines(md: dict[str, Any]) -> list[str]:
+    """Two compact Telegram lines: the futures/index picture, then movers and breadth of the freshest capture."""
+    out: list[str] = []
+    q = md.get("quotes") or {}
+    rows = [r for r in (q.get("rows") or []) if r.get("change_pct") is not None][:4]
+    if rows:
+        out.append("Mkt: " + ", ".join(f"{r.get('symbol')} {_fmt(r.get('change_pct'), '+.1f')}%" for r in rows))
+    elif q.get("state") == "unavailable":
+        out.append(f"Mkt: unavailable ({q.get('note')})")
+    mv = md.get("movers") or {}
+    gain = [r for r in (mv.get("rows") or []) if r.get("signal") == "top_gainers"][:3]
+    loss = [r for r in (mv.get("rows") or []) if r.get("signal") == "top_losers"][:3]
+    if gain or loss:
+        out.append("Movers: +" + ", ".join(str(r.get("symbol")) for r in gain)
+                   + " / -" + ", ".join(str(r.get("symbol")) for r in loss))
+    return out
+
+
 def render_email(payload: dict[str, Any], *, slot: str, changes: list[str], top_n: int, stale: bool) -> tuple[str, str]:
     cands = ranked(payload)
     gate = payload.get("market_gate") or {}
@@ -240,6 +341,9 @@ def render_email(payload: dict[str, Any], *, slot: str, changes: list[str], top_
     L.append("MARKET GATE")
     L.append(f"  tier {gate.get('tier') or '?'}, score {_fmt(gate.get('score'), '.0f')}; passing: "
              + (", ".join(k for k, v in sorted((gate.get('checks') or {}).items()) if v is True or (isinstance(v, dict) and v.get('pass'))) or "none reported"))
+    md = payload.get("market_data")
+    if isinstance(md, dict):
+        L += [""] + market_data_lines(md)
     L += ["", "WHAT CHANGED", *[f"  - {c}" for c in changes], "", f"TOP {min(top_n, len(cands))} BY RANK"]
     for c in cands[:top_n]:
         flag = "  [FELL FOR A REASON - operator star needed]" if c.get("fell_for_reason") else ""
@@ -268,6 +372,9 @@ def render_telegram(payload: dict[str, Any], *, slot: str, changes: list[str], t
     totals = next_tranche_by_account(payload)
     if totals:
         L.append("Next tranche: " + ", ".join(f"{k} ${v:,.0f}" for k, v in sorted(totals.items())))
+    md = payload.get("market_data")
+    if isinstance(md, dict):
+        L += market_data_telegram_lines(md)
     L.append("Advisory only. Detail in the email / CC Event.")
     return "\n".join(L)
 

@@ -17,5 +17,6 @@
   "text_classes": {"alert_class": "market_event", "max_chars": 160, "max_per_hour": 10},
   "api_path": "/api/v2/market-event/active",
   "api_base": "http://127.0.0.1:7777",
+  "market_data": true,
   "stale_after_minutes": 90
 }

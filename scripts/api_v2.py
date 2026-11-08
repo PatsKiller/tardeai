@@ -49331,9 +49331,16 @@ def _market_event_active_api(query=None):
 
     _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())
     _hold = (_load_json(STATE_DIR / "holdings.json") or {}).get("holdings") or []
+    # ``?market_data=1`` adds the brief's market-data block (LQ-20261107-939 part 4: off-hours futures and cash-index
+    # levels, movers, sector RS + momentum, international ETFs). Opt-in, so the CC's poll of this route stays as
+    # cheap as it was: the brief is the only caller that needs the extra reads.
+    q = query or {}
+    _md = q.get("market_data")
+    _md = _md[0] if isinstance(_md, list) else _md
     return _json_clean(
         _me.build_active(db_query=lambda s, p=None: _db_query(s, p), snapshot=_snap, holdings_rows=_hold,
-                         label=_ad.account_label, facts=_ad.location_facts, taxable=_ws.account_taxable)
+                         label=_ad.account_label, facts=_ad.location_facts, taxable=_ws.account_taxable,
+                         include_market_data=str(_md or "").lower() in ("1", "true", "yes"))
     )
 
 

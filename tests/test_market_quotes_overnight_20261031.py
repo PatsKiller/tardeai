@@ -186,7 +186,9 @@ def _fx_rows(ocfg):
 
 def test_overnight_rows_carry_the_next_trading_date_and_a_proven_reference_or_none(ocfg):
     _, by, skipped = _fx_rows(ocfg)
-    assert set(by) == {"/ES", "/NQ", "/YM", "QQQ", "SPY"}
+    # $SPX is here since LQ-20261107-939 (design WU-1): a cash index has no off-hours print, so its Friday 16:00 ET
+    # close is carried as the night's LEVEL (level only, basis names the print date) instead of being dropped as stale.
+    assert set(by) == {"/ES", "/NQ", "/YM", "QQQ", "SPY", "$SPX"}
     for r in by.values():
         assert r["session"] == "overnight" and r["session_date"] == date(2026, 11, 2)
         assert w.validate(r) is None, (r["symbol"], w.validate(r))
@@ -202,8 +204,13 @@ def test_overnight_rows_carry_the_next_trading_date_and_a_proven_reference_or_no
         assert r["reference_close"] is None and r["reference_date"] is None and r["change_pct"] is None
         assert r["reference_basis"] == "none_level_only_no_dated_reference_in_payload" and r["level_only_reason"]
     assert "2026-10-29" in by["/NQ"]["level_only_reason"]
+    # the carried cash index: level only, anchored on the night's 20:00 ET start, and the basis names the print's date
+    spx = by["$SPX"]
+    assert spx["price"] == 6790.0 and spx["reference_close"] is None and spx["change_pct"] is None
+    assert spx["reference_basis"] == "schwab_index_level_carried_print_2026-10-30"
+    assert spx["carried_from"] == "2026-10-30T20:00:00+00:00" and spx["bar_end"] == _et(2026, 11, 1, 20, 0)
     # 'not entitled' is Schwab's provider-error block, named as such (never silently a symbol that returned no quote)
-    assert skipped["$SPX"]["reason"] == "stale_trade" and skipped["/RTY"]["reason"] == "provider_error"
+    assert "$SPX" not in skipped and skipped["/RTY"]["reason"] == "provider_error"
 
 
 def test_undated_reference_is_never_trusted(ocfg):
@@ -388,7 +395,7 @@ def test_dry_run_entry_on_the_fixture_writes_nothing(tmp_path):
     assert out["status"] == "dry_run" and out["dry_run"] is True and out["inserted"] == 0
     assert out["config_enabled"] is True and out["window"] == "futures_overnight"
     assert sorted((r["symbol"], r["session"]) for r in out["rows"]) == sorted(
-        (s, "overnight") for s in ("/ES", "/NQ", "/YM", "QQQ", "SPY"))
+        (s, "overnight") for s in ("/ES", "/NQ", "/YM", "QQQ", "SPY", "$SPX"))
     assert list(tmp_path.iterdir()) == []
 
 

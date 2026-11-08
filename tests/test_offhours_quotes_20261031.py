@@ -595,7 +595,10 @@ def test_schwab_probe_makes_no_live_call(cfg, monkeypatch):
     p = ent.probe(cfg)
     assert p["enabled"] is True and p["live_call_made"] is False and p["url_rail_ok"] is True
     assert p["store"] == "market_quotes_extended"
-    assert p["symbols"][:7] == [*cfg["schwab"]["futures"], *cfg["schwab"]["indices"]]
+    # The configured futures and indices lead the probe, in config order; the prefix length is derived, never fixed,
+    # so adding a symbol (LQ-20261107-939 added the cash indices) cannot silently stop asserting the list.
+    n = len(cfg["schwab"]["futures"]) + len(cfg["schwab"]["indices"])
+    assert p["symbols"][:n] == [*cfg["schwab"]["futures"], *cfg["schwab"]["indices"]]
 
 
 ORDER_NAMES = {"place_order", "submit_order", "cancel_order", "replace_order"}
