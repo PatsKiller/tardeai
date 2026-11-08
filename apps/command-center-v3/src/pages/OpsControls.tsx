@@ -1158,7 +1158,8 @@ export default function OpsControlsPage() {
     startFlow({ title, start: () => opsApi.createRequest(kind, params, safe) })
   }
   const close = () => { setFlow(null); api.refetch() }
-  const [sheet, setSheet] = useState(false)
+  // ?run=lane (the Jobs & n8n links, LQ-20261107-1157) opens the Run a lane sheet; the sheet itself only reads.
+  const [sheet, setSheet] = useState(() => params.get('run') === 'lane')
   const startLane = (kind: string, params: Record<string, unknown>, title: string, onDone?: (r: OpsRequest) => void) => {
     const safe = kindFor(d, kind)?.direction === 'safe'
     startFlow({ title, start: () => opsApi.createRequest(kind, params, safe), onDone })
