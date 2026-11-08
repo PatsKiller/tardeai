@@ -157,8 +157,11 @@ def _db_stub(monkeypatch, execute):
     monkeypatch.setitem(sys.modules, "db_adapter", stub)
 
 
-def test_watch_reconciler_calls_a_dead_feed_dependency_unavailable(monkeypatch, receipts, capsys):
+def test_watch_reconciler_calls_a_dead_feed_dependency_unavailable(monkeypatch, receipts, capsys, tmp_path):
     mod = _load("reconcile_watch_outcomes")
+    # The shipped registry NOW declares this feed's death (LQ-20261107-909/1182: watch_discovery, class dead_feed,
+    # approved by the operator 2026-09-13). This case pins the UNDECLARED path, where the death must still fail.
+    monkeypatch.setattr(mod, "AUTHORITY_PATH", tmp_path / "no-authority.json")
 
     def execute(sql, params=None, fetch=None):
         s = " ".join(sql.split()).lower()

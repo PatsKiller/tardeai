@@ -13,9 +13,17 @@ the input had died. It had died: ``watch_candidate_events`` has had **no produce
 ``scripts/lib/data_broker/watch_discovery.py``, class ``dead_feed``). Every run now writes a LaneRunReceipt and
 attributes a zero: ``nothing_due`` while the feed is live, ``dependency_unavailable`` (exit 1) once no candidate
 event has been emitted for ``INPUT_DEAD_DAYS``.
+
+2026-11-08 (LQ-20261107-1182, re-delivering LQ-20261107-909): the dead feed's death is itself an
+operator-approved declaration (``config/data_source_authority.json`` — ``watch_discovery``, class ``dead_feed``,
+``no_coverage: declared_gap_no_producer``, approved by the operator on 2026-09-13). A declared gap is not an
+undetected death: the zero is typed ``no_new_input`` (exit 0) and the receipt names the declaration, while an
+*undeclared* dead feed, or an unreadable registry, stays ``dependency_unavailable`` exit 1. The zero is still
+visible either way; only the grading stops calling an approved standing state a fresh failure.
 """
 from __future__ import annotations
 
+import json
 import sys as _dr_sys
 
 if __name__ == "__main__" and "--dry-run" in _dr_sys.argv[1:]:
@@ -54,6 +62,33 @@ LANE_ID = "reconcile-watch-outcomes"
 # The reconciler's own horizon is 30 days and it runs weekly, so a feed with no new candidate event for 45 days
 # is not a quiet week — it has no producer. Measured 2026-11-07: newest emitted_on 2026-07-16, 114 days.
 INPUT_DEAD_DAYS = 45
+WATCH_TABLE = "watch_candidate_events"
+AUTHORITY_PATH = ROOT / "config" / "data_source_authority.json"
+
+
+def _declared_gap(table: str = WATCH_TABLE) -> dict | None:
+    """The operator-approved no-producer declaration for ``table``, or None.
+
+    Fail-closed: an absent/unreadable registry, no row, a row that is not ``dead_feed`` + ``declared_gap_no_producer``,
+    or an approval not attributed to the operator all return None — none of those is a declaration.
+    """
+    try:
+        doc = json.loads(AUTHORITY_PATH.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 -- an unreadable registry must never read as an approval
+        return None
+    domains = doc.get("domains") if isinstance(doc, dict) else None
+    for row in domains or []:
+        if not isinstance(row, dict) or (row.get("store") or {}).get("table") != table:
+            continue
+        approval = row.get("approval") or {}
+        if (row.get("class") == "dead_feed"
+                and row.get("no_coverage") == "declared_gap_no_producer"
+                and approval.get("approved_by") == "operator"):
+            return {"class": row["class"], "no_coverage": row["no_coverage"],
+                    "declared_by": approval.get("approved_by"), "declared_on": approval.get("approved_on"),
+                    "reference": approval.get("reference")}
+        return None
+    return None
 
 
 def _input_state(ex) -> dict:
@@ -63,13 +98,13 @@ def _input_state(ex) -> dict:
     return {"last_on": row.get("last_on"), "age_days": row.get("age_days")}
 
 
-def _receipt(*, ok: bool, produced: int, empty_reason=None, skipped=None, error=None) -> None:
+def _receipt(*, ok: bool, produced: int, empty_reason=None, skipped=None, error=None, summary=None) -> None:
     """LaneRunReceipt (data/runtime/reconcile-watch-outcomes_last.json). Never raises: the run's result first."""
     try:
         from lib.lane_last_receipt import now_iso, write_lane_receipt
         write_lane_receipt(LANE_ID, ok=ok, started_at=now_iso(), script="reconcile_watch_outcomes.py",
                            produced_count=max(0, int(produced)), skipped_reasons=skipped or {},
-                           empty_reason=empty_reason, error=error)
+                           empty_reason=empty_reason, error=error, summary=summary)
     except Exception as exc:  # noqa: BLE001 -- a receipt problem must not change the run's verdict
         print(f"[watch-outcomes] receipt not written: {exc}", file=sys.stderr)
 
@@ -117,11 +152,26 @@ def main() -> int:
         age = state["age_days"]
         dead = age is None or age > INPUT_DEAD_DAYS
         if dead:
+            gap = _declared_gap()
+            if gap:
+                # The death is an operator-approved standing state (no_coverage declared_gap_no_producer), so the
+                # zero is the declared gap's, not a fresh failure. Typed, not hidden: the receipt names the word,
+                # the age and the approval; the lane goes green only while the registry carries that declaration.
+                msg = (f"no new input: newest watch_candidate_events.emitted_on is {state['last_on'] or 'none'}"
+                       f" ({age if age is not None else 'no'} days old, limit {INPUT_DEAD_DAYS}) — a declared gap"
+                       f" ({gap['no_coverage']}, {gap['declared_by']} approved {gap['declared_on']}); no candidate"
+                       " event can arrive until a producer is registered")
+                print(f"[watch-outcomes] no_new_input — {msg}", file=sys.stderr)
+                _receipt(ok=True, produced=0, empty_reason="no_new_input", skipped={"no_new_input": 1},
+                         summary={"feed_last_emitted_on": state["last_on"], "feed_age_days": age,
+                                  "declared_gap": gap})
+                return 0
             # The zero is the input's, not the week's: watch_candidate_events has had no producer since
             # 2026-07-16 (data_broker class dead_feed). Saying "clean run" here hid that for months.
             msg = (f"no producer: newest watch_candidate_events.emitted_on is {state['last_on'] or 'none'}"
                    f" ({age if age is not None else 'no'} days old, limit {INPUT_DEAD_DAYS}) — nothing can be"
-                   " reconciled until a candidate-event producer runs again")
+                   " reconciled until a candidate-event producer runs again; the registry carries no operator"
+                   " declaration of this gap")
             print(f"[watch-outcomes] dependency_unavailable — {msg}", file=sys.stderr)
             _receipt(ok=False, produced=0, empty_reason="dependency_unavailable",
                      skipped={"dependency_unavailable": 1}, error=msg)
