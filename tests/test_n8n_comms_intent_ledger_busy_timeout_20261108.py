@@ -3,14 +3,16 @@
 The 2026-11-08 05:45 ET run of lane ``n8n-comms-intent-consumer`` exited 1 with
 ``sqlite3.OperationalError: database is locked`` and the executor dead-lettered it on attempt 1
 (``d:n8n-comms-intent-consumer:live:20261108T0545``) out of ``max_attempts`` 3 and a 60 s lane
-budget. The coordination ledger has one writer at a time (WAL + ``BEGIN IMMEDIATE``): at that
-slot disk-usage-monitor (~22.4 s of run time) and n8n-incident-fanin (~24.5 s) held the write
-lock, and the consumer began ~10.7 s into the slot with ~16.4 s of contention still to go.
+budget. The coordination ledger has one writer at a time (WAL + ``BEGIN IMMEDIATE``). The run
+itself is 5.91 s: it started 10:45:10.745Z and gave up at 10:45:16.677Z, while two sibling lanes
+were still mid-run — n8n-incident-fanin to 10:45:24.876Z (24.46 s) and disk-usage-monitor to
+10:45:27.104Z (22.43 s) — so the write it was waiting for outlived its deadline by at least 8.2 s.
+SQLite records no lock owner; the timed-out write is the observable, the holder is not.
 
 The shared ``connect_rw`` (scripts/lib/n8n_comms_intent_consumption.py) sets
 ``PRAGMA busy_timeout=5000``, so the consumer gave up at 5.0 s of its 60 s — a healthy slot
 killed by a neighbour's write. The lane now opens its own connection with a wider busy timeout
-(30 s): still well inside the lane budget, wider than every sibling write measured on the slot.
+(30 s): still well inside the lane budget, wider than the sibling run that survived it.
 
 This suite pins the value, the wiring (the apply path opens through it), that it is wider than
 the shared default and still fits the lane budget, and reproduces the incident with a real
@@ -50,8 +52,8 @@ from scripts.lib import n8n_comms_intent_consumption as C  # noqa: E402
 
 LANE = "n8n-comms-intent-consumer"
 ROUTES = ROOT / "config" / "n8n_comms_intent_routes.json"
-#: The incident: the consumer started ~10.7 s into the 05:45 slot with ~16.4 s of sibling write left.
-INCIDENT_REMAINING_MS = 16_400
+#: The incident: the run gave up at 10:45:16.677Z while the shorter sibling lane ran on to 10:45:24.876Z.
+INCIDENT_REMAINING_MS = 8_200
 #: How long a sibling lane holds the write lock in the reproduction — past the shared 5 s default.
 HOLD_S = 6.5
 NOW = datetime(2026, 11, 8, 10, 45, tzinfo=timezone.utc)

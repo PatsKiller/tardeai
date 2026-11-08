@@ -62,10 +62,11 @@ DEFAULT_STATE_ROOT = Path.home() / "trade-ai-releases" / "persistent-state"
 
 #: The coordination ledger has one writer at a time (WAL + ``BEGIN IMMEDIATE``) and every lane on the fabric writes it.
 #: ``connect_rw`` sets a 5 s busy timeout, which a sibling lane's write can exhaust inside our own slot: the
-#: 2026-11-08 05:45 ET run raised ``sqlite3.OperationalError: database is locked`` at 5.0 s while disk-usage-monitor
-#: (~22.4 s of run time) and n8n-incident-fanin (~24.5 s) held the write lock, and the executor treated it as
-#: terminal out of a 60 s budget (``config/n8n_run_allowlist.json`` ``timeout_s``). Widened on this lane's own
-#: connection so a sibling's write is waited out, not dead-lettered. Must stay well under the lane budget.
+#: 2026-11-08 05:45 ET run raised ``sqlite3.OperationalError: database is locked`` 5.0 s into a run that started
+#: 10:45:10.745Z, while two sibling lanes were still mid-run (n8n-incident-fanin to 10:45:24.876Z, disk-usage-monitor
+#: to 10:45:27.104Z), and the executor treated it as terminal out of a 60 s budget
+#: (``config/n8n_run_allowlist.json`` ``timeout_s``). Widened on this lane's own connection so a sibling's write is
+#: waited out, not dead-lettered. Must stay well under the lane budget.
 LEDGER_BUSY_TIMEOUT_MS = 30_000
 
 
