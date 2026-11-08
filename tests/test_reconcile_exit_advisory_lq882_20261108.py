@@ -151,14 +151,16 @@ class FakeDB:
 
 
 class FakeBars:
-    """Daily closes per symbol; counts fetches so the per-run cache is measurable."""
+    """Daily closes per symbol; records each fetch (symbol, days) so the per-run cache is measurable."""
 
     def __init__(self, closes: dict[str, list[float]]):
         self.closes = closes
         self.calls: list[str] = []
+        self.days: list[int] = []
 
     def __call__(self, symbol, days=400):
         self.calls.append(symbol)
+        self.days.append(days)
         series = self.closes.get(symbol)
         if series is None:
             return []
@@ -180,16 +182,20 @@ def _load():
     return mod
 
 
-@pytest.fixture()
-def lane(monkeypatch, tmp_path):
-    """The lane module with a fake adapter and fake bars; receipts land in tmp_path."""
+def _lane_with_bars(monkeypatch, tmp_path, bars):
+    """The lane module with a fake adapter and the given fake bars; receipts land in tmp_path."""
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     mod = _load()
-    bars = FakeBars({"AAA": _decline(10.0, 0.1), "BBB": _decline(20.0, 0.05), "SPY": _decline(100.0, 0.0)})
-    fake_gg = types.SimpleNamespace(_bars_with_volume=bars)
-    monkeypatch.setitem(sys.modules, "holdings_gain_guardian", fake_gg)
+    monkeypatch.setitem(sys.modules, "holdings_gain_guardian",
+                        types.SimpleNamespace(_bars_with_volume=bars))
     setattr(mod, "bars", bars)   # the test reads the fetch counter off the module it drives
     return mod
+
+
+@pytest.fixture()
+def lane(monkeypatch, tmp_path):
+    return _lane_with_bars(monkeypatch, tmp_path, FakeBars({
+        "AAA": _decline(10.0, 0.1), "BBB": _decline(20.0, 0.05), "SPY": _decline(100.0, 0.0)}))
 
 
 def _wire(monkeypatch, mod, db):
@@ -360,6 +366,28 @@ def test_one_bar_fetch_per_symbol_per_run(lane, monkeypatch, tmp_path):
     _wire(monkeypatch, lane, FakeDB(rows))
     assert lane.reconcile() == 0
     assert sorted(lane.bars.calls) == ["AAA", "BBB", "SPY"]  # not 12 calls for 3 advisories x 2 horizons
+
+
+def test_a_backlogged_advisory_asks_for_a_series_that_reaches_it(lane, monkeypatch, tmp_path):
+    """LQ-882: a 150-day-old row needs ~150 days of bars *behind it* plus the 21-day horizon. Asking for the
+    horizon alone (the old 91-day cap) would silently measure a window that starts on the oldest bar returned,
+    not on the advisory date."""
+    rows = [_ri_row(1, "protection_advisory", "AAA", 150, _protection("AAA"))]
+    _wire(monkeypatch, lane, FakeDB(rows))
+    assert lane.reconcile() == 0
+    assert lane.bars.days and all(d >= 150 + 31 for d in lane.bars.days)
+
+
+def test_a_series_that_starts_after_the_advisory_is_not_evaluable(monkeypatch, tmp_path):
+    """The fetch returned only recent bars: the row is written NOT_EVALUABLE, never a verdict on a shifted
+    window (the first bar is 29 days old for a 60-day-old advisory)."""
+    bars = FakeBars({"AAA": _decline(10.0, 0.1, n=30), "SPY": _decline(100.0, 0.0, n=30)})
+    mod = _lane_with_bars(monkeypatch, tmp_path, bars)
+    db = _wire(monkeypatch, mod, FakeDB([_ri_row(1, "protection_advisory", "AAA", 60, _protection("AAA"))]))
+    assert mod.reconcile() == 0
+    assert len(db.inserts) == 2
+    assert all(i["verdict"] == "NOT_EVALUABLE" for i in db.inserts)
+    assert all(i["symbol_return_pct"] is None for i in db.inserts)
 
 
 def test_operator_acted_window_covers_the_horizon(lane, monkeypatch, tmp_path):

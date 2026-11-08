@@ -111,9 +111,16 @@ EXIT_ADVISORY_TYPES = ("protection_advisory", "stop_health", "exit_intelligence"
 
 # A producer silent this long is dead, not quiet (the same 45-day floor reconcile_watch_outcomes applies).
 INPUT_DEAD_DAYS = 45
-# How far back one bar fetch has to reach: the longest horizon (+10 calendar days) plus the 60 the bar
-# helper adds. One fetch per symbol serves both horizons (see :func:`_closes_since`).
-MAX_BAR_DAYS = 21 + 10 + 60
+# Horizons measured after an advisory: (stored horizon_days, trading days to wait).
+HORIZONS = ((5, 5), (21, 21))
+# Calendar days of the longest horizon (trading days * 1.5, the same buffer the due check uses).
+LONGEST_HORIZON_CAL_DAYS = int(max(t for _, t in HORIZONS) * 1.5)
+# How far one bar fetch must reach: the advisory's own age, the longest horizon, and a bar-calendar slack.
+# The drain is oldest-first, so the first advisory seen for a symbol needs the widest span and one fetch per
+# symbol per run still holds (:func:`_closes_since`).
+BAR_SPAN_SLACK_DAYS = 10
+# A series whose first bar starts later than this after the advisory cannot measure that advisory's window.
+BAR_COVER_SLACK_DAYS = 7
 
 # Why a run produced nothing. ``up_to_date`` is the only one that is clean; the rest are failures naming
 # a cause, never a green "0" (AGENTS.md rule 8: exit 0 is not evidence of work).
@@ -264,23 +271,30 @@ def verdict_for(*, symbol_return_pct: float | None, spy_return_pct: float | None
     return "SIGNAL_WRONG"
 
 
-def _closes_since(symbol: str, since_iso: str, max_days: int, cache: dict | None = None) -> list[float]:
+def _closes_since(symbol: str, since_iso: str, needed_days: int, cache: dict | None = None) -> list[float]:
     """Closes for ``symbol`` on/after ``since_iso``, oldest first.
 
-    ``cache`` keeps one bar fetch per symbol for the whole run. The fetch always reaches MAX_BAR_DAYS back,
-    which covers both horizons, so a 200-advisory run costs one network call per distinct symbol instead of
-    four per advisory; a symbol whose bars could not be fetched caches the empty list so it is not retried.
+    ``needed_days`` is how far back this advisory's window can reach (its age plus the longest horizon), so a
+    backlogged advisory cannot be measured against a series that starts after it. ``cache`` maps symbol ->
+    (days fetched, bars) and is reused only when it already reaches far enough; because the drain is
+    oldest-first, that stays one network call per symbol per run. A series that still does not begin near the
+    advisory returns ``[]``, so the caller writes NOT_EVALUABLE instead of a verdict on a shifted window.
     """
     from holdings_gain_guardian import _bars_with_volume
-    days = max(int(max_days) + 60, MAX_BAR_DAYS)
+    days = max(int(needed_days), LONGEST_HORIZON_CAL_DAYS + BAR_SPAN_SLACK_DAYS)
     bars = None
     if cache is not None:
-        bars = cache.get(symbol)
+        hit = cache.get(symbol)
+        if hit and hit[0] >= days:
+            bars = hit[1]
     if bars is None:
         bars = _bars_with_volume(symbol, days=days) or []
         if cache is not None:
-            cache[symbol] = bars
-    out = []
+            cache[symbol] = (days, bars)
+    since = dt.date.fromisoformat(since_iso[:10])
+    cover_by = since + dt.timedelta(days=BAR_COVER_SLACK_DAYS)
+    out: list[float] = []
+    first = None
     for b in bars:
         ts = b.get("datetime") or b.get("t") or b.get("date") or ""
         try:
@@ -291,7 +305,11 @@ def _closes_since(symbol: str, since_iso: str, max_days: int, cache: dict | None
         if str(when.date()) >= since_iso[:10]:
             c = float(b.get("close") or 0)
             if c > 0:
+                if first is None:
+                    first = when.date()
                 out.append(c)
+    if first is None or first > cover_by:
+        return []            # the fetch did not reach the advisory date: no honest outcome for this window
     return out
 
 
@@ -339,7 +357,7 @@ def reconcile() -> int:
     done = 0
     attempted = 0
     skipped: dict[str, int] = {}
-    bars_cache: dict[str, list] = {}
+    bars_cache: dict[str, tuple[int, list]] = {}
     for a in advisories:
         ev = a.get("evidence_json")
         if isinstance(ev, str):
@@ -362,8 +380,11 @@ def reconcile() -> int:
                 skipped["already_reconciled"] = skipped.get("already_reconciled", 0) + 1  # nosemgrep: tq-py-missing-as-zero -- a skip counter starts at 0; it is not a data value
                 continue
             attempted += 1
-            closes = _closes_since(a["symbol"], str(a["created_at"]), trading_days + 10, bars_cache)
-            spy = _closes_since("SPY", str(a["created_at"]), trading_days + 10, bars_cache)
+            # the advisory's own age + the longest horizon: a backlogged row needs a longer series, not a
+            # window silently shifted forward to the oldest bar the fetch happened to return
+            span = age_days + LONGEST_HORIZON_CAL_DAYS + BAR_SPAN_SLACK_DAYS
+            closes = _closes_since(a["symbol"], str(a["created_at"]), span, bars_cache)
+            spy = _closes_since("SPY", str(a["created_at"]), span, bars_cache)
             if len(closes) <= trading_days or len(spy) <= trading_days or not p0:
                 ret = spy_ret = dd_atr = None
                 v = "NOT_EVALUABLE"
