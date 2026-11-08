@@ -149,3 +149,24 @@ def test_the_lq479_lanes_declare_an_effect_and_are_seeded():
     from scripts.lib.effect_claim import load_effect_config
 
     assert not (set(LQ508_LANES) & set(load_effect_config()))
+
+
+LQ532_LANES = {"market-event-detect": ["overwrite"], "market-event-brief": ["send"]}
+
+
+def test_the_lq532_lanes_declare_their_own_effect_and_are_seeded():
+    """LQ-20261107-532: detect upserts (overwrite) and brief delivers (send); both staged and seeded like LQ-508."""
+    cfg = json.loads((ROOT / "config/n8n_effect_keys.json").read_text(encoding="utf-8"))["lanes"]
+    seed = SEED.read_text(encoding="utf-8")
+    loop = re.search(r"for lane in ([^;]+); do", seed).group(1).split()
+    live = _relay_live()
+    for lane, effects in LQ532_LANES.items():
+        assert lane in live
+        spec = cfg[lane]
+        assert spec["process"] == lane and spec["effects"] == effects, lane
+        assert spec["n8n_claim"] is False and spec["cron_claim"] is False, f"{lane} must ship staged"
+        assert lane in loop, f"{lane} missing from the owner seed loop"
+
+    from scripts.lib.effect_claim import load_effect_config
+
+    assert not (set(LQ532_LANES) & set(load_effect_config()))
