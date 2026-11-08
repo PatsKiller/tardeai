@@ -28,9 +28,9 @@ DISPATCH_KEY = b"d" * 40
 ROOT = Path(__file__).resolve().parents[1]
 
 ALLOW = {"lanes": [
-    {"lane_id": "plain-read", "command": ["$PY", "scripts/a.py"], "dry_run_arg": ["--dry-run"], "live_arg": [],
+    {"lane_id": "plain-read", "manual_rerun_safe": True, "command": ["$PY", "scripts/a.py"], "dry_run_arg": ["--dry-run"], "live_arg": [],
      "market_gate": False, "llm_route": None, "offpeak_gate": None},
-    {"lane_id": "no-dry", "command": ["$PY", "scripts/b.py"], "dry_run_arg": None, "live_arg": [],
+    {"lane_id": "no-dry", "manual_rerun_safe": True, "command": ["$PY", "scripts/b.py"], "dry_run_arg": None, "live_arg": [],
      "market_gate": False, "llm_route": None, "offpeak_gate": None},
     {"lane_id": "no-live", "command": ["$PY", "scripts/c.py"], "dry_run_arg": ["--dry-run"], "live_arg": None,
      "market_gate": False, "llm_route": None, "offpeak_gate": None},
@@ -40,7 +40,7 @@ ALLOW = {"lanes": [
      "market_gate": False, "llm_route": {"via": "cio-governed-bridge", "process_id": "x"}, "offpeak_gate": None},
     {"lane_id": "bulk-lane", "command": ["$PY", "scripts/f.py"], "dry_run_arg": ["--dry-run"], "live_arg": [],
      "market_gate": False, "llm_route": None, "offpeak_gate": "bulk"},
-    {"lane_id": "market-lane", "command": ["$PY", "scripts/g.py"], "dry_run_arg": ["--dry-run"], "live_arg": [],
+    {"lane_id": "market-lane", "manual_rerun_safe": True, "command": ["$PY", "scripts/g.py"], "dry_run_arg": ["--dry-run"], "live_arg": [],
      "market_gate": True, "llm_route": None, "offpeak_gate": None},
     {"lane_id": "broker-lane", "command": ["$PY", "scripts/place_order_job.py"], "dry_run_arg": ["--dry-run"],
      "live_arg": [], "market_gate": False, "llm_route": None, "offpeak_gate": None},
@@ -48,6 +48,11 @@ ALLOW = {"lanes": [
      "market_gate": False, "llm_route": None, "offpeak_gate": None},
     {"lane_id": "keyed-yes", "command": ["$PY", "scripts/i.py"], "dry_run_arg": ["--dry-run"], "live_arg": ["--apply"],
      "market_gate": False, "llm_route": None, "offpeak_gate": None},
+    {"lane_id": "undeclared", "command": ["$PY", "scripts/k.py"], "dry_run_arg": ["--dry-run"], "live_arg": ["--apply"],
+     "market_gate": False, "llm_route": None, "offpeak_gate": None},
+    {"lane_id": "disk-hygiene", "manual_rerun_safe": True, "command": ["$PY", "scripts/disk_hygiene.py", "--standing"],
+     "dry_run_arg": ["--dry-run"], "live_arg": ["--apply"], "market_gate": False, "llm_route": None,
+     "offpeak_gate": None},
     {"lane_id": "unlisted", "command": ["$PY", "scripts/j.py"], "dry_run_arg": ["--dry-run"], "live_arg": [],
      "market_gate": False, "llm_route": None, "offpeak_gate": None},
 ]}
@@ -253,6 +258,9 @@ def test_run_all_live_derives_its_exclusions_from_config_not_a_hand_list(lr):
     assert "effect_slot_unknown" in why["keyed-yes"] and "not_idempotent" not in why["keyed-yes"]
     assert "relay_live_not_enabled" in why["unlisted"]
     assert "no_live_mode" in why["no-live"]
+    # LQ-611 review #1: an undeclared lane fails closed; a delete/hygiene lane is out even when it declares itself safe
+    assert "no_effect_declaration" in why["undeclared"]
+    assert "deletes_or_hygiene" in why["disk-hygiene"]
     assert "market-lane" not in why  # market is open in this fixture: eligible
     lr.hosts.market_open = lambda: False
     why = {x["lane_id"]: " | ".join(x["reasons"]) for x in plan(lr, LR.KIND_ALL_LIVE, {"mode": "live"}).payload["excluded"]}
@@ -277,8 +285,19 @@ def test_the_repository_config_derivation_is_total_and_consistent(lr):
         assert e["live_arg"] is not None and spec is None  # no staged effect key: the executor gate cannot refuse it
         assert e.get("llm_route") is None and e.get("offpeak_gate") is None
         assert not LR.SEND_TOKEN_RE.search(LR._argv_text(e)) and not LR._broker_tokens(LR._argv_text(e))
-    assert any(not LR.live_exclusions(e, effects.get(l), live, False, True) for l, e in allow.items())
-    assert not LR.live_exclusions(allow["sec-fundamentals-ingest"], None, live, False, True) or True  # shape only
+    # fails closed: the only lanes Run-all LIVE can include are ones whose allowlist entry opted in
+    assert all(e.get("manual_rerun_safe") is True for l, e in allow.items()
+               if not LR.live_exclusions(e, effects.get(l), live, False, True))
+    # LQ-611 review #1 (fails on 732af3b89: there disk-hygiene was INCLUDED, a lane with no spec counting as idempotent)
+    for lane in ("disk-hygiene", "tmp-hygiene", "identity-sweep-stage0", "registry-runtime-truth", "catalyst-graph",
+                 "sync-social-to-intelligence"):
+        if lane in allow:
+            assert LR.live_exclusions(allow[lane], effects.get(lane), live, False, True), lane
+    assert any(r.startswith("deletes_or_hygiene") for r in LR.live_exclusions(allow["disk-hygiene"], None, live, False, True))
+    # nothing in the repository allowlist declares manual_rerun_safe yet, so Run-all LIVE is empty until the operator opts lanes in
+    for lane, e in allow.items():
+        if effects.get(lane) is None and e.get("manual_rerun_safe") is not True:
+            assert LR.live_exclusions(e, None, live, False, True), lane
     # the motivating lane: staged effect key => manual LIVE is refused with the executor-gate code, dry is allowed
     sec = LR.live_exclusions(allow["sec-fundamentals-ingest"], effects["sec-fundamentals-ingest"], live, False, True)
     assert any(r.startswith("effect_slot_unknown") for r in sec)
@@ -398,3 +417,37 @@ def test_cancel_requested_never_touches_a_started_or_foreign_run(lr):
     assert lr.runs.cancel_requested(ids[0], caller_id="operator-manual", reason="again", now=2.0) is False
     row = lr.runs.get(ids[0])
     assert row["state"] == "RUN_REFUSED" and row["receipt"]["reason"] == "cancelled_by_operator"
+
+
+# ── LQ-611 review #2 / #3: the gateway binds the operator caller; run-all live is never phrase-only ───────────────
+
+
+class _NoStore:
+    """A run store that must never be reached: the refusals below happen before any row is written."""
+
+    def get(self, *_a, **_k):
+        raise AssertionError("store reached")
+
+    request = get
+
+
+def _operator_run(monkeypatch, run_id, mode="live", lane="plain-read", live="plain-read"):
+    monkeypatch.setenv(G.LIVE_LANES_ENV, live)
+    return G.host_run_request(lane_id=lane, mode=mode, run_id=run_id, requested_by="operator", caller_id=G.OPERATOR_CALLER,
+                              run_store=_NoStore(), run_allowlist=frozenset({"plain-read", "other"}), now=1.0)
+
+
+def test_the_operator_key_may_only_queue_opm_run_ids(monkeypatch):
+    out = _operator_run(monkeypatch, "n8n-wf-abc123456789")
+    assert out["state"] != "REQUESTED" and "run_key_namespace_refused" in json.dumps(out)
+
+
+def test_an_operator_live_run_of_a_lane_off_the_live_list_is_refused(monkeypatch):
+    assert "run_lane_not_live" in json.dumps(_operator_run(monkeypatch, "opm-opsreq_test-001", lane="other"))
+    assert "run_lane_not_live" in json.dumps(_operator_run(monkeypatch, "opm-opsreq_test-001", live=""))  # no list = none live
+
+
+def test_run_all_live_always_needs_a_fresh_passkey():
+    from scripts.lib import ops_controls_sudo as SW
+
+    assert LR.KIND_ALL_LIVE in SW.ALWAYS_FRESH_KINDS

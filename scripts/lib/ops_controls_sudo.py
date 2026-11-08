@@ -57,6 +57,7 @@ ALWAYS_FRESH_KINDS = frozenset(
         "passkey.register",
         "passkey.revoke",
         "deploy.resume",
+        "n8n_lane_run_all.live",  # LQ-611 review #3: fires every eligible lane at once; never phrase-only inside a sudo window
     }
 )
 

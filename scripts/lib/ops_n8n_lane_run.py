@@ -137,8 +137,12 @@ def _broker_tokens(text: str) -> list[str]:
         return []
 
 
+# LQ-611 review #1: lanes that remove files or sweep state. Excluded from Run-all LIVE whatever their declaration says.
+DELETE_LANE_RE = re.compile(r"hygiene|--standing|\bpurge\b|\bprune\b|\bdelete\b|\bcleanup\b|\bretention\b", re.I)
+
+
 def idempotent(spec: Optional[Mapping[str, Any]]) -> bool:
-    """A lane with no staged effect spec declares no durable effect. A spec's ``idempotent_today`` must start with
+    """No spec = no verdict here: ``live_exclusions`` separately fails closed on an undeclared lane. A spec's ``idempotent_today`` must start with
     ``yes`` or ``guarded`` (the config's own vocabulary); ``no``, ``partial`` or no statement is not idempotent."""
     if spec is None:
         return True
@@ -192,6 +196,12 @@ def live_exclusions(entry: Mapping[str, Any], spec: Optional[Mapping[str, Any]],
     broker = _broker_tokens(text)
     if broker:
         out.append("touches_broker_or_orders: " + ", ".join(broker[:6]))
+    if DELETE_LANE_RE.search(f"{entry.get('lane_id', '')} {text}"):
+        out.append("deletes_or_hygiene: the lane's id/argv names a hygiene, cleanup, purge or --standing sweep; "
+                   "a delete lane runs only on its own slot and policy, never from Run-all")
+    if spec is None and entry.get("manual_rerun_safe") is not True:
+        out.append("no_effect_declaration: the lane has no staged effect key and its allowlist entry does not declare "
+                   "manual_rerun_safe: true; an undeclared lane is not assumed safe to re-run (fails closed)")
     if not idempotent(spec):
         out.append("not_idempotent: effect key says " + repr(str((spec or {}).get("idempotent_today") or "no statement")[:80]))
     return out

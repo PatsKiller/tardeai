@@ -527,6 +527,10 @@ Each row has **Dry run** and **Live run**; Live is disabled with its reason when
 has no live mode, or is effect-keyed (the executor refuses a manual live run on an effect-keyed lane because it has no
 slot key for it). **Run all dry** queues every lane that has a dry-run mode. **Run all live** queues only the live-listed lanes
 that are safe to re-run off-slot, derived from config (never a hand list); every excluded lane is shown with its reason.
+Fail closed: a lane with no staged effect key is included only if its `config/n8n_run_allowlist.json` entry says
+`"manual_rerun_safe": true`, and a hygiene/cleanup/purge/`--standing` lane is never included. The gateway also binds the
+`operator-manual` key to `opm-` run ids and, for live, to lanes on its `TRADEAI_N8N_RELAY_LIVE_LANES` list; Run all live
+always needs a fresh passkey (never phrase-only inside a sudo window).
 
 How it runs. Approving the request makes the host applier sign `coordination/run` to the gateway as the dedicated caller
 `operator-manual` (`requested_by=operator-manual:<request_id>`, `run_id=opm-<request_id>`) and the existing executor drains the

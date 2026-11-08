@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import json
 import math
+import os
 import re
 import sqlite3
 import threading
@@ -58,6 +59,13 @@ RELAY_CALLER = "n8n-relay"
 #: coordination/run with this caller's own key (TRADEAI_N8N_GATEWAY_HMAC_KEY_OPERATOR). It carries run+read
 #: scope only, never falls back to the dispatch key, and never shares n8n's key or bearer.
 OPERATOR_CALLER = "operator-manual"
+OPERATOR_RUN_ID_PREFIX = "opm-"  # the applier's run ids (scripts/lib/ops_n8n_lane_run.py); the only ids the operator key may queue
+LIVE_LANES_ENV = "TRADEAI_N8N_RELAY_LIVE_LANES"  # whitespace-separated, as scripts/lib/n8n_relay_live_lanes.py reads it
+
+
+def _operator_live_lanes() -> frozenset[str]:
+    """The lanes this process's environment lists as relay-live. Absent or empty = none (a live operator run fails closed)."""
+    return frozenset(os.environ.get(LIVE_LANES_ENV, "").replace(",", " ").split())
 #: 2026-10-09 (n8n maturity B5.3, design 02 §3.1): `coordination/due` is a READ route (scope coordination_read,
 #: operation `due` only). It computes what is due from the registry; it writes nothing and runs nothing.
 #: 2026-10-14 (n8n fabric Phase 1): `coordination/run_outcome` is a READ route (scope coordination_read, operation
@@ -263,6 +271,8 @@ REFUSAL_REASONS = frozenset(
         # 2026-10-15 (audit DD03): a LIVE run from the n8n relay caller whose key is in no host-validated namespace
         # (d:/e:/g: server-minted, p: manifest-validated). Free-form keys stay available to dry runs and to host callers.
         "run_key_namespace_refused",
+        # LQ-611 (review #2): an operator-manual LIVE run of a lane that is not on this process's relay live list.
+        "run_lane_not_live",
     }
 )
 REFUSAL_PREFIXES = ("illegal_transition:", "typed_refusal:", "forbidden_route:")
@@ -749,6 +759,14 @@ def _run(
     requested_by = request.get("requested_by")
     if requested_by is not None and (not isinstance(requested_by, str) or len(requested_by) > MAX_REQUESTED_BY):
         return _refused(None, "malformed_event", peer_ignored=peer)
+    if claim.get("caller_id") == OPERATOR_CALLER:
+        # LQ-611 review #2 (cc-opus-2): the operator key must not queue a run under any identity it likes. An operator
+        # manual run carries the ``opm-`` namespace (the applier mints it); a LIVE one is also refused for a lane that
+        # is not on this process's live list (TRADEAI_N8N_RELAY_LIVE_LANES), the same list the relay obeys.
+        if not run_id.startswith(OPERATOR_RUN_ID_PREFIX):
+            return _refused(None, "run_key_namespace_refused", peer_ignored=peer)
+        if mode == "live" and lane_id not in _operator_live_lanes():
+            return _refused(None, "run_lane_not_live", peer_ignored=peer)
     prefix = run_id[:2].lower()
     relay_minted = run_id[: len(RELAY_DERIVED_KEY_PREFIX)].lower() == RELAY_DERIVED_KEY_PREFIX
     if (
