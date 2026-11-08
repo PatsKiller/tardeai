@@ -238,3 +238,79 @@ def test_the_helper_is_not_consulted_for_a_fake_proc_root(tmp_path, helper, monk
     holders, unknown = J._scan_holders(store, proc)
     assert not marker.exists(), "the helper ran for a fake /proc view"
     assert holders == [] and unknown == []
+
+
+# ── LQ-20261107-533: an env override never gets an arbitrary path executed as root or believed as the view ──────────
+
+class _St:
+    def __init__(self, uid, mode):
+        self.st_uid, self.st_mode = uid, mode
+
+
+@pytest.fixture()
+def strict(monkeypatch):
+    """The state ``main`` sets for --apply, restored afterwards."""
+    monkeypatch.setattr(J, "_STRICT_HELPER", True)
+
+
+def test_apply_refuses_an_override_helper_the_caller_owns(tmp_path, helper, strict, monkeypatch):
+    """The fake claims complete:true and no holders. Under --apply an agent-owned override must not be that view."""
+    _seed(tmp_path)
+    assert J.helper_distrust(helper) is not None
+    assert J.fd_holders_helper() != helper, "the env override is ignored under --apply"
+    res = J.rotate_store(_cfg()["stores"][0], _cfg(), tmp_path, NOW, proc_root=Path("/proc"),
+                         sleep=_no_sleep, grace_s=0)
+    assert res["ok"] is False and res["reason"] == "fd_visibility_unknown", res
+
+
+def test_apply_refuses_a_group_writable_installed_helper_even_when_root_owned(tmp_path, helper, strict, monkeypatch):
+    """The installed path itself must also be root-owned and unwritable by others, whatever put it there."""
+    monkeypatch.delenv("TRADEAI_FD_HOLDERS")
+    monkeypatch.setattr(J, "FD_HOLDERS_HELPER", str(helper))
+    monkeypatch.setattr(J, "_stat_for_trust", lambda c: _St(0, 0o775))
+    _seed(tmp_path)
+    assert (J.helper_distrust(helper) or "").startswith("group_or_world_writable")
+    res = J.rotate_store(_cfg()["stores"][0], _cfg(), tmp_path, NOW, proc_root=Path("/proc"),
+                         sleep=_no_sleep, grace_s=0)
+    assert res["ok"] is False and res["reason"] == "fd_visibility_unknown", res
+    assert "helper_untrusted:group_or_world_writable" in res["detail"], res
+
+
+def test_apply_honours_an_override_that_is_root_owned_and_not_writable(tmp_path, helper, strict, monkeypatch):
+    monkeypatch.setattr(J, "_stat_for_trust", lambda c: _St(0, 0o755))
+    live = _seed(tmp_path)
+    assert J.helper_distrust(helper) is None
+    assert J.fd_holders_helper() == helper
+    res = J.rotate_store(_cfg()["stores"][0], _cfg(), tmp_path, NOW, proc_root=Path("/proc"),
+                         sleep=_no_sleep, grace_s=0)
+    assert res["ok"] is True and res["action"] == "rotated", res
+    assert live.is_file()
+
+
+def test_dry_run_still_honours_the_override_unprivileged(tmp_path, helper, monkeypatch):
+    monkeypatch.setattr(J, "_STRICT_HELPER", False)
+    monkeypatch.setattr(J.os, "geteuid", lambda: 1000)
+    assert J.fd_holders_helper() == helper
+
+
+def test_root_never_trusts_an_agent_owned_override(tmp_path, helper, monkeypatch):
+    """Even a plan run, when the process is root, must not exec an env-given path."""
+    monkeypatch.setattr(J, "_STRICT_HELPER", False)
+    monkeypatch.setattr(J.os, "geteuid", lambda: 0)
+    assert J.fd_holders_helper() != helper
+
+
+def test_main_apply_sets_the_strict_mode_and_refuses_the_override(tmp_path, helper, monkeypatch, capsys):
+    monkeypatch.setattr(J, "_STRICT_HELPER", False)
+    live = _seed(tmp_path)
+    before = live.read_bytes()
+    rules = tmp_path / "rules.json"
+    rules.write_text(json.dumps({"jsonl_retention": _cfg()}))
+    rc = J.main(["--apply", "--confirm", "APPLY", "--rules", str(rules), "--state-root", str(tmp_path),
+                 "--now", NOW.isoformat()])
+    out = capsys.readouterr().out
+    assert rc == 1, out
+    assert "fd_visibility_unknown" in out, out
+    assert live.read_bytes() == before, "nothing was rotated"
+    assert J._STRICT_HELPER is True
+    monkeypatch.setattr(J, "_STRICT_HELPER", False)

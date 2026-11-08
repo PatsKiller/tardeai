@@ -73,6 +73,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -261,13 +262,52 @@ def _pid_comm(proc_root: Path, pid: str) -> str:
     return (name or "?")[:32]
 
 
+#: Set by ``main`` for ``--apply``. In that mode (and whenever this process is root) the helper is trusted only when
+#: it is a root-owned file no group or other may write, in a directory chain with the same property: an
+#: environment variable must never get an arbitrary path executed as root or believed as the complete fd view
+#: (LQ-20261107-533). Tests that call :func:`rotate_store` directly keep their stand-in helper.
+_STRICT_HELPER = False
+
+
+def _strict_helper() -> bool:
+    return _STRICT_HELPER or os.geteuid() == 0
+
+
+def _stat_for_trust(p: Path):
+    return os.stat(p)
+
+
+def helper_distrust(p: Path) -> Optional[str]:
+    """Why ``p`` may not be executed as root or believed as a complete view; ``None`` when it may.
+
+    The file and every directory above its resolved location must be owned by root and not group/world-writable."""
+    try:
+        real = p.resolve(strict=True)
+        chain = [real, *real.parents]
+        for c in chain:
+            st = _stat_for_trust(c)
+            if st.st_uid != 0:
+                return f"not_root_owned:{c}"
+            if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+                return f"group_or_world_writable:{c}"
+    except OSError as exc:
+        return f"unreadable:{exc.strerror or exc}"
+    return None
+
+
 def fd_holders_helper() -> Optional[Path]:
     """The installed root-owned helper, when it is a file this user may execute; ``None`` when it is absent.
 
     Absent is the pre-2026-11-07 host: the strict class-B refusal below stays exactly as it was. A helper that
     exists but cannot run is *not* absent — see :func:`_helper_scan`, which turns its failure into an incomplete
-    view so the refusal still happens and names the helper as the cause."""
-    p = Path(os.environ.get("TRADEAI_FD_HOLDERS") or FD_HOLDERS_HELPER)
+    view so the refusal still happens and names the helper as the cause.
+
+    ``TRADEAI_FD_HOLDERS`` is an override for tests and staging. Under ``--apply`` (or as root) it is honoured only
+    when the override itself passes :func:`helper_distrust`; otherwise it is ignored and the installed path is used."""
+    env = os.environ.get("TRADEAI_FD_HOLDERS")
+    if env and _strict_helper() and helper_distrust(Path(env)) is not None:
+        env = None
+    p = Path(env or FD_HOLDERS_HELPER)
     try:
         if p.is_file() and os.access(p, os.X_OK):
             return p
@@ -307,6 +347,10 @@ def _helper_scan(path: Path, proc_root: Path) -> Optional[tuple[list[tuple[int, 
     helper = fd_holders_helper()
     if helper is None:
         return None
+    if _strict_helper():
+        why = helper_distrust(helper)
+        if why is not None:
+            return [], [f"helper_untrusted:{why}"]
     argv = _helper_argv(helper, path)
     if argv is None:
         return [], ["helper_unusable:sudo_not_found"]
@@ -1171,6 +1215,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         a = ap.parse_args(argv)
     except SystemExit as exc:
         return 2 if exc.code else 0
+    global _STRICT_HELPER
+    _STRICT_HELPER = bool(a.apply)
     now = _parse_now(a.now)
     if now is None:
         print("--now must be an aware ISO 8601 timestamp", file=sys.stderr)

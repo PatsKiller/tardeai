@@ -139,9 +139,14 @@ The plan row and the receipt now say which authority answered: `fd_view: "helper
 positive statement about the host; the same `ok` on `fd_view: "proc"` only says this process could read every
 table it tried — which, on this host, it cannot.
 
-Two env knobs, both narrowing: `TRADEAI_FD_HOLDERS=<path>` points at another helper (tests, staging) and
-`TRADEAI_FD_HOLDERS_SUDO=0` drops the `sudo` prefix (an unprivileged call reports `complete: false` and the
-caller refuses).
+Two env knobs exist for tests and staging, and **neither is a narrowing**: `TRADEAI_FD_HOLDERS=<path>` points at another
+helper (whose JSON is then believed as the complete view) and `TRADEAI_FD_HOLDERS_SUDO=0` runs it without `sudo`. An
+override can therefore loosen the guard, so under `--apply`, and whenever the process is root, the helper (the override
+or the installed path) is used only when it is a file owned by root, not group- or world-writable, in a directory chain
+with the same property (`helper_distrust`, LQ-20261107-533). An override that fails the check is ignored and the
+installed path is used; an installed helper that fails it gives an incomplete view (`helper_untrusted:<why>`), so the
+refusal stands. `--dry-run` and `--plan` as an unprivileged user still honour the override. Nothing ever executes an
+environment-given path as root.
 
 The lane's promotion (patch `inbox/claude-lead/20261108T0104Z-cc-deepseek-6-LQ-480-jsonl-archive-rotate-promotion.patch`)
 is armed only after the operator ran the install script and one shadow run came back clean.
