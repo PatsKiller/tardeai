@@ -101,6 +101,9 @@ class FakeConn:
             def fetchone(self):
                 return self._conv(self._rows[0]) if self._rows else None
 
+            def close(self):
+                pass
+
         return C()
 
     def writes(self):
@@ -151,7 +154,9 @@ def _calib_rows(sql, params):
             }
         ]
     if "FROM paper_trades" in sql:
-        return [{"status": "closed", "pnl": 10, "r_multiple": 1.0}]
+        # LQ-20261107-1032: the page walk batches this lookup, so the SELECT carries the id it is
+        # keyed by (three columns could only serve the old one-row-at-a-time read).
+        return [{"id": 7, "status": "closed", "pnl": 10, "r_multiple": 1.0}]
     return []
 
 
@@ -175,7 +180,11 @@ def test_calibration_apply_writes_receipt_and_reports_cap(state, monkeypatch, ca
     rec = _receipt(state, "agent-calibration-engine")
     assert rec["status"] == "ok" and rec["ok_at"] and rec["summary"]["calibration_events"] == 1
     assert json.loads(capsys.readouterr().out)["events_capped"] is False
-    assert any(s.endswith(f"LIMIT {ace.ROW_CAP}") for s in conn.sql)  # the cap the output reports
+    # LQ-20261107-1032: the read size is a parameter from config/agent_calibration_engine.json, not
+    # a constant in the source -- the old assertion pinned `LIMIT {ROW_CAP}` and outlived its defect.
+    assert not hasattr(ace, "ROW_CAP")
+    page_sql = [s for s in conn.sql if "FROM agent_recommendation_registry" in s]
+    assert page_sql and "LIMIT 2000" not in page_sql[0] and page_sql[0].endswith("LIMIT %s")
 
 
 def test_calibration_failed_write_leaves_failed_receipt_and_raises(state, monkeypatch):
