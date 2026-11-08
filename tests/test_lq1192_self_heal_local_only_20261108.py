@@ -94,7 +94,8 @@ def _calls(sb) -> list:
 def test_repo_config_enables_local_only_with_caps_unchanged():
     a = REPO_CFG["arming"]
     assert a["local_only"]["enabled"] is True and "no-push" in a["local_only"]["why"]
-    assert a["daily_job_cap"] == 3 and a["daily_cost_cap_usd"] == 24.0 and a["max_jobs_per_cycle"] == 1
+    # operator 2026-11-08 16:10 ET: raise caps for the sprint test (12 jobs x $12 reservation <= $150)
+    assert a["daily_job_cap"] == 12 and a["daily_cost_cap_usd"] == 150.0 and a["max_jobs_per_cycle"] == 3
     assert REPO_CFG["findings"]["inbox_rel"] == str(INBOX)
     assert F.local_only(REPO_CFG) is not None
 
@@ -105,7 +106,7 @@ def test_repo_config_enables_local_only_with_caps_unchanged():
 def test_local_only_arms_without_a_grant_and_never_may_push():
     v = F.arming_verdict(None, cfg=_local(B.CFG), jobs_today=0)
     assert v["armed"] is True and v["local_only"] is True and v["may_push"] is False
-    assert v["grant_ignored"] is False and v["daily_cost_cap_usd"] == 24.0
+    assert v["grant_ignored"] is False and v["daily_cost_cap_usd"] == B.CFG["arming"]["daily_cost_cap_usd"]
 
 
 def test_local_only_wins_over_a_present_git_push_grant():
@@ -114,7 +115,7 @@ def test_local_only_wins_over_a_present_git_push_grant():
 
 
 def test_local_only_respects_the_daily_job_cap():
-    v = F.arming_verdict(None, cfg=_local(B.CFG), jobs_today=3)
+    v = F.arming_verdict(None, cfg=_local(B.CFG), jobs_today=B.CFG["arming"]["daily_job_cap"])
     assert v["armed"] is False and v["local_only"] is True and "daily job cap" in v["why"]
 
 
@@ -198,7 +199,7 @@ def test_daily_job_cap_holds_under_local_only(sandbox):
     jobs = {
         f"old-{i}": {"job_id": f"old-{i}", "lane": f"l{i}", "state": F.FIX_FAILED, "dedupe_key": f"k{i}",
                      "attempt_started_at": (NOW - timedelta(minutes=5 + i)).isoformat()}
-        for i in range(3)
+        for i in range(B.CFG["arming"]["daily_job_cap"])
     }
     st.write_text(json.dumps({"schema": F.STATE_SCHEMA, "jobs": jobs}))
     assert _main(sandbox, "--apply") == 0
