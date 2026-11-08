@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_top20_external_intel_bounded_20261108",
+  "files": [
+    "tests/test_hermes_top20_external_intel_bounded_20261108.py"
+  ],
+  "anchor": "TOP20_BOUNDED_SCAN_20261108",
+  "comment": [
+    "ANCHOR: TOP20_BOUNDED_SCAN_20261108 — hermes_top20_external_intel honours --top (a true LIMIT on both",
+    "arms, directive arm bounded to the same n) and reopens its DB socket across the 180 s researcher calls,",
+    "so the 2026-11-08 SSL-closed OperationalError can no longer end a run. Synthetic scripted connections."
+  ]
+}
