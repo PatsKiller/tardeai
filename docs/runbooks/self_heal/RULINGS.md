@@ -52,7 +52,7 @@ the corpus's action and tier unless a ruling below changed it.
 | `H05-db-connection-closed` | `db_connection_closed` | 2 (+1 SSL) | `noop_wait_recheck` | `auto` | a closed connection during rollback is benign; the next slot is the retry |
 | `I05-env-names-missing` | `config_env` | 6 | `escalate_finding` | `human_only` | the fix is an allowlist edit only an operator makes |
 | `I06-log-path-not-a-directory` | `config_path` | 0 in-window (659 / 30 d) | `escalate_finding` | `auto_notify` | the lane cannot take its lock or write its log until a config edit lands |
-| `J03-data-defect-in-input` | `data_defect` | 3 | `escalate_finding` | `auto_notify` | the input is missing or too old; a runbook must never repair a producer's rows |
+| `J03-data-defect-in-input` | `data_defect` | 5 | `escalate_finding` | `auto_notify` | the input is missing or too old; a runbook must never repair a producer's rows |
 
 `C07`, `H04` and `I06` have **zero hits in this 14-day window** and are required by the corpus and by the mining
 taxonomy (I06 is the highest-count config defect of the 30-day window: 659 failures on 10 lanes). An entry at 0 hits
