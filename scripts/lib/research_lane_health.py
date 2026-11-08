@@ -18,6 +18,14 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Optional
 
+try:  # same package as the caller: never a second spelling (DualImportIdentityError)
+    from .research_refusal import classify_refusal as _classify_refusal
+except ImportError:  # monitor path loads this file as a top-level module on scripts/lib
+    try:
+        from research_refusal import classify_refusal as _classify_refusal
+    except ImportError:
+        _classify_refusal = None
+
 AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "ResearchLaneHealth@v1"
 
@@ -109,9 +117,31 @@ def is_success_recommendation(rec: Any) -> bool:
     return not s.startswith("[")
 
 
+def is_refusal_row(row: Any) -> bool:
+    """A model declined to answer: neither research (ok) nor a broken lane (error).
+
+    Three shapes reach the 24h window: status='refused' (writer classified it), the legacy
+    status='sent' row whose prose is a refusal (written before the writer classified), and the
+    '[REJECTED_DATA_QUALITY] llm_refusal' row. Status is read first because the text can be
+    mis-bucketed by prefix alone: a refusal is not '[' prefixed, so it looks like success.
+    """
+    if not isinstance(row, dict):
+        return False
+    if str(row.get("status") or "").strip().lower() == "refused":
+        return True
+    rec = str(_row_rec(row) or "").strip()
+    if rec.startswith("[REJECTED_DATA_QUALITY]") and "llm_refusal" in rec:
+        return True
+    if _classify_refusal is not None and rec and not rec.startswith("["):
+        return bool(_classify_refusal(rec)[0])
+    return False
+
+
 def consecutive_error_streak(rows_newest_first: Iterable[dict[str, Any]]) -> int:
     n = 0
     for row in rows_newest_first:
+        if is_refusal_row(row):
+            break
         rec = row.get("recommendation")
         if rec is None:
             rec = row.get("summary")
@@ -159,12 +189,15 @@ def evaluate_lane(
     now = now or datetime.now(timezone.utc)
     k = streak_n if streak_n is not None else error_streak_n()
     streak = consecutive_error_streak(newest_first)
-    ok_24h = non_error_count(last_24h)
+    refused_24h = sum(1 for r in last_24h if is_refusal_row(r))
+    ok_24h = sum(1 for r in last_24h
+                 if is_success_recommendation(_row_rec(r)) and not is_refusal_row(r))
     skip_24h = skipped_budget_count(last_24h)
     attempts_24h = len(last_24h)
     defer_24h = sum(1 for r in last_24h if is_deferred_offpeak(r.get("recommendation")
                                                                if isinstance(r, dict) else r))
-    err_24h = max(0, attempts_24h - ok_24h - skip_24h - defer_24h)
+    # A refusal is the model declining, not the lane breaking: it is neither ok nor error.
+    err_24h = max(0, attempts_24h - ok_24h - skip_24h - defer_24h - refused_24h)
     judged = ok_24h + err_24h  # exclude throttle from lane-broken rate
     rate = round(100.0 * err_24h / judged, 1) if judged else 0.0
     last_any = newest_first[0].get("created_at") if newest_first else None
@@ -193,6 +226,7 @@ def evaluate_lane(
         "attempts_24h": attempts_24h,
         "error_24h": err_24h,
         "skipped_budget_24h": skip_24h,
+        "refused_24h": refused_24h,
         "error_rate_24h": rate,
         "last_any": last_any,
         "authority": AUTHORITY,

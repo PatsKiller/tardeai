@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "RESEARCH_LANE_REFUSAL_LQ530_20261107",
+  "files": [
+    "tests/test_research_lane_refusal_lq530_20261107.py"
+  ],
+  "anchor": "RESEARCH_LANE_REFUSAL_LQ530_20261107",
+  "comment": [
+    "ANCHOR: RESEARCH_LANE_REFUSAL_LQ530_20261107 — LQ-20261107-530: a model refusal is neither ok nor a lane error in research_lane_health; grok error_streak/error_rate fired on refusals."
+  ]
+}
