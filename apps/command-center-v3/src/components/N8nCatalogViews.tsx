@@ -7,7 +7,7 @@ import {
   MODES, MODE_LABEL, MODE_TIP, MODE_TONE, N8N_CATALOG_API, catalogStats, categoryLanes, laneChips, laneHref, notInRelay, scheduleText,
   type CatalogCategory, type CatalogLane, type N8nCatalogWire,
 } from '../lib/n8nCatalog'
-import { auditNavHref, mountApproved, mountAuditHeader, resolveSub, type Nav, type SubKey } from '../lib/n8nCatalogApproved'
+import { mountApproved, mountAuditHeader, resolveSub, type Nav, type SubKey } from '../lib/n8nCatalogApproved'
 
 // Ops › Jobs & n8n › n8n catalog (LQ-20261107-150). Read-only. Phone first: stacked cards, 44 px targets, every
 // mode chip / verdict chip / top stat explains itself: a tap opens the text inline (phone), hover or keyboard focus
