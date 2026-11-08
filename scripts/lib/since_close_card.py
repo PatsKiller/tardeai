@@ -28,8 +28,10 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 try:
+    from lib import since_close_stamp
     from lib.market_risk import sessions
 except ImportError:  # pragma: no cover - imported as scripts.lib
+    from scripts.lib import since_close_stamp
     from scripts.lib.market_risk import sessions
 
 ET = ZoneInfo("America/New_York")
@@ -479,6 +481,7 @@ def build_snapshot(
     ex_divs: Iterable[Mapping[str, Any]] = (),
     cio_brief: Mapping[str, Any] | None = None,
     if_changed: bool = False,
+    source_clocks: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """The whole card.  With ``if_changed`` returns None when nothing material moved since ``prior`` (no write, no LLM
     call).  A rebuild that is not material keeps the prior summary text; only a material one may spend a call."""
@@ -513,6 +516,7 @@ def build_snapshot(
         "change_state": state,
         "today": build_today(now, moves, feed),
         "cio_brief": cio_brief_block(cio_brief),
+        "stamp": since_close_stamp.build_stamp(now=now, window=win, clocks={**(source_clocks or {}), "cio_brief": since_close_stamp.cio_clock(cio_brief)}),
         "feed": feed,
         "week_ahead": build_week_ahead(
             now=now, macro_calendar=macro_calendar, earnings=earnings, ex_divs=ex_divs,

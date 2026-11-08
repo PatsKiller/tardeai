@@ -770,20 +770,32 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     const quoteKnown = quoteEvidenceKnown && quoteClock!.date === evaluatedClock?.date
     const priorRegularQuote = quoteEvidenceKnown && !!evaluatedClock && quoteClock!.date < evaluatedClock.date
     const finite = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null
-    const price = quoteKnown ? quote!.price : null
-    const vsExit = quoteKnown ? finite(quote!.pct_vs_exit) : null
+    // LQ-20261107-1240: with no session open (weekend, holiday, pre-open) the last close is the honest "now". Either the
+    // strict stored regular-session quote of the prior session, or the repricer snapshot's last close; both are shown
+    // labelled "<Day> close", never as a live price.
+    const snapshotClose = quote?.status === 'available' && !quote.stale && typeof quote.price === 'number' && quote.price > 0
+      && Number.isFinite(quote.price) && quote.source === 'ticker_snapshot:finviz_elite' && quote.session === 'last_close'
+      && typeof quote.session_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(quote.session_date)
+    const closeQuote = !quoteKnown && (priorRegularQuote || snapshotClose)
+    const closeDay = closeQuote ? shortDay(quote!.session_date).split(' ')[0] : ''
+    const closeTag = closeQuote ? `${closeDay} close` : ''
+    const price = quoteKnown || closeQuote ? quote!.price : null
+    const vsExit = quoteKnown || closeQuote ? finite(quote!.pct_vs_exit) : null
     const vsMa = quoteKnown ? finite(quote!.pct_vs_sma20) : null
     const ma = vsMa != null ? `${fmtSignedPct(vsMa)} vs confirmed 20-day` : ''
     const shown = reentryVerdictDisplay(st, vsExit, c.exit_price ?? st.exit_price, stageCtx)
     const lastPx = finite(quote?.price)
     const outOfDate = !!(quote?.stale || mr.stale || quote?.status === 'stale')
     const priceWhy = quoteKnown ? null
+      : closeQuote ? (vsExit != null ? null : `${closeTag}: no exit price to compare against`)
       : priorRegularQuote ? `the last stored price is from ${quote!.session_date}, not today's session`
       : lastPx != null && lastPx > 0 && quote?.as_of ? `${outOfDate ? 'the price is out of date' : 'no current price'}: last price ${fmtPrice(lastPx)} at ${shortTime(quote.as_of)}`
       : quote?.as_of ? `no price feed for this symbol since ${shortTime(quote.as_of)}`
       : 'no price feed for this symbol on this run'
     const priceEvidence = quoteKnown
       ? `Stored regular-session observation · fetched ${shortTime(quote!.as_of)} · ${quote!.source} · trade time/live freshness unverified`
+      : closeQuote
+        ? `${closeTag} ${fmtPrice(quote!.price)} · ${quote!.session_date} · fetched ${shortTime(quote!.as_of)} · ${quote!.source} · last close, not a live price`
       : priorRegularQuote
         ? `Last stored regular-session observation ${fmtPrice(quote!.price)} · ${quote!.session_date} · fetched ${shortTime(quote!.as_of)} · ${quote!.source} · trade time/live freshness unverified`
         : lastPx != null && lastPx > 0 && quote?.as_of
@@ -792,7 +804,7 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     return {
       symbol: sym,
       head: `exit ${fmtPrice(c.exit_price ?? st.exit_price)} · ${shortDay(c.exit_date)} · ${det.exit_account_label ?? 'one account'}${held}`,
-      now: quoteKnown ? fmtPrice(price) : priorRegularQuote ? '—' : (quote?.stale || mr.stale || quote?.status === 'stale' ? 'stale' : 'unavailable'),
+      now: quoteKnown ? fmtPrice(price) : closeQuote ? `${fmtPrice(price)} ${closeTag}` : (quote?.stale || mr.stale || quote?.status === 'stale' ? 'stale' : 'unavailable'),
       vsExit: fmtSignedPct(vsExit), vsExitNeg: (vsExit ?? 0) < 0, vsExitKnown: vsExit != null, vsMa: ma,
       trend: st.trend === 'up' ? '↑' : st.trend === 'down' ? '↓' : st.trend === 'flat' ? '→' : '',
       // FQ-094: the CIO is the only producer of a position verdict. A missing one is stated as missing — it used to

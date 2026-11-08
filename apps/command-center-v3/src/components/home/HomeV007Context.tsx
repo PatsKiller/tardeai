@@ -191,34 +191,40 @@ function OlderRows({ rows }: { rows: OlderRow[] }) {
   </div>
 }
 
-function NamesBody({ n, diagId }: { n: NamesToday; diagId: string }) {
+export type NamesPart = 'all' | 'stopped' | 'rest'
+
+function NamesBody({ n, diagId, part = 'all' }: { n: NamesToday; diagId: string; part?: NamesPart }) {
+  const top = part !== 'rest'
+  const rest = part !== 'stopped'
   const openDiagnostics = () => {
     const el = typeof document !== 'undefined' ? document.getElementById(diagId) as HTMLDetailsElement | null : null
     if (el) { el.open = true; el.scrollIntoView?.({ block: 'start', behavior: 'smooth' }) }
   }
   return <>
-    {n.stopped.length ? <section data-testid="v8-stopped" aria-label={n.stoppedHeading}>
+    {top && n.stopped.length ? <section data-testid="v8-stopped" aria-label={n.stoppedHeading}>
       <div style={grp}><span>{n.stoppedHeading}</span><b style={take} data-testid="v8-stopped-takeaway">{n.stoppedTakeaway}</b></div>
       {n.stopped.map(r => <StoppedRowView key={r.symbol} r={r} />)}
     </section> : null}
-    {n.held.length || n.tiny.length ? <section data-testid="v8-held" aria-label="You hold, in stressed groups">
+    {rest && (n.held.length || n.tiny.length) ? <section data-testid="v8-held" aria-label="You hold, in stressed groups">
       <div style={grp}><span>You hold · in stressed groups</span>{n.held.length ? <b style={take}>{n.heldTakeaway}</b> : null}</div>
       {n.held.map(h => <HeldRowView key={h.symbol} h={h} />)}
       {n.tiny.length ? <div style={{ ...dim, padding: '8px 0' }} data-testid="v8-tiny">+ {n.tiny.map(t => `${t.symbol} $${Math.round(t.usd)}`).join(' · ')}: leftover positions under $100, no action.</div> : null}
     </section> : null}
-    {n.older.length ? <details className="mr-sec" data-testid="v8-older">
+    {rest && n.older.length ? <details className="mr-sec" data-testid="v8-older">
       <summary><span role="heading" aria-level={3}>Older exits on watch ({n.older.length})</span>{n.olderTakeaway ? <span className="mr-sec-one">{n.olderTakeaway}</span> : null}</summary>
       <OlderRows rows={n.older} />
     </details> : null}
-    {!n.total ? <div style={small} data-testid="v8-empty">No stop-outs, stressed holdings or exits on watch right now.</div> : null}
-    {n.cioGap ? <div data-testid="v8-cio-gap" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0 8px', padding: '6px 10px', borderRadius: RADIUS.md, background: TOKENS.bg[2], fontSize: TYPE.base, color: TOKENS.text[1] }}>
+    {top && !n.total ? <div style={small} data-testid="v8-empty">No stop-outs, stressed holdings or exits on watch right now.</div> : null}
+    {rest && n.cioGap ? <div data-testid="v8-cio-gap" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0 8px', padding: '6px 10px', borderRadius: RADIUS.md, background: TOKENS.bg[2], fontSize: TYPE.base, color: TOKENS.text[1] }}>
       <span><b style={{ color: toneVars('warning').color }}>Data gap:</b> CIO view missing for {n.cioGap.missing} of {n.cioGap.total} name{n.cioGap.total === 1 ? '' : 's'}.{n.cioGap.reason ? ` Cause: ${n.cioGap.reason}.` : ''}</span>
       <button type="button" onClick={openDiagnostics} data-testid="v8-cio-gap-details" style={{ ...btnBase, background: 'transparent', border: 0, padding: '0 4px' }}>Details in Diagnostics</button>
     </div> : null}
   </>
 }
 
-export default function HomeV007Context() {
+/** ``part`` (LQ-1240a): on a wide screen the stopped-out block sits in the left column and the rest (held, older, data gap,
+ *  diagnostics) in the right one; each part is one section and together they hold everything ``all`` does. */
+export default function HomeV007Context({ part = 'all' }: { part?: NamesPart } = {}) {
   // Background priority: Home already fetches this same endpoint for the card model, so this read yields to the
   // page's own requests instead of competing with them for the three shared slots (see useApi's fan-out note).
   const api = useApi<{ home_v007?: unknown }>(PATH, 60_000, { priority: 'background' })
@@ -229,6 +235,7 @@ export default function HomeV007Context() {
   // The producer's stated failure is not an empty success. It carries a reason, a remediation and the gaps that
   // explain it; the card says so and renders no symbol body over it.
   if (v7.unavailable) {
+    if (part === 'rest') return null
     return <section data-testid="home-v007-unavailable" style={card}>
       <h4 style={h4}>Your names today is unavailable</h4>
       <div style={{ ...small, color: toneVars('warning').color }} data-testid="v7-unavailable-reason">
@@ -241,13 +248,20 @@ export default function HomeV007Context() {
   const proj = recoveryProjection(rec.data, rec.error)
   const cases = proj.cases.map(c => ({ key: c.key, symbol: c.symbol, account: c.account, settled: c.settled }))
   const names = namesToday(v7, namesSource(api.data), cases, new Date())
+  if (part === 'rest') {
+    return <section data-testid="home-v007-rest" style={card}>
+      <style>{EXPLAIN_CSS}</style>
+      <NamesBody n={names} diagId={diagId} part="rest" />
+      <Diagnostics v7={v7} id={diagId} refetch={() => api.refetch()} />
+    </section>
+  }
   return <section data-testid="home-v007" style={card}>
     <style>{EXPLAIN_CSS}</style>
     <div>
       <h4 style={{ ...h4, fontSize: TYPE.md + 1 }}>Your names today</h4>
       <div style={{ ...dim, fontSize: TYPE.base, marginTop: 2 }}>What changed for things you hold or just sold, grouped by the decision in front of you. Facts and links only. Nothing here is a size, an order or a stop level.</div>
     </div>
-    <NamesBody n={names} diagId={diagId} />
-    <Diagnostics v7={v7} id={diagId} refetch={() => api.refetch()} />
+    <NamesBody n={names} diagId={diagId} part={part} />
+    {part === 'all' ? <Diagnostics v7={v7} id={diagId} refetch={() => api.refetch()} /> : null}
   </section>
 }

@@ -5,6 +5,9 @@
 import { useState, type CSSProperties } from 'react'
 import { useApi } from '../../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../../lib/designTokens'
+import SinceCloseStamp, { useNow } from './SinceCloseStamp'
+import SinceCloseSynopsis from './SinceCloseSynopsis'
+import SinceCloseStops from './SinceCloseStops'
 import { SINCE_CLOSE_API, pctText, sinceCloseModel, usdText, type SinceCloseWire } from '../../lib/sinceClose'
 
 const info = toneVars('info')
@@ -35,7 +38,8 @@ const timeOf = (iso?: string | null) => {
 
 export default function SinceCloseCard() {
   const api = useApi<SinceCloseWire>(SINCE_CLOSE_API, 5 * 60_000)
-  const m = sinceCloseModel(api.data)
+  const nowMs = useNow()
+  const m = sinceCloseModel(api.data, nowMs)
   const [open, setOpen] = useState(false)
 
   if (m.state === 'collapsed' && !open) {
@@ -58,16 +62,24 @@ export default function SinceCloseCard() {
         )}
       </div>
 
+      <SinceCloseStamp stamp={m.stamp} nowMs={nowMs} />
+
       {m.state === 'none' ? (
         <p style={S.p} data-testid="since-close-none">The recap has not been built yet; it refreshes overnight. Moves and news are on the pages below.</p>
       ) : (
         <>
+          <SinceCloseSynopsis s={m.synopsis} stamp={m.stamp} nowMs={nowMs} />
+
+          {(m.stops !== null || m.cio.actions.length === 0) && <SinceCloseStops list={m.stops} stamp={m.stamp} nowMs={nowMs} />}
+
+          <SinceCloseStamp stamp={m.stamp} nowMs={nowMs} part="detail" />
+
           <div data-testid="since-close-cio" style={S.box}>
             <h3 style={S.h3}>CIO brief{m.cio.tier ? ` · ${m.cio.tier}` : ''}</h3>
             {m.cio.pending ? <p style={S.p}>{m.cio.label}</p> : (
               <>
                 {m.cio.summary && <p style={S.p}>{m.cio.summary}</p>}
-                {m.cio.actions.map(a => <p key={a.symbol} style={{ ...S.p, fontSize: 13 }}><b>{a.symbol}</b> · {a.text} <span style={S.meta}>advisory</span></p>)}
+                {m.stops === null && m.cio.actions.map(a => <p key={a.symbol} style={{ ...S.p, fontSize: 13 }}><b>{a.symbol}</b> · {a.text} <span style={S.meta}>advisory</span></p>)}
               </>
             )}
           </div>

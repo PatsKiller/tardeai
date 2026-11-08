@@ -235,29 +235,46 @@ function Budgets({ m }: { m: ActionableModel }) {
   )
 }
 
+const BODY_LAYOUT_CSS = `
+.mr-body{display:flex;flex-direction:column;gap:16px}
+.mr-body>.mr-col{display:contents}
+.mr-body .mr-names{order:1;min-width:0}
+.mr-body .mr-stressed{order:2;min-width:0}
+.mr-body>.mr-col>*{min-width:0}
+@container (min-width: 940px){
+ .mr-body{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 20px;align-items:start}
+ .mr-body>.mr-col{display:flex;flex-direction:column;gap:16px;min-width:0}
+ .mr-body .mr-names,.mr-body .mr-stressed{order:0}
+}`
+
 /** Sections 1–6; ``why`` is section 7 (the v004 contributor block), passed in by the card that owns it. design home/v006:
  *  "Review now" moved into Protect (MarketRiskActions); it renders here only when the API sent no Protect block. */
 export function ActionableBody({ m, why }: { m: ActionableModel; why: React.ReactNode }) {
   return (
     <GlossaryProvider terms={m.glossary}>
-      <div data-mr-actionable="" data-testid="mr-actionable-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 460px), 1fr))', gap: '16px 20px', alignItems: 'start', paddingTop: 8 }}>
-        <style>{ACTIONABLE_CSS}</style>
-        {/* LIVEFIX-R order (operator 2026-11-06). Above this body: headline status → exposure → Protect / Hedge /
-            Rotate. Then, on a phone (columns stack): positions → sectors (collapsed) → issuer segments → why →
-            since-you-were-stopped-out → today's context → diagnostics (collapsed, last). On desktop the first column
-            is "what you hold", the second "what happened and why". */}
-        <div data-testid="mr-col-holdings" style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
-          <Positions m={m} />{!m.protect && <Review m={m} />}<Budgets m={m} /><Sectors m={m} />
-          {/* This wrapper holds MarketRiskActions' Segments — the multi-segment ISSUER block. Protect, Hedge and
-              Rotate are NOT in here: ActionsTop renders them above the body (MarketRiskSummary / MarketRiskBanner).
-              The Section title is the only "Multi-segment issuer" heading (Segments renders none of its own). */}
-          {m.segments.length > 0 && (
-            <Section title="Multi-segment issuer" one={`${m.segments.length} segment${m.segments.length === 1 ? '' : 's'}`} testId="mr-advisory-section"><Segments m={m} /></Section>
-          )}
-        </div>
-        <div data-testid="mr-col-context" style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
-          {why ? <Section title="Why this tier" one={m.verdict} testId="mr-why-section">{why}</Section> : null}
-          <Reentry m={m} /><HomeV007Context />
+      {/* LQ-1240a: a container query, not a viewport one, so the two-column layout follows the width the body really has.
+          Narrow: the column wrappers vanish (display:contents) and CSS order keeps the phone order of before: holdings,
+          why, reentry, stopped-out names, stressed groups. Wide: two flex columns; the stopped-out block moves under
+          Multi-segment issuer on the left so both columns end together instead of leaving a dead panel. */}
+      <div className="mr-body-wrap" style={{ containerType: 'inline-size' }}>
+        <div data-mr-actionable="" data-testid="mr-actionable-body" className="mr-body" style={{ paddingTop: 8 }}>
+          <style>{ACTIONABLE_CSS}</style>
+          <style>{BODY_LAYOUT_CSS}</style>
+          <div data-testid="mr-col-holdings" className="mr-col">
+            <Positions m={m} />{!m.protect && <Review m={m} />}<Budgets m={m} /><Sectors m={m} />
+            {/* This wrapper holds MarketRiskActions' Segments — the multi-segment ISSUER block. Protect, Hedge and
+                Rotate are NOT in here: ActionsTop renders them above the body (MarketRiskSummary / MarketRiskBanner).
+                The Section title is the only "Multi-segment issuer" heading (Segments renders none of its own). */}
+            {m.segments.length > 0 && (
+              <Section title="Multi-segment issuer" one={`${m.segments.length} segment${m.segments.length === 1 ? '' : 's'}`} testId="mr-advisory-section"><Segments m={m} /></Section>
+            )}
+            <div data-testid="mr-row-names" className="mr-names"><HomeV007Context part="stopped" /></div>
+          </div>
+          <div data-testid="mr-col-context" className="mr-col">
+            {why ? <Section title="Why this tier" one={m.verdict} testId="mr-why-section">{why}</Section> : null}
+            <Reentry m={m} />
+            <div data-testid="mr-row-stressed" className="mr-stressed"><HomeV007Context part="rest" /></div>
+          </div>
         </div>
       </div>
     </GlossaryProvider>

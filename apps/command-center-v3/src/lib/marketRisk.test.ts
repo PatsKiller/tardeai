@@ -211,12 +211,19 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   const fridayQuote = { ...currentQuote, price: 9.5, session_date: '2031-03-07', expected_session_date: '2031-03-07', as_of: '2031-03-07T21:00:59.999999Z' }
   for (const assessment of ['2031-03-10T12:00:00Z', '2031-03-08T17:00:00Z', '2031-03-09T17:00:00Z']) {
     const prior = quoteRow(fridayQuote, assessment)
-    assert.equal(prior.now, '—', 'pre-open/weekend prior close cannot be labeled Now')
-    assert.equal(prior.vsExit, '—', 'prior quote percent is not a current comparison')
-    assert.match(prior.lookThrough, /Last stored regular-session observation \$9\.50 · 2031-03-07 · fetched .*ET · market_quotes:alpaca · trade time\/live freshness unverified/)
+    // LQ-20261107-1240: the prior close is shown as that session's close, labelled with its day, never as live "Now".
+    assert.equal(prior.now, '$9.50 Fri close', 'pre-open/weekend prior close is labelled with its day')
+    assert.equal(prior.vsExitKnown, true, 'the labelled close backs the vs-exit figure')
+    assert.match(prior.lookThrough, /^Fri close \$9\.50 · 2031-03-07 · fetched .*ET · market_quotes:alpaca · last close, not a live price/)
     assert.ok(!/Price unavailable|Price stale/.test(prior.lookThrough), 'normal prior close is not a system failure')
     assert.equal(prior.verdict, 'Still falling')
   }
+  // LQ-20261107-1240: the repricer snapshot's last close backs a symbol market_quotes has no row for.
+  const snap = quoteRow({ ...currentQuote, price: 9.5, source: 'ticker_snapshot:finviz_elite', session: 'last_close', session_date: '2031-03-07',
+    expected_session_date: '2031-03-07', as_of: '2031-03-09T21:00:00Z', pct_vs_exit: -5 }, '2031-03-09T17:00:00Z')
+  assert.equal(snap.now, '$9.50 Fri close')
+  assert.equal(snap.vsExitKnown, true)
+  assert.equal(quoteRow({ ...currentQuote, price: 9.5, source: 'other', session: 'last_close', session_date: '2031-03-07' }, '2031-03-09T17:00:00Z').now, 'unavailable', 'an unnamed source is not trusted')
   // FQ-094: with no verdict from the CIO, the card states that — it used to invent "Still falling".
   const noVerdict = actionableModel(unwrapMarketRisk({ ...base,
     reentry_watch: { NEWX: { symbol: 'NEWX', exit_date: '2031-03-07', exit_price: 10, stages: { last_close: 9.5, pct_vs_exit: -5 } } } }))!.reentry[0]

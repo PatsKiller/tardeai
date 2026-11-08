@@ -25,11 +25,13 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib import since_close_card as card  # noqa: E402
+from lib import since_close_stamp as stamp  # noqa: E402
 
 ET = ZoneInfo("America/New_York")
 STATE_DIR = Path(os.environ.get("TRADEAI_STATE_DIR") or Path(__file__).resolve().parent.parent / "data" / "portfolios" / "state")
 OUT_NAME = "since_close_latest.json"
 CIO_BRIEF_REL = Path("data") / "runtime" / "cio_overnight_brief" / "latest.json"  # LQ-1257 (cc-deepseek-3); pending until it exists
+MARKET_RISK_REL = Path("data") / "runtime" / "market_risk" / "latest.json"
 TICKER_NAME = "ticker_snapshot_latest.json"
 FUTURES_REL = Path("data") / "market" / "futures_overseas_latest.json"  # cc-deepseek-9 LQ-1239 output, when it lands
 
@@ -85,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
             until=now,
             symbols=list(ticker["tickers"]),
         )
+        clocks = stamp.fetch_clocks(conn)
         try:
             ex_divs = card.fetch_ex_divs(conn, today=now)
         except Exception:  # noqa: BLE001 -- a missing dividend table leaves the strip without ex-div rows, not the card
@@ -92,13 +95,14 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         conn.close()
 
+    clocks["market_risk"] = stamp.file_clock(a.state_dir.parents[2] / MARKET_RISK_REL)
     today = now.astimezone(ET).date().isoformat()
     calls = ((prior or {}).get("llm_calls") or {}).get(today, 0)
     snap = card.build_snapshot(
         now=now, ticker_snapshot=ticker, articles=arts, futures=futures,
         llm=_flash if (a.apply and a.llm) else None, prior=prior, calls_today=calls,
         macro_calendar=card.load_json(_macro_path()), earnings=card.load_json(a.state_dir / "earnings_dates.json"),
-        ex_divs=ex_divs, if_changed=a.if_changed, cio_brief=card.load_json(a.cio_brief or (a.state_dir.parents[2] / CIO_BRIEF_REL)),
+        ex_divs=ex_divs, if_changed=a.if_changed, source_clocks=clocks, cio_brief=card.load_json(a.cio_brief or (a.state_dir.parents[2] / CIO_BRIEF_REL)),
     )
     if snap is None:
         print(f"unchanged since the last build (window={win['label']!r}, articles={len(arts)}); no write, no LLM call")

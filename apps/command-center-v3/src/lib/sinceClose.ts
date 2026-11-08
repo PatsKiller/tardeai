@@ -1,6 +1,10 @@
 /** LQ-20261107-1253 — view model for the Home "Since last close" card (GET /api/v2/home/since-close).
  *  Pure: the wire in, what to draw out. The server builds the snapshot overnight; nothing here decides anything. */
 
+import { stopList, type StopList } from './stopAdvice.ts'
+import { synopsisModel, type SynopsisModel } from './synopsis.ts'
+import type { StampWire } from './sinceCloseStamp.ts'
+
 export const SINCE_CLOSE_API = '/api/v2/home/since-close'
 
 export interface SinceCloseNews { title: string; source: string; url?: string | null; published_at?: string | null }
@@ -18,6 +22,8 @@ export interface WeekAheadEvent { date: string; kind: 'macro' | 'fomc' | 'earnin
 export interface CioBriefWire {
   status: 'available' | 'pending'; label?: string; summary?: string; risk_tier?: string
   actions?: Array<{ symbol: string; action: string; reason?: string }>; week_ahead?: string[] | string
+  stop_advice?: unknown[]
+  synopsis?: unknown   // LQ-1257 amendment 2: {posture, risk, verdict, book, market, reentry, this_week, do_now, generated_at}
   [k: string]: unknown   // LQ-1257 writes data/runtime/cio_overnight_brief/latest.json; aliases are read in cioFrom()
 }
 export interface SinceCloseUpdated { at: string; at_et: string; reason: string; kind: 'first' | 'news' | 'move'; symbol?: string | null; headline?: string | null }
@@ -28,6 +34,7 @@ export interface SinceCloseWire {
   today?: SinceCloseToday | null
   week_ahead?: { events: WeekAheadEvent[]; fed_speakers?: string }
   cio_brief?: CioBriefWire
+  stamp?: StampWire
   status: 'ok' | 'no_snapshot'
   window_now?: SinceCloseWindow
   window?: SinceCloseWindow
@@ -57,6 +64,9 @@ export interface SinceCloseModel {
   weekAhead: WeekAheadEvent[]
   fedSpeakersText: string
   cio: { pending: boolean; label: string; summary: string | null; tier: string | null; actions: Array<{ symbol: string; text: string }> }
+  stops: StopList | null   // LQ-1257 stop_advice[] as an action list; null while the brief is pending or carries none
+  stamp: StampWire | null
+  synopsis: SynopsisModel
 }
 
 const etDay = (iso: string): string => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
@@ -99,7 +109,7 @@ export function cioFrom(b: CioBriefWire | null | undefined): SinceCloseModel['ci
 export function sinceCloseModel(w: SinceCloseWire | null | undefined, nowMs: number = Date.now()): SinceCloseModel {
   const win = w?.window_now ?? w?.window
   const base = { label: win?.label ?? 'Since last close', closeTag: win?.close_tag ?? 'last close' }
-  const empty = { stale: true, freshnessText: 'not built yet', summaryText: null, summaryLines: [], held: [], watch: [], headlines: [], futuresText: 'futures feed pending', feed: [], today: null, updatedText: null, collapsedNote: null, weekAhead: [], fedSpeakersText: 'no feed — not listed', cio: { pending: true, label: 'CIO brief pending', summary: null, tier: null, actions: [] } }
+  const empty = { stale: true, freshnessText: 'not built yet', summaryText: null, summaryLines: [], held: [], watch: [], headlines: [], futuresText: 'futures feed pending', feed: [], today: null, updatedText: null, collapsedNote: null, weekAhead: [], fedSpeakersText: 'no feed — not listed', cio: { pending: true, label: 'CIO brief pending', summary: null, tier: null, actions: [] }, stops: null, stamp: null, synopsis: synopsisModel(null, null, nowMs) }
   if (!w || w.status !== 'ok') return { state: 'none', ...base, ...empty }
   const moves = w.moves ?? []
   const fut = w.macro?.futures
@@ -126,6 +136,11 @@ export function sinceCloseModel(w: SinceCloseWire | null | undefined, nowMs: num
     collapsedNote: w.updated?.kind === 'news' && w.updated.symbol && w.updated.headline && etDay(w.updated.at) === etDay(new Date(nowMs).toISOString())
       ? `New: ${w.updated.symbol} ${w.updated.headline}` : null,
     cio: cioFrom(w.cio_brief),
+    stamp: w.stamp ?? null,
+    synopsis: synopsisModel(w.cio_brief?.synopsis, typeof w.cio_brief?.generated_at === 'string' ? w.cio_brief.generated_at : null, nowMs),
+    stops: w.cio_brief?.status === 'available' && Array.isArray(w.cio_brief.stop_advice)
+      ? stopList(w.cio_brief.stop_advice, Object.fromEntries(moves.map(m => [m.symbol, { price: m.price }])))
+      : null,
     futuresText: fut?.status === 'available' && fut.quotes.length
       ? fut.quotes.map(q => `${String(q.symbol ?? q.name ?? '')} ${pctText(Number(q.change_pct))}`).join(' · ')
       : fut?.label ?? 'futures feed pending',
