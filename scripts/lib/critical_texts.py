@@ -8,9 +8,10 @@ Rules this module owns, all from the spec:
   * the class allowlist is ``config/critical_text_classes.json`` (the operator turns classes on/off there);
   * an unknown or disabled class is not sent — the channel fails closed to Telegram-only;
   * at most ``max_per_hour`` texts per hour, and one text per event id inside ``dedupe_hours``;
-  * the text is plain, at most 160 characters, carries symbol/account/trigger/one action, no HTML and no links
-    except the one D35 B4 carries: the full https Command Center reauth URL, built from the runtime tailnet base
-    (TRADEAI_CC_LINK_BASE), never truncated and never from the repository.
+  * the text is plain and at most its class's cap: 160 characters by default, or the ``max_chars`` the
+    class row sets (300 for the advisory ``market_outlook`` class), carries symbol/account/trigger/one action,
+    no HTML and no links except the one D35 B4 carries: the full https Command Center reauth URL, built from
+    the runtime tailnet base (TRADEAI_CC_LINK_BASE), never truncated and never from the repository.
 
 Agents never place, change or cancel an order, and nothing here does: it sends words.
 """
@@ -36,7 +37,11 @@ STATE_REL = "data/runtime/critical_texts_sent.json"
 MAX_TEXT_CHARS = 160
 # Advisory classes lead with their own label instead of "ACT NOW": the market-event text (SPEC_MARKET_EVENT_REENTRY_20261107
 # D4) says an episode opened/closed or a name turned READY: information for the operator, never an instruction to trade.
-HEAD_LABELS = {"market_event": "MARKET EVENT"}
+# The market-outlook text (FABLE-OUTLOOK-METHODOLOGY-LQ-946 §4.7) is the same kind of message: a stance, never an order.
+HEAD_LABELS = {"market_event": "MARKET EVENT", "market_outlook": "OUTLOOK"}
+# Classes whose producer hands in the finished sentence (an advisory digest: stance, catalysts, action, record id) instead
+# of a trigger/action pair the "Suggest ..." template can wrap. The body form is still checked here - label, no link, cap.
+BODY_CLASSES = frozenset({"market_outlook"})
 DEFAULT_MAX_PER_HOUR = 10
 DEFAULT_DEDUPE_HOURS = 12
 
@@ -109,6 +114,21 @@ def class_enabled(policy: dict[str, Any], alert_class: str) -> bool:
     return bool(isinstance(entry, dict) and entry.get("enabled") is True)
 
 
+def class_max_chars(policy: dict[str, Any], alert_class: str) -> int:
+    """The class's own cap from config (D1: 300 for ``market_outlook``), or the module default.
+
+    One cap for every class was fine while every text was a 160-character alert. An advisory sentence
+    that must also carry the stance, the week's catalysts, the action and the record id cannot fit 160,
+    so the operator lowered the per-class cap in the same file that turns the class on.
+    """
+    entry = (policy.get("classes") or {}).get(str(alert_class or ""))
+    try:
+        value = int(entry.get("max_chars")) if isinstance(entry, dict) else 0
+    except (TypeError, ValueError):
+        value = 0
+    return value if value > 0 else MAX_TEXT_CHARS
+
+
 CC_REAUTH_PATH = "/v3/system/schwab-reauth"
 # D35 B4: the Schwab-login text must carry the full one-tap Command Center link. Only this class may carry a link, and the
 # link is built from a runtime base URL — the tailnet hostname is an address, so it never lives in the repository.
@@ -144,7 +164,7 @@ def critical_link(base: Any) -> str:
     return f"https://{host}{CC_REAUTH_PATH}"
 
 
-def _with_trigger(head: str, trigger: str, action: str, tail: str) -> str:
+def _with_trigger(head: str, trigger: str, action: str, tail: str, max_chars: int = MAX_TEXT_CHARS) -> str:
     """``head <trigger>. Suggest <action>.`` + tail, shortening the TRIGGER only — never the action or the tail.
 
     ``head``/``action``/``tail`` are fixed: the caller has already refused when they cannot fit. A trigger with no
@@ -152,7 +172,7 @@ def _with_trigger(head: str, trigger: str, action: str, tail: str) -> str:
     there is no room left at all it is omitted, leaving the action and any link intact.
     """
     fixed = f"{head}. Suggest {action}."
-    room = MAX_TEXT_CHARS - len(fixed) - len(tail) - 2  # -2 leaves one spare for the ellipsis and one for a space
+    room = max_chars - len(fixed) - len(tail) - 2  # -2 leaves one spare for the ellipsis and one for a space
     if len(trigger) <= room:
         sentence = f"{head} {trigger}. Suggest {action}." + tail
     elif room < 2:
@@ -166,14 +186,34 @@ def _with_trigger(head: str, trigger: str, action: str, tail: str) -> str:
     return sentence.replace("..", ".")  # a trigger that ends in "." must not become ".. Suggest"
 
 
-def format_text(event: dict[str, Any], *, link_base: Any = None) -> str:
+def _body_text(event: dict[str, Any], alert_class: str, max_chars: int) -> str:
+    """The finished advisory sentence, checked but not reshaped: label, no link, and the class cap."""
+    body = " ".join(str(event.get("body") or event.get("text") or "").split())
+    if not body:
+        raise CriticalTextError(f"{alert_class} needs its finished sentence in event['body']")
+    label = HEAD_LABELS.get(alert_class, "")
+    if label and not body.startswith(label + " "):
+        # The label is what tells the operator at a glance that this is information, not an instruction.
+        raise CriticalTextError(f"a {alert_class} text must start with its label {label!r}")
+    if _URL_IN_TEXT.search(body):
+        raise CriticalTextError(f"{alert_class} may not carry a link; only {sorted(LINK_CLASSES)} do")
+    if len(body) > max_chars:
+        raise CriticalTextError(f"the {alert_class} text is {len(body)} characters, over the {max_chars}-character cap")
+    return body
+
+
+def format_text(event: dict[str, Any], *, link_base: Any = None, max_chars: Optional[int] = None) -> str:
     """`ACT NOW SPCX (Roth) ext-hrs 131.20, stop 130.00 inactive till 9:30. Suggest EXT limit sell 130.90. CC Risk`"""
     import os
+
+    cap = int(max_chars or MAX_TEXT_CHARS)
 
     def clean(value: Any) -> str:
         return " ".join(str(value or "").split())
 
     alert_class = clean(event.get("alert_class"))
+    if alert_class in BODY_CLASSES:
+        return _body_text(event, alert_class, cap)
     symbol = clean(event.get("symbol")).upper() or "PORTFOLIO"
     account = clean(event.get("account"))
     trigger = clean(event.get("trigger") or event.get("what"))
@@ -197,35 +237,35 @@ def format_text(event: dict[str, Any], *, link_base: Any = None) -> str:
             raise CriticalTextError(f"{alert_class or 'this class'} may not carry a link; only {sorted(LINK_CLASSES)} do")
         link = ""
 
-    refuse_link = "the reauth link does not fit in one 160-character text"
+    refuse_link = f"the reauth link does not fit in one {cap}-character text"
     if link:
         if link in trigger:
             # The URL sits in the trigger; shortening it would cut the link, so fit whole or refuse.
             sentence = f"{head} {trigger}. Suggest {action}."
-            if len(sentence) + len(" CC Risk") > MAX_TEXT_CHARS:
+            if len(sentence) + len(" CC Risk") > cap:
                 raise CriticalTextError(refuse_link)
             return (sentence + " CC Risk").replace("..", ".")
         if link in action:
             # The producer's sentence already carries the finished URL: never repeat it, and never shorten the action.
             # If even ``head + action + CC Risk`` cannot fit, refuse — a cut URL is worse than no text.
             tail = " CC Risk"
-            if len(f"{head}. Suggest {action}.") + len(tail) > MAX_TEXT_CHARS:
+            if len(f"{head}. Suggest {action}.") + len(tail) > cap:
                 raise CriticalTextError(refuse_link)
-            return _with_trigger(head, trigger, action, tail)
+            return _with_trigger(head, trigger, action, tail, cap)
         # Append the URL, reserving its room before the trigger is shortened. The action must survive whole; if the
-        # action plus the link cannot fit, refuse rather than slice the sentence (and possibly the link) to 160.
+        # action plus the link cannot fit, refuse rather than slice the sentence (and possibly the link) to the cap.
         tail = f" Log in: {link} CC Risk"
-        if len(f"{head}. Suggest {action}.") + len(tail) > MAX_TEXT_CHARS:
+        if len(f"{head}. Suggest {action}.") + len(tail) > cap:
             raise CriticalTextError(refuse_link)
-        return _with_trigger(head, trigger, action, tail)
+        return _with_trigger(head, trigger, action, tail, cap)
 
     # No link: the action survives and the trigger is shortened first. If even the action cannot fit, a cut action is
     # the only honest option left (there is no URL to break, and dropping the alert would be worse).
     fixed = f"{head}. Suggest {action}."
     tail = " CC Risk"
-    if len(fixed) + len(tail) > MAX_TEXT_CHARS:
-        return (fixed + tail)[:MAX_TEXT_CHARS]
-    return _with_trigger(head, trigger, action, tail)
+    if len(fixed) + len(tail) > cap:
+        return (fixed + tail)[:cap]
+    return _with_trigger(head, trigger, action, tail, cap)
 
 
 def _parse_stamp(value: Any) -> Optional[datetime]:
@@ -377,7 +417,7 @@ def send_critical_text(
     if not gateways:
         return {"sent": False, "reason": gateway_error or "no gateway configured"}
     try:
-        text = format_text(event, link_base=event.get("link_base"))
+        text = format_text(event, link_base=event.get("link_base"), max_chars=class_max_chars(policy, alert_class))
     except CriticalTextError as exc:
         return {"sent": False, "reason": str(exc)}
 

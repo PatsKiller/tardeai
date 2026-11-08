@@ -73,6 +73,12 @@
       "enabled": false,
       "part": "O",
       "title": "LLM paid spend over the daily alert line on too many days in a week (operator directive 2026-11-07, LQ-20261107-538; thresholds in config/llm_paid_spend_alerts.json). Email and the Critical chat carry it; a text only if the operator enables this class. No order."
+    },
+    "market_outlook": {
+      "enabled": true,
+      "part": "M",
+      "max_chars": 300,
+      "title": "Market outlook (FABLE-OUTLOOK-METHODOLOGY-LQ-946 D1): the Sunday 20:00 ET and Monday 07:00 ET stance, and a move into RISK-OFF. Advisory only; no order. 300 chars because the sentence carries the stance, the week's catalysts, the action and the record id."
     }
   }
 }

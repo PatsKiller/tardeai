@@ -1,0 +1,38 @@
+{
+  "schema": "MarketOutlookBriefPolicy@v1",
+  "note": "Rendering and delivery constants for the market-outlook brief (FABLE-OUTLOOK-METHODOLOGY-LQ-946 WU-3, sections 4.3/4.7). Numbers only: the advisory sentence is never assembled from a template that names an order. Text length comes from config/critical_text_classes.json (class market_outlook, max_chars 300 per D1), never from this file.",
+  "timezone": "America/New_York",
+  "html_width_px": 600,
+  "telegram_max_chars": 20000,
+  "telegram_note": "A sanity bound against a runaway render, not a delivery limit: the raw Telegram sender splits at its own 4096-character limit and sends the ordered chunks, so the Sunday brief (outlook plus the folded Monday plan, about 15k) arrives as a few ordered parts of ONE lane send with ONE receipt. The cap is refused, never truncated.",
+  "channels_default": [
+    "email",
+    "telegram",
+    "text"
+  ],
+  "text_modes": [
+    "sunday",
+    "monday"
+  ],
+  "text_on_band_change": [
+    "RISK-OFF"
+  ],
+  "band_labels": {
+    "RISK-ON": "risk on",
+    "NEUTRAL": "neutral",
+    "DEFENSIVE": "defensive",
+    "RISK-OFF": "risk off"
+  },
+  "action_short_by_band": {
+    "RISK-ON": "all tranches eligible, keep the 5% reserve",
+    "NEUTRAL": "first tranche only, hold the 5% reserve",
+    "DEFENSIVE": "no new tranches, hold the 5% reserve",
+    "RISK-OFF": "no adds, hold the reserve"
+  },
+  "text_channel_order": [
+    "email",
+    "telegram",
+    "text"
+  ],
+  "__public_repo_note": "No address, phone number, account id or holding lives here or in the renderers: the text channel resolves the operator's Fi lines from persistent-state operator_contact.json (scripts/lib/critical_texts.py), and email resolves its target from the delivery module."
+}

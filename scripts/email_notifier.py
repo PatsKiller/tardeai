@@ -42,11 +42,25 @@ def _get_keyring_password():
     return os.environ.get("GOG_KEYRING_PASSWORD", "")
 
 
-def send_email(subject, body, to=None, attachments=None):
-    """Send a plain-text email via gog gmail send.
+def send_email(subject, body, to=None, attachments=None, html=None):
+    """Send a plain-text email via gog gmail send (with an HTML alternative when ``html`` is given).
 
     ``attachments``: optional file paths, each passed as one ``--attach`` (gog flag, repeatable). A path that is not
     a file fails the send (returns False) rather than silently dropping a promised attachment.
+
+    ``html``: optional HTML body, passed as gog's ``--body-html``; gog then sends the message as multipart with
+    ``body`` as the plain-text alternative. Added for the market-outlook brief (LQ-946 WU-3): the full report is HTML,
+    and a phone that refuses HTML still gets the text part. The return stays a bool for every existing caller; use
+    ``send_email_detailed`` when the caller needs the provider message id for a receipt.
+    """
+    return bool(send_email_detailed(subject, body, to=to, attachments=attachments, html=html).get("ok"))
+
+
+def send_email_detailed(subject, body, to=None, attachments=None, html=None):
+    """Send an email and report the outcome: ``{ok, provider_id, error}``.
+
+    ``provider_id`` is the Gmail message id when gog prints one; it is None when gog succeeded without naming the
+    message, and the caller must record that honestly rather than invent an id.
     """
     to = to or OPERATOR_EMAIL
     try:  # FQDN/v3 normalization chokepoint (rewrite internal IPs + legacy /v2/ dashboard links)
@@ -57,19 +71,21 @@ def send_email(subject, body, to=None, attachments=None):
     pw = _get_keyring_password()
     if not pw:
         log.warning("No GOG_KEYRING_PASSWORD — skipping email")
-        return False
+        return {"ok": False, "provider_id": None, "error": "no gog keyring password"}
 
     gog = _gog_bin()
     if not gog:
         log.error("gog CLI not found (checked PATH, ~/.local/bin, /usr/local/bin) — skipping email")
-        return False
+        return {"ok": False, "provider_id": None, "error": "gog CLI not found"}
 
     attach_args = []
     for path in attachments or ():
         if not Path(path).is_file():
             log.error(f"Email attachment missing: {path} — not sending")
-            return False
+            return {"ok": False, "provider_id": None, "error": f"attachment missing: {Path(path).name}"}
         attach_args += ["--attach", str(path)]
+
+    html_args = ["--body-html", html] if html else []
 
     # Put gog's own directory on PATH too, so anything it shells out to resolves under cron.
     env = {**os.environ, "GOG_KEYRING_PASSWORD": pw,
@@ -80,18 +96,44 @@ def send_email(subject, body, to=None, attachments=None):
              "--to", to,
              "-a", GOG_ACCOUNT,
              "--subject", subject,
-             "--body", body] + attach_args,
+             "--body", body] + html_args + attach_args,
             env=env, capture_output=True, text=True, timeout=120 if attach_args else 15,
         )
         if r.returncode == 0:
             log.info(f"Email sent: {subject[:50]}")
-            return True
+            return {"ok": True, "provider_id": _provider_id(getattr(r, "stdout", "")), "error": None}
         else:
             log.error(f"Email failed: {r.stderr[:200]}")
-            return False
+            return {"ok": False, "provider_id": None, "error": (r.stderr or "").strip()[:300] or "gog exited non-zero"}
     except Exception as e:
         log.error(f"Email error: {e}")
-        return False
+        return {"ok": False, "provider_id": None, "error": str(e)[:300]}
+
+
+def _provider_id(stdout):
+    """The Gmail message id from gog's stdout, when it prints one; else None.
+
+    gog's success output is not contractual, so both shapes are read (`"id": "18c..."` from JSON output and
+    `id: 18c...` from plain text). An id is never invented: a send whose id cannot be read records None and the
+    receipt then proves acceptance only by ``status='sent'``.
+    """
+    import json
+    import re
+    text = str(stdout or "")
+    try:
+        doc = json.loads(text)
+    except ValueError:
+        doc = None
+    if isinstance(doc, dict):
+        for key in ("id", "messageId", "message_id"):
+            value = str(doc.get(key) or "").strip()
+            if value:
+                return value
+    match = re.search(r'"(?:id|message_id|messageId)"\s*:\s*"([A-Za-z0-9_-]{10,})"', text)
+    if match:
+        return match.group(1)
+    match = re.search(r"\b(?:message[ _]?id|id)\b\s*[:=]?\s*([A-Za-z0-9_-]{12,})\b", text, re.IGNORECASE)
+    return match.group(1) if match else None
 
 
 def notify_fill(symbol, shares, fill_price, broker_order_id, trade_id,

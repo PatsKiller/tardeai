@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "MARKET_WEEKLY_OUTLOOK_BRIEF_20261108",
+  "files": [
+    "tests/test_market_weekly_outlook_brief_20261108.py"
+  ],
+  "anchor": "MARKET_WEEKLY_OUTLOOK_BRIEF_20261108",
+  "comment": [
+    "ANCHOR: MARKET_WEEKLY_OUTLOOK_BRIEF_20261108 — LQ-946 WU-3: an UNKNOWN category prints UNKNOWN with its reason and never a zero, the advisory text stays inside its class cap, a re-run sends nothing and never overwrites a sent receipt, and the brief reaches no broker."
+  ]
+}
