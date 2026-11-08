@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1104_ddq_cap_hit_skips_20261108",
+  "files": [
+    "tests/test_lq1104_ddq_cap_hit_skips_20261108.py"
+  ],
+  "anchor": "LQ1104_DDQ_CAP_HIT_SKIPS_20261108",
+  "comment": [
+    "ANCHOR: LQ1104_DDQ_CAP_HIT_SKIPS_20261108 — LQ-1104 (folded by LQ-1242): a governed-bridge daily-cap refusal stops due-diligence-questions at the first refusal and exits 0 as ok_rate_limited; any other refusal is still a failed run. Hermetic."
+  ]
+}
