@@ -1,5 +1,5 @@
 import { QualityChips, QualityReason } from './RunQualityViews'
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { TapTip } from './TapTip'
 import { useApi } from '../hooks/useApi'
@@ -13,6 +13,8 @@ import {
   parseStatusFilter, categoryKeyOf, categoryLabel, describedHistoryQuery, descriptionLines, jobTitle, matchesCategory, mixParts,
   mixText, mixTone, runHistoryHref, type StatusMix, type CatalogCategory, type CatalogWire, type Category, type DescribedListWire, type DescribedRow,
 } from '../lib/jobCatalog'
+import { jobAuditBadge } from '../lib/jobCatalogAudit'
+import type { N8nCatalogWire } from '../lib/n8nCatalog'
 
 // Ops › Job catalog + the described job card (operator 2026-11-06). Read-only: no Run, Retry or Pause button exists
 // here. Phone first: stacked cards, 44 px targets, category → full-screen sheet, no horizontal scroll at 390 px.
@@ -25,6 +27,15 @@ const openBtn: CSSProperties = { minHeight: 44, width: '100%', borderRadius: RAD
 const pill: CSSProperties = { minHeight: 44, padding: '6px 12px', borderRadius: RADIUS.pill, fontSize: TYPE.base, cursor: 'pointer', whiteSpace: 'nowrap', color: TOKENS.text[1], border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1] }
 const sheet: CSSProperties = { position: 'fixed', inset: 0, zIndex: 1500, background: TOKENS.bg[0], color: TOKENS.text[0], display: 'flex', flexDirection: 'column', padding: 16, boxSizing: 'border-box', overflowY: 'auto', overflowX: 'hidden', fontFamily: FONT.sans }
 const searchInput: CSSProperties = { minHeight: 44, padding: '0 12px', borderRadius: RADIUS.sm, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1], color: TOKENS.text[0], fontSize: TYPE.base, boxSizing: 'border-box', width: '100%' }
+
+/** The n8n audit read (LQ-20261107-506). Provided by the Job catalog page; absent elsewhere, so other pages show no badge. */
+export const JobAuditContext = createContext<N8nCatalogWire | null>(null)
+
+function AuditBadge({ laneId }: { laneId: string }) {
+  const b = jobAuditBadge(laneId, useContext(JobAuditContext))
+  if (!b) return null
+  return <TapTip align="right" tip={b.tip}><span style={chip(b.tone)} data-testid="job-audit-badge" data-state={b.state} data-verdict={b.verdict ?? ''}>{b.label}{b.lq ? ` · ${b.lq}` : ''}</span></TapTip>
+}
 
 function Fact({ label, tip, children }: { label: string; tip: string; children: ReactNode }) {
   return <div style={{ minWidth: 0 }} title={tip}><div style={muted}>{label}</div><div style={{ ...wrap, fontSize: TYPE.base }}>{children}</div></div>
@@ -56,6 +67,7 @@ export function JobCard({ row, computedAt, categories, onOpen, href, showCategor
       <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         <TapTip align="right" tip={STATUS_MEANING[row.status] ?? 'Status not described.'}><span style={chip(statusTone(row.status))} data-testid="job-status-badge">{STATUS_LABEL[row.status] ?? row.status}</span></TapTip>
         <QualityChips q={row.quality} />
+        <AuditBadge laneId={row.lane_id} />
       </span>
     </div>
     <QualityReason q={row.quality} />

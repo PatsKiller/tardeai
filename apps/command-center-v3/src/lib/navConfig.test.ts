@@ -59,9 +59,12 @@ check('Portfolio groups', portfolio.groups.map(g => `${g.label}:${g.pages.map(p 
 const intel = NAV.find(s => s.id === 'intel')!
 check('Intel groups', intel.groups.map(g => g.label).join(',') === 'Desks,Research,Outputs' && sectionPages(intel, false).length === 5)
 const ops = NAV.find(s => s.id === 'ops')!
-check('Ops: 16 pages + Control Plane preview group', sectionPages(ops, false).length === 16 && sectionPages(ops, true).length === 27)
-check('Ops › Is it running leads with Jobs & n8n (jobs v002), then Job catalog; Jobs & health stays a menu page', ops.groups[0].pages.map(pageHref).join(' ') === '/health /ops/jobs-n8n /ops/jobs-catalog /ops/jobs /ops/incidents'
+check('Ops: 17 pages + Control Plane preview group', sectionPages(ops, false).length === 17 && sectionPages(ops, true).length === 28)
+check('Ops › Is it running leads with Jobs & n8n (jobs v002), then Job catalog, then n8n audit (LQ-20261107-506); Jobs & health stays a menu page', ops.groups[0].pages.map(pageHref).join(' ') === '/health /ops/jobs-n8n /ops/jobs-catalog /ops/jobs-n8n?tab=catalog /ops/jobs /ops/incidents'
   && ops.groups[0].pages.find(p => pageHref(p) === '/ops/jobs-n8n')?.strip === true)
+check('n8n audit entry opens the audit tab and is the menu page for ?tab=catalog (LQ-20261107-506)',
+  locateNav('/ops/jobs-n8n', '?tab=catalog')?.page.label === 'n8n audit' && locateNav('/ops/jobs-n8n', '?tab=all')?.page.label === 'Jobs & n8n'
+  && locateNav('/ops/jobs-catalog')?.page.label === 'Job catalog')
 check('control plane group behind the flag', ops.groups.includes(CONTROL_PLANE_GROUP) && CONTROL_PLANE_GROUP.preview === true)
 check('Home: Today / Needs you / My questions', NAV[0].groups[0].pages.map(pageHref).join(' ') === '/ /approvals?tab=waiting /cio/questions')
 check('long sections keep the current page in the strip', stripPages(ops, false, ops.groups[1].pages[3]).includes(ops.groups[1].pages[3]))
