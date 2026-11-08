@@ -52,6 +52,8 @@ from lib import self_heal_fix_evaluator as E  # noqa: E402
 from lib import self_heal_egress as EG  # noqa: E402
 from lib import self_heal_fixer as F  # noqa: E402
 from lib import self_heal_fixer_claims as C  # noqa: E402
+from lib import self_heal_metrics as M  # noqa: E402
+from lib import self_heal_safety as SAFE  # noqa: E402
 from scripts.lib import recovery_validator as RV  # noqa: E402
 
 CONFIG = ROOT / "config" / "self_heal_fixer.json"
@@ -61,6 +63,9 @@ RUN_ALLOWLIST = ROOT / "config" / "n8n_run_allowlist.json"
 #: The served release's commit (LQ-20261107-1228). Read relative to the home directory, so no user path is committed.
 SERVED_SHA_FILE_DEFAULT = Path("trade-ai-releases") / "portfolio-server" / "CURRENT" / "GIT_SHA"
 _FULL_SHA = re.compile(r"[0-9a-f]{40}")
+#: LQ-1236 safety/metrics paths, relative to the state root (config ``safety`` may override them).
+KILL_FILE_REL = "data/runtime/self_heal/KILL"
+METRICS_REL = "data/runtime/self_heal/metrics.jsonl"
 CUTOVER_POLICY = ROOT / "config" / "lane_cutover_policy.json"
 _DEADLINE = contextvars.ContextVar("self_heal_absolute_deadline", default=None)
 
@@ -785,6 +790,8 @@ class Attempt:
             "backend_result": {
                 key: res.get(key) for key in ("ok", "cost_usd", "num_turns", "subtype", "summary", "rc")
             },
+            # the sanctioned NOT_CODE exit (LQ-1235): only the reply's LAST line counts; None when not taken
+            "not_code": SAFE.agent_says_not_code(res.get("result"))[1] or None,
         }
         cand = self.candidate()
         if cand.get("error"):
@@ -1053,6 +1060,14 @@ def attempt_job(
         progress(job, rec)
         persist(job)
         last = rec
+        nc_why = rec.get("not_code")
+        if nc_why:
+            # The agent says the cause is not in this repo: escalate to a person, keep nothing it changed.
+            F.transition(
+                job, F.ESCALATED_NOT_CODE, now(), reason=f"agent_not_code:{nc_why}"[:300], updated_at=now().isoformat()
+            )
+            a.teardown(keep_branch=False)
+            return job
         if cost is None:
             stop = "cost_unknown"
             break
@@ -1659,9 +1674,50 @@ def _cycle(
         out["findings"].append({k: v for k, v in row.items() if k != "tail"})
         return row
 
+    safety = cfg.get("safety") or {}
+    metrics_path = root / str(safety.get("metrics_rel") or METRICS_REL)
+    metric_extra: list[dict] = []
+    out["metrics_rows"] = 0
+
+    def emit_metrics() -> None:
+        """One metrics row per job transition not yet emitted (cursor ``metrics_n`` on the job), plus any extra
+        rows (insufficient_evidence). Append-only; dry runs only count the rows they would write."""
+        rows: list[dict] = []
+        for job in work.get("jobs", {}).values():
+            hist = job.get("history") or []
+            done = int(job.get("metrics_n") or 0)
+            for h in hist[done:]:
+                at = M.parse_ts(h.get("at")) or t
+                rows.append(M.row_from_job(job, str(h.get("state")), at, F.reported_cost(job.get("cost_usd"))))
+            job["metrics_n"] = len(hist)
+        rows.extend(metric_extra)
+        metric_extra.clear()
+        out["metrics_rows"] += len(rows)
+        if apply:
+            for row in rows:
+                M.append_row(row, metrics_path)
+
     def save() -> None:
+        emit_metrics()
         if apply:
             _atomic_write(state_path, work)
+
+    def finish() -> int:
+        out["finished_at"] = now().isoformat()
+        if apply:
+            _atomic_write(receipt_path, {**out, "ok_at": out["finished_at"]})
+        elif args.out:
+            _atomic_write(Path(args.out) / "receipt.json", out)
+        print(json.dumps({k: out.get(k) for k in ("mode", "killed")}, default=str))
+        return 0
+
+    # LQ-1236 order: kill switch first. Nothing is reconciled, admitted, attempted or advanced while it is set.
+    killed, kill_why = SAFE.kill_switch_active(
+        safety, environ, root / str(safety.get("kill_file_rel") or KILL_FILE_REL)
+    )
+    if killed:
+        out["killed"] = kill_why
+        return finish()
 
     memory_path = root / s["repair_memory_rel"]
     memory_old = _tail_jsonl(memory_path, 20000)
@@ -1729,6 +1785,9 @@ def _cycle(
             esc = escalate_non_code(f"no_evidence:{gap}", lane=lane, signature=sig, rc=rc, src=inc)
             out["skipped"].append({"lane": lane, "why": f"no_evidence:{gap}", "finding": esc.get("path"),
                                    "deduped": bool(esc.get("deduped"))})
+            if not esc.get("deduped"):
+                metric_extra.append(M.row_from_job({"job_id": f"noev:{F.dedupe_key(lane, str(sig))}", "lane": lane},
+                                                   "insufficient_evidence", t))
             continue
         job, why = F.admit(work, inc, now=t, cfg=cfg, held=held)
         if not job:
@@ -1811,6 +1870,7 @@ def _cycle(
         if gap:
             F.transition(job, F.FIX_REFUSED, t, reason=f"no_evidence:{gap}", updated_at=t.isoformat())
             job["escalated_at"] = t.isoformat()
+            metric_extra.append(M.row_from_job(job, "insufficient_evidence", t))
             esc = escalate_non_code(
                 f"no_evidence:{gap}", lane=job["lane"], signature=job.get("signature"), rc=src["receipt"], src=job
             )
@@ -1821,6 +1881,12 @@ def _cycle(
         if not base_sha:
             out["attempted"].append({"job_id": job["job_id"], "outcome": f"no_base:{base['why']}"})
             continue
+        # Global daily cap across ALL lanes (LQ-1235): when reached, nothing more is attempted this cycle.
+        usage = C.day_usage(claims_db, day) if apply else {"usd": 0.0}
+        cap_ok, cap_why = SAFE.global_daily_cap({"jobs_today": jobs_today(), "cost_today_usd": usage["usd"]}, safety)
+        if not cap_ok:
+            out["attempted"].append({"job_id": job["job_id"], "outcome": f"global_cap:{cap_why}"})
+            break
         budget -= 1
         try:
             rails = F.extract_rails(agents)
@@ -2012,7 +2078,12 @@ def _cycle(
                 "cost_usd": job.get("cost_usd"),
             }
         )
-        if job["state"] in (F.FIX_FAILED, F.FIX_REFUSED) and not job.get("escalated_at"):
+        if job["state"] == F.ESCALATED_NOT_CODE and not job.get("escalated_at"):
+            esc = escalate_non_code(
+                "agent_not_code", lane=job["lane"], signature=job.get("signature"), rc=src["receipt"], src=job
+            )
+            out["attempted"][-1]["finding"] = esc.get("path")
+        if job["state"] in (F.FIX_FAILED, F.FIX_REFUSED, F.ESCALATED_NOT_CODE) and not job.get("escalated_at"):
             out["escalations"].append(escalation_for(job, now()))
             job["escalated_at"] = now().isoformat()
         if job["state"] == F.FIX_READY_LOCAL and not job.get("finding_path"):

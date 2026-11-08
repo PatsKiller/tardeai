@@ -582,8 +582,10 @@ elif scen == "noprogress":
 if (here / "text_output").exists():
     print("plain text backend: changed scripts/buggy.py")
 else:
-    print(json.dumps({{"type": "result", "is_error": False, "total_cost_usd": 0.5, "num_turns": 3,
-                      "result": 'ok\n{{"root_cause": "division by zero", "fix": "guard b == 0", "confidence": 0.9}}'}}))
+    res = 'ok\n{{"root_cause": "division by zero", "fix": "guard b == 0", "confidence": 0.9}}'
+    if (here / "result_text").exists():  # LQ-1236: a scenario may script the agent's final reply text
+        res = (here / "result_text").read_text()
+    print(json.dumps({{"type": "result", "is_error": False, "total_cost_usd": 0.5, "num_turns": 3, "result": res}}))
 """
 
 FAKE_GH = r"""#!/bin/sh

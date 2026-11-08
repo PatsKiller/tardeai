@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "self_heal_integration_lq1236_20261108",
+  "files": [
+    "tests/test_self_heal_integration_lq1236_20261108.py"
+  ],
+  "comment": [
+    "LQ-20261107-1236: the self-heal fixer runs the integrated safety and metrics flow. The kill switch (a KILL file under the state root, the config flag or the SELF_HEAL_KILL env var) stops everything, dry runs included. The global daily cap across all lanes blocks an attempt before any budget is spent. Every job transition writes exactly one append-only metrics row, and an empty evidence pack is counted as insufficient_evidence. The agent's sanctioned NOT_CODE exit escalates the job to escalated_not_code and keeps none of its changes. The evidence pack is fenced in the prompt as untrusted data. Hermetic: tmp git repos, tmp state and a fake backend."
+  ]
+}

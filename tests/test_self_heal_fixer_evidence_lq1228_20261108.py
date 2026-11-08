@@ -115,6 +115,18 @@ def test_error_text_and_a_script_pass(extra):
     assert F.evidence_gap({**EMPTY_PACK, **extra, "script": "scripts/x.py"}) is None
 
 
+@pytest.mark.parametrize(
+    "stderr",
+    [
+        "FAILED tests/test_x.py::test_y - StopIteration",  # a main-red CI request: argv is empty, no lane script
+        'Traceback (most recent call last):\n  File "/srv/repo/scripts/lane.py", line 3, in <module>\nKeyError: 1',
+    ],
+)
+def test_error_text_that_names_a_repo_file_needs_no_script(stderr):
+    pack = {**EMPTY_PACK, "failing_run": {**EMPTY_PACK["failing_run"], "stderr_tail": stderr}}
+    assert F.evidence_gap(pack) is None
+
+
 def test_whitespace_stderr_is_not_error_text():
     pack = {**EMPTY_PACK, "failing_run": {**EMPTY_PACK["failing_run"], "stderr_tail": " \n\t"}, "script": "s.py"}
     assert F.evidence_gap(pack) == "no_error_text"
