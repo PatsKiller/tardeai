@@ -372,12 +372,12 @@ class _AllRows(_Conn):
 
 
 def test_daily_bars_use_ticker_prices_for_a_symbol_without_ohlcv_bars():
-    tp = [{"symbol": "XLC", "price_date": date(2031, 3, d), "close_price": 100.0 + d, "source": "yfinance", "created_at": _et(2031, 3, d, 16, 7)}
+    tp = [{"symbol": "XLC", "price_date": date(2031, 3, d), "close_price": 100.0 + d, "source": "alpaca_eod", "created_at": _et(2031, 3, d, 16, 7)}
           for d in (5, 6, 7)]
     conn = _Conn({"FROM market_ohlcv_bars": (["symbol"], []), "FROM ticker_prices": (TPCOLS, tp)})
     bars = rd.PgReader(lambda: conn).daily_bars(["XLC"], sessions=10, end=_et(2031, 3, 7, 18))
     assert [(b["date"], b["close"]) for b in bars] == [("2031-03-05", 105.0), ("2031-03-06", 106.0), ("2031-03-07", 107.0)]
-    assert all(b["source"] == "ticker_prices:yfinance" for b in bars)
+    assert all(b["source"] == "ticker_prices:alpaca_eod" for b in bars)
     sql, params = next((s, p) for s, p in conn.log if "FROM ticker_prices" in s)
     assert "created_at IS NOT NULL AND created_at <= %s" in sql and "source = ANY(%s)" in sql
     assert params[3] == _et(2031, 3, 7, 18) and params[4] == list(rd.TICKER_PRICE_CLOSE_SOURCES)
@@ -386,10 +386,10 @@ def test_daily_bars_use_ticker_prices_for_a_symbol_without_ohlcv_bars():
 def test_ticker_prices_as_of_rejects_late_null_preclose_and_intraday_rows():
     end = _et(2031, 3, 9, 18)
     tp = [
-        {"symbol": "XLC", "price_date": date(2031, 3, 3), "close_price": 103.0, "source": "yfinance", "created_at": _et(2031, 3, 3, 16, 30)},  # ok
-        {"symbol": "XLC", "price_date": date(2031, 3, 4), "close_price": 999.0, "source": "yfinance", "created_at": _et(2031, 3, 9, 19)},  # after end
-        {"symbol": "XLC", "price_date": date(2031, 3, 5), "close_price": 777.0, "source": "yfinance", "created_at": None},  # unknowable
-        {"symbol": "XLC", "price_date": date(2031, 3, 6), "close_price": 555.0, "source": "yfinance", "created_at": _et(2031, 3, 6, 10)},  # pre-close
+        {"symbol": "XLC", "price_date": date(2031, 3, 3), "close_price": 103.0, "source": "alpaca_eod", "created_at": _et(2031, 3, 3, 16, 30)},  # ok
+        {"symbol": "XLC", "price_date": date(2031, 3, 4), "close_price": 999.0, "source": "alpaca_eod", "created_at": _et(2031, 3, 9, 19)},  # after end
+        {"symbol": "XLC", "price_date": date(2031, 3, 5), "close_price": 777.0, "source": "alpaca_eod", "created_at": None},  # unknowable
+        {"symbol": "XLC", "price_date": date(2031, 3, 6), "close_price": 555.0, "source": "alpaca_eod", "created_at": _et(2031, 3, 6, 10)},  # pre-close
         {"symbol": "XLC", "price_date": date(2031, 3, 9), "close_price": 333.0, "source": "market_quotes", "created_at": _et(2031, 3, 9, 16, 7)},  # intraday print
     ]
     conn = _AllRows({"FROM market_ohlcv_bars": (["symbol"], []), "FROM ticker_prices": (TPCOLS, tp)})
@@ -399,18 +399,18 @@ def test_ticker_prices_as_of_rejects_late_null_preclose_and_intraday_rows():
 
 def test_ticker_prices_rank_after_bars_and_quote_closes_so_spy_is_unchanged():
     bcols = ["symbol", "bar_time", "open", "high", "low", "close", "volume", "source", "created_at"]
-    bars = [{"symbol": "SPY", "bar_time": _et(2031, 3, 5, 0), "open": 1, "high": 2, "low": 0.5, "close": 680, "volume": 1, "source": "yfinance",
+    bars = [{"symbol": "SPY", "bar_time": _et(2031, 3, 5, 0), "open": 1, "high": 2, "low": 0.5, "close": 680, "volume": 1, "source": "alpaca",
              "created_at": _et(2031, 3, 5, 17)}]
     quotes = [{"symbol": "SPY", "price": 605.0, "prev_close": 680.0, "fetched_at": _et(2031, 3, 6, 9, 35)},
               {"symbol": "SPY", "price": 611.0, "prev_close": 606.0, "fetched_at": _et(2031, 3, 7, 9, 35)},
               {"symbol": "SPY", "price": 612.0, "prev_close": 606.0, "fetched_at": _et(2031, 3, 7, 15, 59)}]
-    tp = [{"symbol": "SPY", "price_date": date(2031, 3, d), "close_price": 900.0 + d, "source": "yfinance", "created_at": _et(2031, 3, d, 16, 30)}
+    tp = [{"symbol": "SPY", "price_date": date(2031, 3, d), "close_price": 900.0 + d, "source": "alpaca_eod", "created_at": _et(2031, 3, d, 16, 30)}
           for d in (3, 5, 6, 7)]
     conn = _Conn({"FROM market_ohlcv_bars": (bcols, bars), "FROM market_quotes WHERE source": (QCOLS, quotes), "FROM ticker_prices": (TPCOLS, tp)})
     out = rd.PgReader(lambda: conn).daily_bars(["SPY"], sessions=10, end=_et(2031, 3, 7, 18))
     assert [(b["date"], b["close"], b["source"]) for b in out] == [
-        ("2031-03-03", 903.0, "ticker_prices:yfinance"),  # only a session neither bars nor quotes have
-        ("2031-03-05", 680.0, "market_ohlcv_bars:yfinance"),
+        ("2031-03-03", 903.0, "ticker_prices:alpaca_eod"),  # only a session neither bars nor quotes have
+        ("2031-03-05", 680.0, "market_ohlcv_bars:alpaca"),
         ("2031-03-06", 606.0, "market_quotes:alpaca_prev_close"),  # the quote close wins over ticker_prices
         ("2031-03-07", 612.0, "market_quotes:alpaca_last"),
     ]

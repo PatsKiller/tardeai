@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "finviz_only_price_sources_lq455_20261107",
+  "files": [
+    "tests/test_finviz_only_price_sources_lq455_20261107.py"
+  ],
+  "anchor": "FINVIZ_ONLY_PRICE_SOURCES_LQ455_20261107",
+  "comment": [
+    "ANCHOR: FINVIZ_ONLY_PRICE_SOURCES_LQ455_20261107 — operator price rule 2026-11-07: no yfinance price. scripts/eod_consolidated_close_sync.py takes its reference close from Alpaca SIP daily bars and writes source alpaca_eod, replacing any yfinance / yfinance_eod row at any deviation; scripts/lib/redeploy_price_history.py backfills closes from Alpaca bars; scripts/proposal_enrichment_loop.py has no yfinance live-price fallback; the Market Risk Engine reader reads market_ohlcv_bars only where source is alpaca and ticker_prices only where source is alpaca_eod or alpaca, in SQL and again in Python. Stub fetchers and synthetic rows only: no network, no DB. MBI_BEHAVIOR = 0."
+  ]
+}

@@ -10,16 +10,24 @@ Yahoo Finance (session 09-11): 88 of 118 sampled quote-derived closes within
 1%, 30 off by more than 1%, 6 off by more than 10% (ADTX 0.0093 vs 0.0070, MNSX
 24.36 vs 20.63, EQS 1.085 vs 0.98). RSI, SMA and every support/resistance level
 built on those series inherited the error. Operator decision the same day:
-closes should come from a consolidated end-of-day source (Yahoo, Finviz or
-Schwab).
+closes should come from a consolidated end-of-day source.
+
+Operator price rule 2026-11-07: never yfinance. The consolidated close is
+Alpaca's SIP daily bar (the consolidated tape, the ``bars`` grant in
+``config/data_source_authority.json``), read through the existing
+``market_data_snapshot_loader.fetch_alpaca_daily_bars`` -- the same path the
+market-reference-bars lane uses, with its SIP-delay clamp. No new network
+source. Rows this lane wrote earlier as ``yfinance_eod`` (and any ``yfinance``
+row for the session) are replaced by the Alpaca close whenever one exists,
+whatever the deviation, because their source is forbidden (LQ-20261107-455).
 
 WHAT
 ----
 For one completed session: read that session's ``market_quotes``-derived closes,
-fetch Yahoo's consolidated daily close for the same symbols in batched requests,
-and plan a replacement for each close more than TOLERANCE away. ``--apply``
+fetch Alpaca's SIP daily close for the same symbols, and plan a replacement for
+each close more than TOLERANCE away. ``--apply``
 writes the plan through the one ticker_prices write module
-(``lib.writers.ticker_prices_writer``) with ``source='yfinance_eod'`` and
+(``lib.writers.ticker_prices_writer``) with ``source='alpaca_eod'`` and
 overwrite-on-conflict; without it nothing is written. A replacement larger than
 MAX_REPLACEMENT is NOT applied -- that is a quarantine question, not a sync -- and
 is listed in the receipt.
@@ -28,8 +36,8 @@ is listed in the receipt.
     python scripts/eod_consolidated_close_sync.py --apply
     python scripts/eod_consolidated_close_sync.py --session 2026-09-11
 
-The daily litmus (scripts/source_litmus_vs_yahoo.py) does not score
-``yfinance_eod`` rows against Yahoo -- that would be the reference checking itself.
+A symbol Alpaca has no bar for keeps its stored close and counts as
+``no_reference``; there is no fallback to another provider.
 
 AUTHORITY: READ_ONLY_ADVISORY (market data only). MBI = 0. No broker, no model.
 """
@@ -50,11 +58,13 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 SCHEMA = "EodConsolidatedCloseSync@v1"
 RECEIPT = PROJECT_ROOT / "data" / "runtime" / "eod_consolidated_close_sync_last_run.json"
-SOURCE = "yfinance_eod"
-REPLACEABLE_SOURCES = ("market_quotes",)
+SOURCE = "alpaca_eod"
+#: rows written from a source the operator price rule forbids (2026-11-07): replaced by the Alpaca close at ANY
+#: deviation, so the session never keeps a yfinance close the Alpaca tape can answer for (LQ-20261107-455)
+FORBIDDEN_SOURCES = ("yfinance_eod", "yfinance")
+REPLACEABLE_SOURCES = ("market_quotes", *FORBIDDEN_SOURCES)
 TOLERANCE = 0.01          # closer than 1% is the same close
 MAX_REPLACEMENT = 0.50    # a >50% disagreement is not synced; it is reported for quarantine review
-BATCH = 400
 ET = ZoneInfo("America/New_York")
 NO_CONSUMER_REASON = "scheduled data-hygiene lane; the receipt is its output, ticker_prices its store"
 
@@ -72,7 +82,7 @@ def plan_replacements(stored: Iterable[tuple[str, str, float]], reference: dict[
             no_reference += 1
             continue
         dev = abs(float(close) - ref) / ref
-        if dev <= TOLERANCE:
+        if dev <= TOLERANCE and src not in FORBIDDEN_SOURCES:
             unchanged += 1
             continue
         row = {"symbol": sym, "stored": float(close), "consolidated": round(float(ref), 6),
@@ -115,21 +125,26 @@ def default_session(now: Optional[datetime] = None) -> date:
     return d
 
 
-def _yahoo_closes(symbols: list[str], session: date) -> dict[str, Optional[float]]:
-    import yfinance as yf  # noqa: PLC0415
+def _alpaca_closes(symbols: list[str], session: date, *, fetch=None,
+                   today: Optional[date] = None) -> dict[str, Optional[float]]:
+    """Alpaca SIP daily close of ``session`` per symbol; None when Alpaca has no bar for that session.
 
+    ``fetch(symbol, days)`` defaults to ``market_data_snapshot_loader.fetch_alpaca_daily_bars``, which keys each bar
+    by its ET session (``bar_time`` = midnight America/New_York) and ends the window before the SIP delay."""
+    if fetch is None:
+        import market_data_snapshot_loader as mdl  # noqa: PLC0415 -- network path, imported only when it runs
+
+        fetch = mdl.fetch_alpaca_daily_bars
+    days = max(5, ((today or datetime.now(ET).date()) - session).days + 5)
     out: dict[str, Optional[float]] = {}
-    for i in range(0, len(symbols), BATCH):
-        chunk = symbols[i:i + BATCH]
-        df = yf.download(chunk, start=(session - timedelta(days=4)).isoformat(),
-                         end=(session + timedelta(days=1)).isoformat(), progress=False,
-                         auto_adjust=False, group_by="ticker", threads=True)
-        for s in chunk:
-            try:
-                frame = df[s] if len(chunk) > 1 else df
-                out[s] = float(frame["Close"].dropna().loc[session.isoformat()])
-            except Exception:
-                out[s] = None
+    for sym in symbols:
+        close = None
+        for b in fetch(sym, days) or []:
+            bt = b.get("bar_time")
+            d = bt.astimezone(ET).date() if isinstance(bt, datetime) else bt
+            if d == session and b.get("close") is not None:
+                close = float(b["close"])
+        out[sym] = close
     return out
 
 
@@ -143,7 +158,7 @@ def _execute() -> int:
     args = ap.parse_args()
     session = date.fromisoformat(args.session) if args.session else default_session()
     if args.apply and session != default_session() and not args.allow_backfill:
-        # Yahoo's historical Close is split-adjusted. On the evening of the session
+        # Alpaca's daily bars are split-adjusted (adjustment=split). On the evening of the session
         # nothing has been adjusted yet; days later a reverse split would rewrite an
         # old close into a different scale from the rest of the series (dry run for
         # 09-11 on 09-14 held back GAUZ 0.3597 vs 7.80, FAIR 0.535 vs 4.00).
@@ -158,7 +173,7 @@ def _execute() -> int:
                     (session, list(REPLACEABLE_SOURCES)))
         stored = [(str(s), str(src), float(c)) for s, src, c in cur.fetchall()]
         conn.close()
-        reference = _yahoo_closes(sorted({s for s, _, _ in stored}), session) if stored else {}
+        reference = _alpaca_closes(sorted({s for s, _, _ in stored}), session) if stored else {}
     except Exception as exc:  # noqa: BLE001
         print(f"ERROR: could not run: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
@@ -179,6 +194,7 @@ def _execute() -> int:
             conn.close()
     report = {"schema": SCHEMA, "ran_at": datetime.now(timezone.utc).isoformat(), "session": session.isoformat(),
               "mode": "apply" if args.apply else "dry_run", "stored_rows": len(stored),
+              "reference_source": "alpaca_sip_daily_bar", "written_source": SOURCE,
               "replace": len(plan["replace"]), "held_back": plan["held_back"], "unchanged": plan["unchanged"],
               "no_reference": plan["no_reference"], "written": written, "rejected": rejected,
               "largest_replacements": sorted(plan["replace"], key=lambda r: -r["deviation_pct"])[:20],

@@ -68,7 +68,11 @@ def get_db():
 # ── Quote ──────────────────────────────────────────────────────────────
 
 def get_live_price(symbol):
-    """Return (price, source) using market_quote_provider or yfinance fallback."""
+    """Return (price, source) from market_quote_provider (stored quote first, a provider only when stale).
+
+    No yfinance fallback (operator price rule 2026-11-07, LQ-20261107-455): when the quote provider has no
+    price, the answer is ``(None, "none")`` and the caller skips the price step rather than storing a vendor
+    price the operator has ruled out."""
     try:
         # Quote-only (CONSOLIDATION_PLAN §D.6): stored quote first, a provider only when stale.
         from market_quote_provider import QUOTE_ONLY_MAX_AGE_SECONDS, get_best_quote
@@ -76,14 +80,6 @@ def get_live_price(symbol):
         price = q.get("last_price")
         if price and price > 0:
             return float(price), q.get("provider", "unknown")
-    except Exception:
-        pass
-    try:
-        import yfinance as yf
-        t = yf.Ticker(symbol)
-        price = t.fast_info.get("lastPrice") or t.fast_info.get("last_price")
-        if price and price > 0:
-            return float(price), "yfinance"
     except Exception:
         pass
     return None, "none"
@@ -758,7 +754,8 @@ def enrich_one(conn, proposal, dry_run=False, no_llm=False, queue_llm_only=False
         try:
             from price_db_sync import ensure_price_history
             _ph = ensure_price_history([symbol])
-            if (_ph.get("quotes_synced") or 0) > 0 or (_ph.get("yfinance") or {}).get("filled"):
+            _bf = _ph.get("backfill") or _ph.get("yfinance") or {}  # "yfinance" = pre-LQ-455 key name
+            if (_ph.get("quotes_synced") or 0) > 0 or _bf.get("filled"):
                 actions.append("price_history")
         except Exception as e:
             log.debug(f"[price_history] #{pid} {symbol}: {e}")

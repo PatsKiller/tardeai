@@ -7,7 +7,8 @@ market_quotes but zero DB history, which leaves support/resistance/stop/target e
 
 Steps:
   1. Sync daily closes from market_quotes (last quote per symbol per day)
-  2. yfinance 1y history for symbols still short on rows (< min_rows)
+  2. Alpaca daily-bar 1y history for symbols still short on rows (< min_rows); never yfinance
+     (operator price rule 2026-11-07, LQ-20261107-455)
   3. Optional: materialize watchlist_strategy_cards + requeue agent jobs
 
   python3 scripts/backfill_ticker_prices.py --hermes-top 250 --apply
@@ -94,11 +95,11 @@ def main() -> int:
     ap.add_argument("--rated", action="store_true", help="All CIO-rated watchlist symbols")
     ap.add_argument("--needs-iteration", action="store_true", help="Strategy cards flagged needs_iteration")
     ap.add_argument("--proposals", action="store_true", help="All active paper/broker proposal symbols")
-    ap.add_argument("--min-rows", type=int, default=60, help="Min daily rows before skipping yfinance")
+    ap.add_argument("--min-rows", type=int, default=60, help="Min daily rows before skipping the Alpaca backfill")
     ap.add_argument("--apply", action="store_true", help="Write to DB (default dry-run)")
     ap.add_argument("--materialize", action="store_true", help="Run materialize_watchlist_strategy_cards.py")
     ap.add_argument("--requeue-agents", action="store_true", help="Requeue watchlist agent jobs for scope")
-    ap.add_argument("--yfinance-sleep", type=float, default=0.25, help="Pause between yfinance fetches")
+    ap.add_argument("--yfinance-sleep", type=float, default=0.25, help="Unused since LQ-20261107-455 (no yfinance fetch); kept so existing invocations still parse")
     args = ap.parse_args()
 
     if not any([args.symbols, args.hermes_top, args.rated, args.needs_iteration, args.proposals]):
@@ -109,22 +110,22 @@ def main() -> int:
         print(json.dumps({"ok": True, "symbols": 0, "note": "no symbols matched scope"}))
         return 0
 
-    from price_db_sync import backfill_yfinance_history, count_price_rows, ensure_price_history
+    from price_db_sync import count_price_rows, ensure_price_history
 
     report: dict = {"scope_symbols": len(symbols), "dry_run": not args.apply}
 
     if args.apply:
         _ph = ensure_price_history(symbols, min_rows=args.min_rows)
         report["quotes_synced"] = _ph.get("quotes_synced", 0)
-        report["yfinance_candidates"] = _ph.get("short_candidates", 0)
-        report["yfinance"] = _ph.get("yfinance", {})
+        report["backfill_candidates"] = _ph.get("short_candidates", 0)
+        report["backfill"] = _ph.get("backfill") or _ph.get("yfinance") or {}  # "yfinance" = pre-LQ-455 key
     else:
         short_preview = []
         for s in symbols[:500]:
             n = count_price_rows(s)
             if n < args.min_rows:
                 short_preview.append({"symbol": s, "rows": n})
-        report["would_yfinance"] = len(short_preview)
+        report["would_backfill"] = len(short_preview)
         report["sample_short"] = short_preview[:15]
 
     print(json.dumps(report, indent=2))

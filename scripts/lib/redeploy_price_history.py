@@ -1,7 +1,7 @@
 """redeploy_price_history — shared return/risk math on the local price cache.
 
 Sources (all local-first, provenance-tagged):
-  - ticker_prices        daily closes (market_quotes sync + yfinance gap-fill)
+  - ticker_prices        daily closes (market_quotes sync + Alpaca daily-bar gap-fill; never yfinance)
   - ticker_dividends     distributions (yfinance backfill)
   - instrument_facts     expense ratio / yield / category (yfinance, refreshed monthly)
 
@@ -361,12 +361,40 @@ def series_profile(cur, symbol: str, *, bench_symbol: str = "SPY") -> dict[str, 
 
 # ── backfill (extends the existing price cache; provenance tagged) ───────────
 
+#: ticker_prices source this backfill writes: Alpaca SIP daily bars, never yfinance (operator price rule 2026-11-07,
+#: LQ-20261107-455). The bars are split-adjusted, as the yfinance closes they replace were.
+PRICE_SOURCE = "alpaca"
+_PERIOD_DAYS = {"1y": 366, "2y": 731, "3y": 1096, "5y": 1827, "10y": 3653}
+
+
+def _alpaca_close_rows(symbol: str, period: str = "5y", *, fetch=None) -> list[dict[str, Any]]:
+    """``ticker_prices`` rows from Alpaca's daily bars (``market_data_snapshot_loader.fetch_alpaca_daily_bars``,
+    the existing read-only bars path). ``[]`` when Alpaca has no bars: the symbol is reported failed, never
+    filled from another vendor."""
+    if fetch is None:
+        import market_data_snapshot_loader as mdl
+        fetch = mdl.fetch_alpaca_daily_bars
+    days = _PERIOD_DAYS.get(str(period), 1827)
+    rows: list[dict[str, Any]] = []
+    for b in fetch(symbol, days) or []:
+        try:
+            px = float(b.get("close") or 0)
+        except (TypeError, ValueError):
+            continue
+        bt = b.get("bar_time")
+        if px <= 0 or bt is None:
+            continue
+        d = bt.date() if isinstance(bt, datetime) else bt
+        rows.append({"symbol": symbol, "price_date": d, "close_price": px})
+    return rows
+
 def backfill_symbol_history(symbols: list[str], *, period: str = "5y",
                             sleep_sec: float = 0.35) -> dict[str, Any]:
-    """5y closes + dividends + facts via yfinance into the local cache.
+    """5y closes (Alpaca daily bars) + dividends + facts (yfinance) into the local cache.
 
-    Requires the repo venv (yfinance). Never fabricates: symbols that fail are
-    reported failed and their metrics stay None downstream.
+    Closes come only from Alpaca (``_alpaca_close_rows``); yfinance is used for distributions and fund facts,
+    which are not prices (LQ-20261107-455 leaves that to the lead). Requires the repo venv. Never fabricates:
+    symbols that fail are reported failed and their metrics stay None downstream.
     """
     import time
 
@@ -384,20 +412,14 @@ def backfill_symbol_history(symbols: list[str], *, period: str = "5y",
     filled, failed = [], []
     for sym in [str(s).upper().strip() for s in symbols if s]:
         try:
-            t = yf.Ticker(sym)
-            hist = t.history(period=period, interval="1d", auto_adjust=False)
-            if hist is None or len(hist) == 0:
+            t = yf.Ticker(sym)  # distributions and fund facts only; never a price (LQ-20261107-455)
+            px_rows = _alpaca_close_rows(sym, period)
+            if not px_rows:
                 failed.append(sym)
                 continue
             # One write path per store (Phase 9): DO NOTHING + 4-decimal rounding as before.
             from lib.writers.ticker_prices_writer import write_ticker_prices
-            px_rows = []
-            for idx, row in hist.iterrows():
-                px = float(row.get("Close") or 0)
-                if px <= 0:
-                    continue
-                px_rows.append({"symbol": sym, "price_date": idx.date(), "close_price": px})
-            n_px = write_ticker_prices(cur, px_rows, source="yfinance", on_conflict="nothing",
+            n_px = write_ticker_prices(cur, px_rows, source=PRICE_SOURCE, on_conflict="nothing",
                                        round_to=4).rows_written
             n_dv = 0
             try:

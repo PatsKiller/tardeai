@@ -17,8 +17,10 @@ Rules every method keeps:
 
 Daily closes: ``market_ohlcv_bars`` (``timeframe='daily'``) covers few index ETFs and stopped updating for some
 (SPY's last daily bar is 2026-10-09 as of 2026-10-31; XLC, XLRE and XLK never had one), so ``daily_bars`` merges it,
-in order of preference, with closes derived from the Alpaca quote snapshots in ``market_quotes`` and, last, the yfinance
-end-of-day rows of ``ticker_prices`` (only sessions neither of the first two has). A quote close: the close of session D is the ``prev_close`` carried by the first quote
+in order of preference, with closes derived from the Alpaca quote snapshots in ``market_quotes`` and, last, the Alpaca
+end-of-day rows of ``ticker_prices`` (only sessions neither of the first two has). Never yfinance (operator price rule
+2026-11-07, LQ-20261107-455): ``market_ohlcv_bars`` is read only where ``source`` is in ``OHLCV_DAILY_SOURCES`` and
+``ticker_prices`` only where it is in ``TICKER_PRICE_CLOSE_SOURCES``; an older yfinance row is ignored, not merged. A quote close: the close of session D is the ``prev_close`` carried by the first quote
 of the next session; the newest session's close is its last regular-hours quote, flagged ``provisional``.
 """
 
@@ -71,8 +73,12 @@ def _display_quote_cutoff_et(day: date) -> time:
 VIX_SYMBOL = "^VIX"
 DAILY_TIMEFRAME = "daily"
 QUOTE_SOURCE_FOR_CLOSES = "alpaca"
-#: ticker_prices sources that carry an official end-of-day close (review of #2460, B1)
-TICKER_PRICE_CLOSE_SOURCES = ("yfinance", "yfinance_eod")
+#: ticker_prices sources that carry an official end-of-day close (review of #2460, B1). Alpaca's SIP daily close,
+#: written by scripts/eod_consolidated_close_sync.py (``alpaca_eod``) and by the Alpaca daily-bar backfills
+#: (``alpaca``); yfinance / yfinance_eod are forbidden (LQ-20261107-455)
+TICKER_PRICE_CLOSE_SOURCES = ("alpaca_eod", "alpaca")
+#: market_ohlcv_bars daily sources the engine may read: Alpaca's, never the pre-2026-11-07 yfinance rows (LQ-20261107-455)
+OHLCV_DAILY_SOURCES = ("alpaca",)
 SECTOR_COLUMNS = (
     "as_of",
     "etf",
@@ -352,10 +358,12 @@ class PgReader:
         out: dict[tuple[str, date], dict[str, Any]] = {}
         for r in self._rows(
             "SELECT symbol, bar_time, open, high, low, close, volume, source, created_at FROM market_ohlcv_bars "
-            "WHERE timeframe = %s AND symbol = ANY(%s) AND bar_time <= %s "
+            "WHERE timeframe = %s AND symbol = ANY(%s) AND bar_time <= %s AND source = ANY(%s) "
             "AND (created_at IS NULL OR created_at <= %s) ORDER BY symbol, bar_time",
-            [DAILY_TIMEFRAME, syms, end, end],
+            [DAILY_TIMEFRAME, syms, end, list(OHLCV_DAILY_SOURCES), end],
         ):
+            if str(r.get("source") or "") not in OHLCV_DAILY_SOURCES:
+                continue  # never a yfinance bar, even from a reader that ignores the SQL filter (LQ-20261107-455)
             d = r["bar_time"].astimezone(ET).date() if isinstance(r["bar_time"], datetime) else r["bar_time"]
             if _close_instant(d) > end:
                 continue  # the bar for a session still in progress at `end` did not exist yet
@@ -396,11 +404,13 @@ class PgReader:
         end = _aware(end)
         out: dict[tuple[str, date], dict[str, Any]] = {}
         for r in self._rows(
-            "SELECT symbol, bar_time, open, created_at FROM market_ohlcv_bars "
-            "WHERE timeframe = %s AND symbol = ANY(%s) AND bar_time <= %s AND open IS NOT NULL "
+            "SELECT symbol, bar_time, open, source, created_at FROM market_ohlcv_bars "
+            "WHERE timeframe = %s AND symbol = ANY(%s) AND bar_time <= %s AND open IS NOT NULL AND source = ANY(%s) "
             "AND (created_at IS NULL OR created_at <= %s) ORDER BY symbol, bar_time",
-            [DAILY_TIMEFRAME, syms, end, end],
+            [DAILY_TIMEFRAME, syms, end, list(OHLCV_DAILY_SOURCES), end],
         ):
+            if str(r.get("source") or "") not in OHLCV_DAILY_SOURCES:
+                continue  # never a yfinance open (LQ-20261107-455)
             d = r["bar_time"].astimezone(ET).date() if isinstance(r["bar_time"], datetime) else r["bar_time"]
             t = datetime.combine(d, time(9, 30), tzinfo=ET)
             if t > end:
@@ -460,7 +470,7 @@ class PgReader:
     def _ticker_price_closes(self, symbols: list[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:
         """Daily closes from ``ticker_prices`` (close only), as-of correct and conservative (review of #2460, B1):
 
-        * only the official-daily-close sources in ``TICKER_PRICE_CLOSE_SOURCES`` (``yfinance``); ``market_quotes`` rows
+        * only the official-daily-close sources in ``TICKER_PRICE_CLOSE_SOURCES`` (``alpaca_eod``, ``alpaca``); ``market_quotes`` rows
           are the last intraday / after-hours print of the day, not the close, and are never read;
         * a row counts only when it was written AFTER its session closed (``created_at >= close_instant(price_date)``)
           and by ``end`` (``created_at <= end``); a NULL ``created_at`` is unknowable and excluded.
@@ -468,7 +478,7 @@ class PgReader:
         Residual risk (documented, not detectable): the table is upserted on (symbol, price_date) and an upsert never
         updates ``created_at``, so a close rewritten later (a vendor correction) keeps its first ``created_at`` and a
         replay at an instant between the two writes sees the corrected value. There is no ``updated_at`` column to
-        exclude it. Restricting to the yfinance end-of-day source keeps such rewrites to vendor corrections."""
+        exclude it. Restricting to the Alpaca end-of-day source keeps such rewrites to vendor corrections."""
         rows = self._rows(
             "SELECT upper(symbol) AS symbol, price_date, close_price, source, created_at FROM ticker_prices "
             "WHERE upper(symbol) = ANY(%s) AND price_date >= %s AND price_date <= %s "

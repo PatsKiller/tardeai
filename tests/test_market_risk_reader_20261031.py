@@ -221,7 +221,7 @@ def test_bars_preferred_and_in_progress_session_excluded():
             "low": 0.5,
             "close": Decimal("680"),
             "volume": 1,
-            "source": "yfinance",
+            "source": "alpaca",
             "created_at": et(2026, 10, 28, 17),
         },
         {
@@ -232,14 +232,14 @@ def test_bars_preferred_and_in_progress_session_excluded():
             "low": 0.5,
             "close": Decimal("670"),
             "volume": 1,
-            "source": "yfinance",
+            "source": "alpaca",
             "created_at": et(2026, 10, 29, 9),
         },
     ]
     r, _ = make({"FROM market_ohlcv_bars": (bcols, bars), "FROM market_quotes WHERE source": (QCOLS, [])})
     out = r.daily_bars(["SPY"], sessions=5, end=et(2026, 10, 29, 12))
     assert [b["date"] for b in out] == ["2026-10-28"]
-    assert out[0]["source"] == "market_ohlcv_bars:yfinance" and out[0]["close"] == 680.0
+    assert out[0]["source"] == "market_ohlcv_bars:alpaca" and out[0]["close"] == 680.0
 
 
 def test_regime_indicators_read_only_the_latest_snapshot_before_end():

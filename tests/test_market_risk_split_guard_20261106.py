@@ -142,7 +142,7 @@ class _Conn:
 def _bars(sym, closes, days):
     return [
         {"symbol": sym, "bar_time": datetime.fromisoformat(d).replace(hour=16, tzinfo=ET), "open": None, "high": None,
-         "low": None, "close": cl, "volume": None, "source": "synthetic", "created_at": None}
+         "low": None, "close": cl, "volume": None, "source": "alpaca", "created_at": None}
         for d, cl in zip(days, closes)
     ]
 
