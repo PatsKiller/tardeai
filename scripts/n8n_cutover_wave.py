@@ -1006,7 +1006,8 @@ def write_packet(out: Path, plan: Mapping[str, Any], wave: str) -> list[Path]:
                                 "plan": [{k: v.get(k) for k in ("lane_id", "row_id", "family_id", "tier_name", "status",
                                                                  "lock", "live_arg", "slots", "cron_lines", "reasons")}
                                          for v in plan["lanes"]]}, indent=2) + "\n")
-    w("01_relay_live_lanes.sh", RELAY_SH.replace("@LANES@", " ".join(lanes)).replace("@WAVE@", wave), 0o755)
+    w("01_relay_live_lanes.sh", RELAY_SH.replace("@LANES@", " ".join(lanes)).replace("@KEYED@", " ".join(keyed))
+      .replace("@WAVE@", wave), 0o755)
     w("02_effect_owners.sh", OWNERS_SH.replace("@LANES@", " ".join(keyed)).replace("@WAVE@", wave), 0o755)
     w("04_comment_cron.sh", COMMENT_SH.replace("@LANES@", ",".join(lanes)).replace("@WAVE@", wave), 0o755)
     w("09_rollback.sh", ROLLBACK_SH.replace("@LANES@", " ".join(lanes)).replace("@KEYED@", " ".join(keyed))
@@ -1031,6 +1032,29 @@ RELAY_SH = r"""#!/usr/bin/env bash
 set -euo pipefail
 F=${LIVE_LANES_ENV:-$HOME/.config/tradeai/n8n-live-lanes.env}
 ADD="@LANES@"
+KEYED="@KEYED@"
+SERVED=${SERVED:-$(readlink -f "$HOME/trade-ai-releases/portfolio-server/CURRENT")}
+PY=${PY:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python}
+# Owner preflight, fail closed. A keyed lane goes live here, but the effect fabric admits its claim only when the lane
+# has an n8n owner row. Armed with no owner, every live slot is refused `effect:effect_no_owner` until the owner is
+# seeded - the 2026-11-07 agent-watchlist-engine 07:00 ET refusal. Refuse BOTH modes: the dry run is run before --apply.
+missing=""
+for lane in $KEYED; do
+  proc=$("$PY" "$SERVED/scripts/lib/effect_claim.py" lane-spec --lane "$lane" 2>/dev/null | cut -f1 || true)
+  [[ -n "$proc" ]] || proc=$lane
+  if ! owner=$("$PY" "$SERVED/scripts/lib/effect_claim.py" show --process "$proc" 2>/dev/null \
+      | "$PY" -c 'import json,sys; o=json.load(sys.stdin).get("owner"); print(o["owner"] if o else "none")'); then
+    owner="unreadable"
+  fi
+  [[ "$owner" == "n8n" ]] || missing="$missing $lane($owner)"
+done
+if [[ -n "$missing" ]]; then
+  echo "REFUSED: keyed lane(s) with no n8n effect owner:$missing" >&2
+  echo "Seed the owners FIRST, then re-run this step:" >&2
+  echo "  TRADEAI_FABRIC_GRANT=<cron grant> bash 02_effect_owners.sh --apply" >&2
+  echo "Otherwise every live slot of those lanes is refused effect:effect_no_owner (fail closed)." >&2
+  exit 1
+fi
 CUR=$(sed -n 's/^TRADEAI_N8N_RELAY_LIVE_LANES=//p' "$F")
 NEW=$(printf '%s\n' $CUR $ADD | awk 'NF && !seen[$0]++' | paste -sd' ')
 echo "before: $CUR"; echo "after : $NEW"
@@ -1105,7 +1129,8 @@ lock = the cron line's `flock -n` lock). @K@ of them get an armed effect key (`n
 
 1. `TRADEAI_FABRIC_GRANT=<cron grant> bash 02_effect_owners.sh --apply` FIRST, for the keyed lanes (owner -> n8n).
    Harmless before step 2 (no cron line claims; dry runs never claim). Done the other way round, every keyed live
-   fire between the two steps is RUN_REFUSED `effect_no_owner`.
+   fire between the two steps is RUN_REFUSED `effect_no_owner` — so `01_relay_live_lanes.sh` refuses (both modes) while
+   any keyed lane in this wave has no `n8n` owner row.
 2. `bash 01_relay_live_lanes.sh --apply` (config-write + service): adds the lanes to `TRADEAI_N8N_RELAY_LIVE_LANES`,
    restarts the relay, reads back. Until then the dispatcher's live requests for these lanes are refused
    `relay_live_lanes` (no effect; the cron line still does the work). Do it right after the release is CURRENT.

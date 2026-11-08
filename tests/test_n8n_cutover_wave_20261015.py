@@ -6,7 +6,9 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 import stat
+import subprocess
 import sys
 from pathlib import Path
 
@@ -387,3 +389,119 @@ def test_agent_reviewed_contracts_follow_the_registry_to_canary(lane):
     # 2026-10-22: hermes-discovery-scorecard was cut over (CW1, n8n_cutover_wave.py cutover; double-run fix approved
     # by the operator) — kind n8n at stage cutover is the step after canary.
     assert row["stage"] == "canary" or (row["kind"] == "n8n" and row["stage"] == "cutover")
+
+
+# ── LQ-20261107-527: the relay step must not arm a keyed lane before its owner row exists ─────────
+#
+# agent-watchlist-engine's key shipped armed in W4B1 and its owner seed shipped in the same packet, but the operator's
+# morning cutover seeded the owners at 2026-11-07T13:10:46Z — 70 minutes AFTER its 07:00 ET (12:00Z) live slot. The
+# relay step had already put the lane on the live list, so the executor claimed the slot and the fabric refused it
+# `effect:effect_no_owner` (zero claims: the refusal rolls back). The seed was never missing; the ORDER was, and
+# nothing enforced it. These tests run the shipped packet scripts against a stub ledger, so the ordering is a test.
+
+STUB_EFFECT_CLAIM = '''
+import json, os, sys
+a = sys.argv[1:]
+def flag(n):
+    return a[a.index(n) + 1]
+if a[:1] == ["lane-spec"]:
+    print(flag("--lane") + "\\tv1\\t0")
+elif a[:1] == ["show"]:
+    o = None if os.environ.get("STUB_OWNER", "none") == "none" else {"owner": os.environ["STUB_OWNER"], "epoch": 1}
+    print(json.dumps({"process": flag("--process"), "owner": o}))
+else:
+    print("{}")
+'''
+
+
+def _run_relay(script: Path, tmp_path: Path, owner: str | None, *, apply: bool = True,
+               served: Path | None = None) -> tuple[subprocess.CompletedProcess, Path]:
+    """Run a relay step hermetically. `owner` is what the stub ledger reports; None builds no ledger reader at all."""
+    home = tmp_path / "home"
+    lib = home / "served" / "scripts" / "lib"
+    lib.mkdir(parents=True)
+    if owner is not None:
+        (lib / "effect_claim.py").write_text(STUB_EFFECT_CLAIM, encoding="utf-8")
+    bind = tmp_path / "bin"
+    bind.mkdir()
+    for name, body in (("systemctl", '#!/bin/sh\necho active\n'), ("sleep", "#!/bin/sh\nexit 0\n")):
+        exe = bind / name
+        exe.write_text(body, encoding="utf-8")
+        exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
+    env_file = tmp_path / "live.env"
+    env_file.write_text("TRADEAI_N8N_RELAY_LIVE_LANES=other-lane\n", encoding="utf-8")
+    env = {"PATH": f"{bind}{os.pathsep}{os.environ['PATH']}", "HOME": str(home),
+           "LIVE_LANES_ENV": str(env_file), "SERVED": str(served or (home / "served")), "PY": sys.executable,
+           "STUB_OWNER": "none" if owner is None else owner}
+    proc = subprocess.run(["bash", str(script), *(["--apply"] if apply else [])],
+                          env=env, capture_output=True, text=True, timeout=120)
+    return proc, env_file
+
+
+def _keyed_plan():
+    def row(lane: str, keyed: bool):
+        return {"lane_id": lane, "status": "READY_CANARY", "changes": {"effect_key": {}} if keyed else {},
+                "family_id": "F1", "tier_name": "append", "cron_lines": [{"line": 7}],
+                "slots": ["0 7 * * *"], "lock": "/tmp/demo.lock", "live_arg": []}
+    return {"lanes": [row("demo-keyed-lane", True), row("demo-unkeyed-lane", False)]}
+
+
+def test_generated_relay_step_refuses_until_a_keyed_lane_has_an_owner(tmp_path):
+    W.write_packet(tmp_path / "pk", _keyed_plan(), "CWT")
+    script = tmp_path / "pk" / "01_relay_live_lanes.sh"
+
+    no_owner, env_file = _run_relay(script, tmp_path / "no-owner", "none")
+    assert no_owner.returncode == 1, no_owner.stdout + no_owner.stderr
+    assert "REFUSED" in no_owner.stderr and "demo-keyed-lane(none)" in no_owner.stderr
+    assert "demo-unkeyed-lane" not in no_owner.stderr          # only keyed lanes are preflighted
+    assert "02_effect_owners.sh --apply" in no_owner.stderr     # the message names the fix
+    assert env_file.read_text() == "TRADEAI_N8N_RELAY_LIVE_LANES=other-lane\n"   # nothing written
+    assert not list(env_file.parent.glob("live.env.bak-*"))     # and nothing backed up
+
+    dry, _ = _run_relay(script, tmp_path / "dry", "none", apply=False)
+    assert dry.returncode == 1 and "(none)" in dry.stderr       # the dry run refuses too, before --apply
+
+    armed, env_file = _run_relay(script, tmp_path / "armed", "n8n")
+    assert armed.returncode == 0, armed.stdout + armed.stderr
+    assert "demo-keyed-lane" in env_file.read_text()
+
+
+def test_relay_step_refuses_when_the_owner_cannot_be_read(tmp_path):
+    """An absent or broken owner reader must not read as 'no owners to check' — fail closed."""
+    W.write_packet(tmp_path / "pk", _keyed_plan(), "CWT")
+    script = tmp_path / "pk" / "01_relay_live_lanes.sh"
+    proc, env_file = _run_relay(script, tmp_path / "unreadable", None)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "demo-keyed-lane(unreadable)" in proc.stderr
+    assert env_file.read_text() == "TRADEAI_N8N_RELAY_LIVE_LANES=other-lane\n"
+
+
+PACKETS = sorted(
+    p for p in (ROOT / "docs/ops/packets").glob("n8n-cutover-wave-*/01_relay_live_lanes.sh")
+    if json.loads((p.parent / "lanes.json").read_text(encoding="utf-8")).get("effect_keyed")
+)
+
+
+@pytest.mark.parametrize("script", PACKETS, ids=lambda p: p.parent.name)
+def test_committed_relay_step_refuses_a_keyed_lane_with_no_owner(script, tmp_path):
+    keyed = json.loads((script.parent / "lanes.json").read_text(encoding="utf-8"))["effect_keyed"]
+    proc, env_file = _run_relay(script, tmp_path / "no-owner", "none")
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert all(f"{lane}(none)" in proc.stderr for lane in keyed), proc.stderr
+    assert env_file.read_text() == "TRADEAI_N8N_RELAY_LIVE_LANES=other-lane\n"
+    assert not list(env_file.parent.glob("live.env.bak-*"))
+
+    ok, env_file = _run_relay(script, tmp_path / "owner", "n8n")
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+    assert all(lane in env_file.read_text().split() for lane in keyed)
+
+
+@pytest.mark.parametrize("packet", sorted(p for p in (ROOT / "docs/ops/packets").glob("n8n-cutover-wave-*")
+                                          if (p / "lanes.json").exists() and (p / "02_effect_owners.sh").exists()),
+                         ids=lambda p: p.name)
+def test_every_packet_seeds_an_owner_for_each_lane_it_arms(packet):
+    """The seed is not what was missing (agent-watchlist-engine is seeded by W4B1) — keep it that way per packet."""
+    keyed = set(json.loads((packet / "lanes.json").read_text(encoding="utf-8")).get("effect_keyed") or [])
+    seed = (packet / "02_effect_owners.sh").read_text(encoding="utf-8")
+    loop = set(re.search(r"for lane in ([^;]+); do", seed).group(1).split())
+    assert not keyed - loop, f"{packet.name} arms lanes it never seeds: {sorted(keyed - loop)}"

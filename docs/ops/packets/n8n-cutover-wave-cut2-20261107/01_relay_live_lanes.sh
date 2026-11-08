@@ -6,6 +6,29 @@
 set -euo pipefail
 F=${LIVE_LANES_ENV:-$HOME/.config/tradeai/n8n-live-lanes.env}
 ADD="hermes-research-worker-pool news-to-catalyst update-lockup-earnings-dates"
+KEYED="hermes-research-worker-pool news-to-catalyst update-lockup-earnings-dates"
+SERVED=${SERVED:-$(readlink -f "$HOME/trade-ai-releases/portfolio-server/CURRENT")}
+PY=${PY:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python}
+# Owner preflight, fail closed. A keyed lane goes live here, but the effect fabric admits its claim only when the lane
+# has an n8n owner row. Armed with no owner, every live slot is refused `effect:effect_no_owner` until the owner is
+# seeded - the 2026-11-07 agent-watchlist-engine 07:00 ET refusal. Refuse BOTH modes: the dry run is run before --apply.
+missing=""
+for lane in $KEYED; do
+  proc=$("$PY" "$SERVED/scripts/lib/effect_claim.py" lane-spec --lane "$lane" 2>/dev/null | cut -f1 || true)
+  [[ -n "$proc" ]] || proc=$lane
+  if ! owner=$("$PY" "$SERVED/scripts/lib/effect_claim.py" show --process "$proc" 2>/dev/null \
+      | "$PY" -c 'import json,sys; o=json.load(sys.stdin).get("owner"); print(o["owner"] if o else "none")'); then
+    owner="unreadable"
+  fi
+  [[ "$owner" == "n8n" ]] || missing="$missing $lane($owner)"
+done
+if [[ -n "$missing" ]]; then
+  echo "REFUSED: keyed lane(s) with no n8n effect owner:$missing" >&2
+  echo "Seed the owners FIRST, then re-run this step:" >&2
+  echo "  TRADEAI_FABRIC_GRANT=<cron grant> bash 02_effect_owners.sh --apply" >&2
+  echo "Otherwise every live slot of those lanes is refused effect:effect_no_owner (fail closed)." >&2
+  exit 1
+fi
 CUR=$(sed -n 's/^TRADEAI_N8N_RELAY_LIVE_LANES=//p' "$F")
 NEW=$(printf '%s\n' $CUR $ADD | awk 'NF && !seen[$0]++' | paste -sd' ')
 echo "before: $CUR"; echo "after : $NEW"
