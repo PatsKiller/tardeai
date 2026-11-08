@@ -204,6 +204,20 @@ def business_success(event: dict) -> bool:
     return business_mode(event)
 
 
+def _wall_matches(fields, local):
+    """True when the local wall time is inside a cron expression's hour, day and month.
+
+    Same day rule as cron_schedule.next_run: when both day-of-month and day-of-week
+    are restricted, either may match; otherwise both must (LQ-20261107-510).
+    """
+    _, hours, doms, months, dows, dom_restricted, dow_restricted = fields
+    if local.hour not in hours or local.month not in months:
+        return False
+    dom_ok = local.day in doms
+    dow_ok = (local.isoweekday() % 7) in dows
+    return (dom_ok or dow_ok) if (dom_restricted and dow_restricted) else (dom_ok and dow_ok)
+
+
 def evaluate(
     registry: dict, events: list[dict], successes: dict[str, list[dict]], *,
     now: datetime, grace_seconds: int = 120, lookback_days: int = 400,
@@ -306,7 +320,7 @@ def evaluate(
         try:
             zone = ZoneInfo(tz)
             local = now.astimezone(zone)
-            in_hours = any(local.hour in parse(expression)[1] for expression in expressions)
+            in_hours = any(_wall_matches(parse(expression), local) for expression in expressions)
         except (ValueError, TypeError, KeyError):
             result["reason"] = "schedule_unreadable"
             rows.append(result)
