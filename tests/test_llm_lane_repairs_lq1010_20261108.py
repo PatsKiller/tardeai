@@ -58,13 +58,13 @@ except ImportError:  # pragma: no cover - only on a tree that predates LQ-865
 try:
     from lib.llm_json_contract import JsonContractError, is_json_response, recover_json_object  # noqa: E402
 except ImportError:  # pragma: no cover - only on a tree that predates LQ-1010
-    class JsonContractError(ValueError):  # type: ignore[no-redef]
+    class JsonContractError(ValueError):  # type: ignore[no-redef] -- the raising stub shadows the real import on a pre-LQ-1010 tree
         pass
 
-    def recover_json_object(text, **kw):  # type: ignore[misc]
+    def recover_json_object(text, **kw):  # type: ignore[misc] -- raising stub, deliberately signature-compatible with the real reader
         raise AssertionError("lib.llm_json_contract.recover_json_object is missing: pre-LQ-1010 tree")
 
-    def is_json_response(text, **kw):  # type: ignore[misc]
+    def is_json_response(text, **kw):  # type: ignore[misc] -- same: a stub that fails loudly, never a skip
         raise AssertionError("lib.llm_json_contract.is_json_response is missing: pre-LQ-1010 tree")
 
 ADJUDICATOR_ALLOWLIST = ["fast", "deepseek-flash"]
@@ -111,6 +111,15 @@ def test_an_off_contract_confidence_is_normalised_not_failed():
     """``confidence: 1.7`` used to be clamped by hand; it still is, and the object now validates."""
     v = ca.parse_verdict('{"verdict": "left", "confidence": 1.7}')
     assert v["verdict"] == "LEFT" and v["confidence"] == 1.0 and not v.get("schema_invalid")
+
+
+def test_a_missing_confidence_is_the_schema_default_not_certain_zero():
+    """Absent is not zero (tq-py-missing-as-zero): the model said nothing, so 0.5 — never 0.0."""
+    v = ca.parse_verdict('{"verdict": "LEFT"}')
+    assert v["confidence"] == 0.5 and not v.get("schema_invalid")
+    v2 = ca.parse_verdict('{"verdict": "LEFT", "confidence": "high"}')
+    assert v2["verdict"] == "UNRESOLVED" and v2["schema_invalid"] is True
+    assert "not a number" in v2["rationale"]
 
 
 def test_the_retry_lane_is_a_different_lane_from_the_allowlist():

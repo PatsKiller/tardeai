@@ -175,10 +175,14 @@ def parse_verdict(text: str) -> dict:
     # confidence a hair outside the band; the shape itself is then strictly validated.
     norm: dict = dict(obj)
     norm["verdict"] = str(obj.get("verdict") or "").strip().upper()
-    try:
-        norm["confidence"] = max(0.0, min(1.0, float(obj.get("confidence") or 0.0)))
-    except (TypeError, ValueError):
-        norm["confidence"] = 0.0
+    # An absent confidence stays absent so the schema's own default (0.5) applies: a model that said
+    # nothing must not be recorded as certain-zero. A present, unparseable one is a contract breach.
+    conf = obj.get("confidence")
+    if conf is not None and conf != "":
+        try:
+            norm["confidence"] = max(0.0, min(1.0, float(conf)))
+        except (TypeError, ValueError):
+            return _invalid(f"confidence is not a number: {conf!r}")
     refs = obj.get("decisive_evidence_refs")
     norm["decisive_evidence_refs"] = [str(x) for x in refs][:10] if isinstance(refs, (list, tuple)) else []
     norm["rationale"] = str(obj.get("rationale") or "")[:600]
@@ -211,11 +215,11 @@ def tier2_gate(env: dict, now: _dt.datetime) -> str | None:
 def allowed_lanes() -> list[str]:
     """The registry's allowlist for this process, fail-closed to the declared lane (LQ-20261107-1010)."""
     try:
-        from llm_consumption import get_process_config  # type: ignore
+        from llm_consumption import get_process_config  # type: ignore -- the lane module is flat on sys.path, not importable as a package
         cfg = get_process_config(PROCESS_ID) or {}
         lanes = [str(x) for x in (cfg.get("allowed_lanes") or []) if str(x).strip()]
         return lanes or [LLM_LANE]
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 -- an unreadable registry must not crash judging: the declared lane is the fallback
         return [LLM_LANE]
 
 

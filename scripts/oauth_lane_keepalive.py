@@ -141,13 +141,16 @@ def _needs_ping(lane, prev, now):
     prev = prev or {}
     if lane not in ("grok", "chatgpt"):
         return True, "read_only_check"
-    until = int(prev.get("rate_limited_until") or 0)
-    if now < until:
+    # Absent is not zero here: no ``rate_limited_until`` means "no refusal on record" (not limited at
+    # epoch), and no ``last_ok`` means "never rolled from this host", which is the ping reason itself.
+    until = prev.get("rate_limited_until")
+    if until is not None and now < int(until):
         return False, "rate_limited_upstream"
     exp = _expiry_ts(prev)
     if exp is not None and now >= exp - KEEPALIVE_LEAD_S:
         return True, "expiry_within_lead"
-    last_ok = int(prev.get("last_ok") or 0)
+    last_ok = prev.get("last_ok")
+    last_ok = int(last_ok) if last_ok is not None else None
     if last_ok and (now - last_ok) < KEEPALIVE_MAX_IDLE_S:
         return False, "idle_within_window"
     return True, ("max_idle_exceeded" if last_ok else "no_prior_ok")
