@@ -125,6 +125,8 @@ EXPECTED_OUTPUT_KEYS = frozenset(
         "evidence",
         "applies_to",
         "on_violation",
+        # LQ-20261107-1004: the receipt field an empty result cites (scripts/lib/n8n_output_verdict.py).
+        "upstream_count_field",
     }
 )
 MAX_WINDOW_H = 24 * 31

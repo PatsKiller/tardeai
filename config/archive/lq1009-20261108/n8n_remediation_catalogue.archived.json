@@ -1,0 +1,1150 @@
+{
+ "schema": "LaneArtifactArchive@v1",
+ "source": "config/n8n_remediation_catalogue.json",
+ "archived_at": "2026-11-08T18:00:00+00:00",
+ "rule": [
+  "ACTIVE",
+  "PAUSED"
+ ],
+ "items": [
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "backup-verify",
+    "lane_id": "backup-verify",
+    "verdict": "ARCHIVE",
+    "manifest_state": "NEVER_SCHEDULED",
+    "why": "manifest lane NEVER_SCHEDULED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "backup-verify",
+    "severity": "Low",
+    "severity_basis": "default Low (no inventory row)",
+    "inv_ids": [],
+    "classification": [
+     "UNKNOWN"
+    ],
+    "migration_risk": [
+     "UNKNOWN"
+    ],
+    "known_issues": [],
+    "registry": {
+     "present": true,
+     "state": "NEVER_SCHEDULED",
+     "scheduler_kind": "none",
+     "stage": null
+    },
+    "allowlisted": true,
+    "allowlist_source": "config/n8n_run_allowlist.json",
+    "actions": [
+     {
+      "action_id": "rerun_dry_run",
+      "handler": "ledger_request_run",
+      "mode_sequence": [
+       "dry_run"
+      ],
+      "argv": {
+       "dry_run": [
+        "$PY",
+        "scripts/backup_verify.py",
+        "--dry-run"
+       ]
+      },
+      "auto": false,
+      "approval_reason": "timeout_s 2400 > 600: a rerun would hold the single executor worker; human approval",
+      "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+      "preconditions": [
+       "lane in config/n8n_run_allowlist.json with dry_run_arg",
+       "no REQUESTED/RUNNING row for the lane",
+       "per-incident and per-lane-day caps not reached"
+      ],
+      "lock": "/tmp/backup_verify.lock",
+      "timeout_s": 2400,
+      "output_signal": "data/runtime/backup_verify_last.json",
+      "max_per_incident": 1,
+      "max_per_lane_per_day": 3
+     },
+     {
+      "action_id": "reap_orphan_run",
+      "handler": "ledger_reap_orphan",
+      "mode_sequence": [],
+      "argv": {},
+      "auto": true,
+      "approval_reason": null,
+      "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+      "preconditions": [
+       "row RUNNING and started_at + 2 x timeout_s < now",
+       "heartbeat_at older than timeout_s (or absent)",
+       "row pid not alive on this host"
+      ],
+      "lock": "/tmp/backup_verify.lock",
+      "timeout_s": 2400,
+      "output_signal": "data/runtime/backup_verify_last.json",
+      "max_per_incident": 1,
+      "max_per_lane_per_day": 3
+     }
+    ],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "timeout_s 2400 > 600: a rerun would hold the single executor worker; human approval"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "build-symbol-profiles-watchlist",
+    "lane_id": "build-symbol-profiles-watchlist",
+    "verdict": "ARCHIVE",
+    "manifest_state": "RETIRED",
+    "why": "manifest lane RETIRED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "build-symbol-profiles-watchlist",
+    "severity": "Critical",
+    "severity_basis": "cron:L508: business_function=portfolio data; critical path CP1 -> Critical",
+    "inv_ids": [
+     "cron:L508"
+    ],
+    "classification": [
+     "Requires Refactoring Before Migration"
+    ],
+    "migration_risk": [
+     "Low"
+    ],
+    "known_issues": [
+     {
+      "inv_id": "cron:L508",
+      "known_issues": "3 LockNotAvailable tracebacks in log incl. 10-09 06:45 (symbol_profiles_writer.py:352); same script is also invoked by L502 at 06:40 → duplicate invocation contending on symbol_profiles with L551/L552/L553 DDL",
+      "custom_work_required": "one profile step for P01 (remove the L502 sub-call or this line); receipt signal; --dry-run"
+     }
+    ],
+    "registry": {
+     "present": true,
+     "state": "RETIRED",
+     "scheduler_kind": "cron",
+     "stage": null
+    },
+    "allowlisted": false,
+    "allowlist_source": null,
+    "actions": [],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "catalyst-calibration-monitor",
+    "lane_id": "catalyst-calibration-monitor",
+    "verdict": "ARCHIVE",
+    "manifest_state": "RETIRED",
+    "why": "manifest lane RETIRED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "catalyst-calibration-monitor",
+    "severity": "Critical",
+    "severity_basis": "cron:L435: business_function=monitoring; critical path CP1 -> Critical",
+    "inv_ids": [
+     "cron:L435",
+     "n8n:283ceeb030de5e66"
+    ],
+    "classification": [
+     "Candidate for Retirement",
+     "Ready for Migration"
+    ],
+    "migration_risk": [
+     "Low"
+    ],
+    "known_issues": [
+     {
+      "inv_id": "cron:L435",
+      "known_issues": "none measured",
+      "custom_work_required": "registry dispatch block (wave W1); optional non-zero exit on DB error"
+     },
+     {
+      "inv_id": "n8n:283ceeb030de5e66",
+      "known_issues": "0 ledger runs as of 21:35 ET (V2 C11); saveManualExecutions true overrides env (V8 F4)",
+      "custom_work_required": "registry dispatcher row (stage shadow) replaces this workflow; deactivate+archive under a cron grant naming the id"
+     }
+    ],
+    "registry": {
+     "present": true,
+     "state": "RETIRED",
+     "scheduler_kind": "cron",
+     "stage": null
+    },
+    "allowlisted": false,
+    "allowlist_source": null,
+    "actions": [],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "classify-candidates",
+    "lane_id": "classify-candidates",
+    "verdict": "ARCHIVE",
+    "manifest_state": "RETIRED",
+    "why": "manifest lane RETIRED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "classify-candidates",
+    "severity": "Critical",
+    "severity_basis": "cron:L204: business_function=research; critical path CP1 -> Critical",
+    "inv_ids": [
+     "cron:L204"
+    ],
+    "classification": [
+     "Requires Refactoring Before Migration"
+    ],
+    "migration_risk": [
+     "Low"
+    ],
+    "known_issues": [
+     {
+      "inv_id": "cron:L204",
+      "known_issues": "none measured (classified ~50, needs_review ~14 per run); premarket pipeline stage classify_candidates",
+      "custom_work_required": "--dry-run; flock"
+     }
+    ],
+    "registry": {
+     "present": true,
+     "state": "RETIRED",
+     "scheduler_kind": "cron",
+     "stage": null
+    },
+    "allowlisted": false,
+    "allowlist_source": null,
+    "actions": [],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "distributions-enrich",
+    "lane_id": "distributions-enrich",
+    "verdict": "ARCHIVE",
+    "manifest_state": "RETIRED",
+    "why": "manifest lane RETIRED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "distributions-enrich",
+    "severity": "Critical",
+    "severity_basis": "cron:L553: business_function=portfolio data; critical path CP1 -> Critical",
+    "inv_ids": [
+     "cron:L553"
+    ],
+    "classification": [
+     "Requires Refactoring Before Migration"
+    ],
+    "migration_risk": [
+     "Low"
+    ],
+    "known_issues": [
+     {
+      "inv_id": "cron:L553",
+      "known_issues": "7 LockNotAvailable failures vs 6 successful outputs in distributions_enrich.log; 10-09 06:42 failed on the ALTER TABLE",
+      "custom_work_required": "move DDL to a migration; serialize in P01; receipt signal; --dry exists (:125)"
+     }
+    ],
+    "registry": {
+     "present": true,
+     "state": "RETIRED",
+     "scheduler_kind": "cron",
+     "stage": null
+    },
+    "allowlisted": false,
+    "allowlist_source": null,
+    "actions": [],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "fund-technicals-enrich",
+    "lane_id": "fund-technicals-enrich",
+    "verdict": "ARCHIVE",
+    "manifest_state": "RETIRED",
+    "why": "manifest lane RETIRED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "fund-technicals-enrich",
+    "severity": "Critical",
+    "severity_basis": "cron:L552: business_function=portfolio data; critical path CP1 -> Critical",
+    "inv_ids": [
+     "cron:L552"
+    ],
+    "classification": [
+     "Requires Refactoring Before Migration"
+    ],
+    "migration_risk": [
+     "Low"
+    ],
+    "known_issues": [
+     {
+      "inv_id": "cron:L552",
+      "known_issues": "9 LockNotAvailable failures vs 2 successful outputs in fund_technicals.log; 10-09 06:38 failed on the ALTER TABLE (lock timeout) — the per-run DDL collides with concurrent symbol_profiles writers",
+      "custom_work_required": "move DDL to a migration; serialize in P01; receipt signal; --dry exists (:126)"
+     }
+    ],
+    "registry": {
+     "present": true,
+     "state": "RETIRED",
+     "scheduler_kind": "cron",
+     "stage": null
+    },
+    "allowlisted": false,
+    "allowlist_source": null,
+    "actions": [],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "hermes-config-governor",
+    "lane_id": "hermes-config-governor",
+    "verdict": "ARCHIVE",
+    "manifest_state": "RETIRED",
+    "why": "manifest lane RETIRED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "hermes-config-governor",
+    "severity": "Medium",
+    "severity_basis": "cron:L671: business_function=governance",
+    "inv_ids": [
+     "cron:L671"
+    ],
+    "classification": [
+     "Requires Refactoring Before Migration"
+    ],
+    "migration_risk": [
+     "Medium"
+    ],
+    "known_issues": [
+     {
+      "inv_id": "cron:L671",
+      "known_issues": "Fails every run: 13/13 retained runs end in 'psycopg2.errors.InvalidTextRepresentation: invalid input syntax for type json ... Token \"-\"' — the diff column receives a text string '<current> -> <proposed>' (hermes_config_governor.py:58-64); nothing has been filed",
+      "custom_work_required": "fix diff value (json.dumps or text column); add receipt"
+     }
+    ],
+    "registry": {
+     "present": true,
+     "state": "RETIRED",
+     "scheduler_kind": "cron",
+     "stage": null
+    },
+    "allowlisted": false,
+    "allowlist_source": null,
+    "actions": [],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "hermes-learning-outcome-feedback-agent",
+    "lane_id": "hermes-learning-outcome-feedback-agent",
+    "verdict": "ARCHIVE",
+    "manifest_state": "NEVER_SCHEDULED",
+    "why": "manifest lane NEVER_SCHEDULED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "hermes-learning-outcome-feedback-agent",
+    "severity": "Low",
+    "severity_basis": "default Low (no inventory row)",
+    "inv_ids": [],
+    "classification": [
+     "UNKNOWN"
+    ],
+    "migration_risk": [
+     "UNKNOWN"
+    ],
+    "known_issues": [],
+    "registry": {
+     "present": true,
+     "state": "NEVER_SCHEDULED",
+     "scheduler_kind": "n8n",
+     "stage": "shadow"
+    },
+    "allowlisted": true,
+    "allowlist_source": "config/n8n_run_allowlist.json",
+    "actions": [
+     {
+      "action_id": "rerun_dry_run",
+      "handler": "ledger_request_run",
+      "mode_sequence": [
+       "dry_run"
+      ],
+      "argv": {
+       "dry_run": [
+        "$PY",
+        "scripts/hermes_outcome_feedback_agent.py",
+        "--dry-run"
+       ]
+      },
+      "auto": true,
+      "approval_reason": null,
+      "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+      "preconditions": [
+       "lane in config/n8n_run_allowlist.json with dry_run_arg",
+       "no REQUESTED/RUNNING row for the lane",
+       "per-incident and per-lane-day caps not reached"
+      ],
+      "lock": "/tmp/hermes_outcome_feedback.lock",
+      "timeout_s": 300,
+      "output_signal": null,
+      "max_per_incident": 1,
+      "max_per_lane_per_day": 3
+     },
+     {
+      "action_id": "reap_orphan_run",
+      "handler": "ledger_reap_orphan",
+      "mode_sequence": [],
+      "argv": {},
+      "auto": true,
+      "approval_reason": null,
+      "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+      "preconditions": [
+       "row RUNNING and started_at + 2 x timeout_s < now",
+       "heartbeat_at older than timeout_s (or absent)",
+       "row pid not alive on this host"
+      ],
+      "lock": "/tmp/hermes_outcome_feedback.lock",
+      "timeout_s": 300,
+      "output_signal": null,
+      "max_per_incident": 1,
+      "max_per_lane_per_day": 3
+     }
+    ],
+    "default_action": "suggest_only",
+    "suggest_only_reason": null
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "lane-governance-packet-weekly",
+    "lane_id": "lane-governance-packet-weekly",
+    "verdict": "ARCHIVE",
+    "manifest_state": "NEVER_SCHEDULED",
+    "why": "manifest lane NEVER_SCHEDULED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "lane-governance-packet-weekly",
+    "severity": "High",
+    "severity_basis": "n8n:e6f62397d5ae2aa2: business_function=reporting",
+    "inv_ids": [
+     "n8n:e6f62397d5ae2aa2"
+    ],
+    "classification": [
+     "Candidate for Retirement"
+    ],
+    "migration_risk": [
+     "Low"
+    ],
+    "known_issues": [
+     {
+      "inv_id": "n8n:e6f62397d5ae2aa2",
+      "known_issues": "0 ledger runs as of 21:35 ET (V2 C11); registry row state NEVER_SCHEDULED; saveManualExecutions true overrides env (V8 F4)",
+      "custom_work_required": "registry dispatcher row (stage shadow) replaces this workflow; deactivate+archive under a cron grant naming the id"
+     }
+    ],
+    "registry": {
+     "present": true,
+     "state": "NEVER_SCHEDULED",
+     "scheduler_kind": "none",
+     "stage": null
+    },
+    "allowlisted": true,
+    "allowlist_source": "config/n8n_run_allowlist.json",
+    "actions": [
+     {
+      "action_id": "rerun_dry_run",
+      "handler": "ledger_request_run",
+      "mode_sequence": [
+       "dry_run"
+      ],
+      "argv": {
+       "dry_run": [
+        "$PY",
+        "scripts/report_lane_governance_packet.py",
+        "--period",
+        "weekly",
+        "--dry-run"
+       ]
+      },
+      "auto": false,
+      "approval_reason": "severity High: human approval (V9 §6.4)",
+      "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+      "preconditions": [
+       "lane in config/n8n_run_allowlist.json with dry_run_arg",
+       "no REQUESTED/RUNNING row for the lane",
+       "per-incident and per-lane-day caps not reached"
+      ],
+      "lock": "/tmp/tradeai_lane_governance_packet.lock",
+      "timeout_s": 600,
+      "output_signal": "data/runtime/lane_governance_packet_last.json",
+      "max_per_incident": 1,
+      "max_per_lane_per_day": 3
+     },
+     {
+      "action_id": "reap_orphan_run",
+      "handler": "ledger_reap_orphan",
+      "mode_sequence": [],
+      "argv": {},
+      "auto": true,
+      "approval_reason": null,
+      "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+      "preconditions": [
+       "row RUNNING and started_at + 2 x timeout_s < now",
+       "heartbeat_at older than timeout_s (or absent)",
+       "row pid not alive on this host"
+      ],
+      "lock": "/tmp/tradeai_lane_governance_packet.lock",
+      "timeout_s": 600,
+      "output_signal": "data/runtime/lane_governance_packet_last.json",
+      "max_per_incident": 1,
+      "max_per_lane_per_day": 3
+     }
+    ],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "severity High: human approval (V9 §6.4)"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "llm-retry-monitor",
+    "lane_id": "llm-retry-monitor",
+    "verdict": "ARCHIVE",
+    "manifest_state": "RETIRED",
+    "why": "manifest lane RETIRED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "llm-retry-monitor",
+    "severity": "Critical",
+    "severity_basis": "cron:L440: business_function=monitoring; critical path CP1 -> Critical",
+    "inv_ids": [
+     "cron:L440"
+    ],
+    "classification": [
+     "Requires Refactoring Before Migration"
+    ],
+    "migration_risk": [
+     "Low"
+    ],
+    "known_issues": [
+     {
+      "inv_id": "cron:L440",
+      "known_issues": "Default main truncates llm_retry_events.jsonl (destructive retention) — allowlist blocked",
+      "custom_work_required": "split trim into a separate hygiene step with --dry-run; add --dry-run"
+     }
+    ],
+    "registry": {
+     "present": true,
+     "state": "RETIRED",
+     "scheduler_kind": "cron",
+     "stage": null
+    },
+    "allowlisted": false,
+    "allowlist_source": null,
+    "actions": [],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "market-regime-classifier",
+    "lane_id": "market-regime-classifier",
+    "verdict": "ARCHIVE",
+    "manifest_state": "RETIRED",
+    "why": "manifest lane RETIRED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "market-regime-classifier",
+    "severity": "Critical",
+    "severity_basis": "cron:L205: business_function=research; critical path CP2 -> Critical",
+    "inv_ids": [
+     "cron:L205"
+    ],
+    "classification": [
+     "Requires Refactoring Before Migration"
+    ],
+    "migration_risk": [
+     "Low"
+    ],
+    "known_issues": [
+     {
+      "inv_id": "cron:L205",
+      "known_issues": "duplicates the second half of L213; regime 'risk_on_trend (conf=33%)' unchanged across retained runs",
+      "custom_work_required": "merge L199+L205 into the L213 form (V2 M5); add flock; receipt (db_max market_regime_snapshots)"
+     }
+    ],
+    "registry": {
+     "present": true,
+     "state": "RETIRED",
+     "scheduler_kind": "cron",
+     "stage": null
+    },
+    "allowlisted": false,
+    "allowlist_source": null,
+    "actions": [],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "materialize-income-engine",
+    "lane_id": "materialize-income-engine",
+    "verdict": "ARCHIVE",
+    "manifest_state": "RETIRED",
+    "why": "manifest lane RETIRED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "materialize-income-engine",
+    "severity": "Critical",
+    "severity_basis": "cron:L220: business_function=portfolio data; critical path CP1 -> Critical",
+    "inv_ids": [
+     "cron:L220"
+    ],
+    "classification": [
+     "Requires Refactoring Before Migration"
+    ],
+    "migration_risk": [
+     "Low"
+    ],
+    "known_issues": [
+     {
+      "inv_id": "cron:L220",
+      "known_issues": "runs 06:55, before dividend sync L216 (07:05) refreshes its input; premarket pipeline stage",
+      "custom_work_required": "--dry-run; flock; order after dividend sync"
+     }
+    ],
+    "registry": {
+     "present": true,
+     "state": "RETIRED",
+     "scheduler_kind": "cron",
+     "stage": null
+    },
+    "allowlisted": false,
+    "allowlist_source": null,
+    "actions": [],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "mint-identity-registry",
+    "lane_id": "mint-identity-registry",
+    "verdict": "ARCHIVE",
+    "manifest_state": "RETIRED",
+    "why": "manifest lane RETIRED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "mint-identity-registry",
+    "severity": "Critical",
+    "severity_basis": "cron:L877: business_function=portfolio data; critical path CP1 -> Critical",
+    "inv_ids": [
+     "cron:L877"
+    ],
+    "classification": [
+     "Requires Refactoring Before Migration"
+    ],
+    "migration_risk": [
+     "Medium"
+    ],
+    "known_issues": [
+     {
+      "inv_id": "cron:L877",
+      "known_issues": "5,627 symbols UNRESOLVED_WITH_REASON vs 5,321 CONFIRMED; no lock",
+      "custom_work_required": "Add lock"
+     }
+    ],
+    "registry": {
+     "present": true,
+     "state": "RETIRED",
+     "scheduler_kind": "cron",
+     "stage": null
+    },
+    "allowlisted": false,
+    "allowlist_source": null,
+    "actions": [],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "n8n-selftest-fail",
+    "lane_id": "n8n-selftest-fail",
+    "verdict": "ARCHIVE",
+    "manifest_state": null,
+    "why": "no manifest lane"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "n8n-selftest-fail",
+    "severity": "Medium",
+    "severity_basis": "selftest lane (harmless, fails on demand); WARN so the scheduled diagnoser sees it",
+    "inv_ids": [],
+    "classification": [
+     "UNKNOWN"
+    ],
+    "migration_risk": [
+     "UNKNOWN"
+    ],
+    "known_issues": [],
+    "registry": {
+     "present": false,
+     "state": null,
+     "scheduler_kind": null,
+     "stage": null
+    },
+    "allowlisted": false,
+    "allowlist_source": "PROPOSED (llm-remediation/PROPOSED_ROWS.md; not yet in the allowlist)",
+    "actions": [
+     {
+      "action_id": "rerun_dry_run",
+      "handler": "ledger_request_run",
+      "mode_sequence": [
+       "dry_run"
+      ],
+      "argv": {
+       "dry_run": [
+        "$PY",
+        "scripts/n8n_selftest_fail.py",
+        "--receipt",
+        "$STATE_ROOT/data/runtime/n8n_runs/shadow/n8n_selftest_fail_last.json"
+       ]
+      },
+      "auto": true,
+      "approval_reason": null,
+      "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+      "preconditions": [
+       "lane in config/n8n_run_allowlist.json with dry_run_arg",
+       "no REQUESTED/RUNNING row for the lane",
+       "per-incident and per-lane-day caps not reached"
+      ],
+      "lock": "/tmp/tradeai_n8n_selftest_fail.lock",
+      "timeout_s": 30,
+      "output_signal": "data/runtime/n8n_selftest_fail_last.json",
+      "max_per_incident": 1,
+      "max_per_lane_per_day": 3
+     },
+     {
+      "action_id": "reap_orphan_run",
+      "handler": "ledger_reap_orphan",
+      "mode_sequence": [],
+      "argv": {},
+      "auto": true,
+      "approval_reason": null,
+      "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+      "preconditions": [
+       "row RUNNING and started_at + 2 x timeout_s < now",
+       "heartbeat_at older than timeout_s (or absent)",
+       "row pid not alive on this host"
+      ],
+      "lock": "/tmp/tradeai_n8n_selftest_fail.lock",
+      "timeout_s": 30,
+      "output_signal": "data/runtime/n8n_selftest_fail_last.json",
+      "max_per_incident": 1,
+      "max_per_lane_per_day": 3
+     }
+    ],
+    "default_action": "suggest_only",
+    "suggest_only_reason": null
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "refresh-symbol-cards",
+    "lane_id": "refresh-symbol-cards",
+    "verdict": "ARCHIVE",
+    "manifest_state": "RETIRED",
+    "why": "manifest lane RETIRED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "refresh-symbol-cards",
+    "severity": "Critical",
+    "severity_basis": "cron:L502: business_function=portfolio data; critical path CP1 -> Critical",
+    "inv_ids": [
+     "cron:L502"
+    ],
+    "classification": [
+     "Requires Refactoring Before Migration"
+    ],
+    "migration_risk": [
+     "Medium"
+    ],
+    "known_issues": [
+     {
+      "inv_id": "cron:L502",
+      "known_issues": "materialize 'timed out' on 10-08 and 10-09 (log tail; signal file last written 10-07 06:41) — endpoint contends with ~10 enrichment crons at 06:35-06:45; also runs build_symbol_profiles which L508 runs again at 06:45 → symbol_profiles lock timeouts",
+      "custom_work_required": "--dry-run (fetch + validate, no write); drop the embedded build_symbol_profiles call (L508 owns it); order after enrichment in P01 manifest"
+     }
+    ],
+    "registry": {
+     "present": true,
+     "state": "RETIRED",
+     "scheduler_kind": "cron",
+     "stage": null
+    },
+    "allowlisted": false,
+    "allowlist_source": null,
+    "actions": [],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "shadow-batch-generator-at-15-9",
+    "lane_id": "shadow-batch-generator-at-15-9",
+    "verdict": "ARCHIVE",
+    "manifest_state": "RETIRED",
+    "why": "manifest lane RETIRED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "shadow-batch-generator-at-15-9",
+    "severity": "Medium",
+    "severity_basis": "cron:L792: business_function=research",
+    "inv_ids": [
+     "cron:L792"
+    ],
+    "classification": [
+     "Requires Refactoring Before Migration"
+    ],
+    "migration_risk": [
+     "Medium"
+    ],
+    "known_issues": [
+     {
+      "inv_id": "cron:L792",
+      "known_issues": "10 of 10 retained runs end state=skipped_locked (generator lock /tmp/shadow_batch.lock held by another holder at 09:15; holder UNKNOWN — no live holder at 22:15); has readers so F 'no reader found' is false (V2 §3)",
+      "custom_work_required": "Find the 09:15 lock holder (UNKNOWN) and reschedule/serialize; treat skipped_locked as non-success (exit 99/receipt); in-script env bootstrap"
+     }
+    ],
+    "registry": {
+     "present": true,
+     "state": "RETIRED",
+     "scheduler_kind": "cron",
+     "stage": null
+    },
+    "allowlisted": false,
+    "allowlist_source": null,
+    "actions": [],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "storage-watch",
+    "lane_id": "storage-watch",
+    "verdict": "ARCHIVE",
+    "manifest_state": "NEVER_SCHEDULED",
+    "why": "manifest lane NEVER_SCHEDULED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "storage-watch",
+    "severity": "Low",
+    "severity_basis": "default Low (no inventory row)",
+    "inv_ids": [],
+    "classification": [
+     "UNKNOWN"
+    ],
+    "migration_risk": [
+     "UNKNOWN"
+    ],
+    "known_issues": [],
+    "registry": {
+     "present": true,
+     "state": "NEVER_SCHEDULED",
+     "scheduler_kind": "none",
+     "stage": null
+    },
+    "allowlisted": true,
+    "allowlist_source": "config/n8n_run_allowlist.json",
+    "actions": [
+     {
+      "action_id": "rerun_dry_run",
+      "handler": "ledger_request_run",
+      "mode_sequence": [
+       "dry_run"
+      ],
+      "argv": {
+       "dry_run": [
+        "$PY",
+        "scripts/storage_watch.py",
+        "--dry-run"
+       ]
+      },
+      "auto": false,
+      "approval_reason": "timeout_s 1200 > 600: a rerun would hold the single executor worker; human approval",
+      "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+      "preconditions": [
+       "lane in config/n8n_run_allowlist.json with dry_run_arg",
+       "no REQUESTED/RUNNING row for the lane",
+       "per-incident and per-lane-day caps not reached"
+      ],
+      "lock": "/tmp/tradeai_storage_watch.lock",
+      "timeout_s": 1200,
+      "output_signal": "data/runtime/storage_watch_last.json",
+      "max_per_incident": 1,
+      "max_per_lane_per_day": 3
+     },
+     {
+      "action_id": "reap_orphan_run",
+      "handler": "ledger_reap_orphan",
+      "mode_sequence": [],
+      "argv": {},
+      "auto": true,
+      "approval_reason": null,
+      "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+      "preconditions": [
+       "row RUNNING and started_at + 2 x timeout_s < now",
+       "heartbeat_at older than timeout_s (or absent)",
+       "row pid not alive on this host"
+      ],
+      "lock": "/tmp/tradeai_storage_watch.lock",
+      "timeout_s": 1200,
+      "output_signal": "data/runtime/storage_watch_last.json",
+      "max_per_incident": 1,
+      "max_per_lane_per_day": 3
+     }
+    ],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "timeout_s 1200 > 600: a rerun would hold the single executor worker; human approval"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "sync-watchlist-items-to-db",
+    "lane_id": "sync-watchlist-items-to-db",
+    "verdict": "ARCHIVE",
+    "manifest_state": "RETIRED",
+    "why": "manifest lane RETIRED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "sync-watchlist-items-to-db",
+    "severity": "Critical",
+    "severity_basis": "cron:L210: business_function=portfolio data; critical path CP1 -> Critical",
+    "inv_ids": [
+     "cron:L210"
+    ],
+    "classification": [
+     "Requires Refactoring Before Migration"
+    ],
+    "migration_risk": [
+     "Low"
+    ],
+    "known_issues": [
+     {
+      "inv_id": "cron:L210",
+      "known_issues": "none measured (106 items upserted); premarket pipeline stage sync_watchlist_items_to_db",
+      "custom_work_required": "--dry-run; flock; receipt"
+     }
+    ],
+    "registry": {
+     "present": true,
+     "state": "RETIRED",
+     "scheduler_kind": "cron",
+     "stage": null
+    },
+    "allowlisted": false,
+    "allowlist_source": null,
+    "actions": [],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "trade-ai-restore-drill",
+    "lane_id": "trade-ai-restore-drill",
+    "verdict": "ARCHIVE",
+    "manifest_state": "NEVER_SCHEDULED",
+    "why": "manifest lane NEVER_SCHEDULED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "trade-ai-restore-drill",
+    "severity": "Low",
+    "severity_basis": "default Low (no inventory row)",
+    "inv_ids": [],
+    "classification": [
+     "UNKNOWN"
+    ],
+    "migration_risk": [
+     "UNKNOWN"
+    ],
+    "known_issues": [],
+    "registry": {
+     "present": true,
+     "state": "NEVER_SCHEDULED",
+     "scheduler_kind": "none",
+     "stage": null
+    },
+    "allowlisted": true,
+    "allowlist_source": "config/n8n_run_allowlist.json",
+    "actions": [
+     {
+      "action_id": "rerun_dry_run",
+      "handler": "ledger_request_run",
+      "mode_sequence": [
+       "dry_run"
+      ],
+      "argv": {
+       "dry_run": [
+        "$PY",
+        "scripts/trade_ai_restore_drill.py",
+        "--dry-run"
+       ]
+      },
+      "auto": false,
+      "approval_reason": "timeout_s 16200 > 600: a rerun would hold the single executor worker; human approval",
+      "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+      "preconditions": [
+       "lane in config/n8n_run_allowlist.json with dry_run_arg",
+       "no REQUESTED/RUNNING row for the lane",
+       "per-incident and per-lane-day caps not reached"
+      ],
+      "lock": "/tmp/tradeai_trade_ai_restore_drill.lock",
+      "timeout_s": 16200,
+      "output_signal": "data/runtime/trade_ai_restore_drill_last.json",
+      "max_per_incident": 1,
+      "max_per_lane_per_day": 3
+     },
+     {
+      "action_id": "reap_orphan_run",
+      "handler": "ledger_reap_orphan",
+      "mode_sequence": [],
+      "argv": {},
+      "auto": true,
+      "approval_reason": null,
+      "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+      "preconditions": [
+       "row RUNNING and started_at + 2 x timeout_s < now",
+       "heartbeat_at older than timeout_s (or absent)",
+       "row pid not alive on this host"
+      ],
+      "lock": "/tmp/tradeai_trade_ai_restore_drill.lock",
+      "timeout_s": 16200,
+      "output_signal": "data/runtime/trade_ai_restore_drill_last.json",
+      "max_per_incident": 1,
+      "max_per_lane_per_day": 3
+     }
+    ],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "timeout_s 16200 > 600: a rerun would hold the single executor worker; human approval"
+   }
+  },
+  {
+   "triage": {
+    "file": "config/n8n_remediation_catalogue.json",
+    "kind": "remediation_catalogue",
+    "item": "watch-directives-monitor",
+    "lane_id": "watch-directives-monitor",
+    "verdict": "ARCHIVE",
+    "manifest_state": "RETIRED",
+    "why": "manifest lane RETIRED: nothing left to act on"
+   },
+   "entry": {
+    "schema": "N8nLaneRemediation@v1",
+    "lane_id": "watch-directives-monitor",
+    "severity": "Critical",
+    "severity_basis": "cron:L444: business_function=monitoring; critical path CP1 -> Critical",
+    "inv_ids": [
+     "cron:L444",
+     "n8n:5966437c872aa18b"
+    ],
+    "classification": [
+     "Candidate for Retirement",
+     "Ready for Migration"
+    ],
+    "migration_risk": [
+     "Low"
+    ],
+    "known_issues": [
+     {
+      "inv_id": "cron:L444",
+      "known_issues": "watch-directive backlog: notes: '7 active directive(s) not serviced in 24h', '1987 Hermes proposals undrained', '2820 new promotion(s)'",
+      "custom_work_required": "registry dispatch block (wave W1); optional non-zero exit on DB error"
+     },
+     {
+      "inv_id": "n8n:5966437c872aa18b",
+      "known_issues": "0 ledger runs as of 21:35 ET (V2 C11); saveManualExecutions true overrides env (V8 F4)",
+      "custom_work_required": "registry dispatcher row (stage shadow) replaces this workflow; deactivate+archive under a cron grant naming the id"
+     }
+    ],
+    "registry": {
+     "present": true,
+     "state": "RETIRED",
+     "scheduler_kind": "cron",
+     "stage": null
+    },
+    "allowlisted": false,
+    "allowlist_source": null,
+    "actions": [],
+    "default_action": "suggest_only",
+    "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
+   }
+  }
+ ]
+}

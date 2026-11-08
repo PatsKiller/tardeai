@@ -23,6 +23,11 @@ while [ $# -gt 0 ]; do
   shift || true
 done
 
+# LQ-1058: one receipt per mode (incubator/pending shared proactive_quote_refresh_cron.log); armed before the first
+# exit so an ABORT or SKIP is recorded too.
+source "$(dirname "${BASH_SOURCE[0]}")/lib/lane_receipt_trap.sh"
+tradeai_lane_receipt_on_exit "$PY" "run-scheduled-quote-refresh-$MODE_VAL"
+
 log() { echo "$TS [quote-refresh] $*" >> "$LOG"; echo "$TS [quote-refresh] $*"; }
 
 # Safety guards
@@ -50,6 +55,8 @@ flock -n "$LOCK" -c "
     --apply
 " 2>&1 | while IFS= read -r line; do log "$line"; done
 _EXIT=${PIPESTATUS[0]}
+# shellcheck disable=SC2034  # read by the EXIT trap in lib/lane_receipt_trap.sh
+TRADEAI_LANE_RC=$_EXIT  # this wrapper exits 0 regardless; the receipt carries the child's code
 set -e
 
 _TELEM_STATUS="success"; [ $_EXIT -ne 0 ] && _TELEM_STATUS="failed"

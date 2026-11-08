@@ -82,4 +82,5 @@ def test_the_fix_grants_no_new_scope():
     assert ok == []
     assert [s["reason"] for s in skipped] == ["lane_not_in_catalogue", "own_row", "not_an_n8n_row"]
     # every catalogue lane may still hold a real lane id (a rename would silently empty the eligible set)
-    assert all("/" not in lane for lane in cat) and "storage-watch" in cat
+    # (storage-watch was the sample until LQ-20261107-1009 archived it: NEVER_SCHEDULED, 0 ledger runs)
+    assert all("/" not in lane for lane in cat) and "heartbeat-watch" in cat

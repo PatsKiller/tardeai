@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lane_artifact_triage_20261108",
+  "files": [
+    "tests/test_lane_artifact_triage_20261108.py"
+  ],
+  "anchor": "LANE_ARTIFACT_TRIAGE_20261108",
+  "comment": [
+    "ANCHOR: LANE_ARTIFACT_TRIAGE_20261108 — LQ-20261107-1009 (Fable #15): every remediation-catalogue, migration-tranche",
+    "and writer-restoration item maps to a lane of the one lane manifest or is moved to config/archive/ with a README;",
+    "nothing under scripts/ reads config/archive/ (the tripwire)."
+  ]
+}

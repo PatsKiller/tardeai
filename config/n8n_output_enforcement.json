@@ -1,0 +1,6 @@
+{
+  "schema": "N8nOutputEnforcement@v1",
+  "grace_hours": 72,
+  "grace_starts_at": "2026-11-10T22:00:00+00:00",
+  "note": "LQ-20261107-1004 (Fable audit LQ-984 #7). After grace_starts_at + grace_hours (Fri 2026-11-13 17:00 ET) a live run whose output verdict is declared_not_enforced, or empty_allowed without an upstream count cited in its receipt, is RUN_FAILED (output_not_enforced / empty_upstream_uncited). Before that it is a recorded warning carrying the deadline. Read by scripts/lib/n8n_output_verdict.enforcement_decision; scripts/ops/output_enforcement_plan.py lists the lanes that will turn red."
+}
