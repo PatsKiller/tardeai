@@ -92,6 +92,7 @@ def _args(**kw):
 def _state(tmp_path, held=("ZZA", "ZZB"), prospectus=("ZZP",)):
     st = tmp_path / "state"
     (st / "data/portfolios/state").mkdir(parents=True, exist_ok=True)
+    # nosemgrep: tq-py-nonatomic-store-write -- synthetic tmp_path fixture, never a live store (written whole from json.dumps)
     (st / "data/portfolios/state/holdings.json").write_text(json.dumps({"holdings": [
         *[{"symbol": s, "shares": 10, "account": "fixture_brokerage"} for s in held],
         {"symbol": "SPAXX", "shares": 100, "account": "fixture_brokerage", "is_cash": True},
