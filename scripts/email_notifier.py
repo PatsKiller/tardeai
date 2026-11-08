@@ -101,7 +101,7 @@ def send_email_detailed(subject, body, to=None, attachments=None, html=None):
         )
         if r.returncode == 0:
             log.info(f"Email sent: {subject[:50]}")
-            return {"ok": True, "provider_id": _provider_id(r.stdout), "error": None}
+            return {"ok": True, "provider_id": _provider_id(getattr(r, "stdout", "")), "error": None}
         else:
             log.error(f"Email failed: {r.stderr[:200]}")
             return {"ok": False, "provider_id": None, "error": (r.stderr or "").strip()[:300] or "gog exited non-zero"}

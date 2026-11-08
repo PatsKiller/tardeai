@@ -430,6 +430,25 @@ def test_the_email_sender_passes_the_html_body_to_gog(monkeypatch):
     assert args[args.index("--body") + 1] == "plain body"
 
 
+def test_a_gog_result_without_stdout_still_counts_as_sent(monkeypatch):
+    """The provider id is read opportunistically: a successful send whose result cannot name the message is a send.
+
+    The receipt then proves acceptance by ``status='sent'`` alone. Reading ``r.stdout`` unguarded turned a passing
+    caller fixture into a silent "not sent" (AttributeError swallowed by the broad except), which is why the id read
+    is a ``getattr``.
+    """
+
+    class Result:  # deliberately no stdout, like the fixture in test_prospectus_schedule_delivery_20261026
+        returncode = 0
+        stderr = ""
+
+    monkeypatch.setattr(email_notifier, "_get_keyring_password", lambda: "pw")
+    monkeypatch.setattr(email_notifier, "_gog_bin", lambda: "/usr/bin/gog")
+    monkeypatch.setattr(email_notifier.subprocess, "run", lambda argv, **kw: Result())
+    assert email_notifier.send_email_detailed("s", "b", to="nobody@example.invalid") == {
+        "ok": True, "provider_id": None, "error": None}
+
+
 def test_the_plain_send_email_still_returns_a_bool(monkeypatch):
     monkeypatch.setattr(email_notifier, "_get_keyring_password", lambda: "")
     assert email_notifier.send_email("subject", "body") is False
