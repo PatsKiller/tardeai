@@ -431,20 +431,100 @@ class _NoStore:
     request = get
 
 
-def _operator_run(monkeypatch, run_id, mode="live", lane="plain-read", live="plain-read"):
-    monkeypatch.setenv(G.LIVE_LANES_ENV, live)
+def _live_root(tmp_path, *, pause=None, rendered=("plain-read", "only-on-render")):
+    """A hermetic code root + state root: pinned to the registry render, with an optional Ops Controls pause."""
+    from scripts.lib import n8n_relay_live_lanes as RLL
+
+    code, state = tmp_path / "code", tmp_path / "state"
+    (code / "config").mkdir(parents=True, exist_ok=True)
+    (state / "data" / "governance").mkdir(parents=True, exist_ok=True)
+    reg = {"lanes": [{"lane_id": x, "state": "ACTIVE", "scheduler": {"kind": "n8n", "expression": "wf" + x[-3:],
+           "match": "scripts/x.py", "cadence": "*/15 * * * *", "stage": "canary"}} for x in rendered]}
+    (code / RLL.REGISTRY_REL).write_text(json.dumps(reg), encoding="utf-8")
+    (code / RLL.ALLOWLIST_REL).write_text(json.dumps({"lanes": [{"lane_id": x, "live_arg": ["--apply"]} for x in rendered]}),
+                                          encoding="utf-8")
+    (code / RLL.SOURCE_REL).write_text(json.dumps({"schema": RLL.SOURCE_SCHEMA, "source": RLL.PINNED_SOURCE}), encoding="utf-8")
+    assert RLL.render(code)["ok"] is True
+    if pause:
+        (state / RLL.OVERRIDE_REL).write_text(json.dumps(
+            {"schema": RLL.OVERRIDE_SCHEMA, "paused": {pause: {"by": "t", "at": "t", "reason": "t"}}}), encoding="utf-8")
+    return code, state
+
+
+def _operator_run(monkeypatch, tmp_path, run_id="opm-opsreq_test-001", mode="live", lane="plain-read", legacy="plain-read",
+                  pause=None):
+    code, state = _live_root(tmp_path, pause=pause)
+    monkeypatch.setenv(G.LIVE_LANES_ENV, legacy)
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(state))
+    monkeypatch.setattr(G, "LIVE_LANES_ROOT", code)
     return G.host_run_request(lane_id=lane, mode=mode, run_id=run_id, requested_by="operator", caller_id=G.OPERATOR_CALLER,
-                              run_store=_NoStore(), run_allowlist=frozenset({"plain-read", "other"}), now=1.0)
+                              run_store=_NoStore(), run_allowlist=frozenset({"plain-read", "other", "only-on-render"}), now=1.0)
 
 
-def test_the_operator_key_may_only_queue_opm_run_ids(monkeypatch):
-    out = _operator_run(monkeypatch, "n8n-wf-abc123456789")
+def test_the_operator_key_may_only_queue_opm_run_ids(monkeypatch, tmp_path):
+    out = _operator_run(monkeypatch, tmp_path, run_id="n8n-wf-abc123456789")
     assert out["state"] != "REQUESTED" and "run_key_namespace_refused" in json.dumps(out)
 
 
-def test_an_operator_live_run_of_a_lane_off_the_live_list_is_refused(monkeypatch):
-    assert "run_lane_not_live" in json.dumps(_operator_run(monkeypatch, "opm-opsreq_test-001", lane="other"))
-    assert "run_lane_not_live" in json.dumps(_operator_run(monkeypatch, "opm-opsreq_test-001", live=""))  # no list = none live
+def test_an_operator_live_run_of_a_lane_off_the_live_list_is_refused(monkeypatch, tmp_path):
+    assert "run_lane_not_live" in json.dumps(_operator_run(monkeypatch, tmp_path, lane="other"))
+
+
+def test_the_gateway_uses_the_effective_list_not_the_legacy_key(monkeypatch, tmp_path):
+    """LQ-652 #2. A lane on the render but missing from the legacy key is ACCEPTED (it reaches the run store)."""
+    with pytest.raises(AssertionError, match="store reached"):
+        _operator_run(monkeypatch, tmp_path, lane="only-on-render", legacy="plain-read")
+    # and a lane that is only on the legacy key (the relay does not run it) is refused
+    assert "run_lane_not_live" in json.dumps(_operator_run(monkeypatch, tmp_path / "b", lane="other", legacy="other"))
+
+
+def test_a_lane_paused_in_the_ops_overrides_is_refused_by_the_gateway(monkeypatch, tmp_path):
+    out = _operator_run(monkeypatch, tmp_path, lane="plain-read", legacy="plain-read", pause="plain-read")
+    assert "run_lane_not_live" in json.dumps(out)
+
+
+def test_a_missing_live_list_refuses_a_live_operator_run(monkeypatch, tmp_path):
+    code, state = _live_root(tmp_path)
+    (code / "N8N_RELAY_LIVE_LANES.json").unlink()  # render missing -> legacy fallback; legacy key absent -> list is None
+    monkeypatch.delenv(G.LIVE_LANES_ENV, raising=False)
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(state))
+    monkeypatch.setattr(G, "LIVE_LANES_ROOT", code)
+    out = G.host_run_request(lane_id="plain-read", mode="live", run_id="opm-opsreq_test-001", requested_by="operator",
+                             caller_id=G.OPERATOR_CALLER, run_store=_NoStore(), run_allowlist=frozenset({"plain-read"}), now=1.0)
+    assert "run_lane_not_live" in json.dumps(out)
+
+
+def test_the_applier_plans_against_the_effective_list(lr):
+    """LQ-652 #2 at the applier layer: on the render but not in the legacy key = plannable; paused in the ops file = refused."""
+    code, state = _live_root(lr.tmp / "effective", rendered=("plain-read", "only-on-render"))
+    lr.cfg.setdefault("live_list", {})["state_root"] = str(state)
+    lr.hosts.code_root = code
+    al = json.loads((code / "config" / "n8n_run_allowlist.json").read_text())
+    al["lanes"] = [e for e in ALLOW["lanes"] if e["lane_id"] == "plain-read"] + \
+        [dict(ALLOW["lanes"][0], lane_id="only-on-render", manual_rerun_safe=True)]
+    (code / "config" / "n8n_run_allowlist.json").write_text(json.dumps(al))
+    (code / "config" / "n8n_effect_keys.json").write_text(json.dumps(EFFECTS))
+    from scripts.lib import n8n_relay_live_lanes as RLL0
+    assert RLL0.render(code)["ok"] is True  # re-render: the allowlist changed, so the old render would be stale
+    lr.live.write_text("TRADEAI_N8N_RELAY_LIVE_LANES=plain-read\n")  # the legacy key lacks only-on-render
+    live, missing = LR.live_set(lr.hosts)
+    assert not missing and live == {"plain-read", "only-on-render"}
+    # an Ops Controls pause removes it
+    from scripts.lib import n8n_relay_live_lanes as RLL
+    (state / RLL.OVERRIDE_REL).write_text(json.dumps(
+        {"schema": RLL.OVERRIDE_SCHEMA, "paused": {"plain-read": {"by": "t", "at": "t", "reason": "t"}}}))
+    live, missing = LR.live_set(lr.hosts)
+    assert "plain-read" not in live and not missing
+    refused(lr, LR.KIND_LIVE, {"lane_id": "plain-read", "mode": "live"}, "RELAY_LIVE_NOT_ENABLED")
+
+
+def test_the_applier_treats_no_list_as_missing(lr):
+    code, state = _live_root(lr.tmp / "effective")
+    (code / "N8N_RELAY_LIVE_LANES.json").unlink()
+    lr.cfg.setdefault("live_list", {})["state_root"] = str(state)
+    lr.hosts.code_root = code
+    lr.live.write_text("# no key line at all\n")
+    assert LR.live_set(lr.hosts) == (frozenset(), True)
 
 
 def test_run_all_live_always_needs_a_fresh_passkey():

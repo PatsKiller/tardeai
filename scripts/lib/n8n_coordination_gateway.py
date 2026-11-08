@@ -18,7 +18,8 @@ import sqlite3
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Mapping
+from pathlib import Path
+from typing import Any, Mapping, Optional
 
 SCHEMA_VERSION = "event-reference/v0"
 RECEIPT_SCHEMA = "N8nCoordinationReceipt@v1"
@@ -60,12 +61,26 @@ RELAY_CALLER = "n8n-relay"
 #: scope only, never falls back to the dispatch key, and never shares n8n's key or bearer.
 OPERATOR_CALLER = "operator-manual"
 OPERATOR_RUN_ID_PREFIX = "opm-"  # the applier's run ids (scripts/lib/ops_n8n_lane_run.py); the only ids the operator key may queue
-LIVE_LANES_ENV = "TRADEAI_N8N_RELAY_LIVE_LANES"  # whitespace-separated, as scripts/lib/n8n_relay_live_lanes.py reads it
+LIVE_LANES_ENV = "TRADEAI_N8N_RELAY_LIVE_LANES"  # the LEGACY host-file key; the relay uses it only as a fallback
+#: Code root the effective live list is resolved against; None = the release this module runs from (the relay's own root).
+#: A test seam only.
+LIVE_LANES_ROOT: Optional[Path] = None
 
 
-def _operator_live_lanes() -> frozenset[str]:
-    """The lanes this process's environment lists as relay-live. Absent or empty = none (a live operator run fails closed)."""
-    return frozenset(os.environ.get(LIVE_LANES_ENV, "").replace(",", " ").split())
+def _operator_live_lanes() -> Optional[frozenset[str]]:
+    """The EFFECTIVE relay live list: n8n_relay_live_lanes.resolve() = rendered registry list minus the Ops Controls
+    pauses minus the host-file pauses (the legacy key is only its fallback). None = the list is missing, so a live
+    operator run fails closed. LQ-611 review (cc-opus-2, LQ-652 #2): reading the legacy key alone accepted a lane
+    the relay does not run and refused eleven it does, and ignored the operator's own pause toggle."""
+    try:
+        from lib import n8n_relay_live_lanes as RLL
+    except ImportError:
+        from scripts.lib import n8n_relay_live_lanes as RLL  # type: ignore[no-redef]
+
+    kwargs = {} if LIVE_LANES_ROOT is None else {"root": LIVE_LANES_ROOT}
+    return RLL.resolve(os.environ, **kwargs)["lanes"]
+
+
 #: 2026-10-09 (n8n maturity B5.3, design 02 §3.1): `coordination/due` is a READ route (scope coordination_read,
 #: operation `due` only). It computes what is due from the registry; it writes nothing and runs nothing.
 #: 2026-10-14 (n8n fabric Phase 1): `coordination/run_outcome` is a READ route (scope coordination_read, operation
@@ -762,10 +777,11 @@ def _run(
     if claim.get("caller_id") == OPERATOR_CALLER:
         # LQ-611 review #2 (cc-opus-2): the operator key must not queue a run under any identity it likes. An operator
         # manual run carries the ``opm-`` namespace (the applier mints it); a LIVE one is also refused for a lane that
-        # is not on this process's live list (TRADEAI_N8N_RELAY_LIVE_LANES), the same list the relay obeys.
+        # is not on the effective live list (n8n_relay_live_lanes.resolve(): render minus pauses), the list the relay obeys.
         if not run_id.startswith(OPERATOR_RUN_ID_PREFIX):
             return _refused(None, "run_key_namespace_refused", peer_ignored=peer)
-        if mode == "live" and lane_id not in _operator_live_lanes():
+        live_lanes = _operator_live_lanes() if mode == "live" else None
+        if mode == "live" and (live_lanes is None or lane_id not in live_lanes):
             return _refused(None, "run_lane_not_live", peer_ignored=peer)
     prefix = run_id[:2].lower()
     relay_minted = run_id[: len(RELAY_DERIVED_KEY_PREFIX)].lower() == RELAY_DERIVED_KEY_PREFIX

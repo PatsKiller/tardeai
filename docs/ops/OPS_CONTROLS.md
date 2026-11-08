@@ -529,7 +529,7 @@ slot key for it). **Run all dry** queues every lane that has a dry-run mode. **R
 that are safe to re-run off-slot, derived from config (never a hand list); every excluded lane is shown with its reason.
 Fail closed: a lane with no staged effect key is included only if its `config/n8n_run_allowlist.json` entry says
 `"manual_rerun_safe": true`, and a hygiene/cleanup/purge/`--standing` lane is never included. The gateway also binds the
-`operator-manual` key to `opm-` run ids and, for live, to lanes on its `TRADEAI_N8N_RELAY_LIVE_LANES` list; Run all live
+`operator-manual` key to `opm-` run ids and, for live, to lanes on the effective relay live list (`n8n_relay_live_lanes.resolve()`: the rendered registry list minus the Ops Controls and host-file pauses; the legacy `TRADEAI_N8N_RELAY_LIVE_LANES` key is only its fallback, and no list means refuse); Run all live
 always needs a fresh passkey (never phrase-only inside a sudo window).
 
 How it runs. Approving the request makes the host applier sign `coordination/run` to the gateway as the dedicated caller

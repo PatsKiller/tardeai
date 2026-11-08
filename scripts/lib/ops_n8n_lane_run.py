@@ -92,17 +92,34 @@ def load_effects(code_root: Path) -> dict[str, dict]:
 
 
 def live_set(hosts: Any) -> tuple[frozenset[str], bool]:
-    """(lanes on the relay live list, missing). ``missing`` mirrors the relay's relay_live_lanes_missing refusal:
-    the list file is unreadable or has no TRADEAI_N8N_RELAY_LIVE_LANES= line."""
-    from scripts.check_registry_runtime_truth import LIVE_LANES_KEY, parse_live_lanes
+    """(lanes on the EFFECTIVE relay live list, missing). ``missing`` mirrors the relay's relay_live_lanes_missing
+    refusal: n8n_relay_live_lanes.resolve() returned no list.
+
+    LQ-611 review (cc-opus-2, LQ-652 #2): this used to parse the legacy TRADEAI_N8N_RELAY_LIVE_LANES key out of the host
+    file, which the relay only uses as a fallback. The relay's list is the rendered registry list minus the Ops
+    Controls pauses and the host-file pauses, so the legacy key accepted a lane the relay will not run, refused lanes it
+    does, and ignored the operator's own pause toggle. Only the two lane-id keys of the host file are read, by name,
+    plus the state root (the same environ the Ops Controls tab builds in ops_controls_api.effective_live_list)."""
+    import os
+
+    from scripts.lib import n8n_relay_live_lanes as RLL
+    from scripts.lib import ops_controls_api as API
+    from scripts.lib import ops_controls_core as C
 
     try:
-        text = hosts.live_list_path.read_text(encoding="utf-8")
+        environ = dict(API._host_lane_keys(hosts.live_list_path.read_text(encoding="utf-8")))
     except OSError:
+        environ = {}
+    state_root = (hosts.cfg.get("live_list") or {}).get("state_root") or os.environ.get("TRADEAI_STATE_ROOT")
+    if state_root:
+        environ["TRADEAI_STATE_ROOT"] = str(C.expand(state_root))
+    try:
+        lanes = RLL.resolve(environ, Path(hosts.code_root))["lanes"]
+    except Exception:  # noqa: BLE001 - an unreadable list is "missing", never "empty and fine"
         return frozenset(), True
-    if not any(ln.strip().removeprefix("export ").strip().startswith(LIVE_LANES_KEY + "=") for ln in text.splitlines()):
+    if lanes is None:
         return frozenset(), True
-    return frozenset(parse_live_lanes(text)), False
+    return frozenset(lanes), False
 
 
 def market_is_open_today(hosts: Any) -> Optional[bool]:
@@ -138,7 +155,7 @@ def _broker_tokens(text: str) -> list[str]:
 
 
 # LQ-611 review #1: lanes that remove files or sweep state. Excluded from Run-all LIVE whatever their declaration says.
-DELETE_LANE_RE = re.compile(r"hygiene|--standing|\bpurge\b|\bprune\b|\bdelete\b|\bcleanup\b|\bretention\b", re.I)
+DELETE_LANE_RE = re.compile(r"hygiene|--standing|\bpurge\b|\bprune\b|\bdelete\b|\bcleanup\b|\bretention\b|\brotate\b|\barchive\b|[-_]rotate|[-_]archive", re.I)
 
 
 def idempotent(spec: Optional[Mapping[str, Any]]) -> bool:
