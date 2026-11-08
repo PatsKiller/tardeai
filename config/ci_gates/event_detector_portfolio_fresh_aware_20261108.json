@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "event_detector_portfolio_fresh_aware_20261108",
+  "files": [
+    "tests/test_event_detector_portfolio_fresh_naive_aware_20261108.py"
+  ],
+  "anchor": "EVENT_DETECTOR_PORTFOLIO_FRESH_AWARE_20261108",
+  "comment": [
+    "ANCHOR: EVENT_DETECTOR_PORTFOLIO_FRESH_AWARE_20261108 — PORTFOLIO_FRESH_NEEDED must compare and sort aware UTC timestamps. A naive datetime.min sentinel raised TypeError against aware timestamptz values on every run, and the per-detector except only logged it, so the lane exited 0 with one of its ten detectors dead (LQ-20261107-691)."
+  ]
+}

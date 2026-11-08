@@ -23,7 +23,7 @@ Cron: */15 * * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild &
 import json
 import os
 import sys
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -89,6 +89,22 @@ def _load_json(path: Path) -> dict:
         return json.loads(path.read_text())
     except Exception:
         return {}
+
+
+def _as_aware_utc(value):
+    """Normalise a timestamp read from Postgres to an aware UTC datetime.
+
+    `watchlist_agent_results.created_at` is timestamptz, so psycopg2 hands back
+    an aware datetime. A value that arrives naive is treated as UTC already.
+    Every comparison and sort key in this module must stay on this side of the
+    naive/aware line: mixing the two raises TypeError, and a raised detector
+    used to look exactly like a detector that found nothing.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _fire_event(conn, event_type: str, symbol: str, trigger_data: dict,
@@ -579,21 +595,22 @@ def check_portfolio_fresh_needed(conn, dry_run: bool = False) -> int:
     )
     analysis_times = {r["symbol"]: r["last_analysis"] for r in cur.fetchall()}
 
-    cutoff = datetime.now() - timedelta(hours=48)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
     stale = []
     for sym in held:
-        last = analysis_times.get(sym)
+        last = _as_aware_utc(analysis_times.get(sym))
         if last is None:
             stale.append((sym, None))
-        elif last.replace(tzinfo=None) < cutoff:
+        elif last < cutoff:
             stale.append((sym, last))
 
-    # Sort: never-analyzed first, then oldest
-    stale.sort(key=lambda x: x[1] or datetime.min)
+    # Sort: never-analyzed first, then oldest. The sentinel is aware UTC like
+    # every stored value; datetime.min is naive and raises against them.
+    stale.sort(key=lambda x: x[1] or datetime.min.replace(tzinfo=timezone.utc))
 
     fired = 0
     for sym, last in stale[:3]:  # Max 3 per run
-        hours_stale = ((datetime.now() - last.replace(tzinfo=None)).total_seconds() / 3600) if last else None
+        hours_stale = ((datetime.now(timezone.utc) - last).total_seconds() / 3600) if last else None
         trigger_data = {
             "last_analysis": str(last)[:19] if last else "never",
             "hours_since": round(hours_stale, 1) if hours_stale else None,
