@@ -215,7 +215,10 @@ def main(argv=None) -> int:
         return 0
     lr = _receipt_lib()
     started = lr.now_iso()
-    stats = {"tables": len(targets), "scanned": 0, "written": 0, "offered": 0, "no_mention": 0, "undecided": 0}
+    # `matcher` is the run's provenance: document_mentions.role_source records the DECISION AUTHORITY
+    # ('deterministic' for both matchers), not which ruleset produced the row (LQ-20261107-1266).
+    stats = {"tables": len(targets), "scanned": 0, "written": 0, "offered": 0, "no_mention": 0,
+             "undecided": 0, "matcher": "legacy" if a.legacy_matcher else "rebuild"}
     try:
         rc = _run(a, targets, stats)
     except BaseException as exc:

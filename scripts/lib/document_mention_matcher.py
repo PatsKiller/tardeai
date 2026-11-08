@@ -22,6 +22,16 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable, Mapping
 
+#: The decision authority this module writes. `document_mentions.role_source` is constrained by
+#: sql/document_mentions.sql to ('deterministic','model','operator'); a rule that reads the text and
+#: compares content tokens is deterministic, and 'document_mention_matcher' -- the value this module
+#: wrote until LQ-20261107-1266 -- is not in that set, so every insert raised CheckViolation and the
+#: lane wrote nothing. The matcher's identity is not a decision authority: it is recorded per run in
+#: the lane receipt ("matcher": "rebuild") and per row by matched_via/matched_text.
+#: tests/test_document_mention_matcher_role_source_lq1266_20261108.py parses the allowed set out of
+#: the DDL and fails if this value -- or any other the code can emit -- is not a member.
+ROLE_SOURCE = "deterministic"
+
 _LEGAL = frozenset({
     "inc", "incorporated", "corp", "corporation", "ltd", "llc", "lp", "co", "company", "plc", "the", "and",
 })
@@ -187,7 +197,7 @@ def _row(symbol: str, *, via: str, matched: str, role: str | None, confidence: f
         "matched_via": via,
         "matched_text": matched,
         "role": role,
-        "role_source": "document_mention_matcher" if role else None,
+        "role_source": ROLE_SOURCE if role else None,
         "role_confidence": confidence if role else None,
     }
 
@@ -225,11 +235,11 @@ def match_mentions(
         return []
     if len(found) == 1:
         found[0]["role"] = "subject"
-        found[0]["role_source"] = "document_mention_matcher"
+        found[0]["role_source"] = ROLE_SOURCE
         found[0]["role_confidence"] = confidence_of[found[0]["symbol"]]
     elif own:
         for row in found:
             row["role"] = "subject" if row["symbol"] == own else "mentioned"
-            row["role_source"] = "document_mention_matcher"
+            row["role_source"] = ROLE_SOURCE
             row["role_confidence"] = confidence_of[row["symbol"]]
     return found
