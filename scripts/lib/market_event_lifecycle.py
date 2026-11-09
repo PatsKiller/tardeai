@@ -331,7 +331,7 @@ def sleeve_pct_by_sector(positions: Sequence[Mapping[str, Any]],
     total = sum(r["value"] for r in rows)
     agg: dict[str, float] = {}
     for r in rows:
-        agg[canonical_sector(str(r["sector"] or "Other"))] = agg.get(canonical_sector(str(r["sector"] or "Other")), 0.0) + r["value"]
+        agg[canonical_sector(str(r["sector"] or "Other"))] = agg.get(canonical_sector(str(r["sector"] or "Other")), 0.0) + r["value"]  # nosemgrep: tq-py-missing-as-zero -- 0.0 seeds an accumulator, it is not a missing value shown as zero
     return {k: round(v / total * 100.0, 2) for k, v in agg.items()} if total else {}, "direct"
 
 
@@ -785,7 +785,7 @@ def record_alerts(conn: Any, delivered: Mapping[str, Any], now: datetime) -> int
             "AND alert_event_id IS NULL",
             (rec.get("event_id"), now, rec.get("episode_id"), rec.get("symbol"),
              rec.get("account_label"), rec.get("to_stage")))
-        stamped += max(0, int(cur.rowcount or 0))
+        stamped += max(0, int(cur.rowcount or 0))  # nosemgrep: tq-py-missing-as-zero -- a cursor rowcount of None is the driver's spelling of "no row updated", a true zero
     return stamped
 
 
@@ -921,7 +921,7 @@ def persist_results(conn: Any, results: Sequence[Mapping[str, Any]], *, trigger:
                              "alert": r.get("alert"), "entry_source": r.get("entry_source")},
                             sort_keys=True, default=str),
                  now))
-            inserted += max(0, int(cur.rowcount or 0))
+            inserted += max(0, int(cur.rowcount or 0))  # nosemgrep: tq-py-missing-as-zero -- a cursor rowcount of None is the driver's spelling of "no row inserted", a true zero
         prior = (st["positions"].get(label) or {}) if isinstance(st["positions"].get(label), Mapping) else {}
         st["positions"][label] = {"stage": r.get("stage"), "at": _iso(now), "trigger": trigger,
                                   "verdict": r.get("verdict"), "qty": r.get("qty"),
@@ -943,7 +943,7 @@ def persist_results(conn: Any, results: Sequence[Mapping[str, Any]], *, trigger:
             "WHERE episode_id = %s AND symbol = %s "
             "AND COALESCE(plan->'lifecycle', '{}'::jsonb) IS DISTINCT FROM %s::jsonb",
             (doc, eid, sym, doc))
-        changed += max(0, int(cur.rowcount or 0))
+        changed += max(0, int(cur.rowcount or 0))  # nosemgrep: tq-py-missing-as-zero -- a cursor rowcount of None is the driver's spelling of "no plan rewritten", a true zero
     return {"transitions": inserted, "plans": changed, "rows": len(results)}
 
 
@@ -990,11 +990,11 @@ def collect_inputs(db_query: Callable[..., list[dict[str, Any]]], now: datetime,
     proxies = sorted({proxy_for_candidate(c, groups) for c in candidates})
     try:
         bars = api.read_bars(db_query, sorted(set(symbols) | set(proxies)), now.date())
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- an unreadable bars table is recorded and leaves the RS and SMA gates unmeasured
         bars, errors["bars"] = {}, f"{type(exc).__name__}: {exc}"
     try:
         quote_asof = read_quote_asof(db_query, symbols)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- an unreadable quote clock is recorded, so a stale quote cannot pass as fresh
         quote_asof, errors["quotes"] = {}, f"{type(exc).__name__}: {exc}"
     sleeve_pct, sleeve_basis = sleeve_pct_by_sector(positions, sectors, errors)
     targets: dict[str, float] = {}
@@ -1004,13 +1004,13 @@ def collect_inputs(db_query: Callable[..., list[dict[str, Any]]], now: datetime,
         targets = dict(load_sector_target_map().get("targets") or {})
         rot = json.loads((repo_root() / "config" / "rotation_sector_targets.json").read_text())
         band = dict(rot.get("trim_band") or {})
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- a missing sector-target map is recorded and the trim band stays unmeasured
         errors["sector_targets"] = f"{type(exc).__name__}: {exc}"
     if mre is None:
         try:
             from lib import market_event_plan_stamp as stamp  # noqa: PLC0415
             mre = stamp.load_mre()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 -- no MRE stamp is recorded and the tier gates stay unmeasured, never GREEN
             mre, errors["mre"] = {}, f"{type(exc).__name__}: {exc}"
     events, cal_err = load_events(now=now, path=calendar_path)
     if cal_err:
@@ -1097,7 +1097,7 @@ def run_lane(*, conn: Any, db_query: Callable[..., list[dict[str, Any]]], now: d
         summary["heal"] = heal_actions(
             errors=summary["errors"], transitions=summary["transitions"],
             alerted=len(summary["alerts"].get("sent") or []),
-            late_minutes=float(summary.get("anchor_max_late_minutes") or 0.0), policy=pol)
+            late_minutes=float(summary.get("anchor_max_late_minutes") or 0.0), policy=pol)  # nosemgrep: tq-py-missing-as-zero -- a run that claimed no anchor has zero minutes of lateness by construction; heal also needs errors or transitions to act
     except Exception as exc:  # noqa: BLE001 -- reported by type AND text, never flattened into a zero
         summary["error"] = f"{type(exc).__name__}: {exc}"
     return summary
