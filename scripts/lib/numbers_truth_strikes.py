@@ -25,7 +25,8 @@ Verdict vocabulary is the whole point of the module, so it is stated once here:
   PASS           the figure was measured and agrees. Absence from M is the normal pass signal; a `PASS` row is also
                  accepted. If the caller passes `audited` (the fingerprints the run actually covered), a fingerprint
                  absent from BOTH holds instead of clearing — an audit that stopped looking at a figure must not look
-                 like a fix.
+                 like a fix. A malformed row holds the rows it could have described (its page; every page when the
+                 row is too broken to name one): a producer error is never a measured pass.
 
 State is data/runtime/numbers_truth_state.json, keyed by the figure fingerprint `page|figure_id|account|symbol`
 (lowercase; an absent component is the empty string). Rows older than KEEP_DAYS are pruned: the file is bounded by
@@ -422,8 +423,20 @@ def plan(
 
     # PASS by absence: a fingerprint that was failing and is no longer in M cleared — unless the caller told us which
     # fingerprints the run covered and this one is not among them (an audit that stopped looking is not a fix).
+    # A malformed row is a producer error about a fingerprint we cannot name, so it is never a measured pass for the
+    # rows it could have described: its page holds (and a row too broken to name a page holds every page).
+    malformed_pages: set[str] = set()
+    for bad in malformed:
+        bad_row = bad.get("row")
+        malformed_pages.add(str(bad_row.get("page") or "").strip().lower() if isinstance(bad_row, Mapping) else "")
     for fp, row in list(figures.items()):
         if fp in observed or not _strikes(row):
+            continue
+        if malformed_pages and ("" in malformed_pages
+                                or str(row.get("page") or "").strip().lower() in malformed_pages):
+            decisions.append({"fingerprint": fp, "action": "hold", "fails": _strikes(row),
+                              "reason": "malformed_findings", "page": row.get("page"),
+                              "figure_id": row.get("figure_id")})
             continue
         if audited_set is not None and fp not in audited_set:
             decisions.append({"fingerprint": fp, "action": "hold", "fails": _strikes(row),
@@ -489,7 +502,9 @@ def ticket_summary(decision: Mapping[str, Any]) -> str:
 
 def cleared_line(decision: Mapping[str, Any]) -> str:
     where = str(decision.get("page") or "?") + ("/" + str(decision["symbol"]).upper() if decision.get("symbol") else "")
-    return f"cleared: {where} {decision.get('figure_id')} measures true again after {decision.get('fails_before', '?')} failing runs"
+    runs = "run" if decision.get("fails_before") == 1 else "runs"
+    return (f"cleared: {where} {decision.get('figure_id')} measures true again after "
+            f"{decision.get('fails_before', '?')} failing {runs}")
 
 
 # ── production defaults for the three injected actions ───────────────────────────────────────────────────────────

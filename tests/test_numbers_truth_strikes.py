@@ -257,6 +257,25 @@ def test_a_figure_the_run_did_not_audit_holds_instead_of_clearing():
     assert out["figures"][S.fingerprint("risk", "vix_tile")]["consecutive_fails"] == 2
 
 
+def test_a_malformed_finding_holds_its_page_instead_of_clearing_it():
+    # a producer emitting a row we cannot key must not read as "the figure we were tracking has passed"
+    st = state_with(fail_row(page="risk", figure_id="vix_tile"), fails=2)
+    bad = fail_row(page="risk", figure_id="vix_tile")
+    bad["fingerprint"] = "risk|vix_tile|too|many|fields"
+    out = plan([bad], st)
+    (decision,) = out["decisions"]
+    assert decision["action"] == "hold" and decision["reason"] == "malformed_findings"
+    assert out["figures"][S.fingerprint("risk", "vix_tile")]["consecutive_fails"] == 2
+
+
+def test_a_malformed_row_too_broken_to_name_a_page_holds_every_page():
+    st = state_with(fail_row(page="risk", figure_id="vix_tile"), fails=2)
+    out = plan(["not even a mapping"], st)
+    (decision,) = out["decisions"]
+    assert decision["action"] == "hold" and decision["reason"] == "malformed_findings"
+    assert out["figures"][S.fingerprint("risk", "vix_tile")]["consecutive_fails"] == 2
+
+
 def test_a_recurrence_after_a_clear_opens_a_new_ticket_not_ticket_open():
     # a cleared figure must not keep its old ticket: leaving it set would record every later run as "ticket_open"
     # and never escalate the defect again.
