@@ -21,6 +21,7 @@ The behaviours pinned, one class each:
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -28,6 +29,13 @@ import pytest
 from lib import numbers_truth_strikes as S
 
 NOW = datetime(2026, 11, 9, 22, 7, tzinfo=timezone.utc)
+
+
+def write_state(path, figures):
+    """Seed a state file the way the module writes one: temp file in the same directory, then os.replace."""
+    tmp = path.with_name(path.name + ".fixture-tmp")
+    tmp.write_text(json.dumps({"schema": S.STATE_SCHEMA, "figures": figures}), encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def fail_row(page="risk", figure_id="vix_tile", account=None, symbol=None, *, severity="P1", check=None,
@@ -173,9 +181,9 @@ def test_a_refused_heal_tickets_in_the_same_run(tmp_path):
     escalations = []
     row = fail_row()
     state_path = tmp_path / "state.json"
-    state_path.write_text(json.dumps({"schema": S.STATE_SCHEMA, "figures": {
+    write_state(state_path, {
         S.fingerprint("risk", "vix_tile"): {"consecutive_fails": 2, "page": "risk", "figure_id": "vix_tile",
-                                            "severity": "P1"}}}))
+                                            "severity": "P1"}})
     out = S.run(findings=[row], state_path_=state_path, config_path=_config_file(tmp_path),
                 apply=True, now=NOW, heal=heal, escalate=lambda **kw: escalations.append(kw) or {"ok": True},
                 inbox=tmp_path / "inbox")
@@ -249,6 +257,41 @@ def test_a_figure_the_run_did_not_audit_holds_instead_of_clearing():
     assert out["figures"][S.fingerprint("risk", "vix_tile")]["consecutive_fails"] == 2
 
 
+def test_a_recurrence_after_a_clear_opens_a_new_ticket_not_ticket_open():
+    # a cleared figure must not keep its old ticket: leaving it set would record every later run as "ticket_open"
+    # and never escalate the defect again.
+    fp = S.fingerprint("holdings", "qty", None, "XLV")
+    st = {"schema": S.STATE_SCHEMA, "figures": {fp: {
+        "consecutive_fails": 4, "page": "holdings", "figure_id": "qty", "symbol": "xlv", "severity": "P0",
+        "status": "ticketed", "ticket": {"id": "LQ-AUTO-holdings-qty-xlv", "at": "2026-11-09T20:00:00+00:00"}}}}
+    out = plan([], st)
+    (cleared,) = out["decisions"]
+    assert cleared["action"] == S.ACTION_CLEAR and cleared["ticket"] == {"id": "LQ-AUTO-holdings-qty-xlv", "at": "2026-11-09T20:00:00+00:00"}
+    row = out["figures"][fp]
+    assert "ticket" not in row and row["last_ticket"]["id"] == "LQ-AUTO-holdings-qty-xlv"
+    assert row["status"] == "cleared"
+
+    # it fails again, twice (strikes 1-2 after the reset) and then a third time: a fresh ticket, not "ticket_open"
+    row["consecutive_fails"] = 2
+    out2 = plan([fail_row(page="holdings", figure_id="qty", symbol="XLV")], {"schema": S.STATE_SCHEMA, "figures": {fp: row}})
+    (decision,) = out2["decisions"]
+    assert decision["action"] == S.ACTION_TICKET and decision["reason"] == "not_healable:positions-sync"
+    assert out2["figures"][fp]["ticket"]["id"] == "LQ-AUTO-holdings-qty-xlv"
+
+
+def test_a_settled_heal_still_counts_against_the_lane_hourly_budget():
+    a = fail_row(page="risk", figure_id="vix_tile", symbol="VIX")
+    st = state_with(a, fails=2)
+    other = S.fingerprint("risk", "index_tile", None, "SPX")
+    st["figures"][other] = {"consecutive_fails": 0, "status": "cleared",
+                            "last_heal": {"lane": "vix-index-quotes-schwab", "requested_at": "2026-11-09T21:57:00+00:00",
+                                          "state": "cleared"}}
+    out = plan([a], st)
+    (decision,) = out["decisions"]
+    assert decision["action"] == S.ACTION_TICKET
+    assert decision["reason"] == "heal_rate_limited:vix-index-quotes-schwab"
+
+
 # ── 8. malformed input ─────────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -279,9 +322,9 @@ def test_a_dry_run_writes_nothing_and_calls_nothing(tmp_path):
         raise AssertionError("a dry run must not act")
 
     state_path = tmp_path / "state.json"
-    state_path.write_text(json.dumps({"schema": S.STATE_SCHEMA, "figures": {
+    write_state(state_path, {
         S.fingerprint("risk", "vix_tile"): {"consecutive_fails": 2, "page": "risk", "figure_id": "vix_tile",
-                                            "severity": "P1"}}}))
+                                            "severity": "P1"}})
     before = state_path.read_text()
     out = S.run(findings=[fail_row()], state_path_=state_path, config_path=_config_file(tmp_path), apply=False,
                 now=NOW, heal=boom, escalate=boom, inbox=tmp_path / "inbox")
@@ -300,9 +343,9 @@ def test_apply_writes_the_state_atomically_and_escalates_both_sides_with_timesta
                    detail="row renders 0 shares; positions_current says 100")
     state_path = tmp_path / "state.json"
     fp = S.fingerprint("holdings", "qty", "acct1", "XLV")
-    state_path.write_text(json.dumps({"schema": S.STATE_SCHEMA, "figures": {fp: {
+    write_state(state_path, {fp: {
         "consecutive_fails": 2, "page": "holdings", "figure_id": "qty", "account": "acct1", "symbol": "xlv",
-        "severity": "P0"}}}))
+        "severity": "P0"}})
     escalations = []
     out = S.run(findings=[row], state_path_=state_path, config_path=_config_file(tmp_path), apply=True, now=NOW,
                 heal=lambda **kw: {"accepted": False, "reason": "never"},      # not reached: not healable

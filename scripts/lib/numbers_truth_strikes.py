@@ -229,7 +229,7 @@ def save_state(state: Mapping[str, Any], path: Optional[Path] = None, *, now: Op
             fh.write("\n")
         os.replace(tmp, p)
     except BaseException:
-        try:
+        try:  # nosemgrep: tq-py-except-pass -- the write failure is re-raised below; a cleanup failure must not replace it
             os.unlink(tmp)
         except OSError:
             pass
@@ -289,16 +289,37 @@ def heal_lane(finding: Mapping[str, Any], config: Mapping[str, Any]) -> tuple[Op
     return lane, ""
 
 
+def _strikes(row: Mapping[str, Any]) -> int:
+    """The row's consecutive-fail counter. A row with no counter is zero strikes: the counter starts at zero when a
+    fingerprint is first seen, so a missing key is the ladder's defined start, not an unknown served number."""
+    return int(row.get("consecutive_fails") or 0)  # nosemgrep: tq-py-missing-as-zero -- a counter's start is 0 by definition; no figure or number is defaulted
+
+
 def _heals_this_hour(state: Mapping[str, Any], lane: str, now: datetime) -> int:
     n = 0
     for row in (state.get("figures") or {}).values():
-        heal = row.get("heal") or {}
-        if heal.get("lane") != lane:
-            continue
-        at = _parse(heal.get("requested_at"))
-        if at is not None and now - at < timedelta(hours=1):
-            n += 1
+        # a settled heal (the figure cleared after it) still used the lane's budget, so it counts too
+        for heal in (row.get("heal"), row.get("last_heal")):
+            heal = heal or {}
+            if heal.get("lane") != lane:
+                continue
+            at = _parse(heal.get("requested_at"))
+            if at is not None and now - at < timedelta(hours=1):
+                n += 1
     return n
+
+
+def _settle(row: dict[str, Any], *, now: datetime) -> None:
+    """Close out a cleared figure. Its ticket id moves to `last_ticket`: leaving `ticket` set would make every
+    later recurrence record `ticket_open` forever and never escalate again. Its heal moves to `last_heal` with the
+    outcome, which keeps the per-lane hourly budget honest while `prune` stops retaining the row as mid-escalation."""
+    ticket = row.pop("ticket", None)
+    if ticket:
+        row["last_ticket"] = ticket
+    heal = row.pop("heal", None)
+    if heal:
+        row["last_heal"] = {**heal, "state": "cleared", "settled_at": _iso(now)}
+    row["status"] = "cleared"
 
 
 # ── the ladder (pure: findings + state + config + clock in, decisions out) ──────────────────────────────────────
@@ -326,7 +347,7 @@ def plan(
     for fp in sorted(observed):
         finding = observed[fp]
         row = dict(figures.get(fp) or {})
-        fails = int(row.get("consecutive_fails") or 0)
+        fails = _strikes(row)
         row.update({"page": finding["page"], "figure_id": finding["figure_id"],
                     "account": finding["account"], "symbol": finding["symbol"],
                     "check": finding["check"], "severity": finding["severity"],
@@ -346,7 +367,7 @@ def plan(
                 decisions[-1] = {**finding, "action": ACTION_CLEAR, "fails": 0,
                                  "fails_before": fails, "ticket": row.get("ticket")}
                 row.update({"consecutive_fails": 0, "cleared_at": _iso(moment)})
-                row.pop("heal", None)
+                _settle(row, now=moment)
             row["last_seen_at"] = _iso(moment)
             row.setdefault("first_seen_at", row["last_seen_at"])
             figures[fp] = row
@@ -402,20 +423,20 @@ def plan(
     # PASS by absence: a fingerprint that was failing and is no longer in M cleared — unless the caller told us which
     # fingerprints the run covered and this one is not among them (an audit that stopped looking is not a fix).
     for fp, row in list(figures.items()):
-        if fp in observed or not int(row.get("consecutive_fails") or 0):
+        if fp in observed or not _strikes(row):
             continue
         if audited_set is not None and fp not in audited_set:
-            decisions.append({"fingerprint": fp, "action": "hold", "fails": int(row.get("consecutive_fails") or 0),
+            decisions.append({"fingerprint": fp, "action": "hold", "fails": _strikes(row),
                               "reason": "not_audited", "page": row.get("page"), "figure_id": row.get("figure_id")})
             continue
         decisions.append({"fingerprint": fp, "action": ACTION_CLEAR, "fails": 0,
-                          "fails_before": int(row.get("consecutive_fails") or 0),
+                          "fails_before": _strikes(row),
                           "page": row.get("page"), "figure_id": row.get("figure_id"),
                           "account": row.get("account"), "symbol": row.get("symbol"),
                           "check": row.get("check"), "severity": row.get("severity"),
                           "ticket": row.get("ticket"), "reason": "measured_pass"})
         row.update({"consecutive_fails": 0, "cleared_at": _iso(moment), "last_seen_at": _iso(moment)})
-        row.pop("heal", None)
+        _settle(row, now=moment)
 
     counts = {
         "checked": len(observed),

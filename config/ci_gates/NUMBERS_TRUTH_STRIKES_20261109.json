@@ -1,0 +1,19 @@
+{
+  "schema": "CiGate@v1",
+  "name": "NUMBERS_TRUTH_STRIKES_20261109",
+  "files": [
+    "tests/test_numbers_truth_strikes.py"
+  ],
+  "anchor": "NUMBERS_TRUTH_STRIKES_20261109",
+  "comment": [
+    "ANCHOR: NUMBERS_TRUTH_STRIKES_20261109 — LQ-20261107-1702, the three-strike ladder for the hourly numbers-truth",
+    "audit (DSN-20261109 REV 2 D/E, REV 3 G/H). scripts/lib/numbers_truth_strikes.py turns the audit core's findings",
+    "list into: strikes 1-2 recorded only; strike 3 one self-fix (a request for one run of the PRODUCER lane through",
+    "scripts/lib/n8n_cc_wave_c.enqueue_host_run -> the gateway's coordination/run, rate-limited one per lane per hour,",
+    "ACTIVE n8n lanes only); strike 4 one LQ-AUTO-<fingerprint> ticket + a FINDING file + one escalation through the",
+    "existing host comms intent route; a measured pass clears with one line. A NOT_MEASURED truth holds the counter:",
+    "it never strikes and never clears, so an unreadable store is never reported as a pass. Hermetic: inline",
+    "findings, in-memory state, an explicit clock, injected heal/escalate/ticket callables; no DB, no network, no",
+    "broker, no coordination ledger."
+  ]
+}
