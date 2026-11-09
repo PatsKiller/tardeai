@@ -97,7 +97,10 @@ def main(argv=None) -> int:
         from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
 
         written = record_position_decisions(decisions)
-        result["written"] = int(written.get("written") or 0)
+        # A count the store did not return stays unknown, never 0: "we could not tell" and "nothing
+        # was written" are different facts and the receipt must not merge them (tq taxonomy #2).
+        count = written.get("written")
+        result["written"] = count if isinstance(count, int) else None
         if written.get("error"):
             result["write_error"] = written["error"]
         ok = "error" not in written
