@@ -146,9 +146,10 @@ def key_levels(
                 v = _sma(closes, n)
                 if v is not None:
                     candidates.append((label, v))
-            step = float((cfg.get("round_number_step") or {}).get(index) or 0)
-            tol = float(cfg.get("round_number_tolerance_pct") or 0) / 100.0
-            if step > 0:
+            step = _f((cfg.get("round_number_step") or {}).get(index))
+            tol_pct = _f(cfg.get("round_number_tolerance_pct"))
+            if step is not None and step > 0 and tol_pct is not None:
+                tol = tol_pct / 100.0
                 for mult in (int(anchor / step) * step, (int(anchor / step) + 1) * step):
                     if mult > 0 and abs(mult - anchor) / anchor <= tol:
                         candidates.append(("round_number", mult))
