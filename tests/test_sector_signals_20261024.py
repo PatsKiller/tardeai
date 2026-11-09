@@ -77,6 +77,40 @@ def test_exact_return_difference_and_old_snapshot_does_not_win():
     assert normalized["state"] == "LAGGING"
 
 
+def test_a_missing_leader_session_uses_the_stored_quote_close_and_does_not_shorten():
+    """The ETF session fill leaves a screened name without the benchmark's last close.
+
+    The read uses that session's stored market_quotes close. It does not call
+    yfinance, and a name with no stored close stays unmeasured.
+    """
+    rows = price_rows()
+    last = max(r["price_date"] for r in rows if r["symbol"] == "SPY")
+    kept = [r for r in rows if not (r["symbol"] == "MSFT" and r["price_date"] == last)]
+    seen = []
+
+    def query(sql, params=None, fetch=None):
+        assert "yfinance" not in sql.lower()
+        if "ticker_prices" in sql:
+            return [r for r in kept if r["symbol"] in params[0]]
+        if "market_quotes" in sql:
+            seen.append(params[0])
+            assert "MSFT" in params[0] and "SPY" not in params[0]
+            return [{"symbol": "MSFT", "price": 200.0}]
+        return []
+
+    filled = projection.get_sector_signals(query, symbols=["MSFT"])["sectors"]["MSFT"]
+    assert seen == [["MSFT"]]
+    assert filled["rs20"] is not None and filled["as_of"] == str(last)
+
+    def bare(sql, params=None, fetch=None):
+        if "ticker_prices" in sql:
+            return [r for r in kept if r["symbol"] in params[0]]
+        return []
+
+    missing = projection.get_sector_signals(bare, symbols=["MSFT"])["sectors"]["MSFT"]
+    assert missing["rs20"] is None
+
+
 def test_missing_history_never_becomes_a_shorter_twenty_day_return():
     rows = price_rows()
     result = relative_strength(pairs(rows, "XLK")[-10:], pairs(rows, "SPY"))

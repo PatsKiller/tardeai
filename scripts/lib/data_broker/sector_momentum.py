@@ -23,6 +23,59 @@ SECTOR_ETFS = [
 ]
 
 
+def _latest_positive_date(series) -> Any:
+    dates = [d for d, price in series if price is not None and price > 0]
+    return max(dates) if dates else None
+
+
+def _append_stored_session_closes(db_query, prices, symbols) -> None:
+    """Fill a missing benchmark session from the stored quote close. No provider call.
+
+    Screened leaders often lack the session bar ``price-db-sync --session-close``
+    writes for the ETF universe. The close is the first stored ``market_quotes``
+    print inside config/session_close.json. yfinance is not consulted. A symbol
+    that already has that date is left alone, so a horizon is never shortened.
+    """
+    end = _latest_positive_date(prices.get("SPY") or [])
+    if end is None:
+        return
+    missing = []
+    for sym in symbols:
+        if sym == "SPY":
+            continue
+        have = any(d == end and price is not None and price > 0 for d, price in prices.get(sym) or [])
+        if not have:
+            missing.append(sym)
+    if not missing:
+        return
+    try:
+        import price_db_sync
+        win = price_db_sync.session_close_window()
+    except Exception:
+        return
+    rows = db_query(
+        """SELECT DISTINCT ON (upper(symbol))
+                  upper(symbol) AS symbol, price
+             FROM market_quotes
+            WHERE upper(symbol) = ANY(%s)
+              AND price IS NOT NULL AND price > 0
+              AND fetched_at::date = %s
+              AND (fetched_at AT TIME ZONE 'America/New_York')::time >= %s
+              AND (fetched_at AT TIME ZONE 'America/New_York')::time < %s
+            ORDER BY upper(symbol), fetched_at ASC""",
+        (missing, end, win.close, win.end),
+        fetch="all",
+    ) or []
+    for row in rows:
+        try:
+            price = float(row.get("price"))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if price <= 0:
+            continue
+        prices.setdefault(str(row["symbol"]).upper(), []).append((end, price))
+
+
 def get_sector_signals(db_query, *, symbols=None) -> dict[str, Any]:
     """Read-only canonical sector RS over exact SPY sessions; no cache writes."""
     from lib.sector_signals import relative_strength
@@ -39,6 +92,8 @@ def get_sector_signals(db_query, *, symbols=None) -> dict[str, Any]:
     prices = {}
     for row in rows:
         prices.setdefault(str(row["symbol"]).upper(), []).append((row["price_date"], row["close_price"]))
+    if symbols is not None:
+        _append_stored_session_closes(db_query, prices, requested)
     sectors = {etf: relative_strength(prices.get(etf, []), prices.get("SPY", [])) for etf in requested}
     as_of = max((r["as_of"] or "" for r in sectors.values()), default="") or None
     try:

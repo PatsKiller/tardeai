@@ -240,6 +240,39 @@ def test_an_unresolvable_session_returns_not_ok_and_writes_nothing(monkeypatch):
 # ── the source and the default statement ────────────────────────────────────
 
 
+def test_the_default_fill_includes_screened_leaders_and_still_skips_yfinance(monkeypatch):
+    class Cur:
+        def __init__(self):
+            self.calls = []
+
+        def execute(self, sql, params=None):
+            self.calls.append(sql)
+
+        def fetchall(self):
+            if any("watchlist_items" in sql for sql in self.calls):
+                return [("AAPL",)]
+            return []
+
+    syms = pds.session_close_symbols(Cur())
+    assert syms[0:len(pds.SECTOR_UNIVERSE)] == list(pds.SECTOR_UNIVERSE)
+    assert "AAPL" in syms
+    assert "yfinance" not in inspect.getsource(pds.session_close_symbols)
+    assert "backfill_yfinance_history" not in inspect.getsource(pds.sync_session_closes)
+
+    seen = {}
+
+    def scope(cur):
+        seen["yes"] = True
+        return ["SPY", "AAPL"]
+
+    cur = ScriptedCursor([[]])
+    monkeypatch.setattr(pds, "session_close_symbols", scope)
+    monkeypatch.setattr(pds, "_get_conn", lambda: FakeConn(cur))
+    res = pds.sync_session_closes(dry_run=True)
+    assert seen.get("yes") is True
+    assert res["symbols"] == 2 and res["written"] == 0
+
+
 def test_the_fill_reads_broker_quotes_only_never_yfinance():
     src = (inspect.getsource(pds.plan_session_closes)
            + inspect.getsource(pds.sync_session_closes)

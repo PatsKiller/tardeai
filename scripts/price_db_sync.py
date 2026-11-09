@@ -527,6 +527,40 @@ def sync_quotes_to_ticker_prices(symbols: list[str] | None = None) -> int:
 SESSION_CLOSE_CONFIG = PROJECT_ROOT / "config" / "session_close.json"
 SECTOR_UNIVERSE = ("XLK", "XLF", "XLV", "XLE", "XLI", "XLY", "XLP", "XLU", "XLB", "XLRE", "XLC",
                    "SPY", "QQQ")
+# The sectors page ranks these names. The ETF-only session fill left them without
+# the benchmark's latest close, so 20-session RS stayed unmeasured. Same stored
+# market_quotes close, never yfinance.
+SCREENED_LEADER_SQL = """
+SELECT DISTINCT upper(wi.symbol) AS symbol
+  FROM watchlist_items wi
+ WHERE wi.status IN ('active','researched')
+   AND wi.score IS NOT NULL
+   AND upper(wi.symbol) ~ '^[A-Z]{1,5}$'
+   AND upper(wi.symbol) IN (
+         SELECT DISTINCT upper(symbol) FROM incubator_universe
+          WHERE sector IS NOT NULL AND btrim(sector) <> ''
+       )
+"""
+
+
+def session_close_symbols(cur) -> list:
+    """ETF universe plus screened sector leaders. Reads the cursor only.
+
+    A failure of the leader query rolls back to a savepoint so the ETF fill
+    still runs. The query is a read. It does not call a price provider.
+    """
+    try:
+        cur.execute("SAVEPOINT screened_leaders")
+        cur.execute(SCREENED_LEADER_SQL)
+        leaders = [str(r[0]).upper() for r in (cur.fetchall() or []) if r and r[0]]
+        cur.execute("RELEASE SAVEPOINT screened_leaders")
+    except Exception:
+        try:
+            cur.execute("ROLLBACK TO SAVEPOINT screened_leaders")
+        except Exception:
+            return list(SECTOR_UNIVERSE)
+        return list(SECTOR_UNIVERSE)
+    return list(dict.fromkeys([*SECTOR_UNIVERSE, *leaders]))
 
 
 class CloseWindow(NamedTuple):
@@ -702,7 +736,7 @@ def plan_session_closes(cur, session, symbols, *, window=None):
 
 
 def sync_session_closes(symbols=None, *, session=None, dry_run=False, window=None) -> dict:
-    """Fill the missing session bars for ``symbols`` (default: the sector universe).
+    """Fill the missing session bars for ``symbols`` (default: ETFs plus screened leaders).
 
     Broker-read closes only (``market_quotes``); yfinance is never consulted. The close is the
     FIRST print inside the configured window, so an after-hours refresh can never be stored as
@@ -710,12 +744,15 @@ def sync_session_closes(symbols=None, *, session=None, dry_run=False, window=Non
     """
     from datetime import date as _date
     win = window or session_close_window()
-    syms = [str(s).upper() for s in (symbols or SECTOR_UNIVERSE) if s]
     if isinstance(session, str) and session.strip():
         session = _date.fromisoformat(session.strip()[:10])
     conn = _get_conn()
     cur = conn.cursor()
     try:
+        if symbols is None:
+            syms = session_close_symbols(cur)
+        else:
+            syms = [str(s).upper() for s in symbols if s]
         why = "session given"
         if session is None:
             session, why = resolve_session_close_date(cur, syms, window=win)
