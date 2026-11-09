@@ -54,9 +54,13 @@ def test_vix_observation_returns_source_and_observation_time(tree):
     assert any(isinstance(r.value, ast.Tuple) and len(r.value.elts) == 3 for r in returns), (
         "_vix_observation must return (value, source, observation_time)"
     )
-    # the fallback path reads market_regime_indicators.vix_close by name
+    # LQ-20261107-1610: one headline VIX. The value comes from _vix_headline_fields (vix_complex), never from the
+    # scanner run's VIX or an unfiltered market_regime_indicators row (FINDING-LQ-1392: a yahoo_finance row).
     src = ast.dump(fn)
-    assert "market_regime_indicators.vix_close" in src
+    assert "_vix_headline_fields" in src
+    assert "market_regime_indicators" not in src and "run_vix" not in ast.dump(fn.body[-1])
+    head = _fn(tree, "_vix_headline_fields")
+    assert "vix_headline" in ast.dump(head)
 
 
 def test_compute_trade_ai_publishes_vix_source_and_observation_time(tree):

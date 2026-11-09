@@ -4264,6 +4264,8 @@ def overview():
             "vix": tai.get("vix"),
             "vix_source": tai.get("vix_source"),
             "vix_observation_time": tai.get("vix_observation_time"),
+            "vix_state": tai.get("vix_state"),
+            "vix_stale_after_hours": tai.get("vix_stale_after_hours"),
             "breadth": tai.get("breadth"),
             "market_regime": tai.get("market_regime"),
             "run_id": tai.get("run_id"),
@@ -15827,34 +15829,37 @@ def _forecast():
     }
 
 
-def _vix_observation(run_vix, run_timestamp=None):
+def _vix_headline_fields():
+    """LQ-20261107-1610: the ONE headline VIX (lib.vix_headline -> vix_complex: Schwab $VIX, FRED VIXCLS as the
+    labelled fallback, banned feeds refused by name), with its zoned observation clock and FRESH/STALE/UNDATED/
+    UNAVAILABLE state. The CIO market-risk card reads the same function (cio_truth.regime_for), so the two tiles
+    cannot disagree. Never falls back to the scanner run's VIX or to an unfiltered market_regime_indicators row."""
+    try:
+        from lib.vix_headline import vix_headline
+
+        return vix_headline(db_query=_db_query)
+    except Exception as exc:  # noqa: BLE001 — UNAVAILABLE by name, never another source
+        return {
+            "vix": None,
+            "vix_source": None,
+            "vix_observation_time": None,
+            "vix_age_hours": None,
+            "vix_state": "UNAVAILABLE",
+            "vix_stale": True,
+            "vix_stale_after_hours": None,
+            "vix_reason": f"vix_headline import/read failed: {type(exc).__name__}",
+        }
+
+
+def _vix_observation(run_vix=None, run_timestamp=None):
     """Return (value, source, observation_time) for the VIX headline.
 
-    cc-header-truth-v2 (Phase 2 D): VIX must name its source and observation
-    time. The run_summary vix and the regime collector's vix_close are two
-    different sources; a bare float hides which one answered. This returns the
-    source label alongside the value so the surface can name it.
+    LQ-20261107-1610: ``run_vix``/``run_timestamp`` are accepted for call compatibility and ignored. The scanner
+    run's VIX came from the orchestrator's Yahoo-first chain and was stamped with the RUN's time, so a carried
+    Friday close read as a Monday-morning observation. The value now comes from ``_vix_headline_fields``.
     """
-    try:
-        v = float(run_vix or 0)
-        if v > 0:
-            return v, "trade_ai_run_summary", run_timestamp
-    except (TypeError, ValueError):
-        pass
-    try:
-        row = _db_query(
-            """SELECT value, created_at FROM market_regime_indicators
-               WHERE indicator_key='vix_close' AND created_at > now() - interval '48 hours'
-               ORDER BY created_at DESC LIMIT 1""",
-            fetch="one",
-        )
-        if row and row.get("value") is not None:
-            _ct = row.get("created_at")
-            _obs = _ct.isoformat() if hasattr(_ct, "isoformat") else (str(_ct) if _ct else None)
-            return float(row["value"]), "market_regime_indicators.vix_close", _obs
-    except Exception:
-        pass
-    return None, None, None
+    h = _vix_headline_fields()
+    return h.get("vix"), h.get("vix_source"), h.get("vix_observation_time")
 
 
 def _vix_effective(run_vix):
@@ -16514,7 +16519,12 @@ def _compute_trade_ai():
 
     _current_run_tally = tally_decisions(_current_run_tickers)
     _run_id = derive_run_id(_current_run_label, latest.get("date", ""), latest.get("generated_at", ""))
-    _vix_val, _vix_src, _vix_obs = _vix_observation(latest.get("vix"), _latest_run_timestamp)
+    _vix_head = _vix_headline_fields()
+    _vix_val, _vix_src, _vix_obs = (
+        _vix_head.get("vix"),
+        _vix_head.get("vix_source"),
+        _vix_head.get("vix_observation_time"),
+    )
     # Alternate scanned claim must measure the SAME population as primary.
     # run_summary.ticker_count / health.symbols_scanned often include non-full upserts
     # or a wider label population than the dated FULL rows (PARTIAL 3 vs 14, 49 vs 65,
@@ -16590,6 +16600,10 @@ def _compute_trade_ai():
         "vix": _vix_val,
         "vix_source": _vix_src,
         "vix_observation_time": _vix_obs,
+        "vix_state": _vix_head.get("vix_state"),
+        "vix_stale_after_hours": _vix_head.get("vix_stale_after_hours"),
+        "vix_reason": _vix_head.get("vix_reason"),
+        "run_vix": latest.get("vix"),  # the scanner's own input, traceable; never the headline
         "breadth": latest.get("breadth", ""),
         "market_regime": latest.get("breadth", latest.get("market_regime", "Neutral")),
         "go_count": current_run_go,
@@ -18838,6 +18852,9 @@ def trade_ai_summary():
         "setup_run_summary",
         "vix_source",
         "vix_observation_time",
+        "vix_state",
+        "vix_stale_after_hours",
+        "vix_reason",
         "latest_run_go_count",
         "latest_run_wait_count",
         "latest_run_no_go_count",

@@ -9,7 +9,7 @@ classifier snapshot's input stamped with its INSERT time. Both now read ``vix_co
 from __future__ import annotations
 
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -102,3 +102,34 @@ def test_the_cio_card_shows_the_headline_vix_not_the_classifier_snapshot_input()
     assert card["vix_as_of"] == header["vix_observation_time"]
     assert card["vix_source"] == header["vix_source"] and card["vix_state"] == "FRESH"
     assert card["classifier_vix"] == 99.0  # the classifier's own input stays traceable, never shown as the VIX
+
+
+def _api_v2(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)  # importing api_v2 pulls in data_broker, which writes projections into cwd
+    import api_v2  # noqa: PLC0415
+    return api_v2
+
+
+def test_the_header_vix_is_the_headline_never_the_scanner_runs_vix(monkeypatch, tmp_path):
+    """LQ-20261107-1649 fail-before: _vix_observation(99.0, run_ts) returned (99.0, "trade_ai_run_summary", run_ts)."""
+    api_v2 = _api_v2(monkeypatch, tmp_path)
+    recent = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(hours=1)  # api_v2 reads the real clock
+    monkeypatch.setattr(api_v2, "_db_query", _db([_quote(21.5, recent)]))
+    value, source, observed = api_v2._vix_observation(99.0, "2026-01-12T14:07:00+00:00")
+    head = vh.vix_headline(db_query=api_v2._db_query)
+    assert value == head["vix"] == 21.5
+    assert source == head["vix_source"] and source != "trade_ai_run_summary"
+    assert observed == head["vix_observation_time"] != "2026-01-12T14:07:00+00:00"
+
+
+def test_a_headline_read_failure_is_unavailable_never_another_source(monkeypatch, tmp_path):
+    api_v2 = _api_v2(monkeypatch, tmp_path)
+
+    def boom(**_kw):
+        raise RuntimeError("synthetic")
+
+    monkeypatch.setattr(vh, "vix_headline", boom)
+    fields = api_v2._vix_headline_fields()
+    assert fields["vix"] is None and fields["vix_state"] == "UNAVAILABLE"
+    assert "RuntimeError" in fields["vix_reason"]
+    assert api_v2._vix_observation(99.0, "2026-01-12T14:07:00+00:00") == (None, None, None)
