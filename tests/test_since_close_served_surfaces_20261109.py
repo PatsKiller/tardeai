@@ -34,8 +34,8 @@ def _advice(symbol, account, answer, held, suggested, state=None):
     return row
 
 
-def _snap(rows=None):
-    return {
+def _snap(rows=None, synopsis=None):
+    snap = {
         "schema": "SinceCloseSnapshot@v1", "generated_at": BRIEF_AT,
         "cio_brief": {
             "verdict_owner": "cio", "synopsis": "synthetic test synopsis", "risk_tier": "moderate",
@@ -50,6 +50,18 @@ def _snap(rows=None):
             ],
         },
     }
+    if synopsis is not None:
+        snap["cio_brief"]["synopsis"] = synopsis
+    return snap
+
+
+OLD_DO_NOW = {
+    "line": "6 stop item(s), 5 needing a decision; first: ZQAA in Schwab Individual — RAISE (raise to 7.97)",
+    "stop_advice_count": 6, "actionable_count": 5,
+    "first": {"symbol": "ZQAA", "account": "schwab_taxable", "answer": "RAISE", "suggested_stop": 7.97,
+              "source_ids": ["stop_last_known:ZQAA:schwab_taxable"]},
+    "source_ids": ["stop_last_known:ZQAA:schwab_taxable"],
+}
 
 
 def _read(*, status="read", working=True, as_of=READ_AT):
@@ -143,3 +155,38 @@ def test_the_surfaces_share_one_rule_with_the_writer():
     got = C.reconcile_stop_surfaces(snap, _read(), now=NOW)
     direct = C.reconcile_stop_advice(snap["cio_brief"], _read(), now=NOW)
     assert got["rows"] == direct["rows"] and got["read"] == direct["read"]
+
+
+# ── the brief's baked "Do now" sentence and the card counts ────────────────────────────────────────────────────
+
+
+def test_the_do_now_line_counts_only_what_the_book_does_not_answer():
+    doc = C.served_since_close(_snap(synopsis={"do_now": OLD_DO_NOW, "as_of": BRIEF_AT}), _read(), now=NOW)
+    got = doc["cio_brief"]["synopsis"]["do_now"]
+    # six rows in the brief, but four of its five asks are working at the broker: one is left
+    assert got["stop_advice_count"] == 6 and got["actionable_count"] == 1 and got["settled_count"] == 4
+    assert got["first"]["symbol"] == "ZQAD" and got["first"]["answer"] == "ADD_STOP"
+    assert got["line"].startswith("6 stop item(s), 1 needing a decision; first: ZQAD in ")
+    assert "ZQAA" not in got["line"]                                     # the satisfied asks are not the first action
+    assert doc["cio_brief"]["synopsis"]["as_of"] == BRIEF_AT             # every other synopsis key is the writer's
+
+
+def test_a_fully_settled_book_says_none_needing_a_decision():
+    rows = [_advice("ZQAA", "schwab_taxable", "RAISE", 100.0, 7.97)]
+    doc = C.served_since_close(_snap(rows, synopsis={"do_now": OLD_DO_NOW}), _read(), now=NOW)
+    got = doc["cio_brief"]["synopsis"]["do_now"]
+    assert got["actionable_count"] == 0 and got["settled_count"] == 1 and got["first"] is None
+    assert got["line"] == "1 stop item(s), none needing a decision; 1 done at the broker"
+
+
+def test_an_unread_book_keeps_every_ask_as_a_decision():
+    doc = C.served_since_close(_snap(synopsis={"do_now": OLD_DO_NOW}), _read(status="unread"), now=NOW)
+    got = doc["cio_brief"]["synopsis"]["do_now"]
+    assert got["actionable_count"] == 5 and got["settled_count"] == 0
+    assert got["first"]["symbol"] == "ZQAA" and "0 done" not in got["line"]
+    assert "needing a decision" in got["line"]
+
+
+def test_a_brief_without_a_synopsis_gains_none():
+    doc = C.served_since_close(_snap(), _read(), now=NOW)                # synopsis is a bare string
+    assert doc["cio_brief"]["synopsis"] == "synthetic test synopsis"

@@ -1135,6 +1135,68 @@ def _settled_cell(row: Mapping[str, Any]) -> str:
     return " ".join(parts)
 
 
+def _acct_prose(account: Any) -> str:
+    """The account's display name, exactly as the brief's own prose spells it; the key if the registry is absent."""
+    try:  # one module, two sys.path roots
+        try:
+            from lib.account_display import account_label  # type: ignore[import-not-found] -- scripts/lib vs lib
+        except ImportError:  # pragma: no cover - imported as scripts.lib.*
+            from scripts.lib.account_display import account_label  # type: ignore[no-redef] -- scripts/lib vs lib
+        return account_label(account)
+    except Exception:  # noqa: BLE001 — a label is cosmetic; never lose the row over it
+        return str(account)
+
+
+def reconciled_do_now(rows: Sequence[Mapping[str, Any]], prior: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The brief's ``synopsis.do_now`` block, recomputed from the reconciled rows (LQ-20261107-1672).
+
+    The brief's block is prose baked at build time: "10 stop item(s), 5 needing a decision; first: ... RAISE". Home's
+    CIO card prints its counts ("5 to decide") and every other surface that renders that line still says work exists
+    after the broker answered. Keep the brief's sentence shape and clock, but count only what the book does not answer
+    yet, and point ``first`` at that row. A book that was not read cannot settle anything: its asks count as needing a
+    decision, and no sentence claims a stop was placed.
+    """
+    prior = dict(prior) if isinstance(prior, Mapping) else {}
+    actionable = [r for r in rows if str(r.get("answer") or "").upper() in CIO_ACTIONABLE]
+    need = [r for r in actionable if r.get("state") in ("open", "unread")]
+    settled = [r for r in actionable if r.get("state") == "done"]
+    first = need[0] if need else None
+    if first is not None:
+        suggested = _num(first.get("suggested_stop"))
+        held = _num(first.get("held_qty"))
+        answer = str(first.get("answer") or "").upper()
+        if answer == "RAISE" and suggested is not None:
+            verb = f"raise to {suggested:g}"
+        elif answer == "ADD_STOP" and suggested is not None:
+            verb = f"add a stop near {suggested:g}"
+        elif answer == "FIX_QTY" and held is not None:
+            verb = f"cut the stop qty to {held:g}"
+        else:
+            verb = "hold"
+        line = (f"{len(rows)} stop item(s), {len(need)} needing a decision; "
+                f"first: {first.get('symbol')} in {_acct_prose(first.get('account'))} — "
+                f"{first.get('answer')} ({verb})")
+        out_first = {"symbol": first.get("symbol"), "account": first.get("account"), "answer": first.get("answer"),
+                     "suggested_stop": first.get("suggested_stop"), "source_ids": list(first.get("source_ids") or [])}
+        source_ids = list(first.get("source_ids") or [])
+    elif settled:
+        line = f"{len(rows)} stop item(s), none needing a decision; {len(settled)} done at the broker"
+        out_first = None
+        source_ids = []
+    else:
+        line = "no stop items tonight"
+        out_first = None
+        source_ids = []
+    return {
+        "line": line,
+        "stop_advice_count": len(rows),
+        "actionable_count": len(need),
+        "first": out_first,
+        "source_ids": source_ids or list(prior.get("source_ids") or []),
+        "settled_count": len(settled),
+    }
+
+
 def reconcile_stop_surfaces(
     snap: Mapping[str, Any] | None, read: Mapping[str, Any] | None, *, now: datetime
 ) -> dict[str, Any]:
@@ -1143,7 +1205,8 @@ def reconcile_stop_surfaces(
     ``/home/since-close``, ``/home/do-now``, ``/home/cio-card`` and the stop review all read the same overnight brief,
     which was written before the broker's book moved. Each surface used to count the brief's asks as work, so the
     operator was told to raise four stops Schwab had already raised. This returns the reconciled rows, the counts those
-    surfaces print, and the one line a satisfied ask moves to: "No change needed — done at Schwab <stop time>".
+    surfaces print, the recomputed ``synopsis.do_now`` block, and the one line a satisfied ask moves to: "No change
+    needed — done at Schwab <stop time>".
 
     Read-only and pure: it reads the ``read`` the caller took and writes nothing.
     """
@@ -1156,22 +1219,32 @@ def reconcile_stop_surfaces(
     if settled:
         when = rec["read"].get("as_of_text") or "the newest broker read"
         line = f"No change needed — done at Schwab ({when}): " + " · ".join(_settled_cell(r) for r in settled)
-    return {**rec, "counts": counts, "settled_line": line}
+    prior_do_now = ((brief.get("synopsis") or {}) if isinstance(brief.get("synopsis"), Mapping) else {}).get("do_now")
+    return {**rec, "counts": counts, "do_now": reconciled_do_now(rec["rows"], prior_do_now),
+            "settled_line": line}
 
 
 def served_since_close(
     snap: Mapping[str, Any] | None, read: Mapping[str, Any] | None, *, now: datetime
 ) -> dict[str, Any]:
     """The snapshot document a route may serve: the same brief with its ``stop_advice`` rows reconciled against the
-    broker's newest stop read and the ``stop_read`` clock beside them. Everything else is byte-identical, and the input
-    document is not mutated — the writer's file on disk stays exactly as the last build wrote it."""
+    broker's newest stop read, the ``stop_read`` clock beside them, and the ``synopsis.do_now`` counts that clock makes
+    true. Everything else is byte-identical, and the input document is not mutated — the writer's file on disk stays
+    exactly as the last build wrote it."""
     if not isinstance(snap, Mapping):
         return {}
     if not isinstance(snap.get("cio_brief"), Mapping):
         return dict(snap)
     rec = reconcile_stop_advice(snap["cio_brief"], read, now=now)
+    brief = dict(snap["cio_brief"])
+    brief["stop_advice"] = rec["rows"]
+    brief["stop_read"] = rec["read"]
+    if isinstance(brief.get("synopsis"), Mapping):
+        syn = dict(brief["synopsis"])
+        syn["do_now"] = reconciled_do_now(rec["rows"], syn.get("do_now"))
+        brief["synopsis"] = syn
     doc = dict(snap)
-    doc["cio_brief"] = {**dict(snap["cio_brief"]), "stop_advice": rec["rows"], "stop_read": rec["read"]}
+    doc["cio_brief"] = brief
     return doc
 
 
