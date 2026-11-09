@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1444_registry_runtime_duplicate_cron_20261109",
+  "files": [
+    "tests/test_lq1444_registry_runtime_duplicate_cron_20261109.py"
+  ],
+  "anchor": "LQ1444_REGISTRY_RUNTIME_DUPLICATE_CRON_20261109",
+  "comment": [
+    "ANCHOR: LQ1444_REGISTRY_RUNTIME_DUPLICATE_CRON_20261109 — DETECTOR_BLIND_SPOT:",
+    "DUPLICATE_SCHEDULER must name a relay-live lane whose active crontab line still runs",
+    "scheduler.match without effect_claim_cron.sh (event-detector L330 shape). Synthetic fixtures only."
+  ]
+}

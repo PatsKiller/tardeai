@@ -60,11 +60,14 @@ Contradiction codes (rules are pure functions over the two sides; tests/test_reg
   CRON_ROW_RUNS_UNDER_TIMER      (2026-11-07) kind-cron row declared ACTIVE with no active crontab line, but a live
                                  systemd timer runs the same script: the lane runs, the declared MECHANISM is wrong
                                  (reported instead of ACTIVE_CRON_LINE_ABSENT, which would invent a contradiction)
-  DUPLICATE_SCHEDULER           (2026-11-07) one program reachable from two schedulers at once: an n8n lane (registry
-                                 ACTIVE, dispatch live) whose entry script imports the module a live timer runs, or
-                                 a cron row whose script a live timer also runs. Two writers for one lane receipt
-                                 and one effect (2026-11-07 finding: data-plausibility-audit +
-                                 n8n-data-plausibility-audit, and gap-resolution)
+  DUPLICATE_SCHEDULER           (2026-11-07 / LQ-20261107-1444) one program reachable from two schedulers at once:
+                                 (a) an n8n lane whose entry script imports the module a live timer runs, (b) a cron
+                                 row whose script a live timer also runs, or (c) a lane on the relay live list whose
+                                 active crontab line still runs scheduler.match without effect_claim_cron.sh (the
+                                 shared-flock canary twin is intentional; an unwrapped line is not). Two writers for
+                                 one lane receipt and one effect (2026-11-07: data-plausibility-audit twins;
+                                 2026-11-08 integrity: event-detector L330 was on the live list with an active cron
+                                 line and was never named — DETECTOR_BLIND_SPOT).
 
     python3 scripts/check_registry_runtime_truth.py              # --dry-run (default): print, write nothing
     python3 scripts/check_registry_runtime_truth.py --json       # dry run, JSON only
@@ -693,6 +696,34 @@ def evaluate(
                               "on the relay live list but allowlist " + ("has no entry" if e is None else "live_arg null"),
                               allowlisted=e is not None))
 
+    # LQ-20261107-1444: a lane on the relay live list with an active *unwrapped* crontab line is two writers.
+    # Timer-based DUPLICATE_SCHEDULER (below) only sees systemd twins. event-detector stayed kind=cron while on
+    # the live list with crontab L330 still active; the 2026-11-08 07:20 report never named it (DETECTOR_BLIND_SPOT).
+    # effect_claim_cron.sh is the intentional canary shared-flock twin — not a finding.
+    if live_lanes is not None and cron_lines is not None:
+        for lane in sorted(set(live_lanes)):
+            row = rows.get(lane)
+            if row is None or row.get("state") != "ACTIVE" or not _stage_is_live(row):
+                continue
+            markers = _match_markers(_sched(row))
+            if not markers:
+                continue
+            match = markers[0] if len(markers) == 1 else markers
+            hits = [ln for ln in cron_lines
+                    if any(m in ln for m in markers) and "effect_claim_cron.sh" not in ln]
+            if hits:
+                out.append(_c(
+                    "DUPLICATE_SCHEDULER", lane,
+                    f"on the relay live list and {len(hits)} active crontab line(s) still run {match!r} "
+                    f"without effect_claim_cron.sh: two schedulers can fire the same lane",
+                    lines=len(hits),
+                    line_sha256=[hashlib.sha256(h.encode()).hexdigest()[:12] for h in hits],
+                    match=match,
+                    registry_kind=_sched(row).get("kind"),
+                    registry_stage=_sched(row).get("stage"),
+                    dispatch_mode=(row.get("dispatch") or {}).get("mode"),
+                ))
+
     for lane, row in sorted(rows.items()):
         s = _sched(row)
         c = contracts.get(lane)
@@ -788,8 +819,10 @@ def evaluate(
         if systemd_rows:
             not_measured += ["ACTIVE_TIMER_ABSENT", "ACTIVE_TIMER_DISABLED", "ACTIVE_TIMER_INACTIVE",
                              "ACTIVE_SERVICE_INACTIVE", "DECLARED_OFF_TIMER_ACTIVE",
-                             "DECLARED_OFF_SERVICE_ACTIVE", "CRON_ROW_RUNS_UNDER_TIMER",
-                             "DUPLICATE_SCHEDULER"]
+                             "DECLARED_OFF_SERVICE_ACTIVE", "CRON_ROW_RUNS_UNDER_TIMER"]
+            # Timer half of DUPLICATE_SCHEDULER is unmeasured only when the live-list+cron half also cannot run.
+            if live_lanes is None or cron_lines is None:
+                not_measured += ["DUPLICATE_SCHEDULER"]
     else:
         for lane, row in sorted(rows.items()):
             s = _sched(row)
