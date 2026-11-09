@@ -74,7 +74,10 @@ def _failure_exit(summary: dict[str, Any]) -> int:
     err = summary.get("error") or ""
     if _is_sqlite_lock_error(err):
         return EX_TEMPFAIL
-    if int(summary.get("failed_transient") or 0) > 0 and not err:
+    # Only a real positive int selects 75 — do not coerce a missing key with `or 0`
+    # (semgrep tq-py-missing-as-zero; review REWORK LQ-1409).
+    ft = summary.get("failed_transient")
+    if isinstance(ft, int) and ft > 0 and not err:
         return EX_TEMPFAIL
     return 1
 
@@ -139,7 +142,9 @@ def run(
     try:
         conn = C.connect_rw(ledger)
     except (FileNotFoundError, OSError, Exception) as exc:  # noqa: BLE001 — the receipt names the cause
-        summary["error"] = f"{type(exc).__name__}: ledger"
+        # Keep str(exc) so sqlite lock text survives (_is_sqlite_lock_error → exit 75).
+        # Truncating to "OperationalError: ledger" made connect_rw locks terminal (exit 1).
+        summary["error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
         return _finish(R, True, receipt, ok=False, summary=summary, now=now)
     try:
         res = C.apply(conn, routes, now, max_intents, token, evidence)

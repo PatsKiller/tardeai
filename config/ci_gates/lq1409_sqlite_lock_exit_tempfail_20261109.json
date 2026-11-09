@@ -1,12 +1,11 @@
 {
   "schema": "CiGate@v1",
   "name": "lq1409_sqlite_lock_exit_tempfail_20261109",
-  "tests": [
+  "files": [
     "tests/test_lq1409_sqlite_lock_exit_tempfail_20261109.py"
   ],
-  "notes": [
-    "ANCHOR: LQ-20261107-1409 — n8n-comms-intent-consumer and disk-usage-monitor exit 75 (EX_TEMPFAIL)",
-    "on coordination-ledger sqlite lock / intent_store_unavailable so transient-2 can retry;",
-    "exit 1 on those paths was terminal on attempt 1 and filled the dead-letter queue."
+  "anchor": "lq1409_sqlite_lock_exit_tempfail",
+  "comment": [
+    "ANCHOR: lq1409_sqlite_lock_exit_tempfail — n8n-comms-intent-consumer / disk-usage-monitor exit 75 (EX_TEMPFAIL) on coordination-ledger sqlite lock / intent_store_unavailable so transient-2 can retry; exit 1 on those paths was terminal on attempt 1"
   ]
 }
