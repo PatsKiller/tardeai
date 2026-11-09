@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "reconcile_exit_advisory_undated_bars_20261109",
+  "files": [
+    "tests/test_reconcile_exit_advisory_undated_bars_20261109.py"
+  ],
+  "comment": [
+    "LQ-1706: a bar source whose bars carry no date measures no window, so the exit-advisory reconciler skips the pair as bars_unavailable instead of writing permanent NOT_EVALUABLE rows and reporting produced=N; a run whose only obstacle was the bar source exits 1 with dependency_unavailable. A dated series that merely starts after one advisory's window still writes NOT_EVALUABLE."
+  ]
+}

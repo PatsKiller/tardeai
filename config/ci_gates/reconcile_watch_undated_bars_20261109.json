@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "reconcile_watch_undated_bars_20261109",
+  "files": [
+    "tests/test_reconcile_watch_undated_bars_20261109.py"
+  ],
+  "comment": [
+    "LQ-1706: an undated bar source settled every due watch candidate as NOT_EVALUABLE, taking it out of the verdict IS NULL selector for good, while the run reported produced=N and exit 0. Such events are now a bars_unavailable skip that leaves the verdict NULL (retryable); a run where none could be scored exits 1 naming the bar source. An empty but datable series keeps its old NOT_EVALUABLE meaning."
+  ]
+}
