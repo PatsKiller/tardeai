@@ -1,7 +1,7 @@
 {
   "schema": "NumbersTruthCatalog@v1",
   "as_of": "2026-11-09",
-  "_why": "DSN-20261109-numbers-truth-audit.md \u00a71 (rev 1) aligned by REV 2 (truth sources, current nav pages, no duplicates) and REV 3 (the authority family G1-G3). One row per displayed figure: the surface it is served from (API path + JSON pointer, or runtime artifact + key) and the truth it must agree with. scripts/numbers_truth_audit.py grades each row read-only and emits the findings list M in its LaneRunReceipt@v2 (LQ-1702 consumes M for strikes/heal/ticket/escalation). A row for a route that is not in lib/navConfig.ts fails the CI gate tests/test_numbers_truth_audit_20261109.py.",
+  "_why": "DSN-20261109-numbers-truth-audit.md §1 (rev 1) aligned by REV 2 (truth sources, current nav pages, no duplicates) and REV 3 (the authority family G1-G3). One row per displayed figure: the surface it is served from (API path + JSON pointer, or runtime artifact + key) and the truth it must agree with. scripts/numbers_truth_audit.py grades each row read-only and emits the findings list M in its LaneRunReceipt@v2 (LQ-1702 consumes M for strikes/heal/ticket/escalation). A row for a route that is not in lib/navConfig.ts fails the CI gate tests/test_numbers_truth_audit_20261109.py.",
   "nav_config": "apps/command-center-v3/src/lib/navConfig.ts",
   "codes": [
     "NT_QTY_MISMATCH",
@@ -149,9 +149,11 @@
     "http": {
       "window_start_et": "04:00",
       "window_end_et": "16:15",
-      "_note": "AGENTS.md \u00a728.8: no HTTP to :7777 on a weekday inside this window. Inside it the audit reads the served artifacts the API reads; an api-only row is NOT_MEASURED with reason in_window_artifact_only."
+      "_note": "AGENTS.md §28.8: no HTTP to :7777 on a weekday inside this window. Inside it the audit reads the served artifacts the API reads; an api-only row is NOT_MEASURED with reason in_window_artifact_only."
     },
-    "max_findings": 200
+    "max_findings": 200,
+    "quote_fresh_min_closed": 240,
+    "_quote_fresh_note": "Outside the session a quote may be hours old by construction, but not overnight-old: the regular store's last row for the previous session is at most ~2 h behind the close, so a row more than 4 h old (live 2026-11-09: market_quotes_extended's newest ANET bar was 03:58, 14 h old) cannot verify a displayed price and is NOT_MEASURED, never a mismatch."
   },
   "rows": [
     {
@@ -225,19 +227,19 @@
         "figure": "day P&L",
         "surfaces": [
           {
-            "name": "header today_pnl.change",
+            "name": "header today_pnl.total_change",
             "value": [
-              "/today_change"
+              "/today_pnl/total_change"
             ]
           },
           {
             "name": "accounts stored_row_change",
-            "sum_of": "/change",
+            "sum_of": "/stored_row_change",
             "rows": "/today_by_account"
           }
         ]
       },
-      "_note": "DSN \u00a71 'Day P&L header == account rows -> same_figure_everywhere'. Reuses scripts/lib/site_audit/cross_checks.same_figure_everywhere; a cent-rounding step is not a defect, a different figure is."
+      "_note": "DSN §1 'Day P&L header == account rows -> same_figure_everywhere'. The header is TodayPnl@v1 (total_change, null while status UNKNOWN, gap ticket OI-044) and each account row carries stored_row_change; a cent-rounding step is not a defect, a different figure is. A null header beside a summable row set is reported NOT_MEASURED naming the unknown surface, never compared as zero."
     },
     {
       "page": "/",
@@ -256,7 +258,7 @@
         ]
       },
       "truth": {
-        "provider": "market_quotes",
+        "provider": "market_quotes_extended",
         "key": {},
         "value": "price",
         "symbol": "$VIX",
@@ -267,7 +269,7 @@
         "value": 0.5,
         "unit": "%"
       },
-      "_note": "REV 2 A: Finviz/Schwab quote, value <=0.5%, as_of <=15 min in session. The single-key form compares the tile against the newest allowed $VIX row."
+      "_note": "REV 2 A: Finviz/Schwab quote, value <=0.5%, as_of <=15 min in session. The VIX tile's own provenance is `market_quotes_extended:schwab:$VIX`, so the truth store is that relation (`feed` is the provider, `bar_end` the observation time); market_quotes never carries $VIX. The single-key form compares the tile against the newest $VIX row."
     },
     {
       "page": "/cio",
@@ -365,10 +367,48 @@
         "fresh_min_in_session": 35
       },
       "tolerance": {
-        "kind": "abs",
-        "value": 1.0,
-        "unit": " USD"
-      }
+        "kind": "pct",
+        "value": 0.5,
+        "unit": "%"
+      },
+      "_note": "The page's stored market value against positions_current, at the same 0.5% band as the price row: the value is price x shares, so any real drift already surfaces on holdings.price, and a band tighter than the price's would report a one-cent quote difference twice (live 2026-11-09: NVDA 23.79 vs 23.76, SCHD 9.01 vs 9.02)."
+    },
+    {
+      "page": "/portfolio",
+      "figure_id": "holdings.value_identity",
+      "label": "Market value == price x shares on the same row",
+      "domain": "positions_store",
+      "producer_lane": "positions-sync",
+      "severity": "P1",
+      "check": "row_identity",
+      "served_from": {
+        "kind": "api",
+        "path": "/api/v2/portfolio/holdings",
+        "rows": "/holdings",
+        "key": {
+          "account": [
+            "account_key",
+            "account"
+          ],
+          "symbol": "symbol"
+        },
+        "value_a": [
+          "/market_value"
+        ],
+        "value_b": [
+          "/price"
+        ],
+        "times": [
+          "/shares"
+        ],
+        "code": "NT_VALUE_MISMATCH"
+      },
+      "tolerance": {
+        "kind": "pct",
+        "value": 0.5,
+        "unit": "%"
+      },
+      "_note": "A page that contradicts its own row cannot be caught by any store comparison. Live 2026-11-09: SKYD served price 8.70 with value 8,550 (built from a stale price field of 8.55) and SRNE served 0.2954 with a $0.30 value. Tolerance 0.5% so a broker's own rounding is not a defect."
     },
     {
       "page": "/portfolio",
@@ -377,12 +417,16 @@
       "domain": "quote_price",
       "producer_lane": "market-quotes",
       "severity": "P1",
-      "check": "row_scalar",
+      "check": "row_quote",
       "served_from": {
         "kind": "artifact",
         "path": "data/portfolios/state/holdings.json",
         "rows": "/holdings",
         "key": {
+          "account": [
+            "account_key",
+            "account"
+          ],
           "symbol": "symbol"
         },
         "value": [
@@ -391,14 +435,8 @@
           "/mark"
         ],
         "code": "NT_PRICE_MISMATCH",
+        "source_field": "quote_source",
         "truth_fresh_min_in_session": 15
-      },
-      "truth": {
-        "provider": "market_quotes",
-        "key": {
-          "symbol": "symbol"
-        },
-        "value": "price"
       },
       "tolerance": {
         "kind": "pct",
@@ -406,7 +444,7 @@
         "unit": "%"
       },
       "only_displayed": true,
-      "_note": "REV 2 A: newest allowed market_quotes row (alpaca/finviz/refresh:schwab; never yfinance). A price matching only a yfinance row is a FAIL, never a pass."
+      "_note": "REV 2 A + REV 3 G3: the displayed price is graded against the store the row's own `quote_source` names (market_quotes or market_quotes_extended). Never yfinance: a price whose only row is a retired provider is a FAIL, and a price whose own source says 'unavailable' is a provenance defect (NT_QUOTE_SOURCE) even when some other store holds a number. The page moved to `market_quotes_extended` for extended-hours names on 2026-11-09, so a single fixed store graded correct prices wrong."
     },
     {
       "page": "/portfolio",
@@ -431,7 +469,13 @@
           "/stop_price"
         ],
         "code": "NT_STOP_PRICE_MISMATCH",
-        "only_displayed": true
+        "only_displayed": true,
+        "only_when": {
+          "field": "stop_source",
+          "equals": [
+            "broker_resting"
+          ]
+        }
       },
       "truth": {
         "provider": "stop_lifecycle",
@@ -446,7 +490,7 @@
         "value": 0.005,
         "unit": " USD"
       },
-      "_note": "The /portfolio stop column is served by /api/v2/portfolio/holdings, which merges stop_last_known into each row (cio_truth.holdings_payload) \u2014 the retiring copy, not the canonical snapshot. Inside the 04:00-16:15 ET window this row is NOT_MEASURED (in_window_artifact_only); outside it the served stop is graded against stop_lifecycle."
+      "_note": "The /portfolio stop column is served by /api/v2/portfolio/holdings, which merges stop_last_known into each row (cio_truth.holdings_payload) — the retiring copy, not the canonical snapshot. Inside the 04:00-16:15 ET window this row is NOT_MEASURED (in_window_artifact_only); outside it the served stop is graded against stop_lifecycle. A row whose served own `stop_source` is not `broker_resting` (e.g. `planned`: the CIO's recommended stop, live 2026-11-09 on AMANX 63.66) is not a broker fact and has no stop_lifecycle truth; the page states its own provenance, so the row is skipped rather than graded against a stop that does not exist."
     },
     {
       "page": "/portfolio",
@@ -480,14 +524,13 @@
           "account": "account",
           "symbol": "symbol"
         },
-        "value": "lifecycle",
-        "transform": "lifecycle_state",
+        "value": "status",
         "absent": "none"
       },
       "tolerance": {
         "kind": "exact"
       },
-      "_note": "The /portfolio stop column is served by /api/v2/portfolio/holdings, which merges stop_last_known into each row (cio_truth.holdings_payload) \u2014 the retiring copy, not the canonical snapshot. Inside the 04:00-16:15 ET window this row is NOT_MEASURED (in_window_artifact_only); outside it the served stop is graded against stop_lifecycle."
+      "_note": "The /portfolio stop column is served by /api/v2/portfolio/holdings, which merges stop_last_known into each row (cio_truth.holdings_payload) — the retiring copy, not the canonical snapshot. Inside the 04:00-16:15 ET window this row is NOT_MEASURED (in_window_artifact_only); outside it the served stop is graded against stop_lifecycle."
     },
     {
       "page": "/portfolio",
@@ -512,7 +555,13 @@
           "/stop_qty"
         ],
         "code": "NT_STOP_QTY_MISMATCH",
-        "only_displayed": true
+        "only_displayed": true,
+        "only_when": {
+          "field": "stop_source",
+          "equals": [
+            "broker_resting"
+          ]
+        }
       },
       "truth": {
         "provider": "stop_lifecycle",
@@ -526,7 +575,7 @@
       "tolerance": {
         "kind": "exact"
       },
-      "_note": "The /portfolio stop column is served by /api/v2/portfolio/holdings, which merges stop_last_known into each row (cio_truth.holdings_payload) \u2014 the retiring copy, not the canonical snapshot. Inside the 04:00-16:15 ET window this row is NOT_MEASURED (in_window_artifact_only); outside it the served stop is graded against stop_lifecycle. The truth is the LIVE row of the newest snapshot (lifecycle working/near_trigger) \u2014 a cancelled/replaced/filled sibling is history, not the stop \u2014 and no live row means stop_qty 0."
+      "_note": "The /portfolio stop column is served by /api/v2/portfolio/holdings, which merges stop_last_known into each row (cio_truth.holdings_payload) — the retiring copy, not the canonical snapshot. Inside the 04:00-16:15 ET window this row is NOT_MEASURED (in_window_artifact_only); outside it the served stop is graded against stop_lifecycle. The truth is the LIVE row of the newest snapshot (lifecycle working/near_trigger) — a cancelled/replaced/filled sibling is history, not the stop — and no live row means stop_qty 0. A row whose served own `stop_source` is not `broker_resting` (e.g. `planned`: the CIO's recommended stop, live 2026-11-09 on AMANX 63.66) is not a broker fact and has no stop_lifecycle truth; the page states its own provenance, so the row is skipped rather than graded against a stop that does not exist."
     },
     {
       "page": "/portfolio",

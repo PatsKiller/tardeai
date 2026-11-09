@@ -239,7 +239,8 @@ class Bundle:
 
     #: The catalog names the store; the bundle names the source. One alias table, so a row can say
     #: "positions_current" (what the catalog declares) and still reach the loaded bundle entry.
-    ALIASES = {"positions_current": "positions", "stop_lifecycle": "stops", "market_quotes": "quotes"}
+    ALIASES = {"positions_current": "positions", "stop_lifecycle": "stops", "market_quotes": "quotes",
+               "market_quotes_extended": "quotes_extended"}
 
     def get(self, name: str) -> dict[str, Any]:
         return self.p.get(self.ALIASES.get(name, name)) or {
@@ -340,6 +341,16 @@ def load_truth(policy: Mapping[str, Any], *, conn_factory: Callable[[], Any] = p
               by_symbol={str(r.get("symbol") or "").upper(): r for r in rows})
     except Exception as exc:  # noqa: BLE001 -- unreadable quotes are NOT_MEASURED downstream, never a pass
         b.put("quotes", reason=f"quotes_unreadable: {type(exc).__name__}")
+    try:
+        # Index/extended-hours quotes (the VIX tile's provenance says market_quotes_extended:schwab:$VIX).
+        # `feed` is this store's provider column and `bar_end` its observation time.
+        rows = _select(conn(), "SELECT DISTINCT ON (symbol) symbol, feed AS source, price, bar_end AS fetched_at "
+                               "FROM market_quotes_extended ORDER BY symbol, bar_end DESC")
+        newest = max([t for t in (_ts(r.get("fetched_at")) for r in rows) if t], default=None)
+        b.put("quotes_extended", rows=rows, as_of=newest,
+              by_symbol={str(r.get("symbol") or "").upper(): r for r in rows})
+    except Exception as exc:  # noqa: BLE001 -- unreadable extended quotes are NOT_MEASURED, never a pass
+        b.put("quotes_extended", reason=f"quotes_extended_unreadable: {type(exc).__name__}")
     try:
         b.put("brief", doc=json.loads(Path(brief_path).read_text(encoding="utf-8")) if brief_path else None,
               reason=None if brief_path and Path(brief_path).exists() else "source_unreadable",
@@ -606,6 +617,15 @@ def row_scalar(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[s
                                 src.get("as_of")) if src.get("as_of") else None}
         if shown is None and only_displayed and not shown_null_is_absence:
             continue  # the field is not displayed on this row; a selection surface shows only what it chose
+        # A row whose own provenance says the figure is not a broker fact (a PLANNED stop is the CIO's
+        # recommendation, `stop_source: planned`) has no stop_lifecycle truth to be graded against.
+        only_when = spec.get("only_when")
+        if isinstance(only_when, Mapping) and srow is not None:
+            fval, fptr = _one(srow, only_when.get("field"))
+            allowed = only_when.get("equals")
+            allowed_c = {_canon(x) for x in ([allowed] if isinstance(allowed, str) else (allowed or []))}
+            if fptr is not None and _canon(fval) not in allowed_c:
+                continue
         if (isinstance(trow, Mapping) and trow.get("is_cash")) or (isinstance(srow, Mapping) and srow.get("is_cash")):
             continue  # a cash balance has no shares, no price and no stop
         if shown is None and truth_v is None:
@@ -855,23 +875,31 @@ def same_figure(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[
 
     spec = row["served_from"]
     surfaces: list[dict[str, Any]] = []
+    unresolved: list[str] = []
     for s in spec.get("surfaces") or []:
+        name = str(s.get("name") or s.get("value") or s.get("rows") or "surface")
         if s.get("sum_of"):
             rows = pointer(doc, s.get("rows") or "")
             if isinstance(rows, Mapping):
                 rows = list(rows.values())  # today_by_account is keyed by account id
             if not isinstance(rows, list):
+                unresolved.append(f"{name} (rows not served)")
                 continue
             vals = [_num(pointer(r, s["sum_of"])) for r in rows if isinstance(r, Mapping)]
             vals = [v for v in vals if v is not None]
             if vals:
                 surfaces.append({"name": s.get("name"), "value": round(sum(vals), 2)})
+            else:
+                unresolved.append(f"{name} (every row's {s['sum_of']} is null)")
             continue
         v, _ = first_value(doc, s.get("value") or ())
         if _num(v) is not None:
             surfaces.append({"name": s.get("name"), "value": _num(v)})
+        else:
+            unresolved.append(f"{name} (null or absent)")
     if len(surfaces) < 2:
-        return [not_measured(row, "no_such_field", f"{len(surfaces)} of the declared surfaces resolved")]
+        return [not_measured(row, "no_such_field",
+                             "the served figure is not measurable: " + "; ".join(unresolved or ["no surfaces"]))]
     found = X.same_figure_everywhere(str(spec.get("figure") or row.get("figure_id")), surfaces)
     return [finding(row, "NT_DAY_PNL_SPLIT", "MISMATCH", f["what"], shown=f["evidence"],
                     severity="P1") for f in found]
@@ -1058,8 +1086,170 @@ def authority_static(*, root: Optional[Path] = None, runner: Optional[Callable[[
 # ── the audit ────────────────────────────────────────────────────────────────────────────────────────────────
 
 
+#: The stores a served price may name in its own provenance field. The page moved from `market_quotes` to
+#: `market_quotes_extended` for extended-hours names (live 2026-11-09: SKYD and SPCX held `8.70`/`142.07` with
+#: `quote_source: market_quotes_extended`); grading every row against one store made correct prices look wrong.
+QUOTE_STORES = {"market_quotes": "quotes", "market_quotes_extended": "quotes_extended"}
+
+
+def row_quote(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[str, Any], *,
+              now: datetime, session: bool) -> list[dict[str, Any]]:
+    """A displayed price graded against the allowed quote stores, with its own provenance label graded too.
+
+    The truth is the freshest allowed row for the symbol, whichever store holds it: the page's ``quote_source``
+    is what the page CLAIMS, and a claim is not evidence. Live 2026-11-09: ANET served 186.25 tagged
+    ``market_quotes_extended`` while that store's newest row (169.95) was 14 h old and ``market_quotes`` held
+    186.26 at 16:45 — the number was right and the label was wrong, so the finding is NT_QUOTE_SOURCE, never a
+    price mismatch. And a stale store must never be compared at all: an old bar is not a contradicting price."""
+    spec = row["served_from"]
+    src_field = str(spec.get("source_field") or "quote_source")
+    keymap = spec.get("key") or {}
+    val = list(spec.get("value") or ())
+    tol = row.get("tolerance") or {}
+    policy = row.get("_policy") or {}
+    srows = pointer(doc, str(spec.get("rows") or ""))
+    if not isinstance(srows, list):
+        return [not_measured(row, "no_such_field", f"served rows {spec.get('rows')!r} not found")]
+    fresh_min = _num(spec.get("truth_fresh_min_in_session")
+                     if spec.get("truth_fresh_min_in_session") is not None
+                     else (row.get("truth") or {}).get("fresh_min_in_session"))
+    if fresh_min is None:
+        fresh_min = 15.0
+    closed_min = _num(policy.get("quote_fresh_min_closed"))
+    closed_min = 240.0 if closed_min is None else closed_min
+    bound = timedelta(minutes=fresh_min if session else closed_min)
+    where = (Path(str(spec.get("path") or "")).name if str(spec.get("kind")) == "artifact" else "the page")
+    out: list[dict[str, Any]] = []
+    for s in srows:
+        if not isinstance(s, Mapping):
+            continue
+        shown, sp = first_value(s, val)
+        if shown is None or _num(shown) == 0:
+            continue  # not displayed, or a 0.00 placeholder on an unquoted instrument
+        acct = _one(s, keymap.get("account"))[0]
+        sym = _one(s, keymap.get("symbol"))[0]
+        if _canon(sym) == "cash" or _canon(s.get("asset_type")) == "cash" or s.get("is_cash"):
+            continue  # a cash balance is a dollar amount, not a quoted instrument
+        rsym = str(sym or "").upper()
+        source = str(_one(s, src_field)[0] or "")
+        shown_side = {"value": shown, "field": sp, "source": source, "page": spec.get("path")}
+        retired: dict[str, str] = {}
+        candidates: list[tuple[str, Mapping[str, Any], datetime]] = []
+        unreadable: list[str] = []
+        seen_by_store: dict[str, datetime] = {}
+        for name, key in QUOTE_STORES.items():
+            st = bundle.get(key)
+            retired.update(st.get("retired_by_symbol") or {})
+            if st["status"] != "ok":
+                unreadable.append(f"{name}: {st.get('reason')}")
+                continue
+            trow = (st.get("by_symbol") or {}).get(rsym)
+            seen = _ts(trow.get("fetched_at")) if isinstance(trow, Mapping) else None
+            if isinstance(trow, Mapping) and seen is not None:
+                candidates.append((name, trow, seen))
+                seen_by_store[name] = seen
+        fresh = [c for c in candidates if (now - c[2]) <= bound]
+        if fresh:
+            # The store the row names is the truth when it can answer freshly; only a stale or absent
+            # named store lets another allowed store supply the number (and then the label is wrong).
+            name, trow, seen = next((c for c in fresh if c[0] == source), max(fresh, key=lambda c: c[2]))
+            truth = _num(trow.get("price"))
+            sf = _num(shown)
+            label_ok = source == name
+            if truth is None or sf is None or not _tolerance(tol, sf, truth):
+                out.append(finding(row, "NT_PRICE_MISMATCH", "MISMATCH",
+                                   f"{acct} {sym}: {where} shows {_fmt(sf)}; truth {_fmt(truth)} ({name}, "
+                                   f"{seen.isoformat()})", account=acct, symbol=sym, shown=shown_side,
+                                   truth={"value": truth, "provider": name, "as_of": seen.isoformat()}))
+            elif not label_ok:
+                # REV 3 G3: the figure's source field must name the store the number actually comes from.
+                # The evidence is the labeled store's OWN clock: if it cannot have produced a number this
+                # fresh, the label is wrong whatever the number is.
+                own = seen_by_store.get(source)
+                if own is not None:
+                    why = (f"its own newest row is {own.isoformat()} "
+                           f"({(now - own).total_seconds() / 3600:.1f} h old)")
+                elif source in QUOTE_STORES:
+                    why = "its own store has no row for it"
+                else:
+                    why = "it names no allowed store at all"
+                out.append(finding(row, "NT_QUOTE_SOURCE", "MISMATCH",
+                                   f"{acct} {sym}: {where} shows {_fmt(sf)} with {src_field} {source!r}, but {why}; "
+                                   f"the value is {name}'s ({seen.isoformat()})", account=acct, symbol=sym,
+                                   shown=shown_side,
+                                   truth={"value": truth, "provider": name, "as_of": seen.isoformat()}))
+            continue
+        if candidates:
+            ages = "; ".join(f"{n} {seen.isoformat()} ({(now - seen).total_seconds() / 3600:.1f} h)"
+                             for n, _t, seen in candidates)
+            out.append(not_measured(row, "stale_truth",
+                                    f"{acct} {sym}: {where} shows {_fmt(shown)}; no allowed store has a row "
+                                    f"within {bound.total_seconds() / 60:.0f} min ({ages})",
+                                    account=acct, symbol=sym, shown=shown_side,
+                                    truth={"as_of": max(c[2] for c in candidates).isoformat()}))
+            continue
+        if unreadable:
+            # A store that could not be read may hold the row: absence is unproven, never a fail.
+            out.append(not_measured(row, "truth_unreadable", f"{sym}: {'; '.join(unreadable)}",
+                                    account=acct, symbol=sym, shown=shown_side))
+            continue
+        if rsym in retired:
+            # REV 2 A: a page number backed only by a retired provider is a FAIL, never a pass.
+            out.append(finding(row, "NT_QUOTE_SOURCE", "MISMATCH",
+                               f"{acct} {sym}: {where} shows {_fmt(shown)}; no allowed store has a row, only "
+                               f"{retired[rsym]!r} (retired)", account=acct, symbol=sym, shown=shown_side,
+                               truth={"value": None, "retired": retired[rsym]}))
+            continue
+        # No allowed store holds a row and nothing was unreadable: the number cannot be verified either way.
+        out.append(not_measured(row, "no_rows", f"{acct} {sym}: no allowed quote row for it; the displayed "
+                                                f"{_fmt(shown)} cannot be verified", account=acct, symbol=sym,
+                                shown=shown_side))
+    return out
+
+
+def row_identity(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[str, Any], *,
+                 now: datetime, session: bool) -> list[dict[str, Any]]:
+    """One served row's arithmetic: market value must be its own displayed price times its own shares.
+
+    Live 2026-11-09: the holdings payload served SKYD price 8.70 with market_value 8,550 (the price field was
+    still 8.55, and the value was built from it), and SRNE price 0.2954 with a $0.30 value. Neither is a
+    cross-store question — the page contradicts itself, which no store comparison can see."""
+    spec = row["served_from"]
+    keymap = spec.get("key") or {}
+    tol = row.get("tolerance") or {}
+    rows = pointer(doc, str(spec.get("rows") or ""))
+    if not isinstance(rows, list):
+        return [not_measured(row, "no_such_field", f"served rows {spec.get('rows')!r} not found")]
+    a_ptrs, b_ptrs = list(spec.get("value_a") or ()), list(spec.get("value_b") or ())
+    m_ptrs = list(spec.get("times") or ())
+    out: list[dict[str, Any]] = []
+    for s in rows:
+        if not isinstance(s, Mapping):
+            continue
+        av, ap = first_value(s, a_ptrs)
+        bv, bp = first_value(s, b_ptrs)
+        mv, mp = first_value(s, m_ptrs)
+        an, bn, mn = _num(av), _num(bv), _num(mv)
+        if an is None or bn is None or mn is None or an == 0 or bn == 0:
+            continue  # not displayed, cash, or a 0.00 placeholder
+        acct = _one(s, keymap.get("account"))[0]
+        sym = _one(s, keymap.get("symbol"))[0]
+        derived = bn * mn
+        if not _tolerance(tol, an, derived):
+            out.append(finding(row, "NT_VALUE_MISMATCH", "MISMATCH",
+                               f"{acct} {sym}: the page shows value {_fmt(an)} but its own price {_fmt(bn)} "
+                               f"x {_fmt(mn)} shares = {_fmt(derived)}",
+                               account=acct, symbol=sym,
+                               shown={"value": an, "field": ap, "source": spec.get("path") or "api"},
+                               truth={"value": derived, "price": bn, "shares": mn,
+                                      "fields": [bp, mp], "derived": "price x shares"}))
+    return out
+
+
 CHECKS: dict[str, Callable[..., list[dict[str, Any]]]] = {
     "row_scalar": row_scalar,
+    "row_quote": row_quote,
+    "row_identity": row_identity,
     "book_total": book_total,
     "account_total": account_total,
     "coverage": coverage,
@@ -1150,6 +1340,30 @@ def audit(catalog: Mapping[str, Any], bundle: Bundle, *, now: datetime, state_ro
     findings: list[dict[str, Any]] = []
     measured: dict[str, int] = {}
     deadline = deadline if deadline is not None else _time.monotonic() + MAX_RUNTIME_S - 5
+    # The authority family runs FIRST: it is static/config work with a fixed cost, and a slow live-data pass
+    # must never starve the one gate that reads no market state at all (2026-11-09: a 101 s dry run pushed it
+    # past the budget and the whole G1 static check silently became a NOT_MEASURED finding).
+    # One GET per distinct (path+query) per run: several catalog rows read the same endpoint, and the lane's
+    # 120 s allowlist timeout is not a place to spend a second of pacing per row on the same document.
+    _cache: dict[str, Any] = {}
+    _base = fetcher or (lambda q: http_get_json(base_url, q))
+
+    def _cached(path: str) -> Any:
+        if path not in _cache:
+            _cache[path] = _base(path)
+        return _cache[path]
+
+    auth: dict[str, Any] = {}
+    runners = dict(authority_runners or {})
+    if policy.get("authority"):
+        findings.extend(authority_writes(policy, conn_factory=runners.get("conn_factory", pg_connect), now=now))
+        if _time.monotonic() <= deadline:
+            findings.extend(authority_static(runner=runners.get("runner"), root=runners.get("root")))
+        else:
+            findings.append(not_measured({"page": "*", "figure_id": "authority.static", "severity": "P1",
+                                          "domain": "authority", "producer_lane": LANE},
+                                         "deadline_exceeded", "the authority gate was not run"))
+        auth["write_watch_domains"] = sorted((policy.get("write_watch") or {}))
     for r in rows:
         row = dict(r)
         row["_policy"] = policy
@@ -1163,7 +1377,8 @@ def audit(catalog: Mapping[str, Any], bundle: Bundle, *, now: datetime, state_ro
             findings.append(not_measured(row, "deadline_exceeded", "the run reached its time budget"))
             continue
         try:
-            doc, meta = served(row, state_root=state_root, http_open=http_open, base_url=base_url, fetcher=fetcher)
+            doc, meta = served(row, state_root=state_root, http_open=http_open, base_url=base_url,
+                               fetcher=_cached)
             found = fn(row, bundle, doc, meta, now=now, session=session)
         except Unreadable as exc:
             findings.append(not_measured(row, exc.reason, exc.detail))
@@ -1173,17 +1388,6 @@ def audit(catalog: Mapping[str, Any], bundle: Bundle, *, now: datetime, state_ro
             continue
         measured[kind] = measured.get(kind, 0) + 1
         findings.extend(found)
-    auth: dict[str, Any] = {}
-    runners = dict(authority_runners or {})
-    if policy.get("authority"):
-        findings.extend(authority_writes(policy, conn_factory=runners.get("conn_factory", pg_connect), now=now))
-        if _time.monotonic() <= deadline:
-            findings.extend(authority_static(runner=runners.get("runner"), root=runners.get("root")))
-        else:
-            findings.append(not_measured({"page": "*", "figure_id": "authority.static", "severity": "P1",
-                                          "domain": "authority", "producer_lane": LANE},
-                                         "deadline_exceeded", "the authority gate was not run"))
-        auth["write_watch_domains"] = sorted((policy.get("write_watch") or {}))
     findings.sort(key=lambda f: (f["severity"], f["page"], f["figure_id"], str(f["account"]), str(f["symbol"]),
                                  f["code"]))
     counts = {"by_status": _counted(f["status"] for f in findings),

@@ -46,10 +46,10 @@ P_AB = {"account_key": "zz_ira", "symbol": "ZQAB", "qty": 50, "broker_market_val
 P_CASH = {"account_key": "zz_taxable", "symbol": "ZQCASH", "qty": 1234.5, "broker_market_value": 1234.5,
           "is_cash": True, "asset_type": "cash", "as_of": POS_AS_OF}
 
-S_AA = {"account": "zz_taxable", "symbol": "ZQAA", "lifecycle": "working", "stop_price": 80.0, "qty": 100,
-        "snapshot_at": STOP_AS_OF}
-S_AB = {"account": "zz_ira", "symbol": "ZQAB", "lifecycle": "working", "stop_price": 90.0, "qty": 50,
-        "snapshot_at": STOP_AS_OF}
+S_AA = {"account": "zz_taxable", "symbol": "ZQAA", "lifecycle": "working", "status": "working",
+        "stop_price": 80.0, "qty": 100, "snapshot_at": STOP_AS_OF}
+S_AB = {"account": "zz_ira", "symbol": "ZQAB", "lifecycle": "working", "status": "working",
+        "stop_price": 90.0, "qty": 50, "snapshot_at": STOP_AS_OF}
 
 K_AA = {"account": "zz_taxable", "symbol": "ZQAA", "status": "working", "stop_price": 80.0, "qty": 100,
         "captured_at": STOP_AS_OF}
@@ -59,11 +59,15 @@ K_AB = {"account": "zz_ira", "symbol": "ZQAB", "status": "working", "stop_price"
 Q_AA = {"symbol": "ZQAA", "source": "finviz", "price": 100.0, "fetched_at": QUOTE_AS_OF}
 Q_AB = {"symbol": "ZQAB", "source": "finviz", "price": 100.0, "fetched_at": QUOTE_AS_OF}
 
+#: The VIX tile's provenance is `market_quotes_extended:schwab:$VIX`; market_quotes never carries $VIX.
+X_VIX = {"symbol": "$VIX", "source": "schwab", "price": 15.0, "fetched_at": QUOTE_AS_OF}
+
 
 def H(account="zz_taxable", symbol="ZQAA", shares=100, market_value=10000.0, price=100.0,
-      stop_price=80.0, stop_state="active", stop_qty=100) -> dict:
+      stop_price=80.0, stop_state="active", stop_qty=100, quote_source="market_quotes") -> dict:
     return {"account_key": account, "symbol": symbol, "shares": shares, "market_value": market_value,
-            "price": price, "stop_price": stop_price, "stop_state": stop_state, "stop_qty": stop_qty,
+            "price": price, "current_price": price, "quote_source": quote_source,
+            "stop_price": stop_price, "stop_state": stop_state, "stop_qty": stop_qty,
             "broker_position_as_of_at": POS_AS_OF}
 
 
@@ -99,7 +103,7 @@ def write_state(tmp: Path, *, holdings=None, brief_doc=None, since=None) -> Path
 
 
 def bundle(*, positions=None, stops=None, slk=None, quotes=None, pos_as_of=POS_AS_OF,
-           stop_as_of=STOP_AS_OF, quote_as_of=QUOTE_AS_OF, quotes_ok=True) -> T.Bundle:
+           stop_as_of=STOP_AS_OF, quote_as_of=QUOTE_AS_OF, quotes_ok=True, quotes_extended=None) -> T.Bundle:
     b = T.Bundle()
     b.put("positions", rows=list(positions if positions is not None else [P_AA, P_AB]),
           as_of=T._ts(pos_as_of))
@@ -111,6 +115,10 @@ def bundle(*, positions=None, stops=None, slk=None, quotes=None, pos_as_of=POS_A
               by_symbol={r["symbol"]: r for r in (quotes if quotes is not None else [Q_AA, Q_AB])})
     else:
         b.put("quotes", reason="quotes_unreadable: OperationalError")
+    b.put("quotes_extended",
+          rows=list(quotes_extended if quotes_extended is not None else [X_VIX]),
+          as_of=T._ts(quote_as_of),
+          by_symbol={r["symbol"]: r for r in (quotes_extended if quotes_extended is not None else [X_VIX])})
     return b
 
 
@@ -226,15 +234,17 @@ def test_a_stale_positions_store_is_not_measured_in_session(tmp_path):
 # ── market value and price ───────────────────────────────────────────────────────────────────────────────────
 
 
-def test_market_value_within_one_dollar_is_clean_and_beyond_it_is_a_finding(tmp_path):
-    root = write_state(tmp_path, holdings=[H(market_value=10000.75),
+def test_market_value_is_graded_on_a_per_share_aware_band_not_one_dollar(tmp_path):
+    """A one-cent quote difference is $6 on a 600-share position, so a $1 band reports correct values wrong;
+    0.1% absorbs the rounding and still catches a stale mark (SKYD 8,550 vs 8,590 = 0.46%)."""
+    root = write_state(tmp_path, holdings=[H(market_value=10005.0),
                                            H(account="zz_ira", symbol="ZQAB", shares=50, market_value=5000.0)])
     assert run(root, "holdings.market_value")["findings"] == []
-    root = write_state(tmp_path, holdings=[H(market_value=10005.0),
+    root = write_state(tmp_path, holdings=[H(market_value=10100.0),
                                            H(account="zz_ira", symbol="ZQAB", shares=50, market_value=5000.0)])
     rep = run(root, "holdings.market_value")
     assert codes(rep) == ["NT_VALUE_MISMATCH"]
-    assert rep["findings"][0]["shown"]["value"] == 10005.0
+    assert rep["findings"][0]["shown"]["value"] == 10100.0
 
 
 def test_price_compares_within_half_a_percent_against_an_allowed_quote(tmp_path):
@@ -253,7 +263,7 @@ def test_a_price_matching_only_a_retired_provider_is_a_fail_not_a_pass(tmp_path)
     root = write_state(tmp_path, holdings=[H(price=100.0),
                                            H(account="zz_ira", symbol="ZQAB", shares=50, price=100.0)])
     rep = run(root, "holdings.price", b=bundle(quotes_ok=False))
-    assert codes(rep) == ["NT_NOT_MEASURED"]
+    assert set(codes(rep)) == {"NT_NOT_MEASURED"}  # one per displayed row: neither can be verified
     assert {f["reason"] for f in rep["findings"]} == {"truth_unreadable"}
 
 
@@ -273,23 +283,77 @@ def test_a_displayed_price_backed_only_by_a_retired_provider_is_a_fail(tmp_path)
     assert "retired" in rep["findings"][0]["detail"]
 
 
+def test_a_price_the_row_attributes_to_the_extended_store_is_graded_there(tmp_path):
+    """Live 2026-11-09: the holdings payload moved extended-hours names to `quote_source:
+    market_quotes_extended`. Grading those against market_quotes compares two different stores and reports
+    correct prices as wrong."""
+    root = write_state(tmp_path, holdings=[H(price=100.0, quote_source="market_quotes_extended")])
+    b = bundle(quotes=[], quotes_extended=[{"symbol": "ZQAA", "source": "schwab", "price": 100.2,
+                                            "fetched_at": QUOTE_AS_OF}])
+    assert run(root, "holdings.price", b=b)["findings"] == []
+    b = bundle(quotes=[Q_AA], quotes_extended=[{"symbol": "ZQAA", "source": "schwab", "price": 90.0,
+                                                "fetched_at": QUOTE_AS_OF}])
+    rep = run(root, "holdings.price", b=b)
+    assert codes(rep) == ["NT_PRICE_MISMATCH"]
+    assert "market_quotes_extended" in rep["findings"][0]["detail"]
+
+
+def test_a_right_number_with_a_wrong_source_label_is_a_provenance_finding(tmp_path):
+    """Live 2026-11-09: ANET served 186.25 tagged `market_quotes_extended` while that store's newest bar was
+    03:58 (14 h old, 169.95) and market_quotes held 186.26 at 16:45. The number was right and the label was
+    wrong — a price mismatch here would accuse a correct figure."""
+    root = write_state(tmp_path, holdings=[H(price=186.25, quote_source="market_quotes_extended")])
+    b = bundle(quotes=[dict(Q_AA, price=186.26)],
+               quotes_extended=[{"symbol": "ZQAA", "source": "schwab", "price": 169.95,
+                                 "fetched_at": _iso(14 * 60)}])
+    rep = run(root, "holdings.price", b=b)
+    assert codes(rep) == ["NT_QUOTE_SOURCE"]
+    d = rep["findings"][0]["detail"]
+    assert "market_quotes_extended" in d and "its own newest row is" in d and "the value is market_quotes's" in d
+
+
+def test_a_price_whose_own_source_says_unavailable_is_a_provenance_defect(tmp_path):
+    """Live 2026-11-09: AMANX served 81.52 and SRNE 0.2954 with `quote_source: unavailable`. A store having a
+    number does not rescue a row that names no allowed store."""
+    root = write_state(tmp_path, holdings=[H(price=100.0, quote_source="unavailable")])
+    rep = run(root, "holdings.price", b=bundle(quotes=[Q_AA]))
+    assert codes(rep) == ["NT_QUOTE_SOURCE"]
+    assert "'unavailable'" in rep["findings"][0]["detail"]
+
+
+def test_market_value_must_equal_the_rows_own_price_times_shares(tmp_path):
+    """Live 2026-11-09: SKYD served price 8.70 with value 8,550 (a stale price field of 8.55), SRNE price
+    0.2954 with a $0.30 value. The page contradicts itself; no store comparison can see that."""
+    doc = {"holdings": [
+        {"account_key": "zz_taxable", "symbol": "ZQAA", "price": 8.70, "shares": 1000, "market_value": 8700.0},
+        {"account_key": "zz_ira", "symbol": "ZQAB", "price": 0.2954, "shares": 1000, "market_value": 0.3}]}
+    rep = run(tmp_path, "holdings.value_identity", doc=doc, http_open=True)
+    assert codes(rep) == ["NT_VALUE_MISMATCH"]
+    assert rep["findings"][0]["symbol"] == "ZQAB"
+    assert "x 1,000 shares = 295.4" in rep["findings"][0]["detail"]
+    doc["holdings"][1]["market_value"] = 295.4
+    assert run(tmp_path, "holdings.value_identity", doc=doc, http_open=True)["findings"] == []
+
+
 def test_a_quote_stale_past_fifteen_minutes_is_not_measured(tmp_path):
     root = write_state(tmp_path, holdings=[H(), H(account="zz_ira", symbol="ZQAB", shares=50, price=100.0)])
-    rep = run(root, "holdings.price", b=bundle(quote_as_of=_iso(40)))
-    assert codes(rep) == ["NT_NOT_MEASURED"]
+    stale = [dict(Q_AA, fetched_at=_iso(40)), dict(Q_AB, fetched_at=_iso(40))]
+    rep = run(root, "holdings.price", b=bundle(quotes=stale))
+    assert set(codes(rep)) == {"NT_NOT_MEASURED"}
     assert {f["reason"] for f in rep["findings"]} == {"stale_truth"}
 
 
 # ── stops: state, price, qty (the SPCX case) ─────────────────────────────────────────────────────────────────
 
 
-def _stop_doc(state_aa="active", price_aa=80.0, qty_aa=100, state_ab="active") -> dict:
+def _stop_doc(state_aa="active", price_aa=80.0, qty_aa=100, state_ab="working",
+              source_aa="broker_resting") -> dict:
     """The /api/v2/portfolio/holdings shape: each row carries the stop_last_known copy merged in."""
     return {"holdings": [
         {"account_key": "zz_taxable", "symbol": "ZQAA", "stop_state": state_aa,
-         "stop_price": price_aa, "stop_qty": qty_aa},
+         "stop_price": price_aa, "stop_qty": qty_aa, "stop_source": source_aa},
         {"account_key": "zz_ira", "symbol": "ZQAB", "stop_state": state_ab,
-         "stop_price": 90.0, "stop_qty": 50}]}
+         "stop_price": 90.0, "stop_qty": 50, "stop_source": "broker_resting"}]}
 
 
 def _stop_state(tmp_path, served_state: str, stops) -> dict:
@@ -297,25 +361,47 @@ def _stop_state(tmp_path, served_state: str, stops) -> dict:
                doc=_stop_doc(state_aa=served_state), http_open=True)
 
 
-@pytest.mark.parametrize("served,lifecycle,clean", [
-    ("active", "working", True), ("active", "near_trigger", True),
-    ("none", "cancelled", True), ("none", "expired", True),
-    ("none", "filled", True),             # a filled order is history: it defends nothing, so "none" agrees
-    ("active", "cancelled", False),       # the SPCX case: expired at the broker, still shown working
-    ("active", "filled", False), ("none", "working", False), ("active", "wat", False),
+@pytest.mark.parametrize("served,status,lifecycle,clean", [
+    ("pending_activation", "pending_activation", "working", True),   # the broker's own word for a live stop
+    ("active", "active", "working", True),
+    ("working", "working", "near_trigger", True),
+    ("none", "cancelled", "cancelled", True),
+    ("none", "expired", "expired", True),
+    ("none", "filled", "filled", True),   # a filled order is history: it defends nothing, so "none" agrees
+    ("pending_activation", "cancelled", "cancelled", False),  # the SPCX case: expired at the broker, still shown live
+    ("active", "filled", "filled", False), ("none", "working", "working", False), ("active", "working", "working", False),
 ])
-def test_stop_state_is_the_lifecycle_mapped_into_the_served_vocabulary(tmp_path, served, lifecycle, clean):
-    """Only a LIVE row (working / near_trigger) is the state of a stop: the snapshot also carries the
-    cancelled/replaced/filled history of the same (account, symbol), and reading any of those as truth
-    is the false positive that made five correct /cio rows look wrong on 2026-11-09."""
-    stops = [dict(S_AA, lifecycle=lifecycle), S_AB]
+def test_stop_state_is_the_broker_status_of_the_live_row(tmp_path, served, status, lifecycle, clean):
+    """Only a LIVE row (working / near_trigger) is the state of a stop, and the state is the broker's
+    own `status` verbatim (2026-11-09: the page serves `pending_activation`, so mapping every live row
+    to `active` reported eight correct stops wrong). The snapshot also carries cancelled/replaced/filled
+    history of the same (account, symbol); reading any of those as truth is the false positive that
+    made five correct /cio rows look wrong on 2026-11-09."""
+    stops = [dict(S_AA, lifecycle=lifecycle, status=status), S_AB]
     rep = _stop_state(tmp_path, served, stops)
     mismatch = [f for f in rep["findings"] if f["code"] == "NT_STOP_STATE_MISMATCH"]
     if clean:
         assert mismatch == []
     else:
         assert len(mismatch) == 1 and mismatch[0]["severity"] == "P0"
-        assert mismatch[0]["truth"].get("raw") == (lifecycle if lifecycle in ("working", "near_trigger") else None)
+        assert mismatch[0]["truth"].get("raw") == (status if lifecycle in ("working", "near_trigger") else None)
+
+
+def test_a_planned_stop_is_a_recommendation_not_a_broker_stop(tmp_path):
+    """Live shape (2026-11-09): AMANX served stop_price 63.66 with stop_state 'none' and
+    stop_source 'planned' — the CIO's recommended entry, with no order anywhere. The page states its own
+    provenance, so there is no broker stop to grade it against; grading it reported a false P0."""
+    doc = _stop_doc(state_aa="none", price_aa=63.66, qty_aa=None, source_aa="planned")
+    rep = run(tmp_path, "holdings.stop_price", "holdings.stop_qty",
+              b=bundle(stops=[S_AB]), doc=doc, http_open=True)
+    assert rep["findings"] == []
+
+
+def test_a_broker_stop_the_snapshot_does_not_have_is_still_a_p0(tmp_path):
+    doc = _stop_doc(state_aa="none", price_aa=63.66, qty_aa=None, source_aa="broker_resting")
+    rep = run(tmp_path, "holdings.stop_price", b=bundle(stops=[S_AB]), doc=doc, http_open=True)
+    assert codes(rep) == ["NT_STOP_PRICE_MISMATCH"]
+    assert "no WORKING stop" in rep["findings"][0]["detail"]
 
 
 def test_a_stop_the_broker_no_longer_has_is_a_p0_while_the_page_shows_it_active(tmp_path):
@@ -409,15 +495,16 @@ def test_a_stale_stop_snapshot_makes_coverage_not_measured_never_unprotected(tmp
 # ── totals ───────────────────────────────────────────────────────────────────────────────────────────────────
 
 
-def _overview(portfolio_value=16234.5, accounts=None, today_change=50.0, by_account=None, vix=15.0):
+def _overview(portfolio_value=16234.5, accounts=None, today_pnl=50.0, by_account=None, vix=15.0):
     return {"portfolio_value": portfolio_value,
             "portfolio_aggregate": {"accounts": accounts if accounts is not None else [
                 {"account": "zz_taxable", "display_value": 11234.5},
                 {"account": "zz_ira", "display_value": 5000.0}]},
-            "today_change": today_change,
+            "today_pnl": {"contract_version": "TodayPnl@v1", "total_change": today_pnl,
+                          "status": "UNKNOWN" if today_pnl is None else "OK", "complete": today_pnl is not None},
             "today_by_account": by_account if by_account is not None else {
-                "zz_taxable": {"change": 30.0},
-                "zz_ira": {"change": 20.0}},
+                "zz_taxable": {"stored_row_change": 30.0, "change": 30.0},
+                "zz_ira": {"stored_row_change": 20.0, "change": 20.0}},
             "trade_ai": {"vix": vix}}
 
 
@@ -442,17 +529,30 @@ def test_the_account_totals_flag_only_the_account_that_disagrees(tmp_path):
 def test_the_day_pnl_header_must_equal_its_account_rows(tmp_path):
     b = bundle(positions=[P_AA, P_AB, P_CASH])
     assert run(tmp_path, "overview.day_pnl", b=b, doc=_overview(), http_open=True)["findings"] == []
-    rep = run(tmp_path, "overview.day_pnl", b=b, doc=_overview(today_change=60.0), http_open=True)
+    rep = run(tmp_path, "overview.day_pnl", b=b, doc=_overview(today_pnl=60.0), http_open=True)
     assert codes(rep) == ["NT_DAY_PNL_SPLIT"]
 
 
-def test_the_vix_tile_is_compared_to_a_fresh_allowed_quote(tmp_path):
+def test_a_null_day_pnl_header_is_a_named_unknown_not_a_zero(tmp_path):
+    """Live shape (2026-11-09): TodayPnl@v1 serves total_change null with status UNKNOWN and gap ticket
+    OI-044, while every account row still carries stored_row_change. Summing the rows against a header
+    read as 0 would invent a $11.9k split; the figure is simply not measurable, and the finding must say
+    which surface is unknown."""
+    rep = run(tmp_path, "overview.day_pnl", doc=_overview(today_pnl=None), http_open=True)
+    assert codes(rep) == ["NT_NOT_MEASURED"]
+    assert "header today_pnl.total_change" in rep["findings"][0]["detail"]
+    assert "accounts stored_row_change" not in rep["findings"][0]["detail"]
+
+
+def test_the_vix_tile_is_compared_to_its_own_extended_store(tmp_path):
     doc = _overview(vix=15.05)
-    quotes = [dict(Q_AA), {"symbol": "$VIX", "source": "refresh:schwab", "price": 15.0,
-                           "fetched_at": QUOTE_AS_OF}]
-    assert run(tmp_path, "overview.vix", b=bundle(quotes=quotes), doc=doc, http_open=True)["findings"] == []
-    rep = run(tmp_path, "overview.vix", b=bundle(quotes=quotes), doc=_overview(vix=15.5), http_open=True)
+    assert run(tmp_path, "overview.vix", b=bundle(), doc=doc, http_open=True)["findings"] == []
+    rep = run(tmp_path, "overview.vix", b=bundle(), doc=_overview(vix=15.5), http_open=True)
     assert codes(rep) == ["NT_VALUE_MISMATCH"]
+    # market_quotes never carries $VIX; a tile may not be graded against a store that cannot answer for it
+    rep = run(tmp_path, "overview.vix", b=bundle(quotes_extended=[]), doc=doc, http_open=True)
+    assert codes(rep) == ["NT_NOT_MEASURED"]
+    assert "market_quotes_extended" in rep["findings"][0]["detail"]
 
 
 def test_a_selection_surface_is_not_required_to_list_every_holding(tmp_path):
