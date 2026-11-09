@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1290_ddq_cap_400_20261108",
+  "files": [
+    "tests/test_ddq_cap_400_lq1290_20261108.py"
+  ],
+  "anchor": "LQ1290_DDQ_CAP_400_20261108",
+  "comment": [
+    "ANCHOR: LQ1290_DDQ_CAP_400_20261108 — LQ-20261107-1290. The operator raised due_diligence_questions to",
+    "400 requests/day at 19:07 ET on 2026-11-08 (5 questions x 72 twenty-minute weekend slots = 360, plus",
+    "headroom) and the live DB was raised through llm_cap_admin at 19:10:39 ET. Two code paths write that",
+    "same column and both still said 200: sync_process_policies_from_registry COALESCEs the registry value",
+    "over llm_process_config on every deploy, and sync_cio_process_caps.py overwrites it from its CAPS dict.",
+    "This gate pins the registry row, the CAPS tuple, their agreement, the untouched 1.50 dollar cap and the",
+    "dated rationale, so a later edit to either writer alone turns the gate red instead of silently reverting",
+    "the operator's raise."
+  ]
+}

@@ -59,7 +59,12 @@ CAPS: dict[str, tuple[float, int]] = {
     # the measured rate is ~$1.11. Same defect as this script's 2026-08-12 note: a cap below what the work
     # costs. 2026-11-07 21:08 ET operator directive (LQ-20261107-538): "Leave the cap at 1.50", free first,
     # and an alert when paid spend tops $0.75 on 3 days in a week (scripts/llm_paid_spend_watch.py).
-    "due_diligence_questions": (1.50, 200),
+    # 2026-11-08 (LQ-20261107-1290): soft cap 200 -> 400, operator-approved 19:07 ET ("raise it to whatever
+    # you need for the weekdays and the weekend"). 5 questions x 72 slots = 360/day on a weekend; 400 =
+    # 360 + ~10%. Dollars unchanged at 1.50 (20 calls settled $0.0091 today, ~$0.18/day at 400). This
+    # tuple and config/llm_process_registry.json are the two writers of the same column; a raise to only
+    # one of them reverts on the next sync or deploy (COALESCE keeps the registry value).
+    "due_diligence_questions": (1.50, 400),
 }
 
 
