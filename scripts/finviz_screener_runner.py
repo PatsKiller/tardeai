@@ -274,6 +274,48 @@ def _ensure_txn_usable(conn) -> bool:
     return False
 
 
+#: db_adapter sets the trade_ai role's session lock_timeout to 3 s -- its interactive anti-cascade guard, so an
+#: interactive query never queues behind a stuck writer. This lane is a batch writer inside the 10:00 ET dispatch
+#: burst: on 2026-11-09 its first weekday run waited on an uncommitted watchlist_items writer for more than 36 s,
+#: so both INSERTs it reached (WMT at 10:02:35, CORO at 10:03:08) were cancelled and each lost its screener
+#: (LQ-20261107-1577). A batch write gets its own, longer lock wait and a bounded retry; a lock that outlives
+#: that is still reported and still fails the screener (rule 8: a failure is never reported as success).
+WRITE_LOCK_TIMEOUT = "10s"
+LOCK_RETRY_ATTEMPTS = 3
+LOCK_RETRY_SLEEP_S = 2.0
+_LOCK_TIMEOUT_RE = re.compile(r"\d+(ms|s)")
+
+
+def _write_lock_timeout() -> str:
+    """The per-screener write lock_timeout, validated -- SET LOCAL takes a literal, not a bind parameter."""
+    want = (os.getenv("FINVIZ_SCREENER_LOCK_TIMEOUT") or WRITE_LOCK_TIMEOUT).strip()
+    return want if _LOCK_TIMEOUT_RE.fullmatch(want) else WRITE_LOCK_TIMEOUT
+
+
+def _lock_retry_attempts() -> int:
+    try:
+        n = int(os.getenv("FINVIZ_SCREENER_LOCK_RETRIES") or LOCK_RETRY_ATTEMPTS)
+    except (TypeError, ValueError):
+        return LOCK_RETRY_ATTEMPTS
+    return n if 1 <= n <= 10 else LOCK_RETRY_ATTEMPTS
+
+
+def _is_lock_timeout(exc) -> bool:
+    """SQLSTATE 55P03 (lock_not_available) -- the session's lock_timeout fired. Not statement_timeout
+    (57014), which means the statement itself is too slow and a retry would only repeat it."""
+    code = getattr(exc, "pgcode", None) or getattr(getattr(exc, "orig", None), "pgcode", None)
+    if code == "55P03":
+        return True
+    return "lock timeout" in str(exc).lower()
+
+
+def _retry_fits(deadline_monotonic, delay_s: float) -> bool:
+    """A retry must fit the caller's cooperative budget; the deadline path reports a deferral, not a failure."""
+    if deadline_monotonic is None:
+        return True
+    return (deadline_monotonic - time.monotonic()) > delay_s + 1.0
+
+
 def _update_screener_membership(cur, screener_id, present, run_id):
     """Keep screener_symbol_membership fresh — the runner previously only wrote new classifications, so
     membership went stale. Pattern per run: reset present_this_run → mark present symbols (seen++/miss=0)
@@ -429,80 +471,106 @@ def run_screener(screener_id: str = None, dry_run: bool = False, *, deadline_mon
             if not (_SAVEPOINT_RE.fullmatch(sp) and _SAVEPOINT_RE.fullmatch(sp_mem)):
                 raise ValueError(f"unsafe savepoint name for screener {sid!r}")
             _fence_before_first_write()   # first membership/classification write of the run (2026-10-16)
+            lock_timeout = _write_lock_timeout()
+            if not _LOCK_TIMEOUT_RE.fullmatch(lock_timeout):
+                raise ValueError(f"unsafe lock_timeout {lock_timeout!r}")
+            attempts = _lock_retry_attempts()
             added: list[str] = []         # tickers this screener inserted; counted only once committed
-            try:
-                cur.execute(f"SAVEPOINT {sp}")  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
+            membership_failed = False     # membership error in the FINAL attempt (retries reset it)
+            wrote = False
+            for attempt in range(1, attempts + 1):
+                added = []
+                membership_failed = False
+                try:
+                    # LQ-20261107-1577: this lane's writes wait like a batch writer, not the 3 s interactive
+                    # guard the role carries. SET LOCAL is re-issued before every attempt (a full rollback
+                    # ends the transaction and with it the setting) and sits BEFORE the savepoint: ROLLBACK
+                    # TO SAVEPOINT restores a GUC to its value at savepoint creation.
+                    cur.execute(f"SET LOCAL lock_timeout = '{lock_timeout}'")  # nosemgrep: tq-py-sql-fstring -- validated against _LOCK_TIMEOUT_RE above
+                    cur.execute(f"SAVEPOINT {sp}")  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
 
-                # Membership: nested savepoint — lock timeout must not poison classifications
-                if tickers:
-                    try:
-                        cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp_mem fullmatched _SAVEPOINT_RE
-                            f"SAVEPOINT {sp_mem}")
-                        n_mem = _update_screener_membership(cur, sid, tickers, _run_id)
-                        cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp_mem fullmatched _SAVEPOINT_RE
-                            f"RELEASE SAVEPOINT {sp_mem}")
-                        screener_result["membership_updated"] = n_mem
-                    except Exception as _me:
-                        membership_failures += 1
+                    # Membership: nested savepoint — lock timeout must not poison classifications
+                    if tickers:
                         try:
                             cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp_mem fullmatched _SAVEPOINT_RE
-                                f"ROLLBACK TO SAVEPOINT {sp_mem}")
-                        except Exception:
-                            # nested savepoint gone — roll outer and re-open outer for remaining writes
+                                f"SAVEPOINT {sp_mem}")
+                            n_mem = _update_screener_membership(cur, sid, tickers, _run_id)
+                            cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp_mem fullmatched _SAVEPOINT_RE
+                                f"RELEASE SAVEPOINT {sp_mem}")
+                            screener_result["membership_updated"] = n_mem
+                        except Exception as _me:
+                            membership_failed = True
                             try:
-                                cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
-                                    f"ROLLBACK TO SAVEPOINT {sp}")
-                                cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
-                                    f"SAVEPOINT {sp}")
+                                cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp_mem fullmatched _SAVEPOINT_RE
+                                    f"ROLLBACK TO SAVEPOINT {sp_mem}")
                             except Exception:
-                                _ensure_txn_usable(conn)
-                                cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
-                                    f"SAVEPOINT {sp}")
-                        print(f"  [screener] membership update failed for {sid}: {str(_me)[:120]}")
-                        screener_result["membership_error"] = str(_me)[:160]
+                                # nested savepoint gone — roll outer and re-open outer for remaining writes
+                                try:
+                                    cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
+                                        f"ROLLBACK TO SAVEPOINT {sp}")
+                                    cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
+                                        f"SAVEPOINT {sp}")
+                                except Exception:
+                                    _ensure_txn_usable(conn)
+                                    cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
+                                        f"SAVEPOINT {sp}")
+                            print(f"  [screener] membership update failed for {sid}: {str(_me)[:120]}")
+                            screener_result["membership_error"] = str(_me)[:160]
 
-                if new_tickers:
-                    for ticker in new_tickers[:200]:  # SCREENER-ARCH-2: raised from 10 to 200 per screener
+                    if new_tickers:
+                        for ticker in new_tickers[:200]:  # SCREENER-ARCH-2: raised from 10 to 200 per screener
+                            cur.execute("""
+                                INSERT INTO ticker_strategy_classifications
+                                    (symbol, strategy_type, asset_type, classification_source, confidence, rationale)
+                                VALUES (%s, %s, 'stock', 'screener', 0.7, %s)
+                                ON CONFLICT (symbol) DO NOTHING
+                            """, (ticker, strategy, f"Discovered by screener {sid}"))
+
+                            cur.execute("""
+                                INSERT INTO watchlist_items (symbol, source, status, origin_system, updated_at)
+                                VALUES (%s, 'ai_discovered', 'active', 'finviz_screener', now())
+                                ON CONFLICT DO NOTHING
+                            """, (ticker,))
+
+                            added.append(ticker)
                         cur.execute("""
-                            INSERT INTO ticker_strategy_classifications
-                                (symbol, strategy_type, asset_type, classification_source, confidence, rationale)
-                            VALUES (%s, %s, 'stock', 'screener', 0.7, %s)
-                            ON CONFLICT (symbol) DO NOTHING
-                        """, (ticker, strategy, f"Discovered by screener {sid}"))
+                            INSERT INTO portfolio_intelligence_events (event_type, severity, source, payload)
+                            VALUES ('screener_discovery', 'info', 'finviz_screener_runner.py', %s)
+                        """, (json.dumps({"screener": sid, "new": len(new_tickers), "sample": new_tickers[:5]}, default=str),))
 
-                        cur.execute("""
-                            INSERT INTO watchlist_items (symbol, source, status, origin_system, updated_at)
-                            VALUES (%s, 'ai_discovered', 'active', 'finviz_screener', now())
-                            ON CONFLICT DO NOTHING
-                        """, (ticker,))
+                    # Always stamp last_run when we fetched (even 0 new) so freshness isn't stuck
+                    if tickers or new_tickers:
+                        cur.execute(
+                            "UPDATE finviz_screeners SET last_run=now(), results_count=%s WHERE screener_id=%s",
+                            (len(tickers), sid),
+                        )
 
-                        added.append(ticker)
-                    cur.execute("""
-                        INSERT INTO portfolio_intelligence_events (event_type, severity, source, payload)
-                        VALUES ('screener_discovery', 'info', 'finviz_screener_runner.py', %s)
-                    """, (json.dumps({"screener": sid, "new": len(new_tickers), "sample": new_tickers[:5]}, default=str),))
-
-                # Always stamp last_run when we fetched (even 0 new) so freshness isn't stuck
-                if tickers or new_tickers:
-                    cur.execute(
-                        "UPDATE finviz_screeners SET last_run=now(), results_count=%s WHERE screener_id=%s",
-                        (len(tickers), sid),
-                    )
-
-                cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
-                    f"RELEASE SAVEPOINT {sp}")
-            except Exception as _dbe:
-                db_write_failures += 1
-                try:
                     cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
-                        f"ROLLBACK TO SAVEPOINT {sp}")
-                except Exception:
-                    if _ensure_txn_usable(conn):
-                        print(f"  [screener] full rollback after DB failure on {sid}")
-                print(f"  [screener] DB write failed for {sid}: {str(_dbe)[:120]}")
-                screener_result["db_error"] = str(_dbe)[:160]
-                screener_result["db_ok"] = False
-            else:
+                        f"RELEASE SAVEPOINT {sp}")
+                except Exception as _dbe:
+                    try:
+                        cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
+                            f"ROLLBACK TO SAVEPOINT {sp}")
+                    except Exception:
+                        if _ensure_txn_usable(conn):
+                            print(f"  [screener] full rollback after DB failure on {sid}")
+                    delay = LOCK_RETRY_SLEEP_S * attempt
+                    if attempt < attempts and _is_lock_timeout(_dbe) and _retry_fits(deadline_monotonic, delay):
+                        print(f"  [screener] lock timeout on {sid} (attempt {attempt}/{attempts});"
+                              f" retrying in {delay:.0f}s")
+                        time.sleep(delay)
+                        continue
+                    db_write_failures += 1
+                    print(f"  [screener] DB write failed for {sid}: {str(_dbe)[:120]}")
+                    screener_result["db_error"] = str(_dbe)[:160]
+                    screener_result["db_ok"] = False
+                    break
+                else:
+                    wrote = True
+                    break
+            if membership_failed:
+                membership_failures += 1
+            if wrote:
                 # Commit this screener's work HERE, before the next fetch replaces the handle.
                 # _refresh_conn() is db_adapter.ensure_conn(), which probes with SELECT 1 and then
                 # conn.rollback(): a SAVEPOINT that was only RELEASEd still belongs to that
@@ -680,14 +748,22 @@ def _run_tracked(args, started, _run_id) -> int:
                 if r["new_tickers"] > 0:
                     print(f"  {r['screener_id']:>25}: {r['total_found']} found, {r['new_tickers']} NEW → {r['sample'][:5]}")
 
-        complete = not (result.get("membership_failures") or result.get("db_write_failures"))
+        output = lane_output(result)
+        produced = int(output.get("produced_count") or 0)
+        # LQ-20261107-1577: the contract grades what this lane PRODUCED (finviz-screener-runner,
+        # N8nExpectedOutput@v1, min_produced=1); db_write_failed and no_tickers are non-fatal skips the
+        # receipt carries explicitly. On 2026-11-09 the run wrote 42 of 45 screeners and still recorded
+        # status=failed for 2 write failures, which the executor graded empty_output
+        # (why=receipt_status_failed) and dead-lettered as terminal and non-retryable: a run that produced
+        # 1853 tickers was reported as an empty one. A run that produced nothing still fails.
+        complete = produced > 0
         if deadline is not None and not result.get("results"):
             complete = False  # inactive/missing screener is not a completed refresh
         exit_code = 1 if deadline is not None and not complete else 0
         try:
             if _run_id:
                 if exit_code:
-                    run_fail(_run_id, "Finviz refresh incomplete: no verified completion or DB write failed")
+                    run_fail(_run_id, "Finviz refresh incomplete: no screener produced a verified refresh")
                 else:
                     total_new = sum(r.get('new_tickers', 0) for r in result.get('results', []))
                     run_complete(_run_id, rows_processed=total_new)
@@ -697,7 +773,7 @@ def _run_tracked(args, started, _run_id) -> int:
                            started_at=started, script="finviz_screener_runner.py",
                            summary={key: result.get(key) for key in
                                     ("screeners_run", "total_new_tickers", "membership_failures", "db_write_failures")},
-                           output=lane_output(result))
+                           output=output)
         return exit_code
     except _ScreenerFetchFailed:
         write_lane_receipt(receipt_lane_id(args.screener), ok=False, exit_code=1,
