@@ -53,12 +53,21 @@ export interface SinceCloseFeedItem extends SinceCloseNews {
 /** The rules the snapshot's ranks and glows were computed with, so a glow is explainable a month later. */
 export interface SinceCloseFeedRule { score?: string; urgency?: Partial<Record<'red' | 'amber' | 'green' | 'none', string>> }
 export interface WeekAheadEvent { date: string; kind: 'macro' | 'fomc' | 'earnings' | 'ex_div'; label: string; time_et: string | null; symbols: string[] }
+/** LQ-20261107-1318: the brief's own run and whether its pieces (synopsis, each stop_advice row) come from it.
+ *  The card embeds a COPY of the brief, so a copy assembled from two builds could otherwise disagree with itself. */
+export interface CioBriefRun {
+  run_id?: string | null; generated_at?: string | null
+  same_run?: boolean; text?: string | null
+  differing?: Array<{ piece: string; run_id?: string | null; detail: string }>
+  unverifiable?: string[]
+}
 /** LQ-1257 CIO brief, rendered as written; every field optional because that producer owns the shape. */
 export interface CioBriefWire {
   status: 'available' | 'pending'; label?: string; summary?: string; risk_tier?: string
   actions?: Array<{ symbol: string; action: string; reason?: string }>; week_ahead?: string[] | string
   stop_advice?: unknown[]
   synopsis?: unknown   // LQ-1257 amendment 2: {posture, risk, verdict, book, market, reentry, this_week, do_now, generated_at}
+  run?: CioBriefRun     // LQ-1318: written by since_close_card.cio_brief_block
   [k: string]: unknown   // LQ-1257 writes data/runtime/cio_overnight_brief/latest.json; aliases are read in cioFrom()
 }
 export interface SinceCloseUpdated { at: string; at_et: string; reason: string; kind: 'first' | 'news' | 'move'; symbol?: string | null; headline?: string | null }
@@ -103,7 +112,10 @@ export interface SinceCloseModel {
   collapsedNote: string | null
   weekAhead: WeekAheadEvent[]
   fedSpeakersText: string
-  cio: { pending: boolean; label: string; summary: string | null; tier: string | null; actions: Array<{ symbol: string; text: string }> }
+  cio: {
+    pending: boolean; label: string; summary: string | null; tier: string | null; actions: Array<{ symbol: string; text: string }>
+    runId: string | null; runNotice: string | null   // LQ-1318: the brief's run, and what does not come from it
+  }
   stops: StopList | null   // LQ-1257 stop_advice[] as an action list; null while the brief is pending or carries none
   stamp: StampWire | null
   synopsis: SynopsisModel
@@ -127,10 +139,20 @@ function ageText(sec: number | null | undefined): string {
 const first = (o: Record<string, unknown>, keys: string[]): unknown => keys.map(k => o[k]).find(v => v !== undefined && v !== null && v !== '')
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null)
 
+/** LQ-20261107-1318: the one sentence the card owes when the brief's pieces do not all come from its run. A copy
+ *  with no `run` stamp is not passed silently either — the pieces genuinely cannot be tied to one build. */
+export function cioRunNotice(b: CioBriefWire | null | undefined): string | null {
+  if (!b || b.status !== 'available') return null
+  const run = b.run
+  if (!run || typeof run !== 'object') return 'CIO brief run not stamped — its pieces cannot be tied to one build'
+  if (run.same_run === false) return str(run.text) ?? 'CIO brief pieces come from different builds'
+  return null
+}
+
 /** Read the CIO brief as LQ-1257 writes it. The producer owns the shape, so a few plausible names are accepted for
  *  each field; whatever is absent is simply not drawn (the card never invents a tier or an action). */
 export function cioFrom(b: CioBriefWire | null | undefined): SinceCloseModel['cio'] {
-  if (!b || b.status !== 'available') return { pending: true, label: b?.label ?? 'CIO brief pending', summary: null, tier: null, actions: [] }
+  if (!b || b.status !== 'available') return { pending: true, label: b?.label ?? 'CIO brief pending', summary: null, tier: null, actions: [], runId: null, runNotice: null }
   const rec = b as Record<string, unknown>
   const risk = first(rec, ['risk_tier', 'tier', 'risk_level', 'risk'])
   const tier = str(risk) ?? (risk && typeof risk === 'object' ? str(first(risk as Record<string, unknown>, ['tier', 'level', 'label'])) : null)
@@ -143,13 +165,14 @@ export function cioFrom(b: CioBriefWire | null | undefined): SinceCloseModel['ci
     const reason = str(first(o, ['reason', 'rationale', 'why', 'note']))
     return symbol && action ? [{ symbol, text: reason ? `${action} — ${reason}` : action }] : []
   })
-  return { pending: false, label: 'CIO brief', summary: str(first(rec, ['summary', 'overview', 'brief', 'headline'])), tier, actions }
+  return { pending: false, label: 'CIO brief', summary: str(first(rec, ['summary', 'overview', 'brief', 'headline'])), tier, actions,
+    runId: str(b.run_id), runNotice: cioRunNotice(b) }
 }
 
 export function sinceCloseModel(w: SinceCloseWire | null | undefined, nowMs: number = Date.now()): SinceCloseModel {
   const win = w?.window_now ?? w?.window
   const base = { label: win?.label ?? 'Since last close', closeTag: win?.close_tag ?? 'last close' }
-  const empty = { stale: true, freshnessText: 'not built yet', summaryText: null, summaryLines: [], held: [], watch: [], headlines: [], futuresText: 'futures feed pending', feed: [], today: null, updatedText: null, collapsedNote: null, weekAhead: [], fedSpeakersText: 'no feed — not listed', cio: { pending: true, label: 'CIO brief pending', summary: null, tier: null, actions: [] }, stops: null, stamp: null, synopsis: synopsisModel(null, null, nowMs) }
+  const empty = { stale: true, freshnessText: 'not built yet', summaryText: null, summaryLines: [], held: [], watch: [], headlines: [], futuresText: 'futures feed pending', feed: [], today: null, updatedText: null, collapsedNote: null, weekAhead: [], fedSpeakersText: 'no feed — not listed', cio: { pending: true, label: 'CIO brief pending', summary: null, tier: null, actions: [], runId: null, runNotice: null }, stops: null, stamp: null, synopsis: synopsisModel(null, null, nowMs) }
   if (!w || w.status !== 'ok') return { state: 'none', ...base, ...empty }
   const moves = w.moves ?? []
   const fut = w.macro?.futures

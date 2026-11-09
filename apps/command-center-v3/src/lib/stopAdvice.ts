@@ -74,7 +74,10 @@ export function stopList(
       n: 0, symbol, account: str(pick(o, ['account', 'account_name'])), kind, urgent: o.urgent === true || kind === 'ADD_STOP', verb: VERB[kind],
       order: kind === 'HOLD' || kind === 'NO_ACTION' ? null : { qty, stop: newStop, oldStop, gtc: o.gtc !== false },
       consequence, worstCase: last != null && stopForWorst != null && qty != null ? (last - stopForWorst) * qty : null,
-      reason: str(pick(o, ['why', 'reason', 'rationale'])), what: str(pick(o, ['what_happened', 'what', 'headline', 'event_summary'])),
+      // LQ-20261107-1318: the writer's event lives in `event_summary`; without it a HOLD row carrying a headline
+      // rendered as a bare word, which is exactly the event the operator was told to look at. (Live read the field
+      // last, behind `what_happened`; a row carrying both states the writer's event, not the alias.)
+      reason: str(pick(o, ['why', 'reason', 'rationale'])), what: str(pick(o, ['event_summary', 'what_happened', 'what', 'headline'])),
       stopNow: oldStop, last,
       qa: q || a || c ? { question: q, answer: a, correction: c } : null,
     })
@@ -83,4 +86,15 @@ export function stopList(
   const actions = rows.filter(r => r.kind === 'ADD_STOP' || r.kind === 'RAISE' || r.kind === 'FIX_QTY').map((r, i) => ({ ...r, n: i + 1 }))
   const quiet = rows.filter(r => r.kind === 'HOLD' || r.kind === 'NO_ACTION')
   return { actions, quiet, header: `Your actions · ${actions.length} stop change${actions.length === 1 ? '' : 's'} at Schwab`, rule: STOP_RULE }
+}
+
+/** LQ-20261107-1318 — the "no change needed" line. A quiet row that carries an event says the event: "ANET (hold) —
+ *  analyst revisions and a planned insider sale", never a bare "hold". Pure, so the shape is testable without a DOM. */
+export function quietLine(list: Pick<StopList, 'quiet'>): string | null {
+  if (!list.quiet.length) return null
+  const cells = list.quiet.map(r => {
+    const word = r.kind === 'HOLD' ? 'hold' : 'no action'
+    return r.what ? `${r.symbol} (${word}) — ${r.what}` : `${r.symbol} (${word})`
+  })
+  return `No change needed: ${cells.join(' · ')}`
 }

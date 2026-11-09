@@ -46,9 +46,11 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 try:
+    from lib import cio_brief_consistency as cio_consistency
     from lib import since_close_stamp
     from lib.market_risk import sessions
 except ImportError:  # pragma: no cover - imported as scripts.lib
+    from scripts.lib import cio_brief_consistency as cio_consistency
     from scripts.lib import since_close_stamp
     from scripts.lib.market_risk import sessions
 
@@ -878,10 +880,19 @@ def fetch_ex_divs(conn: Any, *, today: datetime, days: int = 8) -> list[dict[str
 
 def cio_brief_block(brief: Mapping[str, Any] | None) -> dict[str, Any]:
     """The CIO brief (LQ-1257) passed through as written: summary, risk tier, per-holding advisory actions, week
-    ahead.  Absent or unreadable -> ``pending``; the card says so and the feed still renders."""
+    ahead.  Absent or unreadable -> ``pending``; the card says so and the feed still renders.
+
+    LQ-20261107-1318: the block also carries ``run`` — the brief's ``run_id`` and whether every run-scoped piece
+    (synopsis, each stop_advice row) comes from that same run. The card embeds a COPY of the brief, so a copy
+    assembled from two builds could disagree with itself; the UI draws ``run.text`` instead of trusting the copy.
+    """
     if not brief:
         return {"status": "pending", "label": "CIO brief pending"}
-    return {"status": "available", **{k: v for k, v in brief.items() if k != "status"}}
+    return {
+        "status": "available",
+        **{k: v for k, v in brief.items() if k != "status"},
+        "run": cio_consistency.run_check(brief),
+    }
 
 
 #: The answers that ask the operator to DO something. HOLD and NO_ACTION are answers too, and they do not raise a name

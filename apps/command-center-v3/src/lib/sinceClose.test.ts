@@ -63,5 +63,16 @@ const c1 = sinceCloseModel(wire({ cio_brief: { status: 'available', overview: 'C
 assert.equal(c1.summary, 'Calm.'); assert.equal(c1.tier, 'GREEN'); assert.deepEqual(c1.actions, [{ symbol: 'AAA', text: 'hold stop — no change' }])
 assert.equal(sinceCloseModel(wire({ cio_brief: { status: 'available' } })).cio.tier, null)
 
+// LQ-20261107-1318 same-run: the card embeds a COPY of the brief, so a copy whose pieces are not all from the run
+// says so; a copy with no run stamp is never passed silently; a pending brief has nothing to compare.
+const sameRun = { status: 'available' as const, run_id: 'cio-brief-aaa111', run: { run_id: 'cio-brief-aaa111', same_run: true, text: null } }
+const same = sinceCloseModel(wire({ cio_brief: sameRun })).cio
+assert.equal(same.runId, 'cio-brief-aaa111'); assert.equal(same.runNotice, null)
+const mixed = { status: 'available' as const, run_id: 'cio-brief-bbb222', run: { run_id: 'cio-brief-bbb222', same_run: false, text: 'synopsis was built 95 min before this run' } }
+assert.equal(sinceCloseModel(wire({ cio_brief: mixed })).cio.runNotice, 'synopsis was built 95 min before this run')
+assert.equal(sinceCloseModel(wire({ cio_brief: { status: 'available' } })).cio.runNotice, 'CIO brief run not stamped — its pieces cannot be tied to one build')
+assert.equal(sinceCloseModel(wire({ cio_brief: { status: 'pending' } })).cio.runNotice, null)
+assert.equal(m.cio.runNotice, null)
+
 assert.equal(pctText(-18.24), '-18.2%'); assert.equal(pctText(null), '—'); assert.equal(usdText(-1234.4), '−$1,234'); assert.equal(usdText(86), '+$86')
 console.log('sinceClose tests passed')

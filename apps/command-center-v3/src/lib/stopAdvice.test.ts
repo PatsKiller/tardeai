@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { kindOf, stopList } from './stopAdvice.ts'
+import { kindOf, quietLine, stopList } from './stopAdvice.ts'
 import { badgeText, stampModel, type StampWire } from './sinceCloseStamp.ts'
 
 
@@ -56,6 +56,30 @@ describe('stopList', () => {
     expect(stopList([raw[2]], Q).header).toBe('Your actions · 1 stop change at Schwab')
     expect(stopList(undefined, Q).actions).toEqual([])
     expect(stopList([null, 5, { symbol: 'X' }], Q).actions).toEqual([])
+  })
+})
+
+// LQ-20261107-1318: the operator was shown HOLD rows collapsed to a bare word — a quiet row that carries an event
+// states the event.
+describe('quietLine', () => {
+  it('a quiet HOLD row carries its event, never a bare hold', () => {
+    const L = stopList([
+      { symbol: 'CCC', answer: 'HOLD', event_summary: 'analyst revisions and a planned insider sale' },
+      { symbol: 'EEE', answer: 'NO ACTION' },
+    ], Q)
+    expect(L.quiet[0].what).toBe('analyst revisions and a planned insider sale')
+    expect(quietLine(L)).toBe('No change needed: CCC (hold) — analyst revisions and a planned insider sale · EEE (no action)')
+  })
+  it('no event, no dash; no quiet rows, no line', () => {
+    expect(quietLine(stopList([{ symbol: 'CCC', answer: 'HOLD' }], Q))).toBe('No change needed: CCC (hold)')
+    expect(quietLine({ quiet: [] })).toBeNull()
+  })
+  // The rebase onto live (LQ-1311) found the event aliases already there, with event_summary read LAST. A row that
+  // carries both states the writer's event: event_summary is the field cio_overnight_brief.py writes.
+  it('the writer\'s event_summary wins over an alias when a row carries both', () => {
+    const L = stopList([{ symbol: 'CCC', answer: 'HOLD', what_happened: 'an alias', event_summary: 'the writer event' }], Q)
+    expect(L.quiet[0].what).toBe('the writer event')
+    expect(stopList([{ symbol: 'CCC', answer: 'HOLD', what_happened: 'an alias' }], Q).quiet[0].what).toBe('an alias')
   })
 })
 

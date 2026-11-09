@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_preview_render_lq1318_20261109",
+  "files": [
+    "tests/test_cio_preview_render_lq1318_20261109.py"
+  ],
+  "comment": [
+    "LQ-20261107-1318: a Home-CIO preview must be a RENDER of the same CIOOvernightBrief@v1 document Home",
+    "shows, never prose composed from the data. scripts/cio_preview_render.py refuses anything that is not",
+    "that document (free text, {}, wrong schema, a document with no run_id/generated_at/synopsis) with exit 2,",
+    "and --check runs scripts/lib/cio_brief_consistency.check_brief, exiting 1 on FAIL. The page repeats only",
+    "the document's words: the run id and ET clocks are on it, a HOLD row with an event states the event",
+    "(never a bare 'hold'), a mixed-run brief carries the run notice, and every string is HTML-escaped.",
+    "Exit 0 from main() is the gate's verdict, the page is the artifact. Synthetic fixtures; no network, no DB."
+  ]
+}

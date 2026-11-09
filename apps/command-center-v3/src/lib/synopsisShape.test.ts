@@ -68,4 +68,13 @@ const BLOCKS = {
   assert.equal(m.rows.length, 5, 'a stale synopsis still draws its rows')
 }
 
+// ---- LQ-20261107-1318: the writer stamps the synopsis with the brief's run_id; it is metadata, never a row, and an
+//      unstamped synopsis still draws (the card's run notice is what says the pieces cannot be tied to one build)
+{
+  const stamped = synopsisModel({ ...BLOCKS, run_id: 'cio-brief-aaa111' }, null, NOW)
+  assert.equal(stamped.rows.length, 5, 'a run stamp is not drawn as a row')
+  assert.equal(stamped.rows.map(r => r.key).join(','), 'book,market,reentry,this_week,do_now')
+  assert.equal(stamped.verdict, BLOCKS.verdict)
+}
+
 console.log('synopsisShape LIVEFIX-LQ1269')

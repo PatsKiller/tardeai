@@ -2,7 +2,7 @@
  *  Render only: the CIO owns every verdict and nothing here places or edits an order. "Done" is per-viewer state. */
 import { useState, type CSSProperties } from 'react'
 import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../../lib/designTokens'
-import type { StopList, StopRow } from '../../lib/stopAdvice'
+import { type StopList, type StopRow } from '../../lib/stopAdvice'
 import type { StampWire } from '../../lib/sinceCloseStamp'
 import { AsOfBadge } from './SinceCloseStamp'
 
@@ -115,6 +115,8 @@ export default function SinceCloseStops({ list, stamp, nowMs }: { list: StopList
         ? <p style={{ margin: 0, fontSize: 14, color: up.color }} data-testid="stops-none">Nothing to change at Schwab today.</p>
         : <ol data-testid="stops-grid" style={GRID}>{list.actions.map(r => <Row key={dayKey(r)} r={r} done={!!done[dayKey(r)]} toggle={flip(r)} />)}</ol>}
       {list.quiet.length > 0 && (
+        // LQ-1318: a quiet row that carries an event says the event, never a bare "hold" — QuietRow draws r.what,
+        // and stopAdvice reads the writer's `event_summary` into it. (LQ-1311's card layout is kept as it is.)
         <div data-testid="stops-quiet" style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
           <span style={{ fontSize: 13, color: TOKENS.text[3] }}>No change needed ({list.quiet.length}):</span>
           <ul style={GRID}>{list.quiet.map(r => <QuietRow key={dayKey(r)} r={r} />)}</ul>
