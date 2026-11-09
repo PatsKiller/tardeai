@@ -1200,15 +1200,19 @@ def _diagnosis_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
                 }
             )
     passed = 0
+    digest_passed = 0
     if age_h is not None and age_h <= 24:
-        for e in doc.get("escalations") or []:
-            sev = str(e.get("priority") or "P2")
-            if sev not in ("P1", "P2"):
-                continue
+        seen: set[str] = set()
+
+        def _pass(e: dict[str, Any], sev: str) -> None:
+            item = f"escalate:{e.get('lane')}/{e.get('key')}"
+            if item in seen:
+                return
+            seen.add(item)
             found.append(
                 {
                     **base,
-                    "item": f"escalate:{e.get('lane')}/{e.get('key')}",
+                    "item": item,
                     "severity": sev,
                     "detail": str(e.get("detail") or e.get("reason") or "")[:160],
                     "detected_at": e.get("at") or doc.get("as_of"),
@@ -1219,12 +1223,73 @@ def _diagnosis_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
                     "reason": e.get("reason"),
                 }
             )
+
+        for e in doc.get("escalations") or []:
+            if not isinstance(e, dict):
+                continue
+            sev = str(e.get("priority") or "P2")
+            if sev not in ("P1", "P2"):
+                continue
+            _pass(e, sev)
             passed += 1
+        # 2026-11-09 LQ-1432: the diagnoser parks P2 on ``digest`` (never the P1 escalations list, so Telegram
+        # does not send an individual message). The fan-in only read ``escalations``, so a P2 such as
+        # hermes-research-worker-pool "system_health_checks last written 52.2 h ago" never became a finding
+        # and never opened an IncidentRecord. Digest P2s join the same finding list; the notifier still
+        # batches P2s instead of paging one message per signature.
+        for e in doc.get("digest") or []:
+            if not isinstance(e, dict) or str(e.get("priority") or "") != "P2":
+                continue
+            before = len(found)
+            _pass(e, "P2")
+            if len(found) > before:
+                digest_passed += 1
     NOTES[key] = (
-        f"ok:escalations={passed}:age_h={None if age_h is None else round(age_h, 2)}:"
+        f"ok:escalations={passed}:digest_p2={digest_passed}:age_h={None if age_h is None else round(age_h, 2)}:"
         f"scheduled={'yes' if scheduled else 'no'}"
     )
     return found
+
+
+def publish_diagnosis_p2(findings: list[dict[str, Any]], *, apply: bool) -> int:
+    """Open one IncidentRecord per diagnosis P2 finding. Dry-run opens nothing.
+
+    ``/v3/ops/incidents`` reads the incident ledger, not the fan-in receipt. A digest P2 that never
+    becomes a finding never reaches this, which is how the 01:18 ET escalation stayed off the page.
+    The fingerprint is the diagnosis item, so a later slot returns the same open row."""
+    if not apply:
+        return 0
+    try:
+        from scripts.lib import incidents as inc
+    except ImportError:
+        from lib import incidents as inc  # type: ignore[no-redef]
+    opened = 0
+    d = inc.incidents_dir()
+    for f in findings:
+        if f.get("source") != DIAGNOSIS_SOURCE or f.get("severity") != "P2":
+            continue
+        if not str(f.get("item") or "").startswith("escalate:"):
+            continue
+        lane = str(f.get("lane") or "")
+        title = f"P2 {lane}: {str(f.get('detail') or f.get('reason') or '')[:180]}".strip()
+        try:
+            _rec, created = inc.open_incident(
+                source={"kind": "lane", "job": lane, "lane": lane},
+                title=title,
+                where="scripts/n8n_failure_diagnosis.py digest",
+                evidence=[f"receipt:{DIAGNOSIS_RECEIPT_REL}", f"item:{f.get('item')}"],
+                fingerprint=inc.fingerprint_of("n8n_failure_diagnosis", lane, str(f.get("item") or "")),
+                severity="P2",
+                actor="n8n-incident-fanin",
+                d=d,
+            )
+        except Exception as exc:  # noqa: BLE001 — the fan-in receipt still publishes; the note names the miss
+            NOTES["diagnosis_p2_ledger"] = f"error:{type(exc).__name__}"
+            return opened
+        if created:
+            opened += 1
+    NOTES["diagnosis_p2_ledger"] = f"ok:opened={opened}"
+    return opened
 
 
 WFERR_SOURCE = "n8n_workflow_error"
@@ -1738,6 +1803,7 @@ def main(argv: list[str] | None = None) -> int:
         findings = flood.pop("_findings")
     else:
         flood.pop("_findings", None)
+    publish_diagnosis_p2(findings, apply=bool(args.apply))
     by_sev: dict[str, int] = {}
     for f in findings:
         by_sev[f["severity"]] = by_sev.get(f["severity"], 0) + 1

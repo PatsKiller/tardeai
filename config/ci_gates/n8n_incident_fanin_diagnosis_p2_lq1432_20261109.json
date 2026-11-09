@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_incident_fanin_diagnosis_p2_lq1432_20261109",
+  "files": [
+    "tests/test_n8n_incident_fanin_diagnosis_p2_lq1432_20261109.py"
+  ],
+  "anchor": "N8N_INCIDENT_FANIN_DIAGNOSIS_P2_LQ1432",
+  "comment": [
+    "ANCHOR: N8N_INCIDENT_FANIN_DIAGNOSIS_P2_LQ1432 — LQ-20261107-1432. A diagnosis P2 on the receipt digest becomes a fan-in finding and, on apply, one IncidentRecord. P3 digest rows and P1 escalations are not opened by this path. Synthetic names only."
+  ]
+}
