@@ -220,10 +220,13 @@ export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: an
     return c !== 'active' && c !== 'pending_activation'
   })
   if (dustUnprotected.length) {
-    const dustValue = dustUnprotected.reduce((s, row) => s + (num(row.market_value) ?? 0), 0)
+    // A residual with no market value is not a zero: total only what is priced, and say how many are not.
+    const pricedDust = dustUnprotected.map(row => num(row.market_value)).filter((v): v is number => v !== null)
+    const dustValue = pricedDust.length ? pricedDust.reduce((s, v) => s + v, 0) : null
+    const unpricedDust = dustUnprotected.length - pricedDust.length
     items.push({ id: 'protection:under-100', category: 'protect', severity: 'P3',
       title: `${dustUnprotected.length} position${dustUnprotected.length === 1 ? '' : 's'} under $100 without a stop`,
-      why: `${usd0(dustValue)} in total, below the $100 threshold the unprotected count uses, so these are not in that count.`,
+      why: `${dustValue === null ? 'no readable market value' : `${usd0(dustValue)} in total`}${unpricedDust ? ` (${unpricedDust} of ${dustUnprotected.length} unpriced)` : ''}, below the $100 threshold the unprotected count uses, so these are not in that count.`,
       actionLabel: 'Open risk', where: '/risk', money: dustValue, moneyBasis: 'market value of positions under $100',
       sources: ['CIO positions'], since: null, accounts: [] })
   }

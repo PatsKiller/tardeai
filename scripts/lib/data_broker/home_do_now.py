@@ -562,19 +562,22 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
     # Saying both numbers and naming the residuals keeps "N unprotected" from reading as "N things to do"
     # (LQ-20261107-1390: the queue said "12 unprotected" while two rows were actionable).
     floor = UNPROTECTED_ITEM_MIN_USD
-    above = {s: r for s, r in no_stop.items() if (r.get("value") or 0.0) >= floor}
-    below = {s: r for s, r in no_stop.items() if (r.get("value") or 0.0) < floor}
-    above_value = sum(r.get("value") or 0.0 for r in above.values())
-    below_value = sum(r.get("value") or 0.0 for r in below.values())
+    # Every by_sym row carries "value" as a number (created at :407, accumulated at :419, recomputed at
+    # :505/:518), so a 0.0 here is a priced zero and not a missing value — index it rather than defaulting
+    # a gap to zero (taxonomy #2).
+    above = {s: r for s, r in no_stop.items() if r["value"] >= floor}
+    below = {s: r for s, r in no_stop.items() if r["value"] < floor}
+    above_value = sum(r["value"] for r in above.values())
+    below_value = sum(r["value"] for r in below.values())
     if no_stop:
-        unprot_value = sum(r.get("value") or 0.0 for r in no_stop.values())
+        unprot_value = sum(r["value"] for r in no_stop.values())
         syms = [s for s, _ in ranked]
         shown = ", ".join(syms[:6]) + (f" and {len(syms) - 6} more" if len(syms) > 6 else "")
         split = ""
         if below:
             below_txt = ", ".join(
-                f"{s} {_usd(r.get('value') or 0.0)}"
-                for s, r in sorted(below.items(), key=lambda kv: -(kv[1].get("value") or 0.0))
+                f"{s} {_usd(r['value'])}"
+                for s, r in sorted(below.items(), key=lambda kv: -kv[1]["value"])
             )
             split = (
                 f" {len(above)} above the {_usd(floor)} action floor ({_usd(above_value)}); "
@@ -597,8 +600,8 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
                     "symbols": syms,
                     "count": len(no_stop),
                     "actionable_symbols": sorted(above),
-                    "below_floor": [{"symbol": s, "value": round(r.get("value") or 0.0, 2)}
-                                    for s, r in sorted(below.items(), key=lambda kv: -(kv[1].get("value") or 0.0))],
+                    "below_floor": [{"symbol": s, "value": round(r["value"], 2)}
+                                    for s, r in sorted(below.items(), key=lambda kv: -kv[1]["value"])],
                 },
             )
         )
@@ -616,8 +619,8 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
         "unprotected_below_floor_positions": len(below),
         "unprotected_below_floor_value_usd": round(below_value, 2),
         "unprotected_below_floor": [
-            {"symbol": s, "value": round(r.get("value") or 0.0, 2)}
-            for s, r in sorted(below.items(), key=lambda kv: -(kv[1].get("value") or 0.0))
+            {"symbol": s, "value": round(r["value"], 2)}
+            for s, r in sorted(below.items(), key=lambda kv: -kv[1]["value"])
         ],
         "positions_counted": len(by_sym),
         "heat_pct": _num(port.get("heat_pct")),

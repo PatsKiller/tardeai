@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "unprotected_resting_stop_lq1390_20261109",
+  "files": [
+    "tests/test_cio_truth_unprotected_resting_20261109.py"
+  ],
+  "anchor": "UNPROTECTED_RESTING_STOP_LQ1390_20261109",
+  "comment": [
+    "ANCHOR: UNPROTECTED_RESTING_STOP_LQ1390_20261109 — LQ-20261107-1390. A resting GTC stop (Schwab AWAITING_STOP_CONDITION, mapped to pending_activation) is protection: it drives the unprotected count and value, while broker_protected and the armed-only loss-at-stop figures are unchanged. The unprotected count covers positions >= $100 and the wide value sums every position; the split names which is which."
+  ]
+}

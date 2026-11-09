@@ -233,6 +233,15 @@ check('restoration: counted rows are one action each, the dust is one labelled r
   && dustRow?.money === 24.81 && dustRow?.title === '2 positions under $100 without a stop')
 check('restoration: the residual row says it is outside the count',
   dustRow?.why.includes('not in that count') === true)
+// A residual with no readable value is named, never summed as a zero (taxonomy #2).
+const halfPriced = homeWithCurrentTruth(doNowFrom({ ...ok, items: [] }, { nowMs: now }),
+  { positions: { source: 'fixture CIO', as_of: ok.as_of, rows: [
+    { symbol: 'D1', account_id: 'demo_account', market_value: 9, stop_category: 'none', counted: false },
+    { symbol: 'D2', account_id: 'demo_account', market_value: null, stop_category: 'none', counted: false },
+  ] }, stops: { unprotected_count: 0, stale: false } }, { pending_approvals: 0 })
+  .items.find(i => i.id === 'protection:under-100')
+check('restoration: an unpriced residual is named, not counted as zero',
+  halfPriced?.money === 9 && halfPriced?.why.includes('1 of 2 unpriced') === true)
 check('restoration: source payload unchanged', current.positions.rows[0].stop_category === 'active' && m.items[0].id === 'stop:SPCX')
 check('restoration: account names only', corrected.items.filter(i => i.id.startsWith('protection:')).every(i => i.accounts[0].label === 'Example Account'))
 check('restoration: protection opens the exact Risk account+symbol sheet', corrected.items.find(i => i.title.startsWith('FAKE2'))?.where.includes('detail=position%3Ademo_account%3AFAKE2') === true)
