@@ -28,6 +28,40 @@ def _fingerprint(path: Path) -> tuple:
     return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
 
 
+def _accept_event(line: str, rows: list, coverage: str) -> str:
+    try:
+        row = json.loads(line)
+        if not isinstance(row, dict):
+            raise ValueError('event is not an object')
+        if row.get('provider') == 'anthropic' and not row.get('is_test'):
+            rows.append(row)
+    except (ValueError, TypeError):
+        return 'INCOMPLETE'
+    return coverage
+
+
+def _appended_text(path: Path, start: int) -> str | None:
+    """Bytes added since ``start``. None when the boundary is mid-line (full reread)."""
+    with path.open('rb') as handle:
+        if start:
+            handle.seek(start - 1)
+            if handle.read(1) != b'\n':
+                return None
+            handle.seek(start)
+        raw = handle.read()
+    return raw.decode('utf-8')
+
+
+def _store_events(key: str, fingerprint: tuple, rows: list, coverage: str) -> tuple:
+    result = (fingerprint, tuple(rows), coverage)
+    with _EVENT_CACHE_LOCK:
+        _EVENT_CACHE[key] = result
+        _EVENT_CACHE.move_to_end(key)
+        while len(_EVENT_CACHE) > _EVENT_CACHE_LIMIT:
+            _EVENT_CACHE.popitem(last=False)
+    return result[1], result[2]
+
+
 def _events(path: Path):
     key = str(path.absolute())
     try:
@@ -41,29 +75,35 @@ def _events(path: Path):
         if cached and cached[0] == fingerprint:
             _EVENT_CACHE.move_to_end(key)
             return cached[1], cached[2]
+    # Same file grew: parse only the appended lines. A full reread of the provider
+    # cost log (100MB+) misses the needs-action 5s budget on every append.
+    if cached and cached[0][:2] == fingerprint[:2] and fingerprint[2] > cached[0][2]:
+        try:
+            extra = _appended_text(path, cached[0][2])
+        except (OSError, UnicodeError):
+            extra = None
+        if extra is not None:
+            rows = list(cached[1])
+            coverage = cached[2]
+            for line in extra.splitlines():
+                if line.strip():
+                    coverage = _accept_event(line, rows, coverage)
+            try:
+                if _fingerprint(path) != fingerprint:
+                    return tuple(rows), 'INCOMPLETE'
+            except OSError:
+                return tuple(rows), 'INCOMPLETE'
+            return _store_events(key, fingerprint, rows, coverage)
     rows, coverage = [], 'COMPLETE_FILE'
     try:
         with path.open(encoding='utf-8') as handle:
             for line in handle:
-                try:
-                    row = json.loads(line)
-                    if not isinstance(row, dict):
-                        raise ValueError('event is not an object')
-                    if row.get('provider') == 'anthropic' and not row.get('is_test'):
-                        rows.append(row)
-                except (ValueError, TypeError):
-                    coverage = 'INCOMPLETE'
+                coverage = _accept_event(line, rows, coverage)
         if _fingerprint(path) != fingerprint:
             return tuple(rows), 'INCOMPLETE'
     except (OSError, UnicodeError):
         return tuple(rows), 'INCOMPLETE'
-    result = (fingerprint, tuple(rows), coverage)
-    with _EVENT_CACHE_LOCK:
-        _EVENT_CACHE[key] = result
-        _EVENT_CACHE.move_to_end(key)
-        while len(_EVENT_CACHE) > _EVENT_CACHE_LIMIT:
-            _EVENT_CACHE.popitem(last=False)
-    return result[1], result[2]
+    return _store_events(key, fingerprint, rows, coverage)
 
 
 def configuration_evidence(manifest_path: Path | None = None) -> tuple[bool, str]:

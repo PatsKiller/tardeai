@@ -23,7 +23,6 @@ from scripts.lib.n8n_dlq_disposition import cause
 ET=ZoneInfo('America/New_York')
 SCHEMA='N8nToday@v2'
 LEGACY_SCHEMA='N8nToday@v1'
-CACHE_TTL_S=60.0
 MAX_RELAY_BYTES=32*1024*1024
 MAX_RECEIPT_BYTES=256*1024
 MAX_RUN_BYTES=32*1024*1024
@@ -221,13 +220,29 @@ def build(state_root:Optional[Path]=None,now:Optional[datetime]=None)->dict[str,
         'note':'Runs use semantic slot date in ET for d/e/g/p and execution date for n8n-wf receipts. Requested and effective modes are separate. Recovery actions are requests, not proven heals; first live observation is not cutover proof.'}
 
 
-def get_n8n_today(state_root:Optional[Path]=None,now:Optional[datetime]=None,*,ttl_s=CACHE_TTL_S):
+def get_n8n_today(state_root:Optional[Path]=None,now:Optional[datetime]=None,*,ttl_s=None,stale_s=None):
+    """Return the daily projection. A changed receipt directory does not force a rebuild
+    while the last projection is inside ``stale_s`` (config/needs_action_probes.json).
+
+    Needs-action gives this probe 5s. Rebuilding on every ``n8n_runs`` mtime (a new
+    receipt every few seconds) reads thousands of files and misses that budget. The
+    caller still passes ``ttl_s=0`` to force a rebuild.
+    """
+    from scripts.lib.needs_action_probe_config import n8n_today_stale_s, n8n_today_ttl_s
+    if ttl_s is None:ttl_s=n8n_today_ttl_s()
+    if stale_s is None:stale_s=n8n_today_stale_s()
     root=Path(state_root or default_state_root());clock=now or datetime.now(timezone.utc)
     key=(str(root),clock.astimezone(ET).date().isoformat(),*(_mtime(root/p) for p in (RUNS_REL,RELAY_REL,DIAG_REL,CUTOVER_REL)))
     with _LOCK:
         previous=_CACHE.get(str(root))
-        if previous and previous['key']==key and time.monotonic()-previous['at']<ttl_s:
+        age=time.monotonic()-previous['at'] if previous else None
+        if previous and ttl_s>0 and previous['key']==key and age<ttl_s:
             doc={**previous['doc'],'cache':'HIT'}
+            last=_parse(doc.get('last_good_at'))
+            doc['last_good_age_s']=max(0,int((clock-last).total_seconds())) if last else None
+            return doc
+        if previous and ttl_s>0 and stale_s>0 and age<stale_s:
+            doc={**previous['doc'],'cache':'STALE'}
             last=_parse(doc.get('last_good_at'))
             doc['last_good_age_s']=max(0,int((clock-last).total_seconds())) if last else None
             return doc

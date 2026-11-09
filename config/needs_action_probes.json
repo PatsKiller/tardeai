@@ -1,0 +1,5 @@
+{
+  "schema": "NeedsActionProbes@v1",
+  "n8n_today_ttl_s": 60,
+  "n8n_today_stale_s": 180
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1510_needs_action_probe_cost_20261109",
+  "files": [
+    "tests/test_lq1510_needs_action_probe_cost_20261109.py"
+  ],
+  "anchor": "LQ1510_NEEDS_ACTION_PROBE_COST_20261109",
+  "comment": [
+    "ANCHOR: LQ1510_NEEDS_ACTION_PROBE_COST_20261109 — needs-action n8n and anthropic probes stay inside the 5s budget by serving a stale n8n-today projection and parsing only appended Anthropic events."
+  ]
+}
