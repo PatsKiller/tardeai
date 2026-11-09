@@ -314,12 +314,21 @@ def _ro_profiles_loader(conn_factory: Any) -> Any:
         conn = read_only(conn_factory)
         try:
             with conn.cursor() as cur:
+                # LQ-20261107-1578: the API loader's list minus the two fields this engine path does not read —
+                # industry included, or ``lookthrough``'s semis branch can never fire for a held semiconductor.
+                cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'symbol_profiles'")
+                have = {r[0] for r in cur.fetchall()}
+                cols = [c for c in ("sector", "description_1s", "industry") if c in have]
                 cur.execute(
-                    "SELECT DISTINCT ON (upper(symbol)) upper(symbol), sector, description_1s FROM symbol_profiles "
+                    f"SELECT DISTINCT ON (upper(symbol)) upper(symbol), {', '.join(cols)} FROM symbol_profiles "
                     "WHERE upper(symbol) = ANY(%s) ORDER BY upper(symbol), updated_at DESC NULLS LAST",
                     (symbols,),
                 )
-                profiles = {r[0]: {"sector": r[1], "description": r[2]} for r in cur.fetchall()}
+                profiles = {}
+                for row in cur.fetchall():
+                    rec = dict(zip(cols, row[1:]))
+                    profiles[row[0]] = {"sector": rec.get("sector"), "description": rec.get("description_1s"),
+                                        "industry": rec.get("industry")}
         finally:
             conn.close()
         return profiles, None

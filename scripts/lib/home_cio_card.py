@@ -312,8 +312,12 @@ def _hedge(mr: Mapping, advice_ok: bool) -> dict | None:
     labels = [b.get("label") for b in h.get("stressed_breakdown") or [] if isinstance(b, Mapping) and _num(b.get("usd"))]
     keys = {b.get("key") for b in h.get("stressed_breakdown") or [] if isinstance(b, Mapping)}
     cands = [c for c in h.get("candidates") or [] if c]
+    # LQ-20261107-1578: the desk's materiality line is the floor for a proposal, never just a display hint. The
+    # card proposed "up to half the stressed dollars" at 0.0% of book, against a semis theme the book does not
+    # hold. Below the line (or when the line cannot be read) the honest answer is the gap only.
+    material = pct is not None and mat is not None and pct >= mat
     pick = None
-    if advice_ok and cands:
+    if advice_ok and cands and material:
         sym = "PSQ" if (keys & TECH_KEYS and "PSQ" in cands) else cands[0]
         size = round(stressed_usd * PROPOSED_HEDGE_SHARE, 0) if stressed_usd else None
         pick = {"symbol": sym, "stress_led_by": labels, "others": [c for c in cands if c != sym],

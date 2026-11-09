@@ -239,7 +239,10 @@ def _default_profiles_loader(symbols: list[str]) -> tuple[dict[str, dict[str, An
     cur = conn.cursor()
     cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'symbol_profiles'")
     have = {r[0] for r in cur.fetchall()}
-    cols = [c for c in ("sector", "description_1s", "earnings_date", "instrument_type") if c in have]
+    # LQ-20261107-1578: industry was never selected, so ``lookthrough.exposure_for``'s semis branch
+    # (``prof.get("industry")``) could not fire for any directly held stock — a semiconductor name counted as
+    # its sector only. The column is on this table; the probe stays for an older store.
+    cols = [c for c in ("sector", "description_1s", "industry", "earnings_date", "instrument_type") if c in have]
     cur.execute(
         f"SELECT DISTINCT ON (upper(symbol)) upper(symbol), {', '.join(cols)} FROM symbol_profiles "
         "WHERE upper(symbol) = ANY(%s) ORDER BY upper(symbol), updated_at DESC NULLS LAST",
@@ -248,7 +251,8 @@ def _default_profiles_loader(symbols: list[str]) -> tuple[dict[str, dict[str, An
     profiles, earnings = {}, {}
     for row in cur.fetchall():
         rec = dict(zip(cols, row[1:]))
-        profiles[row[0]] = {"sector": rec.get("sector"), "description": rec.get("description_1s")}
+        profiles[row[0]] = {"sector": rec.get("sector"), "description": rec.get("description_1s"),
+                            "industry": rec.get("industry")}
         if rec.get("earnings_date"):
             earnings[row[0]] = rec["earnings_date"]
     return profiles, (earnings if "earnings_date" in have else None)

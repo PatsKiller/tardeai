@@ -147,7 +147,13 @@ def test_shape():
     trig = {t["key"]: t for t in p["hedge"]["triggers"]}
     assert trig["stressed_pct_book"]["value"] == 7.0 and trig["stressed_pct_book"]["act"] == 10.0
     assert p["hedge"]["gap_to_consider_usd"] == 1000.0
-    assert p["hedge"]["if_triggered"]["symbol"] == "PSQ" and p["hedge"]["if_triggered"]["proposed"] is True
+    # LQ-20261107-1578: 7.0% of book sits below the 8% materiality line, so the card shows the gap and proposes
+    # nothing; at/above the line the proposal returns (its own tests live in test_market_risk_hedge_materiality_20261109).
+    assert "if_triggered" not in p["hedge"]
+    mr_at_line = copy.deepcopy(MR)
+    mr_at_line["hedge"]["stressed_pct_book"] = 8.5
+    at_line = _build(mr=mr_at_line)["panel"]["hedge"]["if_triggered"]
+    assert at_line["symbol"] == "PSQ" and at_line["proposed"] is True
     # positions: stressed only, by $ exposed
     assert [r["symbol"] for r in p["positions"]["rows"]] == ["DEMOA", "DEMOB"]
     assert [s["symbol"] for s in p["stopped_out"]] == ["DEMOD"]

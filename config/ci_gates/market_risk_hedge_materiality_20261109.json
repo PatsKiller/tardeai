@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_hedge_materiality_20261109",
+  "files": [
+    "tests/test_market_risk_hedge_materiality_20261109.py",
+    "tests/test_home_cio_card_20261108.py"
+  ],
+  "anchor": "MARKET_RISK_HEDGE_MATERIALITY_20261109",
+  "comment": [
+    "ANCHOR: MARKET_RISK_HEDGE_MATERIALITY_20261109 — LQ-20261107-1578: the Home hedge card proposes nothing below the defense desk's materiality_exposure_pct (it asked for a PSQ hedge at 0.0% of book), and a directly held semiconductor stock now carries the semis theme because both profile loaders read symbol_profiles.industry."
+  ]
+}
