@@ -1,0 +1,21 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cron_outage_watchdog_n8n_lq1556_20261109",
+  "files": [
+    "tests/test_cron_outage_watchdog_n8n_lq1556_20261109.py"
+  ],
+  "comment": [
+    "INC-261109-ysqqrk (2026-11-09): cron_outage_watchdog raised a false P1 for event-detector because it",
+    "read only the cron wrapper journal and the lane's JSON receipt. event-detector is executed by the n8n",
+    "dispatcher (dispatch block, 157 ACTIVE lanes), which records RUN_DONE in the coordination ledger and",
+    "writes no wrapper completion: the ledger holds live exit-0 RUN_DONE at 12:00:29Z (07:00 ET) and",
+    "14:02:18Z (09:02 ET) that day, while the last receipt ok_at was 2026-11-08T08:33:45Z. The reader now",
+    "counts runs rows (state RUN_DONE, mode live, exit_code 0, requested_at inside two elapsed opportunities",
+    "of the longest cadence + 1 h) as validated_success, read over the runs_state_requested_at index with",
+    "mode=ro. Pins: cron-only evidence still grades MISSED_RUNS for the two elapsed fires (fail-before);",
+    "the ledger row flips it to OK with last_success_at = the ledger finish instant; dry_run, RUN_FAILED,",
+    "exit 1, RUN_SKIPPED_LOCK, future, unregistered and paused rows are never success; an absent ledger",
+    "leaves cron evidence untouched; a present-but-corrupt ledger is a collection gap and the lane stays",
+    "MISSED (fail toward alerting). Synthetic registry, synthetic ledger built by the real migration."
+  ]
+}

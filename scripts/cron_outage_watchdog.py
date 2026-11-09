@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Independent wrapper/missed-run monitor. Default is read-only; --run is operator-installed.
 
-No cron/systemd commands, producer imports, DB connections or provider calls.
-Only --send-alerts calls the existing host Telegram chokepoint. Never repairs.
+No cron/systemd commands, producer imports or provider calls. The one DB read is the coordinator's own
+n8n ledger, opened ``mode=ro`` (n8n_successes), because dispatcher lanes are executed there and never
+leave a wrapper-journal line. Only --send-alerts calls the existing host Telegram chokepoint. Never repairs.
 """
 from __future__ import annotations
 
@@ -11,8 +12,9 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
 import stat
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 
@@ -26,6 +28,10 @@ from scripts.lib.llm_priority_guard import (  # noqa: E402
 LATEST = "data/runtime/cron_outage_watchdog_latest.json"
 STATE = "data/runtime/cron_outage_watchdog_state.json"
 ACKS = "data/runtime/cron_outage_watchdog_refusal_acks.jsonl"
+#: The n8n run executor's own ledger (scripts/lib/n8n_coordination_ledger.py, runs table). A lane with a
+#: ``dispatch`` block is executed by n8n, so its success is a RUN_DONE row here — not a cron wrapper
+#: completion, which the wrapper journal can no longer see. ``TRADEAI_N8N_COORDINATION_LEDGER`` overrides.
+N8N_LEDGER = "data/governance/n8n_coordination_ledger.sqlite"
 #: Written every 20 min by lane crontab-snapshot-for-health-agent; a file read, never `crontab -l`.
 CRONTAB_SNAPSHOT = "data/runtime/crontab_snapshot.txt"
 #: The dispatcher's own gate declaration (``offpeak_gate`` per lane). Read to know which elapsed fires the policy
@@ -154,7 +160,56 @@ def read_json(path: Path, max_bytes=2 * 1024 * 1024) -> dict:
     return result
 
 
-def collect(registry: dict, state_root: Path) -> dict:
+def n8n_successes(registry: dict, state_root: Path, now: datetime) -> tuple[dict[str, list[dict]], list[str]]:
+    """RUN_DONE live exit-0 rows from the n8n ledger, per dispatcher lane, as validated successes.
+
+    The wrapper journal and the lane receipts only ever see the CRON path. 157 ACTIVE lanes carry a
+    ``dispatch`` block, so the n8n run executor is what runs them, and the executor records that run in
+    the coordination ledger (``runs``), not in the wrapper journal. Reading only cron evidence graded
+    event-detector MISSED_RUNS for two fires the ledger shows RUN_DONE (INC-261109-ysqqrk, 2026-11-09).
+
+    Bounded, indexed read (``runs_state_requested_at``): no state means no business success, and a run
+    newer than ``now`` is never evidence. The window covers the two elapsed opportunities the grading
+    looks at for the longest cadence in the registry. A ledger that exists but cannot be read is a
+    collection gap; an absent one leaves the cron evidence exactly as it was (not a claim of health).
+    """
+    lanes = {identity(lane): lane for lane in registry.get("lanes", [])
+             if isinstance(lane.get("dispatch"), dict) and lane.get("state") == "ACTIVE"}
+    if not lanes:
+        return {}, []
+    cadence = max((lane.get("expected_cadence_hours") for lane in lanes.values()
+                   if isinstance(lane.get("expected_cadence_hours"), (int, float))), default=24.0)
+    # A malformed or absurd cadence must widen the read, never crash the monitor; 30 days bounds it.
+    since = now - timedelta(hours=max(24.0, 2 * min(float(cadence), 720.0)) + 1)
+    path = Path(os.environ.get("TRADEAI_N8N_COORDINATION_LEDGER") or state_root / N8N_LEDGER)
+    if not path.is_file():
+        return {}, []
+    found: dict[str, list[dict]] = {}
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=2)
+        try:
+            # The ledger's own writer stores aware ISO with `+00:00` (n8n_coordination_ledger._iso), so the
+            # cutoff uses the same form: a bare lexicographic compare against a `Z` cut would misorder rows.
+            rows = conn.execute(
+                "SELECT lane_id, COALESCE(finished_at, started_at, requested_at) FROM runs "
+                "WHERE state = 'RUN_DONE' AND mode = 'live' AND exit_code = 0 AND requested_at >= ?",
+                (since.astimezone(timezone.utc).isoformat(),)).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return {}, ["n8n_ledger_unavailable"]
+    for lane_id, at in rows:
+        lane_id = str(lane_id)
+        if lane_id not in lanes:
+            continue
+        when = instant(at)
+        if when is not None and when <= now:
+            found.setdefault(lane_id, []).append(
+                {"at": iso(when), "validated_success": True, "source": "n8n_ledger:RUN_DONE"})
+    return found, []
+
+
+def collect(registry: dict, state_root: Path, now: datetime | None = None) -> dict:
     """Read only declared nonsecret data/log artifacts. Mtime is never collected as success."""
     events, successes, errors = [], {}, []
     journal = state_root / "logs/safe_flock_events.jsonl"
@@ -239,6 +294,10 @@ def collect(registry: dict, state_root: Path) -> dict:
         found = receipt_success(receipt, key if declared else None)
         if found:
             successes[identity(lane)] = [{"at": iso(found[0]), "validated_success": True, "source": found[1]}]
+    dispatched, n8n_gaps = n8n_successes(registry, state_root, now or datetime.now(timezone.utc))
+    for lane_id, receipts in dispatched.items():
+        successes.setdefault(lane_id, []).extend(receipts)
+    errors += n8n_gaps
     jobs, census_gaps = registered_jobs(state_root)
     errors += census_gaps
     return {"events": events, "successes": successes, "collection_gaps": sorted(set(errors)),
@@ -383,7 +442,7 @@ def main() -> int:
         allowlist = None
     crontab = read_crontab_snapshot(args.state_root)
     registry = bind_components(read_json(args.registry, 8 * 1024 * 1024), cfg, allowlist, crontab_text=crontab)
-    snapshot = read_json(args.snapshot, 16 * 1024 * 1024) if args.snapshot else collect(registry, args.state_root)
+    snapshot = read_json(args.snapshot, 16 * 1024 * 1024) if args.snapshot else collect(registry, args.state_root, now)
     from scripts.market_session import is_trading_day
     prior = {}
     if args.run:
