@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "rotation_est_shares_lq1544_20261109",
+  "files": [
+    "tests/test_rotation_est_shares_lq1544_20261109.py"
+  ],
+  "anchor": "ROTATION_EST_SHARES_LQ1544_20261109",
+  "comment": [
+    "ANCHOR: ROTATION_EST_SHARES_LQ1544_20261109 — page defect 146: /v3/rotation est_shares is the holdings quantity, never current value divided by the live quote."
+  ]
+}

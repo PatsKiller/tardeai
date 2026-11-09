@@ -48250,7 +48250,9 @@ def _rotation_summary(force=False):
     force = force is True
     import time as _t, json as _j, subprocess as _sp, sys, math as _math
     import datetime as _dt
-    from lib.rotation_publication import PublicationError, exact_position, input_digest, project_summary, unique_rows
+    from lib.rotation_publication import (
+        PublicationError, bind_candidate_shares, exact_position, input_digest, project_summary, unique_rows,
+    )
 
     _initial_inputs = None
 
@@ -48720,6 +48722,7 @@ def _rotation_summary(force=False):
         import re as _re3
 
         _price = {}
+        _hold_rows = []
         try:
             _hold_rows = _j.loads((root / "data" / "portfolios" / "state" / "holdings.json").read_text()).get(
                 "holdings", []
@@ -48751,15 +48754,14 @@ def _rotation_summary(force=False):
                 return None
             return {"low": int(float(_al) // _pp), "high": max(1, round(float(_ah) / _pp))}
 
-        # Review Candidates: live price, day change, est. share count
+        # Review Candidates: live price and day change. Share count is the holdings
+        # quantity for that account. Value / quote is a different mark, not a size.
         for _c in cands:
             _pe = _price.get((_c.get("symbol") or "").upper())
             if _pe:
                 _c["price"] = _pe["price"]
                 _c["day_change_pct"] = _pe.get("day_change_pct")
-                _cv = float(_c.get("current_value") or 0)
-                if _cv and _pe["price"]:
-                    _c["est_shares"] = round(_cv / _pe["price"], 2)
+        bind_candidate_shares(cands, _hold_rows)
         # Research rotate-in candidates: live price + day change
         for _rc in research_candidates:
             _pe = _price.get((_rc.get("symbol") or "").upper())
