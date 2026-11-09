@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { accountText, actionVerb, calDay, cardVisible, daysUntil, etTime, fv, meterParts, panelVisible, pct, tierToneOf, triggerFill, usd, usdShort, type CioCardWire } from './cioCard.ts'
+import { accountText, actionVerb, calDay, cardVisible, daysUntil, etTime, fv, meterParts, panelVisible, pct, tierToneOf, trancheShares, triggerFill, usd, usdCents, usdShort, type CioCardWire } from './cioCard.ts'
 
 const P = { source_id: 'market_risk:2031-03-03T02:00:00+00:00', as_of: '2031-03-03T02:00:00+00:00' }
 
@@ -41,5 +41,12 @@ assert.equal(triggerFill({ key: 'k', label: 'l', value: 1, ...P }), null)
 
 assert.equal(actionVerb({ answer: 'RAISE' }), 'Raise stop'); assert.equal(actionVerb({ answer: 'ADD_STOP' }), 'Add stop')
 assert.equal(accountText('example_rollover_ira'), 'Example Rollover IRA')
+
+// LQ-20261107-1654: a tranche row is whole shares at the LIVE price plus the cash left over; without a price it says so
+assert.equal(trancheShares({ tranche: 1, usd: 15065, shares: 81, leftover_usd: 96.2 }), '81 sh + $96.20 cash')
+assert.equal(trancheShares({ tranche: 2, usd: 15064, shares: 81, leftover_usd: 95.2 }), '81 sh + $95.20 cash')
+assert.equal(trancheShares({ tranche: 1, usd: 1200, shares: null, leftover_usd: null }), 'needs a live price')
+assert.equal(trancheShares({ tranche: 1, usd: 1200, shares: 4 }), '4 sh')
+assert.equal(usdCents(0), '$0.00'); assert.equal(usdCents(-3.5), '−$3.50'); assert.equal(usdCents(null), '—')
 
 console.log('cioCard.test.ts: ok')

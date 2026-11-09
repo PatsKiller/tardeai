@@ -21,6 +21,7 @@ produces until the operator approves it.
 """
 from __future__ import annotations
 
+import math
 import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Iterable, Mapping
@@ -344,7 +345,56 @@ def _bar_stats(bars: Iterable[Mapping]) -> dict:
     return out
 
 
-def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dict | None) -> dict | None:
+def shares_for(usd: float | None, price: float | None) -> tuple[int | None, float | None]:
+    """Whole shares ``floor(usd / price)`` and the cash that does not buy another share (LQ-20261107-1654).
+
+    ``price`` is the CURRENT quote, never the prior daily close: a share count is only honest at the price it would
+    actually be bought at. With no price (or no dollars) the count is None, never a count off yesterday's close.
+    The ticket's worked example — $15,065 at 184.80 — is 81 shares and $96.20 left. Its "$95.20" is the leftover of
+    a $15,064.00 tranche (81 x 184.80 = 14,968.80), so this follows floor + remainder, not the typo."""
+    usd_n, price_n = _num(usd), _num(price)
+    if usd_n is None or usd_n <= 0 or price_n is None or price_n <= 0:
+        return None, None
+    # +1e-9 absorbs binary float error when usd is an exact multiple of price (15065 / 184.80 is not, but
+    # 1000 / 25.0 is); without it floor(39.99999999999999) would cost the operator a share.
+    shares = int(math.floor(usd_n / price_n + 1e-9))
+    return shares, round(usd_n - shares * price_n, 2)
+
+
+def tranche_rows(target_usd: float | None, price: float | None) -> list[dict]:
+    """Whole-share sizing for each proposed tranche (LQ-20261107-1654): ``floor(tranche_usd / live price)`` shares
+    and the leftover cash, per the operator's 30/30/40 split. Without a current price every count is None."""
+    if not target_usd:
+        return []
+    rows = []
+    for i, frac in enumerate(PROPOSED_TRANCHES, start=1):
+        usd = round(target_usd * frac, 0)
+        shares, left = shares_for(usd, price)
+        rows.append({"tranche": i, "usd": usd, "shares": shares, "leftover_usd": left})
+    return rows
+
+
+def _quote_time(value: str | None) -> datetime | None:
+    """An aware ISO instant, or None when the string does not carry one.
+
+    A price whose time cannot be stated is not a current price: the card owes the operator "Prices as of <ET>", and
+    an unparsable ``as_of`` would render as an empty time beside a live-looking share count.
+    """
+    s = str(value or "").strip()
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo is not None else None
+
+
+def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dict | None,
+            quotes: Mapping[str, Mapping] | None = None) -> dict | None:
+    """``quotes``: {SYMBOL: {price, as_of, source}} from the intraday quote tier (Finviz ≤30 min, else a fresh
+    broker row — api_v2._fresh_price_batch). The daily bars still supply the 20-session average and the last close as
+    context; they are never a sizing price (operator 2026-11-09: the card sized off the prior close)."""
     heat = {h.get("key"): h for h in mr.get("heatmap") or [] if isinstance(h, Mapping)}
     groups = {g.get("key"): g for g in (mr.get("sectors") or {}).get("groups") or [] if isinstance(g, Mapping)}
     lead = ((mr.get("leadership") or {}).get("groups") or {})
@@ -365,8 +415,15 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
         qualifies = rule in ("LEADERSHIP_CONFIRMED", "RESILIENT")
         target_pct = PROPOSED_TARGET_PCT.get(rule) if rule else None
         target_usd = round(total * target_pct / 100.0, 0) if (total and target_pct) else None
-        t1 = round(target_usd * PROPOSED_TRANCHES[0], 0) if (target_usd and qualifies) else None
-        shares = int(t1 // st["close"]) if (t1 and st and st.get("close")) else None
+        q = (quotes or {}).get(str(sym).upper()) if sym else None
+        price, price_as_of, price_src = _num((q or {}).get("price")), (q or {}).get("as_of"), (q or {}).get("source")
+        # A price is usable for sizing only if it can be traced: a real positive price AND the source that quoted it
+        # AND an instant that can be stated. A ≤0 quote is a data error; a nameless quote is not a fact; a quote with
+        # no time cannot be shown as "as of" anything.
+        q_fact = (fact(price, f"quote:{price_src}", price_as_of)
+                  if (price is not None and price > 0 and price_src and _quote_time(price_as_of)) else None)
+        if not q_fact:
+            price, price_as_of = None, None
         c = item(f"market_risk:sectors:{sat}", sat, key=k, symbol=sym, label=g.get("label") or h.get("label"),
                  state=state, leadership=lc or None, rs20=_r(g.get("rs20") if g.get("rs20") is not None else h.get("rs20")),
                  dd20=_r(g.get("dd20")), qualifies=qualifies)
@@ -376,9 +433,20 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
             c["close"] = fact(st["close"], f"market_ohlcv_bars:daily:{sym}:{st['session']}", st["session"])
             if st.get("avg20") is not None:
                 c["avg20"] = fact(st["avg20"], f"market_ohlcv_bars:daily:{sym}:20s", st["session"])
+        if q_fact:
+            c["price"] = q_fact
         if advice_ok and target_pct:
-            c["proposed"] = {"target_pct": target_pct, "target_usd": target_usd, "tranche1_usd": t1, "shares": shares,
-                             "proposed": True}
+            tr = tranche_rows(target_usd, price)
+            t1 = tr[0]["usd"] if (tr and qualifies) else None
+            c["proposed"] = {
+                "target_pct": target_pct, "target_usd": target_usd, "tranche1_usd": t1,
+                # The headline count is tranche 1's, at the CURRENT price; None (not a daily-close count) when the
+                # quote is absent or stale-past-30-min, so the card cannot print a stale share count.
+                "shares": tr[0]["shares"] if t1 else None,
+                "tranches": tr,
+                "priced": price is not None,
+                "proposed": True,
+            }
         cands.append(c)
     if not cands:
         return None
@@ -393,7 +461,18 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
                     "tranche2_after": (catalyst or {}).get("label"), "tranche3_when": "market tier YELLOW or better",
                     "split": list(PROPOSED_TRANCHES),
                     "rule": "target 4% of book if leadership confirmed, 3% if resilient, 2% if neutral (starts once resilient); staged 30/30/40"}
-    return item(f"market_risk:sectors:{sat}", sat, candidates=cands, plan=plan, cash_usd=cash)
+    # The quote time the share counts rest on, so the card can say "Prices as of <ET time>" instead of implying the
+    # daily close is current. The OLDEST quote in the batch is the honest one: "as of" must hold for every row.
+    # Sorted by the INSTANT each quote carries, not by string: two quotes with different UTC offsets sort wrongly as
+    # text, and the "as of" must be the true oldest. Every entry here already parsed in _quote_time.
+    quoted = sorted((c["price"] for c in cands if c.get("price")), key=lambda p: _quote_time(p["as_of"]))
+    prices_as_of = quoted[0]["as_of"] if quoted else None
+    missing = [c["symbol"] for c in cands if c.get("qualifies") and not c.get("price")]
+    out = item(f"market_risk:sectors:{sat}", sat, candidates=cands, plan=plan, cash_usd=cash,
+               prices_as_of=prices_as_of,
+               prices_sources=sorted({str(p["source_id"]) for p in quoted}) or None,
+               prices_missing=missing or None)
+    return out
 
 
 def _positions(mr: Mapping) -> dict | None:
@@ -448,7 +527,8 @@ def _stopped_out(mr: Mapping) -> list:
     return out[:max_rows]
 
 
-def build_panel(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, actions: list, catalyst: dict | None) -> dict:
+def build_panel(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, actions: list, catalyst: dict | None,
+                quotes: Mapping[str, Mapping] | None = None) -> dict:
     sid, at = f"market_risk:{mr.get('as_of')}", mr.get("as_of")
     be = mr.get("book_exposure") or {}
     bsid, bat = f"book_exposure:{be.get('as_of')}", be.get("as_of") or at
@@ -475,7 +555,7 @@ def build_panel(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, actions: 
         },
         "protect": _protect(mr, actions) if advice_ok else [],
         "hedge": _hedge(mr, advice_ok),
-        "rotate": _rotate(mr, bars, advice_ok, catalyst),
+        "rotate": _rotate(mr, bars, advice_ok, catalyst, quotes),
         "positions": _positions(mr),
         "stopped_out": _stopped_out(mr),
     }
@@ -547,7 +627,8 @@ def build_notes(mr: Mapping, defense: Mapping | None, momentum: Mapping | None, 
 # ------------------------------------------------------------------------------------------------ entry
 def build(mr: Mapping | None, since_close: Mapping | None, *, defense: Mapping | None = None,
           momentum: Mapping | None = None, bars: Iterable[Mapping] | None = None,
-          bars_meta: Mapping | None = None, now: datetime | None = None) -> dict:
+          bars_meta: Mapping | None = None, quotes: Mapping[str, Mapping] | None = None,
+          now: datetime | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
     bars = list(bars or [])
     ok, why = advice_gate(mr, since_close)
@@ -561,7 +642,7 @@ def build(mr: Mapping | None, since_close: Mapping | None, *, defense: Mapping |
         return out
     card = build_card(mr, since_close, now, ok)
     out["card"] = card
-    out["panel"] = build_panel(mr, bars, ok, card["actions"], card.get("catalyst"))
+    out["panel"] = build_panel(mr, bars, ok, card["actions"], card.get("catalyst"), quotes)
     out["notes"] = build_notes(mr, defense, momentum, bars)
     return out
 

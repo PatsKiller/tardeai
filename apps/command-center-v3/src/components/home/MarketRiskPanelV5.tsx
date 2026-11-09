@@ -5,7 +5,7 @@
  *  Advisory only (MBI_BEHAVIOR = 0): every link opens a review page; nothing here places or edits an order or a stop. */
 import { Link } from 'react-router-dom'
 import '../../styles/cioCard.css'
-import { fv, accountText, calDay, etDay, etTime, pct, px, triggerFill, usd, usdShort, type CioNote, type CioPanel, type RotateCandidate } from '../../lib/cioCard'
+import { fv, accountText, calDay, etDay, etTime, pct, px, trancheShares, triggerFill, usd, usdShort, type CioNote, type CioPanel, type RotateCandidate } from '../../lib/cioCard'
 import type { MarketRisk } from '../../lib/marketRisk'
 import { MarketRiskAckRow } from './MarketRiskBanner'
 import { tierStyle } from './CioCardV5'
@@ -32,16 +32,25 @@ function Rotate({ r, stressed }: { r: NonNullable<CioPanel['rotate']>; stressed:
       <div className="rk">
         {cands.map(c => {
           const p = c.proposed
-          const close = fv(c.close), avg = fv(c.avg20)
+          const close = fv(c.close), avg = fv(c.avg20), live = fv(c.price)
+          const trs = p?.tranches ?? []
           return (
             <div className={`rc${c.qualifies ? '' : ' off'}`} key={c.symbol} data-testid="mr5-rotate-row" title={c.source_id}>
               <div className="h"><b>{c.symbol}</b><span className="nm">{c.label}</span>{stateBadge(c)}
                 <span className="amt">{c.qualifies && p?.tranche1_usd ? `${usd(p.tranche1_usd)} tranche 1` : 'watch'}</span></div>
               <div className="sub">{c.rs20 != null ? `RS vs SPY ${c.rs20 > 0 ? '+' : ''}${c.rs20.toFixed(1)} pts over 20 sessions` : ''}{c.dd20 != null ? ` · ${pct(Math.abs(c.dd20))} off its 20-day high` : ''}{c.qualifies ? '' : ' · starts when it turns RESILIENT'}</div>
-              {(close != null || p) && (
-                <div className="ln">{close != null ? `Close ${close.toFixed(2)}` : ''}{avg != null ? ` · 20-day avg ${avg.toFixed(2)}` : ''}
-                  {c.qualifies && p?.shares ? ` · ≈${p.shares} sh for tranche 1` : ''}
-                  {p?.target_pct != null ? ` · target ${p.target_pct}% of book${p.target_usd != null ? ` (${usdShort(p.target_usd)})` : ''}${c.qualifies ? '' : ' when it qualifies'}` : ''}</div>
+              {/* LQ-20261107-1654: the price the share counts rest on is the CURRENT quote, never the last daily close
+                  (this card used to size off yesterday's close). With no current quote there is no share count at all. */}
+              <div className="ln" data-testid="mr5-price">{live != null ? `Live ${live.toFixed(2)}` : 'No current price'}
+                {avg != null ? ` · 20-day avg ${avg.toFixed(2)}` : ''}
+                {close != null ? ` · last close ${close.toFixed(2)}` : ''}
+                {p?.target_pct != null ? ` · target ${p.target_pct}% of book${p.target_usd != null ? ` (${usdShort(p.target_usd)})` : ''}${c.qualifies ? '' : ' when it qualifies'}` : ''}</div>
+              {/* A group that does not qualify has a target, not a tranche: it shows no shares until it turns RESILIENT. */}
+              {c.qualifies && trs.length > 0 && (
+                <div className="tot" data-testid="mr5-tranches">{trs.flatMap(t => [
+                  <span key={`t${t.tranche}`}>Tranche {t.tranche}</span>,
+                  <span key={`v${t.tranche}`}>{usd(t.usd)} · {trancheShares(t)}</span>,
+                ])}</div>
               )}
             </div>
           )
@@ -59,7 +68,12 @@ function Rotate({ r, stressed }: { r: NonNullable<CioPanel['rotate']>; stressed:
           {plan.rule && <div className="sub">Proposed rule: {plan.rule}.</div>}
         </>
       )}
-      <div className="sub">Advisory only: no order is placed.{closeAsOf ? ` Prices: ${day(closeAsOf)} daily close.` : ''} State: market-risk sector table ({day(r.as_of)}).</div>
+      {/* LQ-20261107-1654: "Prices as of <ET time>" is the quote the share counts rest on. No quote → say so rather
+          than label yesterday's close as the price. */}
+      <div className="sub" data-testid="mr5-prices-asof">Advisory only: no order is placed.
+        {r.prices_as_of ? ` Prices as of ${etTime(r.prices_as_of).replace(/^\w+ /, '')}.` : ' No current quote: share counts need a live price.'}
+        {r.prices_missing?.length ? ` Not priced: ${r.prices_missing.join(', ')}.` : ''}
+        {closeAsOf ? ` Last daily close ${day(closeAsOf)}.` : ''} State: market-risk sector table ({day(r.as_of)}).</div>
       <Link className="sub" to="/rotation" style={{ color: 'var(--info-color)', fontWeight: 600, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Rotation desk →</Link>
     </div>
   )

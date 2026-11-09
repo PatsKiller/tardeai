@@ -167,8 +167,14 @@ def test_rotate_uses_bars_and_proposed_rule():
     assert xlv["close"]["value"] == round(170.0 + 0.6 * 24, 2)
     assert xlv["close"]["source_id"].startswith("market_ohlcv_bars:daily:XLV")
     assert xlv["avg20"]["value"] == round(sum(170.0 + 0.6 * i for i in range(5, 25)) / 20, 2)
+    # LQ-20261107-1654: this fixture carries no current quote, so nothing is sized — the daily close above is
+    # context, never a sizing price (the ticket's defect). The priced case: test_rotation_whole_share_1654_20261109.
     assert xlv["proposed"] == {"target_pct": 4.0, "target_usd": 4000.0, "tranche1_usd": 1200.0,
-                               "shares": int(1200.0 // xlv["close"]["value"]), "proposed": True}
+                               "shares": None, "priced": False,
+                               "tranches": [{"tranche": 1, "usd": 1200.0, "shares": None, "leftover_usd": None},
+                                            {"tranche": 2, "usd": 1200.0, "shares": None, "leftover_usd": None},
+                                            {"tranche": 3, "usd": 1600.0, "shares": None, "leftover_usd": None}],
+                               "proposed": True}
     assert by["XLP"]["proposed"]["target_pct"] == 3.0
     # neutral: a target only, no tranche until it turns resilient; fewer than 20 bars → no 20-day average
     assert by["XLU"]["qualifies"] is False and by["XLU"]["proposed"]["tranche1_usd"] is None

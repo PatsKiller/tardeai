@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "rotation_whole_share_1654_20261109",
+  "files": [
+    "tests/test_rotation_whole_share_1654_20261109.py"
+  ],
+  "anchor": "ROTATION_WHOLE_SHARE_1654_20261109",
+  "comment": [
+    "ANCHOR: ROTATION_WHOLE_SHARE_1654_20261109 — the Home rotation card sizes in whole shares at the CURRENT quote",
+    "(Finviz <=30 min, never yfinance, never the prior daily close), states 'Prices as of <ET>' from the oldest quote,",
+    "and emits no share count when the quote is missing, non-positive, nameless or unstampable."
+  ]
+}

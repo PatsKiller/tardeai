@@ -37,10 +37,17 @@ export interface CioCard {
 }
 
 export interface HedgeTrigger extends Prov { key: string; label: string; value: number; consider?: number; act?: number; fill?: number }
+/** Whole-share sizing for one tranche (LQ-20261107-1654): floor(usd / live price), and the cash it leaves. */
+export interface TrancheRow { tranche: number; usd: number; shares?: number | null; leftover_usd?: number | null }
 export interface RotateCandidate extends Prov {
   key: string; symbol: string; label: string; state?: string; leadership?: string; rs20?: number; dd20?: number; qualifies?: boolean
   close?: Fact<number>; avg20?: Fact<number>
-  proposed?: { target_pct?: number; target_usd?: number; tranche1_usd?: number | null; shares?: number | null; proposed: true }
+  /** The CURRENT quote the share counts rest on (Finviz ≤30 min, else a fresh broker row). Absent = no share count. */
+  price?: Fact<number>
+  proposed?: {
+    target_pct?: number; target_usd?: number; tranche1_usd?: number | null; shares?: number | null
+    tranches?: TrancheRow[]; priced?: boolean; proposed: true
+  }
 }
 export interface PositionRow { symbol: string; account_label?: string; value_usd?: number; pct_account?: number; stressed_share?: number; usd_exposed?: number; stop_distance_pct?: number | null; stance?: string; stops_known?: boolean }
 export interface StoppedOut extends Prov {
@@ -72,6 +79,11 @@ export interface CioPanel {
   rotate?: Prov & {
     candidates?: RotateCandidate[]
     plan?: { proposed: true; tranche1_usd?: number; tranche1_pct_book?: number; cash_after_pct?: number; tranche2_after?: string; tranche3_when?: string; split?: number[]; rule?: string }
+    /** The quote time every share count rests on (oldest quote in the batch). Absent = no current price at all. */
+    prices_as_of?: string
+    prices_sources?: string[]
+    /** Qualifying symbols that had no current quote, so the card shows no share count for them. */
+    prices_missing?: string[]
   }
   positions?: Prov & { rows?: PositionRow[]; more_count?: number; more_usd?: number; zero_exposure_symbols?: string[]; stops_known?: boolean }
   stopped_out?: StoppedOut[]
@@ -165,6 +177,19 @@ export function usdShort(n: number | null | undefined): string {
 
 export function px(n: number | null | undefined): string {
   return n == null || !Number.isFinite(n) ? '—' : `$${n.toFixed(2)}`
+}
+
+/** Dollars with the cents kept: a tranche's leftover cash IS the remainder, so rounding it to $96 hides the point. */
+export function usdCents(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—'
+  return `${n < 0 ? '−' : ''}$${Math.abs(n).toFixed(2)}`
+}
+
+/** The share side of a tranche row (LQ-20261107-1654): floor-share count and the cash it leaves, or an honest
+ *  "needs a live price" — the card never prints a count priced off yesterday's close. */
+export function trancheShares(t: TrancheRow): string {
+  if (t.shares == null) return 'needs a live price'
+  return t.leftover_usd == null ? `${t.shares} sh` : `${t.shares} sh + ${usdCents(t.leftover_usd)} cash`
 }
 
 export function pct(n: number | null | undefined, digits = 1, signed = false): string {
