@@ -155,11 +155,16 @@ def build_moves(snapshot: Mapping[str, Any], *, close_tag: str) -> list[dict[str
             # market value is at the last price: the day's $ change is mv - mv / (1 + pct)
             impact = round(mv - mv / (1.0 + pct / 100.0), 2)
         perf = rec.get("performance") or {}
+        tech = rec.get("technicals") or {}
         rows.append(
             {
                 "symbol": str(sym).upper(),
                 "held": held,
                 "price": price,
+                # The daily ATR in dollars, carried so that "at its stop" can be measured rather than assumed:
+                # the ranking's risk tier is the house band (ATR_STOP_BAND x ATR) around the working stop, and a
+                # name whose ATR is absent is never called at risk (LQ-20261107-1386).
+                "atr": _num(tech.get("atr")),
                 "change_pct": round(pct, 2),
                 "week_pct": _num(perf.get("perf_week")),
                 "dollar_impact": impact,
@@ -656,7 +661,7 @@ def rank_feed(
 
     score = min(60, round($ the book moved on this story))   -- held $ exposed x |move since the close|
           + 30 if the CIO brief names an action for a held name here
-          + 15 if a held name here is at or through its stop
+          + 15 if a held name here is within 1 ATR of its stop (or through it)
           + 10 if the story is market-wide and in the semis/big-tech group
           +  5 if it is market-wide at all (the backdrop for the whole book)
           +  8 if it is a watchlist name moving 3% or more
@@ -713,8 +718,9 @@ def rank_feed(
 #: Stored in the snapshot as ``feed_rule.score``: the one-line form of what ``rank_feed`` does, so the order the
 #: operator sees is explainable without reading this file.
 RANK_RULE = (
-    "min(60, $ moved on held names since the close) + 30 CIO brief action + 15 at-risk name + 10 market-wide "
-    "semis/tech + 5 market-wide + 8 watchlist move >= 3% - 40 appraisal/13F boilerplate; ties newest story first"
+    "min(60, $ moved on held names since the close) + 30 CIO brief action + 15 held name within 1 ATR of its stop "
+    "+ 10 market-wide semis/tech + 5 market-wide + 8 watchlist move >= 3% - 40 appraisal/13F boilerplate; "
+    "ties newest story first"
 )
 
 
@@ -913,16 +919,58 @@ def _cio_actions(brief: Mapping[str, Any] | None) -> dict[str, str]:
     return out
 
 
-def _at_risk(brief: Mapping[str, Any] | None) -> list[str]:
-    """Held names the brief says anything about at all (its rows are the names it examined on price/structure), in the
-    brief's own order. Used as the ranking's second tier, under an explicit action and over a bare dollar move."""
-    seen: list[str] = []
+#: The "at its stop" band: room to the stop of less than one daily ATR -- the brief's own "tight" band
+#: (``cio_overnight_brief.cushion``: ``(price - stop) / atr < 1.0``). Anything further away is a name with a stop,
+#: not a name at it.
+ATR_STOP_BAND = 1.0
+
+
+def _at_risk(brief: Mapping[str, Any] | None, moves: Sequence[Mapping[str, Any]] = ()) -> list[str]:
+    """Held names whose price now sits inside the house band (``ATR_STOP_BAND`` x the snapshot's ATR) of a working
+    stop, in the brief's own order. This is the ranking's second tier, under an explicit CIO action and over a bare
+    dollar move.
+
+    The brief's ``stop_advice[]`` rows are per account and answer *what to do* (HOLD / RAISE / ADD_STOP ...); almost
+    every held name gets one, so "has a row" is not "is near the stop". The measurement is
+    ``price - stop_now < ATR_STOP_BAND x atr`` using the row's working stop (the brief's own tightest-below-price
+    stop) and the move's own price and ATR: a name with no ``stop_now``, no ATR, or an unreadable price is *not* at
+    its stop, and the ranking falls back to its since-close move text (LQ-20261107-1386: SKYD 1.8x / V 1.6x /
+    PFE 3.6x ATR were all being labelled, while ANET at 0.6x really was at its stop). A stop the price has already
+    breached is at least as tight and stays in the tier."""
+    band: dict[str, tuple[float | None, float | None]] = {}
+    for m in moves or ():
+        if isinstance(m, Mapping):
+            sym = str(m.get("symbol") or "").upper()
+            if sym:
+                band[sym] = (_num(m.get("price")), _num(m.get("atr")))
+    order: list[str] = []
+    stops: dict[str, float] = {}
     for row in (brief or {}).get("stop_advice") or []:
-        if isinstance(row, Mapping):
-            sym = str(row.get("symbol") or "").upper()
-            if sym and sym not in seen and str(row.get("answer") or "").upper() != "NO_ACTION":
-                seen.append(sym)
-    return seen
+        if not isinstance(row, Mapping):
+            continue
+        sym = str(row.get("symbol") or "").upper()
+        if not sym:
+            continue
+        if sym not in order:
+            order.append(sym)
+        stop = _num(row.get("stop_now"))
+        if stop is not None and stop > 0:
+            # Per-account rows: the nearest working stop is the highest one for a long, and it is the one that
+            # fires first. A row with no working stop (NO_ACTION, or a fractional account the brief did not size)
+            # contributes nothing; a *suggested* stop is a proposal, not a resting order, so it is never used.
+            # No 0.0 seed: a symbol with no working stop stays absent, and absence is what "not at risk" reads.
+            nearest = stops.get(sym)
+            if nearest is None or stop > nearest:
+                stops[sym] = stop
+    out: list[str] = []
+    for sym in order:
+        price, atr = band.get(sym, (None, None))
+        stop = stops.get(sym)
+        if price is None or atr is None or stop is None or price <= 0 or atr <= 0:
+            continue
+        if price - stop < ATR_STOP_BAND * atr:
+            out.append(sym)
+    return out
 
 
 
@@ -1123,7 +1171,7 @@ def build_snapshot(
         moves, macro, now=now, llm=llm if decision["material"] else None,
         prior=(prior or {}).get("summary") if prior else None, calls_today=calls_today, carry_prior=not decision["material"],
     )
-    feed = build_feed(moves, macro, cio_actions=_cio_actions(cio_brief), at_risk=_at_risk(cio_brief))
+    feed = build_feed(moves, macro, cio_actions=_cio_actions(cio_brief), at_risk=_at_risk(cio_brief, moves))
     if decision["kind"] in ("news", "move", "first", "print"):
         updated = {
             "at": now.astimezone(UTC).isoformat().replace("+00:00", "Z"), "at_et": now.astimezone(ET).strftime("%H:%M ET"),

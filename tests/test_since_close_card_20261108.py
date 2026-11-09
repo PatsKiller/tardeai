@@ -399,7 +399,13 @@ def test_a_cio_action_lifts_a_flat_name_and_the_dollars_still_come_first():
     ccc = next(i for i in feed if i["title"].startswith("CCC"))
     assert ccc["why"] == "CIO: CCC ADD_STOP"
     assert c._cio_actions({"stop_advice": [{"symbol": "BBB", "answer": "HOLD"}]}) == {}, "HOLD is not an action"
-    assert c._at_risk({"stop_advice": [{"symbol": "BBB", "answer": "HOLD"}]}) == ["BBB"], "at-risk is the wider tier"
+    # LQ-20261107-1386: a stop_advice row is not a stop proximity. With no stop_now and no ATR there is nothing to
+    # measure, so BBB is not at risk and the ranking uses its since-close move text (the old "wider tier" labelled
+    # every HOLD row "at its stop", which is the defect this line used to pin).
+    assert c._at_risk({"stop_advice": [{"symbol": "BBB", "answer": "HOLD"}]}) == []
+    measured = [{"symbol": "BBB", "price": 10.0, "atr": 0.5}]
+    near = {"stop_advice": [{"symbol": "BBB", "answer": "HOLD", "stop_now": 9.8}]}
+    assert c._at_risk(near, measured) == ["BBB"], "a HOLD row within 1 ATR of a working stop is the risk tier"
 
 
 def test_one_story_from_two_feeds_is_one_item_listing_both_sources():

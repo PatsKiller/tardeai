@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "since_close_card_atr_stop_band_lq1386_20261108",
+  "files": [
+    "tests/test_since_close_card_atr_stop_band_lq1386_20261108.py"
+  ],
+  "anchor": "SINCE_CLOSE_ATR_STOP_BAND_LQ1386_20261108",
+  "comment": [
+    "ANCHOR: SINCE_CLOSE_ATR_STOP_BAND_LQ1386_20261108 — on 2026-11-08 ~23:00 ET the Home since-close feed said",
+    "SKYD / V / PFE were at their stop; the CIO brief had answered HOLD on all three and they sat 1.8x, 1.6x and",
+    "3.6x their daily ATR above the stop. Only ANET (0.62x ATR) was inside the band. _at_risk() returned every",
+    "stop_advice row whose answer was not NO_ACTION, which is almost the whole book. It now measures: price and ATR",
+    "travel on each move (technicals.atr), the stop is the brief's stop_now (the tightest per account, never a",
+    "suggested_stop), and a name is at risk only when (price - stop) < 1.0 x ATR -- cio_overnight_brief.cushion's",
+    "tight band. No ATR, no working stop, no price: not at risk, and the feed keeps its since-close move text.",
+    "Synthetic fixtures only; no DB, no network, no live snapshot."
+  ]
+}
