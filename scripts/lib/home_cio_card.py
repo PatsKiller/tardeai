@@ -460,9 +460,42 @@ def _quote_time(value: str | None) -> datetime | None:
     return dt if dt.tzinfo is not None else None
 
 
+def _stock_line(one: Mapping, cand: Mapping, rs: Mapping | None) -> str | None:
+    """One comparison line: the stock against the group's ETF, on the same 20-session RS and the same close.
+
+    LQ-20261107-1655: the operator asked for individual stocks next to the ETF, so the line says which of the
+    two is stronger and by how much. It is descriptive only (never "buy"/"sell"): the numbers themselves stay
+    on the record as facts (``close``, ``rs20``); this is their one-line reading.
+    """
+    etf = cand.get("symbol")
+    etf_rs = _num(cand.get("rs20"))
+    parts = []
+    if rs:
+        if etf_rs is not None:
+            diff = round(rs["value"] - etf_rs, 1)
+            if diff > 0:
+                rel = f"leads the ETF by {diff:.1f} pts"
+            elif diff < 0:
+                rel = f"trails the ETF by {abs(diff):.1f} pts"
+            else:
+                rel = "matches the ETF"
+            parts.append(f"RS {rs['value']:+.1f} vs {etf} {etf_rs:+.1f} pts vs SPY over 20 sessions — {rel}")
+        else:
+            parts.append(f"RS {rs['value']:+.1f} pts vs SPY over 20 sessions (ETF RS not measured)")
+    elif etf_rs is not None:
+        parts.append(f"RS vs SPY not measured; {etf} {etf_rs:+.1f} pts over 20 sessions")
+    etf_close = _num((cand.get("close") or {}).get("value"))
+    if etf_close:
+        parts.append(f"close {one['close']['value']:.2f} vs {etf} {etf_close:.2f}")
+    else:
+        parts.append(f"close {one['close']['value']:.2f}")
+    return "; ".join(parts)
+
+
 def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dict | None,
             quotes: Mapping[str, Mapping] | None = None,
-            held: Mapping[str, Mapping] | None = None) -> dict | None:
+            held: Mapping[str, Mapping] | None = None,
+            stocks: Mapping | None = None) -> dict | None:
     """``quotes``: {SYMBOL: {price, as_of, source}} from the intraday quote tier (Finviz ≤30 min, else a fresh
     broker row — api_v2._fresh_price_batch). The daily bars still supply the 20-session average and the last close as
     context; they are never a sizing price (operator 2026-11-09: the card sized off the prior close).
@@ -470,7 +503,12 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
     ``held``: {SYMBOL: {shares, avg_cost, as_of, source_id}} from ``_held_by_symbol``. A position of at least
     ``FILLED_FRACTION`` of the planned tranche-1 shares marks that tranche FILLED (LQ-20261107-1689): the card then
     reports the shares, average cost and date actually held, and the plan stops proposing — and stops deducting — the
-    money already spent."""
+    money already spent.
+
+    ``stocks``: {group key: {"rows": [...], "as_of": ..., "gap": ...}} from ``lib/rotation_stocks.read``
+    (LQ-20261107-1655), listing the individual names under each group's ETF. Not supplied means the column simply
+    does not carry them, exactly as before; supplied-but-empty is said on the candidate (``stocks_gap``) rather than
+    shown as "none exist"."""
     heat = {h.get("key"): h for h in mr.get("heatmap") or [] if isinstance(h, Mapping)}
     groups = {g.get("key"): g for g in (mr.get("sectors") or {}).get("groups") or [] if isinstance(g, Mapping)}
     lead = ((mr.get("leadership") or {}).get("groups") or {})
@@ -511,8 +549,9 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
                 c["avg20"] = fact(st["avg20"], f"market_ohlcv_bars:daily:{sym}:20s", st["session"])
         if q_fact:
             c["price"] = q_fact
+        tr = tranche_rows(target_usd, price)
+        t1 = None
         if advice_ok and target_pct:
-            tr = tranche_rows(target_usd, price)
             t1 = tr[0]["usd"] if (tr and qualifies) else None
             c["proposed"] = {
                 "target_pct": target_pct, "target_usd": target_usd, "tranche1_usd": t1,
@@ -536,6 +575,42 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
                              filled=tranche1_filled(hs, t1_shares))
                 if h_rec:
                     c["held"] = h_rec
+        if stocks is not None:
+            # LQ-20261107-1655: the individual names under this group's ETF. The group block already ordered
+            # them (held names first, then the best RS20 constituents); here each row becomes traceable values,
+            # and a row without a dated close is dropped rather than filled in.
+            grp = stocks.get(k) if isinstance(stocks, Mapping) else None
+            rows = []
+            for r in (grp or {}).get("rows") or []:
+                one = {"symbol": str(r.get("symbol") or "").upper(), "held": bool(r.get("held"))}
+                close = fact(r.get("close"), r.get("source_id") or f"ticker_prices:daily:{one['symbol']}",
+                             r.get("close_as_of"))
+                if not close:
+                    continue
+                if r.get("held_value_usd") is not None:
+                    one["held_value_usd"] = fact(r.get("held_value_usd"), f"book_exposure:{sat}", sat)
+                one["close"] = close
+                rs = fact(r.get("rs20"), r.get("rs_source_id") or f"ticker_prices:rs20_vs_spy:{one['symbol']}",
+                          r.get("rs20_as_of"))
+                if rs:
+                    one["rs20"] = rs
+                if advice_ok and t1 and close["value"]:
+                    # the same proposed rule and the same tranche-1 dollars the ETF row carries; a share count
+                    # for this name if the tranche went to it whole. Watch groups get neither, as on the ETF row.
+                    # The count is 1654's floor at the price the close carries, never a rounded-up approximation.
+                    one["tranche1_usd"] = t1
+                    one["tranche1_shares"] = shares_for(t1, close["value"])[0]
+                    one["proposed"] = True
+                line = _stock_line(one, c, rs)
+                if line:
+                    one["compare"] = line
+                row = item(r.get("source_id") or f"ticker_prices:daily:{one['symbol']}", r.get("close_as_of"), **one)
+                if row:
+                    rows.append(row)
+            if rows:
+                c["stocks"] = rows
+            else:
+                c["stocks_gap"] = (grp or {}).get("gap") or "no constituent with a measured close"
         cands.append(c)
     if not cands:
         return None
@@ -626,7 +701,8 @@ def _stopped_out(mr: Mapping) -> list:
 
 def build_panel(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, actions: list, catalyst: dict | None,
                 quotes: Mapping[str, Mapping] | None = None,
-                holdings: Iterable[Mapping] | None = None) -> dict:
+                holdings: Iterable[Mapping] | None = None,
+                stocks: Mapping | None = None) -> dict:
     sid, at = f"market_risk:{mr.get('as_of')}", mr.get("as_of")
     be = mr.get("book_exposure") or {}
     bsid, bat = f"book_exposure:{be.get('as_of')}", be.get("as_of") or at
@@ -653,7 +729,7 @@ def build_panel(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, actions: 
         },
         "protect": _protect(mr, actions) if advice_ok else [],
         "hedge": _hedge(mr, advice_ok),
-        "rotate": _rotate(mr, bars, advice_ok, catalyst, quotes, _held_by_symbol(holdings)),
+        "rotate": _rotate(mr, bars, advice_ok, catalyst, quotes, _held_by_symbol(holdings), stocks),
         "positions": _positions(mr),
         "stopped_out": _stopped_out(mr),
     }
@@ -726,7 +802,11 @@ def build_notes(mr: Mapping, defense: Mapping | None, momentum: Mapping | None, 
 def build(mr: Mapping | None, since_close: Mapping | None, *, defense: Mapping | None = None,
           momentum: Mapping | None = None, bars: Iterable[Mapping] | None = None,
           bars_meta: Mapping | None = None, quotes: Mapping[str, Mapping] | None = None,
-          holdings: Iterable[Mapping] | None = None, now: datetime | None = None) -> dict:
+          holdings: Iterable[Mapping] | None = None, now: datetime | None = None,
+          stocks: Mapping | None = None) -> dict:
+    """``stocks``: {group key: {"rows": [...], "as_of": ..., "gap": ...}} from ``lib/rotation_stocks.read``
+    (LQ-20261107-1655). Not supplied means the card simply does not carry the constituent rows, exactly as
+    before; supplied-but-empty is said on the candidate (``stocks_gap``) rather than shown as "none exist"."""
     now = now or datetime.now(timezone.utc)
     bars = list(bars or [])
     ok, why = advice_gate(mr, since_close)
@@ -735,12 +815,23 @@ def build(mr: Mapping | None, since_close: Mapping | None, *, defense: Mapping |
         "inputs": _input_meta(mr, since_close, defense, momentum, bars_meta),
         "advice": {"ok": ok, "reason": why},
     }
+    if stocks is not None:
+        blocks = [g for g in stocks.values() if isinstance(g, Mapping)]
+        # What the caller supplied, not what was drawn: a row with no dated close is dropped by _rotate, and the
+        # drawn rows are already on the candidates. Naming it ``supplied`` keeps the two counts from disagreeing
+        # silently in the inputs block.
+        out["inputs"]["rotation_stocks"] = {
+            "present": any(g.get("rows") for g in blocks),
+            "as_of": max((str(g.get("as_of")) for g in blocks if g.get("as_of")), default=None),
+            "groups": sorted(k for k, g in stocks.items() if isinstance(g, Mapping) and g.get("rows")),
+            "supplied": sum(len(g.get("rows") or []) for g in blocks),
+        }
     if not mr or mr.get("state") == "not_evaluated" or not mr.get("tier"):
         out.update(card=None, panel=None, notes=[])
         return out
     card = build_card(mr, since_close, now, ok)
     out["card"] = card
-    out["panel"] = build_panel(mr, bars, ok, card["actions"], card.get("catalyst"), quotes, holdings)
+    out["panel"] = build_panel(mr, bars, ok, card["actions"], card.get("catalyst"), quotes, holdings, stocks)
     out["notes"] = build_notes(mr, defense, momentum, bars)
     return out
 

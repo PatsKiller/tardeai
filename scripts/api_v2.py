@@ -31593,8 +31593,26 @@ def _home_cio_card():
         holdings = (_pp.load_store() or {}).get("holdings") or []
     except Exception as _e:  # noqa: BLE001 — no holdings is "no fill known", never a 500 on the Home card
         holdings = []
+    # LQ-20261107-1655: the individual stocks under each defensive ETF — held names first, then the group's best
+    # constituents by RS20 vs SPY. Read-only; holdings are DB-first (positions_current) through their own reader,
+    # and every way this read can fail leaves the ETF rows intact and names the gap on the candidate.
+    stocks = {}
+    _stock_groups = tuple(_hcc.DEFENSIVE_KEYS)  # the whole-card fallback; the reader's policy groups win below
+    try:
+        from lib import rotation_stocks as _rst
+        from lib.holdings_document import load_document as _holdings_doc
+
+        _stock_groups = _rst.defaults()["groups"]
+        _doc = _holdings_doc(db_query=_db_query)
+        _held = [{"symbol": h.get("symbol"), "sector": h.get("sector"), "market_value": h.get("market_value"),
+                  "is_cash": h.get("is_cash")}
+                 for h in (_doc.get("holdings") or []) if isinstance(h, dict)]
+        stocks = _rst.read(_db_query, held=_held, exclude=syms)
+    except Exception as _e:  # noqa: BLE001 — an unavailable constituent read is a gap on the rows, never a 500
+        stocks = {g: {"rows": [], "as_of": None, "gap": f"constituent read failed: {type(_e).__name__}"}
+                  for g in _stock_groups}
     out = _json_clean(_hcc.build(mr, snap, defense=defense, momentum=momentum, bars=bars, bars_meta=bars_meta,
-                                 quotes=quotes, holdings=holdings, now=_dt.now(_tz.utc)))
+                                 quotes=quotes, holdings=holdings, stocks=stocks, now=_dt.now(_tz.utc)))
     _HOME_CIO_CARD_CACHE["v"] = (_t.monotonic(), out)
     return out
 

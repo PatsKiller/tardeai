@@ -514,6 +514,18 @@ sectors:
     growth_value: [IWF, IWD]
     small_large: [IWM, SPY]
     credit: [HYG, TLT]
+  constituents:
+    # LQ-20261107-1655: the individual names listed under each defensive ETF row of the Home CIO card's rotate
+    # column (scripts/lib/rotation_stocks.py) — the names the book holds in that sector first, then the group's best
+    # constituents by relative strength vs SPY over exactly rs_window_sessions. A name with no dated close, or no
+    # complete window, is dropped and the group says why; it is never filled in and never ranked from a partial
+    # series. Read by that reader; advisory only (MBI_BEHAVIOR = 0 — a count of names, never an order).
+    groups: [healthcare, staples, utilities]   # the defensive groups the column may list (SECTOR_TO_GROUP keys)
+    top_n: 5                       # ranked constituents per group, counted after the held names
+    rs_window_sessions: 20         # RS vs SPY over exactly 20 sessions — sector_signals.relative_strength's window
+    bar_lookback_days: 70          # calendar days of ticker_prices read for that window (holiday buffer included)
+    held_first: true               # a held name leads its sector whatever its RS
+    drop_untraceable: true         # no dated close => no row (never a zero, never a guess)
   groups:
     - {key: tech, label: Technology, kind: sector, symbols: [XLK]}
     - {key: comm, label: Communications, kind: sector, symbols: [XLC]}

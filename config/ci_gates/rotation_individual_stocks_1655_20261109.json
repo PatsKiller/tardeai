@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "rotation_individual_stocks_1655_20261109",
+  "files": [
+    "tests/test_rotation_stocks_20261109.py",
+    "tests/test_home_cio_card_20261108.py"
+  ],
+  "anchor": "ROTATION_INDIVIDUAL_STOCKS_1655_20261109",
+  "comment": [
+    "ANCHOR: ROTATION_INDIVIDUAL_STOCKS_1655_20261109 — LQ-20261107-1655: the Home CIO card's rotate column lists the individual stocks under each defensive ETF row — names the book holds in that sector first, then the group's best constituents by RS vs SPY over exactly 20 sessions — and a name with no dated close or no complete window is dropped, never filled in. The thresholds are the operator's, in config/market_risk_policy.yaml sectors.constituents (groups, top_n 5, rs_window_sessions 20, bar_lookback_days 70); the reader's defaults() is pinned to that block by tests/test_rotation_stocks_20261109.py. The second file is the projection suite the rows land in; it is also pinned by market_risk_hedge_materiality_20261109."
+  ]
+}

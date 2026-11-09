@@ -39,6 +39,13 @@ export interface CioCard {
 export interface HedgeTrigger extends Prov { key: string; label: string; value: number; consider?: number; act?: number; fill?: number }
 /** Whole-share sizing for one tranche (LQ-20261107-1654): floor(usd / live price), and the cash it leaves. */
 export interface TrancheRow { tranche: number; usd: number; shares?: number | null; leftover_usd?: number | null }
+/** LQ-20261107-1655: one individual stock under a defensive ETF row. `close` and `rs20` are facts (a value the
+ *  server could not trace is absent); `held` means the book already owns the name in this sector, and those rows
+ *  come first. `compare` is the server's one-line stock-vs-ETF reading — descriptive, never an instruction. */
+export interface RotateStock extends Prov {
+  symbol: string; held?: boolean; close: Fact<number>; rs20?: Fact<number>; held_value_usd?: Fact<number>
+  tranche1_usd?: number; tranche1_shares?: number; proposed?: true; compare?: string
+}
 export interface RotateCandidate extends Prov {
   key: string; symbol: string; label: string; state?: string; leadership?: string; rs20?: number; dd20?: number; qualifies?: boolean
   close?: Fact<number>; avg20?: Fact<number>
@@ -51,6 +58,8 @@ export interface RotateCandidate extends Prov {
   /** What the book already holds (LQ-20261107-1689). `filled` = at least 90% of the planned tranche-1 shares, so
    *  tranche 1 is a FILL, not an offer. Absent when the group offers no tranche, or the holding cannot be dated. */
   held?: Prov & { shares?: number; avg_cost?: number; pct_of_tranche1?: number; filled?: boolean }
+  /** The individual names under this ETF (LQ-20261107-1655), or why none could be drawn. */
+  stocks?: RotateStock[]; stocks_gap?: string
 }
 export interface PositionRow { symbol: string; account_label?: string; value_usd?: number; pct_account?: number; stressed_share?: number; usd_exposed?: number; stop_distance_pct?: number | null; stance?: string; stops_known?: boolean }
 export interface StoppedOut extends Prov {

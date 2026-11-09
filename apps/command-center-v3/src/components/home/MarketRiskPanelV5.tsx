@@ -19,6 +19,36 @@ function stateBadge(c: RotateCandidate) {
   return <span className="st neu">{c.state ?? '—'}</span>
 }
 
+/** LQ-20261107-1655 — the individual names under a defensive ETF row. The server already ordered them: names the
+ *  book holds in this sector first, then the group's best RS20 constituents. Each row shows its own dated close,
+ *  its RS vs SPY over 20 sessions and the server's one-line stock-vs-ETF reading. A row the server could not trace
+ *  is absent; when nothing in the group could be traced the row says why instead of showing "none exist". */
+function StockRows({ c }: { c: RotateCandidate }) {
+  const rows = c.stocks ?? []
+  if (!rows.length) return c.stocks_gap ? <div className="sub sgap" data-testid="mr5-stock-gap">{c.stocks_gap}</div> : null
+  return (
+    <div className="sk" data-testid="mr5-rotate-stocks">
+      <div className="cap">Names in {c.symbol} · held first, then best RS vs SPY over 20 sessions</div>
+      <ul>{rows.map(s => {
+        const close = fv(s.close)
+        // a value the server could not trace is absent; a name row without a traceable close is not drawn
+        if (close == null) return null
+        const rs = fv(s.rs20), sh = s.tranche1_shares
+        const bits = [`Close ${close.toFixed(2)} · ${day(s.close.as_of)}`,
+          rs != null ? `RS ${rs > 0 ? '+' : ''}${rs.toFixed(1)} vs SPY 20d` : 'RS20 not measurable'].join(' · ')
+        return (
+          <li className="sr" key={s.symbol} data-testid="mr5-stock-row" title={s.source_id}>
+            <div className="sh"><b>{s.symbol}</b>{s.held ? <span className="tagheld">HELD</span> : null}
+              {s.proposed && sh ? <span className="amt" title="whole of tranche 1 in this one name">≈{sh} sh · {usd(s.tranche1_usd)}</span> : null}</div>
+            <div className="sl" data-testid="mr5-stock-line">{bits}</div>
+            {s.compare ? <div className="sc">{s.compare}</div> : null}
+          </li>
+        )
+      })}</ul>
+    </div>
+  )
+}
+
 function Rotate({ r, stressed }: { r: NonNullable<CioPanel['rotate']>; stressed: string[] }) {
   const cands = r.candidates ?? []
   const plan = r.plan
@@ -64,6 +94,7 @@ function Rotate({ r, stressed }: { r: NonNullable<CioPanel['rotate']>; stressed:
                   ),
                 ])}</div>
               )}
+              <StockRows c={c} />
             </div>
           )
         })}

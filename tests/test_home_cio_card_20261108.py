@@ -314,3 +314,97 @@ def test_the_route_passes_the_fresh_quote_batch_into_the_card(monkeypatch):
     assert xlv["price"]["as_of"] == AS_OF and xlv["proposed"]["shares"] == 6
     assert out["panel"]["rotate"]["prices_as_of"] == AS_OF
     assert out["panel"]["rotate"]["prices_missing"] == ["XLP"]  # XLP qualifies but had no quote in this batch
+# ---- LQ-20261107-1655: the individual names under each defensive ETF row -----------------------------------
+
+
+def _stocks():
+    """The rotation_stocks.read() shape, as the endpoint hands it to the projection."""
+    return {
+        "healthcare": {"source_id": "ticker_prices:daily", "as_of": "2031-03-07", "gap": None, "rows": [
+            # held first, even though its RS20 trails: the book owns it in this sector
+            {"symbol": "DEMOH", "sector": "Health Care", "held": True, "held_value_usd": 3000.0, "close": 30.0,
+             "close_as_of": "2031-03-07", "rs20": -4.25, "rs20_as_of": "2031-03-07",
+             "source_id": "ticker_prices:daily:DEMOH", "rs_source_id": "ticker_prices:rs20_vs_spy:DEMOH"},
+            {"symbol": "DEMOB", "sector": "Health Care", "held": False, "held_value_usd": None, "close": 12.5,
+             "close_as_of": "2031-03-07", "rs20": 21.0, "rs20_as_of": "2031-03-07",
+             "source_id": "ticker_prices:daily:DEMOB", "rs_source_id": "ticker_prices:rs20_vs_spy:DEMOB"},
+            # no dated close: dropped, never filled in
+            {"symbol": "DEMONOCLOSE", "sector": "Health Care", "held": False, "close": None, "close_as_of": None,
+             "rs20": 99.0, "rs20_as_of": "2031-03-07", "source_id": "ticker_prices:daily:DEMONOCLOSE"},
+        ]},
+        "staples": {"source_id": "ticker_prices:daily", "as_of": "2031-03-07", "rows": [],
+                    "gap": "no constituent with a measured close"},
+        "utilities": {"source_id": "ticker_prices:daily", "as_of": "2031-03-07", "gap": None, "rows": [
+            {"symbol": "DEMOU", "sector": "Utilities", "held": False, "close": 41.0, "close_as_of": "2031-03-07",
+             "rs20": 6.0, "rs20_as_of": "2031-03-07", "source_id": "ticker_prices:daily:DEMOU",
+             "rs_source_id": "ticker_prices:rs20_vs_spy:DEMOU"},
+        ]},
+    }
+
+
+def _by_symbol():
+    rot = _build(stocks=_stocks())["panel"]["rotate"]
+    return {c["symbol"]: c for c in rot["candidates"]}
+
+
+def test_rotation_stocks_under_the_etf_row():
+    xlv = _by_symbol()["XLV"]
+    rows = xlv["stocks"]
+    # held name first, then the ranked constituent; the row with no dated close is gone
+    assert [r["symbol"] for r in rows] == ["DEMOH", "DEMOB"]
+    held = rows[0]
+    assert held["held"] is True and held["close"]["value"] == 30.0
+    assert held["close"]["source_id"] == "ticker_prices:daily:DEMOH" and held["close"]["as_of"] == "2031-03-07"
+    assert held["held_value_usd"]["value"] == 3000.0 and held["held_value_usd"]["source_id"].startswith("book_exposure:")
+    assert held["rs20"]["value"] == -4.25 and held["rs20"]["as_of"] == "2031-03-07"
+    # the same proposed rule and tranche-1 dollars the ETF row carries, expressed in this name's shares
+    assert held["tranche1_usd"] == 1200.0 and held["tranche1_shares"] == int(1200.0 // 30.0)
+    assert held["proposed"] is True
+    # the one-line stock-vs-ETF reading: descriptive, and it names the ETF and both sides
+    assert "XLV" in held["compare"] and "trails the ETF" in held["compare"]
+    assert "XLV" in rows[1]["compare"] and "leads the ETF" in rows[1]["compare"]
+    # every row carries its own provenance
+    for r in rows:
+        assert r["source_id"] and r["as_of"]
+
+
+def test_rotation_stocks_gap_is_said_not_omitted():
+    by = _by_symbol()
+    # an empty staple group says why on the ETF row rather than showing "none exist"
+    assert "stocks" not in by["XLP"] and by["XLP"]["stocks_gap"] == "no constituent with a measured close"
+    # a watch group still lists the names it has; it just carries no tranche
+    xlu = by["XLU"]
+    assert [r["symbol"] for r in xlu["stocks"]] == ["DEMOU"]
+    assert "tranche1_shares" not in xlu["stocks"][0] and "proposed" not in xlu["stocks"][0]
+
+
+def test_rotation_stocks_no_tranche_without_advice():
+    sc = copy.deepcopy(SC)
+    sc["freshness"]["stale"] = True
+    out = _build(sc=sc, stocks=_stocks())
+    assert out["advice"]["ok"] is False
+    for c in out["panel"]["rotate"]["candidates"]:
+        for r in c.get("stocks") or []:
+            assert "tranche1_usd" not in r and "tranche1_shares" not in r and "proposed" not in r
+
+
+def test_rotation_stocks_absent_when_not_supplied():
+    # the caller that has no constituent read supplies nothing, and the candidate says nothing about stocks
+    for c in _build()["panel"]["rotate"]["candidates"]:
+        assert "stocks" not in c and "stocks_gap" not in c
+
+
+def test_rotation_stocks_input_summary():
+    ok = _build(stocks=_stocks())
+    # ``supplied`` is what the caller handed over (4), not what was drawn (3): the undated row was dropped
+    assert ok["inputs"]["rotation_stocks"] == {"present": True, "as_of": "2031-03-07",
+                                               "groups": ["healthcare", "utilities"], "supplied": 4}
+    drawn = sum(len(c.get("stocks") or []) for c in ok["panel"]["rotate"]["candidates"])
+    assert drawn == 3
+    assert "rotation_stocks" not in _build()["inputs"]
+
+
+def test_rotation_stock_rows_carry_no_order_vocabulary():
+    out = _build(stocks=_stocks())
+    for _, node in _walk(out):
+        assert not {k for k in node} & {"order_id", "place_order", "account_number", "order", "qty", "side"}
