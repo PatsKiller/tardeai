@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "sec_fundamentals_ingest_output_count_20261107",
+  "files": [
+    "tests/test_sec_fundamentals_ingest_output_count_20261107.py"
+  ],
+  "comment": [
+    "Registered 2026-11-09 (cc-deepseek-9, LQ-20261107-1575): this test reached the live fold on 50d4c6c62",
+    "with no config/ci_gates entry, so CI never ran it. Gate name = test stem, per scripts/lib/ci_gates.py.",
+    "sec-fundamentals-ingest reports what the run wrote (facts, filing events, documents), not symbols looked at; a re-entrant sub-call can no longer overwrite the lane receipt with a zero-row count."
+  ]
+}
