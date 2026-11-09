@@ -26827,7 +26827,7 @@
         },
         {
           "check": "empty_output",
-          "text": "a live run reports produced_count 0 without an allowed empty_reason (nothing_due), or any skip in fatal_skip_reasons (no_runner, dependency_unavailable); exit 0 is not evidence [train 2026-10-15 d: reasons mapped onto the FW-M6 closed vocabulary (check_n8n_workflow_framework FATAL_SKIP_REASONS / EMPTY_ALLOWED_REASONS); lane-native reasons no_stale_symbols -> nothing_due; db_connection_lost/db_unavailable -> dependency_unavailable; writer_rejected (no closed equivalent) dropped. The lane still emits its native names, so the receipt-side mapping is a pre-live item; dry runs are exempt.]"
+          "text": "a live run reports produced_count 0 without an allowed empty_reason (nothing_due), or any skip in fatal_skip_reasons (no_runner, dependency_unavailable); exit 0 is not evidence [train 2026-10-15 d: reasons mapped onto the FW-M6 closed vocabulary (check_n8n_workflow_framework FATAL_SKIP_REASONS / EMPTY_ALLOWED_REASONS); lane-native reasons no_stale_symbols -> nothing_due; db_connection_lost/db_unavailable -> dependency_unavailable; writer_rejected (no closed equivalent) dropped. The attempt receipt stores empty_reason nothing_due when both counts are 0. all_skipped is not allowed: attempted work with produced_count 0 is status failed and empty_reason null. Dry runs are exempt.]"
         }
       ],
       "baseline": {
@@ -26878,8 +26878,7 @@
         "min_produced": 1,
         "window_h": null,
         "empty_allowed_reasons": [
-          "no_stale_symbols",
-          "all_skipped"
+          "nothing_due"
         ],
         "fatal_skip_reasons": [
           "no_runner",
@@ -26888,7 +26887,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/build-symbol-profiles-at-0-19_last.json produced_count (LaneRunReceipt@v2 output fields since 2026-10-15, from the run's LaneOutput@v1 block, which stays at summary.output; no stale symbol = nothing_due; the executor reads the immutable attempt copy data/runtime/lane_attempts/build-symbol-profiles-at-0-19/<run_id>.json)"
+            "ref": "data/runtime/lane_attempts/build-symbol-profiles-at-0-19/<run_id>.json empty_reason (the attempt copy the executor grades). A quiet day stores nothing_due via _receipt_output; the LaneOutput block may still say no_stale_symbols and stays at summary.output. all_skipped is not stored on an ok receipt."
           },
           {
             "kind": "store_rows",

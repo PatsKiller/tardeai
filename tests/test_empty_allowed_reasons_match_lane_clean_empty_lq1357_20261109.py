@@ -4,8 +4,9 @@ Template ``empty_allowed_reasons`` (``nothing_due`` / ``no_new_input``) forbade 
 actually emit on a healthy zero-work run. For ``output_receipt: v2`` lanes that becomes
 ``empty_violation`` → ``RUN_FAILED empty_output`` on the first quiet day.
 
-Pins the three rows named in the finding, the closed enum that accepts those literals, and the
-executor's ``n8n_output_verdict.evaluate`` on synthetic LaneRunReceipt@v2 docs (no DB, no host run).
+Pins the three rows named in the finding and the closed enum that accepts those literals.
+Symbol-profiles is graded from ``_receipt_output`` and ``build_receipt`` (schema forced to
+LaneRunReceipt@v2, the attempt-copy stamp). The other two lanes stay synthetic. No DB, no host run.
 """
 from __future__ import annotations
 
@@ -20,14 +21,13 @@ ROOT = Path(__file__).resolve().parents[1]
 #: lane_id -> clean-empty literals the script emits with status ok (finding §1–§2).
 LANE_CLEAN_EMPTY = {
     "reconcile-exit-advisory-outcomes": ("up_to_date", "all_skipped"),
-    "build-symbol-profiles-at-0-19": ("no_stale_symbols", "all_skipped"),
+    "build-symbol-profiles-at-0-19": ("nothing_due",),
     "daily-incubator-refresh": ("no_new_input", "already_refreshed"),
 }
 
 #: Template reasons that must NOT be the only allowance for these lanes (they never emit them).
 TEMPLATE_ONLY = {
     "reconcile-exit-advisory-outcomes": ("nothing_due", "no_new_input"),
-    "build-symbol-profiles-at-0-19": ("nothing_due",),
 }
 
 
@@ -114,3 +114,55 @@ def test_enforced_lanes_still_carry_output_receipt_v2():
     by = {e["lane_id"]: e for e in allow["lanes"]}
     assert by["build-symbol-profiles-at-0-19"].get("output_receipt") == "v2"
     assert by["daily-incubator-refresh"].get("output_receipt") == "v2"
+
+def _symbol_profiles_attempt(summary: dict, *, ok: bool):
+    """The document the executor grades: receipt fields, then the attempt-copy schema stamp."""
+    from scripts.build_symbol_profiles import _receipt_output
+    from scripts.lib.lane_last_receipt import build_receipt
+
+    fields = _receipt_output({"ok": ok, "summary": summary})
+    doc = build_receipt(
+        "build-symbol-profiles-at-0-19",
+        ok=ok,
+        exit_code=0 if ok else 1,
+        output=fields,
+        run_id="symbol-profiles-attempt",
+        started_at="2026-11-09T00:00:00+00:00",
+        finished_at="2026-11-09T00:00:01+00:00",
+    )
+    return {**doc, "schema": "LaneRunReceipt@v2", "run_mode": "live"}, fields
+
+
+def test_symbol_profiles_contract_allows_only_the_attempt_receipt_reason():
+    allowed = set(_contracts()["build-symbol-profiles-at-0-19"]["expected_output"]["empty_allowed_reasons"])
+    assert allowed == {"nothing_due"}
+
+
+def test_symbol_profiles_quiet_day_attempt_receipt_is_allowed():
+    from scripts.build_symbol_profiles import _work_landed
+
+    summary = {"updated": 0, "checked": 0, "no_profile": 0, "rejected": 0}
+    assert _work_landed(summary) is True
+    doc, fields = _symbol_profiles_attempt(summary, ok=True)
+    assert fields["empty_reason"] == "nothing_due"
+    assert doc["status"] == "ok" and doc["empty_reason"] == "nothing_due"
+    lane_id = "build-symbol-profiles-at-0-19"
+    out = V.evaluate(_rule(lane_id), doc, run_id=doc["run_id"], lane_id=lane_id, mode="live")
+    assert out["verdict"] == "empty_allowed" and out["empty_reason"] == "nothing_due"
+    rejected = dict(_rule(lane_id))
+    rejected["empty_allowed_reasons"] = ["no_stale_symbols", "all_skipped"]
+    bad = V.evaluate(rejected, doc, run_id=doc["run_id"], lane_id=lane_id, mode="live")
+    assert bad["verdict"] == "empty_violation" and bad["why"] == "empty_reason_not_allowed"
+
+
+def test_symbol_profiles_all_skipped_stays_a_failed_receipt():
+    from scripts.build_symbol_profiles import _work_landed
+
+    summary = {"updated": 0, "checked": 4, "no_profile": 4, "rejected": 0}
+    assert _work_landed(summary) is False
+    doc, fields = _symbol_profiles_attempt(summary, ok=False)
+    assert fields["empty_reason"] is None and doc["status"] == "failed"
+    lane_id = "build-symbol-profiles-at-0-19"
+    out = V.evaluate(_rule(lane_id), doc, run_id=doc["run_id"], lane_id=lane_id, mode="live")
+    assert out["verdict"] == "empty_violation" and out["why"] == "receipt_status_failed"
+    assert "all_skipped" not in _rule(lane_id)["empty_allowed_reasons"]
