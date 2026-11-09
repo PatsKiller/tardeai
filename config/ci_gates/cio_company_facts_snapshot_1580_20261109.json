@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_company_facts_snapshot_1580_20261109",
+  "files": [
+    "tests/test_cio_company_facts_snapshot_1580_20261109.py"
+  ],
+  "anchor": "CIO_COMPANY_FACTS_SNAPSHOT_1580_20261109",
+  "comment": [
+    "ANCHOR: CIO_COMPANY_FACTS_SNAPSHOT_1580_20261109 — a company-facts rebuild is serialised per store",
+    "and its callers are never queued behind it. 2026-11-09: one module-global lock held across a",
+    "579 MB re-parse plus a per-caller deepcopy made /api/v2/cio/pages take 174.7 s and starved",
+    "/api/v2/overview past the browser's 30 s abort while the unit sat at memory.high."
+  ]
+}

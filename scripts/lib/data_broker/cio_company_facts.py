@@ -16,8 +16,24 @@ from scripts.lib import cio_company_quality as quality
 # (LQ-20261107-201, cProfile 2026-11-07: 41,809 json.loads per call). The snapshot is
 # memoised per store file and recomputed whenever the file's identity, size or mtime
 # changes, so an append is always seen. Each caller gets its own deep copy (~0.1 s).
-_SNAPSHOT_MEMO: dict[str, tuple[tuple, dict]] = {}
-_SNAPSHOT_LOCK = threading.Lock()
+#
+# LQ-20261107-1580: every append to that store invalidates the memo, and the rebuild is
+# the expensive step — 4.7 s on an idle host, and 93–175 s on 2026-11-09 while the unit sat
+# at memory.high and the kernel reclaimed the build as fast as it allocated (memory.events
+# high=23,781). This lock used to be held across the whole rebuild *and* the per-caller deep
+# copy, so every reader of company facts queued behind it: /api/v2/cio/pages took 174.7 s
+# and /api/v2/overview — which resolves the same snapshot — outlived the browser's 30 s
+# abort. Now the rebuild is serialised per store file, the deep copy happens outside any
+# lock, and a caller that finds a rebuild already running waits at most _SNAPSHOT_WAIT_S and
+# is then served the previous snapshot instead of queueing. A rebuild that finishes inside
+# that window — every rebuild on a healthy host — is still seen by every caller, so the
+# "an append is always seen" contract holds everywhere except a caller that arrived while a
+# *slow* rebuild was in flight; it sees the append on its next call, and the snapshot it got
+# meanwhile was built from the same file a moment earlier rather than being an empty answer.
+_SNAPSHOT_MEMO: dict[str, tuple[tuple, dict]] = {}          # store path -> (signature, snapshot)
+_SNAPSHOT_LOCKS: dict[str, threading.Lock] = {}             # store path -> its one builder
+_SNAPSHOT_LOCK = threading.Lock()                           # guards _SNAPSHOT_LOCKS only
+_SNAPSHOT_WAIT_S = 2.0
 
 
 def _file_signature(path: Path) -> tuple | None:
@@ -28,24 +44,49 @@ def _file_signature(path: Path) -> tuple | None:
     return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
 
 
+def _build_lock(key: str) -> threading.Lock:
+    with _SNAPSHOT_LOCK:
+        lock = _SNAPSHOT_LOCKS.get(key)
+        if lock is None:
+            lock = _SNAPSHOT_LOCKS[key] = threading.Lock()
+        return lock
+
+
 def load_snapshot(root: Path | str | None = None, *, records: list[dict] | None = None) -> dict:
     if records is not None:
         return _build_snapshot(records)
     from scripts.lib.cio_instrument_record import _store_for_root
     store = _store_for_root(root)
     key = str(store.path)
-    with _SNAPSHOT_LOCK:
+    sig = _file_signature(store.path)
+    hit = _SNAPSHOT_MEMO.get(key)
+    if sig is not None and hit is not None and hit[0] == sig:
+        return deepcopy(hit[1])
+    lock = _build_lock(key)
+    if not lock.acquire(timeout=_SNAPSHOT_WAIT_S):
+        # Another caller is rebuilding this store. Serve what we last published rather than
+        # queue behind work whose duration is not ours to bound (see the note above).
+        prev = _SNAPSHOT_MEMO.get(key)
+        if prev is not None:
+            return deepcopy(prev[1])
+        lock.acquire()
+    try:
         sig = _file_signature(store.path)
         hit = _SNAPSHOT_MEMO.get(key)
         if sig is not None and hit is not None and hit[0] == sig:
-            return deepcopy(hit[1])
-        snap = _build_snapshot(store.all())
-        # Only memoise when the file did not change while it was read.
-        if sig is not None and _file_signature(store.path) == sig:
-            _SNAPSHOT_MEMO[key] = (sig, snap)
+            snap = hit[1]          # the builder we waited for already published this signature
         else:
-            _SNAPSHOT_MEMO.pop(key, None)
-        return deepcopy(snap)
+            snap = _build_snapshot(store.all())
+            # Only memoise when the file did not change while it was read.
+            if sig is not None and _file_signature(store.path) == sig:
+                _SNAPSHOT_MEMO[key] = (sig, snap)
+            else:
+                _SNAPSHOT_MEMO.pop(key, None)
+    finally:
+        lock.release()
+    # The per-caller copy is ~0.1 s and ~100 MB on the production store; keep it outside the
+    # build lock so one reader's copy cannot stall the next reader's rebuild.
+    return deepcopy(snap)
 
 
 def _build_snapshot(records: list[dict]) -> dict:
