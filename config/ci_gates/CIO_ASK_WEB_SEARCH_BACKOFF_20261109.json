@@ -6,6 +6,6 @@
   ],
   "anchor": "CIO_ASK_WEB_SEARCH_BACKOFF_20261109",
   "comment": [
-    "ANCHOR: CIO_ASK_WEB_SEARCH_BACKOFF_20261109 — LQ-20261107-1592: a refused paid web search opened no cooldown, so every Ask subject re-attempted the bridge and logged another refusal (91+4 in 24 h, zero answers); the answer also never said the leg was down. This gate holds the backoff window, the typed bridge code, and the operator-visible 'web search unavailable' line."
+    "ANCHOR: CIO_ASK_WEB_SEARCH_BACKOFF_20261109 — LQ-20261107-1592: a refused paid web search opened no cooldown, so every Ask subject re-attempted the bridge and logged another refusal for the same process-wide cap; the answer also never said the leg was down. This gate holds the backoff window, the typed bridge code, and the operator-visible 'web search unavailable' line, plus the r2 rules: a 200 carrying no result rows is a COMPLETED call (completed/empty, no cooldown, no unavailable line, run row NO_DATA); the newest web row decides whether the note fires; and the note says other sources answered only when one of their rows actually produced facts."
   ]
 }

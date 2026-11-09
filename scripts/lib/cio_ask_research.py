@@ -1168,7 +1168,11 @@ def _src_anthropic_search(ent: Entity, ctx: ResearchContext) -> list[Fact]:
     mod = _imp("lib.anthropic_web_search", "scripts.lib.anthropic_web_search")
     q = f"{ent.symbol or ent.label} {ctx.question}"[:240]
     resp = mod.search(q, count=5)
-    if resp.get("ok") is not True:
+    # LQ-20261107-1592 r2 (grok-b): a call that COMPLETED and returned no result rows is an honest zero, not an
+    # outage. Without this, a 200 with no result blocks was reported as "Web search unavailable", telling the
+    # operator the leg was down when the web simply had nothing to cite for this subject.
+    empty = resp.get("completed") is True and not resp.get("error")
+    if resp.get("ok") is not True and not empty:
         # A paid enhancement must never take the Ask lane down. The reason is recorded (gap + run row) and the
         # source reports no data for this subject; the free/paid router source still answers the same query.
         # LQ-20261107-1592: the refusal carries when the leg is worth another try (``retry_at``) and whether
@@ -1189,6 +1193,8 @@ def _src_anthropic_search(ent: Entity, ctx: ResearchContext) -> list[Fact]:
     # (see scripts/lib/anthropic_web_search.py). The count rides the run row so the receipt shows it.
     outcome = {"ok": True, "provider": resp.get("provider"),
                "code_execution_blocks": int(resp.get("code_execution_blocks") or 0)}
+    if empty:
+        outcome["empty"] = True  # completed, found nothing: the run row says NO_DATA, never "unavailable"
     out = SourceFacts(outcome=outcome)
     for r in (resp.get("results") or []) if resp.get("ok") is True else []:
         published = _iso(r.get("published"))
@@ -2654,13 +2660,24 @@ def web_search_unavailable_note(source_runs: Sequence[Mapping[str, Any]]) -> str
     LQ-20261107-1592: a degraded paid source used to be counted as just another gap, so an answer with no
     web facts read as "the web had nothing" rather than "the web search leg was down". The note names the
     refusal and when the leg is retried — the same two facts the run row carries.
+
+    LQ-20261107-1592 r2 (grok-b): two false claims were possible. The **newest** row for the source decides —
+    a later ``ok`` row means the leg answered, so an earlier refusal is history, not state. And the closing
+    sentence is measured: it says other sources answered only when one of their rows actually produced facts
+    (``status: ok``), never on the strength of this function wanting to be reassuring.
     """
-    row = next((r for r in source_runs or [] if r.get("source") == "web.anthropic" and r.get("degraded") is True), None)
-    if row is None:
+    rows = [r for r in source_runs or [] if r.get("source") == "web.anthropic"]
+    if not rows:
+        return None
+    row = rows[-1]
+    if row.get("degraded") is not True:
         return None
     reason = str(row.get("reason") or "WEB_SEARCH_UNAVAILABLE")
     retry = f"; retry after {row['retry_at']}" if row.get("retry_at") else ""
-    return f"Web search unavailable ({reason}{retry}). Other sources answered from stored data."
+    answered = any(r.get("source") != "web.anthropic" and r.get("status") == "ok" for r in source_runs or [])
+    tail = ("Other sources answered from stored data." if answered
+            else "No other source produced facts for this answer.")
+    return f"Web search unavailable ({reason}{retry}). {tail}"
 
 
 def to_contract_answer(internal: Mapping[str, Any], ctx: Any):

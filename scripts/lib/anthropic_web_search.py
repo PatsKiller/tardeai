@@ -40,10 +40,10 @@ TOOL: dict[str, Any] = {"type": "web_search_20260209", "name": "web_search", "ma
 
 # ── backoff (LQ-20261107-1592) ───────────────────────────────────────────────
 # The paid web-search leg used to be re-attempted for every Ask subject on every run, even while the
-# credit book was refusing every call: 2026-11-08/09 logged 91 ``CREDIT_PROCESS_CAP`` + 4
-# ``UNAVAILABLE`` refusals and zero answers in 24 h. A refusal now opens a cooldown, and while it is
-# open ``search()`` returns the refusal (with ``retry_at``) without posting to the bridge, so the
-# ledger records one window rather than one row per subject per hour.
+# credit book was refusing every call, so one process-wide cap was logged once per subject per hour and
+# an Ask answer never said the leg was down. A refusal now opens a cooldown, and while it is open
+# ``search()`` returns the refusal (with ``retry_at``) without posting to the bridge, so the ledger
+# records one window rather than one row per subject per hour.
 COOLDOWN_SCHEMA = "WebSearchCooldown@v1"
 #: Refusals that mean "the paid credit book said no for now". The book paces a PROCESS's spend by the
 #: UTC day (``CreditBook._counts_today``), so these cannot clear before the next UTC midnight: an hour
@@ -319,8 +319,14 @@ def search(query: str, *, count: int = 5, timeout_s: float = 60.0,
     results, error = results_from_blocks(blocks, count)
     if results and not error:
         record_success(state_path=state_path, now=now)
+    completed = error is None
     return {
         "ok": bool(results) and not error,
+        # LQ-20261107-1592 r2 (grok-b): a 200 that carried no result rows is a COMPLETED call that found
+        # nothing — not a leg that is down. ``ok`` still means "has results"; ``completed`` says the call
+        # itself worked, and that is what the Ask source reads before it reports the leg unavailable.
+        "completed": completed,
+        "empty": completed and not results,
         "provider": "anthropic",
         "results": results,
         "error": error,

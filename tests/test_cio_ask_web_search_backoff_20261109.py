@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """LQ-20261107-1592 — the paid web-search leg backs off, and the answer says it is unavailable.
 
-The defect: ``cio_ask_web_search`` spent its ``daily_cost_cap_usd`` (1.00) during the ET evening, and the
-credit book paces a process by the UTC day, so every later subject re-attempted the bridge and logged
-another refusal — 91 ``CREDIT_PROCESS_CAP`` + 4 ``UNAVAILABLE`` and zero answers in 24 h — while the Ask
-answer mentioned none of it (the source was merely ``no_data``, counted as another gap).
+The defect: ``cio_ask_web_search`` reaches a process-wide credit cap, and the credit book paces a process by
+the UTC day, so every later subject re-attempted the bridge and logged another refusal for the same cap while
+the Ask answer mentioned none of it (the source was merely ``no_data``, counted as another gap).
 
 Hermetic: a fake transport, a ``tmp_path`` cooldown file and a pinned ``now``. No bridge, no network, no
 DB, and nothing is written outside the test's own directory.
@@ -245,7 +244,8 @@ def test_the_answer_summary_says_web_search_is_unavailable():
         "reason": "CREDIT_PROCESS_CAP", "retry_at": MIDNIGHT, "skipped": True,
     }])
     assert f"Web search unavailable (CREDIT_PROCESS_CAP; retry after {MIDNIGHT})" in answer.summary
-    assert "store" in answer.summary or "other sources" in answer.summary
+    # the only run in this answer is the web leg, so nothing else can have answered (LQ-1592 r2)
+    assert "No other source produced facts" in answer.summary
 
 
 def test_a_healthy_run_gets_no_unavailable_line():
@@ -253,12 +253,50 @@ def test_a_healthy_run_gets_no_unavailable_line():
     assert "Web search unavailable" not in answer.summary
 
 
-def test_the_note_prefers_the_first_degraded_web_row():
+def test_the_note_fires_on_the_newest_web_row():
     note = car.web_search_unavailable_note([
         {"source": "web", "status": "ok"},
         {"source": "web.anthropic", "status": "no_data", "degraded": True, "reason": "UNAVAILABLE"},
     ])
     assert note == "Web search unavailable (UNAVAILABLE). Other sources answered from stored data."
+
+
+def test_a_later_ok_web_row_clears_the_note():
+    """grok-b's first false claim: an earlier refusal replayed after the leg answered."""
+    assert car.web_search_unavailable_note([
+        {"source": "web.anthropic", "status": "no_data", "degraded": True, "reason": "UNAVAILABLE"},
+        {"source": "web.anthropic", "status": "ok", "facts": 2},
+    ]) is None
+
+
+def test_the_note_claims_other_sources_only_when_one_produced_facts():
+    """grok-b's second false claim: 'Other sources answered' printed without reading the other rows."""
+    note = car.web_search_unavailable_note([
+        {"source": "web", "status": "no_data"},
+        {"source": "filings", "status": "refused"},
+        {"source": "web.anthropic", "status": "no_data", "degraded": True, "reason": "UNAVAILABLE"},
+    ])
+    assert note == "Web search unavailable (UNAVAILABLE). No other source produced facts for this answer."
+    assert "answered from stored data" not in note
+
+
+def test_a_completed_search_with_no_result_rows_is_not_unavailable(state):
+    """grok-b's headline: a 200 carrying no result rows is a finished call, not a leg that is down."""
+    resp = ws.search("q", transport=lambda *_a: {"content_blocks": []}, state_path=state, now=NOW)
+    assert resp["ok"] is False and resp["error"] is None
+    assert resp["completed"] is True and resp["empty"] is True
+    assert not state.exists(), "an empty answer is not a failure and must not open a cooldown"
+
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        monkeypatch.setattr(ws, "search", lambda *_a, **_k: dict(resp))
+        ent = car.Entity(label="MU", kind="listed", symbol="MU")
+        facts = car._src_anthropic_search(ent, car.ResearchContext(question="what is the catalyst"))
+    finally:
+        monkeypatch.undo()
+    assert facts.outcome["ok"] is True and "degraded" not in facts.outcome
+    assert facts.outcome["empty"] is True and not list(facts)
+    assert car.web_search_unavailable_note([{**facts.outcome, "source": "web.anthropic", "status": "no_data"}]) is None
 
 
 def test_the_gate_registration_exists():
