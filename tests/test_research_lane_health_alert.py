@@ -4,7 +4,31 @@ from __future__ import annotations
 import json
 import time
 
+import pytest
+
 import research_lane_health as hl
+
+
+@pytest.fixture(autouse=True)
+def _broker_receipts_stay_in_tmp(tmp_path, monkeypatch):
+    """send_telegram ingests one broker row per real-router send, and that file lands under the
+    worktree's data/runtime — which ``preflight_upload.py --record-tests`` then refuses as an
+    untracked artifact, blocking the receipt for any change to this module (LQ-20261107-1659 hit
+    it while recording this delivery). Point the broker's files at tmp_path so a run leaves the
+    tree clean. The router imports the broker under its one spelling, ``lib.advisory``.
+    """
+    try:
+        from lib.advisory import notification_broker as nb
+    except Exception:
+        return
+    broker = tmp_path / "advisory_notif_broker"
+    monkeypatch.setattr(nb, "BROKER_DIR", broker, raising=False)
+    for name, fname in (
+        ("INGEST_PATH", "ingest.jsonl"),
+        ("DECISIONS_PATH", "decisions.jsonl"),
+        ("METRICS_PATH", "metrics.json"),
+    ):
+        monkeypatch.setattr(nb, name, broker / fname, raising=False)
 
 
 def test_unwrap_heals_nested_lanes_wrapper():
