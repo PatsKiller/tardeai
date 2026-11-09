@@ -208,6 +208,18 @@ def _reentry_line(sym: str, rec: dict[str, Any]) -> list[str]:
     # stage-2 price check passes, regardless of these five conditions, so printing both reads as a contradiction
     # ("Confirmed" at 2 of 5). The label returns once the two agree (selloff package B).
     lines = [f"- {sym}: {state} · as of {rec.get('as_of') or 'unknown'}"]
+    # LQ-1327 (2026-11-08): an exit is per ACCOUNT, never flat across the book. V was sold in the rollover IRA on
+    # 11-06 and ~101 shares are still held in another account; the brief printed "V exited 11-06 @413" with no
+    # qualifier, which reads as a name the operator no longer owns. `held_elsewhere` is on the record (the producer
+    # resolves it across accounts); this only formats it, so no renderer computes a position of its own.
+    held = [str(a) for a in (rec.get("held_elsewhere") or []) if a]
+    if held:
+        sold = rec.get("exit_date") or "an unrecorded session"
+        kind = str(rec.get("exit_account_type") or "").strip().upper()
+        lines.append(
+            f"    partial exit, not flat: sold in the {kind + ' account' if kind else 'account'} on {sold}; "
+            f"still held in {len(held)} other account{'s' if len(held) > 1 else ''} ({', '.join(held)})"
+        )
     lines += [f"    {'met' if c.get('met') is True else 'not met'}: {c.get('text')}" for c in conds]
     br = rec.get("base_rate") or {}
     if br.get("n") and isinstance(br.get("rate"), (int, float)):

@@ -139,6 +139,60 @@ def _avg_pairwise_corr(dailies: list[list[float]], win: int, back: int = 0) -> f
     return mean(cs) if cs else None
 
 
+def classify_state(
+    *,
+    dd20: float | None,
+    rs20: float | None,
+    z5: float | None,
+    zrs: float | None,
+    z1: float | None,
+    zrs1: float | None,
+    b5: float | None,
+    b1: float | None,
+    r5: float | None,
+    r1: float | None,
+    cfg: dict[str, Any],
+) -> str:
+    """The stated state rule for one group, pure so its boundaries are testable without a price series.
+
+    A group can only be STRESS/WEAK when it is actually in a drawdown — at least ``price_dd_min_pct`` below its
+    20-session high AND lagging SPY over 20 sessions. A defensive group that is flat or up in price (staples on
+    10-23 / 10-29) is never stressed by a z-score of one bad day.
+
+    LQ-1327 (2026-11-08): one more door to WEAK, for a group that has fallen hard even though it has NOT lagged
+    SPY over 20 sessions. Energy on 11-06 was **-12.0% off its 20-session high with z5 -3.88** and rs20 +0.24 — a
+    real 12% drawdown scored NEUTRAL because it had merely matched the benchmark over a month — and the operator
+    asked why Energy was not on the stressed list. Both conditions are price facts from the group's own bars
+    (``deep_dd_min_pct`` -10.0 and ``deep_z5`` -3.0 by default), so this widens the rule without inventing a
+    reading: a single day's z-score still cannot mark a group WEAK.
+    """
+
+    def _le(a: float | None, t: float) -> bool:
+        return a is not None and a <= t
+
+    rs_t = float(cfg.get("rs_stress_z", -1.0))
+    price_weak = _le(dd20, float(cfg.get("price_dd_min_pct", -3.0))) and _le(rs20, 0.0)
+    if price_weak and (
+        (_le(z5, float(cfg.get("stress_z", -1.5))) and _le(zrs, rs_t))
+        or (_le(z1, float(cfg.get("stress_z_1d", -2.0))) and _le(zrs1, rs_t))
+    ):
+        return "STRESS"
+    if price_weak and (
+        (_le(z5, float(cfg.get("weak_z", -1.0))) and _le(zrs, 0.0))
+        or (_le(z1, float(cfg.get("weak_z_1d", -1.5))) and _le(zrs1, 0.0))
+    ):
+        return "WEAK"
+    if _le(dd20, float(cfg.get("deep_dd_min_pct", -10.0))) and _le(z5, float(cfg.get("deep_z5", -3.0))):
+        return "WEAK"
+    if (
+        (zrs is not None and zrs >= float(cfg.get("resilient_rs_z", 0.75)))
+        or (b5 is not None and b5 < 0 and r5 is not None and r5 >= 0)
+        or (b1 is not None and b1 < 0 and r1 is not None and r1 >= 0 and zrs1 is not None and zrs1 >= 1.0)
+    ):
+        return "RESILIENT"
+    return "NEUTRAL"
+
+
 def measure(ctx: c.EvalContext) -> dict[str, Any]:
     """The ``sectors`` block: per-group metrics and states, stressed/resilient/rotating lists, dispersion,
     cross-sector correlation and factor spreads, each with ``as_of``."""
@@ -219,32 +273,10 @@ def measure(ctx: c.EvalContext) -> dict[str, Any]:
         idx = [(d, gmap[d]) for d in cal if d in gmap]
         hi20 = max(x[1] for x in idx[-20:])
         dd20 = (idx[-1][1] / hi20 - 1.0) * 100.0 if hi20 else None
-        state = "NEUTRAL"
-        rs_t = float(cfg.get("rs_stress_z", -1.0))
-
-        def _le(a: float | None, t: float) -> bool:
-            return a is not None and a <= t
-
-        # price weakness gate (stated rule): a group can only be STRESS/WEAK when it is actually in a drawdown —
-        # at least price_dd_min_pct below its 20-session high AND lagging SPY over 20 sessions. A defensive group that
-        # is flat or up in price (staples on 10-23 / 10-29) is never stressed by a z-score of one bad day.
-        price_weak = _le(dd20, float(cfg.get("price_dd_min_pct", -3.0))) and _le(rs20, 0.0)
-        if price_weak and (
-            (_le(z5, float(cfg.get("stress_z", -1.5))) and _le(zrs, rs_t))
-            or (_le(z1, float(cfg.get("stress_z_1d", -2.0))) and _le(zrs1, rs_t))
-        ):
-            state = "STRESS"
-        elif price_weak and (
-            (_le(z5, float(cfg.get("weak_z", -1.0))) and _le(zrs, 0.0))
-            or (_le(z1, float(cfg.get("weak_z_1d", -1.5))) and _le(zrs1, 0.0))
-        ):
-            state = "WEAK"
-        elif (
-            (zrs is not None and zrs >= float(cfg.get("resilient_rs_z", 0.75)))
-            or (b5 < 0 and r5 is not None and r5 >= 0)
-            or (b1 is not None and b1 < 0 and r1 is not None and r1 >= 0 and zrs1 is not None and zrs1 >= 1.0)
-        ):
-            state = "RESILIENT"
+        state = classify_state(
+            dd20=dd20, rs20=rs20, z5=z5, zrs=zrs, z1=z1, zrs1=zrs1,
+            b5=b5, b1=b1, r5=r5, r1=r1, cfg=cfg,
+        )
         row.update(
             r1=_rnd(r1),
             r5=_rnd(r5),

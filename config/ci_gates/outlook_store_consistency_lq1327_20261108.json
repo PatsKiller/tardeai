@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "outlook_store_consistency_lq1327_20261108",
+  "files": [
+    "tests/test_outlook_store_consistency_lq1327_20261108.py"
+  ],
+  "anchor": "OUTLOOK_STORE_CONSISTENCY_LQ1327_20261108",
+  "comment": [
+    "ANCHOR: OUTLOOK_STORE_CONSISTENCY_LQ1327_20261108 — two of the operator's six validation rows for the 20:00 ET",
+    "outlook/plan record: (e) a group in a deep drawdown with an extreme 5-session move is at least WEAK (Energy",
+    "2026-11-06: -12.0% off its 20-session high, z5 -3.88, rs20 +0.24, which read NEUTRAL), while a single bad day's",
+    "z-score still cannot mark a group weak; and (b) an exit is per ACCOUNT — the plan brief now prints 'partial",
+    "exit, not flat ... still held in N other account(s)' from the record's own held_elsewhere, so V is not",
+    "reported as simply exited while ~101 shares are still held. Synthetic numbers only; no store, no network."
+  ]
+}
