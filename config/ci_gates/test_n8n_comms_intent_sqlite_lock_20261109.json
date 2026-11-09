@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "test_n8n_comms_intent_sqlite_lock_20261109",
+  "files": [
+    "tests/test_n8n_comms_intent_sqlite_lock_20261109.py"
+  ],
+  "anchor": "N8N_COMMS_INTENT_SQLITE_LOCK_20261109",
+  "comment": [
+    "ANCHOR: N8N_COMMS_INTENT_SQLITE_LOCK_20261109 — flock exit 75 with sqlite lock text is a retryable RUN_FAILED exit_75, not RUN_SKIPPED_LOCK. Empty exit 75 stays a flock skip. Exit 1 stays terminal."
+  ]
+}

@@ -954,6 +954,18 @@ def apply_output_verdict(
     return receipt
 
 
+def _child_reported_sqlite_lock(stdout: str | None, stderr: str | None) -> bool:
+    """True when the child itself printed a sqlite lock or busy error.
+
+    ``flock -n -E 75`` and the comms-intent consumer's EX_TEMPFAIL share exit 75.
+    Empty streams mean the child never started: that is a real flock conflict.
+    These phrases mean the child ran. Checked on the full streams, before the
+    receipt tail is truncated. LQ-20261107-1445.
+    """
+    text = f"{stdout or ''}\n{stderr or ''}".lower()
+    return "database is locked" in text or "database is busy" in text or "sqlite_busy" in text
+
+
 def _spawn(
     receipt: dict[str, Any],
     entry: Mapping[str, Any],
@@ -984,7 +996,14 @@ def _spawn(
     receipt["stderr_tail"] = (result.stderr or "")[-TAIL_CHARS:] or None
     receipt["output_signal_mtime_after"] = _mtime(signal_path)
     lock_kind = entry.get("lock_kind", "safe_flock")
-    if lock_kind == "flock" and result.returncode == FLOCK_CONFLICT_EXIT:
+    # Exit 75 is both "flock could not acquire" and the consumer's sqlite EX_TEMPFAIL.
+    # Only the empty-output case is a flock skip. Lock text falls through to
+    # RUN_FAILED exit_75, which transient-2 retries. A non-lock exit 1 stays terminal.
+    if (
+        lock_kind == "flock"
+        and result.returncode == FLOCK_CONFLICT_EXIT
+        and not _child_reported_sqlite_lock(result.stdout, result.stderr)
+    ):
         receipt["lock_skipped"] = True
         return _finish(receipt, "RUN_SKIPPED_LOCK", reason="flock_held", started=started)
     if lock_kind == "safe_flock" and result.returncode == 0 and SAFE_FLOCK_SKIP in (result.stderr or ""):
