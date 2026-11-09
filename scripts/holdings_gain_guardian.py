@@ -105,6 +105,7 @@ def _iron_rule() -> tuple[float, int]:
 
 def _holdings(cfg: dict, only: set[str] | None) -> list[dict[str, Any]]:
     import holding_family as hf
+    from lib.security_identity import is_dead_cusip_holding
     d = json.loads(HOLDINGS_PATH.read_text(encoding="utf-8"))
     total = float((d.get("portfolio_totals") or {}).get("total_value") or 0) or 1.0
     skip_syms = {s.upper() for s in cfg.get("skip_symbols") or []}
@@ -114,6 +115,8 @@ def _holdings(cfg: dict, only: set[str] | None) -> list[dict[str, Any]]:
         sym = str(h.get("symbol") or "").upper()
         if not sym or h.get("is_cash") or sym in skip_syms:
             continue
+        if is_dead_cusip_holding(h):
+            continue  # LQ-1417: CUSIP-only + delisted (no price) -> ignored
         if only and sym not in only:
             continue
         try:

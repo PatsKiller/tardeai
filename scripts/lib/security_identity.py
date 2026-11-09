@@ -39,6 +39,28 @@ def is_cusip_like(value: str) -> bool:
     return bool(_CUSIP_RE.match(s)) and not s.isalpha()
 
 
+def _num(value: Any) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def is_dead_cusip_holding(row: Mapping[str, Any] | None) -> bool:
+    """True for a holding known only by a CUSIP that carries no live price.
+
+    Operator rule (LQ-20261107-1417, 2026-11-09): a position whose only
+    identifier is a CUSIP and which has been delisted (broker reports no price
+    and no market value) is ignored by the system — no quote fallback, no
+    advisories, no alerts. A CUSIP-shaped row that still has a price is kept.
+    """
+    if not row:
+        return False
+    if not is_cusip_like(str(row.get("symbol") or "")):
+        return False
+    return _num(row.get("current_price")) <= 0 and _num(row.get("market_value")) <= 0
+
+
 def classify_unresolved_symbol(symbol: str) -> dict[str, Any]:
     """Classify without inventing sector/catalyst metadata."""
     sym = normalize_symbol(symbol)
