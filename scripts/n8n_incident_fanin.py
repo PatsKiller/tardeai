@@ -1262,7 +1262,7 @@ def publish_diagnosis_p2(findings: list[dict[str, Any]], *, apply: bool) -> int:
     try:
         from scripts.lib import incidents as inc
     except ImportError:
-        from lib import incidents as inc  # type: ignore[no-redef]
+        from lib import incidents as inc
     opened = 0
     d = inc.incidents_dir()
     for f in findings:
