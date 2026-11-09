@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_event_lifecycle_lane_20261109",
+  "files": [
+    "tests/test_market_event_lifecycle_lane_20261109.py"
+  ],
+  "anchor": "MARKET_EVENT_LIFECYCLE_LANE_20261109",
+  "comment": [
+    "ANCHOR: MARKET_EVENT_LIFECYCLE_LANE_20261109 — scripts/lib/market_event_lifecycle.py is the lane step around market_event_plan.evaluate_position (LQ-20261107-1656 design, LQ-20261107-1674 build, stage 2): it reads positions_current, stop_lifecycle, holding_exit_metrics, market_quotes bars and the MRE tier, builds one row per (candidate, account LABEL), evaluates every held row and persists each transition into market_event_lifecycle plus the current stage map in market_event_candidates.plan->'lifecycle'. A position the snapshot no longer lists is still evaluated (qty 0, stop state from stop_lifecycle) because a position that went to zero is the STOPPED_OUT this lane exists to notice; that row is judged fresh against the snapshot's own max(as_of), never the wall clock. A stale guardian run drops its giveback state instead of replaying an old breach. The dry run writes nothing. Advisory only, MBI_BEHAVIOR = 0; the account LABEL is the only account identifier stored. Synthetic fixtures only; no network, no DB."
+  ]
+}
