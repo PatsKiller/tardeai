@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_incident_fanin_slot_lq1405_20261109",
+  "files": [
+    "tests/test_n8n_incident_fanin_slot_lq1405_20261109.py"
+  ],
+  "anchor": "N8N_INCIDENT_FANIN_SLOT_LQ1405_20261109",
+  "comment": [
+    "ANCHOR: N8N_INCIDENT_FANIN_SLOT_LQ1405_20261109 — LQ-20261107-1405. The */5 fan-in read each already-landed incident with two gateway status calls, so the 04:40Z slot (285 ARTIFACT_WRITTEN, recovered 4) took 24.8s against a 5.021s p95 and graded slow. One read-only receipts lookup answers those keys, and a key already at ARTIFACT_WRITTEN is not walked. A partial UNREACHABLE/UNKNOWN miss is gateway_unreachable and the slot stays ok (run 168817 landed 256 of 258 and exited 1). Every row missing the gateway, and any REFUSED row, still fail the slot. Synthetic fixtures only."
+  ]
+}

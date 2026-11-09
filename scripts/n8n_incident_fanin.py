@@ -29,6 +29,7 @@ import argparse
 import hashlib
 import json
 import os
+import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1599,6 +1600,84 @@ def _flood_policy(root: Path, findings: list[dict[str, Any]]) -> dict[str, Any]:
 LANE_RECEIPT_ID = "n8n-incident-fanin"
 #: Row states that mean the incident did NOT land on the gateway ledger this run.
 _NOT_LANDED = frozenset({"UNREACHABLE", "REFUSED", "UNKNOWN", "DRY_RUN"})
+#: Transport or empty-op misses. A refusal is a real gateway answer and is not in this set.
+_LOST = frozenset({"UNREACHABLE", "UNKNOWN"})
+#: sqlite's default variable limit is 999; stay under it when the open set is a few hundred.
+_STATUS_IN_CHUNK = 400
+
+
+def _ledger_path(root: Path) -> Path:
+    explicit = os.environ.get("TRADEAI_N8N_COORDINATION_LEDGER")
+    return Path(explicit) if explicit else root / LEDGER_REL
+
+
+def _receipt_statuses(ledger: Path, keys: list[str], *, project: str = "trade-ai") -> dict[str, dict[str, Any]]:
+    """One read-only lookup of gateway receipts for these idempotency keys.
+
+    ``status`` on the loopback gateway is this same receipts row (``project:idempotency_key``). The 04:40Z
+    slot (run n8n-wf-722fac0e043ea5c4-169960) held 285 incidents already at ARTIFACT_WRITTEN and spent 24.8 s:
+    one ``status`` per finding, then ``walk_to_artifact`` status'd each of them again. That is the contract's
+    ``slow`` check (duration above the 2026-10-11 p95 of 5.021 s) on every success. A missing file, a missing
+    table, or a read error returns ``{}`` and the caller uses per-key ``status`` — the prefetch never fails
+    the run. Keys absent from the map are unknown here and still go to the gateway."""
+    if not keys or not ledger.is_file():
+        return {}
+    found: dict[str, dict[str, Any]] = {}
+    try:
+        conn = sqlite3.connect(f"{ledger.resolve().as_uri()}?mode=ro", uri=True, timeout=3)
+    except sqlite3.Error:
+        return {}
+    try:
+        conn.row_factory = sqlite3.Row
+        for start in range(0, len(keys), _STATUS_IN_CHUNK):
+            part = keys[start : start + _STATUS_IN_CHUNK]
+            marks = ",".join("?" * len(part))
+            rows = conn.execute(
+                f"SELECT store_key, receipt_json FROM receipts WHERE store_key IN ({marks})",
+                [f"{project}:{key}" for key in part],
+            ).fetchall()
+            for row in rows:
+                store_key = str(row["store_key"] or "")
+                idem = store_key.split(":", 1)[1] if ":" in store_key else store_key
+                if not idem:
+                    continue
+                try:
+                    receipt = json.loads(row["receipt_json"])
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                if not isinstance(receipt, dict) or not receipt.get("state"):
+                    continue
+                brief = {
+                    "state": receipt.get("state"),
+                    "reason": receipt.get("reason"),
+                    "duplicate": False,
+                    "durable": receipt.get("durable"),
+                }
+                if receipt.get("consumer"):
+                    brief["consumer"] = receipt.get("consumer")
+                found[idem] = brief
+    except sqlite3.Error:
+        return {}
+    finally:
+        conn.close()
+    return found
+
+
+def publish_ok(rows: list[dict[str, Any]], *, apply: bool) -> bool:
+    """Whether this apply wrote a report the slot can stand on.
+
+    A dry run always can. Any ``REFUSED`` row is a real gateway answer and fails the slot. Every row
+    ``UNREACHABLE`` or ``UNKNOWN`` is an outage and fails the slot. A partial miss does not: run
+    n8n-wf-722fac0e043ea5c4-168817 landed 256 of 258 (``dependency_unavailable`` 2) and exited 1, and the
+    executor dead-lettered that finished report (max_attempts 1, retryable false)."""
+    if not apply:
+        return True
+    if any(r.get("state") == "REFUSED" for r in rows):
+        return False
+    lost = sum(1 for r in rows if r.get("state") in _LOST)
+    if not lost:
+        return True
+    return lost < len(rows)
 
 
 def lane_output(rows: list[dict[str, Any]], *, apply: bool, has_key: bool) -> dict[str, Any]:
@@ -1606,14 +1685,17 @@ def lane_output(rows: list[dict[str, Any]], *, apply: bool, has_key: bool) -> di
 
     produced = incidents the ledger holds after this run (accepted and walked, or already held / consumed);
     attempted = open incidents found. No open incident = ``no_new_input`` (the contract's allowed empty reason).
-    An apply run without the gateway key, or an incident the gateway could not take, is ``no_credentials`` /
-    ``dependency_unavailable`` (fatal). A dry run reports what it would attempt (produced 0, nothing posted)."""
+    An apply run without the gateway key is ``no_credentials``. Every incident missing the gateway is
+    ``dependency_unavailable`` (fatal). A partial miss is ``gateway_unreachable`` (not a fatal skip: the
+    report landed). A dry run reports what it would attempt (produced 0, nothing posted)."""
     landed = sum(1 for r in rows if r.get("state") not in _NOT_LANDED)
     skipped: dict[str, int] = {}
-    lost = sum(1 for r in rows if r.get("state") in {"UNREACHABLE", "UNKNOWN"})
+    lost = sum(1 for r in rows if r.get("state") in _LOST)
     refused = sum(1 for r in rows if r.get("state") == "REFUSED")
-    if lost:
+    if lost and landed == 0:
         skipped["dependency_unavailable"] = lost
+    elif lost:
+        skipped["gateway_unreachable"] = lost
     if refused:
         skipped["gateway_refused"] = refused
     if apply and not has_key:
@@ -1675,6 +1757,11 @@ def main(argv: list[str] | None = None) -> int:
     current_keys: set[str] = set()
     digests: dict[tuple[int, int, int, int], str | None] = {}  # one artifact digest per distinct file per run
     resume = _resume_occurrences(prev)
+    prefetched: dict[str, dict[str, Any]] = {}
+    if client is not None:
+        asked = [occurrence_key(idem_key(f, day), resume.get(idem_key(f, day), 0)) for f in findings]
+        prefetched = _receipt_statuses(_ledger_path(root), asked)
+        NOTES["status_prefetch"] = f"ok:asked={len(asked)}:hit={sum(1 for key in asked if key in prefetched)}"
     if args.apply:
         write_lane_registry_receipt(root, [f for f in findings if f["source"] == "lane_registry"], now, sha)
     for f in findings:
@@ -1684,7 +1771,9 @@ def main(argv: list[str] | None = None) -> int:
             ev = build_event(f, day=day, now=now, sha=sha, occurrence=occurrence)
         st: dict[str, Any] = {}
         if client is not None:
-            st = client.status(ev["idempotency_key"])
+            st = prefetched.get(ev["idempotency_key"]) or {}
+            if not st.get("state"):
+                st = client.status(ev["idempotency_key"])
             # The finding is open at its source but the key is already closed by an earlier occurrence today.
             # Accepting it again is refused and closing it again is refused, so publishing it as-is would say
             # "closed" in the ledger and "open" in this receipt for the rest of the day (LQ-20261107-116). Walk on
@@ -1692,7 +1781,9 @@ def main(argv: list[str] | None = None) -> int:
             while _closed_by_recovery(st) and occurrence < MAX_OCCURRENCES:
                 occurrence += 1
                 ev = build_event(f, day=day, now=now, sha=sha, occurrence=occurrence)
-                st = client.status(ev["idempotency_key"])
+                st = prefetched.get(ev["idempotency_key"]) or {}
+                if not st.get("state"):
+                    st = client.status(ev["idempotency_key"])
         current_keys.add(ev["idempotency_key"])
         row = {
             **{k: f[k] for k in ("source", "item", "severity", "detail", "detected_at")},
@@ -1731,7 +1822,18 @@ def main(argv: list[str] | None = None) -> int:
                     "duplicate": acc.get("duplicate"),
                 }
             )
-            if acc.get("state") == "ACCEPTED" or (
+            # ARTIFACT_WRITTEN is the walk's terminal state. The status just read (one ledger row, or one
+            # gateway call) already says so; walk_to_artifact would only status the key again (LQ-20261107-1405).
+            if acc.get("duplicate") and acc.get("state") == "ARTIFACT_WRITTEN":
+                row["ops"].append(
+                    {
+                        "op": "status",
+                        "state": st.get("state"),
+                        "reason": st.get("reason"),
+                        "durable": st.get("durable"),
+                    }
+                )
+            elif acc.get("state") == "ACCEPTED" or (
                 acc.get("duplicate") and acc.get("state") not in {"REFUSED", "CONSUMED"}
             ):
                 # LQ-20261107-260: a key already holding ARTIFACT_WRITTEN never sends the ref, so the digest
@@ -1771,7 +1873,7 @@ def main(argv: list[str] | None = None) -> int:
         "flood_policy": flood,
         # the relay baseline survives a run where the relay source was off or broken (no false +delta later)
         "relay_counts": dict(RELAY_COUNTS) or prev.get("relay_counts") or None,
-        "ok": (not args.apply) or all(r.get("state") not in {"UNREACHABLE", "REFUSED", "UNKNOWN"} for r in rows),
+        "ok": publish_ok(rows, apply=bool(args.apply)),
     }
     output = lane_output(rows, apply=bool(args.apply), has_key=bool(gateway.get("has_key")))
     if args.apply:
