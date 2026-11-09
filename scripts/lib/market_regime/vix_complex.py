@@ -274,22 +274,44 @@ def read_fred(conn, now: datetime, cfg: dict[str, Any]) -> tuple[dict[str, dict]
     return out, missing
 
 
-def merge(schwab: dict[str, dict], fred: dict[str, dict]) -> tuple[dict[str, dict], dict[str, str]]:
-    """Schwab dated close first; FRED fills gaps and displaces a *carried* Schwab level.
+def _session_of(value: dict) -> str | None:
+    """The session date a value speaks for: a carried print's print date, else the row's session/as-of date."""
+    for key in ("carried_from", "session_date", "as_of", "observation_date"):
+        raw = value.get(key)
+        if isinstance(raw, str) and len(raw) >= 10 and raw[:4].isdigit():
+            return raw[:10]
+    return None
 
-    A carried Friday print (``reference_basis`` = ``…carried_print_YYYY-MM-DD``) is a level, not today's close.
-    Preferring it over FRED's published close is how three numbers (MRE / Schwab carry / FRED) disagree on one
-    Sunday night. Dated Schwab closes (regular_close / non-carried) still beat FRED.
+
+def merge(schwab: dict[str, dict], fred: dict[str, dict]) -> tuple[dict[str, dict], dict[str, str]]:
+    """One value per key, and the NEWER session wins — FRED fills gaps, not history.
+
+    A carried Friday print (``reference_basis`` = ``…carried_print_YYYY-MM-DD``) is a level, not a live quote, so
+    for a long time FRED's published close displaced it. That is right only while FRED's observation is the
+    same session or newer. FRED publishes VIXCLS T+1, so on a weekend its newest observation is THURSDAY while
+    Schwab's carried print is FRIDAY's 16:00 close: letting FRED win there published an older session as
+    current and left market risk's volatility category reading a 32-hour-stale VIX on a weekend when an
+    admissible Friday print existed (measured 2026-11-08: FRED 2026-11-05 28.18 vs Schwab carry 2026-11-06
+    25.64, the same 25.64 the header tile showed). Both are kept on the payload either way, so a receipt can
+    always show which one was not used and why. Yahoo is never in this merge: ``read_quotes`` refuses it first.
     """
     values = dict(fred)
     how: dict[str, str] = {k: "fred" for k in fred}
     for k, v in schwab.items():
         if v.get("carried_from") and k in fred:
-            # Keep the carried level on the FRED row's payload so the receipt still shows what Schwab held.
-            values[k] = {**fred[k], "schwab_carried_level": v.get("value"),
-                         "schwab_carried_from": v.get("carried_from"),
-                         "schwab_carried_age_hours": v.get("age_hours")}
-            how[k] = "fred"
+            carried, published = _session_of(v), _session_of(fred[k])
+            if published is None or carried is None or published >= carried:
+                # Keep the carried level on the FRED row's payload so the receipt still shows what Schwab held.
+                values[k] = {**fred[k], "schwab_carried_level": v.get("value"),
+                             "schwab_carried_from": v.get("carried_from"),
+                             "schwab_carried_age_hours": v.get("age_hours")}
+                how[k] = "fred"
+                continue
+            # FRED's observation PREDATES the carried print: preferring it would publish an older session as
+            # today's volatility. The newer session wins; FRED's observation stays named as evidence.
+            values[k] = {**v, "fred_observation_date": fred[k].get("observation_date"),
+                         "fred_value": fred[k].get("value")}
+            how[k] = "schwab"
             continue
         values[k] = v
         how[k] = "schwab"
@@ -379,6 +401,8 @@ def collect(conn, snapshot_id: str, now: datetime, cfg: dict[str, Any],
                             "carried_from": v.get("carried_from"),
                             "schwab_carried_level": v.get("schwab_carried_level"),
                             "schwab_carried_from": v.get("schwab_carried_from"),
+                            "fred_value": v.get("fred_value"),
+                            "fred_observation_date": v.get("fred_observation_date"),
                             "bar_end": v.get("bar_end"),
                         }))
     # Term structure: derived only from two real values, and only when both are present.

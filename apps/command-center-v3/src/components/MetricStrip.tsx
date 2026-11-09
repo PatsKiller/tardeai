@@ -9,6 +9,9 @@ import { dateOnlyPart, fmtAsOf } from '../lib/asOfDisplay'
 import { runLabel } from '../lib/homeLabels'
 import { overviewSurfaceFreshness, tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
 import { deriveTodayPnlState } from '../lib/todayPnlState'
+// One regime-clock rule for every surface that shows the regime (LQ-20261107-1392). HomeDoNow already
+// reads it; the header tile did not, and painted a "fresh" dot on a 55-hour-old snapshot.
+import { regimeState, regimeClockTitle } from '../lib/homeRegime'
 import { HOME_APPROVALS, type NeedsYouSummary } from '../lib/homeApprovals'
 import { deriveHeaderFeedState } from '../lib/headerFeedState'
 import type { HeaderFeed } from '../lib/headerFeedState'
@@ -105,7 +108,7 @@ export default function MetricStrip({ onDrill }: Props) {
   // a fallback when that queue cannot be read.
   const { data: needsYouSummary } = useApi<NeedsYouSummary>(`${HOME_APPROVALS}/summary`, 60_000, CHROME)
   const {
-    data: regime, loading: regimeLoading, error: regimeError,
+    data: regime, envelope: regimeEnv, loading: regimeLoading, error: regimeError,
     stale: regimeStale, refetch: regimeRefetch,
   } = useApi<any>('/api/v2/risk-regime/latest', 120_000, CHROME)
   const {
@@ -319,6 +322,12 @@ export default function MetricStrip({ onDrill }: Props) {
   const winTrades = overview?.journal?.trade_count
   const regimeLabel = regime?.regime_label ?? '—'
   const regimeConf = regime?.confidence
+  // LQ-20261107-1392: the tile's dot is the regime's OWN clock, read from the response envelope
+  // (`stale`/`age_hours`/`as_of`), never useApi's transport `stale` — that one only means "a refetch
+  // failed", so a 55-hour-old snapshot with a healthy connection read as fresh (measured 2026-11-08:
+  // last snapshot 2026-11-06 16:05 ET, age_hours 55.23, stale true). Same helper HomeDoNow uses, so
+  // the two surfaces cannot disagree about one regime row.
+  const regimeInfo = regimeState(regime, regimeEnv)
   // Prefer API stale + cached_at over session-normalized run_date (heal can label "today"
   // while the cache stays empty for days — census/bisect 2026-08-28).
   const setupsFresh = tradeAiSurfaceFreshness(tradeAi)
@@ -577,12 +586,25 @@ export default function MetricStrip({ onDrill }: Props) {
     },
     {
       label: 'REGIME', value: regimeLabel ? `${regimeLabel.replace(/_/g, ' ')}${regimeConf ? ` ${Math.round(regimeConf * 100)}%` : ''}` : '—',
-      asOfNote: showQuietProvenance ? ([regime?.trend_state, regime?.breadth_state, regime?.volatility_state].filter(Boolean).join(' · ') || 'risk-regime/latest') : null,
+      // The regime's own clock, in the same fault vocabulary as the VIX tile (tone/stale/undated). A stale
+      // regime keeps its label — it is the last measured state — but loses the confident dot and says how old.
+      asOfNote: regimeInfo.stale
+        ? regimeClockTitle(regimeInfo)
+        : showQuietProvenance
+          ? ([regime?.trend_state, regime?.breadth_state, regime?.volatility_state].filter(Boolean).join(' · ') || 'risk-regime/latest')
+          : null,
+      tone: worseTone(regimeInfo.stale ? 'warn' : 'ok', regimeStale ? 'warn' : 'ok'),
+      stale: regimeInfo.stale
+        ? (regimeInfo.ageHours != null ? `${regimeInfo.ageHours.toFixed(1)} h old` : 'clock not reported')
+        : null,
+      staleLabel: regimeInfo.ageHours != null ? `STALE · ${regimeInfo.ageHours.toFixed(1)} h` : 'STALE',
+      undated: Boolean(regime) && !regimeInfo.asOf && regimeInfo.ageHours == null,
       valueSize: VALUE_COMPACT, minWidth: 150, maxWidth: 215,
-      color: regimeLabel === 'risk_off' ? BB.red : regimeLabel === 'risk_on' ? BB.green : BB.amber,
-      tip: `Market regime from /api/v2/risk-regime/latest — weighs trend, breadth, and volatility signals into a risk-on/risk-off label with confidence.`,
-      drill: { title: 'Market Regime', subtitle: 'From /api/v2/risk-regime/latest', endpoint: '/api/v2/risk-regime/latest',
-        rows: regime ? [{ regime_label: regime.regime_label, confidence: regime.confidence, volatility_state: regime.volatility_state, trend_state: regime.trend_state, breadth_state: regime.breadth_state, summary: regime.summary }] : [] },
+      color: regimeInfo.stale ? BB.amber
+        : regimeLabel === 'risk_off' ? BB.red : regimeLabel === 'risk_on' ? BB.green : BB.amber,
+      tip: `Market regime from /api/v2/risk-regime/latest — weighs trend, breadth, and volatility signals into a risk-on/risk-off label with confidence.\n\nCLOCK: ${regimeClockTitle(regimeInfo)}${regimeInfo.stale ? ' — the label is the last measured state, not the current one.' : ''}`,
+      drill: { title: 'Market Regime', subtitle: regimeInfo.stale ? `STALE · ${regimeClockTitle(regimeInfo)}` : `From /api/v2/risk-regime/latest · ${regimeClockTitle(regimeInfo)}`, endpoint: '/api/v2/risk-regime/latest',
+        rows: regime ? [{ regime_label: regime.regime_label, confidence: regime.confidence, volatility_state: regime.volatility_state, trend_state: regime.trend_state, breadth_state: regime.breadth_state, summary: regime.summary, as_of: regime.as_of, age_hours: regime.age_hours, stale: regime.stale, stale_after_hours: regime.stale_after_hours }] : [] },
     },
     {
       // FQ-086 / HQ-02: the colour follows the NUMBER only when the reading is FRESH. A value carried from a stale or

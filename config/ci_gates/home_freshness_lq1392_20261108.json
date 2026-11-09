@@ -1,0 +1,21 @@
+{
+  "schema": "CiGate@v1",
+  "name": "home_freshness_lq1392_20261108",
+  "files": [
+    "tests/test_home_freshness_lq1392_20261108.py"
+  ],
+  "comment": [
+    "Home freshness (LQ-20261107-1392), four defects measured live on 2026-11-08. Pins, at each producer:",
+    "(2) TODAY may publish only a session date that could have been a session — marks observed after the",
+    "newest opened session are attributed to it and the translation is named, while the observation stays",
+    "in marks_observed; an UNKNOWN calendar is never corrected by guess. (3) The VIX complex merges by",
+    "SESSION: a carried Schwab print newer than FRED's T+1 observation wins (both values stay on the",
+    "payload), so Friday's VIX close reaches the volatility category on a Sunday instead of being refused as",
+    "stale Thursday FRED; the same fixture without Friday is still UNKNOWN and names the date it used, and a",
+    "missing series is UNKNOWN, never a zero. (4) A quote-derived close is provisional only while ITS session",
+    "was still open at `end`, so a completed session reaches reentry_stages instead of vanishing behind the",
+    "provisional filter; an after-hours print is still not the close. Synthetic fixtures only (ZZQ/QQQ/SPY",
+    "shapes, invented prices); no DB, no network. The renderer half is",
+    "apps/command-center-v3/src/lib/homeRegimeHeaderTile.view.test.mjs, discovered by the app's run-tests.mjs."
+  ]
+}

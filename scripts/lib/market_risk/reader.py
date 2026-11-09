@@ -669,7 +669,15 @@ class PgReader:
                     if not regular or regular[-1].get("price") is None:
                         continue
                     close, seen = regular[-1]["price"], regular[-1]["fetched_at"]
-                    prov = True  # replaced by the next session's prev_close once that session has a quote
+                    # LQ-20261107-1392: the newest completed session was flagged provisional unconditionally,
+                    # and `reentry_stages.evaluate` drops every provisional bar — so on a Sunday the last close
+                    # that existed in the series was THURSDAY's, and MU's exit-day (Friday) session vanished
+                    # ("no session since the exit", verdict "Still falling" beside a +2.6% move vs the exit).
+                    # Mirror the OHLCV loop's rule: a same-day quote is provisional only while ITS session was
+                    # still open at `end`. Once the close instant has passed, the last regular-hours print IS
+                    # that session's close (the next session's prev_close confirms the same number).
+                    # A bare date is an ambiguous instant ("sometime that day"), so it stays conservative.
+                    prov = True if not isinstance(end, datetime) else _aware(end) < _close_instant(d)
                 out.append(
                     {
                         "symbol": sym,
@@ -679,7 +687,10 @@ class PgReader:
                         "low": None,
                         "close": close,
                         "volume": None,
-                        "source": "market_quotes:alpaca_prev_close" if not prov else "market_quotes:alpaca_last",
+                        # The source names HOW the close was derived (a next session's prev_close vs the
+                        # session's own last regular print), never the provisional flag: a completed session's
+                        # last print is still a `last` print.
+                        "source": "market_quotes:alpaca_prev_close" if i + 1 < len(ordered) else "market_quotes:alpaca_last",
                         "provisional": prov,
                         "as_of": _iso(seen),
                     }

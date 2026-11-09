@@ -1445,6 +1445,26 @@ _TODAY_MOVE_NOTE = (
 )
 
 
+def _mark_session(observed: str | None, market: dict | None,
+                  source: str | None) -> tuple[str | None, str | None]:
+    """The trading session a set of marks belongs to, and the source that says so (LQ-1392).
+
+    A mark observed AFTER the newest opened session cannot be dated to a session of its own: nothing
+    traded on that calendar date (weekend, holiday, or a pre-open morning). The move it carries is the
+    newest opened session's, and the translation is named. Any other date is left exactly as the producer
+    stamped it — this never re-dates a mark that could have been a session of its own, and it never
+    guesses when the calendar itself is UNKNOWN.
+    """
+    latest = (market or {}).get("latest_open_session") if (market or {}).get("status") == "KNOWN" else None
+    if not observed:
+        return None, None
+    obs = str(observed)[:10]
+    if latest and obs > str(latest)[:10]:
+        return (str(latest)[:10],
+                f"market_session.latest_open_session (marks observed {obs}, after the newest opened session)")
+    return observed, source
+
+
 def today_move_payload(market_day: dict | None, account_days: dict | None, today_pnl: dict) -> dict:
     """TODAY as the book's market-day move, from the Accounts-table source.
 
@@ -1456,9 +1476,17 @@ def today_move_payload(market_day: dict | None, account_days: dict | None, today
     surfaces agree and any gap is named beside the number instead of hiding it.
     `market_day` / `account_days` are portfolio_market_day / account_market_days
     over the same holdings the performance endpoint uses.
+
+    LQ-20261107-1392: ``mark_session_date`` is the ET CALENDAR date the marks were observed on, not a
+    session. On a weekend the marks are a carry of the newest opened session, so the calendar date was
+    labelled "market-day session 2026-11-08" on a Sunday (measured live; the same payload's
+    ``market_session.latest_open_session`` said 2026-11-06). The session the move belongs to is now named
+    here — once, in the producer — while the observation date is kept as ``marks_observed``.
     """
     census = (today_pnl.get("stored_row_evidence") or {}).get("census") or {}
-    session = today_pnl.get("mark_session_date")
+    marks_observed = today_pnl.get("mark_session_date")
+    session, session_source = _mark_session(marks_observed, today_pnl.get("market_session"),
+                                            today_pnl.get("mark_session_source"))
     change = _number((market_day or {}).get("change"))
     by_account = {}
     for acct, row in sorted((account_days or {}).items()):
@@ -1474,7 +1502,11 @@ def today_move_payload(market_day: dict | None, account_days: dict | None, today
            "change_pct": _number((market_day or {}).get("change_pct")) if change is not None else None,
            "by_account": by_account,
            "session_date": session if change is not None else None,
-           "session_source": today_pnl.get("mark_session_source") if change is not None and session else None,
+           "session_source": session_source if change is not None and session else None,
+           # The observation clock, kept beside the session it was translated into: a Sunday mark of a
+           # Friday close is two facts, and collapsing them into one date is how "market-day on Sunday"
+           # was printed.
+           "marks_observed": marks_observed, "marks_observed_source": today_pnl.get("mark_session_source"),
            "mark_batch_at": today_pnl.get("mark_batch_at"), "mark_source": today_pnl.get("mark_source"),
            "market_session": deepcopy(today_pnl.get("market_session")),
            "economic_status": today_pnl.get("status"),

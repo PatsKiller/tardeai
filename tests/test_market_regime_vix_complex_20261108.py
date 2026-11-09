@@ -226,18 +226,36 @@ def test_a_carried_friday_print_is_aged_from_the_print_date_not_bar_end():
     assert vix_receipt["fresh"] is False
 
 
-def test_fred_displaces_a_carried_schwab_level_but_a_dated_schwab_close_still_wins():
+def test_a_carried_schwab_level_yields_to_fred_only_when_fred_is_not_older():
+    """LQ-20261107-1392 corrected the precedence. FRED publishes VIXCLS T+1, so on a Sunday its newest
+    observation is THURSDAY while Schwab carries FRIDAY's 16:00 print. Preferring FRED there published an
+    older session as current and left market risk's volatility category UNKNOWN ("VIX stale, newest
+    2026-11-05") while an admissible 25.64 Friday print sat in the store — the same number the header tile
+    showed. FRED still wins for the SAME session or a newer one; the displaced value stays as evidence.
+    """
     bar_end = datetime(2026, 11, 8, 20, 0, tzinfo=ET)
     carried = _carried_row("$VIX", 25.64, print_day=date(2026, 11, 6), bar_end=bar_end)
+
+    # FRED for the SAME session: the official close wins, and what Schwab held stays on the payload.
+    same = [("VIXCLS", date(2026, 11, 6), 25.10)]
+    inds_same, _, summary_same = _collect([carried], same, now=SUN_NIGHT)
+    by_same = {i["indicator_key"]: i for i in inds_same}
+    assert by_same["vix_close"]["value"] == 25.10
+    assert by_same["vix_close"]["payload"]["value_source"] == "fred"
+    assert by_same["vix_close"]["payload"]["schwab_carried_level"] == 25.64
+    assert summary_same["sources"]["vix_close"] == "fred"
+
+    # FRED OLDER than the carry (a Sunday's normal FRED state): the newer session wins.
     fred = [("VIXCLS", date(2026, 11, 5), 28.18)]
     inds, _, summary = _collect([carried], fred, now=SUN_NIGHT)
     by = {i["indicator_key"]: i for i in inds}
-    assert by["vix_close"]["value"] == 28.18
-    assert by["vix_close"]["payload"]["value_source"] == "fred"
-    assert by["vix_close"]["payload"]["schwab_carried_level"] == 25.64
-    assert by["vix_close"]["payload"]["schwab_carried_from"] == "2026-11-06"
-    assert by["vix_close"]["payload"]["fresh"] is False  # observation is 3 calendar days old on Sun night
-    assert summary["sources"]["vix_close"] == "fred"
+    assert by["vix_close"]["value"] == 25.64
+    assert by["vix_close"]["payload"]["value_source"] == "schwab"
+    assert by["vix_close"]["payload"]["carried_from"] == "2026-11-06"
+    assert by["vix_close"]["payload"]["fred_value"] == 28.18        # the older observation is not lost
+    assert by["vix_close"]["payload"]["fred_observation_date"] == "2026-11-05"
+    assert by["vix_close"]["payload"]["fresh"] is False             # a Fri close on Sun night is not fresh
+    assert summary["sources"]["vix_close"] == "schwab"
 
     # A non-carried Schwab close (regular session print) still beats the same FRED observation.
     dated = _row("$VIX", 20.0, hours_old=1.0, basis="schwab_regular_close")

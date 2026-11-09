@@ -143,14 +143,21 @@ def test_fractional_display_quote_preserves_original_stage_and_vix_cutoffs(day, 
     closes = r._quote_closes(["ZZQ"], start=datetime.combine(day, time(0), ET), end=end)
     assert len(closes) == 1 and closes[0]["close"] == 10.0
     assert datetime.fromisoformat(closes[0]["as_of"]) == exact
-    assert closes[0]["provisional"] is True
+    # LQ-20261107-1392: `end` (20:00) is AFTER this session's close, so the last regular print IS the
+    # session close and is no longer provisional. The old unconditional True made the newest completed
+    # session invisible to `reentry_stages`, which drops provisional bars. The open-session case is
+    # pinned in tests/test_home_freshness_lq1392_20261108.py.
+    assert closes[0]["provisional"] is False
     assert r.regular_session_quotes(["ZZQ"], end=end)["ZZQ"]["price"] == 99.0
     confirmed = [{"date": "2026-10-29", "close": 12.0}, {"date": "2026-10-30", "close": 11.0}]
     args = dict(symbol="ZZQ", exit_date="2026-10-29", exit_price=13.0, group_ratio=[],
                 hedging_series=[], market_tier="GREEN", policy={})
     before = reentry_stages.evaluate(bars=confirmed, **args)
     after = reentry_stages.evaluate(bars=confirmed + closes, **args)
-    assert after == before and after["last_close"] == 11.0 and after["last_date"] == "2026-10-30"
+    # LQ-20261107-1392: this session CLOSED before `end`, so its close is stage evidence now. The rule that
+    # still holds is the other way round: a session still OPEN at `end` never decides a stage, which
+    # tests/test_reentry_truth_20261102.py::test_a_same_day_close_comes_only_from_the_regular_session pins.
+    assert after != before and after["last_close"] == 10.0 and after["last_date"] == day.isoformat()
     r._vix_closes(start=datetime.combine(day, time(0), ET), end=end)
     snapshot = next(params for sql, params in conn.log if "FROM market_regime_indicators" in sql)
     assert snapshot[-1] == time(16, 0, 59), "VIX snapshot predicate retains main's exact-second cutoff"
@@ -169,7 +176,7 @@ def test_naive_instant_refused():
         r.quotes(["SPY"], start=datetime(2026, 10, 29), end=datetime(2026, 10, 30))
 
 
-def test_quote_closes_use_next_session_prev_close_and_flag_the_newest_provisional():
+def test_quote_closes_use_next_session_prev_close_and_only_an_open_session_is_provisional():
     quotes = [
         {
             "symbol": "QQQ",
@@ -206,7 +213,9 @@ def test_quote_closes_use_next_session_prev_close_and_flag_the_newest_provisiona
     bars = r.daily_bars(["QQQ"], sessions=10, end=et(2026, 10, 29, 18, 15))
     assert [(b["date"], b["close"], b["provisional"]) for b in bars] == [
         ("2026-10-28", 725.60, False),  # from 10-29's first quote prev_close, not 10-28's last print
-        ("2026-10-29", 706.0, True),  # last regular-hours quote; the 16:45 after-hours print is ignored
+        # LQ-20261107-1392: `end` is 18:15 — past the 16:00 close — so 10-29's last regular print is that
+        # session's close, not a provisional same-day quote. The 16:45 after-hours print is still ignored.
+        ("2026-10-29", 706.0, False),
     ]
 
 
