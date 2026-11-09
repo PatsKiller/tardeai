@@ -78,6 +78,7 @@ def test_an_undecided_row_is_never_persisted(monkeypatch):
     class _Cur:
         def __init__(self): self.n = 0; self.rowcount = 1
         def execute(self, *a, **k): self.n += 1
+        def fetchall(self): return [(1,)]  # would inflate a bad counter; must never be called
     class _Conn:
         def __init__(self): self._c = _Cur()
         def cursor(self): return self._c

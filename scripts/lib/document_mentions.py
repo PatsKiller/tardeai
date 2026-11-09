@@ -337,7 +337,14 @@ def _conflict_target(cur) -> str:
 
 def persist(conn, *, source_table: str, source_id: Any,
             rows: Iterable[dict[str, Any]]) -> int:
-    """Idempotent write. Re-running the extractor is a no-op, not a duplicate."""
+    """Idempotent write. Re-running the extractor is a no-op, not a duplicate.
+
+    The returned count is the number of rows that actually landed (``INSERT … RETURNING id``),
+    never ``cursor.rowcount``. LQ-20261107-1433: the 2026-11-09 00:25 ET live slot reported
+    ``produced_count=32`` while only 30 ``document_mentions`` rows were durable (news_articles
+    short by 2). ``rowcount`` after ``ON CONFLICT DO NOTHING`` is not a reliable insert tally;
+    counting ``RETURNING`` rows is.
+    """
     cur = conn.cursor()
     target = None                             # probed lazily: an undecided row must reach no query at all
     n = 0
@@ -353,11 +360,12 @@ def persist(conn, *, source_table: str, source_id: Any,
                   matched_via, matched_text)
                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                ON CONFLICT {target}
-               DO NOTHING""",  # noqa: S608 -- target is one of two literals above, never input
+               DO NOTHING
+               RETURNING id""",  # noqa: S608 -- target is one of two literals above, never input
             (source_table, int(source_id), r["symbol"], r["subject_guid"],
              r["issuer_guid"], r.get("identity_status"), r["role"],
              r["role_source"], r.get("role_confidence"),
              r.get("matched_via"), r.get("matched_text")))
-        n += cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+        n += len(cur.fetchall())
     conn.commit()
     return n

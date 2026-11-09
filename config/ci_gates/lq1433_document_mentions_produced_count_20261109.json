@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1433_document_mentions_produced_count_20261109",
+  "files": [
+    "tests/test_lq1433_document_mentions_produced_count_20261109.py"
+  ],
+  "anchor": "LQ1433_DOCUMENT_MENTIONS_PRODUCED_COUNT_20261109",
+  "comment": [
+    "ANCHOR: LQ1433_DOCUMENT_MENTIONS_PRODUCED_COUNT_20261109 — 2026-11-09 00:25 ET",
+    "document-mentions-backfill reported produced_count=32 while document_mentions gained only 30",
+    "durable rows (news_articles short by 2). persist() now counts INSERT … ON CONFLICT DO NOTHING",
+    "RETURNING id rows, not cursor.rowcount. Synthetic fixtures only."
+  ]
+}
