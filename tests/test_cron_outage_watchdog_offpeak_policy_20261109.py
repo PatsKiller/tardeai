@@ -1,12 +1,12 @@
-"""LQ-20261107-1336 / INC-261109-jqqyvg: a fire the lane's own off-peak gate always skips is not a missed run.
+"""LQ-20261107-1346 / LQ-20261107-1336: off-peak gate skips are not missed runs (false P1s).
 
-due-diligence-questions fires every 20 minutes. From 20:00 ET on Sunday 2026-11-08 the dispatcher skipped each
-run (receipt reason ``offpeak_skip``) because Sunday 20:00-23:00 ET is Monday 01:00-04:00 UTC, DeepSeek's billing
-peak, and ``run_with_deepseek_offpeak.sh --scheduled`` never runs there. The watchdog measures scheduled SUCCESSES,
-so two skipped fires read as two missing successes and it raised a P1 ("cron/lane outage") that no fixer could fix:
-nothing was broken. A fire outside the declared gate's window is accounted for by policy and is now reported as
-SKIPPED_BY_POLICY, never alerted; a fire the gate ALLOWS is still a miss, and a lane declaring no gate grades
-exactly as before.
+INC-261109-jqqyvg (due-diligence-questions, */20) and INC-261109-zyskgh (hermes-usefulness-backfill, :15)
+both opened while receipts carried ``offpeak_skip``: Sunday evening ET is Monday 01:00-04:00 UTC, DeepSeek's
+billing peak, and ``run_with_deepseek_offpeak.sh --scheduled`` never runs there. The watchdog measures scheduled
+SUCCESSES, so two skipped fires read as two missing successes and raised a P1 no fixer could clear. A fire
+outside the lane's declared gate window is now ``SKIPPED_BY_POLICY`` (never alerted); a fire the gate allows is
+still a miss; a lane with no gate grades exactly as before. Once ``missed_lane_ids`` no longer names the lane,
+``incident_watchers`` auto-resolves the open fingerprint (LQ-245).
 
 Fixture-only: pinned clocks, synthetic lanes and receipts. No DB, subprocess, provider, crontab or clock read.
 COVERS = ["scripts/lib/cron_outage_watchdog.py", "scripts/cron_outage_watchdog.py"]
@@ -17,6 +17,7 @@ from scripts import cron_outage_watchdog as wrapper
 from scripts.lib.cron_outage_watchdog import allowlist_gate, evaluate, gate_allows_run
 
 LANE_ID = "due-diligence-questions"
+HERMES_ID = "hermes-usefulness-backfill"
 SENTINEL = object()
 
 
@@ -177,3 +178,64 @@ def test_the_peak_band_is_exactly_the_vendors_half_open_intervals():
     assert gate_allows_run("scheduled", peak_start + timedelta(hours=3)) is True
     assert offpeak.is_deepseek_peak_utc(peak_start) is True
     assert offpeak.is_deepseek_peak_utc(peak_start + timedelta(hours=3)) is False
+
+
+def _hermes_lane(gate="scheduled"):
+    """Registry shape of hermes-usefulness-backfill (hourly at :15 ET) for INC-261109-zyskgh."""
+    row = {
+        "lane_id": HERMES_ID, "state": "ACTIVE", "expected_cadence_hours": 12.5,
+        "scheduler": {"kind": "n8n", "expression": "dispatcher", "cadence": "15 * * * *",
+                      "match": "scripts/hermes_external_feedback_loop.py --apply"},
+        "dispatch": {"mode": "live", "cron": ["15 * * * *"], "tz": "America/New_York"},
+        "output_signal": {"kind": "json_key", "key": "ok_at",
+                          "path": "data/runtime/hermes-usefulness-backfill_last.json"},
+    }
+    if gate is not None:
+        row["watchdog_offpeak_gate"] = gate
+    return row
+
+
+def test_zyskgh_hermes_slot_is_policy_skipped_not_a_missed_run():
+    """INC-261109-zyskgh: Sun 21:20 ET, last success 19:15 ET — both :15 fires sit inside the UTC peak."""
+    result = evaluate(
+        {"lanes": [_hermes_lane()]}, [],
+        {HERMES_ID: [{"validated_success": True, "at": "2026-11-09T00:15:15Z"}]},
+        now=at("2026-11-09T02:20:00Z"), trading_day=lambda _at: True, registered_jobs=None,
+    )
+    row = result["rows"][0]
+    assert row["status"] == "SKIPPED_BY_POLICY", row
+    assert row["missed_fires"] == 0
+    assert row["offpeak_gate"] == "scheduled"
+    assert row["policy_skipped_fires"] == ["2026-11-09T01:15:00Z", "2026-11-09T02:15:00Z"]
+    assert result["missed_lane_ids"] == []
+    assert result["alert_required"] is False
+
+
+def test_zyskgh_without_a_gate_still_grades_missed_runs():
+    """Same hermes slot with no declared gate reproduces the false-P1 grading."""
+    result = evaluate(
+        {"lanes": [_hermes_lane(gate=None)]}, [],
+        {HERMES_ID: [{"validated_success": True, "at": "2026-11-09T00:15:15Z"}]},
+        now=at("2026-11-09T02:20:00Z"), trading_day=lambda _at: True, registered_jobs=None,
+    )
+    row = result["rows"][0]
+    assert row["status"] == "MISSED_RUNS", row
+    assert row["missed_fires"] == 2
+    assert result["missed_lane_ids"] == [HERMES_ID]
+
+
+def test_real_allowlist_binds_both_false_p1_lanes():
+    """Both incident lanes declare offpeak_gate=scheduled against their registry scripts (live config)."""
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    registry = json.loads((root / "config/lane_registry.json").read_text(encoding="utf-8"))
+    allowlist = json.loads((root / "config/n8n_run_allowlist.json").read_text(encoding="utf-8"))
+    rows = {r["lane_id"]: r for r in registry["lanes"]}
+    for lane_id in (LANE_ID, HERMES_ID):
+        assert allowlist_gate(rows[lane_id], allowlist) == "scheduled", lane_id
+    bound = wrapper.bind_components(registry, {}, allowlist)
+    by = {r["lane_id"]: r for r in bound["lanes"]}
+    assert by[LANE_ID]["watchdog_offpeak_gate"] == "scheduled"
+    assert by[HERMES_ID]["watchdog_offpeak_gate"] == "scheduled"

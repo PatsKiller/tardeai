@@ -6,6 +6,6 @@
   ],
   "anchor": "CRON_OUTAGE_WATCHDOG_OFFPEAK_POLICY_20261109",
   "comment": [
-    "ANCHOR: CRON_OUTAGE_WATCHDOG_OFFPEAK_POLICY_20261109 — a fire the lane's own declared off-peak gate skips at that instant (dispatcher offpeak_skip / wrapper PEAK_SKIP) grades SKIPPED_BY_POLICY and never alerts; a fire the gate allows still grades MISSED_RUNS, and a lane declaring no gate grades as before. Fixture-only: pinned clocks, synthetic lanes and receipts, no host operations."
+    "ANCHOR: CRON_OUTAGE_WATCHDOG_OFFPEAK_POLICY_20261109 — LQ-20261107-1346 / LQ-20261107-1336 (INC-261109-jqqyvg due-diligence-questions + INC-261109-zyskgh hermes-usefulness-backfill). A fire the lane's own declared off-peak gate skips at that instant (dispatcher offpeak_skip / wrapper PEAK_SKIP) grades SKIPPED_BY_POLICY and never alerts; a fire the gate allows still grades MISSED_RUNS, and a lane declaring no gate grades as before. Fixture-only: pinned clocks, synthetic lanes and receipts, no host operations."
   ]
 }
