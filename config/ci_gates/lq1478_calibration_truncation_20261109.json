@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1478_calibration_truncation_20261109",
+  "files": [
+    "tests/test_lq1478_calibration_truncation_20261109.py"
+  ],
+  "anchor": "LQ1478_CALIBRATION_TRUNCATION_20261109",
+  "comment": [
+    "ANCHOR: LQ1478_CALIBRATION_TRUNCATION_20261109 — a calibration cap reports how many eligible rows it did not score.",
+    "The cap stays in config/agent_calibration_engine.json. Synthetic pages only."
+  ]
+}

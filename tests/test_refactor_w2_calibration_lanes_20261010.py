@@ -183,7 +183,7 @@ def test_calibration_apply_writes_receipt_and_reports_cap(state, monkeypatch, ca
     # LQ-20261107-1032: the read size is a parameter from config/agent_calibration_engine.json, not
     # a constant in the source -- the old assertion pinned `LIMIT {ROW_CAP}` and outlived its defect.
     assert not hasattr(ace, "ROW_CAP")
-    page_sql = [s for s in conn.sql if "FROM agent_recommendation_registry" in s]
+    page_sql = [s for s in conn.sql if "JOIN LATERAL" in s]
     assert page_sql and "LIMIT 2000" not in page_sql[0] and page_sql[0].endswith("LIMIT %s")
 
 

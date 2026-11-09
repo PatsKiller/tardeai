@@ -107,6 +107,35 @@ PAGE_SQL = """
 """
 
 
+COUNT_SQL = """
+    SELECT count(*) FROM agent_recommendation_registry r
+    WHERE r.recommendation_time > now() - make_interval(days => %s)
+      {agent_clause}
+      AND EXISTS (
+          SELECT 1 FROM agent_recommendation_outcome_links l
+          WHERE l.recommendation_id = r.recommendation_id
+      )
+"""
+
+
+def count_eligible(cur, *, window_days, agent_filter=None):
+    """How many recommendations the walk would score with no cap. None when the count cannot be read."""
+    params = [int(window_days)]
+    agent_clause = ""
+    if agent_filter:
+        agent_clause = "AND r.agent_name ILIKE %s"
+        params.append(f"%{agent_filter}%")
+    # nosemgrep: tq-py-sql-fstring -- agent_clause is one of two literals; every value is a parameter
+    cur.execute(COUNT_SQL.format(agent_clause=agent_clause), params)
+    row = cur.fetchone()
+    if not row or row[0] is None:
+        return None
+    try:
+        return int(row[0])
+    except (TypeError, ValueError):
+        return None
+
+
 def fetch_page(cur, *, window_days, limit, after=None, agent_filter=None):
     """One page of (recommendation, its best outcome link), newest first, keyset-bounded."""
     params = [int(window_days)]
@@ -336,8 +365,14 @@ def score_recommendations(conn, agent_filter=None, window_days=90, *, page_rows=
         raise ValueError("page_rows must be positive")
 
     events = []
+    count_cur = conn.cursor()
+    try:
+        eligible_total = count_eligible(count_cur, window_days=window_days, agent_filter=agent_filter)
+    finally:
+        count_cur.close()
     stats = {"page_rows": page_rows, "max_rows_per_run": max_rows, "pages_read": 0,
-             "eligible_recommendations": 0, "events_scored": 0, "capped": False,
+             "eligible_recommendations": 0, "eligible_total": eligible_total,
+             "events_scored": 0, "rows_truncated": None, "capped": False,
              "config_path": cfg.get("path")}
     for page in iter_eligible_pages(conn, window_days=window_days, page_rows=page_rows,
                                     max_rows=max_rows, agent_filter=agent_filter):
@@ -345,7 +380,12 @@ def score_recommendations(conn, agent_filter=None, window_days=90, *, page_rows=
         stats["eligible_recommendations"] += len(page)
         events.extend(score_page(conn, page, window_days=window_days))
     stats["events_scored"] = len(events)
-    stats["capped"] = bool(max_rows) and stats["eligible_recommendations"] >= max_rows
+    if eligible_total is None:
+        # The population could not be counted. A cap that stopped the walk is still not a complete run.
+        stats["capped"] = bool(max_rows) and stats["eligible_recommendations"] >= max_rows
+    else:
+        stats["rows_truncated"] = max(0, int(eligible_total) - stats["events_scored"])
+        stats["capped"] = stats["rows_truncated"] > 0
     return events, stats
 
 
@@ -574,6 +614,8 @@ def main(argv=None):
             "window_days": window_days,
             "read": {
                 "eligible_recommendations": stats["eligible_recommendations"],
+                "eligible_total": stats["eligible_total"],
+                "rows_truncated": stats["rows_truncated"],
                 "pages_read": stats["pages_read"],
                 "page_rows": stats["page_rows"],
                 "max_rows_per_run": stats["max_rows_per_run"],
@@ -592,6 +634,8 @@ def main(argv=None):
                      summary={"calibration_events": len(events), "agent_windows": len(windows),
                               "events_capped": out["events_capped"],
                               "eligible_recommendations": stats["eligible_recommendations"],
+                              "eligible_total": stats["eligible_total"],
+                              "rows_truncated": stats["rows_truncated"],
                               "pages_read": stats["pages_read"]})
         if args.json:
             print(json.dumps(out, indent=2, default=str))
@@ -601,6 +645,7 @@ def main(argv=None):
                   f"{stats['pages_read']} page(s) of {stats['page_rows']})")
             if out["events_capped"]:
                 print(f"  NOTE: stopped at max_rows_per_run={stats['max_rows_per_run']} "
+                      f"rows_truncated={stats['rows_truncated']} of eligible_total={stats['eligible_total']} "
                       f"(config/agent_calibration_engine.json) — this run did NOT cover the eligible set")
             if out["low_sample_warning"]:
                 print("  WARNING: All agents have low sample size")
