@@ -274,3 +274,43 @@ def test_no_order_vocabulary_leaks_into_shape():
     out = _build()
     keys = {k for _, node in _walk(out) for k in node}
     assert not keys & {"order_id", "place_order", "account_number", "order"}
+
+
+# ── the route prices the card from the quote tier, not from bars ────────────────────────────────────────────────
+
+def test_the_route_passes_the_fresh_quote_batch_into_the_card(monkeypatch):
+    import api_v2
+    import lib.since_close_card as scc
+    from lib import home_cio_card as hcc
+
+    PRICE, AS_OF = 184.80, '2031-03-10T14:45:00+00:00'  # tranche 1 for XLV is $1,200 -> floor(1200/184.80) = 6
+    asked, passed = {}, {}
+
+    monkeypatch.setattr(api_v2, "_HOME_CIO_CARD_CACHE", {})
+    monkeypatch.setattr(api_v2, "_market_risk_latest_projection", lambda: copy.deepcopy(MR))
+    monkeypatch.setattr(api_v2, "_load_json", lambda _p: None)   # no defense / momentum records in the fixture
+    monkeypatch.setattr(api_v2, "_db_query", lambda *_a, **_k: [])  # no daily bars: nothing to fall back to
+    monkeypatch.setattr(scc, "load_json", lambda _p: {"cio_brief": copy.deepcopy(SC["cio_brief"])})
+    monkeypatch.setattr(scc, "freshness", lambda snap, **_k: {"stale": False, "window_current": True})
+
+    def _batch(symbols, **_kw):
+        asked["symbols"] = sorted(symbols)
+        return {"XLV": {"price": PRICE, "chg_pct": None, "as_of": AS_OF, "source": "finviz_quote_cache"}}
+
+    monkeypatch.setattr(api_v2, "_fresh_price_batch", _batch)
+
+    real = hcc.build
+
+    def _spy(*a, **kw):
+        passed.update(kw)
+        return real(*a, **kw)
+
+    monkeypatch.setattr(hcc, "build", _spy)
+
+    out = api_v2._home_cio_card()
+    assert asked["symbols"] == ["XLP", "XLU", "XLV"]          # the defensive rotation universe is quoted
+    assert passed["quotes"]["XLV"]["price"] == PRICE           # ...and the batch reaches the projection
+    xlv = {c["symbol"]: c for c in out["panel"]["rotate"]["candidates"]}["XLV"]
+    assert xlv["price"]["as_of"] == AS_OF and xlv["proposed"]["shares"] == 6
+    assert out["panel"]["rotate"]["prices_as_of"] == AS_OF
+    assert out["panel"]["rotate"]["prices_missing"] == ["XLP"]  # XLP qualifies but had no quote in this batch

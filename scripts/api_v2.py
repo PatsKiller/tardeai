@@ -31542,6 +31542,11 @@ def _home_cio_card():
         for ins in (g or {}).get("instruments") or []:
             if str(ins.get("kind") or "") == "sector ETF" and ins.get("symbol"):
                 syms.add(str(ins["symbol"]).upper())
+    # LQ-20261107-1654: the rotation card sizes in whole shares, so it needs a CURRENT price, not yesterday's close.
+    # One quote tier for the page (_fresh_price_batch): the Finviz cache first, then a fresh market_quotes row, all
+    # inside the 30-minute operator price rule; a yfinance quote is dropped there. A symbol with no current quote is
+    # simply absent, and the projection then carries no share count for it instead of a count at a stale price.
+    quotes = _fresh_price_batch(sorted(syms)) if syms else {}
     bars, bars_meta = [], {"present": False}
     if syms:
         since = _date.today() - _td(days=45)
@@ -31557,7 +31562,7 @@ def _home_cio_card():
         else:
             bars_meta = {"present": False, "reason": "no daily bars read (DB unavailable or empty)"}
     out = _json_clean(_hcc.build(mr, snap, defense=defense, momentum=momentum, bars=bars, bars_meta=bars_meta,
-                                 now=_dt.now(_tz.utc)))
+                                 quotes=quotes, now=_dt.now(_tz.utc)))
     _HOME_CIO_CARD_CACHE["v"] = (_t.monotonic(), out)
     return out
 
