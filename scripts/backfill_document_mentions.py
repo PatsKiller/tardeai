@@ -31,6 +31,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from lib.pg_reconnect import ReconnectingConnection, is_connection_loss  # noqa: E402 — needs sys.path above
+
 
 def _conn():
     import psycopg2
@@ -45,6 +47,18 @@ def _conn():
 
 
 LANE_ID = "document-mentions-backfill"
+
+#: A dropped DB session is transient and the lane's policy already knows how to retry it — but only
+#: by exit code. `transient-1-ingest` (config/n8n_retry_policies.json) retries exit 69, 75 and 111 on
+#: RUN_FAILED and does not retry exit 1. 75 is unusable for a `lock_kind: flock` lane: the executor
+#: maps it to RUN_SKIPPED_LOCK reason="flock_held" (scripts/n8n_run_executor.py, FLOCK_CONFLICT_EXIT),
+#: recording a DB drop as a lock collision. 69 (EX_UNAVAILABLE) is the code the 2026-11-07 disk-ledger
+#: lane already uses for "busy, retry me" (LQ-20261107-1486).
+#: 2026-11-09: three hourly slots (08:25, 09:25, 10:25 ET) died on
+#: `psycopg2.OperationalError: SSL connection has been closed unexpectedly` inside
+#: document_mentions._conflict_target, each exit 1, each terminal on attempt 1 of 2 — three dead
+#: letters, then the breaker opened and stayed open (LQ-20261107-1696).
+LOST_CONNECTION_EXIT = 69
 
 
 def _receipt_lib():
@@ -100,7 +114,13 @@ def run(table: str, limit: int, apply: bool, mark=None, deadline: float | None =
     doc = registry if registry is not None else RI.load_registry()
     own_conn = conn is None
     if conn is None:
-        conn = _conn()
+        # One connection serves a scan of up to 4000 documents. A server-side drop (restart, idle
+        # proxy timeout) used to take the whole batch with it: the fix for exactly this failure in
+        # topic_ingestion.py (lib/pg_reconnect.py, 2026-10-09, the same SSL message). The proxy
+        # reconnects once and retries a lost first statement — persist() opens one transaction per
+        # document, and the read transaction above is committed before the loop, so its probe is a
+        # first statement and can be retried on the new connection (LQ-20261107-1696).
+        conn = ReconnectingConnection(_conn)
     writer = persist_fn or persist
     cur = conn.cursor()
     if not legacy and names is None:
@@ -230,9 +250,20 @@ def main(argv=None) -> int:
     try:
         rc = _run(a, targets, stats)
     except BaseException as exc:
-        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
-                              script="backfill_document_mentions.py", summary=stats, error=type(exc).__name__,
+        # A lost connection is the one failure the executor can retry (exit 69); everything else is a
+        # real error and must keep failing loudly at exit 1. The cause is carried into the receipt: the
+        # old `error=type(exc).__name__` recorded "OperationalError" and dropped the SSL message that
+        # distinguishes a dropped session from a bad query (LQ-20261107-1696).
+        lost = is_connection_loss(exc)
+        code = LOST_CONNECTION_EXIT if lost else 1
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=code, started_at=started,
+                              script="backfill_document_mentions.py", summary=stats,
+                              error=f"{type(exc).__name__}: {' '.join(str(exc).split())[:200]}",
                               output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
+        if lost:
+            print(f"[EXIT {code}] database connection lost — {type(exc).__name__}: "
+                  f"{' '.join(str(exc).split())[:200]}", flush=True)
+            return code
         raise
     lr.write_lane_receipt(LANE_ID, ok=rc == 0, exit_code=rc, started_at=started,
                           script="backfill_document_mentions.py", summary=stats, output=lane_output(stats))

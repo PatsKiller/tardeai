@@ -47,6 +47,21 @@ DEFAULT_RECONNECT_DELAYS_S = (1.0, 3.0, 6.0)
 DEFAULT_MAX_RECONNECTS = 5
 
 
+def is_connection_loss(exc: BaseException, *,
+                       error_classes: tuple[type[BaseException], ...] | None = None) -> bool:
+    """Is ``exc`` a lost-connection error? The module-level form of the wrapper's classification.
+
+    A batch script that cannot wrap a connection still has to tell a dropped session apart from a
+    real bug, because it decides the exit code: ``EX_UNAVAILABLE`` (69) is retryable under the n8n
+    ``transient-1-ingest`` policy and a plain 1 is not (LQ-20261107-1696). No live connection is
+    needed, so this is also the cheap classifier for a receipt.
+    """
+    classes = _default_error_classes() if error_classes is None else tuple(error_classes)
+    if not classes or not isinstance(exc, classes):
+        return False
+    return any(marker in str(exc).lower() for marker in _LOSS_MARKERS)
+
+
 def _default_error_classes() -> tuple[type[BaseException], ...]:
     try:
         import psycopg2  # noqa: PLC0415 — lazy: importing this module must not need a driver
@@ -96,8 +111,7 @@ class ReconnectingConnection:
                 return True
         except Exception:  # noqa: BLE001 — a broken connection object counts as lost
             return True
-        msg = str(exc).lower()
-        return any(m in msg for m in _LOSS_MARKERS)
+        return is_connection_loss(exc, error_classes=self._errors)
 
     # ── reconnect ────────────────────────────────────────────────────────
     def reconnect(self, reason: BaseException | str = "") -> None:
