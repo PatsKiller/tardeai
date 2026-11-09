@@ -44,7 +44,10 @@ CASES = [
     # tests/test_refactor_w1_breach_detector_20261010.py pin it). An offline-only preview is an owner decision.
     ("scripts/lib/cio_nightly_reflection.py", [], ["reflect", "materialize_cases", "persist_reflection"]),
     ("scripts/lib/cio_desk_synthesis.py", [], ["generate_desk_synthesis_v1", "collect_desk_inputs"]),
-    ("scripts/market_regime_collector.py", ["--apply", "--json"], ["_load_env", "_get_conn", "collect_vix"]),
+    # LQ-20261107-1546 (2026-11-09): the volatility complex moved out of this module in the LQ-940/969
+    # rebuild — ``collect_vix`` no longer exists here; ``collect_volatility_complex`` is the symbol that
+    # now owns the DB/network read (it delegates to lib.market_regime.vix_complex.collect).
+    ("scripts/market_regime_collector.py", ["--apply", "--json"], ["_load_env", "_get_conn", "collect_volatility_complex"]),
     ("scripts/sec_fundamentals_ingest.py", ["--apply"], ["_load_env"]),
     ("scripts/opening_intelligence.py", ["--persist", "--render"], []),
 ]
@@ -52,6 +55,21 @@ CASES = [
 
 def forbid(*args, **kwargs):
     raise AssertionError("offline CLI reached a real dependency")
+
+
+def block(mod, path, blocked, monkeypatch):
+    """Install ``forbid`` on every dependency a case must never reach — and say so if one has moved.
+
+    A bare ``monkeypatch.setattr`` on a renamed symbol raises ``AttributeError``, which reads as an
+    unrelated red and, worse, means the guard blocked nothing. LQ-20261107-1546: the LQ-940/969 rebuild
+    replaced ``market_regime_collector.collect_vix`` with ``collect_volatility_complex`` and this file
+    kept naming the old symbol, so the collector's offline boundary was silently unproven while live.
+    """
+    for name in blocked:
+        assert hasattr(mod, name), (
+            f"{path} no longer defines {name!r}: the CASES entry names a symbol that moved, so this case "
+            "passed without blocking anything. Point it at the symbol that now does the work.")
+        monkeypatch.setattr(mod, name, forbid)
 
 
 def load(path):
@@ -86,8 +104,7 @@ def receipt(scratch, lane):
 @pytest.mark.parametrize("path,argv,blocked", CASES)
 def test_offline_cli_cannot_reach_real_dependency(path, argv, blocked, monkeypatch, scratch, capsys):
     mod = load(path)
-    for name in blocked:
-        monkeypatch.setattr(mod, name, forbid)
+    block(mod, path, blocked, monkeypatch)
     before = contents(scratch)
     assert mod.main(argv + ["--dry-run"]) == 0
     assert "DRY-RUN" in capsys.readouterr().out
@@ -98,8 +115,7 @@ def test_offline_cli_cannot_reach_real_dependency(path, argv, blocked, monkeypat
 @pytest.mark.parametrize("unknown", ["--unknown-completion-option", "--dry-ru"])
 def test_unknown_and_abbreviated_flags_exit_2_before_work(path, argv, blocked, unknown, monkeypatch, scratch):
     mod = load(path)
-    for name in blocked:
-        monkeypatch.setattr(mod, name, forbid)
+    block(mod, path, blocked, monkeypatch)
     with pytest.raises(SystemExit) as exc:
         mod.main(argv + [unknown])
     assert exc.value.code == 2
@@ -187,16 +203,59 @@ def test_synth_no_briefs_and_partial_writes_are_failed_receipts(monkeypatch, scr
     conn = types.SimpleNamespace(close=lambda: None)
     monkeypatch.setattr(mod, "get_db", lambda: conn)
     monkeypatch.setattr(mod, "collect_signal_bundle", lambda c: {"sources": {"fixture": [1]}})
-    monkeypatch.setattr(mod, "synthesize", lambda b: [{"topic": "Fixture", "summary": "fixture"}])
-    monkeypatch.setattr(mod, "persist_briefs", lambda *a, **kw: {"applied": 1})
+    # LQ-20261107-1546 (2026-11-09): synthesize gained a keyword-only ``diagnostics`` out-parameter on
+    # 2026-11-07 so a rate-limited lane, a malformed answer and an empty one stopped looking identical.
+    # This double must mirror the producer's signature (``**kw``), or the test rots the moment it is used.
+    monkeypatch.setattr(mod, "synthesize",
+                        lambda b, **kw: [{"topic": "Fixture", "summary": "fixture"}])
+    # The real persist_briefs returns {"applied", "results"} (main reads both); the old one-key double
+    # hid a KeyError behind the synthesize stub's own rot, so it is mirrored here in full.
+    def staged(applied):
+        return lambda *a, **kw: {
+            "applied": applied,
+            "results": [{"status": "applied" if applied else "rejected"}],
+        }
+
+    monkeypatch.setattr(mod, "persist_briefs", staged(1))
     assert mod.main(["--apply"]) == 0
     good = receipt(scratch, "hermes-cross-source-synthesizer")
-    monkeypatch.setattr(mod, "persist_briefs", lambda *a, **kw: {"applied": 0})
+    monkeypatch.setattr(mod, "persist_briefs", staged(0))
     assert mod.main(["--apply"]) == 1
     assert receipt(scratch, "hermes-cross-source-synthesizer")["ok_at"] == good["ok_at"]
-    monkeypatch.setattr(mod, "synthesize", lambda b: [])
+    monkeypatch.setattr(mod, "synthesize", lambda b, **kw: [])
     assert mod.main(["--apply"]) == 1
     assert receipt(scratch, "hermes-cross-source-synthesizer")["status"] == "failed"
+
+
+def test_synth_receipt_quotes_the_lane_s_own_failure_reason(monkeypatch, scratch):
+    """The reason ``diagnostics`` exists: an empty run must carry the lane's reason, not a guess."""
+    mod = load("scripts/hermes_cross_source_synthesizer.py")
+    conn = types.SimpleNamespace(close=lambda: None)
+    monkeypatch.setattr(mod, "get_db", lambda: conn)
+    monkeypatch.setattr(mod, "collect_signal_bundle", lambda c: {"sources": {"fixture": [1]}})
+
+    def rate_limited(bundle, **kw):
+        kw["diagnostics"]["error"] = "rate_limited: 429 from governed-cloud"
+        return []
+
+    monkeypatch.setattr(mod, "synthesize", rate_limited)
+    assert mod.main(["--apply"]) == 1
+    failed = receipt(scratch, "hermes-cross-source-synthesizer")
+    assert failed["status"] == "failed"
+    assert "NO_BRIEFS: rate_limited: 429 from governed-cloud" in failed["error"]
+    assert failed["summary"]["why"].startswith("rate_limited")
+
+
+def test_synth_without_a_lane_reason_says_the_list_was_empty(monkeypatch, scratch):
+    """No ``diagnostics['error']`` is not the same fact as an unreadable lane — name the empty list."""
+    mod = load("scripts/hermes_cross_source_synthesizer.py")
+    conn = types.SimpleNamespace(close=lambda: None)
+    monkeypatch.setattr(mod, "get_db", lambda: conn)
+    monkeypatch.setattr(mod, "collect_signal_bundle", lambda c: {"sources": {"fixture": [1]}})
+    monkeypatch.setattr(mod, "synthesize", lambda b, **kw: [])
+    assert mod.main(["--apply"]) == 1
+    failed = receipt(scratch, "hermes-cross-source-synthesizer")
+    assert "NO_BRIEFS: the model returned an empty brief list" in failed["error"]
 
 
 def test_keyword_backfill_receipt_and_exact_argv(monkeypatch, scratch):

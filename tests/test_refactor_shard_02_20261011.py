@@ -128,9 +128,15 @@ def _fake_work(module, lane, monkeypatch, failure=False):
         monkeypatch.setattr(module, "_uid", lambda *_a: "SYNTHETIC")
         monkeypatch.setattr(module, "collect_scan_based_indicators", lambda *_a: [{"indicator_key": "breadth"}])
         monkeypatch.setattr(module, "collect_market_session", lambda *_a: {"indicator_key": "session"})
-        monkeypatch.setattr(module, "collect_vix", lambda *_a: None)
-        # Vol complex (#2383, additive): stubbed so the archived-argv comparison never reaches Yahoo.
-        monkeypatch.setattr(module, "collect_vol_complex", lambda *_a, **_k: ([], []), raising=False)
+        # LQ-20261107-1546 (2026-11-09): ``collect_vix`` and ``collect_vol_complex`` both left this module in
+        # the LQ-940/969 rebuild; ``collect_volatility_complex`` is the one symbol that now reads the stores
+        # (and returns (indicators, missing, summary)). The old names were set with raising=False and had
+        # become silent no-ops, so the lane ran its real volatility read against the fake connection.
+        monkeypatch.setattr(module, "collect_volatility_complex", lambda *_a, **_k: ([], [], {}))
+        # The archived entrypoint (fixtures/refactor_shard_02_cron_20261011.json) is a pre-rebuild copy that
+        # still calls collect_vix(); it runs against a copy of this module's namespace, so seed the legacy
+        # name for that half only — current main never resolves it.  LQ-20261107-1546.
+        monkeypatch.setattr(module, "collect_vix", lambda *_a: None, raising=False)
         monkeypatch.setattr(module, "save_indicators", fail if failure else lambda *_a, **_k: None)
     elif name == "research-intelligence-materialize":
         monkeypatch.setattr(module, "materialize", fail if failure else lambda *_a: {"ok": True, "lanes": {"top": {"ok": True}}})
