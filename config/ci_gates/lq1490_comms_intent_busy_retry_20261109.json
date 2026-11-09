@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1490_comms_intent_busy_retry_20261109",
+  "files": [
+    "tests/test_lq1490_comms_intent_busy_retry_20261109.py"
+  ],
+  "anchor": "LQ1490_COMMS_INTENT_BUSY_RETRY_20261109",
+  "comment": [
+    "ANCHOR: LQ1490_COMMS_INTENT_BUSY_RETRY_20261109 — n8n-comms-intent-consumer retries a locked coordination ledger, prints database is locked, and exits 75 so the flock executor records RUN_FAILED exit_75 (transient-2 retries). A claim left by that run is released to QUEUED and the incident is recorded once."
+  ]
+}

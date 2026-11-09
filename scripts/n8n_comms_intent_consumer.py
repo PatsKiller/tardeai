@@ -19,8 +19,10 @@ else ~/trade-ai-releases/persistent-state. An apply run writes LaneRunReceipt@v1
 ``DRY-RUN {...}`` and writes no file, no table and no receipt.
 
 Exit: 0 = the run completed (a refused intent is a finding, not a failed run); 75 = EX_TEMPFAIL — sqlite
-``database is locked`` / busy, or only transient intent failures (retryable under ``transient-2``); 1 = a
-non-transient ledger/route/write failure; 2 = usage.
+``database is locked`` / busy after a bounded in-process retry, or only transient intent failures. This lane
+is lock_kind flock: a bare 75 is RUN_SKIPPED_LOCK, so the busy path prints ``database is locked`` and
+``n8n_run_executor._spawn`` records RUN_FAILED exit_75, which transient-2 retries. 1 = a non-transient
+ledger/route/write failure; 2 = usage.
 
 Output verdict (2026-10-17, lane live on the n8n fabric at */5; config/n8n_health_contracts.json expected_output,
 allowlist ``output_receipt: v2``): every apply run's receipt carries the LaneRunReceipt@v2 output fields (``output=``
@@ -43,7 +45,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -60,8 +64,26 @@ LANE_ID = C.LANE_ID
 SCRIPT = "scripts/n8n_comms_intent_consumer.py"
 DEFAULT_STATE_ROOT = Path.home() / "trade-ai-releases" / "persistent-state"
 # LQ-20261107-1409: exit 1 is terminal under transient-2 (retryable_exit_codes = 69/75/111 only).
-# A locked coordination ledger is the same class of skip as flock -E 75 — retry via coordination/due.
+# LQ-20261107-1445: flock + exit 75 is RUN_SKIPPED_LOCK unless the child printed a sqlite lock.
+# This lane prints the phrase, so exit 75 is RUN_FAILED exit_75 and the policy retries it.
 EX_TEMPFAIL = 75
+_BUSY_ATTEMPTS = 4
+_BUSY_BACKOFF_S = (0.05, 0.1, 0.2)
+
+
+def _sleep(seconds: float) -> None:
+    time.sleep(seconds)
+
+
+def _prior_busy_token(receipt: Path) -> Optional[str]:
+    """Claim token a previous busy run could not release. Absent file or key → none."""
+    try:
+        doc = json.loads(receipt.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    summary = doc.get("summary") if isinstance(doc, dict) else None
+    token = summary.get("busy_claim_token") if isinstance(summary, dict) else None
+    return str(token) if token else None
 
 
 def _is_sqlite_lock_error(exc: BaseException | str) -> bool:
@@ -139,20 +161,75 @@ def run(
         would = [str(receipt)] if any(summary.get(k) for k in writes) else []
         return _finish(R, False, receipt, ok=True, summary=summary, now=now, would=would)
     token = f"{LANE_ID}:{now.strftime('%Y%m%dT%H%M%SZ')}:{uuid.uuid4().hex[:8]}"
-    try:
-        conn = C.connect_rw(ledger)
-    except (FileNotFoundError, OSError, Exception) as exc:  # noqa: BLE001 — the receipt names the cause
-        # Keep str(exc) so sqlite lock text survives (_is_sqlite_lock_error → exit 75).
-        # Truncating to "OperationalError: ledger" made connect_rw locks terminal (exit 1).
-        summary["error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+    summary["claim_token"] = token
+    prior = _prior_busy_token(receipt)
+    pending: list[str] = [prior] if prior else []
+    res = None
+    last_lock = ""
+    for attempt in range(1, _BUSY_ATTEMPTS + 1):
+        try:
+            conn = C.connect_rw(ledger)
+        except sqlite3.OperationalError as exc:
+            if not _is_sqlite_lock_error(exc):
+                summary["error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+                return _finish(R, True, receipt, ok=False, summary=summary, now=now)
+            last_lock = f"{type(exc).__name__}: {str(exc)[:160]}"
+            if attempt == _BUSY_ATTEMPTS:
+                summary["error"] = last_lock
+                summary["busy_attempts"] = attempt
+                if pending:
+                    summary["busy_claim_token"] = pending[-1]
+                return _finish(R, True, receipt, ok=False, summary=summary, now=now)
+            _sleep(_BUSY_BACKOFF_S[attempt - 1])
+            continue
+        except (FileNotFoundError, OSError, Exception) as exc:  # noqa: BLE001 — the receipt names the cause
+            # Keep str(exc) so a non-sqlite message is still visible. A lock is the branch above.
+            summary["error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+            return _finish(R, True, receipt, ok=False, summary=summary, now=now)
+        try:
+            still: list[str] = []
+            for tok in pending:
+                try:
+                    C.release_open_claims(conn, tok, now=now)
+                except sqlite3.OperationalError as exc:
+                    if not _is_sqlite_lock_error(exc):
+                        raise
+                    still.append(tok)
+                    last_lock = f"{type(exc).__name__}: {str(exc)[:160]}"
+            pending = still
+            if pending:
+                raise sqlite3.OperationalError("database is locked")
+            res = C.apply(conn, routes, now, max_intents, token, evidence)
+            break
+        except sqlite3.OperationalError as exc:
+            if not _is_sqlite_lock_error(exc):
+                summary["error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+                return _finish(R, True, receipt, ok=False, summary=summary, now=now)
+            last_lock = f"{type(exc).__name__}: {str(exc)[:160]}"
+            try:
+                C.release_open_claims(conn, token, now=now)
+            except sqlite3.OperationalError as rel:
+                if not _is_sqlite_lock_error(rel):
+                    summary["error"] = f"{type(rel).__name__}: {str(rel)[:160]}"
+                    return _finish(R, True, receipt, ok=False, summary=summary, now=now)
+                if token not in pending:
+                    pending.append(token)
+            if attempt == _BUSY_ATTEMPTS:
+                summary["error"] = last_lock
+                summary["busy_attempts"] = attempt
+                if pending:
+                    summary["busy_claim_token"] = pending[-1]
+                return _finish(R, True, receipt, ok=False, summary=summary, now=now)
+            _sleep(_BUSY_BACKOFF_S[attempt - 1])
+        except Exception as exc:  # noqa: BLE001 — the receipt names the cause
+            summary["error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+            return _finish(R, True, receipt, ok=False, summary=summary, now=now)
+        finally:
+            conn.close()
+    if res is None:
+        summary["error"] = last_lock or "OperationalError: database is locked"
+        summary["busy_attempts"] = _BUSY_ATTEMPTS
         return _finish(R, True, receipt, ok=False, summary=summary, now=now)
-    try:
-        res = C.apply(conn, routes, now, max_intents, token, evidence)
-    except Exception as exc:  # noqa: BLE001
-        summary["error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
-        return _finish(R, True, receipt, ok=False, summary=summary, now=now)
-    finally:
-        conn.close()
     results = res["results"]
     summary.update(
         claim_token=token,

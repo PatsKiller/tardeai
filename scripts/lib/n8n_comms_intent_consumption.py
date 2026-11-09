@@ -35,7 +35,9 @@ State machine (``comms_intents.state``): QUEUED -> CLAIMED -> DONE | FAILED. The
 ``BEGIN IMMEDIATE`` (``WHERE state = 'QUEUED'``), so two consumers can never both own one intent. A transient failure
 is FAILED with ``last_error`` and is claimed again on the next run until ``MAX_ATTEMPTS``; a refusal (no route, a
 PAGE tier, which n8n may never reach, §24.1) is FAILED and ``terminal``, never retried and never sent. A CLAIMED row
-whose lease expired (the consumer died between the two transactions) is claimed again.
+whose lease expired (the consumer died between the two transactions) is claimed again. A sqlite lock after
+``claim`` commits is not an intent failure: ``release_open_claims`` puts that token's still-CLAIMED rows back
+to QUEUED and undoes the attempt, and ``complete`` has already rolled back, so the incident is written once.
 
 Tier -> fan-in severity (ALERT_TAXONOMY.md §2): DIGEST -> P2 (the notifier's batched P2 path, quiet-held overnight),
 DASHBOARD -> P3 (never sent). LOG -> no incident (DONE, recorded only). PAGE -> refused (FAILED, terminal).
@@ -495,6 +497,50 @@ def complete(
             )
         conn.execute("COMMIT")
         return out
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+
+
+def release_open_claims(conn: sqlite3.Connection, token: str, *, now: datetime) -> list[str]:
+    """Give this token's still-CLAIMED intents back to QUEUED and undo the attempt the claim added.
+
+    ``complete`` rolls its incident write back when it raises, so a released intent has not been recorded.
+    A CLAIMED row with any other token is left on its lease. Returns the released intent ids."""
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        rows = conn.execute(
+            "SELECT i.intent_id AS intent_id, c.attempts AS attempts"
+            " FROM comms_intents i"
+            " JOIN comms_intent_consumption c ON c.intent_id = i.intent_id"
+            " WHERE i.state = ? AND c.state = ? AND c.claim_token = ?",
+            (STATE_CLAIMED, STATE_CLAIMED, token),
+        ).fetchall()
+        released: list[str] = []
+        stamp = _iso(now)
+        for r in rows:
+            iid = str(r["intent_id"])
+            attempts = int(r["attempts"]) - 1
+            cur = conn.execute(
+                "UPDATE comms_intents SET state = ? WHERE intent_id = ? AND state = ?",
+                (STATE_QUEUED, iid, STATE_CLAIMED),
+            )
+            if cur.rowcount != 1:
+                continue
+            if attempts <= 0:
+                conn.execute(
+                    "DELETE FROM comms_intent_consumption WHERE intent_id = ? AND claim_token = ?",
+                    (iid, token),
+                )
+            else:
+                conn.execute(
+                    "UPDATE comms_intent_consumption SET state = ?, attempts = ?, claim_token = NULL,"
+                    " claimed_at = NULL, updated_at = ? WHERE intent_id = ? AND claim_token = ?",
+                    (STATE_QUEUED, attempts, stamp, iid, token),
+                )
+            released.append(iid)
+        conn.execute("COMMIT")
+        return released
     except Exception:
         conn.execute("ROLLBACK")
         raise
