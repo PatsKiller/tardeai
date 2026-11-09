@@ -225,7 +225,8 @@ def test_agent_scratch_candidate_and_reference_and_recent_hold(world):
     set_source(doc, "coordination", {"references": [{"historical_progress": str(paths[0] / "body.md")}],
                                      "live_claims": [{"scratch": str(paths[1] / "body.md")}], "live_worklogs": []})
     result = DH.standing_plan(rules, NOW, doc)
-    assert {r["path"] for r in result["items"]} == {str(paths[0])}
+    # The referenced session stays held. Its idle child is its own candidate (LQ-20261107-1456).
+    assert {r["path"] for r in result["items"]} == {str(paths[0]), str(paths[1] / "nested")}
     assert any("referenced" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(paths[1]))
     assert any("scratch_not_older" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(paths[2]))
 
@@ -1105,9 +1106,9 @@ def test_activity_is_measured_before_the_nested_inspection(world, monkeypatch):
     (scratch,) = _scratch_dirs(home, ("proof-inspection-writes",))
     real_nested = DH.nested_repos
 
-    def writing_inspection(path, ref):
+    def writing_inspection(path, ref, **kwargs):
         (path / "nested" / "evidence.txt").write_text("rewritten by the inspection")
-        return real_nested(path, ref)
+        return real_nested(path, ref, **kwargs)
 
     monkeypatch.setattr(DH, "nested_repos", writing_inspection)
     result = DH.standing_plan(rules, NOW, evidence())
@@ -1311,7 +1312,7 @@ def test_rule_t_activity_scans_all_finish_before_any_nested_repo_inspection(worl
     events = []
     real_activity = DH.SR.activity
     monkeypatch.setattr(DH.SR, "activity", lambda p, **kw: (events.append(("scan", p)), real_activity(p, **kw))[1])
-    monkeypatch.setattr(DH, "nested_repos", lambda p, *_: (events.append(("git", p)), ([], None))[1])
+    monkeypatch.setattr(DH, "nested_repos", lambda p, *a, **kw: (events.append(("git", p)), ([], None))[1])
     DH.standing_plan(rules, NOW, evidence(), measure=False)
     kinds = [k for k, p in events if str(p).startswith(str(tmp))]
     assert kinds.count("scan") >= 5 and kinds.count("git") >= 5

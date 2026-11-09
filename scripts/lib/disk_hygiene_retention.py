@@ -6,6 +6,7 @@ an operator-authorized collector and supplied as a digest-bound snapshot.
 """
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import os
@@ -84,15 +85,23 @@ def evidence_context(doc: Mapping[str, Any], now: datetime, *, applying: bool = 
 FUTURE_MTIME_SKEW_SECONDS = 300
 
 
+def _name_skipped(name: str, skip: tuple[str, ...]) -> bool:
+    return any(fnmatch.fnmatch(name, pat) for pat in skip)
+
+
 def activity(path: Path, *, max_entries: int = 250000, protected: Callable[[Path], bool] | None = None,
-             now: float | None = None) -> tuple[float | None, str | None]:
+             now: float | None = None, skip_dirs: tuple[str, ...] | list[str] | None = None
+             ) -> tuple[float | None, str | None]:
     """Bounded recursive lstat, no symlink following; incomplete scans are held.
 
     With ``now``, an entry whose mtime lies in the future counts at its ctime instead: the kernel sets ctime on
     every change (``utime`` included), so it is the real time the entry was last written.
+    ``skip_dirs`` (fnmatch names) are lstat'd but not entered, so a ``node_modules`` tree cannot trip the cap
+    and hide the rest of an agent scratch directory.
     """
     newest, count = 0.0, 0
     pending = [path]
+    skipped = tuple(skip_dirs or ())
     try:
         while pending:
             p = pending.pop()
@@ -109,6 +118,8 @@ def activity(path: Path, *, max_entries: int = 250000, protected: Callable[[Path
             # lstat's mode is a directory only for a real directory (a symlink to one is S_IFLNK), so the
             # old is_dir() + is_symlink() pair (two more syscalls per entry) is one test on the stat in hand.
             if stat.S_ISDIR(st.st_mode):
+                if skipped and p != path and _name_skipped(p.name, skipped):
+                    continue
                 with os.scandir(p) as entries:
                     pending.extend(Path(e.path) for e in entries)
     except OSError:

@@ -406,11 +406,26 @@ def scratch_protected(path: Path, root: Path, rules: Mapping[str, Any]) -> bool:
     except ValueError:
         return True
     probe = root
+    marked = _repo_copy_marker(probe, rules)
     for part in rel.parts[:-1]:
         probe = probe / part
         if any(fnmatch.fnmatch(part, g) for g in SCRATCH_FIXTURE_DIRS) or os.path.lexists(probe / DOT_GIT):
             return False
+        if _repo_copy_marker(probe, rules):
+            marked = True
+    # *token* / *secret* match source names (designTokens.ts, secret-scan.yml) in a checkout
+    # that has no .git. Other globs (.env, *credential*, *cookie*, *.pem, *.key) still hold.
+    if marked and why.startswith("never_touch_glob:"):
+        glob_name = why[len("never_touch_glob:") :].split(":", 1)[0]
+        source_globs = ((rules.get("standing_apply") or {}).get("agent_scratch") or {}).get("source_name_globs") or []
+        if glob_name in source_globs:
+            return False
     return True
+
+
+def _repo_copy_marker(probe: Path, rules: Mapping[str, Any]) -> bool:
+    markers = ((rules.get("standing_apply") or {}).get("agent_scratch") or {}).get("repo_copy_markers") or []
+    return any(isinstance(name, str) and name and os.path.lexists(probe / name) for name in markers)
 
 
 def protected_reason(path: Path, rules: Mapping[str, Any], *, own_work_tree: bool = False) -> Optional[str]:
@@ -1364,7 +1379,8 @@ def _nested_git(repo: Path, *args: str, timeout: float = 60) -> tuple[int, str]:
     return _git(repo, "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", *args, timeout=timeout)
 
 
-def nested_repos(path: Path, reference_repo: Path, *, max_entries: int = 250000) -> tuple[list[str], Optional[str]]:
+def nested_repos(path: Path, reference_repo: Path, *, max_entries: int = 250000,
+                 skip_dirs: Iterable[str] = ()) -> tuple[list[str], Optional[str]]:
     """Rule T: the nested git repos inside a scratch dir that hold commits found nowhere else.
 
     Returns (repos needing a bundle before removal, hold reason). Held: a ``.git`` file whose gitdir still exists (a
@@ -1372,6 +1388,7 @@ def nested_repos(path: Path, reference_repo: Path, *, max_entries: int = 250000)
     check git cannot answer, and an unbounded scan. A ``.git`` file whose gitdir is gone is an orphan: plain files.
     """
     found, count, pending, bundles = [], 0, [path], []
+    skipped = tuple(skip_dirs)
     while pending:
         p = pending.pop()
         try:
@@ -1382,7 +1399,9 @@ def nested_repos(path: Path, reference_repo: Path, *, max_entries: int = 250000)
                         return [], "nested_repo_scan_limit"
                     if e.name == DOT_GIT:
                         found.append(Path(e.path))
-                    elif e.is_dir(follow_symlinks=False):
+                    elif e.is_dir(follow_symlinks=False) and not (
+                        skipped and any(fnmatch.fnmatch(e.name, pat) for pat in skipped)
+                    ):
                         pending.append(Path(e.path))
         except OSError:
             return [], "nested_repo_scan_unreadable"
@@ -1710,18 +1729,34 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: 
         # entries on this host) and ran serially; sampled mid-plan it was the whole run (one thread, no `du`
         # child, fd walking ~/.cache/agent-tmp/*). lstat/scandir release the GIL, so scan them on the bounded
         # git.size_workers pool. Every activity is still measured before any `nested_repos` git call below.
-        t_paths = [p for p in paths if only is None or str(p) == only]
+        skip_dirs = tuple((rules.get("git") or {}).get("ignored_scan_skip_dirs") or ())
+        reclaim_children = t_cfg.get("reclaim_idle_children") is True
+
+        def session_in_scope(session: Path) -> bool:
+            if only is None:
+                return True
+            return str(session) == only or only.startswith(str(session) + os.sep)
+
+        t_paths = [p for p in paths if session_in_scope(p)]
         workers = max(1, int((rules.get("git") or {}).get("size_workers") or 4))
         scan_now = ctx["now"].timestamp()
+
+        def measure(target: Path) -> tuple[float | None, str | None]:
+            return SR.activity(
+                target,
+                protected=lambda q, root=target: scratch_protected(q, root, rules),
+                now=scan_now,
+                skip_dirs=skip_dirs,
+            )
+
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            t_activity = dict(zip(t_paths, pool.map(
-                lambda p: SR.activity(p, protected=lambda q, root=p: scratch_protected(q, root, rules), now=scan_now),
-                t_paths)))
-        for path in t_paths:
-            item = row(path, "T", "agent_scratch")
-            if not path.is_dir() or path.is_symlink():
+            t_activity = dict(zip(t_paths, pool.map(measure, t_paths)))
+
+        def one_scratch(target: Path, measured: tuple[float | None, str | None] | None) -> dict:
+            item = row(target, "T", "agent_scratch")
+            if not target.is_dir() or target.is_symlink():
                 item["reasons"].append("not_scratch_directory")
-            if not entry_re.fullmatch(path.name):
+            if not entry_re.fullmatch(target.name):
                 item["reasons"].append("scratch_name_not_declared")
             # Measure activity BEFORE inspecting the nested repos (main red, 2026-11-03). `nested_repos`
             # runs `git status` in each nested repo; even with --no-optional-locks a git invocation can
@@ -1730,8 +1765,9 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: 
             # tests/test_disk_standing_apply_20261024.py:1053 raised StopIteration because the gate's own
             # inspection changed the verdict it was computing. Measuring first makes the candidate set
             # independent of the inspection; the fingerprint carries this measured value.
-            activity, why = t_activity[path]
-            bundles, nested_why = nested_repos(path, ref_repo) if path.is_dir() and not path.is_symlink() else ([], None)
+            activity, why = measured if measured is not None else measure(target)
+            scan = target.is_dir() and not target.is_symlink()
+            bundles, nested_why = nested_repos(target, ref_repo, skip_dirs=skip_dirs) if scan else ([], None)
             if nested_why:
                 item["reasons"].append(nested_why)
             item["bundles"], item["bundle_dir"] = bundles, str(bundle_dir)
@@ -1739,10 +1775,33 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: 
             if why:
                 item["reasons"].append(why)
             if activity is None or ctx["now"].timestamp() - activity <= idle_secs:
-                item["reasons"].append(f"scratch_not_older_than_{idle_days:g}_days" if not t_cfg.get("idle_hours") else f"scratch_not_older_than_{t_cfg['idle_hours']:g}_hours")
+                label = (
+                    f"scratch_not_older_than_{t_cfg['idle_hours']:g}_hours"
+                    if t_cfg.get("idle_hours")
+                    else f"scratch_not_older_than_{idle_days:g}_days"
+                )
+                item["reasons"].append(label)
             item["evidence"]["idle_days"] = round((ctx["now"].timestamp() - activity) / 86400.0, 2) if activity else None
             item["fingerprint"] = {"activity": activity, "kind": "agent_scratch", "bundles": bundles}
+            return item
+
+        for path in t_paths:
+            item = one_scratch(path, t_activity[path])
             results.append(item)
+            # A live or held session dir still contains idle task directories. Those are the bytes
+            # the 2026-11-09 02:17 ET run could see and could not take (LQ-20261107-1456).
+            if not reclaim_children or not item["reasons"] or not path.is_dir() or path.is_symlink():
+                continue
+            try:
+                children = sorted(p for p in path.iterdir() if p.is_dir() and not p.is_symlink())
+            except OSError:
+                continue
+            for child in children:
+                if only is not None and str(child) != only:
+                    continue
+                if not entry_re.fullmatch(child.name):
+                    continue
+                results.append(one_scratch(child, None))
 
     c_cfg = cfg.get("abandoned_worktree")  # validated in load_rules; plan-only unless "C" is listed
     main_repos: set[Path] = set()

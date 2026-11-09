@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1456_agent_scratch_children_20261109",
+  "files": [
+    "tests/test_lq1456_agent_scratch_children_20261109.py"
+  ],
+  "anchor": "LQ1456_AGENT_SCRATCH_CHILDREN_20261109",
+  "comment": [
+    "ANCHOR: LQ1456_AGENT_SCRATCH_CHILDREN_20261109 — LQ-20261107-1456. Idle task dirs inside a live agent-tmp session are candidates. Source-name globs do not hold a repo copy. A real .env at large still holds. node_modules is not walked into the nested-repo cap."
+  ]
+}
