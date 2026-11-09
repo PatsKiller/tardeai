@@ -27700,12 +27700,12 @@
         "kind": "n8n",
         "expression": "dispatcher",
         "match": "scripts/since_close_snapshot.py",
-        "cadence": "0 6,16 * * 1-5",
+        "cadence": "0 */2 * * 1-5",
         "timezone": "America/New_York",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W5"
       },
-      "expected_cadence_hours": 2.0,
+      "expected_cadence_hours": 6.0,
       "active_days": [
         0,
         1,
@@ -27717,7 +27717,7 @@
       ],
       "state": "ACTIVE",
       "state_since": "2026-11-08",
-      "state_reason": "LQ-20261107-1261 (WORK-QUEUE, cc-deepseek-6, 2026-11-08): register the 'Since last close' home-card producer built by cc-sonnet-3 (LQ-20261107-1253, head 0d593b2bc). SHADOW: dispatch.mode dry_run and allowlist live_arg null, so a fire runs the script's default write-free dry run; no cron line exists and none is added (cron freeze 2026-10-09). Activation (canary, then cutover) is the operator's; a live fire that spends also needs the summary model call on a registered governed process, which it does not have today (row note).",
+      "state_reason": "LQ-20261107-1279 (operator GO 2026-11-08 19:01 ET, relayed in WORK-QUEUE and read verbatim): 'since-close-snapshot may run --apply --if-changed on its schedule', with the cadence that withdraws the 18:05 ET amendment table (see note). CANARY, this row is the forced rebuild: scheduler.stage canary, dispatch.mode live, allowlist live_arg = [--apply, --state-dir <state root>/data/portfolios/state] (NO --llm, per the same GO: keep --llm off until since_close_card is a process in config/llm_process_registry.json). The 15-min conditional check is the sibling row since-close-check, because one fire carries one argv and a forced rebuild and an --if-changed check cannot share one (the defect this row's note recorded from LQ-1261). Registered SHADOW 2026-11-08 by LQ-20261107-1261 for cc-sonnet-3 LQ-20261107-1253 head 0d593b2bc.",
       "output_signal": {
         "kind": "json_key",
         "path": "data/portfolios/state/since_close_latest.json",
@@ -27730,22 +27730,65 @@
       "review_by": "2026-11-22",
       "value_class": "Operationally Important",
       "severity": "Medium",
-      "note": "Cadence table — one row per expression in dispatch.cron, and the cadence is data so an operator amendment lands as a diff, not prose. OPERATOR CADENCE AMENDMENT 2026-11-08 18:05 ET (supersedes the 17:33 'hourly 17:00-04:00 plus 05:30' table), trading days in America/New_York: 0 6,16 * * 1-5 = 06:00 and 16:00 fixed full rebuilds; 30 8 * * 1-5 = 08:30 fixed; 15 9,16 * * 1-5 = 09:15 and 16:15 fixed; 30,45 9 * * 1-5 = 09:30 and 09:45 (09:45 is a fixed rebuild, 09:30 the first 15-min check); */15 10-15 * * 1-5 = the 15-min --if-changed window 10:00-15:45, which also lands 10:30, 12:00, 14:00 and 15:30, the operator's fixed slots, so each of those is one fire and not two; 0 18-23,0-4 * * 1-5 = hourly 18:00-04:59; 0 */2 * * 0,6 = weekends and holidays every 2 h. LQ-20261107-1260 (head 617288dfe) adds --if-changed, which exits 0 without writing when nothing changed: this row fixes WHEN the dispatcher fires, but one fire carries one argv, so a fixed rebuild slot and a 15-min check slot cannot take different flags from the registry today — the dispatcher would have to pass --if-changed to every slot (and then no slot ever forces a rebuild) or to none (and every 15-min slot rebuilds and can call the summary model, inside the 40/day cap). Resolve that before the canary live_arg is set. A market holiday is a weekday and so follows the weekday rows. Inputs: ticker_snapshot_latest.json, news_articles through a READ ONLY session, data/runtime/macro_calendar.json, earnings_dates.json, ticker_dividends, optional futures_overseas_latest.json and data/runtime/cio_overnight_brief/latest.json (the LQ-1257 brief; LQ-1260 head 617288dfe re-points the script's default from cio_brief_latest.json to it). Exit 0 = snapshot built (written only under --apply); 2 = no quote snapshot, nothing built. OPEN before any live fire that spends: --llm calls lib.deepseek_client.chat(policy FAST) directly with source_process since_close_card, which is not a process in config/llm_process_registry.json, so the allowlist entry carries no llm_route and live_arg stays null; and the script's default state dir is checkout-relative, so the live argv must pass --state-dir <state root>/data/portfolios/state.",
+      "note": "Cadence table — one row per expression in dispatch.cron, and the cadence is data so an operator amendment lands as a diff, not prose. OPERATOR CADENCE (LQ-20261107-1279, operator GO 2026-11-08 19:01 ET) REPLACES the 18:05 ET amendment table this row carried: trading days in America/New_York, a forced full rebuild every 2 h — 0 */2 * * 1-5 = 00:00, 02:00, ..., 22:00 (12 fires); between those rebuilds a cheap conditional check every 15 min, which is the sibling lane since-close-check (15,30,45 * * * 1-5, --apply --if-changed); weekends and holidays every 6 h — 0 */6 * * 0,6 = 00:00, 06:00, 12:00, 18:00 (4 fires). Why two rows and not a --force-every flag: the fork the 1261 note recorded (the dispatcher passes one argv to every slot of a lane) is resolved without touching the script, which another worker claims for LQ-1282/1283; the split is correct because the row that must be forced carries --apply and the row that must be conditional carries --if-changed. The rebuild is forced on weekends too, not conditional, so the card's UPDATED stamp and the freshness contract pfm.since_close_snapshot advance every 6 h rather than going stale for 48 h. A market holiday is a weekday and so follows the weekday rows: a superset of 'every 6 h', and the conditional check writes nothing on it. The two rows cannot hold each other up: the rebuild starts at :00 and the executor kills it at timeout_s 300 (00:05) while the check fires at :15/:30/:45, so the slots are disjoint by construction; they take distinct flock files, and both writers replace the file atomically (tempfile + os.replace), so an overlapping catchup fire is a redundant write, never a torn one. WHAT --if-changed MEANS TODAY (scripts/lib/since_close_card.py): material = a NEW article on a held name, or a held name crossing +/-3% since the last build, where MATERIAL_MOVE_PCT == BIG_MOVE_PCT == 3.0, so the operator's 'big_move threshold' condition is already implemented; unmaterial but still a write = a watchlist article or a held 1% bucket step; unchanged = exit 0, no write, no model call. The operator's other two conditions — a market_event fired and a new stop/at-risk flag — are NOT in the card, so the check row is coarser than 'writes ONLY when something significant changed' and tightening it belongs to the owner of scripts/lib/since_close_card.py. LLM stays OFF: --llm needs --apply and calls lib.deepseek_client.chat(policy FAST) with source_process since_close_card, which is not a process in config/llm_process_registry.json, so the allowlist carries no llm_route and the live argv has no --llm; the summary is the deterministic fallback. Inputs: ticker_snapshot_latest.json, news_articles through a READ ONLY session, data/runtime/macro_calendar.json, earnings_dates.json, ticker_dividends, optional futures_overseas_latest.json and data/runtime/cio_overnight_brief/latest.json. Exit 0 = snapshot built (written only under --apply; --if-changed may exit 0 having written nothing); 2 = no quote snapshot, nothing built. The script's default state dir is checkout-relative, so the live argv must pass --state-dir <state root>/data/portfolios/state.",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
-          "0 6,16 * * 1-5",
-          "30 8 * * 1-5",
-          "15 9,16 * * 1-5",
-          "30,45 9 * * 1-5",
-          "*/15 10-15 * * 1-5",
-          "0 18-23,0-4 * * 1-5",
-          "0 */2 * * 0,6"
+          "0 */2 * * 1-5",
+          "0 */6 * * 0,6"
         ],
         "tz": "America/New_York",
         "wave": "W5",
         "class": "report",
         "priority": 5,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "since-close-check",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/since_close_snapshot.py",
+        "cadence": "15,30,45 * * * 1-5",
+        "timezone": "America/New_York",
+        "stage": "canary",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 6.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-08",
+      "state_reason": "LQ-20261107-1279 (operator GO 2026-11-08 19:01 ET): the conditional half of the since-close cadence — 'between those, a cheap --if-changed check every 15 min that writes ONLY when something significant changed'. One fire carries one argv, so the forced rebuild lives in the sibling lane since-close-snapshot (--apply at :00 every 2 h) and this lane carries --apply --if-changed at :15/:30/:45; the two are disjoint by construction and share no lock. CANARY. The significance set is coarser than the operator's list today (see note): market_event and stop/at-risk are not in scripts/lib/since_close_card.py, which another worker holds.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/portfolios/state/since_close_latest.json",
+        "key": "generated_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "This lane usually writes nothing (--if-changed): a quiet fire's durable artifact is its RunReceipt@v2 row in data/governance/n8n_coordination_ledger.sqlite, and when it does write, the artifact is the same snapshot the sibling rebuild row owns, replaced atomically (tempfile + os.replace). expected_cadence_hours is 6.0, the longest legitimate gap between writes (the weekend rebuild cadence), not the 15-min fire spacing — a 0.25 h cadence here would read the shared file as stale on every quiet hour and turn a healthy lane amber."
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_since_close_lane_registration_20261108.py pins both rows to the four config files and emulates the live argv: --apply --if-changed in a temp PROJECT_ROOT writes once, writes nothing on an unchanged second run, and makes no model call.",
+      "review_by": "2026-11-22",
+      "value_class": "Operationally Important",
+      "severity": "Medium",
+      "note": "15,30,45 * * * 1-5 = every 15 minutes at :15, :30 and :45 on trading days (72 fires), i.e. every 15 min except the :00 minutes, which the sibling forced rebuild owns; the two slots cannot overlap because a fire is killed at timeout_s 300 well before the next one is due. Weekends have no check fires: the sibling rebuild writes every 6 h then, and there is no 15-min duty to be quiet about. A market holiday is a weekday, so this lane fires and writes nothing. The operator's significance list — a market_event fired, a held name moved past the big_move threshold, a new stop/at-risk flag — maps onto the card as follows: big_move is implemented (MATERIAL_MOVE_PCT = BIG_MOVE_PCT = 3.0 in scripts/lib/since_close_card.py, so a held name crossing +/-3% is material); market_event and stop/at-risk are NOT read by the card, so this lane cannot see them, and --if-changed also writes on an unmaterial change (a watchlist article, a held 1% bucket step). Tightening the gate is an edit to that card, not to this row. No spend: the live argv carries no --llm, and --llm needs --apply plus a governed process row that since_close_card does not have. The live argv must pass --state-dir <state root>/data/portfolios/state because the script's default is checkout-relative.",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "15,30,45 * * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "report",
+        "priority": 6,
         "retry_policy": "transient-2"
       }
     }

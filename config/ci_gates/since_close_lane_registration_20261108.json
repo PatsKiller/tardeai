@@ -6,8 +6,11 @@
   ],
   "anchor": "SINCE_CLOSE_LANE_REGISTRATION_20261108",
   "comment": [
-    "ANCHOR: SINCE_CLOSE_LANE_REGISTRATION_20261108 — the since-close-snapshot n8n lane is registered: registry",
-    "row + freshness contract + allowlist entry + health contract agree, the cadence table fires exactly what",
-    "the row declares, and an emulated Mon 2026-11-09 05:30 ET fire in an isolated state root writes nothing dry."
+    "ANCHOR: SINCE_CLOSE_LANE_REGISTRATION_20261108 — the since-close n8n lanes are registered LIVE (LQ-20261107-1279",
+    "operator GO 2026-11-08 19:01 ET): registry rows + freshness contract + allowlist entries + health contracts agree",
+    "for both since-close-snapshot (forced --apply every 2 h on trading days, every 6 h at weekends) and",
+    "since-close-check (--apply --if-changed at :15/:30/:45), the cadence tables fire exactly what each row declares,",
+    "the two schedules never share a minute, and the live argv is emulated in an isolated state root: --apply writes",
+    "the snapshot with no model call, a quiet --if-changed fire writes nothing, and a change writes."
   ]
 }

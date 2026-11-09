@@ -5944,7 +5944,11 @@
         "scripts/since_close_snapshot.py"
       ],
       "dry_run_arg": [],
-      "live_arg": null,
+      "live_arg": [
+        "--apply",
+        "--state-dir",
+        "$STATE_ROOT/data/portfolios/state"
+      ],
       "lock": "/tmp/since_close_snapshot.lock",
       "lock_kind": "flock",
       "timeout_s": 300,
@@ -5963,7 +5967,40 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "report until the import closure is re-inventoried for enforce: the producer reads the quote snapshot, the macro calendar, earnings and dividends from the state root and news from Postgres; the only credential names read are DB_* for its own READ ONLY session. No model, provider or broker credential.",
       "env_evidence": "scripts/lib/cio_market_context_state.connect_trade_ai_readonly reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD from os.environ (no dotenv; session set READ ONLY). scripts/since_close_snapshot.py reads TRADEAI_STATE_DIR for its default state dir; scripts/lib/macro_calendar.default_path reads TRADEAI_STATE_ROOT else the persistent-state resolver (TRADEAI_PERSISTENT_STATE_ROOT). TRADEAI_RUN_ID / TRADEAI_RUN_ATTEMPT / TRADEAI_RUN_MODE / TRADEAI_CODE_SHA are executor base names.",
-      "source": "LQ-20261107-1261 (WORK-QUEUE, cc-deepseek-6, 2026-11-08), registering cc-sonnet-3 LQ-20261107-1253 head 0d593b2bc. SHADOW ONLY: live_arg null and registry dispatch.mode dry_run, so the only argv the executor can run is the script's default mode, which is the dry run (it has no --dry-run flag: it prints a summary and 'DRY RUN: nothing written, no LLM call' and returns before the atomic replace). dry_run_arg is therefore the empty list, not null. No cron line exists, so the lock is new (a dry run takes <lock>.dryrun). The canary live argv is a later registry PR: [--apply, --llm, --state-dir, <state root>/data/portfolios/state], and it needs a registered governed process for the summary call first (see the registry row note)."
+      "source": "LQ-20261107-1261 (2026-11-08) registered cc-sonnet-3 LQ-20261107-1253 head 0d593b2bc in shadow; LQ-20261107-1279 (operator GO 2026-11-08 19:01 ET) sets the live argv. dry_run_arg stays the empty list (the script has no --dry-run flag: it prints a summary and 'DRY RUN: nothing written, no LLM call' and returns before the atomic replace), so a dry_run fire runs the same binary write-free. live_arg = [--apply, --state-dir, $STATE_ROOT/data/portfolios/state] (the executor's resolve_token expands $STATE_ROOT to TRADEAI_STATE_ROOT, default <home>/trade-ai-releases/persistent-state — the operator's path — because a home path literal is refused by the repo PII gate) and deliberately carries NO --llm: the operator's GO keeps the model off until since_close_card is a row in config/llm_process_registry.json, and this entry has no llm_route, so the summary stays the deterministic fallback. This lane is the forced rebuild; the conditional sibling since-close-check carries --apply --if-changed and its own lock."
+    },
+    {
+      "lane_id": "since-close-check",
+      "command": [
+        "$PY",
+        "scripts/since_close_snapshot.py"
+      ],
+      "dry_run_arg": [],
+      "live_arg": [
+        "--apply",
+        "--if-changed",
+        "--state-dir",
+        "$STATE_ROOT/data/portfolios/state"
+      ],
+      "lock": "/tmp/since_close_snapshot_check.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/portfolios/state/since_close_latest.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_STATE_DIR",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Report until the import closure is re-inventoried for enforce: the same binary and the same closure as since-close-snapshot (quote snapshot, macro calendar, earnings and dividends from the state root, news from Postgres READ ONLY). The only credential names read are DB_* for its own READ ONLY session. No model, provider or broker credential.",
+      "env_evidence": "Same closure as since-close-snapshot: scripts/lib/cio_market_context_state.connect_trade_ai_readonly reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (session set READ ONLY); TRADEAI_STATE_DIR is the script's default state dir (overridden explicitly by --state-dir); scripts/lib/macro_calendar.default_path reads TRADEAI_STATE_ROOT else TRADEAI_PERSISTENT_STATE_ROOT. TRADEAI_RUN_ID / TRADEAI_RUN_ATTEMPT / TRADEAI_RUN_MODE / TRADEAI_CODE_SHA are executor base names.",
+      "source": "LQ-20261107-1279 (operator GO 2026-11-08 19:01 ET): 'between those, a cheap --if-changed check every 15 min that writes ONLY when something significant changed'. One fire carries one argv, so the conditional half is its own lane rather than a flag the forced rebuild cannot carry. --if-changed (LQ-20261107-1260, folded) exits 0 without writing when nothing changed and writes no LaneRunReceipt of its own: the fire's proof is its RunReceipt@v2 in the coordination ledger, and a write lands in the snapshot the rebuild row owns. Separate lock (not the rebuild's) because the slots are disjoint by construction: a fire is killed at timeout_s 300, the rebuild starts at :00 and this lane at :15/:30/:45."
     }
   ],
   "blocked_reasons": {
