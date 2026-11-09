@@ -49,6 +49,8 @@ CAP_AUTONOMOUS_PROMOTE = 5  # Phase 1 autonomous discovery governance — curato
 CAP_PROMOTE = 10        # ungated by confidence (operator directive B); capped per tick for sanity
 CAP_EMBED = 15
 CAP_EMBED_RESET_FAILED = 20
+# LQ-20261107-1421: child EX_TEMPFAIL (Postgres lock / flock class) is not a hard tick failure.
+EX_TEMPFAIL = 75
 
 
 def kill_switch_active():
@@ -60,7 +62,12 @@ def kill_switch_active():
 
 
 def run_script(label, args, timeout=600):
-    """Invoke an agent script as a subprocess; isolate failures."""
+    """Invoke an agent script as a subprocess; isolate failures.
+
+    Exit 75 (EX_TEMPFAIL) is soft-ok: lock contention / busy peer writer. The child
+    already retried; failing the whole coordinator tick as exit 1 was the LQ-1421 defect
+    (research_curator watchlist_items lock → coordinator exit 1 at :15 / 14:38).
+    """
     try:
         r = subprocess.run(
             [PY] + args,
@@ -70,10 +77,18 @@ def run_script(label, args, timeout=600):
             timeout=timeout,
             env=os.environ.copy(),
         )
-        ok = r.returncode == 0
+        rc = r.returncode
+        tempfail = rc == EX_TEMPFAIL
+        ok = rc == 0 or tempfail
+        if rc == 0:
+            status = "ok"
+        elif tempfail:
+            status = "tempfail"
+        else:
+            status = f"exit {rc}"
         tail = (r.stdout or r.stderr or "").strip().splitlines()[-1:] or [""]
-        log.info("  %s: %s — %s", label, "ok" if ok else f"exit {r.returncode}", tail[0][:120])
-        return {"agent": label, "ok": ok, "exit": r.returncode}
+        log.info("  %s: %s — %s", label, status, tail[0][:120])
+        return {"agent": label, "ok": ok, "exit": rc, "tempfail": tempfail}
     except Exception as e:
         log.warning("  %s: FAILED %s", label, e)
         return {"agent": label, "ok": False, "error": str(e)[:120]}

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1421_watchlist_lock_tempfail_20261109",
+  "files": [
+    "tests/test_lq1421_watchlist_lock_tempfail_20261109.py"
+  ],
+  "anchor": "lq1421_watchlist_lock_tempfail",
+  "comment": [
+    "ANCHOR: lq1421_watchlist_lock_tempfail — hermes_research_curator retries Postgres lock_timeout on watchlist_items then exits EX_TEMPFAIL (75); hermes_coordinator treats child exit 75 as soft-ok so the host-cron tick does not exit 1 (LQ-20261107-1421; evidence 2026-11-09 00:15 + 2026-11-08 14:38)"
+  ]
+}

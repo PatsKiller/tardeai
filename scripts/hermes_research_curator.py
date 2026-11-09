@@ -24,12 +24,32 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 CONSCIOUSNESS = ROOT / "data" / "runtime" / "hermes_consciousness_latest.json"
+
+# LQ-20261107-1421: Postgres lock_timeout (role default 3s) on watchlist_items used to
+# crash the curator with exit 1 and fail the whole hermes-coordinator cron tick. Exit 75
+# (EX_TEMPFAIL) is the same class as flock -E 75 — contention, not a logic defect.
+EX_TEMPFAIL = 75
+_LOCK_RETRIES = 3
+_LOCK_SLEEP_S = 2.0
+
+
+def _is_pg_lock_error(exc: BaseException | str) -> bool:
+    """True when the failure is Postgres lock/deadlock contention (retryable)."""
+    text = str(exc).lower()
+    return (
+        "canceling statement due to lock timeout" in text
+        or "lock not available" in text
+        or "could not obtain lock" in text
+        or "deadlock detected" in text
+        or "lock_not_available" in text
+    )
 
 
 def _env():
@@ -291,14 +311,31 @@ def run_curator(*, apply: bool, force_deep: bool = False) -> dict:
     return report
 
 
-def main():
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Hermes 24/7 research curator")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--force-deep", action="store_true", help="Full web+LLM+drain pass (ignore rotation)")
-    args = parser.parse_args()
-    report = run_curator(apply=args.apply, force_deep=args.force_deep)
-    print(json.dumps(report, indent=2, default=str))
-    return 0
+    args = parser.parse_args(argv)
+    last_exc: BaseException | None = None
+    for attempt in range(1, _LOCK_RETRIES + 1):
+        try:
+            report = run_curator(apply=args.apply, force_deep=args.force_deep)
+            print(json.dumps(report, indent=2, default=str))
+            return 0
+        except Exception as exc:  # noqa: BLE001 — boundary: classify lock vs hard fail
+            if not _is_pg_lock_error(exc):
+                raise
+            last_exc = exc
+            msg = f"lock contention attempt {attempt}/{_LOCK_RETRIES}: {exc}"
+            print(msg, file=sys.stderr)
+            if attempt < _LOCK_RETRIES:
+                time.sleep(_LOCK_SLEEP_S * attempt)
+    print(
+        f"EX_TEMPFAIL: DB lock contention after {_LOCK_RETRIES} attempts "
+        f"(watchlist_items / peer writer): {last_exc}",
+        file=sys.stderr,
+    )
+    return EX_TEMPFAIL
 
 
 if __name__ == "__main__":
