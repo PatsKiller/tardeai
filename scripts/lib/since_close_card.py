@@ -43,7 +43,7 @@ import re
 from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 try:
     from lib import since_close_stamp
@@ -250,13 +250,24 @@ def attach_extended(
     return out
 
 
+def _dollars_key(m: Mapping[str, Any]) -> tuple[int, float]:
+    """Largest |$| first. A name whose $ move is unknown ranks AFTER every known one: it is not a name on which
+    $0 moved, it is a name the feed could not price (the 0/1 lead term keeps it last in an ascending sort)."""
+    d = m.get("dollar_impact_now") if m.get("dollar_impact_now") is not None else m.get("dollar_impact")
+    return (0, -abs(d)) if isinstance(d, (int, float)) else (1, 0.0)
+
+
+def _pct_key(m: Mapping[str, Any]) -> tuple[int, float]:
+    """Largest |%| first, by the same rule: an unknown move is last, never a move of zero."""
+    p = m.get("move_now_pct") if m.get("move_now_pct") is not None else m.get("change_pct")
+    return (0, -abs(p)) if isinstance(p, (int, float)) else (1, 0.0)
+
+
 def sort_by_now(moves: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     """Held names by |$ move| in the NEWEST print (so the weekend's biggest mover is first, not Friday's); a name with
     no print since the close falls back to its Friday dollars. Watchlist names follow, by the same rule."""
-    key = lambda m: -abs((m.get("dollar_impact_now") if m.get("dollar_impact_now") is not None else m.get("dollar_impact")) or 0.0)
-    held = sorted((m for m in moves if m["held"]), key=key)
-    watch = sorted((m for m in moves if not m["held"]),
-                   key=lambda m: -abs(m.get("move_now_pct") if m.get("move_now_pct") is not None else m["change_pct"]))
+    held = sorted((m for m in moves if m["held"]), key=_dollars_key)
+    watch = sorted((m for m in moves if not m["held"]), key=_pct_key)
     return held + watch
 
 
@@ -328,7 +339,7 @@ def _next_open_et(now: datetime, zone: str, hour: int, minute: int) -> datetime 
     """The next weekday cash open of an overseas exchange, converted to ET. None when the tz database has no zone."""
     try:
         z = ZoneInfo(zone)
-    except Exception:  # noqa: BLE001 -- a missing zone costs a label, not the card
+    except (ZoneInfoNotFoundError, ValueError):  # a host without tzdata: no open time is known, so no row is drawn
         return None
     start = now.astimezone(z).date()
     for d in range(8):
@@ -626,6 +637,15 @@ def merge_duplicates(items: Sequence[Mapping[str, Any]], *, threshold: float = 0
     return out
 
 
+def _biggest_holding(held: Sequence[Mapping[str, Any]]) -> Mapping[str, Any]:
+    """The largest holding by |market value|. An unpriced holding ranks below every priced one instead of being read
+    as a holding worth $0 — the caller names this symbol to the operator."""
+    def key(h: Mapping[str, Any]) -> tuple[int, float]:
+        mv = h.get("market_value")
+        return (1, abs(mv)) if isinstance(mv, (int, float)) else (0, 0.0)
+    return max(held, key=key)
+
+
 def rank_feed(
     items: list[dict[str, Any]], *, cio_actions: Mapping[str, str] | None = None, at_risk: Sequence[str] = (),
 ) -> list[dict[str, Any]]:
@@ -645,8 +665,14 @@ def rank_feed(
     scored = []
     for it in items:
         held = [h for h in it.get("holdings", []) if h.get("held")]
-        dollars = sum(abs((h.get("market_value") or 0.0) * (h.get("move_now_pct") if h.get("move_now_pct") is not None
-                                                              else h.get("change_pct") or 0.0) / 100.0) for h in held)
+        moved: list[float] = []
+        for h in held:
+            mv = h.get("market_value")
+            pct = h.get("move_now_pct") if h.get("move_now_pct") is not None else h.get("change_pct")
+            if mv is None or pct is None:
+                continue  # an unpriced name cannot rank; it is not a name on which $0 moved
+            moved.append(abs(mv * pct / 100.0))
+        dollars = sum(moved)
         score = min(60.0, round(dollars))
         why: list[str] = []
         cio_hit = next((s for s in (h["symbol"] for h in held) if s in cio_actions), None)
@@ -658,7 +684,7 @@ def rank_feed(
             score += 15
             why.append(f"{risk_hit} at its stop")
         elif held:
-            top = max(held, key=lambda h: abs((h.get("market_value") or 0.0)))
+            top = _biggest_holding(held)
             why.append(f"{top['symbol']} {_pct_short(top.get('move_now_pct') if top.get('move_now_pct') is not None else top.get('change_pct'))} since the close")
         if not held and it.get("kind") == "macro":
             if MARKET_GROUP_RE.search(str(it.get("title") or "")):
@@ -667,7 +693,8 @@ def rank_feed(
             else:
                 score += 5
                 why.append("market-wide")
-        watches = [h for h in it.get("holdings", []) if not h.get("held") and abs(h.get("change_pct") or 0.0) >= BIG_MOVE_PCT]
+        watches = [h for h in it.get("holdings", [])
+                   if not h.get("held") and h.get("change_pct") is not None and abs(h["change_pct"]) >= BIG_MOVE_PCT]
         if not held and watches:
             score += 8
             why.append(f"watchlist {watches[0]['symbol']} {_pct_short(watches[0].get('change_pct'))}")
@@ -781,7 +808,7 @@ def build_feed(
         held = [x for x in it["holdings"] if x["held"]]
         exposure = round(sum(x["market_value"] or 0.0 for x in held), 2)
         if held:
-            top = max(held, key=lambda x: abs((x.get("market_value") or 0.0)))
+            top = _biggest_holding(held)
             moved = top.get("move_now_pct") if top.get("move_now_pct") is not None else top.get("change_pct")
             basis = f"{top['extended_label']}" if top.get("extended_label") and top.get("move_now_pct") is not None else top["close_tag"]
             so = f"You hold ${exposure:,.0f} here; {top['symbol']} is {_pct_short(moved)} since {basis}."
@@ -973,7 +1000,9 @@ def detect_change(
         if not m["held"] or ext.get("change_pct") is None:
             continue
         prior_row = old_prints.get(m["symbol"]) or [None, None]
-        if prior_row[1] != ext.get("printed_at") and abs(ext["change_pct"]) >= MATERIAL_MOVE_PCT and abs(prior_row[0] or 0.0) < MATERIAL_MOVE_PCT:
+        was = prior_row[0]
+        # an UNKNOWN prior move cannot vouch that this one is quiet, so it does not suppress the crossing alert
+        if prior_row[1] != ext.get("printed_at") and abs(ext["change_pct"]) >= MATERIAL_MOVE_PCT and (was is None or abs(was) < MATERIAL_MOVE_PCT):
             return {"changed": True, "material": True, "kind": "move", "symbol": m["symbol"],
                     "reason": f"{m['symbol']} {ext['change_pct']:+.1f}% {ext.get('session_label') or 'extended'}"}
     return {"changed": True, "material": False, "reason": "minor change", "kind": "minor"}

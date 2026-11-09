@@ -82,10 +82,14 @@ assert.equal(arrowFor(Number.NaN), '–')
       mv({ symbol: 'SMALL', dollar_impact_now: 12, dollar_impact: 12 }),
       mv({ symbol: 'BIG', dollar_impact_now: 4000, dollar_impact: 10 }),
       mv({ symbol: 'WATCH', held: false, change_pct: -1, dollar_impact: null }),
+      mv({ symbol: 'UNPRICED', dollar_impact: null, dollar_impact_now: null }),
     ],
   }))
-  assert.deepEqual(m.held.map(c => c.symbol), ['BIG', 'SMALL'])
+  assert.deepEqual(m.held.map(c => c.symbol), ['BIG', 'SMALL', 'UNPRICED'],
+    'a name the feed could not price sorts after every priced one — it did not move $0')
   assert.equal(m.held[0].dollarsText, '+$4,000')
+  assert.equal(m.held[2].dollarsText, '—')
+  assert.equal(m.held[2].sortDollars, null)
 }
 
 // --- the futures / overseas row: levels with their own as-of, and a level-only root that keeps its price

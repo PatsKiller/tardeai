@@ -297,6 +297,16 @@ def test_held_chips_sort_by_the_newest_sessions_dollars():
     assert set(held) == {"AAA", "BBB", "CCC"}
 
 
+def test_an_unpriced_name_sorts_after_every_priced_one_and_is_never_read_as_zero():
+    """A holding whose market value or move the feed did not supply is the last thing the operator is pointed at —
+    not a holding worth $0, which would sink a real mover below noise. The rank rule reads it the same way."""
+    priced = {"symbol": "BIG", "held": True, "market_value": 10_000, "change_pct": 5.0, "dollar_impact": 500.0}
+    unpriced = {"symbol": "UNK", "held": True, "market_value": None, "change_pct": 9.0, "dollar_impact": None}
+    tiny = {"symbol": "TINY", "held": True, "market_value": 100, "change_pct": 1.0, "dollar_impact": 1.0}
+    assert [m["symbol"] for m in c.sort_by_now([unpriced, tiny, priced])] == ["BIG", "TINY", "UNK"]
+    assert c._biggest_holding([unpriced, tiny])["symbol"] == "TINY", "the unpriced name is not the biggest holding"
+
+
 def test_market_now_reads_futures_and_indices_and_names_what_it_cannot_see():
     rows = [
         _row("/ES", "futures_open", datetime(2026, 11, 9, 18, 45, tzinfo=ET), 7400.0, None),

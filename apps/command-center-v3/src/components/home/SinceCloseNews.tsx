@@ -78,9 +78,9 @@ export default function SinceCloseNews({ wire }: { wire: SinceCloseWire | null |
         <span>no glow: read when you have time</span>
       </div>
       <div style={S.grid}>
-        {shown.map(c => (
+        {shown.map((c, i) => (
           <article key={c.key} style={{ ...S.card, ...(c.glow ? glowStyle(c.glow) : null) }}
-            data-testid={`sc-news-${c.rank ?? 0}`} data-kind={c.kind} data-glow={c.glow ?? 'none'}
+            data-testid={`sc-news-${c.rank ?? `x${i}`}`} data-kind={c.kind} data-glow={c.glow ?? 'none'}
             title={c.glowText ?? undefined}>
             <div style={S.tickerRow}>
               <span style={S.sym}>{c.lead}</span>

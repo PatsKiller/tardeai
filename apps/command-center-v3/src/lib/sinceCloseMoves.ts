@@ -40,7 +40,7 @@ export interface MoveChip {
   dollarsText: string
   ext: ExtPrint | null
   note: string | null       // "no print since Fri" — the honest answer, grey
-  sortDollars: number
+  sortDollars: number | null // |$| of the newest print; null when the feed could not price it (never 0)
 }
 
 export interface MarketLevel {
@@ -104,7 +104,7 @@ function chip(m: SinceCloseMove, closeTag: string, fridayLabel: string): MoveChi
     dollarsText: dollars == null ? '—' : usdText(dollars),
     ext: extOf(m, closeTag),
     note: m.extended ? null : `no print since ${fridayLabel}`,
-    sortDollars: Math.abs(dollars ?? 0),
+    sortDollars: dollars == null ? null : Math.abs(dollars),
   }
 }
 
@@ -114,12 +114,19 @@ function fridayOf(closeTag: string): string {
   return m ? m[1] : 'the close'
 }
 
+/** Largest |$| first. A chip whose $ impact is unknown sorts after every priced one: it is not a name on which $0
+ *  moved, it is a name the feed could not price. */
+const byDollars = (a: MoveChip, b: MoveChip): number =>
+  a.sortDollars == null && b.sortDollars == null ? 0
+    : a.sortDollars == null ? 1
+      : b.sortDollars == null ? -1
+        : b.sortDollars - a.sortDollars
+
 export function movesModel(w: SinceCloseWire | null | undefined): MovesModel {
   const moves = w?.moves ?? []
   const closeTag = w?.window_now?.close_tag ?? w?.window?.close_tag ?? 'last close'
   const friday = fridayOf(closeTag)
-  const held = moves.filter(m => m.held).map(m => chip(m, closeTag, friday))
-    .sort((a, b) => b.sortDollars - a.sortDollars)
+  const held = moves.filter(m => m.held).map(m => chip(m, closeTag, friday)).sort(byDollars)
   const watch = moves.filter(m => !m.held).map(m => chip(m, closeTag, friday))
     .sort((a, b) => Math.abs(b.ext?.pct ?? b.closePct) - Math.abs(a.ext?.pct ?? a.closePct))
   const now = w?.macro?.now
