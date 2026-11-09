@@ -1,0 +1,28 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watchlist_bridge_candidates_1658_20261109",
+  "files": [
+    "tests/test_watchlist_bridge_candidates_20261109.py"
+  ],
+  "anchor": "WATCHLIST_BRIDGE_CANDIDATES_1658_20261109",
+  "thresholds": {
+    "candidate_statement_budget_s": 60,
+    "db_role_statement_ceiling_s": 180,
+    "lane_schedule_minutes": 30,
+    "measured_before_ms": 145024,
+    "measured_after_ms": 553
+  },
+  "verdict": [
+    "PASS only when the candidate statement (a) names analyst_data_history exactly once, in a set-based",
+    "join, with no correlated `WHERE UPPER(symbol) = UPPER(wi.symbol)` scan per watchlist row; (b) runs under",
+    "CANDIDATE_STATEMENT_BUDGET_S, a third of the operator-owned 180 s DB role ceiling and 1/30 of the lane slot;",
+    "(c) on a statement timeout completes exactly ONE fallback that omits the analyst source and reports",
+    "`degraded` rather than exiting 1; and (d) never invents a rating when that source is missing."
+  ],
+  "comment": [
+    "ANCHOR: WATCHLIST_BRIDGE_CANDIDATES_1658_20261109 — INC-261109-xqwzsp: the bridge's candidate query",
+    "correlated a full scan of analyst_data_history per watchlist symbol (145.0 s of a 180 s budget), so four",
+    "consecutive 30-minute runs on 2026-11-09 (12:02, 12:32, 13:02, 13:32 ET) were cancelled by statement_timeout",
+    "and the lane exited 1; the watchdog's missed-schedule flag was correct, not a false positive."
+  ]
+}

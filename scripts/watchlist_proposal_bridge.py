@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -43,6 +44,16 @@ DEFAULT_STRATEGY = "momentum_scalp"
 DEFAULT_BROKER = os.getenv("WATCHLIST_BROKER_ACCOUNT", "schwab_taxable")
 MAX_NEW_PER_RUN = int(os.getenv("WATCHLIST_PROPOSAL_MAX_NEW", "40"))
 ACTIVE_STATUSES = ("PENDING", "APPROVED", "MODIFIED", "APPROVED_FOR_PAPER_TEST", "BROKER_SUBMITTED")
+
+# LQ-20261107-1658: how long the candidate statement may hold a connection before the run falls back.
+# The operator-owned ceiling is the DB role's 180 s (db_adapter sets the same value; docs/runbooks/
+# DB_HANG_PREVENTION.md is the universal backstop), and the lane is scheduled every 30 min
+# (config/cron_outage_watchdog.json wrapper_bindings.watchlist-proposal-bridge). 60 s is a third of
+# the ceiling: enough for the set-based statement (~0.6 s measured) with room for a slow box, and
+# far short of the slot. Pinned by tests/test_watchlist_bridge_candidates_20261109.py.
+CANDIDATE_STATEMENT_BUDGET_S = 60
+# The one degraded state this function can report. A missing source is never a fabricated rating.
+DEGRADED_ANALYST_HISTORY = "analyst_data_history:statement_timeout"
 
 
 def _paper_account() -> str:
@@ -68,6 +79,23 @@ def _is_lock_error(exc: BaseException) -> bool:
         pass
     msg = str(exc).lower()
     return "lock timeout" in msg or "locknotavailable" in msg
+
+
+def _is_statement_timeout(exc: BaseException) -> bool:
+    """True when the server killed the statement at its ``statement_timeout`` (SQLSTATE 57014).
+
+    Matched by class first, then by message, because the lane may run on a connection whose errors are
+    re-raised through a wrapper (the same shape as ``_is_lock_error``). A lock timeout is NOT this: it
+    means another writer is holding a row, and falling back to a second statement would not help.
+    """
+    try:
+        import psycopg2.errors as pg_errors
+        if isinstance(exc, pg_errors.QueryCanceled):
+            return True
+    except Exception:
+        pass
+    msg = str(exc).lower()
+    return "statement timeout" in msg or "querycanceled" in msg
 
 
 def _fill_quote_cache(symbols: list[str]) -> dict[str, float]:
@@ -156,13 +184,37 @@ def _best_rating(card_rec, synth_rec, analyst_rec) -> tuple[str | None, str]:
     return candidates[0][1], candidates[0][2]
 
 
-def _fetch_buy_candidates(cur) -> list[dict]:
-    cur.execute(
-        """SELECT wi.symbol, wi.status AS wl_status, wi.hermes_composite_score, wi.hermes_rank,
+def _candidate_sql(*, with_analyst: bool = True) -> str:
+    """The candidate statement. ``with_analyst=False`` is the ONE bounded fallback (see the fetch below).
+
+    LQ-20261107-1658: the analyst column used to be a correlated LATERAL
+    (``FROM analyst_data_history WHERE UPPER(symbol) = UPPER(wi.symbol) ORDER BY as_of DESC LIMIT 1``).
+    UPPER() defeats the symbol index, so the planner scans the whole table once per watchlist symbol:
+    a measured 5,049,020 buffer hits / 5,701 loops / **145.0 s**. It is one set-based join now — the
+    table is scanned once, sorted once, and hashed onto the watchlist: **0.55 s**. DISTINCT ON keeps the
+    identical "latest row per symbol by as_of" rule the lateral expressed (same NULLS LAST order), so the
+    ratings the lane reads are unchanged, which tests/test_watchlist_bridge_candidates_20261109.py pins.
+    """
+    analyst_col = "ad.recommendation_key" if with_analyst else "NULL::text"
+    analyst_join = """
+           LEFT JOIN (
+               SELECT DISTINCT ON (upper(symbol))
+                      upper(symbol) AS symbol_key,
+                      payload->>'recommendation_key' AS recommendation_key
+               FROM analyst_data_history
+               ORDER BY upper(symbol), as_of DESC NULLS LAST
+           ) ad ON ad.symbol_key = upper(wi.symbol)""" if with_analyst else ""
+    # String substitution, never an f-string: the statement carries a regex quantifier (``^[A-Z]{1,5}$``)
+    # and an f-string evaluates ``{1,5}`` as a set, silently turning the filter into ``^[A-Z](1, 5)$`` —
+    # which matches nothing and empties the candidate list. Pinned by the regex test.
+    return _CANDIDATE_SQL_TEMPLATE.replace("__ANALYST_COL__", analyst_col).replace("__ANALYST_JOIN__", analyst_join)
+
+
+_CANDIDATE_SQL_TEMPLATE = """SELECT wi.symbol, wi.status AS wl_status, wi.hermes_composite_score, wi.hermes_rank,
                   wi.trend, wi.source AS wl_source,
                   rc.latest_recommendation AS card_rec,
                   fs.recommendation AS synth_rec,
-                  ad.recommendation_key AS analyst_rec,
+                  __ANALYST_COL__ AS analyst_rec,
                   ep.limit_price, ep.entry_zone_low, ep.entry_zone_high,
                   ep.proposal_tag AS entry_tag, ep.urgency AS entry_urgency,
                   wsc.strategy_type AS wl_strategy,
@@ -170,13 +222,7 @@ def _fetch_buy_candidates(cur) -> list[dict]:
                   wsc.support AS card_support, wsc.resistance AS card_resistance, wsc.risk_reward AS card_rr
            FROM watchlist_items wi
            LEFT JOIN watchlist_research_cards rc ON rc.symbol = wi.symbol
-           LEFT JOIN watchlist_final_synthesis fs ON UPPER(fs.symbol) = UPPER(wi.symbol)
-           LEFT JOIN LATERAL (
-               SELECT payload->>'recommendation_key' AS recommendation_key
-               FROM analyst_data_history
-               WHERE UPPER(symbol) = UPPER(wi.symbol)
-               ORDER BY as_of DESC NULLS LAST LIMIT 1
-           ) ad ON true
+           LEFT JOIN watchlist_final_synthesis fs ON UPPER(fs.symbol) = UPPER(wi.symbol)__ANALYST_JOIN__
            LEFT JOIN LATERAL (
                SELECT limit_price, entry_zone_low, entry_zone_high, proposal_tag, urgency
                FROM watchlist_entry_plans WHERE symbol = wi.symbol
@@ -191,10 +237,56 @@ def _fetch_buy_candidates(cur) -> list[dict]:
            WHERE wi.status <> 'removed'
              AND wi.symbol ~ '^[A-Z]{1,5}$'
            ORDER BY wi.hermes_composite_score DESC NULLS LAST, wi.symbol"""
-    )
-    cols = [d[0] for d in cur.description]
+
+
+def _fetch_buy_candidates(cur, *, statement_budget_s: int | None = None) -> dict:
+    """``{"rows", "degraded", "elapsed_ms"}``: the buy-side candidates, and what finding them cost.
+
+    The statement runs under an explicit ``statement_timeout`` budget so a planner regression cannot eat
+    the whole 30-minute slot. If the server cancels it, the transaction is rolled back and exactly ONE
+    fallback runs (``_candidate_sql(with_analyst=False)``, ~0.6 s) — the lane then completes from the
+    card, synthesis and entry-plan sources with ``degraded`` naming what is missing, instead of exiting 1
+    on a traceback. There is no retry loop: a second failure propagates, because a database that cannot
+    answer the cheap query is an outage to escalate, not to paper over. A lock timeout is not caught (the
+    fallback would hit the same lock) and is left to the caller's existing handling.
+    """
+    budget = int(statement_budget_s or CANDIDATE_STATEMENT_BUDGET_S)
+    started = time.monotonic()
+    prior_budget = None
+    try:
+        cur.execute("SELECT current_setting('statement_timeout') AS v")
+        row = cur.fetchone()
+        prior_budget = row[0] if not isinstance(row, dict) else row["v"]
+        cur.execute("SELECT set_config('statement_timeout', %s, false)", (f"{budget}s",))
+    except Exception:  # noqa: BLE001 -- no budget is a slower statement, never a failed run
+        prior_budget = None
+    degraded = None
+    try:
+        try:
+            cur.execute(_candidate_sql(with_analyst=True))
+        except Exception as exc:  # noqa: BLE001 -- only a statement timeout is downgraded, never a lock error
+            if not _is_statement_timeout(exc):
+                raise
+            log.warning(
+                "candidate query hit its %ss budget: falling back without analyst_data_history "
+                "(one attempt; the run is marked degraded, not failed)", budget,
+            )
+            try:
+                cur.connection.rollback()
+            except Exception:
+                pass
+            cur.execute(_candidate_sql(with_analyst=False))
+            degraded = DEGRADED_ANALYST_HISTORY
+        cols = [d[0] for d in cur.description]
+        rows = cur.fetchall()
+    finally:
+        if prior_budget:
+            try:
+                cur.execute("SELECT set_config('statement_timeout', %s, false)", (prior_budget,))
+            except Exception:
+                pass
     out = []
-    for row in cur.fetchall():
+    for row in rows:
         d = dict(zip(cols, row))
         rating, src = _best_rating(d.get("card_rec"), d.get("synth_rec"), d.get("analyst_rec"))
         if not rating:
@@ -202,7 +294,7 @@ def _fetch_buy_candidates(cur) -> list[dict]:
         d["watchlist_rating"] = rating
         d["rating_source"] = src
         out.append(d)
-    return out
+    return {"rows": out, "degraded": degraded, "elapsed_ms": int((time.monotonic() - started) * 1000)}
 
 
 def _non_watchlist_blocks(cur, symbol: str) -> bool:
@@ -458,7 +550,8 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
         cur.execute("SET lock_timeout = '8s'")
     except Exception:
         pass
-    candidates = _fetch_buy_candidates(cur)
+    fetched = _fetch_buy_candidates(cur)
+    candidates = fetched["rows"]
     valid_syms = {c["symbol"].upper() for c in candidates}
     reconciled = _reconcile_sleeve_strategy_ids(cur, dry_run=dry_run)
     deduped = _dedupe_watchlist_proposals(cur, dry_run=dry_run)
@@ -696,11 +789,15 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
         "reconciled": reconciled,
         "deduped": deduped,
         "expired_not_buy": expired,
+        "candidates_ms": fetched["elapsed_ms"],
         "dry_run": dry_run,
         "routing_lanes": [{"lane": lid, "account": acct} for lid, acct, _, _ in lanes],
         "paper_account": _paper_account(),
         "broker_account": DEFAULT_BROKER,
     }
+    if fetched["degraded"]:
+        # a named degradation in the same receipt/log line the operator already reads — never a silent ok
+        stats["degraded"] = fetched["degraded"]
     log.info(f"sync done: {stats}")
     return stats
 
