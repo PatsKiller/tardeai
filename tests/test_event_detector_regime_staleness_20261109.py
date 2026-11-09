@@ -218,6 +218,31 @@ def test_a_real_run_writes_the_declared_receipt_and_names_a_crashed_check(ev, mo
     assert kw["summary"]["detector_status"]["PORTFOLIO_FRESH_NEEDED"] == "error:TypeError"
     assert kw["summary"]["detector_status"]["MARKET_REGIME_CHANGE"] == "ok"
     assert "offset-naive" not in json.dumps(kw, default=str), "the receipt carries a class name, never the message"
+    assert kw["attempted_count"] == 10, "every check was attempted, even the one that crashed"
+    # The health contract allows only nothing_due / no_new_input as an empty reason; without one a v2 receipt with
+    # produced_count 0 grades empty_output -> RUN_FAILED and pages the operator every slot (LQ-20261107-1511).
+    assert kw["empty_reason"] == "nothing_due"
+
+
+def test_a_run_that_fires_carries_no_empty_reason(ev, monkeypatch, tmp_path):
+    calls = []
+    import lib.lane_last_receipt as R
+
+    monkeypatch.setattr(R, "write_lane_receipt", lambda lane_id, **kw: calls.append((lane_id, kw)))
+    monkeypatch.setattr(ev, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(ev, "_get_conn", lambda: types.SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(sys, "argv", ["event_detector.py"])
+    for name in ("check_sec_insider_buy", "check_rsi_extreme", "check_fred_rate_change", "check_dividend_cut",
+                 "check_earnings_beat", "check_stop_triggered", "check_irmaa_threshold",
+                 "check_income_floor_risk", "check_portfolio_fresh_needed"):
+        monkeypatch.setattr(ev, name, lambda conn, dry_run=False: 0)
+    monkeypatch.setattr(ev, "check_market_regime_change", lambda conn, dry_run=False: 2)
+
+    ev.main()
+
+    _lane_id, kw = calls[0]
+    assert kw["produced_count"] == 2 and kw["empty_reason"] is None
+    assert kw["ok"] is True
 
 
 def test_a_dry_run_writes_no_receipt(ev, monkeypatch, tmp_path):

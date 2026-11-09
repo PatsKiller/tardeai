@@ -748,6 +748,11 @@ def main():
             summary={"checked": len(checks), "ok": len(checks) - errors, "error": errors,
                      "fired": total_fired, "detector_status": detector_status},
             produced_count=total_fired,
+            attempted_count=len(checks),
+            # The registry contract for this lane is ``empty_allowed_reasons: [nothing_due, no_new_input]`` and
+            # grades ``empty_output`` -> RUN_FAILED on a v2 receipt with produced_count 0 and no reason. Every one
+            # of the 10 checks ran and none crossed: that is ``nothing_due``, not a failure to say.
+            empty_reason=None if total_fired else "nothing_due",
         )
 
 
