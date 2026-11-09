@@ -193,6 +193,11 @@ def test_alert_exit_zero_when_alarms_found(monkeypatch, tmp_path):
     rc = hl._alert(report)
     assert rc in (0, 1)  # 1 would be sent-count; check main()
     monkeypatch.setattr(hl, "collect_report", lambda: report)
+    # Other tests in this file import both `lib.X` and `scripts.lib.X`, which trips main()'s
+    # dual-identity guard; this test is about the exit code, not the guard. Stub it too, as the
+    # two main()-exit tests below already do. (pre-existing order pollution; made the file green
+    # so preflight --record-tests could bind LQ-20261107-1659.)
+    _stub_identity_guard(monkeypatch)
     import sys
     monkeypatch.setattr(sys, "argv", ["research_lane_health.py", "--alert"])
     assert hl.main() == 0
