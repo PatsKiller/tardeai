@@ -541,18 +541,23 @@ def test_executor_dry_run_path_fails_on_no_runner_lane(tmp_path):
 
 # ── fabric rows (AGENTS.md §23.21 / §23.23) ──────────────────────────────────
 
-def test_fabric_rows_shadow_dry_run_only_with_zero_output_contract():
+def test_fabric_rows_canary_live_with_zero_output_contract():
+    """CUT2 (4522ef189, operator packet n8n-cutover-wave-cut2-20261107) promoted this
+    lane shadow/dry_run → canary/live with live_arg=[] (cron argv). LQ-20261107-1440:
+    the prior pin (live_arg is None / stage shadow) was stale against live CURRENT."""
     allow = json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())
     entry = next(e for e in allow["lanes"] if e["lane_id"] == LANE)
-    assert entry["live_arg"] is None and entry["dry_run_arg"] == ["--dry-run"]
+    assert entry["live_arg"] == [] and entry["dry_run_arg"] == ["--dry-run"]
+    assert entry.get("lock") == "/tmp/hermes_worker_pool.lock"
     reg = json.loads((ROOT / "config/lane_registry.json").read_text())
     row = next(r for r in reg["lanes"] if r["lane_id"] == LANE)
-    assert row["scheduler"]["stage"] == "shadow" and row["dispatch"]["mode"] == "dry_run"
+    assert row["scheduler"]["stage"] == "canary" and row["dispatch"]["mode"] == "live"
+    assert row["scheduler"].get("cutover_wave") == "CUT2"
     fx = json.loads((ROOT / "config/n8n_effect_keys.json").read_text())["lanes"][LANE]
-    assert fx["effects"] == ["append"] and fx["cron_claim"] is False and fx["n8n_claim"] is False
+    assert fx["effects"] == ["append"] and fx["cron_claim"] is True and fx["n8n_claim"] is True
     contracts = json.loads((ROOT / "config/n8n_health_contracts.json").read_text())["contracts"]
     c = next(x for x in contracts if x["id"] == LANE)
-    assert c["status"] == "REVIEWED" and c["stage"] == "shadow"
+    assert c["status"] == "REVIEWED" and c["stage"] == "canary"
     checks = {x["check"] for x in c["healthy"] + c["failed"]}
     assert {"lane_outcomes_ok", "dry_run_plan_clean", "lane_zero_output"} <= checks
     zero = next(x for x in c["failed"] if x["check"] == "lane_zero_output")["text"]
