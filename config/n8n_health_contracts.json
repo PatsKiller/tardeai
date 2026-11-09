@@ -43074,8 +43074,8 @@
       "id": "alert-delivery-queue-hygiene",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
-      "target_reason": "lq1607_registration_20261109",
+      "status": "REVIEWED",
+      "target_reason": "lq1607_registration_20261109; reviewed field-by-field 2026-11-09 under LQ-20261107-1697 (a new lane needs a REVIEWED contract, not a grandfathered DRAFT)",
       "stage": "shadow",
       "purpose": {
         "text": "Hold the IMMEDIATE alert delivery queue to its contract: no deliverable row stays 'queued' more than 10 min. Close rows that can never be delivered (written outside ACTIVE, or older than 6 h) as 'abandoned' with an 'expired:' reason, never send, and raise one system_health CRITICAL per hour when a deliverable row is stuck (the consumer is not draining).",
@@ -43173,7 +43173,7 @@
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "NOT_MEASURED: the lane has never been dispatched by the dispatcher (no run row in the coordination ledger for a live fire); class defaults only. The live argv was emulated in an isolated PROJECT_ROOT before activation (LQ-20261107-1279 DONE note).",
         "runs_considered": null,
-        "duration_degraded_above_s": 240.0
+        "duration_degraded_above_s": 96.0
       },
       "alerting": {
         "lane_severity": "High",
@@ -43204,10 +43204,10 @@
       "review_by": "2026-11-23",
       "review": {
         "prepared_by": "agent draft (cc-opus-1, LQ-20261107-1607, 2026-11-09)",
-        "status": "DRAFT",
-        "reviewed_by": null,
-        "reviewed_on": null,
-        "note": "the owner (platform) marks this REVIEWED before any canary PR"
+        "status": "REVIEWED",
+        "reviewed_by": "cc-deepseek-2 (LQ-20261107-1697; reviewer id and session differ from the author's, AGENTS §23.19)",
+        "reviewed_on": "2026-11-09",
+        "note": "checked field by field: scripts/alert_delivery_queue_hygiene.py (QUEUE_MAX_AGE_MIN 10, STALE_TTL_H 6, ESCALATION_COOLDOWN_MIN 60, one critical system_health row, dry run read-only and receipt-free, sends always 0, empty_reason nothing_due), config/n8n_run_allowlist.json (command, flock lock, timeout_s 120, output_signal = receipt, DB_*/state-root env_names) and config/lane_registry.json (stage shadow, dispatch.mode dry_run). Corrected in the same review: duration_degraded_above_s was 240.0, above this lane's own timeout_s 120 (a threshold no run can reach); set to the class rule 0.8 x timeout_s = 96.0, as every other 120 s monitor lane."
       },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
