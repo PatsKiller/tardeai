@@ -220,13 +220,12 @@ def _attempt_symbol_enrichment(symbol: str, missing: list) -> bool:
             print(f"  [enrichment] {symbol}: yfinance failed — {e}")
 
     if "news_articles" in missing:
-        try:
-            from external_market_data_ingest import ingest_yfinance_quotes
-            ingest_yfinance_quotes(symbols=[symbol])
-            enriched = True
-            print(f"  [enrichment] {symbol}: price quote ingested")
-        except Exception as e:
-            print(f"  [enrichment] {symbol}: quote ingest failed — {e}")
+        # LQ-20261107-1609: a NEWS gap is not a price gap. This branch used to call
+        # ingest_yfinance_quotes(symbols=[symbol]), writing a yfinance quote for a symbol whose price
+        # had not been found missing (live rows for TGE at 10:46/10:47 ET today) and bypassing the
+        # Alpaca → Finviz ladder entirely. There is no granted news writer on this path; say so
+        # instead of writing a banned source for a reason that does not describe the write.
+        print(f"  [enrichment] {symbol}: news gap — no granted news writer on this path (no quote written)")
 
     return enriched
 

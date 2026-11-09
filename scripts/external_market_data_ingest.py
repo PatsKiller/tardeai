@@ -34,12 +34,24 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 from lib.writers.market_quotes_writer import write_market_quotes  # noqa: E402,F401
 
 
-def _get_conn():
+APP_NAME = "tradeai-quote-ingest"
+
+
+def _get_conn(role: str = "generic"):
+    """A connection identified by ``application_name``.
+
+    LQ-20261107-1609: every connection this module opens ran as a bare ``trade_ai`` session, so a
+    server-side FATAL (``pg_stat_activity`` shows only the role) could not be attributed to a tier or
+    a lane. ``application_name`` now names the caller, which is what makes a pool-level kill in the
+    postgres log ("terminating connection due to idle-in-transaction timeout") traceable to the run
+    that lost it.
+    """
     import psycopg2
     pw = ""
     for line in (PROJECT_ROOT / ".env").read_text().splitlines():
         if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
-    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw,
+                            application_name=f"{APP_NAME}:{role}")
 
 
 def _env(key: str) -> str:
@@ -281,51 +293,130 @@ def _finviz_quote(sym: str) -> dict:
     return {"price": grab("Price"), "prev": grab("Prev Close"), "rvol": grab("Rel Volume"), "volume": grab("Volume")}
 
 
+# The trade_ai role carries idle_in_transaction_session_timeout=120s. A transaction that sits open
+# across a provider call is killed by the server, and every later statement on that connection then
+# raises "connection already closed". Tests inject their own loss classes; production leaves this
+# None, and lib.pg_reconnect resolves psycopg2's lazily (importing this module still needs no driver).
+CONNECTION_LOST_ERRORS: tuple[type[BaseException], ...] | None = None
+FINVIZ_MAX_RECONNECTS = 2
+
+
+def _finviz_connector():
+    """Reconnect-once proxy over the Finviz tier's connection (scripts/lib/pg_reconnect.py)."""
+    try:
+        from lib.pg_reconnect import ReconnectingConnection
+    except ImportError:  # imported as scripts.<module>
+        from scripts.lib.pg_reconnect import ReconnectingConnection
+    return ReconnectingConnection(lambda: _get_conn("finviz"),
+                                  max_reconnects=FINVIZ_MAX_RECONNECTS,
+                                  error_classes=CONNECTION_LOST_ERRORS)
+
+
+def _is_connection_lost(db, exc: BaseException) -> bool:
+    try:
+        return bool(db.is_connection_lost(exc))
+    except Exception:  # noqa: BLE001 — a proxy that cannot classify is not evidence of a loss
+        return False
+
+
 def ingest_finviz_quotes(symbols: list = None) -> dict:
     """Per-symbol live quotes from finviz quote.ashx (price/prev/rvol/volume). Used as a FALLBACK for
     the handful Alpaca can't price — finviz is one HTTP request per symbol (rate-limited if hammered),
-    so it's not for the full universe, only the gap."""
+    so it's not for the full universe, only the gap.
+
+    LQ-20261107-1609 — this tier used to write every symbol into ONE transaction that stayed open
+    across the whole loop, i.e. across up to ~156 HTTP requests, each of which can wait minutes on the
+    global Finviz throttle. The trade_ai role kills an idle-in-transaction session at 120 s, so the
+    tier died mid-run, the commit raised "connection already closed", and `ingest_quotes` swallowed it
+    and handed all ~156 symbols to yfinance — work finviz was never asked to do. Two changes:
+
+    * the transaction now closes immediately after each write, so NO transaction is open while a
+      provider call is in flight (the width the role timeout measures);
+    * a lost connection is repaired by ``lib.pg_reconnect`` (bounded reconnects) instead of being
+      counted as "finviz has no quote": a symbol the tier could not attempt is returned in
+      ``unwritten``, never in ``missing``, so the caller can keep it out of the next tier.
+
+    ``missing`` means finviz answered and had no quote. ``unwritten`` means we could not tell. They are
+    different facts and the receipt must not merge them.
+    """
     import time
     if not symbols:
         symbols = _get_symbols()
-    conn = _get_conn(); cur = conn.cursor()
+    db = _finviz_connector()
+    cur = db.cursor()
     fetched = 0; got = set()
-    for sym in symbols:
-        try:
-            q = _finviz_quote(sym)
+    unwritten: list[str] = []
+    try:
+        for sym in symbols:
+            # Provider call FIRST, with no transaction open: this is the idle window the role's
+            # 120 s idle_in_transaction_session_timeout measures.
+            try:
+                q = _finviz_quote(sym)
+            except Exception:
+                q = {}
+            finally:
+                time.sleep(0.3)  # politeness — finviz is per-symbol
             if not q.get("price"):
                 continue
             price = float(q["price"]); prev = float(q["prev"]) if q.get("prev") else None
             chg = round((price - prev) / prev * 100, 4) if prev else None
             vol = int(float(q["volume"])) if q.get("volume") else None
-            rc = write_market_quotes(cur, [{"symbol": sym, "price": price, "prev_close": prev,
-                                            "day_change_pct": chg, "volume": vol}], source="finviz")
-            if rc.rows_accepted:
-                fetched += 1; got.add(sym)
-            time.sleep(0.3)  # politeness — finviz is per-symbol
-        except Exception:
-            pass
-    conn.commit(); conn.close()
-    missing = [s for s in symbols if s not in got]
-    print(f"[finviz] Fetched {fetched}/{len(symbols)} quotes ({len(missing)} missing)")
-    return {"source": "finviz", "fetched": fetched, "total": len(symbols), "missing": missing}
+            row = {"symbol": sym, "price": price, "prev_close": prev,
+                   "day_change_pct": chg, "volume": vol}
+            write_completed = False
+            for attempt in (1, 2):  # one replay: the write is a single row, so replay is exact
+                try:
+                    rc = write_market_quotes(cur, [row], source="finviz")
+                    db.commit()  # close the transaction before the next provider call
+                    write_completed = True
+                    if rc.rows_accepted:
+                        fetched += 1; got.add(sym)
+                    break  # completed: a rejected row is "no usable quote", not a lost connection
+                except Exception as exc:
+                    if not _is_connection_lost(db, exc):
+                        write_completed = True  # a writer refusal, not a lost connection
+                        break
+                    if attempt == 2:
+                        break
+            if not write_completed:
+                unwritten.append(sym)
+    finally:
+        db.close()
+    missing = [s for s in symbols if s not in got and s not in unwritten]
+    print(f"[finviz] Fetched {fetched}/{len(symbols)} quotes ({len(missing)} missing, "
+          f"{len(unwritten)} unwritten, {db.reconnects} reconnect(s))")
+    return {"source": "finviz", "fetched": fetched, "total": len(symbols),
+            "missing": missing, "unwritten": unwritten,
+            "reconnects": db.reconnects, "rows_dropped": db.dropped_ops}
 
 
 def ingest_quotes(symbols: list = None) -> dict:
     """Quote ingest with tiered fallback: Alpaca live-intraday PRIMARY (batched, no rate limit) →
     finviz quote.ashx (live, per-symbol) for what Alpaca misses → yfinance last resort. Each tier only
-    runs on the symbols the prior tier couldn't price."""
+    runs on the symbols the prior tier couldn't price.
+
+    LQ-20261107-1609 — "couldn't price" and "was never asked" are different facts. This function used
+    to hand the WHOLE miss list to the next tier when a tier raised, so a dead Finviz connection sent
+    ~156 symbols to yfinance every run (yfinance writes ~73 rows/h and is the source the outlook
+    method bans). Now a tier failure routes nothing: the symbols it could not attempt come back as
+    ``unpriced.tier_unavailable`` and are reported, never silently re-attributed to another provider.
+    """
     if not symbols:
         symbols = _get_symbols()
     a = ingest_alpaca_quotes(symbols)
     miss1 = a.get("missing", [])
-    fv = {"fetched": 0, "missing": miss1}
+    fv = {"fetched": 0, "missing": miss1, "unwritten": []}
     if miss1:
         try:
             fv = ingest_finviz_quotes(miss1)
         except Exception as e:
-            print(f"  [fallback] finviz failed (non-fatal): {e}")
+            # The tier did not run to completion: none of its symbols was priced or refused, so none
+            # of them may be routed on. Not "missing" — that word would be a claim about finviz.
+            fv = {"fetched": 0, "missing": [], "unwritten": list(miss1),
+                  "error": f"{type(e).__name__}: {e}"}
+            print(f"  [fallback] finviz tier UNAVAILABLE: {e} — {len(miss1)} symbol(s) not routed on")
     miss2 = fv.get("missing", [])
+    tier_unavailable = list(fv.get("unwritten") or [])
     yf = {"fetched": 0}
     if miss2:
         try:
@@ -333,7 +424,8 @@ def ingest_quotes(symbols: list = None) -> dict:
         except Exception as e:
             print(f"  [fallback] yfinance failed (non-fatal): {e}")
     total = a.get("fetched", 0) + fv.get("fetched", 0) + yf.get("fetched", 0)
-    print(f"[quotes] {total}/{len(symbols)} (alpaca {a.get('fetched', 0)} + finviz {fv.get('fetched', 0)} + yf {yf.get('fetched', 0)})")
+    print(f"[quotes] {total}/{len(symbols)} (alpaca {a.get('fetched', 0)} + finviz {fv.get('fetched', 0)} + yf {yf.get('fetched', 0)})"
+          + (f" — finviz tier unavailable: {len(tier_unavailable)} unpriced, not routed" if tier_unavailable else ""))
 
     # 2026-09-13 (Phase 3, "a health ledger that cannot lie"): this used to write
     # report_source("yahoo_finance", True) when yfinance had NOT run, so that Alpaca
@@ -346,7 +438,10 @@ def ingest_quotes(symbols: list = None) -> dict:
     # ingest_yfinance_quotes() reported its own ok/error state.
 
     return {"alpaca": a.get("fetched", 0), "finviz": fv.get("fetched", 0), "yfinance": yf.get("fetched", 0),
-            "fetched": total, "total": len(symbols)}
+            "fetched": total, "total": len(symbols),
+            "finviz_reconnects": fv.get("reconnects", 0),
+            "finviz_error": fv.get("error"),
+            "unpriced": {"tier_unavailable": tier_unavailable}}
 
 
 # ── Alpha Vantage ────────────────────────────────────────────────────

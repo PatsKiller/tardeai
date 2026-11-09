@@ -1,0 +1,22 @@
+{
+  "schema": "CiGate@v1",
+  "name": "quote_tier_transaction_20261109",
+  "files": [
+    "tests/test_quote_tier_transaction_20261109.py"
+  ],
+  "anchor": "QUOTE_TIER_TRANSACTION_20261109",
+  "comment": [
+    "ANCHOR: QUOTE_TIER_TRANSACTION_20261109 — LQ-20261107-1609. The Finviz middle tier of the quote",
+    "ingest held ONE transaction open across its whole per-symbol loop (up to ~156 HTTP requests, each",
+    "able to wait minutes on the global Finviz throttle). Role trade_ai carries",
+    "idle_in_transaction_session_timeout=120s, so the server killed the session mid-run (28 FATALs on",
+    "2026-11-09), the tier's commit raised 'connection already closed' (620 in logs/market_data.log),",
+    "and ingest_quotes swallowed it and handed the entire miss list to yfinance — 45 rows/run on a",
+    "failed tier vs 28 on a committed one, on a source the outlook method bans. This gate pins: no",
+    "provider call is made while a transaction is open; a lost connection is repaired through",
+    "lib/pg_reconnect (bounded) and the run continues; a symbol the tier could not attempt is",
+    "unwritten, never missing, and is NOT routed to the next provider; only a genuine finviz",
+    "'no quote' reaches yfinance; and the second live writer (a news gap in",
+    "process_watchlist_agent_jobs) no longer writes a yfinance quote. Fakes only: no DB, no network."
+  ]
+}
