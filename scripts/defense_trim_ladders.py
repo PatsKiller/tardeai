@@ -35,6 +35,11 @@ LC = CFG["ladder"]
 
 # ── DT1: the composite ─────────────────────────────────────────────────────────
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def gg_latest(cur) -> dict:
     """Latest Gain Guardian state per (symbol, account)."""
     cur.execute("""SELECT DISTINCT ON (symbol, account) symbol, account, advisory,
@@ -176,7 +181,8 @@ def ensure_ladder_tables(cur):
 
 def swing_low(cur, symbol: str, days: int) -> float | None:
     cur.execute("""SELECT min(close_price) FROM ticker_prices
-                   WHERE symbol=%s AND price_date > CURRENT_DATE - %s""", (symbol, days))
+                   WHERE symbol=%s AND price_date > CURRENT_DATE - %s
+                     AND """ + sql_source_allowed() + """ """, (symbol, days))
     r = cur.fetchone()
     return round(float(r[0]), 2) if r and r[0] else None
 

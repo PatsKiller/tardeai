@@ -156,6 +156,11 @@ try:  # account NAMES, never account numbers (operator 2026-10-23)
 except ImportError:  # pragma: no cover - imported as scripts.lib.*
     from scripts.lib.account_display import account_label as _acct_name
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def _f(v: Any) -> Optional[float]:
     try:
         return float(v) if v is not None and v != "" else None
@@ -502,6 +507,7 @@ def last_sells(db_query: Callable[..., Any]) -> dict[str, Any]:
 # and order as cio_prospect_builder.BARS_SQL, for every symbol at once; each row keeps only BARS_SQL's columns.
 _BARS_BATCH_SQL = ("SELECT upper(symbol) AS batch_symbol, price_date AS time, close_price AS close FROM ticker_prices "
                    "WHERE upper(symbol) = ANY(%s) AND price_date > now() - interval '120 days' "
+                   "AND " + sql_source_allowed() + " "
                    "ORDER BY upper(symbol), price_date")
 
 

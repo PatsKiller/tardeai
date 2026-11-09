@@ -29,6 +29,11 @@ PriceOn = Callable[[str, str], Optional[float]]
 DailyVol = Callable[[str], Optional[float]]
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def _f(value: Any) -> Optional[float]:
     try:
         out = float(value)
@@ -119,13 +124,15 @@ def db_lookups(query: Callable[..., Any]) -> tuple[PriceOn, DailyVol]:
         key = (symbol, str(day)[:10])
         if key not in price_cache:
             row = query("SELECT close_price FROM ticker_prices WHERE symbol=%s AND price_date<=%s "
+                        "AND " + sql_source_allowed() + " "
                         "ORDER BY price_date DESC, created_at DESC LIMIT 1", key, fetch="one")
             price_cache[key] = _f((row or {}).get("close_price")) if isinstance(row, dict) else None
         return price_cache[key]
 
     def daily_vol(symbol: str) -> Optional[float]:
         if symbol not in vol_cache:
-            rows = query("SELECT close_price FROM ticker_prices WHERE symbol=%s "
+            rows = query("SELECT close_price FROM ticker_prices WHERE symbol=%s AND "
+                         + sql_source_allowed() + " "
                          "ORDER BY price_date DESC LIMIT 61", (symbol,), fetch="all") or []
             closes = [c for c in (_f(r.get("close_price")) for r in rows) if c and c > 0][::-1]
             rets = [b / a - 1 for a, b in zip(closes, closes[1:])]

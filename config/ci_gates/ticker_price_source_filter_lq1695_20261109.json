@@ -1,0 +1,21 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ticker_price_source_filter_lq1695_20261109",
+  "files": [
+    "tests/test_ticker_price_source_filter_lq1695_20261109.py"
+  ],
+  "comment": [
+    "ANCHOR: LQ-20261107-1695 — the reader half of the operator price rule (2026-11-07: Finviz cache",
+    "fresh <=30 min, else a fresh Schwab/Alpaca/moomoo quote, else the stored mark flagged stale;",
+    "never yfinance). LQ-1679 removed the last yfinance WRITERS; the store still held 687,708 yfinance",
+    "rows (newest 2026-10-30, measured read-only 2026-11-09) and source-blind readers served them as",
+    "current closes — sector_momentum_engine._closes and price_db_sync._prior_close among 31 sites in",
+    "25 files, now filtered through the one shared predicate lib/price_provenance.sql_source_allowed.",
+    "This gate pins (A) a SHRINK-ONLY repo scan: every SQL statement under scripts/ naming",
+    "ticker_prices carries the predicate or is listed in config/ticker_price_reader_baseline.json",
+    "with a kind and a checkable reason, so a new source-blind reader fails and a stale baseline",
+    "entry fails; and (B) behaviour on synthetic rows in SQLite, with a negative control proving the",
+    "exclusion is the predicate's and not the fixture's. No DB, no network, no credential, no",
+    "destructive statement: SELECT-only SQL in an in-memory table."
+  ]
+}

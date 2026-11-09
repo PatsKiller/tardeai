@@ -12,18 +12,24 @@ from __future__ import annotations
 
 from typing import Any
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
 from lib.data_broker.envelope import envelope
 
 DOMAIN = "technicals"
 
-LAST_CLOSE_SQL = """SELECT symbol, price_date, close_price, source, created_at
+LAST_CLOSE_SQL = ("""SELECT symbol, price_date, close_price, source, created_at
                     FROM ticker_prices WHERE upper(symbol)=%s
-                    ORDER BY price_date DESC LIMIT 1"""
+                      AND """ + sql_source_allowed() + """
+                    ORDER BY price_date DESC LIMIT 1""")
 
-SERIES_SQL = """SELECT symbol, price_date, close_price, source
+SERIES_SQL = ("""SELECT symbol, price_date, close_price, source
                 FROM ticker_prices WHERE upper(symbol)=%s
                   AND price_date > CURRENT_DATE - %s
-                ORDER BY price_date"""
+                  AND """ + sql_source_allowed() + """
+                ORDER BY price_date""")
 
 
 def _f(v: Any) -> float | None:

@@ -90,6 +90,11 @@ _WATCH = {"WATCH", "MONITOR", "NEUTRAL", "WAIT", "NOT_YET"}
 _SELL = {"TRIM", "EXIT", "SELL", "AVOID", "REDUCE", "TRIM_REVIEW", "EXIT_REVIEW", "INVALIDATED", "BLOCKED"}
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def posture(value: Any) -> Optional[str]:
     """Normalise a stance/action from any store to buy / hold / watch / sell (None if unknown)."""
     v = str(value or "").strip().upper().replace(" ", "_").replace("-", "_")
@@ -386,7 +391,8 @@ def load_lifecycle_inputs(db_query: Optional[Callable[..., list[dict]]],
 
 
 BARS_SQL = ("SELECT price_date AS time, close_price AS close FROM ticker_prices WHERE upper(symbol) = %s "
-            "AND price_date > now() - interval '120 days' ORDER BY price_date")
+            "AND price_date > now() - interval '120 days' "
+            "AND " + sql_source_allowed() + " ORDER BY price_date")
 
 
 def load_db_inputs(db_query: Optional[Callable[[str], list[dict]]]) -> dict[str, dict[str, Any]]:

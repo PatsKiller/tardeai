@@ -94,6 +94,11 @@ _CAPS_CACHE: Optional[dict] = None
 # Core computations — pure, unit-testable, no DB
 # --------------------------------------------------------------------------
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def relative_strength_vs_industry(
     name_return_pct: Optional[float],
     industry_composite_return_pct: Optional[float],
@@ -610,7 +615,8 @@ def _prices(cur, symbols) -> dict[str, float]:
         return {}
     cur.execute(
         """SELECT DISTINCT ON (symbol) symbol, close_price FROM ticker_prices
-            WHERE symbol = ANY(%s) ORDER BY symbol, price_date DESC""",
+            WHERE symbol = ANY(%s) AND """ + sql_source_allowed() + """
+            ORDER BY symbol, price_date DESC""",
         (list(symbols),),
     )
     out: dict[str, float] = {}
@@ -1045,7 +1051,7 @@ def book_sector_ranks(cur=None) -> dict[str, dict[str, Any]]:
                             "reason": "fund's single sector is not on the ranked board"}
         else:
             out[sym] = {"sector": None, "rank": None, "rank_total": total,
-                        "reason": (f"no sector on symbol_profiles" if not raw
+                        "reason": ("no sector on symbol_profiles" if not raw
                                    else f"sector '{raw}' is not a ranked board sector")}
     return out
 

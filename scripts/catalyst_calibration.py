@@ -27,6 +27,11 @@ if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def _out_path() -> Path:
     """Served data/runtime/catalyst_calibration.json (persistent root first; AGENTS.md §9.4)."""
     try:
@@ -40,6 +45,7 @@ def _out_path() -> Path:
 OUT = _out_path()
 SETTLE_DAYS = 2          # forward window to measure realized move
 LOOKBACK_DAYS = 120      # history window of catalysts to calibrate on
+_SRC_P = sql_source_allowed("p")  # fixed predicate, interpolated into the f-string SQL below
 MIN_SAMPLES = 10         # per-type minimum before a multiplier is trusted
 _ENV = ROOT / ".env"
 # Copy only _ENV_KEYS: every env name this process reads (its local import closure; tests/
@@ -97,7 +103,7 @@ def compute(readonly: bool = False) -> dict:
         enforce_readonly(c)  # the server refuses any write (AGENTS.md §6)
     cur = c.cursor()
     # settled catalysts with a stored direction; realized fwd return from daily-ish bars
-    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only int module constants SETTLE_DAYS/LOOKBACK_DAYS
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- int module constants SETTLE_DAYS/LOOKBACK_DAYS and the fixed _SRC_P predicate
         f"""
         WITH cat AS (
             SELECT id, symbol, catalyst_type, published_at,
@@ -109,9 +115,11 @@ def compute(readonly: bool = False) -> dict:
         entry AS (
             SELECT cat.id, cat.symbol, cat.catalyst_type, cat.direction,
                    (SELECT close_price FROM ticker_prices p WHERE p.symbol=cat.symbol AND p.price_date<=cat.published_at::date
+                      AND {_SRC_P}
                       ORDER BY p.price_date DESC LIMIT 1) AS p0,
                    (SELECT close_price FROM ticker_prices p WHERE p.symbol=cat.symbol
                       AND p.price_date >= (cat.published_at + interval '{SETTLE_DAYS} days')::date
+                      AND {_SRC_P}
                       ORDER BY p.price_date ASC LIMIT 1) AS p1
             FROM cat
         )

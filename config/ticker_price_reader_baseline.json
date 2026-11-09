@@ -1,0 +1,224 @@
+{
+  "schema": "TickerPriceReaderBaseline@v1",
+  "ticket": "LQ-20261107-1695",
+  "operator_rule": "2026-11-07 — Finviz cache first (<=30 min), a fresh Schwab/Alpaca/moomoo quote second, the stored mark only flagged stale. Never yfinance as a price.",
+  "measured": {
+    "date": "2026-11-09",
+    "base": "07f9f16be",
+    "store_rows_yfinance": 687708,
+    "store_newest_yfinance_price_date": "2026-10-30",
+    "statements_filtered": 31,
+    "files_filtered": 25,
+    "unfiltered_sites": 25
+  },
+  "rule": "SHRINK-ONLY ratchet, enforced by tests/test_ticker_price_source_filter_lq1695_20261109.py. Every SQL statement under scripts/ that names ticker_prices and is not a docstring must carry `sql_source_allowed()` (or a recognised source constraint) unless it appears here with a kind and a reason. Editing a statement changes its hash, so a re-baseline is a visible edit, never a silent one. An entry whose statement disappears, or that gains the predicate, fails the guard: delete the entry. Nothing may be ADDED without a reason that a reviewer can check against the module.",
+  "kinds": {
+    "writer": "writes or upserts ticker_prices rows. It must read every source it is about to overwrite or compare against; a source filter would make it blind to the rows it maintains.",
+    "admin": "quarantine / scrub / repair of corrupt rows. It must see every row it grades, including the banned sources, or it cannot repair them.",
+    "measurement": "grades store quality or replays history (shadow replay, counterfactual ledger, data quality). The historical series is the object measured, not a price served to a signal.",
+    "presence": "answers only 'does this symbol have any price row?' (coverage, backfill eligibility, discovery). It never returns a close, so a filtered answer would change eligibility rather than serve a stale price.",
+    "source_grading": "compares sources against each other (source litmus). Excluding a source would delete the evidence it grades."
+  },
+  "entries": [
+    {
+      "file": "scripts/defense_data_quality.py",
+      "hash": "694f7b60685f2404",
+      "line": 268,
+      "kind": "measurement",
+      "reason": "Data-quality audit: it grades the store's own rows (duplicates, spikes, gaps) per symbol/date. Filtering would hide the yfinance history it exists to report on.",
+      "sql": "SELECT symbol, price_date, max(close_price) AS close_price FROM ticker_prices WHERE symbol = ANY(%s) AND price_date > CURRENT_DATE - 220 GROUP BY symbol, price_date"
+    },
+    {
+      "file": "scripts/defense_shadow_replay.py",
+      "hash": "8e20f1134a435306",
+      "line": 81,
+      "kind": "measurement",
+      "reason": "Shadow replay of a past defense decision: reconstructs the closes the system actually had on each date. A source filter would rewrite history.",
+      "sql": "SELECT symbol, (array_agg(close_price ORDER BY price_date DESC))[1] AS last, avg(close_price) FILTER (WHERE price_date > %s) AS dma, count(*) n FROM ticker_prices ..."
+    },
+    {
+      "file": "scripts/defense_shadow_replay.py",
+      "hash": "0579f94b46274a58",
+      "line": 106,
+      "kind": "measurement",
+      "reason": "Same replay path as the entry above (the dated close series).",
+      "sql": "SELECT symbol, price_date, close_price FROM ticker_prices WHERE symbol = ANY(%s) AND price_date <= %s AND price_date > %s AND close_price IS NOT NULL"
+    },
+    {
+      "file": "scripts/hermes_watchlist_scorer.py",
+      "hash": "9a6b861231c3ea0a",
+      "line": 412,
+      "kind": "presence",
+      "reason": "Watchlist coverage predicate (EXISTS over market_quotes/ticker_prices): decides which watchlist symbols the scorer enriches. Presence only, no close is returned.",
+      "sql": "AND ( EXISTS (...) OR UPPER(wi.symbol) = ANY(%s) OR EXISTS (SELECT 1 FROM market_quotes ... ticker_prices ...) ...)"
+    },
+    {
+      "file": "scripts/intel_auto_discovery.py",
+      "hash": "5c48612d4dfc4814",
+      "line": 123,
+      "kind": "presence",
+      "reason": "Discovery eligibility: symbols with any price row in the window. Excluding yfinance here would enlarge the discovery set rather than protect a signal.",
+      "sql": "SELECT DISTINCT symbol FROM ticker_prices WHERE price_date > CURRENT_DATE - INTERVAL '%s days'"
+    },
+    {
+      "file": "scripts/lib/counterfactual_ledger.py",
+      "hash": "912081b4be93e7e1",
+      "line": 126,
+      "kind": "measurement",
+      "reason": "Counterfactual ledger: the realized move of a past decision is measured from the rows recorded at the time.",
+      "sql": "SELECT symbol, price_date, close_price, created_at FROM ticker_prices WHERE symbol = ANY(%s) AND price_date >= %s ORDER BY symbol, price_date"
+    },
+    {
+      "file": "scripts/lib/data_broker/trade_replay.py",
+      "hash": "9a57f5ecd22a239b",
+      "line": 58,
+      "kind": "measurement",
+      "reason": "Trade replay of a stored trade: same principle as defense_shadow_replay — rebuild what was known, not what is allowed today.",
+      "sql": "SELECT price_date AS time,close_price AS close FROM ticker_prices WHERE upper(symbol)=%s AND price_date >= %s AND price_date < %s ORDER BY price_date"
+    },
+    {
+      "file": "scripts/lib/redeploy_candidate_research.py",
+      "hash": "4efae95721ab3406",
+      "line": 133,
+      "kind": "presence",
+      "reason": "Universe build: which symbols have any ticker_prices row at all (coverage map). Returns symbols, never a price.",
+      "sql": "SELECT DISTINCT upper(symbol) FROM ticker_prices WHERE symbol IS NOT NULL"
+    },
+    {
+      "file": "scripts/lib/writers/ticker_prices_writer.py",
+      "hash": "54405ebd60f7e6ab",
+      "line": 147,
+      "kind": "writer",
+      "reason": "The table's one write path: INSERT ... ON CONFLICT over incoming rows. A reader-side predicate has no meaning in a writer.",
+      "sql": "INSERT INTO ticker_prices (...)"
+    },
+    {
+      "file": "scripts/lib/writers/ticker_prices_writer.py",
+      "hash": "0e3cec7f98a4ca62",
+      "line": 189,
+      "kind": "writer",
+      "reason": "Copy path of the same writer (rows copied between statements), not a read.",
+      "sql": "INSERT INTO ticker_prices (symbol, price_date, close_price, source, created_at) SELECT symbol, price_date, close_price, source, created_at FROM ..."
+    },
+    {
+      "file": "scripts/lib/writers/ticker_prices_writer.py",
+      "hash": "4b40b60242694be1",
+      "line": 253,
+      "kind": "writer",
+      "reason": "Prior-close tie-break inside the writer's upsert; it maintains every source's row and must see them.",
+      "sql": "), bounded AS ( SELECT c.symbol, ... prior.close_price AS prior_price FROM candidates c LEFT JOIN LATERAL ( SELECT tp.close_price FROM ticker_prices ..."
+    },
+    {
+      "file": "scripts/ops/quarantine_bad_price_bars.py",
+      "hash": "456d96c63c41aa10",
+      "line": 59,
+      "kind": "admin",
+      "reason": "Quarantine scan over one symbol's bars. It exists to find corrupt rows in every source.",
+      "sql": "SELECT id, price_date, close_price, source FROM ticker_prices WHERE upper(symbol) = %s AND price_date > current_date - %s AND close_price IS NOT NULL"
+    },
+    {
+      "file": "scripts/ops/quarantine_bad_price_bars.py",
+      "hash": "533403e8d6f68ac1",
+      "line": 134,
+      "kind": "admin",
+      "reason": "Removal of a row the quarantine scan selected, by id. Not a read.",
+      "sql": "DELETE FROM ticker_prices WHERE id=%s"
+    },
+    {
+      "file": "scripts/price_db_sync.py",
+      "hash": "16f8071edf8ade39",
+      "line": 702,
+      "kind": "writer",
+      "reason": "Session-close composition: it merges market_quotes into ticker_prices and needs the rows it is about to overwrite, whatever their source.",
+      "sql": "WITH day_q AS ( SELECT UPPER(symbol) AS symbol, max(fetched_at) AS last_q FROM market_quotes ... ) ... ticker_prices ..."
+    },
+    {
+      "file": "scripts/price_db_sync.py",
+      "hash": "150ac89637d6a56b",
+      "line": 449,
+      "kind": "presence",
+      "reason": "Backfill eligibility count: a symbol with >= 60 rows is considered covered. F1 of LQ-1679: because this count includes the 687k yfinance rows, an old-covered symbol is never re-backfilled. Deliberately unchanged here — filtering it would trigger a repository-wide backfill sweep — and tracked as its own follow-up.",
+      "sql": "SELECT symbol, COUNT(*) FROM ticker_prices WHERE symbol = ANY(%s) GROUP BY symbol"
+    },
+    {
+      "file": "scripts/price_db_sync.py",
+      "hash": "96494a912a82baa6",
+      "line": 482,
+      "kind": "writer",
+      "reason": "Second half of the statement at :702 (the bounded/prior-close CTE). Same writer.",
+      "sql": "ORDER BY UPPER(symbol), fetched_at::date, fetched_at DESC ), bounded AS ( SELECT c.symbol, c.price_date, c.price, prior.close_price AS prior_price FROM candidates c ..."
+    },
+    {
+      "file": "scripts/quarantine_price_spikes.py",
+      "hash": "22f712f8baf2d90b",
+      "line": 89,
+      "kind": "admin",
+      "reason": "Spike detector over the whole table; the yfinance history is part of what it grades and repairs.",
+      "sql": "WITH d AS ( SELECT id, symbol, price_date, close_price, source, lag(close_price) OVER w AS prev, lead(close_price) OVER w AS nxt FROM ticker_prices ..."
+    },
+    {
+      "file": "scripts/quarantine_price_spikes.py",
+      "hash": "533403e8d6f68ac1",
+      "line": 226,
+      "kind": "admin",
+      "reason": "Removal of a row the spike detector selected, by id. Not a read.",
+      "sql": "DELETE FROM ticker_prices WHERE id=%s"
+    },
+    {
+      "file": "scripts/scrub_ticker_price_outliers.py",
+      "hash": "56c276e5e10ac7ef",
+      "line": 101,
+      "kind": "admin",
+      "reason": "Historical-corruption scrub for one symbol, every source.",
+      "sql": "SELECT symbol, price_date, close_price, id FROM ticker_prices WHERE symbol=%s ORDER BY price_date"
+    },
+    {
+      "file": "scripts/scrub_ticker_price_outliers.py",
+      "hash": "3f2b15b4baa53471",
+      "line": 105,
+      "kind": "admin",
+      "reason": "The same scrub's whole-table variant, which walks every source's rows; a source filter would leave the corrupt yfinance bars ungraded and unrepaired.",
+      "sql": "SELECT symbol, price_date, close_price, id FROM ticker_prices ORDER BY symbol, price_date"
+    },
+    {
+      "file": "scripts/scrub_ticker_price_outliers.py",
+      "hash": "936318624224e822",
+      "line": 130,
+      "kind": "admin",
+      "reason": "Copies a corrupt row into ticker_prices_quarantine before removal; writes the quarantine table, not a read of ticker_prices.",
+      "sql": "INSERT INTO ticker_prices_quarantine (original_id, symbol, price_date, close_price, source, created_at, quality_reason, baseline, deviation_ratio, ..."
+    },
+    {
+      "file": "scripts/scrub_ticker_price_outliers.py",
+      "hash": "696a9fee3e2acfff",
+      "line": 139,
+      "kind": "admin",
+      "reason": "Removal of a row the scrub selected, by id. Not a read.",
+      "sql": "DELETE FROM ticker_prices WHERE id = %s"
+    },
+    {
+      "file": "scripts/source_litmus_vs_yahoo.py",
+      "hash": "1eec53c04f9e60d3",
+      "line": 137,
+      "kind": "source_grading",
+      "reason": "Source litmus: compares each source's close against another feed on the same date. Excluding a source would delete the evidence being graded.",
+      "sql": "SELECT symbol, source, close_price FROM ticker_prices WHERE price_date = %s AND symbol ~ '^[A-Z]{1,5}$' AND close_price > 0"
+    },
+    {
+      "file": "scripts/source_litmus_vs_yahoo.py",
+      "hash": "d210b2c29d23eff2",
+      "line": 157,
+      "kind": "source_grading",
+      "reason": "Litmus session selection (weekday coverage), per source.",
+      "sql": "SELECT price_date FROM ticker_prices WHERE price_date < CURRENT_DATE AND extract(isodow FROM price_date) < 6 GROUP BY price_date HAVING count(*) >= 10"
+    },
+    {
+      "file": "scripts/source_litmus_vs_yahoo.py",
+      "hash": "9b5bd61674b1f4eb",
+      "line": 166,
+      "kind": "source_grading",
+      "reason": "Litmus weekend-coverage census, grouped by source; it must see every source.",
+      "sql": "SELECT price_date, source, count(*) FROM ticker_prices WHERE price_date > CURRENT_DATE - 30 AND extract(isodow FROM price_date) >= 6 GROUP BY 1, 2"
+    }
+  ]
+}

@@ -35,6 +35,11 @@ REQUIRED = ("id", "group", "title", "instruments", "accounts", "direction", "siz
             "entry_logic", "invalidation", "factors", "as_of", "mode")
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def _load(name):
     p = ROOT / "data" / "runtime" / name
     return json.loads(p.read_text()) if p.exists() else {}
@@ -176,7 +181,8 @@ def _prices(cur, symbols) -> dict:
     if not symbols:
         return {}
     cur.execute("""SELECT DISTINCT ON (symbol) symbol, close_price FROM ticker_prices
-                   WHERE symbol = ANY(%s) ORDER BY symbol, price_date DESC""", (list(symbols),))
+                   WHERE symbol = ANY(%s) AND """ + sql_source_allowed() + """
+                   ORDER BY symbol, price_date DESC""", (list(symbols),))
     return {r[0]: float(r[1]) for r in cur.fetchall() if r[1]}
 
 

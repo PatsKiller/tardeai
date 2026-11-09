@@ -89,6 +89,11 @@ BRIDGE_MODEL = "governed-bridge"
 BRIDGE_CIO_PROCESS_ID = "watchlist_cio_synthesis_cron"
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def _via_bridge() -> bool:
     return os.environ.get(VIA_BRIDGE_ENV, "off").strip().lower() in {"1", "on", "bridge"}
 
@@ -966,7 +971,8 @@ def _get_context(conn, symbol: str) -> dict:
     sc = cur.fetchone()
 
     # Recent prices from DB
-    cur.execute("SELECT close_price, price_date FROM ticker_prices WHERE symbol=%s ORDER BY price_date DESC LIMIT 5", (symbol,))
+    cur.execute("SELECT close_price, price_date FROM ticker_prices WHERE symbol=%s "
+                "AND " + sql_source_allowed() + " ORDER BY price_date DESC LIMIT 5", (symbol,))
     prices = cur.fetchall()
     # Sanitise ONCE, here, so the snapshot the agent is judged on and the prompt text it
     # actually reads can never disagree — and neither can carry a non-finite close.
@@ -2348,7 +2354,8 @@ def _build_dq_note(conn, symbol: str, dq_alert_count: int) -> str:
         pass
     try:
         cur = conn.cursor()
-        cur.execute("SELECT MAX(price_date) FROM ticker_prices WHERE symbol=%s", (symbol,))
+        cur.execute("SELECT MAX(price_date) FROM ticker_prices WHERE symbol=%s AND "
+                    + sql_source_allowed(), (symbol,))
         last_px = (cur.fetchone() or [None])[0]
         if last_px is None:
             stale.append("close price: NO price history in DB")

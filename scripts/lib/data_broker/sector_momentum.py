@@ -23,6 +23,11 @@ SECTOR_ETFS = [
 ]
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def _latest_positive_date(series) -> Any:
     dates = [d for d, price in series if price is not None and price > 0]
     return max(dates) if dates else None
@@ -86,6 +91,7 @@ def get_sector_signals(db_query, *, symbols=None) -> dict[str, Any]:
              FROM ticker_prices
             WHERE upper(symbol) = ANY(%s) AND price_date > CURRENT_DATE - 200
               AND close_price > 0
+              AND """ + sql_source_allowed() + """
             GROUP BY upper(symbol), price_date ORDER BY upper(symbol), price_date""",
         (requested + ["SPY"],), fetch="all",
     ) or []

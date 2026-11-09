@@ -35,6 +35,11 @@ STRESS_WINDOWS = [
 ]
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def ensure_analytics_tables(cur) -> None:
     try:
         from lib.redeploy_schema import run_migrations_once
@@ -49,6 +54,7 @@ def load_closes(cur, symbol: str, *, days: int = 1900) -> list[tuple[date, float
     cur.execute(
         """SELECT price_date, close_price FROM ticker_prices
            WHERE symbol=%s AND price_date >= %s AND close_price > 0
+             AND """ + sql_source_allowed() + """
            ORDER BY price_date""",
         (symbol.upper(), (date.today() - timedelta(days=days)).isoformat()),
     )

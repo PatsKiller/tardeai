@@ -55,6 +55,11 @@ SCHEMA = "MaterialChange@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def _affiliation(oscillator_id: str, **kw):
     """Fail-soft oscillator stamp. Labelling must never break detection."""
     try:
@@ -549,6 +554,7 @@ def price_excursions(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
                    lag(close_price) OVER (PARTITION BY symbol ORDER BY price_date) prev
               FROM ticker_prices
              WHERE symbol = ANY(%s) AND price_date > current_date - %s
+               AND """ + sql_source_allowed() + """
                -- ticker_prices carries literal NaN in a numeric column (2 rows,
                -- 2026-09-06). Note numeric NaN compares EQUAL to itself in
                -- Postgres, unlike float, so this cannot be written as

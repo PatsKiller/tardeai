@@ -18,6 +18,11 @@ LOOKBACK = 20
 TEST_LOOKBACK = 60
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def _dict(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
@@ -48,6 +53,7 @@ def _series(ex: Callable[..., Any], symbol: str, days: int = 180) -> list[tuple[
         """SELECT price_date, close_price FROM ticker_prices
            WHERE upper(symbol)=%s AND price_date > CURRENT_DATE - %s
              AND close_price IS NOT NULL
+             AND """ + sql_source_allowed() + """
            ORDER BY price_date""",
         (symbol.upper(), days), fetch="all",
     ) or []

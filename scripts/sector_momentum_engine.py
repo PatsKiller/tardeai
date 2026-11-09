@@ -31,11 +31,17 @@ CFG = json.loads((ROOT / "config" / "sector_momentum.json").read_text())
 STATES = ("LEADING", "WEAKENING", "LAGGING", "IMPROVING")
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def _closes(cur, symbols, days=90):
     cur.execute(
-        """SELECT symbol, price_date, close_price FROM ticker_prices
-           WHERE symbol = ANY(%s) AND price_date > CURRENT_DATE - %s
-           ORDER BY symbol, price_date""", (list(symbols), days + 40))
+        "SELECT symbol, price_date, close_price FROM ticker_prices "
+        "WHERE symbol = ANY(%s) AND price_date > CURRENT_DATE - %s "
+        "AND " + sql_source_allowed() + " "
+        "ORDER BY symbol, price_date", (list(symbols), days + 40))
     out = {}
     for sym, d, px in cur.fetchall():
         out.setdefault(sym, []).append((d, float(px)))
@@ -120,6 +126,7 @@ def _breadth(cur, etf_sector_name):
                       avg(close_price) FILTER (WHERE price_date > CURRENT_DATE - 30) AS dma
                FROM ticker_prices WHERE symbol = ANY(%s)
                  AND price_date > CURRENT_DATE - 45
+                 AND """ + sql_source_allowed() + """
                GROUP BY symbol HAVING count(*) >= 15""", (members,))
         above = total = 0
         for _s, last, dma in cur.fetchall():

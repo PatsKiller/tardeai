@@ -28,6 +28,11 @@ LANE_ID = "price-db-sync"
 ALPACA_PRICE_SOURCE = "alpaca"
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def _receipt_lib():
     try:
         from scripts.lib import lane_last_receipt as lr
@@ -257,6 +262,7 @@ def sync_daily_prices():
     def _prior_close(sym: str):
         cur.execute("""SELECT close_price FROM ticker_prices
                        WHERE symbol=%s AND price_date < %s
+                         AND """ + sql_source_allowed() + """
                        ORDER BY price_date DESC LIMIT 1""", (sym, today))
         row = cur.fetchone()
         return float(row[0]) if row else None
@@ -351,7 +357,8 @@ def get_price_from_db(symbol: str, date_str: str, fidelity_map: dict = None) -> 
         # Exact date — honor quarantine skip
         if not (is_quarantined and is_quarantined(mapped, date_str, q)):
             cur.execute(
-                "SELECT close_price FROM ticker_prices WHERE symbol=%s AND price_date=%s",
+                "SELECT close_price FROM ticker_prices WHERE symbol=%s AND price_date=%s "
+                "AND " + sql_source_allowed(),
                 (mapped, date_str),
             )
             row = cur.fetchone()
@@ -362,6 +369,7 @@ def get_price_from_db(symbol: str, date_str: str, fidelity_map: dict = None) -> 
         cur.execute("""
             SELECT close_price, price_date FROM ticker_prices
             WHERE symbol=%s AND price_date BETWEEN %s::date - 5 AND %s::date + 5
+              AND """ + sql_source_allowed() + """
             ORDER BY ABS(price_date - %s::date)
         """, (mapped, date_str, date_str, date_str))
         for price, pdt in cur.fetchall() or []:
@@ -404,7 +412,8 @@ def get_latest_price_from_db(symbol: str) -> float | None:
         # Bound the walk so a fully-quarantined symbol cannot scan forever.
         cur.execute(
             "SELECT close_price, price_date FROM ticker_prices "
-            "WHERE symbol=%s ORDER BY price_date DESC LIMIT 60",
+            "WHERE symbol=%s AND " + sql_source_allowed() + " "
+            "ORDER BY price_date DESC LIMIT 60",
             (symbol,),
         )
         for price, pdt in cur.fetchall() or []:

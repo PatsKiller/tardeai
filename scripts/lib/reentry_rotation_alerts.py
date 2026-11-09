@@ -14,6 +14,11 @@ import json
 from dataclasses import dataclass
 from typing import Any, Callable
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 ROTATION_PREF_KEY = "portfolio.reentry.rotation-links.v1"
 ALERT_PREF_KEY = "portfolio.reentry.composite-alerts.v1"
 
@@ -73,6 +78,7 @@ def _closes(ex: Callable[..., Any], symbol: str, days: int = 320) -> list[tuple[
         """SELECT price_date, close_price FROM ticker_prices
            WHERE upper(symbol)=%s AND price_date > CURRENT_DATE - %s
              AND close_price IS NOT NULL
+             AND """ + sql_source_allowed() + """
            ORDER BY price_date""",
         (symbol.upper(), days),
         fetch="all",

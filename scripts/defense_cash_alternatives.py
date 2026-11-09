@@ -67,6 +67,11 @@ UNIVERSE = {
 }
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def _scripts_on_path() -> None:
     for p in (str(ROOT / "scripts"), str(ROOT)):
         if p not in sys.path:
@@ -161,7 +166,8 @@ def load_prices(query, symbols: list[str], now: datetime | None = None) -> dict:
     if missing:
         try:
             rows = query("SELECT DISTINCT ON (symbol) symbol, close_price, price_date FROM ticker_prices "
-                         "WHERE symbol = ANY(%s) AND close_price IS NOT NULL ORDER BY symbol, price_date DESC",
+                         "WHERE symbol = ANY(%s) AND close_price IS NOT NULL AND "
+                         + sql_source_allowed() + " ORDER BY symbol, price_date DESC",
                          (missing,))
         except Exception:
             rows = []

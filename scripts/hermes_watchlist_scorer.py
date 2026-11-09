@@ -68,6 +68,11 @@ SECTOR_ETF = {"Technology": "XLK", "Financials": "XLF", "Energy": "XLE", "Health
 DB_ENV_NAMES = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def _conn():
     """A plain psycopg2 connection with db_adapter's parameters and its three per-connection safety nets.
 
@@ -976,6 +981,7 @@ def _marks(cur, symbols):
         quotes[str(sym).upper()] = {"price": price, "as_of": at, "source": "market_quotes"}
     cur.execute("""SELECT DISTINCT ON (symbol) symbol, close_price, price_date FROM ticker_prices
                    WHERE symbol = ANY(%s) AND close_price IS NOT NULL AND close_price > 0
+                     AND """ + sql_source_allowed() + """
                    ORDER BY symbol, price_date DESC""", (syms,))
     for sym, price, at in cur.fetchall():
         quotes.setdefault(str(sym).upper(), {"price": price, "as_of": at, "source": "ticker_prices"})

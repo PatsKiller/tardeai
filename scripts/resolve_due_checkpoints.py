@@ -74,6 +74,11 @@ from scripts.lib.outcome_resolution import (  # noqa: E402
 )
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def _state_root() -> Path:
     from scripts.lib.canonical_store_registry import production_state_root
     return Path(production_state_root())
@@ -92,7 +97,7 @@ def _price_lookup_factory():
             cur = conn.cursor()
             cur.execute(
                 "SELECT close_price, price_date FROM ticker_prices "
-                "WHERE symbol = %s AND price_date <= %s "
+                "WHERE symbol = %s AND price_date <= %s AND " + sql_source_allowed() + " "
                 "ORDER BY price_date DESC LIMIT 1",
                 (symbol, on_or_before),
             )

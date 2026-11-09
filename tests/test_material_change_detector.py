@@ -139,8 +139,11 @@ def test_the_query_excludes_nan_at_the_source(mod):
     # Checked against the EXECUTABLE sql only. The comment inside that same
     # string deliberately quotes the wrong form to explain why it is wrong, so
     # both a file-wide search and a naive block scope flag the explanation as
-    # the defect. Strip -- comments first.
-    sql = src.split("WITH d AS (", 1)[1].split('"""', 1)[0]
+    # the defect. Strip -- comments first. LQ-20261107-1695: the statement is now a
+    # triple-quoted block, the fixed predicate (lib.price_provenance.sql_source_allowed)
+    # and a second triple-quoted block, so it ends at the execute call's closing literal,
+    # not at the first triple quote.
+    sql = src.split("WITH d AS (", 1)[1].split('""", (list(syms)')[0]
     code = "\n".join(ln for ln in sql.splitlines() if not ln.strip().startswith("--"))
     assert "close_price = close_price" not in code
     assert "close_price <> 'NaN'::numeric" in code, "the guard is only in a comment"

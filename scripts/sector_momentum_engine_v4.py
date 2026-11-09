@@ -19,6 +19,11 @@ ROOT = Path(__file__).resolve().parent.parent
 POLICY = json.loads((ROOT / "config" / "defense_breadth_policy.json").read_text())
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def breadth_v4(cur, sector_name: str):
     """Return exact-20-session breadth with deterministic uncapped membership."""
     try:
@@ -43,6 +48,7 @@ def breadth_v4(cur, sector_name: str):
                      FROM ticker_prices
                     WHERE upper(symbol) = ANY(%s)
                       AND price_date > CURRENT_DATE - 90
+                      AND """ + sql_source_allowed() + """
                     GROUP BY upper(symbol), price_date
                ), ranked AS (
                    SELECT symbol, price_date, close_price,

@@ -36,6 +36,11 @@ DOWN_TYPES = {"analyst_downgrade", "earnings_miss", "insider_sell", "guidance_cu
               "negative_news_momentum", "margin_pressure", "reverse_stock_split"}
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def expected_direction(catalyst_type: str | None) -> str:
     t = str(catalyst_type or "").lower()
     if t in UP_TYPES:
@@ -83,6 +88,7 @@ def plan_rows(cur, days: int, weights: dict[str, float]) -> list[dict]:
                   COALESCE(ce.published_at, ce.created_at) AS ts,
                   (SELECT tp.close_price FROM ticker_prices tp
                     WHERE tp.symbol = upper(ce.symbol) AND tp.price_date <= COALESCE(ce.published_at, ce.created_at)::date
+                      AND """ + sql_source_allowed("tp") + """
                     ORDER BY tp.price_date DESC LIMIT 1) AS price_at_event
              FROM catalyst_events ce
              JOIN tracked t ON t.s = upper(ce.symbol)

@@ -55,6 +55,11 @@ TOL = {
     "realized_cover_min": 0.5,  # round trips must cover at least half the shares sold, or the gap must say so
 }
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def known_stop_statuses() -> set[str]:
     """Raw broker stop statuses the house state machine (cio_truth) maps; anything else shows as 'unknown'."""
     try:
@@ -156,7 +161,8 @@ def db_primary(query: Callable, state_root: Path) -> Primary:
 
     def closes(sym: str):
         out = rows("SELECT price_date, close_price FROM ticker_prices WHERE upper(symbol) = %s "
-                   "AND price_date >= %s ORDER BY price_date", (sym, date.today() - timedelta(days=1200)))
+                   "AND price_date >= %s AND " + sql_source_allowed() + " "
+                   "ORDER BY price_date", (sym, date.today() - timedelta(days=1200)))
         return None if out is None else [(str(r["price_date"])[:10], float(r["close_price"])) for r in out
                                          if _f(r.get("close_price"))]
 

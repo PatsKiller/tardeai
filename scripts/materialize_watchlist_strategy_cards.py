@@ -46,6 +46,11 @@ GROUND_TRUTH_CONTRADICTION = re.compile(
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
+try:  # scripts/ is on sys.path when this runs as a script; importers may use scripts.<module>
+    from lib.price_provenance import sql_source_allowed
+except ImportError:  # imported as scripts.<module> with only the repo root on sys.path
+    from scripts.lib.price_provenance import sql_source_allowed
+
 def _state_dir() -> Path:
     """data/portfolios/state on the served (persistent) root; the checkout copy only when unprovisioned."""
     try:
@@ -119,7 +124,8 @@ def compute_support_resistance(conn, symbol: str) -> dict:
     (LQ-20261107-110), and the age of that date is what says whether the price is current."""
     cur = conn.cursor()
     cur.execute("SELECT close_price, price_date FROM ticker_prices WHERE symbol=%s "
-                "AND price_date >= CURRENT_DATE - 60 ORDER BY price_date", (symbol,))
+                "AND price_date >= CURRENT_DATE - 60 AND " + sql_source_allowed() + " "
+                "ORDER BY price_date", (symbol,))
     rows = [(p, d) for p, d in ((_level(r[0]), r[1]) for r in cur.fetchall()) if p is not None]
     cur.close()
     prices = [p for p, _ in rows]
