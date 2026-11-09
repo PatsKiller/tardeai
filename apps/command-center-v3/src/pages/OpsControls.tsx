@@ -466,8 +466,11 @@ function JobsSchedules({ d, run }: { d: OpsControlsState | null; run: Run }) {
           style={{ ...input, flex: '1 1 180px', maxWidth: 280, minHeight: 28, fontSize: TYPE.sm }} />
       </div>
 
-      <div style={{ overflowX: 'auto', minWidth: 0 }}>
-        <table aria-label="Jobs and schedules" style={{ width: '100%', borderCollapse: 'collapse' }}>
+      {/* LQ-20261107-1500: keep every column; scroll the table inside this box so a 565 px min-content
+          table cannot widen the phone document (412 / 390). maxWidth+width pin the containing block;
+          the table keeps its natural width so overflow-x:auto actually scrolls. */}
+      <div data-testid="ops-jobs-table-scroll" style={{ overflowX: 'auto', maxWidth: '100%', width: '100%', minWidth: 0 }}>
+        <table aria-label="Jobs and schedules" style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'collapse' }}>
           <thead><tr>
             <th style={{ ...cell, color: TOKENS.text[3] }}>Job</th>
             <th style={{ ...cell, color: TOKENS.text[3], whiteSpace: 'nowrap' }}><HeadTip text="Status" tip={<>
@@ -544,7 +547,10 @@ function JobsSchedules({ d, run }: { d: OpsControlsState | null; run: Run }) {
           </tbody>
         </table>
       </div>
-      {hideQuiet && quietN ? <button type="button" onClick={() => setShowQuiet(true)} style={{ ...btnStyle('plain'), marginTop: 8 }} data-testid="ops-jobs-show-quiet">
+      {/* LQ-20261107-616 / 1500: btnStyle() is nowrap by design — a button reads as one word. This label is a
+          sentence; with a large quiet count it exceeds a phone width and widens the document even when the
+          schedule table scrolls inside its own box. Wrap this button only; count and tap target stay. */}
+      {hideQuiet && quietN ? <button type="button" onClick={() => setShowQuiet(true)} style={{ ...btnStyle('plain'), marginTop: 8, whiteSpace: 'normal', maxWidth: '100%', textAlign: 'left' }} data-testid="ops-jobs-show-quiet">
         Show {quietN} retired / never-scheduled job{quietN === 1 ? '' : 's'} (off on purpose, no crontab line)</button>
         : filter === 'all' && showQuiet && !searching ? <button type="button" onClick={() => setShowQuiet(false)} style={{ ...btnStyle('plain'), marginTop: 8 }}>Hide retired / never-scheduled</button> : null}
       {(jobs?.unmatched_active_lines ?? 0) > 0 ? <p style={muted}>{jobs?.unmatched_active_lines} active crontab line(s) match no registry job, so they are not listed or controllable here.</p> : null}

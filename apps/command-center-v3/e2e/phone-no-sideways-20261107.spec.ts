@@ -68,12 +68,39 @@ const incidents = {
   watchers_as_of: NOW, supervisor_as_of: NOW,
 }
 
+/** Live schedule-controls width comes from real rows (Job / Status / Runs on / Crontab·registry /
+ *  Schedule / Action) plus the “Show N retired…” sentence button. Empty jobs hid both defects. */
+const scheduleActive = Array.from({ length: 3 }, (_, i) => ({
+  lane_id: `fixture-active-lane-${i}-with-a-long-registry-id`,
+  cron_state: 'ACTIVE',
+  line_sha256: `sha${'ab'.repeat(16)}${i}`,
+  display: '7,22,37,52 9-16 * * 1-5 cd $PROJ && $PY scripts/fixture_lane.py --apply',
+  registry_state: 'ACTIVE',
+  scheduler_kind: 'cron',
+  schedule: '7,22,37,52 9-16 * * 1-5',
+  dispatch_mode: null,
+  broker_class: null,
+}))
+const scheduleQuiet = Array.from({ length: 105 }, (_, i) => ({
+  lane_id: `fixture-retired-${i}`,
+  cron_state: 'ABSENT',
+  line_sha256: null,
+  display: null,
+  registry_state: i % 2 ? 'RETIRED' : 'NEVER_SCHEDULED',
+  scheduler_kind: 'cron',
+  schedule: '0 3 * * *',
+  dispatch_mode: null,
+  broker_class: null,
+}))
+
 const controlsState = {
   policy: { state: 'ACTIVE', required: '19.0.0' }, operator: 'operator', as_of: NOW,
   store: { state: 'NOT_MIGRATED', missing_tables: [LONG_TOKEN], reason: `migration did not apply: ${LONG_TOKEN}` },
   applier: { state: 'OK' }, factors: { webauthn_library: 'present', hmac_key: 'present' },
   sudo_window: { state: 'CLOSED' },
-  settings: { state: 'OK', rows: [] }, jobs: { state: 'OK', rows: [] }, n8n: { state: 'OK', rows: [] },
+  settings: { state: 'OK', rows: [] },
+  jobs: { state: 'OK', as_of: NOW, rows: [...scheduleActive, ...scheduleQuiet] },
+  n8n: { state: 'OK', rows: [] },
   grants: { state: 'OK', active: [] }, data_approvals: { state: 'OK', rows: [] }, audit: { state: 'OK', rows: [] },
   deploy: { state: 'OK' }, passkeys: { state: 'OK' }, requests: { state: 'OK' },
   kinds: [], // a list, not a section: opsControls.ts:126 does `(state?.kinds || []).find(...)`
@@ -131,16 +158,33 @@ test('412 px: Ops → Incidents does not scroll sideways', async ({ page }) => {
   expect(writes, 'no request left the fake origin').toEqual([])
 })
 
-test('412 px: Ops → Controls does not scroll sideways', async ({ page }) => {
-  await page.setViewportSize(PHONE)
-  const writes = await serveApp(page)
-  await page.goto(ORIGIN + '/v3/system/ops-controls')
-  await expect(page.getByTestId('ops-controls')).toBeVisible()
-  await expect(page.getByText('Missing tables:')).toBeVisible()
-  const over = await sideways(page)
-  expect(over, 'Ops Controls scrollWidth - innerWidth at 412 px').toBeLessThanOrEqual(0)
-  expect(writes, 'no request left the fake origin').toEqual([])
-})
+for (const width of [412, 390] as const) {
+  test(`${width} px: Ops → Controls schedule table stays on-screen (LQ-1500)`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 412 ? 915 : 844 })
+    const writes = await serveApp(page)
+    await page.goto(ORIGIN + '/v3/system/ops-controls')
+    await expect(page.getByTestId('ops-controls')).toBeVisible()
+    await expect(page.getByText('Missing tables:')).toBeVisible()
+    // Default tab is Jobs: schedule-controls table + quiet-jobs sentence must both be present.
+    await expect(page.getByRole('table', { name: 'Jobs and schedules' })).toBeVisible()
+    await expect(page.getByTestId('ops-jobs-show-quiet')).toBeVisible()
+    // Columns stay (UI-removal change control); the wrapper scrolls, the document does not.
+    for (const h of ['Job', 'Status', 'Runs on', 'Crontab · registry', 'Schedule', 'Action']) {
+      await expect(page.getByRole('columnheader', { name: h, exact: true })).toBeVisible()
+    }
+    // Operator-visible pin first (fail-before on base 89b642153 was scrollWidth 468 at 412).
+    expect(await sideways(page), `Ops Controls scrollWidth - innerWidth at ${width} px`).toBeLessThanOrEqual(0)
+    // Tip-only: named overflow wrapper contains the wide table.
+    await expect(page.getByTestId('ops-jobs-table-scroll')).toBeVisible()
+    const tableBox = await page.getByRole('table', { name: 'Jobs and schedules' }).boundingBox()
+    const scrollBox = await page.getByTestId('ops-jobs-table-scroll').boundingBox()
+    expect(scrollBox, 'scroll wrapper has a box').not.toBeNull()
+    expect(tableBox, 'schedule table has a box').not.toBeNull()
+    expect(scrollBox!.width, 'scroll wrapper fits the viewport').toBeLessThanOrEqual(width + 1)
+    expect(tableBox!.width, 'table may be wider than the wrapper (internal scroll)').toBeGreaterThan(scrollBox!.width - 1)
+    expect(writes, 'no request left the fake origin').toEqual([])
+  })
+}
 
 /** Defense components at their real phone column width (344 px inside main's 20 px padding). */
 test.describe('defense components in a phone card column', () => {
