@@ -749,7 +749,7 @@ def _run_tracked(args, started, _run_id) -> int:
                     print(f"  {r['screener_id']:>25}: {r['total_found']} found, {r['new_tickers']} NEW → {r['sample'][:5]}")
 
         output = lane_output(result)
-        produced = int(output.get("produced_count") or 0)
+        produced = int(output["produced_count"])   # lane_output always returns it; absent would be a defect, not 0
         # LQ-20261107-1577: the contract grades what this lane PRODUCED (finviz-screener-runner,
         # N8nExpectedOutput@v1, min_produced=1); db_write_failed and no_tickers are non-fatal skips the
         # receipt carries explicitly. On 2026-11-09 the run wrote 42 of 45 screeners and still recorded

@@ -75,7 +75,7 @@ class _Cur:
             name = s.split()[1]
             sid = name[len("sp_scr_"):]
             self.conn.current_screener = sid
-            self.conn.attempts[sid] = self.conn.attempts.get(sid, 0) + 1
+            self.conn.attempts[sid] = self.conn.attempts.get(sid, 0) + 1  # nosemgrep: tq-py-missing-as-zero -- an attempt counter starts at 0; it counts executions, never a measurement
             self.conn.saves.append((name, len(self.conn.pending)))
             return
         if u.startswith("SAVEPOINT "):

@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "FINVIZ_SCREENER_LOCK_RETRY_20261109",
+  "files": [
+    "tests/test_finviz_screener_lock_retry_20261109.py"
+  ],
+  "anchor": "FINVIZ_SCREENER_LOCK_RETRY_20261109",
+  "comment": [
+    "ANCHOR: FINVIZ_SCREENER_LOCK_RETRY_20261109 — LQ-20261107-1577: the first weekday 10:00 ET slot lost 2 of",
+    "45 screeners to a 3 s SQLSTATE 55P03 lock_timeout on watchlist_items and then stamped the whole run",
+    "status=failed, which n8n_output_verdict grades empty_output before it reads produced_count -- a run that",
+    "wrote 1853 tickers was dead-lettered as an empty one. This gate pins the per-screener batch lock wait, the",
+    "bounded retry on 55P03 only, and a receipt whose status follows what the run produced."
+  ]
+}
