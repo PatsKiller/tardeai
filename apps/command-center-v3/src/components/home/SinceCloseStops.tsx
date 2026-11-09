@@ -52,18 +52,18 @@ function orderText(r: StopRow): { main: string; sub: string } {
   return { main: `${o.qty ?? '—'} sh @ ${price(o.stop ?? o.oldStop)}`, sub: `set quantity to the shares you hold${gtc}` }
 }
 
-function Row({ r, done, toggle }: { r: StopRow; done: boolean; toggle: () => void }) {
+function Row({ r, done, toggle, v5 }: { r: StopRow; done: boolean; toggle: () => void; v5?: boolean }) {
   const edge = r.urgent ? dn : warn
   const o = orderText(r)
   const tone = r.consequence ? (r.consequence.tone === 'danger' ? dn : r.consequence.tone === 'success' ? up : warn) : null
   return (
     <li data-testid="stop-row" data-kind={r.kind} data-urgent={r.urgent ? 'true' : 'false'} data-done={done ? 'true' : 'false'}
       style={{ listStyle: 'none', display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '4px 10px', padding: '10px 12px', minWidth: 0, opacity: done ? 0.55 : 1,
-        borderLeft: `4px solid ${edge.color}`, background: r.urgent ? dn.bg : TOKENS.bg[0], borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, borderLeftWidth: 4, borderLeftColor: edge.color } as CSSProperties}>
+        borderLeft: `4px solid ${edge.color}`, background: r.urgent ? dn.bg : v5 ? TOKENS.bg[2] : TOKENS.bg[0], borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, borderLeftWidth: 4, borderLeftColor: edge.color } as CSSProperties}>
       <span style={{ fontFamily: FONT.mono, color: TOKENS.text[3], fontSize: 13, paddingTop: 4 }}>{r.n}</span>
       <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 20, color: TOKENS.text[0] }}>{r.symbol}</b>
+          <b style={{ fontSize: v5 ? 18 : 20, color: TOKENS.text[0], fontFamily: v5 ? 'var(--font-display)' : undefined }}>{r.symbol}</b>
           {r.account && <span style={{ fontSize: 12, color: TOKENS.text[3] }}>{r.account}</span>}
         </div>
         <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.06em', color: info.color }}>{r.verb}</div>
@@ -89,7 +89,9 @@ function Row({ r, done, toggle }: { r: StopRow; done: boolean; toggle: () => voi
   )
 }
 
-export default function SinceCloseStops({ list, stamp, nowMs }: { list: StopList | null; stamp: StampWire | null; nowMs: number }) {
+/** `v5` (LQ-20261107-1352): the same list inside the v5 CIO card — cards on the card's raised surface, display-face
+ *  symbols, the header in the card's condensed face. Content, order, Done state and rule line are unchanged. */
+export default function SinceCloseStops({ list, stamp, nowMs, v5 }: { list: StopList | null; stamp: StampWire | null; nowMs: number; v5?: boolean }) {
   const [done, setDone] = useState<Record<string, boolean>>(loadDone)
   if (!list) {
     return (
@@ -108,12 +110,12 @@ export default function SinceCloseStops({ list, stamp, nowMs }: { list: StopList
   return (
     <div data-testid="since-close-stops" style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: TOKENS.text[0] }}>{list.header}</h3>
+        <h3 style={{ margin: 0, fontSize: v5 ? 15 : 16, fontWeight: v5 ? 700 : 800, color: TOKENS.text[0], fontFamily: v5 ? 'var(--font-display)' : undefined }}>{list.header}</h3>
         <AsOfBadge stamp={stamp} nowMs={nowMs} />
       </div>
       {list.actions.length === 0
         ? <p style={{ margin: 0, fontSize: 14, color: up.color }} data-testid="stops-none">Nothing to change at Schwab today.</p>
-        : <ol data-testid="stops-grid" style={GRID}>{list.actions.map(r => <Row key={dayKey(r)} r={r} done={!!done[dayKey(r)]} toggle={flip(r)} />)}</ol>}
+        : <ol data-testid="stops-grid" style={GRID}>{list.actions.map(r => <Row key={dayKey(r)} r={r} done={!!done[dayKey(r)]} toggle={flip(r)} v5={v5} />)}</ol>}
       {list.quiet.length > 0 && (
         // LQ-1318: a quiet row that carries an event says the event, never a bare "hold" — QuietRow draws r.what,
         // and stopAdvice reads the writer's `event_summary` into it. (LQ-1311's card layout is kept as it is.)

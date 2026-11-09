@@ -43,6 +43,8 @@ import { unwrapMarketRisk } from '../lib/marketRisk'
 import { vixFreshness } from '../lib/vixFreshness'
 import { deriveTodayPnlState } from '../lib/todayPnlState'
 import { RecoveryHomeCard } from '../components/recovery/RecoveryViews'
+import MarketRiskPanelV5 from '../components/home/MarketRiskPanelV5'
+import { CIO_CARD_API, panelVisible, type CioCardWire } from '../lib/cioCard'
 
 const unwrap = (d: any) => (d?.data && typeof d.data === 'object' && !Array.isArray(d.data) ? d.data : d)
 const signTone = (v: number | null | undefined): string => (v == null ? TOKENS.text[2] : v < 0 ? TOKENS.danger : v > 0 ? TOKENS.success : TOKENS.text[2])
@@ -155,6 +157,8 @@ export default function HomeDoNow() {
   // Design home/v002: the Market Risk Engine projection (tier, score, contributors, episode). Honest not_evaluated until P2.
   const { data: mrResp, loading: mrLoading } = useApi<any>('/api/v2/market-risk/latest', 60_000)
   const mr = unwrapMarketRisk(mrResp)
+  // LQ-20261107-1352 (design v5): one GET projection for the CIO card + Market Risk panel; every value carries provenance.
+  const { data: cio5 } = useApi<CioCardWire>(CIO_CARD_API, 60_000)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 60_000)
   const { data: posture } = useApi<any>('/api/v2/defense/posture', 300_000)
   const { data: oppTop } = useApi<any>(BEST_OPPORTUNITIES_API, 300_000)
@@ -239,12 +243,16 @@ export default function HomeDoNow() {
       <style>{'@media(max-width:820px){[data-testid="home-do-now-page"] a{min-height:44px!important;display:inline-flex;align-items:center;box-sizing:border-box}[data-testid="home-do-now-page"] aside{max-width:none!important}}'}</style>
       {/* Design home/v008 (operator-approved 2026-11-03): "Needs you" one-tap approvals, the very top of Home. Additive. */}
       {/* LQ-20261107-1253: "Since last close", always on, the top of Home (one line from 09:30 to 16:00 ET). */}
-      <SinceCloseCard />
+      <SinceCloseCard cio5={cio5} />
       <NeedsYouCard surface="home" />
-      {/* Design home/v002 §2: the market-risk banner, only while ORANGE or RED is evaluated; never sticky. */}
-      <MarketRiskBanner mr={mr} />
-      {/* Design home/v004: at YELLOW the same slot holds the calm, collapsible summary card (no Acknowledge). */}
-      <MarketRiskSummary mr={mr} />
+      {/* LQ-1352 design v5: at YELLOW/ORANGE/RED the Market Risk panel takes the banner/summary slot; otherwise (or with
+          no cio-card projection) the banner and summary draw exactly as before. */}
+      {panelVisible(cio5) ? <MarketRiskPanelV5 panel={cio5.panel} notes={cio5.notes} mr={mr} /> : (<>
+        {/* Design home/v002 §2: the market-risk banner, only while ORANGE or RED is evaluated; never sticky. */}
+        <MarketRiskBanner mr={mr} />
+        {/* Design home/v004: at YELLOW the same slot holds the calm, collapsible summary card (no Acknowledge). */}
+        <MarketRiskSummary mr={mr} />
+      </>)}
       {/* Design recovery-reentry (approved 2026-11-06): an open high-impact recovery case stays at the top of Home. */}
       <RecoveryHomeCard />
       <LatestDeepDive />

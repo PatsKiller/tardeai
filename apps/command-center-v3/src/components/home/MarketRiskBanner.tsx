@@ -67,7 +67,6 @@ export function MarketRiskCompact({ mr }: { mr: MarketRisk | null }) {
 
 /** Full-width banner, visible only for an evaluated ORANGE or RED (design home/v002 §2). Never sticky. */
 export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
-  const [ack, setAck] = useState<{ busy: boolean; note: string | null }>({ busy: false, note: null })
   const [detailsOpen, setDetailsOpen] = useState<boolean | null>(null)
   if (!bannerVisible(mr) || !mr) return null
   // design home/v005: the banner is extended with the same verdict, exposure, top review item and sections
@@ -77,18 +76,6 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
   const open = detailsOpen ?? !phone
   const tv = toneVars(tierTone(mr.tier))
   const sum = pointsSum(mr)
-  const acked = !!mr.episode?.acknowledged_at
-  const shadow = !!shadowMarker(mr)  // a shadow tier sent nothing and has no episode: nothing to acknowledge
-  const acknowledge = async () => {
-    setAck({ busy: true, note: null })
-    try {
-      const r = await fetch('/api/v2/market-risk/ack', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ episode_id: mr.episode?.id ?? null, episode_tier: mr.episode?.tier ?? null, tier: mr.tier, score: mr.score }) })
-      const j: any = await r.json().catch(() => ({}))
-      setAck({ busy: false, note: r.ok ? `Acknowledged ${shortTime(new Date().toISOString())}` : `Not recorded: ${j?.error ?? `HTTP ${r.status}`}${j?.detail ? ` — ${j.detail}` : ''}` })
-    } catch (e) {
-      setAck({ busy: false, note: `Not recorded: ${String(e)}` })
-    }
-  }
   return (
     <section data-testid="home-market-risk-banner" aria-label="Market risk banner" aria-live="polite"
       style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 14, borderRadius: RADIUS.lg, background: tv.bg, border: `1px solid ${tv.border}` }}>
@@ -138,15 +125,39 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
       )}
       {mr.deescalates_if && <div style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}><b style={{ color: TOKENS.text[0] }}>De-escalates if</b> {mr.deescalates_if}</div>}
       <div style={{ fontSize: TYPE.sm, color: TOKENS.text[3] }}>Advisory. No order, size or stop level is implied.</div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" data-testid="home-market-risk-ack" onClick={acknowledge} disabled={ack.busy || acked || shadow}
-          style={{ ...tap, flex: '1 1 140px', border: 0, background: tv.color, color: TOKENS.bg[0], fontWeight: 800, cursor: ack.busy || acked || shadow ? 'default' : 'pointer', opacity: acked || shadow ? 0.7 : 1 }}>
-          {shadow ? `${shadowMarker(mr) === SHADOW_MARKER ? 'Shadow' : 'Carried'}: nothing to acknowledge` : acked ? `Acknowledged ${shortTime(mr.episode?.acknowledged_at)}` : ack.busy ? 'Recording…' : 'Acknowledge'}
-        </button>
-        <Link to="/risk?tab=market-risk" style={{ ...tap, flex: '1 1 110px', border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1], color: TOKENS.text[0] }}>Open Risk</Link>
-        <Link to="/risk?tab=exposure" style={{ ...tap, flex: '1 1 110px', border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1], color: TOKENS.text[0] }}>Review stops</Link>
-      </div>
-      {ack.note && <div role="status" data-testid="home-market-risk-ack-note" style={{ fontSize: TYPE.base, color: ack.note.startsWith('Not recorded') ? toneVars('warning').color : toneVars('success').color }}>{ack.note}</div>}
+      <MarketRiskAckRow mr={mr} />
     </section>
+  )
+}
+
+/** Acknowledge + Open Risk + Review stops, shared by the banner and the v5 Market Risk panel (LQ-20261107-1352).
+ *  Acknowledge POSTs /api/v2/market-risk/ack (the episode ledger, not a broker route) and shows the server's answer. */
+export function MarketRiskAckRow({ mr }: { mr: MarketRisk }) {
+  const [ack, setAck] = useState<{ busy: boolean; note: string | null }>({ busy: false, note: null })
+  const tv = toneVars(tierTone(mr.tier))
+  const acked = !!mr.episode?.acknowledged_at
+  const shadow = !!shadowMarker(mr)  // a shadow tier sent nothing and has no episode: nothing to acknowledge
+  const acknowledge = async () => {
+    setAck({ busy: true, note: null })
+    try {
+      const r = await fetch('/api/v2/market-risk/ack', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ episode_id: mr.episode?.id ?? null, episode_tier: mr.episode?.tier ?? null, tier: mr.tier, score: mr.score }) })
+      const j: any = await r.json().catch(() => ({}))
+      setAck({ busy: false, note: r.ok ? `Acknowledged ${shortTime(new Date().toISOString())}` : `Not recorded: ${j?.error ?? `HTTP ${r.status}`}${j?.detail ? ` — ${j.detail}` : ''}` })
+    } catch (e) {
+      setAck({ busy: false, note: `Not recorded: ${String(e)}` })
+    }
+  }
+  return (
+    <div style={{ display: 'contents' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" data-testid="home-market-risk-ack" onClick={acknowledge} disabled={ack.busy || acked || shadow}
+            style={{ ...tap, flex: '1 1 140px', border: 0, background: tv.color, color: TOKENS.bg[0], fontWeight: 800, cursor: ack.busy || acked || shadow ? 'default' : 'pointer', opacity: acked || shadow ? 0.7 : 1 }}>
+            {shadow ? `${shadowMarker(mr) === SHADOW_MARKER ? 'Shadow' : 'Carried'}: nothing to acknowledge` : acked ? `Acknowledged ${shortTime(mr.episode?.acknowledged_at)}` : ack.busy ? 'Recording…' : 'Acknowledge'}
+          </button>
+          <Link to="/risk?tab=market-risk" style={{ ...tap, flex: '1 1 110px', border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1], color: TOKENS.text[0] }}>Open Risk</Link>
+          <Link to="/risk?tab=exposure" style={{ ...tap, flex: '1 1 110px', border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1], color: TOKENS.text[0] }}>Review stops</Link>
+        </div>
+        {ack.note && <div role="status" data-testid="home-market-risk-ack-note" style={{ fontSize: TYPE.base, color: ack.note.startsWith('Not recorded') ? toneVars('warning').color : toneVars('success').color }}>{ack.note}</div>}
+    </div>
   )
 }
