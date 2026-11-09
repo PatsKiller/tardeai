@@ -228,10 +228,10 @@ class TestVolatilitySeesFridaysPrint:
 class FakeQuoteReader(rd.PgReader):
     """PgReader with its SQL replaced by scripted quote rows."""
 
-    def __init__(self, rows):  # noqa: D401 - test double, no connection
+    def __init__(self, rows):  # noqa: D401 -- a test double has no connection to close, so no docstring contract
         self._fake_rows = rows
 
-    def _rows(self, sql, params):  # noqa: ANN001 - the parent's signature
+    def _rows(self, sql, params):  # noqa: ANN001 -- mirrors the parent PgReader signature it replaces
         return list(self._fake_rows)
 
 
