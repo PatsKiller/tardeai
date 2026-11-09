@@ -111,6 +111,22 @@ def test_a_cash_row_is_never_symbol_card_enriched(tmp_path):
     assert out["summary"]["rotation_ideas"] == 0, "a cash row was paired into a rotation idea"
 
 
+def test_the_fallback_denominator_still_includes_cash(tmp_path):
+    """No `portfolio_totals`: the engine falls back to summing the document, cash included.
+
+    cc-deepseek-7 review F1. The fallback used to sum every row; dropping cash from the rows it
+    iterated would have made the same holding read 100% instead of 25% — a latent, silent change of
+    meaning in the one path no live caller uses today (the live document always carries total_value).
+    """
+    book = _sweep_book()
+    del book["portfolio_totals"]
+    out = _run(tmp_path, book)
+
+    assert [c["symbol"] for c in out["top_candidates"]] == ["ZQAAA"]
+    assert out["data_quality"]["cash_rows_excluded"] == 2
+    assert out["top_candidates"][0]["evidence"]["concentration_pct"] == 25.0
+
+
 if __name__ == "__main__":  # pragma: no cover
     import pytest
 

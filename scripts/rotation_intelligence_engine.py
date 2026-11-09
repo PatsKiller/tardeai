@@ -374,8 +374,10 @@ def main() -> int:
     # reader write one synthetic row per account with symbol "CASH", is_cash=true; the symbol-card
     # layer resolves that symbol to Pathward Financial (ticker CASH), so the row was scored as a
     # holding: $840,191.81 of a $1,256,476.87 book read as 66.9% concentration (trim 25) and "CASH"
-    # became a rotate-out source. Cash is dropped BEFORE enrichment, scoring and idea pairing; the
-    # denominator from portfolio_totals still includes cash, so every real holding keeps its weight.
+    # became a rotate-out source. Cash is dropped BEFORE enrichment, scoring and idea pairing. The
+    # denominator is portfolio_totals.total_value, which still includes cash, so every real holding
+    # keeps its weight; the fallback below sums the PRE-FILTER rows for the same reason (cc-deepseek-7
+    # review F1: summing the filtered list would have silently made the fallback a different denominator).
     rows = [r for r in payload_rows if not is_cash_row(r)]
     cash_rows_excluded = len(payload_rows) - len(rows)
     symbol_overrides = load_symbol_overrides(Path(args.etf_overrides))
@@ -383,7 +385,7 @@ def main() -> int:
     cards = cards_from_payload(json.loads(Path(args.cards).read_text())) if args.cards else {}
     total = as_float((payload.get("portfolio_totals", {}) or {}).get("total_value")) if isinstance(payload, dict) else 0.0
     if not total:
-        total = sum(as_float(first(r, "market_value", "current_value", "value")) for r in rows)
+        total = sum(as_float(first(r, "market_value", "current_value", "value")) for r in payload_rows)
 
     stops = {}
     if args.stops:
