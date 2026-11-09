@@ -7,9 +7,10 @@ One canonical join from every Hermes claim to money, in hermes_outcome_ledger:
                 sessions excess return vs SPY
   external_rec  every sent hermes_external_research recommendation — direction parsed
                 (long/short/neutral), graded direction-adjusted vs SPY
-  research_row  symbol-linked hermes_research_intelligence — graded on ACTION (did a
-                proposal / trade / directive hit follow?); also fills
-                hermes_research_intelligence.downstream_outcome (was 100% NULL)
+  research_row  symbol-linked hermes_research_intelligence — graded on the 20-session
+                excess return (outcome_ret_20d). A directive, proposal, or trade is
+                engagement only. Inside the horizon the verdict stays pending. Also
+                fills hermes_research_intelligence.downstream_outcome from actioned.
   trade         closed trade_instances — realized_r attached; claim records whether
                 Hermes research existed at entry
 
@@ -258,8 +259,15 @@ def grade(cur, cfg, max_rows=None) -> dict:
     # pending verdicts + verdict-holding rows whose 20d context prices haven't filled yet
     cur.execute("""SELECT id, subject_type, symbol, emitted_at::date, direction
                     FROM hermes_outcome_ledger
-                    WHERE verdict='pending' OR (price_20d IS NULL AND verdict IN ('hit','miss','neutral'))
-                    ORDER BY emitted_at LIMIT %s""", (max_rows or int(cfg["max_rows_per_run"]),))
+                    WHERE verdict='pending'
+                       OR (price_20d IS NULL AND verdict IN ('hit','miss','neutral'))
+                       OR (subject_type='research_row' AND outcome_ret_20d IS NOT NULL
+                           AND verdict IS DISTINCT FROM CASE
+                                WHEN outcome_ret_20d >= %s THEN 'hit'
+                                WHEN outcome_ret_20d <= %s THEN 'miss'
+                                ELSE 'neutral' END)
+                    ORDER BY emitted_at LIMIT %s""",
+                (hit_pct, miss_pct, max_rows or int(cfg["max_rows_per_run"]),))
     pending = cur.fetchall()
     if not pending:
         return {"graded": 0, "still_pending": 0}
@@ -283,9 +291,9 @@ def grade(cur, cfg, max_rows=None) -> dict:
     graded = still = ungradeable = 0
     now = datetime.now(timezone.utc)
     for lid, stype, sym, edate, direction in pending:
-        # Price sets the VERDICT only for price-claims; research_row is action-graded and
-        # trade is R/P&L-graded — for those, price columns are context and never a verdict.
-        price_verdict = stype in ("promotion", "external_rec")
+        # Price sets the VERDICT for price-claims and for research_row (measured
+        # outcome_ret_20d). trade is R/P&L-graded — for those, price columns are context.
+        price_verdict = stype in ("promotion", "external_rec", "research_row")
         bi = base_idx(edate)
         if bi is None:
             if price_verdict:
@@ -300,6 +308,11 @@ def grade(cur, cfg, max_rows=None) -> dict:
                 cur.execute("UPDATE hermes_outcome_ledger SET verdict='ungradeable', graded_at=NOW() WHERE id=%s", (lid,))
                 ungradeable += 1
             else:
+                if stype == "research_row":
+                    cur.execute("""UPDATE hermes_outcome_ledger
+                                   SET verdict='pending', graded_at=NULL
+                                   WHERE id=%s AND subject_type='research_row' AND verdict <> 'pending'""",
+                                (lid,))
                 still += 1
             continue
 
@@ -316,6 +329,11 @@ def grade(cur, cfg, max_rows=None) -> dict:
             if p5 is not None:
                 cur.execute("""UPDATE hermes_outcome_ledger SET base_price=%s, price_5d=%s, outcome_ret_5d=%s
                                WHERE id=%s""", (base, p5, round(e5, 3) if e5 is not None else None, lid))
+            if stype == "research_row":
+                cur.execute("""UPDATE hermes_outcome_ledger
+                               SET verdict='pending', graded_at=NULL
+                               WHERE id=%s AND subject_type='research_row' AND verdict <> 'pending'""",
+                            (lid,))
             still += 1
             continue
         if price_verdict:
@@ -337,8 +355,12 @@ def grade(cur, cfg, max_rows=None) -> dict:
 
 
 def grade_research_actions(cur, cfg) -> dict:
-    """Research rows: verdict = was it ACTIONED (proposal/trade/directive hit) within the window?
-    Also fills hermes_research_intelligence.downstream_outcome (only where NULL)."""
+    """Record whether a research row was actioned. The verdict is the 20-session price.
+
+    A directive surfacing, a proposal, or a trade is engagement, not a hit. ``verdict``
+    stays pending until ``grade`` has a measured ``outcome_ret_20d``. This still fills
+    ``hermes_research_intelligence.downstream_outcome`` from ``actioned`` where it is NULL.
+    """
     win = int(cfg["research_action_window_days"])
     cur.execute("""
         WITH r AS (
@@ -358,10 +380,7 @@ def grade_research_actions(cur, cfg) -> dict:
               ELSE 'none' END AS act
           FROM r
         )
-        UPDATE hermes_outcome_ledger l SET actioned = j.act,
-               verdict = CASE WHEN l.verdict='pending' AND j.act <> 'none' THEN 'hit'
-                              WHEN l.verdict='pending' THEN 'neutral' ELSE l.verdict END,
-               graded_at = COALESCE(l.graded_at, NOW())
+        UPDATE hermes_outcome_ledger l SET actioned = j.act
         FROM j WHERE l.id = j.lid""", (win, win, win, win))
     n = cur.rowcount
     # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.

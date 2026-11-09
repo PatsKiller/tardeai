@@ -13,8 +13,9 @@ verdict:
   hit_pct: 2.0
   miss_pct: -2.0
 
-# Research rows are graded on ACTION, not price: did a proposal / trade / directive hit follow
-# within this window of the research being written? (price columns still filled as context)
+# Research rows are graded on the 20-session excess return. Inside that horizon the verdict
+# stays pending. This window only records whether a proposal, trade, or directive followed.
+# It does not set the verdict. Price columns are the measured outcome.
 research_action_window_days: 14
 
 # A trade "had Hermes context" when symbol research existed in the N days before entry.

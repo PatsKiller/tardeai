@@ -247,6 +247,92 @@ def test_a_saturday_row_does_not_shift_the_20_session_horizon():
     assert final and final[0][2] == 55.0 and final[0][5] == "hit", final
 
 
+def _research_cfg():
+    return {"benchmark": "SPY", "horizons": {"short_sessions": 5, "long_sessions": 20},
+            "verdict": {"hit_pct": 2.0, "miss_pct": -2.0}, "max_rows_per_run": 10,
+            "research_action_window_days": 14}
+
+
+def _flat_book(sess, sym="ZZZQ"):
+    px = {("SPY", d): 100.0 for d in sess}
+    px.update({(sym, d): 50.0 for d in sess})
+    return px
+
+
+def test_a_research_row_inside_the_20_session_horizon_stays_pending():
+    """Engagement is not a verdict. Before 20 sessions the row is not graded."""
+    g = _grader()
+    sess = _trading_days(date(2026, 9, 1), 30)
+    px = _flat_book(sess)
+    ledger = [(7, "research_row", "ZZZQ", sess[20], "long")]
+    cur = GradeCursor(sess, ledger, px)
+    out = g.grade(cur, _research_cfg())
+    assert out["still_pending"] == 1
+    assert [p for s, p in cur.updates if "verdict=%s" in s] == []
+    assert any("verdict='pending'" in s for s, _p in cur.updates)
+
+
+def test_a_research_row_hit_is_the_20_session_excess_not_a_directive():
+    g = _grader()
+    sess = _trading_days(date(2026, 9, 1), 30)
+    px = _flat_book(sess)
+    px[("ZZZQ", sess[20])] = 55.0
+    ledger = [(7, "research_row", "ZZZQ", sess[0], "long")]
+    cur = GradeCursor(sess, ledger, px)
+    g.grade(cur, _research_cfg())
+    final = [p for s, p in cur.updates if "verdict=%s" in s]
+    assert final and final[0][5] == "hit" and final[0][4] == 10.0
+
+
+def test_a_research_row_miss_is_the_20_session_excess():
+    g = _grader()
+    sess = _trading_days(date(2026, 9, 1), 30)
+    px = _flat_book(sess)
+    px[("ZZZQ", sess[20])] = 40.0
+    ledger = [(7, "research_row", "ZZZQ", sess[0], "long")]
+    cur = GradeCursor(sess, ledger, px)
+    g.grade(cur, _research_cfg())
+    final = [p for s, p in cur.updates if "verdict=%s" in s]
+    assert final and final[0][5] == "miss"
+
+
+def test_a_research_row_inside_the_band_is_neutral_once_the_horizon_arrives():
+    g = _grader()
+    sess = _trading_days(date(2026, 9, 1), 30)
+    px = _flat_book(sess)
+    px[("ZZZQ", sess[20])] = 50.5
+    ledger = [(7, "research_row", "ZZZQ", sess[0], "long")]
+    cur = GradeCursor(sess, ledger, px)
+    g.grade(cur, _research_cfg())
+    final = [p for s, p in cur.updates if "verdict=%s" in s]
+    assert final and final[0][5] == "neutral"
+
+
+def test_recording_a_directive_does_not_write_a_hit(monkeypatch):
+    g = _grader()
+    seen: list[str] = []
+
+    class Cur:
+        rowcount = 1
+
+        def execute(self, sql, params=None):
+            seen.append(" ".join(str(sql).split()))
+
+    writer = importlib.import_module("lib.writers.hermes_research_writer")
+
+    def _link(cur, **kwargs):
+        seen.append("link")
+        return type("R", (), {"rows_written": 0})()
+
+    monkeypatch.setattr(writer, "link_from_join", _link)
+    out = g.grade_research_actions(Cur(), _research_cfg())
+    assert out["research_actioned"] == 1
+    updates = [s for s in seen if "UPDATE hermes_outcome_ledger" in s]
+    assert len(updates) == 1 and "actioned = j.act" in updates[0]
+    assert "verdict" not in updates[0]
+    assert "graded_at" not in updates[0]
+
+
 # --- the read model ---------------------------------------------------------------------------------------
 
 def test_get_session_closes_returns_rows_with_their_method_and_never_fetches():
