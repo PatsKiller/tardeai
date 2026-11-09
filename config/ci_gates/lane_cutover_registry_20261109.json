@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lane_cutover_registry_20261109",
+  "files": [
+    "tests/test_lane_cutover_registry_20261109.py"
+  ],
+  "anchor": "LANE_CUTOVER_REGISTRY_20261109",
+  "comment": [
+    "ANCHOR: LANE_CUTOVER_REGISTRY_20261109 — retiring a lane's cron line is the second step of the",
+    "cutover ladder, not the third. Lanes left on scheduler.kind cron after the retire are excused a",
+    "RUN_SKIPPED_LOCK by a twin that no longer exists: 2026-11-09 four lanes were held by their own",
+    "retired cron line at their own slot. The four now carry the dispatcher row and a cutover health",
+    "contract; the baseline of lanes still on cron may only shrink. Synthetic crontab, real registry."
+  ]
+}

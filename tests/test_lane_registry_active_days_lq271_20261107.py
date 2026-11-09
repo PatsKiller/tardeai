@@ -93,6 +93,20 @@ def days_from_cron(expression: str) -> list[int]:
     return sorted({(d + 6) % 7 for d in days})
 
 
+def schedule_of(row: dict) -> str:
+    """The row's schedule, whichever field states it.
+
+    A §23.11 dispatcher row (``kind: n8n``, ``expression: dispatcher``) names the generic workflow in
+    ``expression``; the schedule the lane fires on moved to ``cadence`` when the cutover retired its
+    cron line (LQ-20261107-1590 cut over four lanes this way, one of them incubator-llm-screener
+    below). The declaration is still derived from the schedule, and the row still declares it.
+    """
+    sched = row["scheduler"]
+    if sched.get("kind") == "n8n":
+        return sched["cadence"]
+    return sched["expression"]
+
+
 def declared_days(reg: dict, lane_id: str) -> list[int]:
     return row_of(reg, lane_id)["active_days"]
 
@@ -124,6 +138,21 @@ def never_produced(monkeypatch):
                         lambda *a, **k: {"last_output_at": None, "readable": True, "detail": "stub"})
 
 
+@pytest.fixture
+def every_n8n_lane_has_a_run(monkeypatch):
+    """An n8n row's scheduler "exists" when the run ledger shows a run inside its cadence.
+
+    ``inventory()`` says every cron/systemd scheduler is installed; an n8n row has no entry there —
+    its presence is read from the ledger and the RunReceipts (``LR.n8n_last_run``), which a synthetic
+    ``found`` cannot answer. Without this stub a dispatcher row is ORPHANED whatever it declares, and
+    the blast-radius tests would measure the ledger instead of the declaration. The stamp sits one
+    minute before SATURDAY, inside the 72 h cadence of the one n8n lane among the nineteen.
+    """
+    stamp = datetime(2026, 11, 7, 21, 19, tzinfo=timezone.utc).isoformat()
+    monkeypatch.setattr(LR, "n8n_last_run",
+                        lambda *a, **k: {"finished_at": stamp, "mode": "live", "state": "RUN_DONE"})
+
+
 def verdicts(reg: dict, now: datetime) -> dict[str, str]:
     found = inventory(reg)
     return {row["lane_id"]: LR.evaluate_lane(row, now=now, found=found)["verdict"]
@@ -148,10 +177,10 @@ def test_each_of_the_nineteen_rows_declares_the_days_its_cron_expression_states(
             assert row["scheduler"]["expression"] == "db-retention.timer"
             expected = SYSTEMD_DAYS[lane_id]
         else:
-            expected = days_from_cron(row["scheduler"]["expression"])
+            expected = days_from_cron(schedule_of(row))
         assert declared_days(reg, lane_id) == expected, (
-            f"{lane_id}: declares {declared_days(reg, lane_id)}, its expression "
-            f"{row['scheduler']['expression']!r} states {expected}")
+            f"{lane_id}: declares {declared_days(reg, lane_id)}, its schedule "
+            f"{schedule_of(row)!r} states {expected}")
 
 
 def test_every_declaration_is_a_list_of_weekday_ints():
@@ -168,13 +197,14 @@ def test_a_weekday_lane_did_not_gain_a_day_it_does_not_run_on():
     for lane_id in LANES:
         if lane_id in SYSTEMD_DAYS:
             continue
-        derived = set(days_from_cron(row_of(reg, lane_id)["scheduler"]["expression"]))
+        derived = set(days_from_cron(schedule_of(row_of(reg, lane_id))))
         assert set(declared_days(reg, lane_id)) <= derived, lane_id
 
 
 # ── 2. Saturday: exactly these nineteen stop being SILENT, nothing else moves ──────────────────────────────
 
-def test_on_a_saturday_the_nineteen_are_expected_silent_and_the_silent_count_drops_by_nineteen(never_produced):
+def test_on_a_saturday_the_nineteen_are_expected_silent_and_the_silent_count_drops_by_nineteen(
+        never_produced, every_n8n_lane_has_a_run):
     after = load()
     before = without_declarations(after)
 
@@ -190,7 +220,8 @@ def test_on_a_saturday_the_nineteen_are_expected_silent_and_the_silent_count_dro
     assert silent_before - silent_after == len(LANES), (silent_before, silent_after)
 
 
-def test_on_a_sunday_the_sunday_lanes_are_in_window_and_the_weekday_lanes_are_not(never_produced):
+def test_on_a_sunday_the_sunday_lanes_are_in_window_and_the_weekday_lanes_are_not(
+        never_produced, every_n8n_lane_has_a_run):
     reg = load()
     sunday = datetime(2026, 11, 8, 15, 0, tzinfo=timezone.utc)
     got = verdicts(reg, sunday)

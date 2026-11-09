@@ -5851,13 +5851,14 @@
       "lane_id": "sec-filings-feed",
       "owner": "cio",
       "scheduler": {
-        "kind": "cron",
-        "expression": "20 8,12,17,21 * * 1-5",
-        "command_text": "CUR=$(readlink -f $HOME/trade-ai-releases/portfolio-server/CURRENT) && cd \"$CUR\" && set -a && . /run/user/1000/tradeai/env && set +a && flock -n /tmp/tradeai_sec_filings_feed.lock $PY scripts/sec_filings_feed.py --apply >> $HOME/trade-ai-releases/persistent-state/logs/sec_filings_feed.log 2>&1",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "sec_filings_feed.py",
-        "stage": "canary",
+        "cadence": "20 8,12,17,21 * * 1-5",
+        "stage": "cutover",
         "wave": "W5",
-        "cutover_wave": "OVN-9"
+        "cutover_wave": "nightly-20261109",
+        "command_text": "CUR=$(readlink -f $HOME/trade-ai-releases/portfolio-server/CURRENT) && cd \"$CUR\" && set -a && . /run/user/1000/tradeai/env && set +a && flock -n /tmp/tradeai_sec_filings_feed.lock $PY scripts/sec_filings_feed.py --apply >> $HOME/trade-ai-releases/persistent-state/logs/sec_filings_feed.log 2>&1"
       },
       "expected_cadence_hours": 6.0,
       "active_days": [
@@ -5904,7 +5905,16 @@
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-11-07",
-      "adopted_reason": "OVN-9 n8n overnight onboarding (operator 2026-11-07): a row carrying a dispatch block is hand-maintained (AGENTS §23.11); the cron line keeps doing the real work, the dispatcher fires the dry run only (shadow stage, live_arg null)."
+      "adopted_reason": "OVN-9 n8n overnight onboarding (operator 2026-11-07): a row carrying a dispatch block is hand-maintained (AGENTS §23.11); the cron line keeps doing the real work, the dispatcher fires the dry run only (shadow stage, live_arg null).",
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "20 8,12,17,21 * * 1-5",
+        "command_text": "CUR=$(readlink -f $HOME/trade-ai-releases/portfolio-server/CURRENT) && cd \"$CUR\" && set -a && . /run/user/1000/tradeai/env && set +a && flock -n /tmp/tradeai_sec_filings_feed.lock $PY scripts/sec_filings_feed.py --apply >> $HOME/trade-ai-releases/persistent-state/logs/sec_filings_feed.log 2>&1",
+        "match": "sec_filings_feed.py",
+        "stage": "canary",
+        "wave": "W5",
+        "cutover_wave": "OVN-9"
+      }
     },
     {
       "lane_id": "contradiction-adjudicator",
@@ -22556,12 +22566,13 @@
       "lane_id": "portfolio-lookthrough-themes",
       "owner": "portfolio",
       "scheduler": {
-        "kind": "cron",
-        "expression": "40 7 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/portfolio_lookthrough_themes.py",
-        "stage": "canary",
-        "command_text": "cd $PROJ && flock -n /tmp/lookthrough_themes.lock $PY scripts/portfolio_lookthrough_themes.py --grok >> logs/lookthrough_themes.log 2>&1",
-        "cutover_wave": "CW0"
+        "cadence": "40 7 * * 1-5",
+        "stage": "cutover",
+        "cutover_wave": "nightly-20261109",
+        "command_text": "cd $PROJ && flock -n /tmp/lookthrough_themes.lock $PY scripts/portfolio_lookthrough_themes.py --grok >> logs/lookthrough_themes.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -22596,6 +22607,14 @@
         "class": "llm",
         "priority": 4,
         "retry_policy": "llm-transient"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "40 7 * * 1-5",
+        "match": "scripts/portfolio_lookthrough_themes.py",
+        "stage": "canary",
+        "command_text": "cd $PROJ && flock -n /tmp/lookthrough_themes.lock $PY scripts/portfolio_lookthrough_themes.py --grok >> logs/lookthrough_themes.log 2>&1",
+        "cutover_wave": "CW0"
       }
     },
     {
@@ -23107,12 +23126,13 @@
       "lane_id": "generate-analyst-reports-autonomous-weekly",
       "owner": "comms",
       "scheduler": {
-        "kind": "cron",
-        "expression": "15 21 * * 0",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/generate_analyst_reports_autonomous.py --mode weekly",
-        "stage": "canary",
-        "command_text": "cd $PROJ && flock -n /tmp/analyst_reports_weekly.lock $PY scripts/generate_analyst_reports_autonomous.py --mode weekly >> logs/analyst_reports_autonomous.log 2>&1",
-        "cutover_wave": "CW0"
+        "cadence": "15 21 * * 0",
+        "stage": "cutover",
+        "cutover_wave": "nightly-20261109",
+        "command_text": "cd $PROJ && flock -n /tmp/analyst_reports_weekly.lock $PY scripts/generate_analyst_reports_autonomous.py --mode weekly >> logs/analyst_reports_autonomous.log 2>&1"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
@@ -23147,6 +23167,14 @@
         "class": "pipeline",
         "priority": 3,
         "retry_policy": "none"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "15 21 * * 0",
+        "match": "scripts/generate_analyst_reports_autonomous.py --mode weekly",
+        "stage": "canary",
+        "command_text": "cd $PROJ && flock -n /tmp/analyst_reports_weekly.lock $PY scripts/generate_analyst_reports_autonomous.py --mode weekly >> logs/analyst_reports_autonomous.log 2>&1",
+        "cutover_wave": "CW0"
       }
     },
     {
@@ -24635,15 +24663,22 @@
     },
     {
       "lane_id": "incubator-llm-screener",
-      "active_days": [0, 1, 2, 3, 4],
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
       "owner": "proposals",
       "scheduler": {
-        "kind": "cron",
-        "expression": "10 8 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/incubator_llm_screener.py",
-        "stage": "canary",
-        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/incubator_llm_screener.lock $PY scripts/incubator_llm_screener.py --run >> logs/incubator_llm_screener.log 2>&1",
-        "cutover_wave": "CW0"
+        "cadence": "10 8 * * 1-5",
+        "stage": "cutover",
+        "cutover_wave": "nightly-20261109",
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/incubator_llm_screener.lock $PY scripts/incubator_llm_screener.py --run >> logs/incubator_llm_screener.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -24678,6 +24713,14 @@
         "class": "llm",
         "priority": 4,
         "retry_policy": "llm-transient"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "10 8 * * 1-5",
+        "match": "scripts/incubator_llm_screener.py",
+        "stage": "canary",
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/incubator_llm_screener.lock $PY scripts/incubator_llm_screener.py --run >> logs/incubator_llm_screener.log 2>&1",
+        "cutover_wave": "CW0"
       }
     },
     {
