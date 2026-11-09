@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1537_cio_action_write_once_20261109",
+  "files": [
+    "tests/test_lq1537_cio_action_write_once_20261109.py"
+  ],
+  "anchor": "LQ1537_CIO_ACTION_WRITE_ONCE_20261109",
+  "comment": [
+    "ANCHOR: LQ1537_CIO_ACTION_WRITE_ONCE_20261109 — LQ-20261107-1537 / defect #110.",
+    "Multi-rec ACTION_WRITE must transition once per batch; no ACTION_WRITE -> ACTION_WRITE spam."
+  ]
+}
