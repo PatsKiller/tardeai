@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "opend_health_throttle_lq1509_20261109",
+  "files": [
+    "tests/test_opend_health_throttle_lq1509_20261109.py",
+    "tests/test_account_state_classifier.py"
+  ],
+  "anchor": "OPEND_HEALTH_THROTTLE_LQ1509_20261109",
+  "comment": [
+    "ANCHOR: OPEND_HEALTH_THROTTLE_LQ1509_20261109 — LQ-20261107-1509.",
+    "A moomoo quote rate-limit is not SERVICE_DOWN: keep last-good, classify throttled,",
+    "and skip quote calls inside the probe cooldown so the shared OpenD quota is respected."
+  ]
+}

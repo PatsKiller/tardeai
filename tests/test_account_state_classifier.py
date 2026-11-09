@@ -154,6 +154,21 @@ def test_service_receipt_data_plane_down_is_failed_even_if_unit_active():
     assert v["failed"] is True and "not logged in" in v["detail"]
 
 
+def test_service_receipt_quote_throttle_is_not_failed():
+    """LQ-20261107-1509: rate-limit proves the plane answered — not SERVICE_DOWN."""
+    detail = ("query rejected: Get Market Snapshot request failed due to high frequency. "
+              "Maximum 60 times per 30 seconds.")
+    legacy = {"ok": False, "checked_at": _iso(0.5), "unit": {"state": "active"},
+              "port": {"open": True}, "quote": {"ok": False, "detail": detail}}
+    v = interpret_service_receipt(legacy, now=NOW)
+    assert v["failed"] is False and v.get("throttled") is True
+    assert "throttled" in v["detail"]
+    kept = {"ok": True, "throttled": True, "checked_at": _iso(0.5), "unit": {"state": "active"},
+            "port": {"open": True},
+            "quote": {"ok": True, "throttled": True, "detail": f"throttled; keeping last-good ({detail})"}}
+    assert interpret_service_receipt(kept, now=NOW)["failed"] is False
+
+
 def test_service_receipt_ok_is_not_failed():
     rec = {"ok": True, "checked_at": _iso(0.5), "unit": {"state": "active"}}
     assert interpret_service_receipt(rec, now=NOW)["failed"] is False

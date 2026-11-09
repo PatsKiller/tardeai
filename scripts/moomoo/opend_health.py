@@ -12,12 +12,18 @@ Three escalating checks, each reported honestly rather than collapsed into one b
 Writes data/runtime/moomoo_opend_health.json for the Health desk and alerts on a
 sustained outage. Read-only: no orders, no trade unlock, no subscriptions kept.
 
+LQ-20261107-1509: a quote rate-limit rejection ("Maximum 60 times per 30 seconds" /
+"high frequency") proves the data plane is up and logged in — it is not SERVICE_DOWN.
+Keep the last-good receipt, mark ``throttled``, and skip further quote calls for
+``QUOTE_COOLDOWN_S`` so this probe stays under the shared OpenD quota.
+
   .venv/bin/python scripts/moomoo/opend_health.py
   .venv/bin/python scripts/moomoo/opend_health.py --alert
 
-Exit codes: 0 data plane up; 3 (EXIT_FINDING) data plane down — a finding, not a
-crash. 1 is left to Python's uncaught-exception exit so health_tick.py can tell
-the two apart (n8n maturity B3.1, 2026-10-09; was 1 for "down" before).
+Exit codes: 0 data plane up (including throttled last-good); 3 (EXIT_FINDING) data
+plane down — a finding, not a crash. 1 is left to Python's uncaught-exception exit
+so health_tick.py can tell the two apart (n8n maturity B3.1, 2026-10-09; was 1 for
+"down" before).
 """
 from __future__ import annotations
 
@@ -38,6 +44,50 @@ FAIL_STREAK = ROOT / "data" / "runtime" / "moomoo_opend_fail_streak.json"
 UNIT = "trade-ai-lab-moomoo-opend.service"
 HOST, PORT = "127.0.0.1", 11111
 ALERT_AFTER = 3  # consecutive failures before shouting (probe runs every 5 min)
+# Shared OpenD quote quota is 60 / 30s across every client. This probe must not
+# burn a snapshot on every */5 tick when the last good (or last throttle) is fresh.
+QUOTE_COOLDOWN_S = 120
+
+
+def _is_throttle_detail(detail: object) -> bool:
+    """True when OpenD rejected the quote for rate limit, not auth or connectivity."""
+    text = str(detail or "").lower()
+    return "high frequency" in text or "maximum 60 times" in text or "60 times per 30" in text
+
+
+def _read_prior() -> dict:
+    try:
+        d = json.loads(STATE.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _parse_checked_at(value: object) -> datetime | None:
+    if not value:
+        return None
+    try:
+        text = str(value).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(text)
+    except (TypeError, ValueError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _within_cooldown(prior: dict, *, now: datetime) -> tuple[bool, str]:
+    """Skip a new quote when the prior receipt is recent enough to spare the quota."""
+    checked = _parse_checked_at(prior.get("checked_at"))
+    if checked is None:
+        return False, ""
+    age = (now - checked).total_seconds()
+    if age < 0 or age > QUOTE_COOLDOWN_S:
+        return False, ""
+    quote = prior.get("quote") if isinstance(prior.get("quote"), dict) else {}
+    if prior.get("ok") is True or prior.get("throttled") is True or _is_throttle_detail(quote.get("detail")):
+        return True, f"skipped quote; last receipt {age:.0f}s ago (cooldown {QUOTE_COOLDOWN_S}s)"
+    return False, ""
 
 
 def _unit_active() -> tuple[bool, str]:
@@ -104,6 +154,31 @@ def _quote_ok() -> tuple[bool, str]:
                 ctx.close()
 
 
+def _keep_last_good(prior: dict, *, detail: str, now: datetime) -> dict:
+    """Throttle / cooldown: data plane is up; carry the last successful receipt forward."""
+    prior_quote = prior.get("quote") if isinstance(prior.get("quote"), dict) else {}
+    last_good_at = prior.get("last_good_at") or (
+        prior.get("checked_at") if prior.get("ok") is True else None
+    )
+    return {
+        "ok": True,
+        "throttled": True,
+        "checked_at": now.isoformat(),
+        "unit": prior.get("unit") if isinstance(prior.get("unit"), dict) else {"name": UNIT},
+        "port": prior.get("port") if isinstance(prior.get("port"), dict) else {"host": HOST, "port": PORT, "open": True},
+        "quote": {
+            "ok": True,
+            "throttled": True,
+            "detail": detail,
+            "last_good_detail": prior_quote.get("detail"),
+        },
+        "last_good_at": last_good_at,
+        "fail_streak": 0,
+        "note": "Data plane only — no order path, no trade unlock. Rate-limit is not SERVICE_DOWN; "
+                "last-good kept (LQ-20261107-1509).",
+    }
+
+
 def _bump(ok: bool) -> int:
     try:
         d = json.loads(FAIL_STREAK.read_text()) if FAIL_STREAK.exists() else {}
@@ -115,41 +190,86 @@ def _bump(ok: bool) -> int:
     return n
 
 
+def probe(*, now: datetime | None = None, prior: dict | None = None,
+          quote_fn=None, port_fn=None, unit_fn=None) -> dict:
+    """One probe. Injectable clocks/I/O for tests — never talks to a broker order path."""
+    now = now or datetime.now(timezone.utc)
+    prior = prior if prior is not None else _read_prior()
+    active, unit_state = (unit_fn or _unit_active)()
+    port = (port_fn or _port_open)()
+    unit_block = {"name": UNIT, "active": active, "state": unit_state}
+    port_block = {"host": HOST, "port": PORT, "open": port}
+
+    if not port:
+        ok = False
+        quote, quote_detail = False, "port closed — not probed"
+        throttled = False
+    else:
+        cool, cool_detail = _within_cooldown(prior, now=now)
+        if cool:
+            kept = _keep_last_good(prior, detail=cool_detail, now=now)
+            kept["unit"] = unit_block
+            kept["port"] = port_block
+            kept["fail_streak"] = _bump(True)
+            return kept
+        quote, quote_detail = (quote_fn or _quote_ok)()
+        if (not quote) and _is_throttle_detail(quote_detail):
+            # A rate-limit rejection proves login + serving; keep last-good when we have it.
+            detail = f"throttled; keeping last-good ({quote_detail})"
+            if prior.get("ok") is True or (isinstance(prior.get("quote"), dict) and prior["quote"].get("ok") is True):
+                kept = _keep_last_good(prior, detail=detail, now=now)
+                kept["unit"] = unit_block
+                kept["port"] = port_block
+                kept["fail_streak"] = _bump(True)
+                return kept
+            # No last-good yet: still not SERVICE_DOWN — the throttle itself is the proof.
+            ok, throttled = True, True
+            quote = True
+            quote_detail = f"throttled; data plane responding ({quote_detail})"
+        else:
+            ok, throttled = bool(port and quote), False
+
+    streak = _bump(ok)
+    out = {
+        "ok": ok,
+        "throttled": throttled,
+        "checked_at": now.isoformat(),
+        "unit": unit_block,
+        "port": port_block,
+        "quote": {"ok": quote, "detail": quote_detail, **({"throttled": True} if throttled else {})},
+        "fail_streak": streak,
+        "note": "Data plane only — no order path, no trade unlock. A listening port "
+                "does NOT imply a successful login; the quote round-trip is the real gate. "
+                "A rate-limit rejection is not down (LQ-20261107-1509).",
+    }
+    if ok:
+        out["last_good_at"] = now.isoformat()
+    elif prior.get("last_good_at"):
+        out["last_good_at"] = prior.get("last_good_at")
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--alert", action="store_true", help="telegram on sustained failure")
     args = ap.parse_args()
 
-    active, unit_state = _unit_active()
-    port = _port_open()
-    quote, quote_detail = (_quote_ok() if port else (False, "port closed — not probed"))
-    # The QUOTE round-trip is the gate — it is the only check that proves OpenD is
-    # logged in and serving. Unit state is context, not truth: it was ANDed in here
-    # and cron (which cannot reach the user bus) reported "unknown", so the probe
-    # called a healthy data plane DOWN seven times and was three from paging.
-    # A working quote means the data plane is up however the process got started.
-    ok = port and quote
-
-    streak = _bump(ok)
-    out = {
-        "ok": ok,
-        "checked_at": datetime.now(timezone.utc).isoformat(),
-        "unit": {"name": UNIT, "active": active, "state": unit_state},
-        "port": {"host": HOST, "port": PORT, "open": port},
-        "quote": {"ok": quote, "detail": quote_detail},
-        "fail_streak": streak,
-        "note": "Data plane only — no order path, no trade unlock. A listening port "
-                "does NOT imply a successful login; the quote round-trip is the real gate.",
-    }
+    out = probe()
+    ok = bool(out.get("ok"))
+    streak = int(out.get("fail_streak") or 0)
     STATE.parent.mkdir(parents=True, exist_ok=True)
     STATE.write_text(json.dumps(out, indent=2))
     print(json.dumps(out, indent=2))
 
-    if args.alert and streak == ALERT_AFTER:
+    if args.alert and streak == ALERT_AFTER and not out.get("throttled"):
         try:
             sys.path.insert(0, str(ROOT / "scripts"))
             from telegram_alert import send_telegram
-            reason = unit_state if not active else ("port closed" if not port else quote_detail)
+            unit = out.get("unit") if isinstance(out.get("unit"), dict) else {}
+            port = out.get("port") if isinstance(out.get("port"), dict) else {}
+            quote = out.get("quote") if isinstance(out.get("quote"), dict) else {}
+            reason = (unit.get("state") if not unit.get("active")
+                      else ("port closed" if not port.get("open") else quote.get("detail")))
             send_telegram(f"⚠️ moomoo OpenD data plane DOWN ×{streak} — {reason}",
                           bypass_router=True)
         except Exception as e:

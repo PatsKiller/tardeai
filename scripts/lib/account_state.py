@@ -334,12 +334,28 @@ def write_sync_receipt(project_root: Path, account_key: str, *, ok: bool, error:
     return path
 
 
+def _receipt_throttled(receipt: dict[str, Any]) -> bool:
+    """OpenD quote rate-limit is not a failed data plane (LQ-20261107-1509)."""
+    if receipt.get("throttled") is True:
+        return True
+    q = receipt.get("quote") if isinstance(receipt.get("quote"), dict) else {}
+    if q.get("throttled") is True:
+        return True
+    text = str(q.get("detail") or "").lower()
+    return "high frequency" in text or "maximum 60 times" in text or "60 times per 30" in text
+
+
 def interpret_service_receipt(receipt: dict[str, Any], *, now: Optional[datetime] = None,
                               max_age_hours: float = RECEIPT_MAX_AGE_HOURS) -> dict[str, Any]:
     """Read a health-probe receipt (opend_health.py shape) into {failed, detail, fresh}.
 
     `failed` is None when the receipt is absent or too old to speak for the
     service — the caller then decides whether it may ask systemctl.
+
+    A quote rate-limit rejection (``throttled`` / "high frequency" / "Maximum 60 times
+    per 30 seconds") is not SERVICE_DOWN: the plane answered. Prefer last-good
+    (``ok: true`` + throttled) from the probe; even a legacy ``ok: false`` throttle
+    receipt must not mark the account down (LQ-20261107-1509).
     """
     if not receipt:
         return {"failed": None, "detail": "no service receipt", "fresh": False, "source": "receipt"}
@@ -354,6 +370,11 @@ def interpret_service_receipt(receipt: dict[str, Any], *, now: Optional[datetime
     if unit_state == "failed":
         detail = f"unit state failed (receipt {checked})"
         return {"failed": True, "detail": detail, "fresh": True, "source": "receipt", "checked_at": checked}
+    if _receipt_throttled(receipt):
+        q = receipt.get("quote") if isinstance(receipt.get("quote"), dict) else {}
+        why = q.get("detail") or "quote rate-limited"
+        return {"failed": False, "detail": f"service ok (throttled: {why}; receipt {checked})",
+                "fresh": True, "source": "receipt", "checked_at": checked, "throttled": True}
     if ok is False:
         q = receipt.get("quote") if isinstance(receipt.get("quote"), dict) else {}
         port = receipt.get("port") if isinstance(receipt.get("port"), dict) else {}
