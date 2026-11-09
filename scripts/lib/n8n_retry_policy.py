@@ -403,7 +403,8 @@ def finalize_outcome(store: Any, run_row: Mapping[str, Any], policy: Optional[Re
     ``attempt >= max_attempts``, upserts ``dead_letters`` (key = row ``slot_key`` or, for legacy rows, ``run_id``)
     and returns finding ``dlq:<lane>`` (``severity`` overrides the policy's dlq_severity, e.g. a P1 lane); when the
     lane then has ``consecutive_dead >= breaker_threshold`` and no open breaker, opens it (finding
-    ``breaker:<lane>`` P2). A RUN_DONE (verdict ok) auto-releases an open breaker (by ``auto:run_done``).
+    ``breaker:<lane>`` P2). A **live** RUN_DONE (verdict ok) auto-releases an open breaker (by ``auto:run_done``);
+    a dry_run RUN_DONE never does (LQ-20261107-1333: opall-20261108T1535 released due-diligence-questions).
     ``now`` is unix seconds.
 
     Code-level rails (``class_verdict`` / ``effective_max_attempts``), whatever the policy file says: the run's
@@ -434,8 +435,11 @@ def finalize_outcome(store: Any, run_row: Mapping[str, Any], policy: Optional[Re
         store.set_verdict(str(run_row["run_id"]), v)
         out = Outcome(verdict=v)
         if v == VERDICT_OK:
-            if store.release_breaker(lane, "auto:run_done", now) is not None:
-                out.breaker_closed = True
+            # Only a live RUN_DONE may release a live breaker (LQ-20261107-1333). A dry_run success proves the
+            # argv/allowlist path, not that the live effect is healthy — releasing here re-armed failing lanes.
+            if str(run_row.get("mode") or "") == "live":
+                if store.release_breaker(lane, "auto:run_done", now) is not None:
+                    out.breaker_closed = True
             return out
         attempt = int(run_row.get("attempt") or 1)
         if not (v == VERDICT_TERMINAL or (v == VERDICT_RETRYABLE and attempt >= max_attempts)):

@@ -296,6 +296,33 @@ def test_breaker_opens_after_three_and_run_done_closes_it(store, policies):
     assert store.consecutive_dead(LANE) == 0
 
 
+def test_dry_run_run_done_does_not_release_a_live_breaker(store, policies):
+    """LQ-20261107-1333: opall-20261108T1535 dry_run RUN_DONE released due-diligence-questions. Only live may."""
+    pol = policies.get("transient-2")
+    for i, minute in enumerate(("1000", "1100", "1200")):
+        row = _run_slot(store, minute, state="RUN_REFUSED", exit_code=None, reason="mode_unavailable:live",
+                        at=T0 + 100 * i)
+        rp.finalize_outcome(store, row, pol, breaker_threshold=3, now=T0 + 100 * i + 3)
+    assert store.breaker(LANE)["open"] is True
+    # dry_run success: verdict ok, breaker stays open, streak not cleared by the dry_run finish time
+    dry_slot = f"d:{LANE}:dry_run:20261009T1400"
+    store.request(run_id=dry_slot, lane_id=LANE, mode="dry_run", requested_by="n8n:opall", caller_id="opall",
+                  now=T0 + 500, slot_key=dry_slot, attempt=1, klass="report", priority=5)
+    assert store.claim_next(now=T0 + 501)["run_id"] == dry_slot
+    dry = store.finish(dry_slot, state="RUN_DONE", now=T0 + 502,
+                       receipt={"exit_code": 0, "reason": None, "duration_s": 0.1, "mode": "dry_run"})
+    out = rp.finalize_outcome(store, dry, pol, breaker_threshold=3, now=T0 + 503)
+    assert out.verdict == "ok" and out.breaker_closed is False
+    brk = store.breaker(LANE)
+    assert brk["open"] is True and brk["released_by"] is None
+    assert store.consecutive_dead(LANE) == 3  # dry_run must not reset the live streak
+    # live RUN_DONE still releases
+    ok = _run_slot(store, "1500", state="RUN_DONE", exit_code=0, reason=None, at=T0 + 600)
+    o_live = rp.finalize_outcome(store, ok, pol, breaker_threshold=3, now=T0 + 603)
+    assert o_live.breaker_closed is True
+    assert store.breaker(LANE)["open"] is False and store.breaker(LANE)["released_by"] == "auto:run_done"
+
+
 def test_skipped_and_other_lane_do_not_count(store, policies):
     pol = policies.get("transient-2")
     row = _run_slot(store, "1000", state="RUN_SKIPPED_LOCK", exit_code=75, reason="flock_held")

@@ -978,12 +978,14 @@ class LedgerRunStore:
 
     @_locked
     def consecutive_dead(self, lane_id: str) -> int:
-        """Dead slots of the lane since the later of its last RUN_DONE and its last breaker release.
+        """Dead slots of the lane since the later of its last **live** RUN_DONE and its last breaker release.
 
-        A RUN_DONE resets the streak; so does an operator breaker release (otherwise the next dead slot
-        would re-open the breaker at once)."""
+        A live RUN_DONE resets the streak; so does an operator breaker release (otherwise the next dead slot
+        would re-open the breaker at once). A dry_run RUN_DONE does not (LQ-20261107-1333): it must not clear
+        the live failure streak the breaker is guarding."""
         last_ok = self._l._conn.execute(
-            "SELECT MAX(finished_at) AS t FROM runs WHERE lane_id = ? AND state = 'RUN_DONE'", (lane_id,)).fetchone()["t"]
+            "SELECT MAX(finished_at) AS t FROM runs WHERE lane_id = ? AND state = 'RUN_DONE' AND mode = 'live'",
+            (lane_id,)).fetchone()["t"]
         brk = self.breaker(lane_id)
         cutoff = max([t for t in (last_ok, (brk or {}).get("released_at")) if t] or [""])
         row = self._l._conn.execute("SELECT COUNT(*) AS n FROM dead_letters WHERE lane_id = ? AND dead_at > ?",
