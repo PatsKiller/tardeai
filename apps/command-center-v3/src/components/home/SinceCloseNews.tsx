@@ -10,8 +10,10 @@
  */
 import { useState, type CSSProperties } from 'react'
 import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../../lib/designTokens'
-import { newsModel, GLOW_LABEL, type Glow } from '../../lib/sinceCloseNews'
-import type { SinceCloseWire } from '../../lib/sinceClose'
+import { newsModel, GLOW_LABEL, type Glow, type NewsCard } from '../../lib/sinceCloseNews'
+import { cioFrom, type SinceCloseWire } from '../../lib/sinceClose'
+import { storyFromCard } from '../../lib/homeStory'
+import HomeStorySheet from './HomeStorySheet'
 
 const up = toneVars('success')
 const dn = toneVars('danger')
@@ -44,8 +46,10 @@ const S = {
   watch: { fontSize: TYPE.sm, color: warn.color, background: warn.bg, borderRadius: RADIUS.sm, padding: '1px 6px' } as CSSProperties,
   title: { color: TOKENS.text[0], textDecoration: 'none', fontWeight: 600, display: '-webkit-box', WebkitLineClamp: 2,
     WebkitBoxOrient: 'vertical', overflow: 'hidden', fontSize: 14, lineHeight: 1.35 } as CSSProperties,
-  meta: { fontSize: 12, color: TOKENS.text[3], fontFamily: FONT.mono, overflowWrap: 'anywhere' } as CSSProperties,
-  dup: { fontSize: 12, color: TOKENS.text[3] } as CSSProperties,
+  meta: { fontSize: 12, color: TOKENS.text[3], fontFamily: FONT.mono, overflowWrap: 'anywhere', display: 'flex',
+    gap: 8, alignItems: 'baseline', flexWrap: 'wrap' } as CSSProperties,
+  open: { marginLeft: 'auto', color: info.color, fontWeight: 700 } as CSSProperties,
+  dup: { fontSize: 12, color: TOKENS.text[3], display: 'block' } as CSSProperties,
   legend: { display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, color: TOKENS.text[3] } as CSSProperties,
   dot: (c: string): CSSProperties => ({ display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
     marginRight: 5, verticalAlign: '-1px', background: c }),
@@ -58,6 +62,8 @@ const tone = (pct: number | null) => (pct == null || pct === 0 ? TOKENS.text[3] 
 
 export default function SinceCloseNews({ wire }: { wire: SinceCloseWire | null | undefined }) {
   const [all, setAll] = useState(false)
+  // LQ-1314: a card tap opens the internal view; the publisher link lives inside it, not on the card.
+  const [story, setStory] = useState<NewsCard | null>(null)
   const m = newsModel(wire)
   if (m.total === 0) {
     return <p style={{ ...S.meta, color: TOKENS.text[3] }} data-testid="since-close-feed-empty">No news on your names since the close.</p>
@@ -79,29 +85,33 @@ export default function SinceCloseNews({ wire }: { wire: SinceCloseWire | null |
       </div>
       <div style={S.grid}>
         {shown.map((c, i) => (
-          <article key={c.key} style={{ ...S.card, ...(c.glow ? glowStyle(c.glow) : null) }}
+          <button key={c.key} type="button" onClick={() => setStory(c)}
+            aria-label={`Open the internal view for ${c.lead}: ${c.title}`}
+            style={{ ...S.card, ...(c.glow ? glowStyle(c.glow) : null), width: '100%', boxSizing: 'border-box',
+              minHeight: 44, textAlign: 'left', font: 'inherit', color: 'inherit', cursor: 'pointer' }}
             data-testid={`sc-news-${c.rank ?? `x${i}`}`} data-kind={c.kind} data-glow={c.glow ?? 'none'}
             title={c.glowText ?? undefined}>
-            <div style={S.tickerRow}>
+            <span style={S.tickerRow}>
               <span style={S.sym}>{c.lead}</span>
               <span style={{ ...S.pct, color: tone(c.leadPct) }} data-testid="sc-news-move" data-tone={c.leadPct == null || c.leadPct === 0 ? 'flat' : c.leadPct > 0 ? 'up' : 'down'}>
                 {c.leadArrow} {c.leadText}
               </span>
               <span style={S.basis}>{c.basisText}</span>
               {c.badgeText && <span style={S.badge} data-testid="sc-news-rank">{c.badgeText}</span>}
-            </div>
+            </span>
             {(c.whyText || c.isWatch) && (
-              <div style={S.chipRow}>
+              <span style={S.chipRow}>
                 {c.whyText && <span style={S.why} data-testid="sc-news-why">{c.whyText}</span>}
                 {c.isWatch && <span style={S.watch}>watchlist</span>}
-              </div>
+              </span>
             )}
-            <div style={S.title} data-testid="sc-news-title">
-              {c.url ? <a href={c.url} target="_blank" rel="noreferrer" style={S.title}>{c.title}</a> : c.title}
-            </div>
-            <div style={S.meta}>{[c.sourcesText, c.timeText].filter(Boolean).join(' · ')}</div>
-            {c.dupText && <div style={S.dup} data-testid="sc-news-dup">{c.dupText}</div>}
-          </article>
+            <span style={S.title} data-testid="sc-news-title">{c.title}</span>
+            <span style={S.meta}>
+              <span>{[c.sourcesText, c.timeText].filter(Boolean).join(' · ')}</span>
+              <span style={S.open} data-testid="sc-news-open">CIO + summary ›</span>
+            </span>
+            {c.dupText && <span style={S.dup} data-testid="sc-news-dup">{c.dupText}</span>}
+          </button>
         ))}
       </div>
       {m.hidden > 0 && (
@@ -110,6 +120,8 @@ export default function SinceCloseNews({ wire }: { wire: SinceCloseWire | null |
           {all ? `Show top ${m.top.length}` : `Show all ${m.total}`}
         </button>
       )}
+      {story && <HomeStorySheet story={storyFromCard(story, wire)} cio={cioFrom(wire?.cio_brief)}
+        onClose={() => setStory(null)} />}
     </div>
   )
 }

@@ -1,11 +1,16 @@
 import { useState } from 'react'
 import { useApi } from '../../hooks/useApi'
 import { BB, T, TYPE, numStyle, heatRamp } from '../../lib/watchTokens'
+import { storyFromHeadline } from '../../lib/homeStory'
+import { StoryView } from './HomeStorySheet'
 
 // Home v2 WS-C: Major News grid — held + top-watch symbols as heat cells; click pops a modal
 // of GUARDED headlines (news_symbol_guard server-side; zero headlines = honest empty state).
-// Every outbound link target=_blank rel=noopener noreferrer. Modal actions: security card /
-// watch page — actionable, not a dead end.
+// Modal actions: security card / watch page — actionable, not a dead end.
+//
+// LQ-20261107-1314: a headline ROW used to be an external anchor (target=_blank). Tapping a story must land on
+// the internal view first — the symbol's CIO line and the headline — with the publisher as one deliberate
+// "Read source ↗" inside it. The row is now a button that opens StoryView in place.
 
 const FQDN = typeof window !== 'undefined' ? window.location.origin : ''
 
@@ -42,6 +47,10 @@ export function MajorNewsModalBody({ symbol, row, news, ingest, onClose }: {
   onClose: () => void
 }) {
   const p = pctOf(row?.day_change_pct)
+  // LQ-1314: which guarded headline the operator opened, if any. The modal stays one layer deep.
+  const [sel, setSel] = useState<number | null>(null)
+  const heads: any[] = news?.headlines || []
+  const open = sel != null ? heads[sel] : null
   return (
     <>
       <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', marginBottom: 10 }}>
@@ -52,18 +61,32 @@ export function MajorNewsModalBody({ symbol, row, news, ingest, onClose }: {
         <span style={{ flex: 1 }} />
         <button onClick={onClose} style={{ fontSize: TYPE.sm, color: BB.text3, background: 'transparent', border: 'none', cursor: 'pointer' }}>✕</button>
       </div>
-      {!news ? <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>loading headlines…</div> : (
+      {!news ? <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>loading headlines…</div> : open ? (
         <>
-          {(news.headlines || []).map((h: any, i: number) => (
-            <a key={i} href={h.url || '#'} target="_blank" rel="noopener noreferrer" style={{
-              display: 'flex', gap: 8, alignItems: 'baseline', padding: '6px 0', borderBottom: `1px solid ${BB.borderHair}`, textDecoration: 'none',
-            }}>
-              <span style={{ fontSize: 8.5, fontWeight: 700, color: BB.text3, border: `1px solid ${BB.borderHair}`, borderRadius: 2, padding: '0 5px', flexShrink: 0 }}>{domain(h.url) || h.source || 'source'}</span>
+          <button type="button" onClick={() => setSel(null)} data-testid="major-news-story-back"
+            style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', background: 'transparent', border: 'none',
+              color: T.link, fontSize: TYPE.sm, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', padding: 0, marginBottom: 8 }}>
+            ‹ Headlines
+          </button>
+          <StoryView story={storyFromHeadline(symbol, open, { movePct: p, basisText: 'today' })}
+            onClose={() => setSel(null)} inlineClose={false} />
+        </>
+      ) : (
+        <>
+          {heads.map((h: any, i: number) => (
+            <button key={i} type="button" onClick={() => setSel(i)} data-testid="major-news-headline"
+              aria-label={`Open the internal view for ${symbol}: ${h.title}`} style={{
+                display: 'flex', gap: 8, alignItems: 'baseline', padding: '6px 0', minHeight: 44, width: '100%',
+                boxSizing: 'border-box', textAlign: 'left', font: 'inherit', background: 'transparent', border: 'none',
+                borderBottom: `1px solid ${BB.borderHair}`, cursor: 'pointer',
+              }}>
+              <span style={{ fontSize: TYPE.xs, fontWeight: 700, color: BB.text3, border: `1px solid ${BB.borderHair}`, borderRadius: 2, padding: '0 5px', flexShrink: 0 }}>{domain(h.url) || h.source || 'source'}</span>
               <span style={{ fontSize: TYPE.sm, color: BB.text1, flex: 1 }}>{h.title}</span>
-              <span style={{ ...numStyle, fontSize: 9, color: BB.text3, flexShrink: 0 }}>{rel(h.published_at)}</span>
-            </a>
+              <span style={{ ...numStyle, fontSize: TYPE.xs, color: BB.text3, flexShrink: 0 }}>{rel(h.published_at)}</span>
+              <span style={{ fontSize: TYPE.sm, color: BB.text3, flexShrink: 0 }}>›</span>
+            </button>
           ))}
-          {(news.headlines || []).length === 0 && (
+          {heads.length === 0 && (
             <div style={{ fontSize: TYPE.sm, color: BB.text3, padding: '10px 0' }}>
               no recent guarded headlines for {symbol} (guard rejected {news.guard_rejected ?? 0}) — silence is stated, never padded
             </div>

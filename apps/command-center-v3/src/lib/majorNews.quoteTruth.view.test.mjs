@@ -15,10 +15,15 @@ const { renderToStaticMarkup } = require('react-dom/server')
 const memo = new Map()
 function compile(path) {
   if (memo.has(path)) return memo.get(path)
-  let source = readFileSync(path, 'utf8').replace(
-    /import \{ useApi \} from ['"][^'"]+['"]/,
-    'const useApi = (..._args: any[]): any => (globalThis as any).__bookFixture(String(_args[0] ?? \'\'))',
-  )
+  let source = readFileSync(path, 'utf8')
+    // A stylesheet is not a module: the component graph imports it for its side effect and Vite handles it.
+    // Left in place, a relative `import './X.css'` cannot resolve from this harness's data: URL (LQ-1314:
+    // MajorNewsGrid now opens HomeStorySheet, which reuses the shared MobileDetailSheet and its stylesheet).
+    .replace(/^[ \t]*import\s+['"][^'"]+\.css['"]\s*;?[ \t]*$/gm, '')
+    .replace(
+      /import \{ useApi \} from ['"][^'"]+['"]/,
+      'const useApi = (..._args: any[]): any => (globalThis as any).__bookFixture(String(_args[0] ?? \'\'))',
+    )
   let js = ts.transpileModule(source, {
     compilerOptions: { jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
   }).outputText
