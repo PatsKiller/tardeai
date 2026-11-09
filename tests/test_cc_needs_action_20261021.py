@@ -178,7 +178,7 @@ def test_pipeline_failures_grouped_and_unreadable_is_unavailable():
     assert m["pipelines"][0] == {"pipeline": "scalp_scan", "failed": 3, "last_failed_at": NOW.isoformat(),
                                  "last_error": "HTTP 429", "zombie_cleared": 0}
     assert m["pipelines"][1]["zombie_cleared"] == 1
-    assert "NULLIF(NULLIF(summary->>'errors', '[]'), '')" in PF.SQL     # "[]" is no error text
+    assert "NULLIF(NULLIF(f.summary->>'errors', '[]'), '')" in PF.SQL     # "[]" is no error text
     none = PF.project(lambda s, p: None, now=NOW)
     assert none["status"] == "UNAVAILABLE" and none["pipelines"] is None and none["failed_runs"] is None
     boom = PF.project(lambda s, p: (_ for _ in ()).throw(RuntimeError("down")), now=NOW)

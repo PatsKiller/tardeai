@@ -4,6 +4,12 @@
 finviz_screener_runner successes: a failure further back is on no page. This is one server-side aggregate over the
 window, grouped by pipeline: failure count, last failure time and the last error text.
 
+LQ-20261107-1566 (page defect 175): the System panel was counting every failed row in the window, including
+``zombie run cleared`` bookkeeping and failures that already have a later success for the same
+``pipeline_key``. That made a healthy Research indexer read as "failed 4×" after remediate settled stuck
+rows. The aggregate is now the same unrecovered set ``health_agent`` uses for execution_health: substantive
+errors only, no zombie-cleared note, and no later success.
+
 ``db_query(sql, params) -> list[row] | None`` is injected; ``None`` (db_adapter's "could not read") is
 ``UNAVAILABLE`` with null counts — never an empty, green list.
 
@@ -14,18 +20,26 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
+from lib.pipeline_failure_counts import SUBSTANTIVE_FAILURE_FILTER
+
 SCHEMA = "PipelineFailures@v1"
 FAILED_STATUSES = ("failed", "error", "timeout", "crashed")
 
 SQL = (
-    "SELECT pipeline_key, COUNT(*) AS failed, MAX(started_at) AS last_failed_at, "
-    "(ARRAY_AGG(COALESCE(NULLIF(NULLIF(summary->>'errors', '[]'), ''), summary->>'error', summary->>'note', '') "
-    "ORDER BY started_at DESC))[1] AS last_error, "
-    # remediate_pipeline_failures settles a run that never finished as failed with note "zombie run cleared"
-    "COUNT(*) FILTER (WHERE summary->>'note' ILIKE 'zombie%%') AS zombie_cleared "
-    "FROM pipeline_runs WHERE started_at > NOW() - make_interval(hours => %s) "
-    "AND LOWER(status) IN ('failed', 'error', 'timeout', 'crashed') "
-    "GROUP BY pipeline_key ORDER BY COUNT(*) DESC, MAX(started_at) DESC"
+    "SELECT f.pipeline_key, COUNT(*) AS failed, MAX(f.started_at) AS last_failed_at, "
+    "(ARRAY_AGG(COALESCE(NULLIF(NULLIF(f.summary->>'errors', '[]'), ''), f.summary->>'error', "
+    "f.summary->>'note', '') ORDER BY f.started_at DESC))[1] AS last_error, "
+    # Zombie-cleared rows are excluded below; the column stays for schema stability (always 0 here).
+    "COUNT(*) FILTER (WHERE f.summary->>'note' ILIKE 'zombie%%') AS zombie_cleared "
+    "FROM pipeline_runs f WHERE f.started_at > NOW() - make_interval(hours => %s) "
+    "AND LOWER(f.status) IN ('failed', 'error', 'timeout', 'crashed') "
+    "AND (f.summary IS NULL OR f.summary::text NOT LIKE '%%zombie run cleared%%') "
+    f"AND {SUBSTANTIVE_FAILURE_FILTER} "
+    "AND NOT EXISTS ("
+    "SELECT 1 FROM pipeline_runs s WHERE s.pipeline_key = f.pipeline_key "
+    "AND s.status = 'success' AND s.started_at > f.started_at"
+    ") "
+    "GROUP BY f.pipeline_key ORDER BY COUNT(*) DESC, MAX(f.started_at) DESC"
 )
 
 
