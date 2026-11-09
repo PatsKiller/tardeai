@@ -39820,14 +39820,20 @@ def _trade_chart(query=None):
 
 
 def _finviz_chart(query=None):
-    """GET /api/v2/finviz-chart?symbol=&p= — proxy the Finviz Elite chart IMAGE (attaches the Elite cookie
-    server-side; the browser can't). Returns the PNG bytes. Tier-3 fallback when Alpaca/Schwab have no bars.
+    """GET /api/v2/finviz-chart?symbol=&p= — proxy the Finviz chart IMAGE server-side (CORS/headers the
+    browser cannot set). Returns the PNG bytes. Tier-3 fallback when Alpaca/Schwab have no bars.
 
     Failure is this route's HTTP status, not a field inside a 200: it returns `(502, {"ok": False, ...})`
-    and the dispatcher honours the tuple (LQ-20261107-1300). A `302` here is the login bounce —
-    follow-redirect gives up on the loop — so it is named as an expired cookie, not as a raw urlopen
-    string the operator cannot act on."""
-    import os as _os, urllib.error, urllib.request
+    and the dispatcher honours the tuple (LQ-20261107-1300).
+
+    LQ-20261107-1310: `elite.finviz.com/chart.ashx` is a 302 shim to `charts.finviz.com`, which answers a
+    session-less client with a 302 back to the SAME URL — follow-redirect gives up ("infinite loop") — and
+    the legacy `charts2.finviz.com/chart.ashx` now 301s to the HTML chart page (measured 2026-11-08
+    20:05 ET, no cookie). The image host in use elsewhere in this repo is the `charts2-node` form, which
+    `lib.telegram_rich.chart_image_url` documents as HTTP 200 image/png (measured 2026-09-14 and again
+    2026-10-23) with NO session cookie — Telegram's servers fetch it themselves. So no cookie is sent
+    here: shipping FINVIZ_COOKIE to a host that does not need it is exposure for nothing."""
+    import os as _os, urllib.error, urllib.parse, urllib.request
 
     q = query or {}
     g = lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k)
@@ -39835,37 +39841,60 @@ def _finviz_chart(query=None):
     p = g("p") or "d"
     if not sym.isalnum():
         return 400, {"ok": False, "error": "bad symbol"}
+    if p not in ("d", "w", "m"):
+        p = "d"
     import base64 as _b64
 
-    ck = _os.environ.get("FINVIZ_COOKIE", "").strip().strip("\"'")
     ua = _os.environ.get("FINVIZ_USER_AGENT", "Mozilla/5.0").strip().strip("\"'")
-    url = f"https://elite.finviz.com/chart.ashx?t={sym}&ty=c&ta=1&p={p}&s=l"
+    url = f"https://charts2-node.finviz.com/chart.ashx?cs=l&t={sym}&tf={p}&s=linear&ct=candle_stick"
     try:
         # On-demand chart proxy — throttled like every other Finviz call.
         # Local import: api_v2 is hot-reloaded, keep module import surface stable.
         import finviz_throttle
 
         finviz_throttle.acquire(timeout=20)
-        req = urllib.request.Request(url, headers={"Cookie": ck, "User-Agent": ua})
+        req = urllib.request.Request(url, headers={"User-Agent": ua})
         with urllib.request.urlopen(req, timeout=12) as r:
             data = r.read()
         if data[:8].startswith(b"\x89PNG") or data[:3] == b"\xff\xd8\xff":  # PNG or JPEG
             mime = "image/png" if data[:8].startswith(b"\x89PNG") else "image/jpeg"
             # base64 data URI — the server JSON-serializes, so we can't stream raw bytes
             return {"ok": True, "symbol": sym, "image": f"data:{mime};base64," + _b64.b64encode(data).decode()}
+        low = data[:2000].lower()
+        if b"login" in low or b"sign in" in low or b"log in" in low:
+            return 502, {
+                "ok": False,
+                "error": "cookie expired — Finviz answered the chart request with its login page"
+                " (refresh FINVIZ_COOKIE in System > secrets)",
+            }
         return 502, {
             "ok": False,
-            "error": "finviz returned non-image (cookie expired — refresh FINVIZ_COOKIE in System > secrets)",
+            "error": f"finviz returned non-image ({len(data)} bytes from {urllib.parse.urlsplit(url).hostname}"
+            ") — chart endpoint moved?",
         }
     except urllib.error.HTTPError as e:
-        # Follow-redirect gives up on the login bounce (the live 19:33 ET case: "HTTP Error 302 …
-        # infinite loop"). Same cause as the non-image branch above, so it says the same thing.
-        if int(getattr(e, "code", 0) or 0) in (301, 302, 303, 307, 308):
-            msg = (
-                "cookie expired — Finviz redirected the chart request to its login page"
-                " (refresh FINVIZ_COOKIE in System > secrets)"
-            )
-            return 502, {"ok": False, "error": msg}
+        code = int(getattr(e, "code", 0) or 0)
+        loc = (getattr(e, "headers", None) or {}).get("Location", "") or ""
+        if code in (301, 302, 303, 307, 308):
+            same = urllib.parse.urlsplit(loc) if loc else None
+            ours = urllib.parse.urlsplit(url)
+            # The live 19:33 ET case: charts.finviz.com answered 302 to itself, so follow-redirect
+            # gave up with "HTTP Error 302 … infinite loop". That loop is what the chart host returns
+            # to a client it will not serve — a rejected session or a rate-limited IP — not proof of
+            # any one cause, so the message names the observation and the one action that helps.
+            if same and (same.netloc, same.path) == (ours.netloc, ours.path):
+                msg = (
+                    "finviz chart host redirected the request back to itself — session not accepted"
+                    " or this host is rate-limiting us; refresh FINVIZ_COOKIE in System > secrets"
+                )
+            elif "login" in loc.lower():
+                msg = (
+                    "cookie expired — Finviz redirected the chart request to its login page"
+                    " (refresh FINVIZ_COOKIE in System > secrets)"
+                )
+            else:
+                msg = f"finviz chart redirected (HTTP {code}) to {loc[:80]}"
+            return 502, {"ok": False, "error": msg[:200]}
         return 502, {"ok": False, "error": f"finviz chart HTTP {e.code} {e.reason}"[:120]}
     except Exception as e:
         return 502, {"ok": False, "error": str(e)[:120]}
@@ -45759,7 +45788,11 @@ def _finviz_credential_health_live(query=None):
         else:
             ok, detail = False, "FINVIZ_COOKIE not set"
         err_signal = is_finviz_cookie_failure_text(last_error or "") or is_finviz_cookie_failure_text(detail or "")
-        healthy = bool(ok) and not is_finviz_cookie_failure_text(last_error or "")
+        # LQ-20261107-1310: the live probe is the verdict. data_source_health.last_error is a stored
+        # message that outlives the condition it described — on Friday 2026-11-08 18:25 ET its stale
+        # "cookie expired" text kept the banner up after the operator had renewed the cookie, while the
+        # live export succeeded. A stale string may colour the message; it may not overrule `ok`.
+        healthy = bool(ok)
         if not healthy and token:
             # Every export path falls back to the Elite API token, so a dead cookie with a
             # working token is a rotation reminder, not an empty screener.

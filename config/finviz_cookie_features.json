@@ -33,16 +33,6 @@
         "scripts/catalyst_enrichment.py:quote.ashx?t="
       ],
       "impact": "symbols the token news export does not cover lose their headlines"
-    },
-    {
-      "id": "chart_image_proxy",
-      "label": "technical chart image",
-      "detail": "the on-demand /api/v2/finviz-chart proxy fetches elite.finviz.com/chart.ashx with the session cookie server-side (the browser cannot attach it); the token export serves no image at all",
-      "evidence": [
-        "scripts/api_v2.py:_finviz_chart",
-        "scripts/api_v2.py:elite.finviz.com/chart.ashx"
-      ],
-      "impact": "the drawer and per-trade replay chart lose their image fallback; the route answers 502 'cookie expired'"
     }
   ]
 }

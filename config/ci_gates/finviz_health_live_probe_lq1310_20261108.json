@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "finviz_health_live_probe_lq1310_20261108",
+  "files": [
+    "tests/test_finviz_health_live_probe_lq1310_20261108.py"
+  ],
+  "comment": [
+    "LQ-20261107-1310: _finviz_credential_health_live decided health with `bool(ok) and not",
+    "is_finviz_cookie_failure_text(last_error)`, so a stored data_source_health.last_error outvoted a",
+    "live probe that had just succeeded — Friday 2026-11-08 18:25 ET the operator renewed FINVIZ_COOKIE",
+    "and the banner stayed up 'expired' on the old text. The live probe is now the verdict; the stored",
+    "text is still disclosed in last_error but cannot flip ok to expired, and a failing live probe still",
+    "raises the banner. Stub DB row, stub validators, no secret read, no network."
+  ]
+}
