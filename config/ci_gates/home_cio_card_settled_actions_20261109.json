@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "home_cio_card_settled_actions_20261109",
+  "files": [
+    "tests/test_home_cio_card_settled_actions_20261109.py"
+  ],
+  "comment": [
+    "LQ-20261107-1672, Home CIO card. The card's action list filtered stop_advice on the answer only",
+    "(RAISE / ADD_STOP / FIX_QTY), so a row the broker's book already satisfies — reconcile_stop_advice",
+    "marked it state=done — still rendered as an action and still drove 'Do now n of N'. The operator was",
+    "told to raise four stops Schwab already had working. Pins: a done row is not an action and does not",
+    "consume a number; quiet rows are not actions either; an unread book is still a decision; a row with no",
+    "state field (an old snapshot) is still served as an action, never silently dropped; a card whose every",
+    "ask is done renders no actions and no do_now. Synthetic ZQ* fixtures; no store is read."
+  ]
+}

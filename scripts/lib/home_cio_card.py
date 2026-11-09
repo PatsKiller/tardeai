@@ -204,6 +204,11 @@ def _actions(sc: Mapping) -> list:
     for a in brief.get("stop_advice") or []:
         if not isinstance(a, Mapping) or str(a.get("answer") or "").upper() not in ACTIONABLE:
             continue
+        # LQ-20261107-1672: the broker's book already answers this ask (since_close_card.reconcile_stop_advice
+        # marked it done). It is not an action and must not be counted as one — the operator was told to raise
+        # four stops Schwab already had working. A row with no state (an old snapshot) is still an action.
+        if str(a.get("state") or "").lower() == "done":
+            continue
         at = a.get("as_of") or brief.get("generated_at")
         it = item(f"stop_advice:{at}", at, symbol=a.get("symbol"), account=a.get("account"), answer=a.get("answer"),
                   stop_now=_num(a.get("stop_now")), stop_qty=_num(a.get("stop_qty")), held_qty=_num(a.get("held_qty")),
