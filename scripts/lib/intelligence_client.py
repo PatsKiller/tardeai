@@ -762,14 +762,21 @@ def run_ladder(ctx: dict, question: dict, loaders: Loaders, *, now: _dt.datetime
     t0 = time.perf_counter()
     sem_refs: list = []
     sem_note = "not_installed"
+    # ``note`` keeps its vocabulary for existing readers; ``cause`` names WHY step 7 did not hit (LQ-20261107-1614:
+    # 21,980 receipts all said not_installed, which hid that the flag was off AND nothing indexes the table)
+    sem_cause = "flag_off"
     try:
         emb = _lib("embedding_index")
         if emb.enabled(os.environ):
             sem_refs = [r.get("ref") for r in emb.semantic(str(question.get("text") or ""), subject_guid=guid, k=5) if r.get("distance", 1.0) <= 0.25]
             sem_note = "hit" if sem_refs else "miss"
-    except Exception:  # noqa: BLE001
+            sem_cause = sem_note
+    except Exception as exc:  # noqa: BLE001
         sem_note = "not_installed"
-    ladder.append(_step(7, f"EMB:{qclass}", "intelligence.embedding", bool(sem_refs), sem_refs, t0, sem_note))
+        sem_cause = f"error:{type(exc).__name__}"
+    step7 = _step(7, f"EMB:{qclass}", "intelligence.embedding", bool(sem_refs), sem_refs, t0, sem_note)
+    step7["cause"] = sem_cause
+    ladder.append(step7)
 
     if hit1_fresh or hit2_fresh:
         decision = "HIT_FRESH"

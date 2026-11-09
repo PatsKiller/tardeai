@@ -1015,6 +1015,24 @@
    },
    "expected": "NO_EVIDENCE until the lane is promoted to canary (shadow dry runs write no receipt)",
    "audit_ref": "LQ-20261107-1613"
+  },
+  {
+   "id": "memory_retrieval_health",
+   "name": "Memory SHADOW contracts: step-7 embedding and contradiction adjudicator, system_health escalation",
+   "category": "output_integrity",
+   "code": "scripts/memory_retrieval_health.py",
+   "evidence_source": {
+    "kind": "json",
+    "base": "state",
+    "path": "data/runtime/memory-retrieval-health_last.json"
+   },
+   "success_predicate": {
+    "description": "a run found a memory contract BROKEN (summary.broken > 0: ladder step 7 never ran, or no confirmed contradiction is reachable) and escalated it as one system_health alert_events row per 24 h; it never sets TRADEAI_EMBEDDINGS, indexes embeddings, re-runs the adjudicator or touches ENFORCE",
+    "json_path": "summary.broken",
+    "min_count": 1
+   },
+   "expected": "NO_EVIDENCE until the lane is promoted to canary (shadow dry runs write no receipt)",
+   "audit_ref": "LQ-20261107-1614"
   }
  ]
 }
