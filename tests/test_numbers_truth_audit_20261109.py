@@ -299,11 +299,15 @@ def _stop_state(tmp_path, served_state: str, stops) -> dict:
 
 @pytest.mark.parametrize("served,lifecycle,clean", [
     ("active", "working", True), ("active", "near_trigger", True),
-    ("filled", "filled", True), ("none", "cancelled", True), ("none", "expired", True),
+    ("none", "cancelled", True), ("none", "expired", True),
+    ("none", "filled", True),             # a filled order is history: it defends nothing, so "none" agrees
     ("active", "cancelled", False),       # the SPCX case: expired at the broker, still shown working
     ("active", "filled", False), ("none", "working", False), ("active", "wat", False),
 ])
 def test_stop_state_is_the_lifecycle_mapped_into_the_served_vocabulary(tmp_path, served, lifecycle, clean):
+    """Only a LIVE row (working / near_trigger) is the state of a stop: the snapshot also carries the
+    cancelled/replaced/filled history of the same (account, symbol), and reading any of those as truth
+    is the false positive that made five correct /cio rows look wrong on 2026-11-09."""
     stops = [dict(S_AA, lifecycle=lifecycle), S_AB]
     rep = _stop_state(tmp_path, served, stops)
     mismatch = [f for f in rep["findings"] if f["code"] == "NT_STOP_STATE_MISMATCH"]
@@ -311,7 +315,7 @@ def test_stop_state_is_the_lifecycle_mapped_into_the_served_vocabulary(tmp_path,
         assert mismatch == []
     else:
         assert len(mismatch) == 1 and mismatch[0]["severity"] == "P0"
-        assert mismatch[0]["truth"]["raw"] == lifecycle
+        assert mismatch[0]["truth"].get("raw") == (lifecycle if lifecycle in ("working", "near_trigger") else None)
 
 
 def test_a_stop_the_broker_no_longer_has_is_a_p0_while_the_page_shows_it_active(tmp_path):
@@ -320,7 +324,33 @@ def test_a_stop_the_broker_no_longer_has_is_a_p0_while_the_page_shows_it_active(
     assert codes(rep) == ["NT_STOP_STATE_MISMATCH"]
     f = rep["findings"][0]
     assert f["fingerprint"] == "/portfolio|holdings.stop_state|zz_taxable|ZQAA"
-    assert "has no row" in f["detail"]
+    assert "no WORKING stop" in f["detail"]
+
+
+def test_history_rows_of_the_same_name_are_not_the_served_stop(tmp_path):
+    """Live shape (2026-11-09): ANET and rollover V each had a working row AND cancelled/replaced siblings
+    in the SAME newest snapshot. Comparing the page against a sibling is how five correct stops were
+    reported wrong; the live row must win."""
+    stops = [dict(S_AA, lifecycle="working", stop_price=80.0, qty=100, order_id="9"),
+             dict(S_AA, lifecycle="cancelled", stop_price=60.0, qty=100, order_id="8"),
+             dict(S_AA, lifecycle="replaced", stop_price=75.0, qty=50, order_id="7"), S_AB]
+    rep = run(tmp_path, "holdings.stop_price", "holdings.stop_qty",
+              b=bundle(stops=stops), doc=_stop_doc(), http_open=True)
+    assert rep["findings"] == []
+
+
+def test_a_stop_the_page_hides_while_the_store_has_one_is_a_p0(tmp_path):
+    """The XAR case: the brief said a held name had no working stop while stop_lifecycle held one."""
+    stops = [dict(S_AA, lifecycle="working", stop_price=80.0, qty=100), S_AB]
+    doc = {"stop_advice": [{"account": "zz_taxable", "symbol": "ZQAA", "stop_now": None, "stop_qty": 0.0}]}
+    temp = tmp_path / "data/runtime/cio_overnight_brief"
+    temp.mkdir(parents=True)
+    (temp / "latest.json").write_text(json.dumps(doc))
+    rep = run(tmp_path, "cio.stop_advice.stop_now", "cio.stop_advice.stop_qty", b=bundle(stops=stops))
+    assert codes(rep) == ["NT_STOP_PRICE_MISMATCH", "NT_STOP_QTY_MISMATCH"]
+    by_code = {f["code"]: f["detail"] for f in rep["findings"]}
+    assert "the page shows no stop; truth 80" in by_code["NT_STOP_PRICE_MISMATCH"]
+    assert "the page shows 0; truth 100" in by_code["NT_STOP_QTY_MISMATCH"]
 
 
 def test_stop_price_and_quantity_are_exact(tmp_path):
@@ -384,10 +414,10 @@ def _overview(portfolio_value=16234.5, accounts=None, today_change=50.0, by_acco
             "portfolio_aggregate": {"accounts": accounts if accounts is not None else [
                 {"account": "zz_taxable", "display_value": 11234.5},
                 {"account": "zz_ira", "display_value": 5000.0}]},
-            "today_pnl": {"change": today_change},
+            "today_change": today_change,
             "today_by_account": by_account if by_account is not None else {
-                "zz_taxable": {"stored_row_change": 30.0},
-                "zz_ira": {"stored_row_change": 20.0}},
+                "zz_taxable": {"change": 30.0},
+                "zz_ira": {"change": 20.0}},
             "trade_ai": {"vix": vix}}
 
 

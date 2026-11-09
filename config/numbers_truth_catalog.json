@@ -227,12 +227,12 @@
           {
             "name": "header today_pnl.change",
             "value": [
-              "/today_pnl/change"
+              "/today_change"
             ]
           },
           {
             "name": "accounts stored_row_change",
-            "sum_of": "/stored_row_change",
+            "sum_of": "/change",
             "rows": "/today_by_account"
           }
         ]
@@ -481,7 +481,8 @@
           "symbol": "symbol"
         },
         "value": "lifecycle",
-        "transform": "lifecycle_state"
+        "transform": "lifecycle_state",
+        "absent": "none"
       },
       "tolerance": {
         "kind": "exact"
@@ -519,12 +520,13 @@
           "account": "account",
           "symbol": "symbol"
         },
-        "value": "qty"
+        "value": "qty",
+        "absent": 0
       },
       "tolerance": {
         "kind": "exact"
       },
-      "_note": "The /portfolio stop column is served by /api/v2/portfolio/holdings, which merges stop_last_known into each row (cio_truth.holdings_payload) \u2014 the retiring copy, not the canonical snapshot. Inside the 04:00-16:15 ET window this row is NOT_MEASURED (in_window_artifact_only); outside it the served stop is graded against stop_lifecycle."
+      "_note": "The /portfolio stop column is served by /api/v2/portfolio/holdings, which merges stop_last_known into each row (cio_truth.holdings_payload) \u2014 the retiring copy, not the canonical snapshot. Inside the 04:00-16:15 ET window this row is NOT_MEASURED (in_window_artifact_only); outside it the served stop is graded against stop_lifecycle. The truth is the LIVE row of the newest snapshot (lifecycle working/near_trigger) \u2014 a cancelled/replaced/filled sibling is history, not the stop \u2014 and no live row means stop_qty 0."
     },
     {
       "page": "/portfolio",
@@ -564,7 +566,8 @@
           "/stop_now"
         ],
         "code": "NT_STOP_PRICE_MISMATCH",
-        "only_displayed": true
+        "only_displayed": true,
+        "shown_null_is_absence": true
       },
       "truth": {
         "provider": "stop_lifecycle",
@@ -601,7 +604,8 @@
           "/stop_qty"
         ],
         "code": "NT_STOP_QTY_MISMATCH",
-        "only_displayed": true
+        "only_displayed": true,
+        "shown_null_is_absence": true
       },
       "truth": {
         "provider": "stop_lifecycle",
@@ -609,7 +613,8 @@
           "account": "account",
           "symbol": "symbol"
         },
-        "value": "qty"
+        "value": "qty",
+        "absent": 0
       },
       "tolerance": {
         "kind": "exact"

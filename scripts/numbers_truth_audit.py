@@ -66,6 +66,12 @@ MAX_RUNTIME_S = 120.0
 MAX_FINDINGS = 200
 #: AGENTS.md §28.8: no HTTP to :7777 on a weekday in this window.
 HTTP_WINDOW = (time(4, 0), time(16, 15))
+
+# The newest stop_lifecycle snapshot carries EVERY order of a (account, symbol): one live row plus the
+# cancelled/replaced/filled history. The row that describes the displayed stop is the live one only —
+# comparing a page number against an arbitrary historical row is a false positive (verified live
+# 2026-11-09: ANET had five rows in the same snapshot, one `working`; rollover V had six, one `working`).
+LIVE_STOP_LIFECYCLES = ("working", "near_trigger")
 #: One request per endpoint, ≥1 s apart (DSN §2).
 HTTP_PACING_S = 1.0
 HTTP_TIMEOUT_S = 5.0
@@ -410,6 +416,8 @@ def served(row: Mapping[str, Any], *, state_root: Path, http_open: bool, base_ur
             doc = (fetcher or (lambda q: http_get_json(base_url, q)))(str(spec.get("path")) + query)
         except Exception as exc:  # noqa: BLE001 — an unreachable endpoint is NOT_MEASURED
             raise Unreadable("source_unreadable", f"api unreadable: {type(exc).__name__}")
+        if isinstance(doc, Mapping) and isinstance(doc.get("data"), Mapping) and "ok" in doc:
+            doc = doc["data"]  # every /api/v2 route wraps its payload as {ok, data}: the pointers read `data`
         return doc, {"source": f"api:{spec.get('path')}", "as_of": None}
     raise Unreadable("checker_unsupported", f"served_from.kind {kind!r} is not a catalog kind")
 
@@ -440,6 +448,24 @@ def _fmt(v: Any) -> str:
 _STATE_FROM_LIFECYCLE = {"working": "active", "near_trigger": "active", "active": "active",
                          "filled": "filled", "cancelled": "none", "canceled": "none", "expired": "none",
                          "rejected": "none", "replaced": "none"}
+
+
+class _AbsentUnset:
+    """Sentinel: the catalog declared no absence value, so a missing truth row is unmeasured, not zero."""
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return "<unset>"
+
+
+_ABSENT_UNSET = _AbsentUnset()
+
+
+def _same_value(a: Any, b: Any) -> bool:
+    """Equality for a displayed value against a declared absence: numbers numerically, words as words."""
+    na, nb = _num(a), _num(b)
+    if na is not None and nb is not None:
+        return abs(na - nb) <= 1e-9
+    return _canon(a) == _canon(b)
 
 
 def _one(obj: Any, ptrs: Any) -> tuple[Any, Optional[str]]:
@@ -510,11 +536,19 @@ def row_scalar(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[s
                 k = _row_key(r, keymap)
                 if k is not None:
                     smap[k] = r
-        tmap = {}
+        tmap: dict[tuple[str, ...], Any] = {}
+        grouped: dict[tuple[str, ...], list[Mapping[str, Any]]] = {}
         for r in src["rows"] or []:
             k = _row_key(r, tkey)
             if k is not None:
-                tmap[k] = r
+                grouped.setdefault(k, []).append(r)
+        if provider == "stop_lifecycle":
+            live = {_canon(x) for x in LIVE_STOP_LIFECYCLES}
+            for k, rows in grouped.items():
+                tmap[k] = next((r for r in rows if _canon(r.get("lifecycle")) in live), None)
+        else:
+            for k, rows in grouped.items():
+                tmap[k] = rows[-1]
     else:
         # Single-figure form: one served scalar against the one truth row (the VIX tile vs the $VIX row).
         shown0, ptr0 = first_value(doc, value_ptrs)
@@ -558,19 +592,34 @@ def row_scalar(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[s
         truth_v = raw_truth
         if transform == "lifecycle_state" and raw_truth is not None:
             truth_v = _STATE_FROM_LIFECYCLE.get(_canon(raw_truth), "unknown")
-        if shown is None and only_displayed:
+        # The value of an object with no live row is the catalog's declared absence ("absent": 0 / "none"),
+        # never an accident of the row being missing (REV 2: stop_last_known may keep a retired row).
+        absent = truth_spec.get("absent", _ABSENT_UNSET)
+        if trow is None and absent is not _ABSENT_UNSET:
+            truth_v = absent
+        # A field the page displays as null is a claim of absence (the stop card's "no working stop"),
+        # not an omission, when the catalog says so.
+        shown_null_is_absence = bool(spec.get("shown_null_is_absence"))
+        code = str(spec.get("code") or "NT_VALUE_MISMATCH")
+        truth_side = {"value": truth_v, "raw": raw_truth, "field": tp, "provider": provider,
+                      "as_of": (src.get("as_of").isoformat() if isinstance(src.get("as_of"), datetime) else
+                                src.get("as_of")) if src.get("as_of") else None}
+        if shown is None and only_displayed and not shown_null_is_absence:
             continue  # the field is not displayed on this row; a selection surface shows only what it chose
         if (isinstance(trow, Mapping) and trow.get("is_cash")) or (isinstance(srow, Mapping) and srow.get("is_cash")):
             continue  # a cash balance has no shares, no price and no stop
         if shown is None and truth_v is None:
             continue
+        if srow is not None and shown is None and shown_null_is_absence:
+            if absent is not _ABSENT_UNSET and _same_value(truth_v, absent):
+                continue  # the page says "no stop" and the store has no live stop: they agree
+            out.append(finding(row, code, "MISMATCH", f"{acct} {sym}: the page shows no stop; truth "
+                           f"{_fmt(truth_v)} ({provider})", account=acct, symbol=sym,
+                           shown={"value": None, "source": meta.get("source")}, truth=truth_side))
+            continue
         shown_side = {"value": shown, "as_of": (first_value(srow, spec.get("as_of") or ())[0]
                                                  if srow is not None and spec.get("as_of") else None),
                       "source": meta.get("source"), "field": sp}
-        truth_side = {"value": truth_v, "raw": raw_truth, "field": tp, "provider": provider,
-                      "as_of": (src.get("as_of").isoformat() if isinstance(src.get("as_of"), datetime) else
-                                src.get("as_of")) if src.get("as_of") else None}
-        code = str(spec.get("code") or "NT_VALUE_MISMATCH")
         if srow is None:
             if only_displayed:
                 continue  # the page lists a selection; an object it does not list is not a missing figure
@@ -580,6 +629,17 @@ def row_scalar(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[s
                                shown={"value": None, "source": meta.get("source")}, truth=truth_side))
             continue
         if trow is None and shown is not None:
+            if provider == "stop_lifecycle":
+                # The store has this object but no LIVE stop for it: a displayed working stop is exactly the
+                # SPCX failure — a stop_last_known row the broker had already cancelled or let expire.
+                if absent is not _ABSENT_UNSET and _same_value(shown, absent):
+                    continue  # the page and the store both say "no working stop"
+                out.append(finding(row, code, "MISMATCH",
+                                   f"{acct} {sym}: the page shows {_fmt(shown)}; stop_lifecycle has no WORKING "
+                                   f"stop for it (only cancelled/replaced/filled/expired rows)",
+                                   account=acct, symbol=sym, shown=shown_side,
+                                   truth={"value": None, "provider": provider, "live": False}))
+                continue
             retired = (src.get("retired_by_symbol") or {}) if isinstance(src, Mapping) else {}
             rsym = str(sym or "").upper()
             if rsym in retired:
@@ -589,6 +649,10 @@ def row_scalar(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[s
                                    f"{retired[rsym]!r} (retired)", account=acct, symbol=sym, shown=shown_side,
                                    truth={"value": None, "provider": provider, "retired": retired[rsym]}))
             elif provider == "market_quotes":
+                if _num(shown) == 0:
+                    # A 0.00 mark on an instrument with no quote is a placeholder (unpriced fixed income),
+                    # not a displayed number that disagrees with anything.
+                    continue
                 # The page shows a price the quote store cannot verify: unreadable truth, never a pass, never a fail.
                 out.append(not_measured(row, "no_rows", f"{sym}: no allowed quote row; the displayed price "
                                                      f"cannot be verified", account=acct, symbol=sym,
@@ -1239,11 +1303,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     from scripts.lib import lane_last_receipt as R
 
     summary = build_summary(rep)  # includes the list M
-    output = {"produced_count": 1 if global_ok else 0, "attempted_count": 1,
-              "skipped_reasons": {} if global_ok else {DEP: 1}, "empty_reason": None}
+    # produced_count/attempted_count/skipped_reasons as kwargs, not an ``output=`` dict: only this spelling
+    # makes lane_last_receipt write LaneRunReceipt@v2 with the output block the lane contract grades
+    # (LQ-1703's allowlist pins output_receipt v2 and produced_count).
     written = R.write_lane_receipt(LANE, ok=global_ok, exit_code=rc, started_at=now, script=SCRIPT,
                                    summary=summary, error=rep.get("error"),
-                                   path=R.receipt_path(LANE, a.state_root), output=output)
+                                   path=R.receipt_path(LANE, a.state_root),
+                                   produced_count=1 if global_ok else 0, attempted_count=1,
+                                   skipped_reasons={} if global_ok else {DEP: 1}, empty_reason=None)
     print(json.dumps({"mode": "apply", "ok": global_ok, "receipt": str(written) if written else None,
                       "finding_count": rep.get("finding_count"),
                       "by_status": (rep.get("counts") or {}).get("by_status"),
