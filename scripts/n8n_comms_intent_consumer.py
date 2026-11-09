@@ -18,8 +18,9 @@ else ~/trade-ai-releases/persistent-state. An apply run writes LaneRunReceipt@v1
 <state root>/data/runtime/n8n-comms-intent-consumer_last.json (ok_at only on success); a dry run prints
 ``DRY-RUN {...}`` and writes no file, no table and no receipt.
 
-Exit: 0 = the run completed (a refused intent is a finding, not a failed run); 1 = the ledger or the route table could
-not be read, or a write failed, or an intent failed transiently; 2 = usage.
+Exit: 0 = the run completed (a refused intent is a finding, not a failed run); 75 = EX_TEMPFAIL — sqlite
+``database is locked`` / busy, or only transient intent failures (retryable under ``transient-2``); 1 = a
+non-transient ledger/route/write failure; 2 = usage.
 
 Output verdict (2026-10-17, lane live on the n8n fabric at */5; config/n8n_health_contracts.json expected_output,
 allowlist ``output_receipt: v2``): every apply run's receipt carries the LaneRunReceipt@v2 output fields (``output=``
@@ -58,6 +59,24 @@ from scripts.lib.n8n_fabric_store import FabricStoreError  # noqa: E402
 LANE_ID = C.LANE_ID
 SCRIPT = "scripts/n8n_comms_intent_consumer.py"
 DEFAULT_STATE_ROOT = Path.home() / "trade-ai-releases" / "persistent-state"
+# LQ-20261107-1409: exit 1 is terminal under transient-2 (retryable_exit_codes = 69/75/111 only).
+# A locked coordination ledger is the same class of skip as flock -E 75 — retry via coordination/due.
+EX_TEMPFAIL = 75
+
+
+def _is_sqlite_lock_error(exc: BaseException | str) -> bool:
+    text = str(exc).lower()
+    return "database is locked" in text or "sqlite_busy" in text or "database is busy" in text
+
+
+def _failure_exit(summary: dict[str, Any]) -> int:
+    """Hard fail → 1; sqlite lock / busy or only-transient intent failures → 75 (retryable)."""
+    err = summary.get("error") or ""
+    if _is_sqlite_lock_error(err):
+        return EX_TEMPFAIL
+    if int(summary.get("failed_transient") or 0) > 0 and not err:
+        return EX_TEMPFAIL
+    return 1
 
 
 def resolve_paths(ledger: Optional[str], state_root: Optional[str]) -> tuple[Path, Path]:
@@ -194,14 +213,15 @@ def _finish(
     would: Optional[list[str]] = None,
     output: Optional[dict[str, Any]] = None,
 ) -> int:
+    rc = 0 if ok else _failure_exit(summary)
     if not apply:
         R.dry_run_report(LANE_ID, summary, would_write=would or [], receipt=receipt)
-        return 0 if ok else 1
+        return rc
     output = output if output is not None else lane_output(summary)
     written = R.write_lane_receipt(
         LANE_ID,
         ok=ok,
-        exit_code=0 if ok else 1,
+        exit_code=rc,
         started_at=now,
         script=SCRIPT,
         summary=summary,
@@ -238,7 +258,7 @@ def _finish(
     )
     if written is None:
         return 1
-    return 0 if ok else 1
+    return rc
 
 
 def main(argv: Optional[list[str]] = None) -> int:

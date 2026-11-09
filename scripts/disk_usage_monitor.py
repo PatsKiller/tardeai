@@ -67,6 +67,10 @@ SCRIPT = "scripts/disk_usage_monitor.py"
 STATE_SCHEMA = "DiskUsageMonitorState@v1"
 BANDS = ("ok", "warn", "critical")
 SKIP_DEPENDENCY = "dependency_unavailable"
+# LQ-20261107-1409: intent enqueue that hits a locked coordination ledger must not exit 1
+# (terminal under transient-2). Same EX_TEMPFAIL as flock -E 75 so coordination/due retries.
+EX_TEMPFAIL = 75
+_LEDGER_BUSY_REASONS = frozenset({"intent_store_unavailable"})
 # Diagnostic work fits inside the existing 180s lane cap; these never widen it.
 CONSUMER_REFRESH_SECONDS = 3600
 CONSUMER_SCAN_BUDGET_SECONDS = 30
@@ -708,6 +712,13 @@ def _run_locked(
     manifest = latest_manifest(rules, state_root)
     results: list[dict[str, Any]] = []
     failures = 0
+    ledger_busy_failures = 0
+
+    def _count_intent_failure(reason: str) -> None:
+        nonlocal failures, ledger_busy_failures
+        failures += 1
+        if reason in _LEDGER_BUSY_REASONS:
+            ledger_busy_failures += 1
 
     def queue(kind_band: str, subject: str, summary: str, node: str) -> dict[str, Any]:
         return queue_host_intent(
@@ -745,7 +756,7 @@ def _run_locked(
                     row["intent"] = {"intent_id": rec.get("intent_id"), "duplicate": rec.get("duplicate")}
                 except HostIntentError as exc:
                     row["intent_error"] = exc.reason
-                    failures += 1
+                    _count_intent_failure(exc.reason)
                     inode_results.append(row)
                     continue  # band NOT recorded: the next run retries the alert
         if apply:
@@ -790,7 +801,7 @@ def _run_locked(
                     row["intent"] = {"intent_id": rec.get("intent_id"), "duplicate": rec.get("duplicate")}
                 except HostIntentError as exc:
                     row["intent_error"] = exc.reason
-                    failures += 1
+                    _count_intent_failure(exc.reason)
                     results.append(row)
                     continue  # band NOT recorded: the next run retries the alert
         if apply:
@@ -824,7 +835,7 @@ def _run_locked(
                                  "seen_run_ids": list(dict.fromkeys([*standing_previous.get("seen_run_ids", []), standing["run_id"]]))}
         except HostIntentError as exc:
             standing["intent_error"] = exc.reason
-            failures += 1  # Do not consume the run; next monitor attempt retries.
+            _count_intent_failure(exc.reason)  # Do not consume the run; next monitor attempt retries.
     pressure_active = bool(state.get("standing_pressure_active"))
     pressure_epoch = int(state.get("standing_pressure_epoch") or 0)
     current_pressure = bool(measured_pct and max(measured_pct) > 85)
@@ -847,7 +858,7 @@ def _run_locked(
                 pressure_epoch += 1
             except HostIntentError as exc:
                 pressure["intent_error"] = exc.reason
-                failures += 1
+                _count_intent_failure(exc.reason)
     if measured_pct and not current_pressure:
         pressure_active = False
     summary = {"mounts": results, "inodes": inode_results, "manifest": manifest, "standing_hygiene": standing,
@@ -855,7 +866,11 @@ def _run_locked(
                "consumer_snapshot_refreshed": refreshed, "failures": failures}
     if not apply:
         R.dry_run_report(LANE_ID, summary, would_write=[str(state_path)], receipt=R.receipt_path(LANE_ID, state_root))
-        return 0 if not failures else 1
+        if not failures:
+            return 0
+        if failures == ledger_busy_failures:
+            return EX_TEMPFAIL
+        return 1
     measured = sum(1 for r in results if "band" in r)
     ok = failures == 0
     try:
@@ -878,10 +893,16 @@ def _run_locked(
         "empty_reason": None,
         "output_evidence": [{"kind": "file", "ref": str(state_path)}],
     }
+    if ok:
+        rc = 0
+    elif failures and failures == ledger_busy_failures:
+        rc = EX_TEMPFAIL
+    else:
+        rc = 1
     written = R.write_lane_receipt(
         LANE_ID,
         ok=ok,
-        exit_code=0 if ok else 1,
+        exit_code=rc,
         started_at=wall_start,
         script=SCRIPT,
         summary=summary,
@@ -900,10 +921,13 @@ def _run_locked(
                 "inode_bands": {r["mount"]: r.get("band") for r in inode_results},
                 "inode_alerts": {r["mount"]: r.get("alert") for r in inode_results if r.get("alert")},
                 "failures": failures,
+                "ledger_busy_failures": ledger_busy_failures,
             }
         )
     )
-    return 0 if ok and written else 1
+    if not written:
+        return 1
+    return rc
 
 
 def main(argv: Optional[list[str]] = None) -> int:
