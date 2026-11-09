@@ -7,7 +7,8 @@ and ran them live; every gate was green. This file pins:
   feedback agent unchanged, the parent cron rows' effect_ownership blocks;
 * scripts/check_registry_runtime_truth.py: every contradiction rule on hermetic fixtures (the pre-fix Hermes shape
   fires DECLARED_OFF_BUT_RUNS_LIVE / EFFECT_OWNER_N8N_NOT_LIVE / LIVE_LIST_REGISTRY_NOT_LIVE /
-  PROCESS_LIVE_STEP_NOT_ACTIVE; the declared dual state of a cron row at canary with dispatch live does not), the
+  PROCESS_LIVE_STEP_NOT_ACTIVE; an ACTIVE canary cron row on the relay live list with an *unwrapped* crontab line
+  is DUPLICATE_SCHEDULER — LQ-20261107-1444/1452; effect_claim_cron.sh twins stay quiet), the
   NOT_MEASURED rule for unreadable sources, a dry run that writes nothing and leaves the ledger byte-identical, an
   apply run that writes a LaneRunReceipt@v2 the executor's output verdict accepts and queues exactly ONE deduped
   host comms intent, and an import closure that never reaches the coordination gateway;
@@ -204,13 +205,33 @@ def test_reconciled_shape_is_clean():
 
 
 def test_cron_row_with_dispatch_live_at_canary_is_the_declared_dual_state_not_a_contradiction():
+    """Live-list + unwrapped cron is DUPLICATE_SCHEDULER (LQ-1444); wrapped / comment stay quiet.
+
+    2026-10-22 kept the cron line for ACTIVE_CRON_LINE_ABSENT. 2026-11-09 (LQ-1452 / REVIEW-1449):
+    the same unwrapped live-list shape is two writers and must be named. effect_claim_cron.sh and
+    ``#``-commented lines stay quiet (pinned also by test_lq1444_*).
+    """
     lane = "aegis-social-sentiment"
     decl = _decl([_row(lane, kind="cron", expression="0 7 * * *", dispatch="live")], [_contract(lane)], [_allow(lane)])
     ledger = {"live_runs": {lane: {"count": 1, "last": "x"}}, "owners": {lane: {"owner": "n8n"}}}
-    # 2026-10-22: the dual state keeps its cron line live (ACTIVE_CRON_LINE_ABSENT reads the crontab for cron rows).
-    found, _, _ = RT.evaluate(decl, ledger=ledger, live_lanes=[lane], cron_lines=["0 7 * * * run 0 7 * * *:x"],
-                              n8n_active=[])
+    bare = "0 7 * * * run 0 7 * * *:x"
+    found, _, _ = RT.evaluate(decl, ledger=ledger, live_lanes=[lane], cron_lines=[bare], n8n_active=[])
+    assert _codes(found) == [("DUPLICATE_SCHEDULER", lane)]
+    dup = next(c for c in found if c["code"] == "DUPLICATE_SCHEDULER")
+    assert "without effect_claim_cron.sh" in dup["detail"]
+    assert dup["evidence"]["match"] == "0 7 * * *:x"
+
+    wrapped = "0 7 * * * bash scripts/effect_claim_cron.sh run 0 7 * * *:x"
+    found, _, _ = RT.evaluate(decl, ledger=ledger, live_lanes=[lane], cron_lines=[wrapped], n8n_active=[])
     assert found == []
+
+    # Production path filters comments in active_cron_lines; a retired line must not be DUPLICATE_SCHEDULER.
+    retired = "# RETIRED 2026-11-08 n8n-cutover " + bare
+    lines = RT.active_cron_lines(retired)
+    assert lines == []
+    found, _, _ = RT.evaluate(decl, ledger=ledger, live_lanes=[lane], cron_lines=lines, n8n_active=[])
+    assert ("DUPLICATE_SCHEDULER", lane) not in _codes(found)
+
     decl = _decl([_row(lane, kind="cron", expression="0 7 * * *", stage=None)])
     found, _, _ = RT.evaluate(decl, ledger=ledger, live_lanes=None, cron_lines=None, n8n_active=None)
     assert _codes(found) == [("EFFECT_OWNER_N8N_KIND_NOT_N8N", lane)]
