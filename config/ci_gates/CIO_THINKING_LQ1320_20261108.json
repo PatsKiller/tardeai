@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "CIO_THINKING_LQ1320_20261108",
+  "files": [
+    "tests/test_cio_thinking_lq1320_20261108.py"
+  ],
+  "anchor": "CIO_THINKING_LQ1320_20261108",
+  "comment": [
+    "ANCHOR: CIO_THINKING_LQ1320_20261108 — LQ-20261107-1320: the CIO's reasoning pass must receive the whole deterministic packet, not the old 12,000-character slice that hid the ANET plan sale. Every value in the packet is a fact with a source_id and an as_of; a stale quote makes the name 'not measured' instead of reason-able; the validator rejects an invented number, a level cited to the wrong source, a stale input and a name that is not in the packet, and the deterministic fallback passes the same gate. A prior plan is read back from CIO memory and replayed (open / protect reached / re-entry reached), and the outlook record and the CIO verdict carry their record ids so a disagreement is surfaced, never silently resolved."
+  ]
+}
