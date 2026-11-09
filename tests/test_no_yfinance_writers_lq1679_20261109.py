@@ -180,7 +180,7 @@ def test_the_price_cache_build_maps_dates_to_alpaca_closes(monkeypatch):
     import market_data_snapshot_loader as mdl
     import portfolio_price_cache as ppc
 
-    def bars(symbol, days):  # noqa: ARG001
+    def bars(symbol, days):  # noqa: ARG001 -- the fake mirrors fetch_alpaca_daily_bars(symbol, days)
         from datetime import datetime
         from zoneinfo import ZoneInfo
         et = ZoneInfo("America/New_York")

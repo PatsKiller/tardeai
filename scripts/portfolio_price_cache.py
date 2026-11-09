@@ -123,16 +123,15 @@ def _bar_closes(sym: str, start: str, end: str) -> Dict[str, float]:
     LQ-20261107-1679 — the bars come from the provider ``config/data_source_authority.json`` grants
     ``bars`` to (Alpaca), through the existing read-only bars path. yfinance was this cache's only
     source and is banned for prices (operator rule 2026-11-07). A symbol Alpaca cannot price yields
-    ``{}`` — the caller leaves it out of the cache and reports it, rather than inventing a close.
+    ``{}`` — the caller leaves it out of the cache and reports it, rather than inventing a close. A
+    window that cannot be parsed raises: "the caller asked for something unreadable" is not the
+    same fact as "Alpaca returned no bars", and only the second may look like an empty series.
     """
     try:
         from market_data_snapshot_loader import fetch_alpaca_daily_bars
-    except ImportError:
-        from scripts.market_data_snapshot_loader import fetch_alpaca_daily_bars  # type: ignore
-    try:
-        days = max(1, (date.fromisoformat(end) - date.fromisoformat(start)).days + 1)
-    except Exception:
-        return {}
+    except ImportError:  # scripts/ is not always on sys.path (CLI vs import); packaging fallback only
+        from scripts.market_data_snapshot_loader import fetch_alpaca_daily_bars  # type: ignore -- the sibling module is resolvable at runtime, just not to the type checker
+    days = max(1, (date.fromisoformat(end) - date.fromisoformat(start)).days + 1)
     prices: Dict[str, float] = {}
     for bar in fetch_alpaca_daily_bars(sym, days) or []:
         price, when = bar.get("close"), bar.get("bar_time")

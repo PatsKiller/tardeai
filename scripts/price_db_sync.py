@@ -312,8 +312,10 @@ def sync_daily_prices():
         print(f"  [price-db] REJECTED {len(rejected)} outlier price(s), not written: "
               f"{'; '.join(rejected[:10])}" + (" ..." if len(rejected) > 10 else ""))
     wl = sync_daily_watchlist_prices()
+    filled = (wl.get("backfill") or {}).get("filled")
+    # A tier that never reported has no measured count: "we could not read it" is "?", never 0.
     print(f"  [price-db] Watchlist quotes→ticker_prices: {wl.get('quotes_synced', 0)} rows; "
-          f"alpaca bars filled {wl.get('backfill', {}).get('filled', 0)}")
+          f"alpaca bars filled {filled if isinstance(filled, int) else '?'}")
     return written
 
 
