@@ -466,3 +466,92 @@ def test_a_stale_stub_in_the_package_path_cannot_satisfy_this_suite():
             sys.modules.pop("scripts.lib.critical_channels", None)
         else:
             sys.modules["scripts.lib.critical_channels"] = saved
+
+
+# ── LQ-20261107-1713: a real send is only made from the live release ──────────────────────────────────────
+# At 2026-11-09T22:55:14Z a probe in this worktree called the hub with no contact and no senders. The default
+# senders read the real contact file and a Fi text reached the operator's phone. The rule now: a DEFAULT sender
+# (the real one) sends only when this code is the release CURRENT resolves to. An injected sender is the
+# caller's own substitute and is never refused.
+
+def _roots(tmp_path, live=False):
+    """A worktree root and a CURRENT symlink; equal only when ``live`` is True."""
+    release = tmp_path / "release-abc"
+    release.mkdir()
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    link = tmp_path / "CURRENT"
+    link.symlink_to(release)
+    return (release if live else worktree), link
+
+
+def test_is_live_code_root_is_only_true_for_the_release_current_resolves_to(tmp_path):
+    worktree, link = _roots(tmp_path, live=False)
+    release = tmp_path / "release-abc"
+    assert cc.is_live_code_root(release, link) is True
+    assert cc.is_live_code_root(worktree, link) is False, "a worktree is not the live release"
+    assert cc.is_live_code_root(worktree, tmp_path / "absent-CURRENT") is False, (
+        "a missing CURRENT link must refuse, never allow"
+    )
+
+
+def test_a_real_send_from_a_non_live_root_is_refused_and_nothing_is_sent(monkeypatch, tmp_path):
+    """The incident, pinned: with no sender injected, a worktree call must produce three refused receipts and
+    must not reach the default senders at all."""
+    worktree, link = _roots(tmp_path, live=False)
+    monkeypatch.setattr(cc, "CODE_ROOT", worktree)
+    monkeypatch.setattr(cc, "LIVE_CURRENT", link)
+    monkeypatch.setenv(cd.CRITICAL_CHAT_ENV, "chat-fixture")
+    calls = []
+    monkeypatch.setattr(cc, "_default_telegram_sender", lambda c, t: calls.append(("telegram", t)) or "tg")
+    monkeypatch.setattr(cc, "_default_email_sender", lambda to, s, b: calls.append(("email", to)) or "smtp")
+
+    delivery = cc.deliver(EVENT, contact=contact(), policy=policy())
+
+    assert [r.channel for r in delivery.receipts] == ["telegram_critical", "email", "text_gateway"]
+    assert [r.status for r in delivery.receipts] == ["refused", "refused", "refused"], (
+        [r.as_dict() for r in delivery.receipts]
+    )
+    assert all(r.reason == cc.NON_LIVE_REASON for r in delivery.receipts), [r.as_dict() for r in delivery.receipts]
+    assert calls == [], "a refused channel must not reach its sender"
+    assert delivery.delivered is False
+
+
+def test_injected_senders_still_deliver_from_a_non_live_root(monkeypatch, tmp_path):
+    worktree, link = _roots(tmp_path, live=False)
+    monkeypatch.setattr(cc, "CODE_ROOT", worktree)
+    monkeypatch.setattr(cc, "LIVE_CURRENT", link)
+    monkeypatch.setenv(cd.CRITICAL_CHAT_ENV, "chat-fixture")
+    calls = {"email": [], "telegram": [], "text": []}
+
+    delivery = cc.deliver(EVENT, contact=contact(), policy=policy(),
+                          email_sender=lambda to, s, b: calls["email"].append(to) or "smtp-ok",
+                          telegram_sender=lambda c, t: calls["telegram"].append(t) or "tg-42",
+                          text_sender=lambda e: calls["text"].append(e) or {"sent": True})
+
+    assert all(r.status == "sent" for r in delivery.receipts), [r.as_dict() for r in delivery.receipts]
+    assert delivery.delivered is True
+    assert len(calls["email"]) == 1 and len(calls["telegram"]) == 1 and len(calls["text"]) == 1
+
+
+def test_the_live_root_still_uses_the_default_senders(monkeypatch, tmp_path):
+    """The live path is unchanged: when the code root IS the release CURRENT resolves to, a default sender is
+    used. The senders are still stubbed here — this proves selection, not delivery."""
+    monkeypatch.setenv(cd.CRITICAL_CHAT_ENV, "chat-fixture")
+    live_root, link = _roots(tmp_path, live=True)
+    monkeypatch.setattr(cc, "CODE_ROOT", live_root)
+    monkeypatch.setattr(cc, "LIVE_CURRENT", link)
+    assert cc.is_live_code_root() is True
+    used = {"telegram": [], "email": []}
+    monkeypatch.setattr(cc, "_default_telegram_sender",
+                        lambda c, t: used["telegram"].append(t) or "tg-live")
+    monkeypatch.setattr(cc, "_default_email_sender",
+                        lambda to, s, b: used["email"].append(to) or "smtp-live")
+
+    delivery = cc.deliver(EVENT, contact=contact(), policy=policy(),
+                          text_sender=lambda e: {"sent": True})
+
+    by = {r.channel: r for r in delivery.receipts}
+    assert used["telegram"] == [f"{cd.SUBJECT_PREFIX} {EVENT['what']}\n{EVENT['action']}"], used["telegram"]
+    assert used["email"] == ["operator@example.invalid"], used["email"]
+    assert by["telegram_critical"].status == "sent" and by["email"].status == "sent"

@@ -746,3 +746,38 @@ def _trading_lock_test_unlock(request, monkeypatch, tmp_path_factory):
         return
     unlock.write_text(_trading_lock_unlock_doc())
     unlock.chmod(0o600)
+
+
+# ── LQ-20261107-1713: no test may reach a real critical sender ────────────────
+# At 2026-11-09T22:55:14Z a worktree probe called the CRITICAL hub with no injected sender. The hub read the real
+# contact file, the Fi text went through the real gateway and the operator's phone buzzed with a synthetic event.
+# The hub itself now refuses a real send from a code root that is not the live release; this fixture is the second
+# lock, at the transport boundary, so it holds whichever module copy a test loaded. A test that patches one of
+# these itself keeps its own stub: its monkeypatch is applied after this autouse fixture.
+@pytest.fixture(autouse=True)
+def _real_critical_senders_raise(monkeypatch):
+    """Make the three real send boundaries raise for every test.
+
+    ``telegram_alert.send_message``/``send_document`` are what ``telegram_alert`` binds from the transport at module
+    level; ``email_notifier.send_email`` is the hub's email adapter; ``channel_adapters.send_via_gateway`` is what the
+    critical-text primitive's default sender calls. Nothing here sends, and a caller that forgot to inject a sender
+    gets a failure the test can see instead of a message on the operator's phone.
+    """
+    def _blocked_send(*_args, **_kwargs):
+        raise RuntimeError("real_sender_blocked_under_pytest")
+
+    targets = (
+        ("email_notifier", ("send_email",)),
+        ("telegram_alert", ("send_message", "send_document")),
+        ("scripts.telegram_alert", ("send_message", "send_document")),
+        ("lib.comms.channel_adapters", ("send_via_gateway",)),
+        ("scripts.lib.comms.channel_adapters", ("send_via_gateway",)),
+    )
+    for name, attrs in targets:
+        try:
+            mod = importlib.import_module(name)
+        except Exception:  # noqa: BLE001 -- a module this sys.path does not have has nothing to guard
+            continue
+        for attr in attrs:
+            if hasattr(mod, attr):
+                monkeypatch.setattr(mod, attr, _blocked_send)

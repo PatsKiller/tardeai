@@ -16,6 +16,11 @@ Rules this module keeps:
   * the Critical chat is sent through `telegram_alert.send_telegram` — the communications chokepoint that writes the
     ledger row and routes the alert as a declared P1 intent — never through the raw transport directly;
   * every send returns a per-channel receipt, including the ones that did not send, and no receipt carries an address;
+  * **a real send is only made from the live release.** The default senders touch the operator's real channels, so a
+    call running from a worktree, a test tree or a stale release is refused per channel (``refused`` /
+    ``non_live_code_root``) and nothing leaves the process. Injected senders are unaffected: they are the caller's own
+    substitute and the tests' only way to exercise the fan-out. LQ-20261107-1713 is the reason: a probe in a worktree
+    reached the real contact file and the real text gateway with no injected sender, and paged the operator's phone;
   * senders are injected, so the tests exercise the fan-out without a network, a token or a mailbox.
 
 It sends nothing on import and holds no state between events.
@@ -24,9 +29,36 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable
 
 from scripts.lib import critical_delivery as cd
+#: The deploy-time symlink, by its one definition in the repository (`live_project_root`).
+from scripts.lib.live_project_root import CURRENT_SYMLINK as LIVE_CURRENT
+
+#: The code root this module was loaded from (``<root>/scripts/lib/critical_channels.py``). In the live release this is
+#: the release directory CURRENT resolves to; in a worktree, a test tree or a release that a deploy has already
+#: superseded it is something else — and then a real send must not happen.
+CODE_ROOT = Path(__file__).resolve().parents[2]
+#: The only root a real send may come from: the release CURRENT resolves to (see `LIVE_CURRENT` above).
+#: The receipt's reason when a default (real) sender was asked to send from a code root that is not the live release.
+NON_LIVE_REASON = "non_live_code_root"
+
+
+def is_live_code_root(code_root: Path | None = None, current: Path | None = None) -> bool:
+    """Whether this code is the release CURRENT resolves to, i.e. whether a real send is allowed.
+
+    Read at call time (never cached): a deploy moves CURRENT under a long-lived process, and the next real send must
+    see the new answer. A missing or broken CURRENT is not the live release, so it refuses — the safe direction.
+    """
+    try:
+        live = Path(current if current is not None else LIVE_CURRENT).resolve(strict=True)
+    except (OSError, RuntimeError):  # missing link, dangling link, symlink loop
+        return False
+    try:
+        return Path(code_root if code_root is not None else CODE_ROOT).resolve() == live
+    except (OSError, RuntimeError):
+        return False
 
 #: Channels in the order the plan reports them. The order is also the order they are attempted, so the cheapest failure
 #: (no chat configured) is discovered before the text, which is the one that interrupts the operator.
@@ -63,7 +95,7 @@ def _safe_reason(exc: BaseException) -> str:
 @dataclass
 class Receipt:
     channel: str
-    status: str           # sent | failed | skipped
+    status: str           # sent | failed | skipped | refused
     reason: str | None = None
     provider_receipt: str | None = None
 
@@ -225,8 +257,11 @@ def deliver(
 ) -> Delivery:
     """Fan one CRITICAL event to every channel that can carry it. Never raises for a channel that cannot.
 
-    The one refusal is the event itself: when the CRITICAL taxonomy cannot be read, nothing is fanned out, because a
-    class nobody can verify must not be labelled CRITICAL. That is the same posture as a class outside the allowlist.
+    Two refusals. The event itself: when the CRITICAL taxonomy cannot be read, nothing is fanned out, because a class
+    nobody can verify must not be labelled CRITICAL — the same posture as a class outside the allowlist. And a real
+    send from a code root that is not the live release: the default senders are the operator's real channels, so from a
+    worktree, a test tree or a superseded release each default-sender channel is a ``refused`` receipt and nothing is
+    sent. An injected sender is the caller's own substitute and is never refused (LQ-20261107-1713).
     """
     alert_class = str(event.get("alert_class") or "").strip()
     # F4/codex P2: the private contact file is email's and the text gateways' configuration. The Critical chat is
@@ -247,6 +282,9 @@ def deliver(
     allow = policy if policy is not None else cd.load_text_allowlist()
     plan = cd.fan_out_plan(alert_class, doc, allow)
     out = Delivery(alert_class=alert_class)
+    # Read here, once per event, for the three default senders below. A caller that injected a sender is unaffected;
+    # only a real send (a default sender) is gated on this being the live release.
+    live = is_live_code_root()
 
     what = str(event.get("what") or event.get("trigger") or alert_class)
     # codex P2: `what` is only the trigger. The suggested action, and B4's re-authorisation link, live in
@@ -270,6 +308,8 @@ def deliver(
     # Telegram Critical chat — independent of the contact file, so it is attempted even when that file is unreadable.
     if "critical_chat_not_configured" in plan["missing"]:
         out.receipts.append(Receipt("telegram_critical", "skipped", "critical_chat_not_configured"))
+    elif telegram_sender is None and not live:
+        out.receipts.append(Receipt("telegram_critical", "refused", NON_LIVE_REASON))
     else:
         chat = os.environ.get(cd.CRITICAL_CHAT_ENV, "").strip()
         try:
@@ -289,6 +329,8 @@ def deliver(
         out.receipts.append(Receipt("email", "failed", contact_error))
     elif not mail:
         out.receipts.append(Receipt("email", "skipped", "critical_email_not_configured"))
+    elif email_sender is None and not live:
+        out.receipts.append(Receipt("email", "refused", NON_LIVE_REASON))
     else:
         try:
             provider = (email_sender or _default_email_sender)(mail, subject, body_text)
@@ -307,6 +349,8 @@ def deliver(
         out.receipts.append(Receipt("text_gateway", "skipped", "text_gateway_not_configured"))
     elif not cd.text_class_allowed(alert_class, allow):
         out.receipts.append(Receipt("text_gateway", "skipped", "class_not_enabled_for_text"))
+    elif text_sender is None and not live:
+        out.receipts.append(Receipt("text_gateway", "refused", NON_LIVE_REASON))
     else:
         try:
             if text_sender is not None:
