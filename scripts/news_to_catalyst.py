@@ -126,7 +126,7 @@ def _acronym_block(symbol, title) -> str | None:
     """Configured acronym tickers are not the issuer unless the headline names the company. Config, not a code list."""
     try:
         from catalyst_classifier import acronym_symbol_conflict
-    except Exception:
+    except ImportError:
         return None
     return acronym_symbol_conflict(symbol, title)
 
