@@ -198,16 +198,44 @@ const corrected = homeWithCurrentTruth(m, current, { pending_approvals: 2, appro
 check('restoration: legacy below-stop/no-stop rows never override current categories',
   !corrected.items.some(i => i.id === 'stop:SPCX' || i.title.includes('below its stop')))
 check('restoration: active resting stop never generates a false protect action', !corrected.items.some(i => i.title.startsWith('FAKE0')))
-check('restoration: pending and filled keep their categories', corrected.items.some(i => i.title.includes('pending activation'))
-  && corrected.items.some(i => i.title.includes('filled · awaiting holdings sync') && i.money === null))
+// LQ-20261107-1390: a GTC stop the broker is holding (pending_activation) is protection, never "$X at risk";
+// an executed stop is not protection and keeps its category (with no dollar claim).
+check('restoration: a resting pending-activation stop is never a protect action',
+  !corrected.items.some(i => i.title.includes('pending activation')))
+check('restoration: filled keeps its category and states no dollar claim',
+  corrected.items.some(i => i.title.includes('filled · awaiting holdings sync') && i.money === null))
 check('restoration: planned and unknown states never become no-stop claims',
   corrected.items.find(i => i.title.startsWith('FAKE4'))?.title.includes('Planned level') === true
   && corrected.items.find(i => i.title.startsWith('FAKE5'))?.title.includes('state not recorded') === true)
 check('restoration: approvals use exactly the header precedence', corrected.items.find(i => i.id === 'approvals:pending')?.title === '2 approvals waiting')
 check('restoration: source and categorized unprotected count preserved', corrected.numbers.unprotected === 3 && corrected.numbers.positionsSource === 'fixture CIO')
+// LQ-20261107-1390: the tile's count and value must name the same rows — the count covers positions >= $100, so
+// the value beside it is the counted split, never the wide total that also holds the sub-$100 residuals.
+const splitCurrent = { positions: { source: 'fixture CIO', as_of: ok.as_of, unprotected_value_usd: 50_000,
+  unprotected_counted_value_usd: 49_000, rows: [] }, stops: { unprotected_count: 6, stale: false } }
+const split = homeWithCurrentTruth(doNowFrom({ ...ok, items: [] }, { nowMs: now }), splitCurrent, { pending_approvals: 0 })
+check('numbers: the tile value names the same rows as the count', split.numbers.unprotected === 6 && split.numbers.unprotectedValue === 49_000)
+const wideOnly = homeWithCurrentTruth(doNowFrom({ ...ok, items: [] }, { nowMs: now }),
+  { positions: { source: 'fixture CIO', rows: [], unprotected_value_usd: 120 }, stops: { unprotected_count: 3 } }, { pending_approvals: 0 })
+check('numbers: an older payload without the split still shows its value', wideOnly.numbers.unprotectedValue === 120)
+// Positions under the $100 count threshold are ONE labelled row, never a protect action each: the queue must
+// name the same positions the count does (LQ-20261107-1390).
+const dusted = { positions: { source: 'fixture CIO', as_of: ok.as_of, rows: [
+  { symbol: 'BIG', account_id: 'demo_account', market_value: 30_000, stop_category: 'none', counted: true },
+  { symbol: 'DUST1', account_id: 'demo_account', market_value: 7.48, stop_category: 'none', counted: false },
+  { symbol: 'DUST2', account_id: 'demo_account', market_value: 17.33, stop_category: 'none', counted: false },
+] }, stops: { unprotected_count: 3, stale: false } }
+const dq = homeWithCurrentTruth(doNowFrom({ ...ok, items: [] }, { nowMs: now }), dusted, { pending_approvals: 0 })
+const dustRow = dq.items.find(i => i.id === 'protection:under-100')
+check('restoration: counted rows are one action each, the dust is one labelled row',
+  dq.items.some(i => i.id === 'protection:demo_account:BIG')
+  && !dq.items.some(i => i.id === 'protection:demo_account:DUST1')
+  && dustRow?.money === 24.81 && dustRow?.title === '2 positions under $100 without a stop')
+check('restoration: the residual row says it is outside the count',
+  dustRow?.why.includes('not in that count') === true)
 check('restoration: source payload unchanged', current.positions.rows[0].stop_category === 'active' && m.items[0].id === 'stop:SPCX')
 check('restoration: account names only', corrected.items.filter(i => i.id.startsWith('protection:')).every(i => i.accounts[0].label === 'Example Account'))
-check('restoration: protection opens the exact Risk account+symbol sheet', corrected.items.find(i => i.title.startsWith('FAKE1'))?.where.includes('detail=position%3Ademo_account%3AFAKE1') === true)
+check('restoration: protection opens the exact Risk account+symbol sheet', corrected.items.find(i => i.title.startsWith('FAKE2'))?.where.includes('detail=position%3Ademo_account%3AFAKE2') === true)
 const missingCurrent = homeWithCurrentTruth(doNowFrom({ ...ok, items: [] }, { nowMs: now }), null, {})
 check('restoration: missing current categories and approvals never an all-clear or zero', missingCurrent.state === 'UNAVAILABLE'
   && !missingCurrent.allSourcesAnswered && missingCurrent.numbers.unprotected === null && missingCurrent.unavailableSources.includes('approvals'))
@@ -223,7 +251,8 @@ check('restoration: retained positions make the queue, receipt and number stale'
   && retainedPositions.sources.find(s => s.name === 'cio_positions')?.stale === true
   && retainedPositions.staleSources.includes('cio_positions') && retainedPositions.numbers.stale)
 check('restoration: retained positions preserve categories and the last categorized count', retainedPositions.numbers.unprotected === 3
-  && retainedPositions.items.some(i => i.title.includes('pending activation'))
+  && !retainedPositions.items.some(i => i.title.includes('pending activation'))
+  && retainedPositions.items.some(i => i.title.includes('filled · awaiting holdings sync'))
   && !retainedPositions.items.some(i => i.title.includes('below its stop')))
 const retainedApprovals = homeWithCurrentTruth(m, current, { pending_approvals: 2, approvals_count: 98 }, undefined, { approvalsStale: true })
 check('restoration: retained approvals preserve header parity and disclose stale receipt', retainedApprovals.state === 'STALE'

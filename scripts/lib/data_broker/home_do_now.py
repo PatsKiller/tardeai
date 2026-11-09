@@ -51,6 +51,11 @@ try:  # stale-guidance gate (Board row 33 piece E)
 except ImportError:  # pragma: no cover - imported as scripts.lib.*
     from scripts.lib.stale_guidance import stop_prompt_is_stale
 
+try:  # one coverage question, one predicate (LQ-20261107-1390)
+    from lib.cio_truth import stop_protects
+except ImportError:  # pragma: no cover - imported as scripts.lib.*
+    from scripts.lib.cio_truth import stop_protects
+
 
 def _acct_names(accounts: Any) -> list[str]:
     return [_acct_name(a) for a in (accounts or []) if a]
@@ -418,7 +423,11 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
         # Per account (2026-10-23): one account's stop never hides the other account's unprotected shares.
         pa = row["by_account"].setdefault(acct, {"value": 0.0, "stop": True})
         pa["value"] += mv
-        if p.get("stop_price") is None:
+        # Protection is an ORDER at the broker, not a level on a page: an armed stop or a resting GTC stop
+        # (pending_activation outside the session) protects; a planned level does not (LQ-20261107-1390 --
+        # the old ``stop_price is None`` test called a planned-only level protection and, at the other end,
+        # let the risk page call resting stops "unprotected").
+        if not stop_protects(p):
             pa["stop"] = False
             row["stop"] = False
         if p.get("triggered"):
@@ -436,6 +445,7 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
             row["day_pct"] = _num(p.get("day_change_pct"))
 
     out: list[dict] = []
+    rowed: set[str] = set()  # symbols that already carry a stop row (a second fact needs its own id)
     for sym, r in by_sym.items():
         accts = ", ".join(_acct_names(r["accounts"])) or "account unknown"
         if r["triggered_live"]:
@@ -456,6 +466,7 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
                     evidence={"symbol": sym, "accounts": r["accounts"], "account_labels": _acct_names(r["accounts"])},
                 )
             )
+            rowed.add(sym)
         elif r["near"] is not None:
             out.append(
                 item(
@@ -479,6 +490,7 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
                     },
                 )
             )
+            rowed.add(sym)
 
     # No-stop items. When working-stop coverage is measured, it is the truth (§26: one fact, one source): only
     # its UNCOVERED symbols are items. Otherwise fall back to "no stop on record" from the snapshot, labelled.
@@ -505,7 +517,8 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
             if bare and len(bare) < len(r.get("by_account") or {}):  # only the accounts without a stop
                 r = {**r, "accounts": [a for a in bare if a], "value": sum(r["by_account"][a]["value"] for a in bare)}
             no_stop[s_] = r
-        basis = "no stop on record (risk snapshot); working-stop coverage not measured"
+        basis = ("no stop on record at the broker (risk snapshot); a planned level is not an order; "
+                 "working-stop coverage not measured")
         basis += f" — {cov.get('reason')}" if cov.get("reason") else ""
         src = "risk"
     ranked = sorted(no_stop.items(), key=lambda kv: -(kv[1].get("value") or 0.0))
@@ -517,9 +530,16 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
         day = r.get("day_pct")
         day_txt = f" · {day:+.2f}% today" if day is not None else ""
         accts = ", ".join(_acct_names(r.get("accounts"))) or "account unknown"
+        # One symbol can carry two different facts in two accounts (SPCX: a resting stop in the IRA, no stop in
+        # the taxable account). The queue dedupes by id, so a second fact about the same symbol needs its own
+        # id or the first row would swallow it (LQ-20261107-1390).
+        key = f"stop:{sym}"
+        if sym in rowed:
+            first = next((a for a in (r.get("accounts") or []) if a), "account-unknown")
+            key = f"stop:{sym}:{first}"
         out.append(
             item(
-                f"stop:{sym}",
+                key,
                 "protect",
                 "P1",
                 f"{sym} {_usd(v)} has no stop",
@@ -538,24 +558,48 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
                 },
             )
         )
+    # The rollup counts every unprotected position; only those above UNPROTECTED_ITEM_MIN_USD get their own row.
+    # Saying both numbers and naming the residuals keeps "N unprotected" from reading as "N things to do"
+    # (LQ-20261107-1390: the queue said "12 unprotected" while two rows were actionable).
+    floor = UNPROTECTED_ITEM_MIN_USD
+    above = {s: r for s, r in no_stop.items() if (r.get("value") or 0.0) >= floor}
+    below = {s: r for s, r in no_stop.items() if (r.get("value") or 0.0) < floor}
+    above_value = sum(r.get("value") or 0.0 for r in above.values())
+    below_value = sum(r.get("value") or 0.0 for r in below.values())
     if no_stop:
         unprot_value = sum(r.get("value") or 0.0 for r in no_stop.values())
         syms = [s for s, _ in ranked]
         shown = ", ".join(syms[:6]) + (f" and {len(syms) - 6} more" if len(syms) > 6 else "")
+        split = ""
+        if below:
+            below_txt = ", ".join(
+                f"{s} {_usd(r.get('value') or 0.0)}"
+                for s, r in sorted(below.items(), key=lambda kv: -(kv[1].get("value") or 0.0))
+            )
+            split = (
+                f" {len(above)} above the {_usd(floor)} action floor ({_usd(above_value)}); "
+                f"{len(below)} under it and only in this total ({_usd(below_value)}): {below_txt}."
+            )
         out.append(
             item(
                 "stops:unprotected",
                 "protect",
                 "P1",
                 f"{len(no_stop)} position{'s' if len(no_stop) != 1 else ''} with no stop",
-                f"{shown} · {_usd(unprot_value)} in total. Basis: {basis}.",
+                f"{shown} · {_usd(unprot_value)} in total.{split} Basis: {basis}.",
                 "Open risk",
                 R_RISK,
                 src,
                 money=unprot_value,
                 money_basis="combined market value with no stop",
                 since=cov.get("as_of") if src == "desk_truth" else as_of,
-                evidence={"symbols": syms, "count": len(no_stop)},
+                evidence={
+                    "symbols": syms,
+                    "count": len(no_stop),
+                    "actionable_symbols": sorted(above),
+                    "below_floor": [{"symbol": s, "value": round(r.get("value") or 0.0, 2)}
+                                    for s, r in sorted(below.items(), key=lambda kv: -(kv[1].get("value") or 0.0))],
+                },
             )
         )
     port = snapshot.get("portfolio") if isinstance(snapshot.get("portfolio"), dict) else {}
@@ -564,6 +608,17 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
         "unprotected_value_usd": round(sum(r.get("value") or 0.0 for r in no_stop.values()), 2),
         "unprotected_basis": basis,
         "unprotected_source": src,
+        # The count and the rows answer different questions; publish both so neither is read as the other
+        # (LQ-20261107-1390: "12 unprotected positions" vs 2 actionable).
+        "unprotected_item_floor_usd": floor,
+        "unprotected_actionable_positions": len(above),
+        "unprotected_actionable_value_usd": round(above_value, 2),
+        "unprotected_below_floor_positions": len(below),
+        "unprotected_below_floor_value_usd": round(below_value, 2),
+        "unprotected_below_floor": [
+            {"symbol": s, "value": round(r.get("value") or 0.0, 2)}
+            for s, r in sorted(below.items(), key=lambda kv: -(kv[1].get("value") or 0.0))
+        ],
         "positions_counted": len(by_sym),
         "heat_pct": _num(port.get("heat_pct")),
         "heat_limit_pct": HEAT_LIMIT_PCT,

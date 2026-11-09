@@ -32,9 +32,16 @@ NOW = datetime(2026, 10, 22, 15, 0, tzinfo=timezone.utc)
 ISO = NOW.isoformat()
 
 
-def _pos(sym, value, account="schwab_rollover_ira", stop=None, dist=None, triggered=False, max_loss=0, excluded=False):
+def _pos(sym, value, account="schwab_rollover_ira", stop=None, dist=None, triggered=False, max_loss=0, excluded=False,
+         stop_source=None, stop_state=None, protected=False):
+    """A snapshot position. A position with ``stop`` set carries a RESTING broker order by default (the risk
+    snapshot's own shape: stop_source/stop_state/broker_protected are always present). LQ-20261107-1390: an
+    armed-only reading called every resting GTC stop "unprotected" outside the session."""
+    if stop is not None and stop_source is None and stop_state is None:
+        stop_source, stop_state = "broker_resting", "pending_activation"
     return {"symbol": sym, "account": account, "market_value": value, "stop_price": stop, "distance_to_stop_pct": dist,
-            "triggered": triggered, "max_loss_dollar": max_loss, "risk_excluded": excluded, "day_change_pct": -5.4}
+            "triggered": triggered, "max_loss_dollar": max_loss, "risk_excluded": excluded, "day_change_pct": -5.4,
+            "stop_source": stop_source, "stop_state": stop_state, "broker_protected": protected}
 
 
 def _risk(*positions, computed_at=None, heat=0.1):
@@ -216,6 +223,62 @@ def test_triggered_and_near_stop():
 def test_small_unprotected_positions_only_in_the_rollup():
     out = build(**base(risk=_risk(_pos("DUST", 500))))
     assert "stop:DUST" not in ids(out) and "stops:unprotected" in ids(out)
+
+
+# ── LQ-20261107-1390: a resting GTC stop is protection; a planned level is not; count ≠ rows ───────────────────
+
+
+def test_a_resting_gtc_stop_is_protection_and_a_planned_level_is_not():
+    out = build(**base(risk=_risk(
+        _pos("REST", 30_000, stop=100, dist=10),  # resting GTC stop: pending_activation outside the session
+        _pos("PLAN", 30_000, stop=90, dist=10, stop_source="planned", stop_state="none"),
+        _pos("BARE", 30_000),
+    )))
+    assert "stop:REST" not in ids(out)
+    assert {"stop:PLAN", "stop:BARE"} <= set(ids(out))
+    roll = next(i for i in out["items"] if i["id"] == "stops:unprotected")
+    assert roll["title"] == "2 positions with no stop" and roll["money_at_risk_usd"] == 60_000
+    assert "planned level is not an order" in roll["why"]
+    assert out["numbers"]["unprotected_positions"] == 2
+
+
+def test_an_armed_stop_and_a_filled_stop_are_not_the_same_thing():
+    out = build(**base(risk=_risk(
+        _pos("ARM", 30_000, stop=100, dist=10, stop_state="active", protected=True),
+        _pos("FILLED", 30_000, stop=100, dist=10, stop_state="filled"),
+        _pos("REPLACED", 30_000, stop=100, dist=10, stop_state="replaced"),
+    )))
+    assert "stop:ARM" not in ids(out)  # an armed stop protects, exactly as before
+    assert {"stop:FILLED", "stop:REPLACED"} <= set(ids(out))  # an executed / superseded order protects nothing
+    assert out["numbers"]["unprotected_positions"] == 2
+
+
+def test_the_rollup_separates_actionable_positions_from_residuals():
+    out = build(**base(risk=_risk(_pos("BIG", 116_000), _pos("MID", 25_000), _pos("TINY", 125.5),
+                                  _pos("DUST", 18))))
+    roll = next(i for i in out["items"] if i["id"] == "stops:unprotected")
+    n = out["numbers"]
+    assert roll["title"] == "4 positions with no stop" and roll["money_at_risk_usd"] == 141_143.5
+    assert n["unprotected_actionable_positions"] == 2 and n["unprotected_below_floor_positions"] == 2
+    assert n["unprotected_actionable_value_usd"] == 141_000 and n["unprotected_below_floor_value_usd"] == 143.5
+    assert n["unprotected_item_floor_usd"] == 10_000
+    assert "2 above the $10,000 action floor ($141,000)" in roll["why"]
+    assert "2 under it and only in this total ($144): TINY $126, DUST $18." in roll["why"]
+    assert [e["symbol"] for e in roll["evidence"]["below_floor"]] == ["TINY", "DUST"]
+
+
+def test_one_symbol_with_a_breach_and_a_bare_account_keeps_both_rows():
+    """SPCX live: a resting stop in the IRA, no stop on the taxable shares. The queue dedupes by id, so the
+    second fact needs its own id or the P0 row would swallow it."""
+    out = build(**base(risk=_risk(
+        _pos("PAIR", 85_000, account="schwab_rollover_ira", stop=100, dist=-2, triggered=True),
+        _pos("PAIR", 28_000, account="schwab_taxable"),
+    )))
+    by = {i["id"]: i for i in out["items"]}
+    assert by["stop:PAIR"]["severity"] == "P0" and by["stop:PAIR"]["title"] == "PAIR is below its stop"
+    bare = by["stop:PAIR:schwab_taxable"]
+    assert bare["money_at_risk_usd"] == 28_000 and bare["evidence"]["accounts"] == ["schwab_taxable"]
+    assert by["stops:unprotected"]["money_at_risk_usd"] == 28_000
 
 
 # ── decide / fix mapping, rollups, floors ──────────────────────────────────────────────────────────────────────

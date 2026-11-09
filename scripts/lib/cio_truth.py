@@ -391,6 +391,28 @@ def _unproven_protection(p: dict) -> bool:
     return p.get("stop_state") == "unknown"
 
 
+def stop_protects(p: dict) -> bool:
+    """True when a broker stop protects the position: an ARMED stop, or a RESTING order that will fire.
+
+    ``broker_protected`` answers the narrower question "is an armed stop priceable right now" and keeps driving
+    loss-at-stop and portfolio heat (board 15). The question here is "is there an order at the broker that
+    protects this position", and a GTC stop the broker reports as ``pending_activation`` (Schwab
+    ``AWAITING_STOP_CONDITION``) answers it yes: outside the session that is the normal state of every GTC stop.
+
+    LQ-20261107-1390: the unprotected figures consulted ``broker_protected`` alone, so the live 2026-11-09 book
+    reported 8 resting stops (ANET, BAH, PFE, SKYD, SPCX, T, V, XAR; $270,978) as money at risk -- Risk read
+    ``0.0 % protected`` and ``$320,542`` unprotected with those orders resting at the broker.
+
+    A stale observation is demoted to ``unknown`` by ``stop_for`` and stays unproven (``_unproven_protection``),
+    so it can never become protection here. A planned level is not an order and does not protect.
+    """
+    if p.get("broker_protected"):
+        return True
+    sp = _number(p.get("stop_price"))
+    return bool(p.get("stop_source") == "broker_resting" and p.get("stop_state") in _RESTING_STOP_STATES
+                and sp is not None and sp > 0)
+
+
 def _resting_summary(counted: list[dict], total_usd, *, broker_available: bool) -> dict:
     """Counted positions by stop category plus the loss if every resting broker stop (active or pending) fills.
 
@@ -1988,8 +2010,10 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     unproven_positions = [p for p in counted_positions if _unproven_protection(p)]
     unproven_ids = {id(p) for p in unproven_positions}
     # Proven unprotected only: an unproven row is neither protected nor unprotected, so it never adds to the
-    # definite "without protection" figures. It is published separately as the unproven set.
-    proven_unprotected = [p for p in counted_positions if not p["broker_protected"] and id(p) not in unproven_ids]
+    # definite "without protection" figures. It is published separately as the unproven set. A resting GTC stop
+    # protects (``stop_protects``): ``broker_protected`` alone called every after-hours pending activation
+    # unprotected (LQ-20261107-1390).
+    proven_unprotected = [p for p in counted_positions if not stop_protects(p) and id(p) not in unproven_ids]
     counts = {state: sum(p["stop_state"] == state for p in counted_positions) for state in ("active", "pending_activation", "filled")}
     stop_rows = [{**{k: p.get(k) for k in ("account_id", "account_label", "symbol", "stop_price", "stop_source", "stop_state",
                                          "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence", "stop_note",
@@ -2042,14 +2066,29 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
         protected_loss = round(sum(losses), 2)
     if uncertain_observation:
         protected_loss = None  # Unknown evidence must not become a zero-risk figure.
-    unprotected_mv = _sum_known([p for p in positions if not p["broker_protected"] and not _unproven_protection(p)],
-                                "market_value") if portfolio["holdings"] and broker is not None else None
+    _unprotected = [p for p in positions if not stop_protects(p) and not _unproven_protection(p)]
+    _counted_ids = {id(p) for p in counted_positions}
+    unprotected_mv = (_sum_known(_unprotected, "market_value")
+                      if portfolio["holdings"] and broker is not None else None)
+    # `unprotected_count` counts the counted positions (market value >= $100) and `unprotected_value_usd` sums
+    # every position, so the two named different universes: on the live 2026-11-09 book the count said 6 while
+    # the 6 rows held $49,089.02 and $474.65 sat in thirteen sub-$100 residuals under the count's threshold.
+    # Both totals stay (the wider one feeds pct_protected, and deriving protected from the narrower one would
+    # silently call those residuals protected), and the split is published so a reader can pair like with like
+    # (LQ-20261107-1390).
+    unprotected_counted_mv = (_sum_known([p for p in _unprotected if id(p) in _counted_ids], "market_value")
+                              if portfolio["holdings"] and broker is not None else None)
+    unprotected_residual_mv = (_sum_known([p for p in _unprotected if id(p) not in _counted_ids], "market_value")
+                               if portfolio["holdings"] and broker is not None else None)
     unproven_mv = (_sum_known([p for p in positions if _unproven_protection(p)], "market_value")
                    if portfolio["holdings"] and broker is not None else None)
     position_section = {"rows": positions, "loss_at_stop_usd": protected_loss,
                         "portfolio_heat_pct": round(protected_loss / portfolio["total_usd"] * 100, 3)
                         if portfolio.get("total_usd") and protected_loss is not None else None,
                         "unprotected_value_usd": unprotected_mv, "unproven_value_usd": unproven_mv,
+                        # the SAME rows `unprotected_count` counts, and the sub-$100 remainder it excludes
+                        "unprotected_counted_value_usd": unprotected_counted_mv,
+                        "unprotected_residual_value_usd": unprotected_residual_mv,
                         "largest_name": None,
                         "loss_basis": "loss to observed active stops; unprotected downside is not bounded",
                         # `gap` answers ONE question — are the positions available — because that is how every
@@ -2068,7 +2107,8 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     position_section["as_of"] = portfolio["positions_as_of"]
     position_section.update(_resting_summary(counted_positions, portfolio.get("total_usd"), broker_available=broker is not None))
     if uncertain_observation:
-        position_section.update(loss_at_resting_stops_usd=None, resting_heat_pct=None, unprotected_value_usd=None)
+        position_section.update(loss_at_resting_stops_usd=None, resting_heat_pct=None, unprotected_value_usd=None,
+                                unprotected_counted_value_usd=None, unprotected_residual_value_usd=None)
         stops["unprotected_count"] = None
     by_symbol = {}
     for p in positions:

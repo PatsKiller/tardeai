@@ -78,6 +78,7 @@ export function routerPath(where: unknown): string {
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
+const usd0 = (v: number): string => `$${Math.round(v).toLocaleString('en-US')}`
 const CATS: Category[] = ['protect', 'decide', 'fix']
 
 function itemAccounts(evidence: any): { account: string; label: string }[] {
@@ -190,12 +191,21 @@ export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: an
     basis: 'CIO positions · same categories as Risk', ageS: ageFromClock(positionsClock, retained.nowMs),
     stale: positionsStale, error: answered ? null : 'Current stop categories unavailable' }]
   if (!answered) missing.push('cio_positions')
+  const dust: any[] = []  // positions under the $100 threshold the unprotected count uses
   if (answered) for (const row of rows!) {
     const sym = str(row.symbol)
     if (!sym) continue
+    // The unprotected count and the queue must name the same positions. A position the server marks `counted:
+    // false` (under $100) is not its own action — one labelled residual row stands for all of them, so the queue
+    // cannot read "12 unprotected" beside 19 rows while the tile counts 6 (LQ-20261107-1390). An older payload
+    // without `counted` keeps every row.
+    if (row.counted === false) { dust.push(row); continue }
     const category = stopCategory(row)
-    // A resting stop is not a below-stop/no-stop action. Its broker status remains on Risk.
-    if (category === 'active') continue
+    // A resting stop is protection, not an action. `pending_activation` is a GTC stop the broker is holding
+    // (Schwab AWAITING_STOP_CONDITION) — outside the session that is the normal state of every GTC stop, so it
+    // never reads as money at risk here. Its broker status remains on Risk (LQ-20261107-1390: five P2
+    // "Broker resting · pending activation" rows for stops resting at the broker).
+    if (category === 'active' || category === 'pending_activation') continue
     const account = rowAccountKey(row)
     const label = accountLabelName(account, row.account_label)
     const query = new URLSearchParams({ tab: 'exposure', detail: `position:${account}:${sym}` })
@@ -203,6 +213,19 @@ export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: an
       title: `${sym} · ${STOP_CATEGORY_LABEL[category]}`, why: readableTimesInText(row.stop_reason ?? STOP_CATEGORY_LABEL[category]),
       actionLabel: `Review ${sym}`, where: `/risk?${query}`, money: category === 'filled' ? null : num(row.market_value), moneyBasis: 'market value of the position',
       sources: ['CIO positions'], since: str(row.stop_captured_at), accounts: [{ account, label }] })
+  }
+  // The residuals the count excludes, named once and valued, never silently dropped.
+  const dustUnprotected = dust.filter(row => {
+    const c = stopCategory(row)
+    return c !== 'active' && c !== 'pending_activation'
+  })
+  if (dustUnprotected.length) {
+    const dustValue = dustUnprotected.reduce((s, row) => s + (num(row.market_value) ?? 0), 0)
+    items.push({ id: 'protection:under-100', category: 'protect', severity: 'P3',
+      title: `${dustUnprotected.length} position${dustUnprotected.length === 1 ? '' : 's'} under $100 without a stop`,
+      why: `${usd0(dustValue)} in total, below the $100 threshold the unprotected count uses, so these are not in that count.`,
+      actionLabel: 'Open risk', where: '/risk', money: dustValue, moneyBasis: 'market value of positions under $100',
+      sources: ['CIO positions'], since: null, accounts: [] })
   }
   const approvals = num(overview?.pending_approvals ?? overview?.approvals_count)
   if (approvals === null) missing.push('approvals')
@@ -228,8 +251,12 @@ export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: an
       : retained.approvalsStale ? 'Approval count refresh failed; showing the last answer'
       : missing.length ? `Source gaps: ${missing.join(', ')}` : model.reason,
     numbers: { ...model.numbers, unprotected: answered ? num(stops?.unprotected_count) : null,
-      unprotectedValue: answered ? num(pages?.positions?.unprotected_value_usd) : null,
-      unprotectedBasis: 'CIO categorized positions · same as Risk; counts as of last broker stop read',
+      // The count and the value must name the same rows. `unprotected_count` counts positions worth $100 or more;
+      // `unprotected_value_usd` sums every position, so pairing the two overstated the pair by the sub-$100
+      // residuals ($474.65 on the live 2026-11-09 book). LQ-20261107-1390.
+      unprotectedValue: answered
+        ? num(pages?.positions?.unprotected_counted_value_usd ?? pages?.positions?.unprotected_value_usd) : null,
+      unprotectedBasis: 'CIO categorized positions · same as Risk; counts and value cover positions worth $100 or more, as of the last broker stop read',
       positionsSource: answered ? str(pages.positions.source) ?? 'CIO positions' : 'Current CIO positions unavailable',
       stale: model.numbers.stale || positionsStale } }
 }

@@ -89,7 +89,11 @@ def _risk_snapshot(*positions):
 
 
 def _p(sym, value, account, stop=None):
+    # A stop_price alone is not order evidence: the risk snapshot always carries stop_source/stop_state, and a
+    # resting GTC stop (pending_activation outside the session) protects (LQ-20261107-1390).
     return {"symbol": sym, "account": account, "market_value": value, "stop_price": stop,
+            "stop_source": "broker_resting" if stop is not None else "none",
+            "stop_state": "pending_activation" if stop is not None else "none", "broker_protected": False,
             "distance_to_stop_pct": None, "triggered": False, "max_loss_dollar": 0, "day_change_pct": 1.0}
 
 
