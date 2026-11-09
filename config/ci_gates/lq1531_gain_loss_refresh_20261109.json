@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1531_gain_loss_refresh_20261109",
+  "files": [
+    "tests/test_lq1531_gain_loss_refresh_20261109.py"
+  ],
+  "anchor": "LQ1531_GAIN_LOSS_REFRESH_20261109",
+  "comment": [
+    "ANCHOR: LQ1531_GAIN_LOSS_REFRESH_20261109 — the Schwab position sync refreshes gain_loss from market_value minus cost_basis on every row with a positive basis, including existing aligned rows, after market value is final. The financial-truth gate is unchanged."
+  ]
+}

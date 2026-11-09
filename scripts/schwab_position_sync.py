@@ -899,10 +899,7 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
                     if new_cb is None or abs(float(new_cb) - float(keep_cb)) > max(1.0, 0.001 * float(keep_cb)):
                         p["cost_basis"] = keep_cb
                         p["cost_basis_source"] = keep_src
-                        mv = p.get("market_value")
-                        if mv is not None and keep_cb:
-                            p["gain_loss"] = round(float(mv) - float(keep_cb), 2)
-                            p["gain_loss_pct"] = round((float(mv) - float(keep_cb)) / float(keep_cb) * 100, 4)
+                        _refresh_gain_loss(p)
                         _shielded.append(f"{k[0]}@{k[1].replace('schwab_','')}:{new_cb}->{keep_cb}")
             if _shielded:
                 _record(account_key, "basis_shielded",
@@ -934,6 +931,7 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
                 elif stored.get(k):
                     p["cost_basis"] = stored[k]          # anchor: keep the manually-repaired basis
                     p["_basis_divergence_flagged"] = True
+                _refresh_gain_loss(p)
         except Exception:
             pass
 
@@ -1041,6 +1039,25 @@ def _mark_delisted(row, sym):
     return row
 
 
+def _refresh_gain_loss(row: dict) -> None:
+    """Keep gain_loss equal to market_value minus cost_basis.
+
+    That is the unrealized-P/L identity the financial-truth gate checks. The sync
+    rewrites market_value on every existing row; leaving the previous gain_loss
+    makes the gate report upl_mismatch and withhold sizing. Display arithmetic
+    only: no size, order, stop, or target weight.
+    """
+    try:
+        basis = float(row.get("cost_basis"))
+        market = float(row.get("market_value"))
+    except (TypeError, ValueError):
+        return
+    if basis <= 0:
+        return
+    row["gain_loss"] = round(market - basis, 2)
+    row["gain_loss_pct"] = round((market - basis) / basis * 100.0, 4)
+
+
 def _build_account_rows(account_key, live, existing_by_key):
     """Build holdings rows for ONE account from live Schwab positions, PRESERVING enrichment (name/bucket/
     cost_basis/sector) on positions we already track; minimal row for genuinely-new buys. Drops sold
@@ -1140,10 +1157,12 @@ def _build_account_rows(account_key, live, existing_by_key):
             if avg and qty:
                 row.setdefault("cost_basis", round(avg * float(row.get("shares") or qty), 2))
                 row.setdefault("cost_basis_source", "broker_api")
-        if row.get("cost_basis") and (is_new or row.get("share_drift_status") == "auto_applied"):
-            row["gain_loss"] = round(float(row.get("market_value") or mv) - float(row["cost_basis"]), 2)
-            row["gain_loss_pct"] = round((float(row.get("market_value") or mv) - float(row["cost_basis"])) / float(row["cost_basis"]) * 100, 4) if float(row["cost_basis"]) else None
-        rows.append(_mark_delisted(row, sym))   # auto-flag delisted (CUSIP-only) positions; self-clearing
+        # After share scaling, basis rebase, and the delisted zero-value mark.
+        # Every row with a basis is refreshed, including aligned rows whose
+        # market value just changed and whose gain_loss used to be left in place.
+        row = _mark_delisted(row, sym)
+        _refresh_gain_loss(row)
+        rows.append(row)
     return rows, drift_events
 
 
