@@ -8,8 +8,10 @@ stored, logged, or returned. DRY-RUN by default (shows exactly what WOULD be sen
 
   python3 scripts/hermes_external_researcher.py --lane claude --question "..." [--symbol AAPL]      # dry-run
   python3 scripts/hermes_external_researcher.py --lane claude --question "..." --apply               # send
-Redaction (hard): strips $ amounts, account numbers, API keys/tokens, .env content, broker creds, emails,
-long digit runs — and only a whitelisted, high-level context is ever assembled.
+Redaction (hard): strips our $ amounts and share counts, account numbers, API keys/tokens, .env content,
+broker creds, emails, long digit runs — and only a whitelisted, high-level context is ever assembled.
+A figure the caller quotes from public source text (``--public-evidence``) is kept: it is the fact the
+answer has to cite; our own holding values never appear there and are still replaced (LQ-1312).
 
 Governed bridge (2026-10-15, n8n llm lane batch 3): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
 the allowlist ``llm_route`` of lanes hermes-top20-external-intel / due-diligence-questions, inherited by this child)
@@ -88,21 +90,61 @@ def _account_from_env(event: str, *, reason: str, attempt_no: int = 0, fallback_
         pass
 
 # ---- redaction ----
+# LQ-1312 (operator 2026-11-08): a public source states its own figures — a Form 144's "260,000
+# shares", "about $44.4M" — and the model must see them to answer WHO/WHAT/IMPACT with the size.
+# The blanket patterns used to replace every dollar amount and every comma-grouped number, so the
+# research answer came back as "plans to sell shares" with no quantity. Figures are therefore
+# replaced UNLESS the caller supplies the public text they were quoted from (``--public-evidence``);
+# a figure that appears verbatim in that text is a public fact, one that does not is ours.
+# Account numbers, emails and keys are still redacted unconditionally: they are never public.
+_AMOUNT_RE = re.compile(r"\$\s?\d[\d,]*(\.\d+)?")
+_GROUPED_NUM_RE = re.compile(r"\b\d{1,3}(,\d{3})+(\.\d+)?\b")
 _PATTpairs = [
-    (re.compile(r"\$\s?\d[\d,]*(\.\d+)?"), "$[REDACTED_AMOUNT]"),
     (re.compile(r"\b\d{6,}\b"), "[REDACTED_NUM]"),                 # account #s / long digit runs
     (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"), "[REDACTED_EMAIL]"),
     (re.compile(r"sk-[A-Za-z0-9]{16,}|AKIA[A-Z0-9]{16}|ghp_[A-Za-z0-9]{36}|xoxb-[A-Za-z0-9-]+"), "[REDACTED_KEY]"),
-    (re.compile(r"\b\d{1,3}(,\d{3})+(\.\d+)?\b"), "[REDACTED_NUM]"),
 ]
 _FORBIDDEN_SUBSTR = ["api_key", "apikey", "secret", "password", "token", "credential", "ANTHROPIC", "ALPACA",
                      "DB_PASSWORD", "BEGIN PRIVATE", "-----BEGIN"]
 
 
-def redact(text):
+def _figure_key(text):
+    """Digits-and-dot form of a matched figure: ``$44.4`` and ``44.4`` compare equal; ``260,000``
+    and ``260000`` compare equal. The public-evidence allowlist is compared on this form."""
+    return re.sub(r"[^\d.]", "", str(text or "")).rstrip(".")
+
+
+def public_figures(text):
+    """Figures (dollars and comma-grouped counts) stated in public source text the caller supplied."""
+    out = set()
+    for rx in (_AMOUNT_RE, _GROUPED_NUM_RE):
+        for m in rx.finditer(str(text or "")):
+            key = _figure_key(m.group(0))
+            if key:
+                out.add(key)
+    return out
+
+
+def redact(text, *, keep_figures=None):
+    """Strip private values from text bound for an external model.
+
+    ``keep_figures`` is the set from :func:`public_figures` over the source text the question was
+    built from. A dollar amount or comma-grouped count whose digits match one of those is quoted
+    public material and is kept; every other one — our position values, our share counts — is
+    replaced, as are account numbers, emails and keys, always.
+    """
     if text is None:
         return None
-    s = str(text)
+    keep = {_figure_key(k) for k in (keep_figures or ())}
+
+    def _amount(m):
+        return m.group(0) if _figure_key(m.group(0)) in keep else "$[REDACTED_AMOUNT]"
+
+    def _grouped(m):
+        return m.group(0) if _figure_key(m.group(0)) in keep else "[REDACTED_NUM]"
+
+    s = _AMOUNT_RE.sub(_amount, str(text))
+    s = _GROUPED_NUM_RE.sub(_grouped, s)
     for pat, repl in _PATTpairs:
         s = pat.sub(repl, s)
     low = s.lower()
@@ -656,6 +698,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--lane", default="claude", choices=["claude", "chatgpt", "grok", "deepseek"])
     ap.add_argument("--question", required=True)
+    ap.add_argument(
+        "--public-evidence",
+        default=None,
+        help="the public source text the question quotes (news/filing lines). A figure that appears "
+        "verbatim here is kept by redaction; our holdings and account values are still stripped.",
+    )
     ap.add_argument("--symbol", default=None)
     ap.add_argument("--priority", default="P1")
     ap.add_argument("--trigger", default="manual")
@@ -740,7 +788,7 @@ def main():
         print(f"[budget-guard] advisory check skipped: {_be}")
 
     _load_env()
-    question = redact(args.question)
+    question = redact(args.question, keep_figures=public_figures(args.public_evidence))
     # Wave 3 O-W3-4: the memory context opens BEFORE the prompt is built so the research surface can render it
     _ic_ctx = None
     try:
