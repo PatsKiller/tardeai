@@ -30,7 +30,7 @@ from lib import stop_alert_price as sap  # noqa: E402 -- scripts/ is on sys.path
 try:
     from lib.ddl_guard import column_exists, relation_exists  # noqa: E402
 except ImportError:  # pragma: no cover - imported as scripts.stop_lifecycle_monitor
-    from scripts.lib.ddl_guard import column_exists, relation_exists  # type: ignore[no-redef]
+    from scripts.lib.ddl_guard import column_exists, relation_exists  # type: ignore[no-redef] -- imported through the scripts. package
 
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 _TERMINAL_CANCEL = {"canceled", "cancelled", "rejected", "expired", "replaced"}

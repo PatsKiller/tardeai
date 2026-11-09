@@ -19,9 +19,9 @@ try:
     from .ddl_guard import column_exists, relation_exists
 except ImportError:  # pragma: no cover - loaded flat (scripts/lib on sys.path), not as a package
     try:
-        from lib.ddl_guard import column_exists, relation_exists  # type: ignore[no-redef]
+        from lib.ddl_guard import column_exists, relation_exists  # type: ignore[no-redef] -- the flat spelling of the same module
     except ImportError:
-        from ddl_guard import column_exists, relation_exists  # type: ignore[no-redef]
+        from ddl_guard import column_exists, relation_exists  # type: ignore[no-redef] -- scripts/lib itself on sys.path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 REGISTRY_PATH = ROOT / "config" / "llm_process_registry.json"
