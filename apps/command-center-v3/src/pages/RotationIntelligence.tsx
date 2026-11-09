@@ -810,7 +810,7 @@ export default function RotationIntelligence() {
                   </div>
                   {h.price != null && (
                     <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text1)', marginBottom: 4 }}>
-                      {px(h.price)}{h.est_shares != null && <span style={{ color: 'var(--text3)' }}> × {h.est_shares.toLocaleString()} shares</span>}
+                      {px(h.price)}{h.est_shares != null && <span style={{ color: 'var(--text3)' }} title="broker position shares"> × {h.est_shares.toLocaleString()} shares</span>}
                       {h.day_change_pct != null && <span style={{ color: dayColor(h.day_change_pct), marginLeft: 6 }}>{dayText(h.day_change_pct)}</span>}
                       {h.current_value != null && <span style={{ color: 'var(--text3)', marginLeft: 6 }}>· {money(h.current_value)}</span>}
                     </div>
@@ -1099,7 +1099,7 @@ export default function RotationIntelligence() {
                   </div>
                   {c.price != null && (
                     <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text1)', marginBottom: 4 }}>
-                      {px(c.price)}{c.est_shares != null && <span style={{ color: 'var(--text3)' }}> × {c.est_shares.toLocaleString()} shares</span>}
+                      {px(c.price)}{c.est_shares != null && <span style={{ color: 'var(--text3)' }} title="broker position shares"> × {c.est_shares.toLocaleString()} shares</span>}
                       {c.day_change_pct != null && <span style={{ color: dayColor(c.day_change_pct), marginLeft: 6 }}>{dayText(c.day_change_pct)}</span>}
                     </div>
                   )}

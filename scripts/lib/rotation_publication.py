@@ -12,7 +12,7 @@ import json
 import math
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-from typing import Any
+from typing import Any, Mapping
 
 from .account_state import observation_instant, position_observation, project_account_state
 
@@ -85,6 +85,47 @@ def exact_position(rows: list[dict], symbol: str, account: str | None) -> dict:
     if len({_canonical(x) for x in found}) != 1:
         raise PublicationError("conflicting_account_position")
     return found[0]
+
+
+def position_share_count(row: Mapping[str, Any]) -> float | None:
+    """Broker share count from a holdings / position_snapshots row (LQ-20261107-1407).
+
+    Prefer the position's own quantity fields. Never derive shares from market_value / a live quote:
+    that is how /v3/rotation showed SPCX as 601.97 and 200.6 when the broker held 600 and 200
+    (snapshot value marked at one price, live quote at another).
+    """
+    for key in ("shares", "quantity", "broker_shares", "broker_actual_shares"):
+        value = row.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        if not math.isfinite(value):
+            continue
+        return float(value)
+    return None
+
+
+def bind_candidate_shares(candidates: list[dict], holdings_rows: list[dict]) -> None:
+    """Set each candidate's ``est_shares`` from its exact account position, or clear it.
+
+    Mutates ``candidates`` in place. A missing / conflicting position withholds the field rather than
+    inventing a count from value ÷ price (LQ-20261107-1407).
+    """
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        acct = account_key(candidate) or (
+            candidate.get("account_key") if isinstance(candidate.get("account_key"), str) else None
+        )
+        try:
+            position = exact_position(holdings_rows, candidate.get("symbol"), acct)
+        except PublicationError:
+            candidate.pop("est_shares", None)
+            continue
+        shares = position_share_count(position)
+        if shares is None:
+            candidate.pop("est_shares", None)
+        else:
+            candidate["est_shares"] = shares
 
 
 def _iso_utc(value: datetime) -> str:

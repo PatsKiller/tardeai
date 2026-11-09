@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "rotation_est_shares_lq1407_20261109",
+  "files": [
+    "tests/test_rotation_est_shares_lq1407_20261109.py"
+  ],
+  "anchor": "ROTATION_EST_SHARES_LQ1407_20261109",
+  "comment": [
+    "ANCHOR: ROTATION_EST_SHARES_LQ1407_20261109 — LQ-20261107-1407: /v3/rotation share count is the broker position qty, never market_value / live quote (SPCX 601.97/200.6 vs broker 600/200)."
+  ]
+}
