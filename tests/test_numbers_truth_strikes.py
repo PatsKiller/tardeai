@@ -1,8 +1,8 @@
 """The numbers-truth strike ladder (LQ-20261107-1702, DSN-20261109 sections 3 / REV 2 D,E / REV 3 G,H).
 
 Every test here is synthetic: inline findings, an in-memory state, an explicit clock, and injected heal / escalate /
-ticket callables that record what they were asked to do. Nothing reads a live store, the DB, the network or the
-coordination ledger.
+ticket / critical callables that record what they were asked to do. Nothing reads a live store, the DB, the network or
+the coordination ledger.
 
 The behaviours pinned, one class each:
 
@@ -16,6 +16,8 @@ The behaviours pinned, one class each:
   8. malformed findings are reported and strike nothing
   9. a dry run writes nothing and calls nothing
  10. an apply run writes the atomic state and the escalation carries BOTH sides with their timestamps
+ 11. a NEW ticket pages email + Telegram + Fi text promptly (23:00 ET, inside the notifier's quiet window); a cleared
+     line never pages; a hub that cannot be reached is a named count, not a crash
 """
 
 from __future__ import annotations
@@ -23,12 +25,22 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
+from lib import critical_texts as CT
 from lib import numbers_truth_strikes as S
 
 NOW = datetime(2026, 11, 9, 22, 7, tzinfo=timezone.utc)
+#: 23:05 ET on 2026-11-09 (EST, UTC-5) — inside the incident notifier's 22:00–07:00 ET quiet window, which is exactly
+#: where a DIGEST/P2 escalation is held until morning. The page must not be held there.
+NIGHT = datetime(2026, 11, 10, 4, 5, tzinfo=timezone.utc)
+ET = ZoneInfo("America/New_York")
+#: Synthetic operator contact. The real one is private and lives under the persistent-state root, never in this repo.
+CONTACT = {"schema": "OperatorContact@v1", "critical_email_to": "operator@example.invalid",
+           "critical_sms_email_gateways": [{"address": "gw-line-1@example.invalid", "label": "line 1",
+                                            "verified": True}]}
 
 
 def write_state(path, figures):
@@ -186,6 +198,7 @@ def test_a_refused_heal_tickets_in_the_same_run(tmp_path):
                                             "severity": "P1"}})
     out = S.run(findings=[row], state_path_=state_path, config_path=_config_file(tmp_path),
                 apply=True, now=NOW, heal=heal, escalate=lambda **kw: escalations.append(kw) or {"ok": True},
+                critical=lambda **kw: {"ok": True, "delivered": True, "receipts": []},
                 inbox=tmp_path / "inbox")
     assert len(calls) == 1
     assert out["actions"][0]["action"] == S.ACTION_TICKET
@@ -369,6 +382,7 @@ def test_apply_writes_the_state_atomically_and_escalates_both_sides_with_timesta
     out = S.run(findings=[row], state_path_=state_path, config_path=_config_file(tmp_path), apply=True, now=NOW,
                 heal=lambda **kw: {"accepted": False, "reason": "never"},      # not reached: not healable
                 escalate=lambda **kw: escalations.append(kw) or {"ok": True, "queued": True},
+                critical=lambda **kw: {"ok": True, "delivered": True, "receipts": []},
                 inbox=tmp_path / "inbox")
     assert out["counts"]["tickets"] == 1
     written = json.loads(state_path.read_text())
@@ -443,6 +457,140 @@ def _config_file(tmp_path):
     path = tmp_path / "heal.json"
     path.write_text(json.dumps(CONFIG), encoding="utf-8")
     return path
+
+
+# ── 11. the prompt page: a NEW ticket reaches all three channels (DSN-20261109 REV 3 H) ─────────────────────────
+
+
+def test_the_ticket_class_is_enabled_for_text():
+    """The one config link the text channel depends on: the hub refuses a class absent from the operator's allowlist
+    (``assert_critical_class``) and skips a class present-but-disabled, so the page carries a text only while this
+    entry is on. Pinned here because deleting the entry would otherwise show up only as a skipped receipt at 03:00."""
+    assert CT.class_enabled(CT.load_policy(), S.CRITICAL_CLASS) is True
+
+
+def test_a_new_ticket_at_2300_et_pages_email_telegram_and_fi_text_promptly(tmp_path, monkeypatch):
+    """The lead's test: a NEW fingerprint at 23:00 ET produces the intent AND a page on all three channels.
+
+    The page is the REAL production wrapper (`S.deliver_critical`) and the REAL D34 hub and allowlist; only the three
+    transports are injected, so nothing leaves the process. A DIGEST/P2 intent would be held overnight here — the
+    assertion that the run's clock is inside the quiet window is what makes that difference explicit.
+    """
+    monkeypatch.setenv("TRADEAI_CRITICAL_ALERT_CHAT_ID", "chat-fixture")
+    assert NIGHT.astimezone(ET).hour == 23
+
+    row = fail_row(page="holdings", figure_id="qty", symbol="XLV", account="acct1", served=0, truth=100,
+                   detail="row renders 0 shares; positions_current says 100")
+    fp = S.fingerprint("holdings", "qty", "acct1", "XLV")
+    state_path = tmp_path / "state.json"
+    write_state(state_path, {fp: {"consecutive_fails": 2, "page": "holdings", "figure_id": "qty",
+                                  "account": "acct1", "symbol": "xlv", "severity": "P0"}})
+
+    intents, sends, events = [], [], []
+
+    def page(**kw):
+        return S.deliver_critical(
+            kw["decision"], now=kw["now"], contact=CONTACT,
+            telegram_sender=lambda chat, text: sends.append(("telegram", chat, text)) or "mid-1",
+            email_sender=lambda to, subject, body: sends.append(("email", to, subject, body)) or "gog-accepted",
+            text_sender=lambda event: events.append(event) or {"sent": True},
+        )
+
+    out = S.run(findings=[row], state_path_=state_path, config_path=_config_file(tmp_path), apply=True, now=NIGHT,
+                heal=lambda **kw: {"accepted": False, "reason": "never"},   # not healable: tickets at strike 3
+                escalate=lambda **kw: intents.append(kw) or {"ok": True, "queued": True, "intent_id": "i1"},
+                critical=page, inbox=tmp_path / "inbox")
+
+    # the durable record still exists: the intent is queued (and its P2 copy is mirrored to email by config)
+    assert [i["kind"] for i in intents] == ["numbers_truth_ticket"]
+    # and the page went out, at 23:00 ET, on every channel (the text sender also hands us the event it was given)
+    assert [s[0] for s in sends] == ["telegram", "email"]
+    assert len(events) == 1
+    delivery = out["actions"][0]["taken"]["critical"]
+    assert {r["channel"]: r["status"] for r in delivery["receipts"]} == {
+        "telegram_critical": "sent", "email": "sent", "text_gateway": "sent"}
+    assert out["counts"]["paged"] == 1 and out["counts"]["page_failed"] == 0
+
+    # the event itself: the class the allowlist enables, both sides with timestamps, deduped by ticket id, and a
+    # sentence the text primitive accepts (it would refuse an over-cap or URL-carrying one)
+    (event,) = events
+    assert event["alert_class"] == S.CRITICAL_CLASS
+    assert event["event_id"] == S.ticket_id(fp)
+    assert "qty FAIL 3x" in event["trigger"]
+    assert "0 (served-json @ 2026-11-09T22:00:00+00:00)" in event["trigger"]
+    assert "100 (db @ 2026-11-09T21:59:30+00:00)" in event["trigger"]
+    text = CT.format_text(event, max_chars=CT.MAX_TEXT_CHARS)
+    assert text.endswith("CC Risk") and "check the figure's source" in text
+
+
+def test_a_cleared_line_never_pages_and_rides_the_intent_only(tmp_path):
+    """REV 3 H: "cleared" is Telegram + email, never a text. A clear must not touch the critical hub at all."""
+    fp = S.fingerprint("holdings", "qty", "acct1", "xlv")
+    state_path = tmp_path / "state.json"
+    write_state(state_path, {fp: {
+        "consecutive_fails": 4, "status": "ticketed", "page": "holdings", "figure_id": "qty", "account": "acct1",
+        "symbol": "xlv", "severity": "P0",
+        "ticket": {"id": S.ticket_id(fp), "at": "2026-11-09T20:00:00+00:00"}}})
+
+    def boom(**kw):  # pragma: no cover - it must never run
+        raise AssertionError("a cleared line must never page")
+
+    kinds = []
+    out = S.run(findings=[], state_path_=state_path, config_path=_config_file(tmp_path), apply=True, now=NIGHT,
+                escalate=lambda **kw: kinds.append(kw["kind"]) or {"ok": True, "queued": True},
+                critical=boom, inbox=tmp_path / "inbox")
+
+    assert [a["action"] for a in out["actions"]] == [S.ACTION_CLEAR]
+    assert kinds == ["numbers_truth_cleared"]
+    assert out["counts"]["paged"] == 0 and out["counts"]["page_failed"] == 0
+
+
+def test_a_page_callable_that_raises_still_lets_the_run_save_its_state(tmp_path):
+    """Belt and braces around `deliver_critical`'s own guard: whatever a page callable does, the run must reach
+    save_state. Otherwise the next hourly run re-opens the same ticket and pages the operator again, every hour."""
+    row = fail_row(page="holdings", figure_id="qty", symbol="XLV", account="acct1", served=0, truth=100)
+    fp = S.fingerprint("holdings", "qty", "acct1", "XLV")
+    state_path = tmp_path / "state.json"
+    write_state(state_path, {fp: {"consecutive_fails": 2, "page": "holdings", "figure_id": "qty",
+                                  "account": "acct1", "symbol": "xlv", "severity": "P0"}})
+
+    def boom(**kw):  # pragma: no cover - only the wrapper is exercised
+        raise ValueError("callable broke")
+
+    out = S.run(findings=[row], state_path_=state_path, config_path=_config_file(tmp_path), apply=True, now=NIGHT,
+                heal=lambda **kw: {"accepted": False, "reason": "never"},
+                escalate=lambda **kw: {"ok": True, "queued": True}, critical=boom, inbox=tmp_path / "inbox")
+
+    assert out["actions"][0]["taken"]["critical"] == {"ok": False, "delivered": False,
+                                                     "reason": "critical_call_error:ValueError"}
+    assert out["counts"]["page_failed"] == 1
+    assert json.loads(state_path.read_text())["figures"][fp]["status"] == "ticketed"
+
+
+def test_a_page_the_hub_cannot_send_is_a_named_outcome_not_a_crash(tmp_path):
+    """A hub that cannot be reached (the class removed from the allowlist, the module missing) must not take the
+    audit down: the run still records the state and the intent, and the failure is visible as a count."""
+    row = fail_row(page="holdings", figure_id="qty", symbol="XLV", account="acct1", served=0, truth=100)
+    fp = S.fingerprint("holdings", "qty", "acct1", "XLV")
+    state_path = tmp_path / "state.json"
+    write_state(state_path, {fp: {"consecutive_fails": 2, "page": "holdings", "figure_id": "qty",
+                                  "account": "acct1", "symbol": "xlv", "severity": "P0"}})
+
+    class BrokenHub:
+        def deliver(self, event, **kw):  # noqa: ARG002 - the signature is the point
+            raise RuntimeError("smtp down")
+
+    out = S.run(findings=[row], state_path_=state_path, config_path=_config_file(tmp_path), apply=True, now=NIGHT,
+                heal=lambda **kw: {"accepted": False, "reason": "never"},
+                escalate=lambda **kw: {"ok": True, "queued": True},
+                critical=lambda **kw: S.deliver_critical(kw["decision"], now=kw["now"], hub=BrokenHub()),
+                inbox=tmp_path / "inbox")
+
+    critical = out["actions"][0]["taken"]["critical"]
+    assert critical == {"ok": False, "delivered": False, "reason": "critical_hub_error:RuntimeError"}
+    assert out["ok"] is True and out["counts"]["tickets"] == 1
+    assert out["counts"]["paged"] == 0 and out["counts"]["page_failed"] == 1
+    assert json.loads(state_path.read_text())["figures"][fp]["ticket"]["id"] == S.ticket_id(fp)
 
 
 if __name__ == "__main__":  # pragma: no cover

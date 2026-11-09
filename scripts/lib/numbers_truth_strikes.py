@@ -11,10 +11,16 @@ schedules it. This module owns only the ladder:
                producer, an unmapped figure, or an authority finding tickets here instead (REV 3 G: a source change is
                operator-only, AGENTS.md section 17).
   strike 4     (or strike 3 with nothing to heal) a TICKET: one LQ-AUTO-<fp> per fingerprint (dedup), a FINDING file
-               for inbox/claude-lead, and one ESCALATION through the existing host comms intent route
-               (config/host_comms_intent_routes.json -> the comms-intent consumer -> the incident notifier, whose D34
-               delivery is email + Telegram + Google Fi email-to-text). This module queues an intent; it never sends.
-  PASS         a fingerprint that was failing and is now measured and agreeing clears with ONE "cleared" line.
+               for inbox/claude-lead, one ESCALATION through the existing host comms intent route
+               (config/host_comms_intent_routes.json), and — because the operator's contract (REV 3 H) is a prompt
+               page, not a digest — an immediate CRITICAL event through the D34 hub
+               (scripts/lib/critical_channels.deliver: Critical Telegram chat + email + Google Fi email-to-text).
+               The hub is reused, never rebuilt: this module owns no sender. The intent is still queued as the
+               durable incident record (its P2 copy is mirrored to email by config/comms_email_mirror.json), but the
+               page does not wait for it and is never quiet-held. A repeated fingerprint never re-pages: one ticket
+               id per fingerprint, and the text primitive dedupes by that id.
+  PASS         a fingerprint that was failing and is now measured and agreeing clears with ONE "cleared" line — an
+               intent only (Telegram + email, never the text channel).
 
 Verdict vocabulary is the whole point of the module, so it is stated once here:
 
@@ -34,7 +40,8 @@ design (REV 2 F), and no per-run files are written.
 
 AUTHORITY: READ_ONLY_ADVISORY. Never a broker, an order, a stop write, a DB write, a code edit, a cron or systemd
 edit. The one write path this module owns is the state file; heals, tickets and escalations go through injected
-callables whose production defaults are the sanctioned routes named above. MBI_BEHAVIOR = 0.
+callables whose production defaults are the sanctioned routes named above — the page is a call into the D34 critical-
+alert hub, which owns the senders, the operator's allowlist and the per-channel receipts. MBI_BEHAVIOR = 0.
 """
 
 from __future__ import annotations
@@ -507,7 +514,7 @@ def cleared_line(decision: Mapping[str, Any]) -> str:
             f"{decision.get('fails_before', '?')} failing {runs}")
 
 
-# ── production defaults for the three injected actions ───────────────────────────────────────────────────────────
+# ── production defaults for the four injected actions ───────────────────────────────────────────────────────────
 
 
 def request_heal(*, lane: str, mode: str, run_id: Optional[str] = None, now: Optional[datetime] = None) -> dict[str, Any]:
@@ -552,6 +559,61 @@ def queue_escalation(*, domain: str, kind: str, subject: str, summary: str, fing
 
 PRODUCER = "numbers_truth_strikes"
 
+#: The class the operator's critical-text allowlist turns on for a NEW ticket (config/critical_text_classes.json).
+CRITICAL_CLASS = "numbers_truth_ticket"
+
+
+def critical_event(decision: Mapping[str, Any]) -> dict[str, Any]:
+    """The one CRITICAL event a NEW ticket raises, in the shape `critical_producers` builds for its own classes.
+
+    Built here rather than through `critical_producers.produce`: its ``PRODUCERS`` map is the D35 ten and its own test
+    pins that set exactly. A non-D35 producer builds its event in place — the same thing
+    ``scripts/llm_paid_spend_watch.py`` does — so this page adds no row to another module's pinned map.
+
+    ``event_id`` is the ticket id: the key `critical_texts` dedupes on for 12 hours, so a re-run inside that window
+    cannot text the operator twice about the same fingerprint.
+    """
+    return {
+        "alert_class": CRITICAL_CLASS,
+        "event_id": ticket_id(decision["fingerprint"]),
+        "symbol": str(decision.get("symbol") or "PORTFOLIO").upper(),
+        "account": str(decision.get("account") or ""),
+        # the same both-sides line the FINDING carries: what disagrees, each side with its source and timestamp.
+        # The text primitive shortens the TRIGGER to fit its cap and never the action, which is why the evidence is
+        # here and the one instruction is in `action`.
+        "what": ticket_summary(decision),
+        "trigger": ticket_summary(decision),
+        "action": "check the figure's source",
+        "evidence": {"fingerprint": decision["fingerprint"], "page": decision.get("page"),
+                     "figure_id": decision.get("figure_id")},
+    }
+
+
+def deliver_critical(decision: Mapping[str, Any], *, now: Optional[datetime] = None,
+                     hub: Any = None, **hub_kwargs: Any) -> dict[str, Any]:
+    """Page the operator about ONE new ticket through the D34 critical-alert hub. Never raises.
+
+    `scripts/lib/critical_channels.deliver` is the existing three-channel P1 route — the Critical Telegram chat
+    (priority P1 through ``telegram_alert``, never quiet-held), the operator's email, and every Google Fi
+    email-to-text line — and it decides everything about the send: the allowlist, the 160-character sentence, the
+    dedupe window, the hourly cap and the per-channel receipts. Nothing here re-implements any of it, and no sender
+    lives in this module.
+
+    Imported lazily inside the call, the same pattern ``scripts/llm_paid_spend_watch.py`` uses, so a dry run and the
+    unit tests never import a transport. A hub that cannot be reached at all (the class removed from the operator's
+    allowlist, a broken contact file) comes back as a named outcome rather than taking the audit down — the audit's
+    job is to run every hour, and the escalation's failure is a receipt, not a crash.
+    """
+    try:
+        if hub is None:
+            from scripts.lib import critical_channels as hub  # noqa: PLC0415 — the sender import stays off the load path
+        delivery = hub.deliver(critical_event(decision), now=now, **hub_kwargs)
+        out = delivery.as_dict() if hasattr(delivery, "as_dict") else dict(delivery or {})
+        return {"ok": bool(out.get("delivered")), **out}
+    except Exception as exc:  # noqa: BLE001 — an unreachable hub is a recorded outcome; the reason is the class name
+        # never str(exc): a third-party message can embed a recipient address, and no receipt may carry one
+        return {"ok": False, "delivered": False, "reason": f"critical_hub_error:{type(exc).__name__}"}
+
 
 def write_finding(*, decision: Mapping[str, Any], inbox: Path, now: Optional[datetime] = None) -> dict[str, Any]:
     """Write the FINDING file the lead reads (REV 2 E). One file per ticket, named by the ticket id."""
@@ -577,7 +639,9 @@ def write_finding(*, decision: Mapping[str, Any], inbox: Path, now: Optional[dat
         f"- raised: {_iso(_now(now))}",
         "",
         "Raised by `scripts/lib/numbers_truth_strikes.py` (LQ-20261107-1702). Both sides and their timestamps are above;",
-        "the audit never repairs, never sends and never writes a store. Ticket the lead's ledger row against this id.",
+        "the audit never repairs, never writes a store and never sends from this module: the operator was paged by the",
+        "D34 critical-alert hub (`scripts/lib/critical_channels.deliver`), which owns the senders and the receipts.",
+        "Ticket the lead's ledger row against this id.",
         "",
     ]
     path.write_text("\n".join(body), encoding="utf-8")
@@ -597,10 +661,11 @@ def run(
     now: Optional[datetime] = None,
     heal: Optional[Callable[..., dict[str, Any]]] = None,
     escalate: Optional[Callable[..., dict[str, Any]]] = None,
+    critical: Optional[Callable[..., dict[str, Any]]] = None,
     ticket: Optional[Callable[..., dict[str, Any]]] = None,
     inbox: Optional[Path] = None,
 ) -> dict[str, Any]:
-    """Plan, and under `apply` write the state and take the heal / ticket / escalation actions.
+    """Plan, and under `apply` write the state and take the heal / ticket / escalation / page actions.
 
     Returns the audit's receipt body: counts, every decision with both sides, and the outcome of each action taken.
     A dry run (`apply=False`) writes nothing and calls nothing — it is the only way to read today's ladder first.
@@ -616,6 +681,7 @@ def run(
     actions: list[dict[str, Any]] = []
     heal_fn = heal or request_heal
     escalate_fn = escalate or queue_escalation
+    critical_fn = critical or deliver_critical
     ticket_fn = ticket
     esc_cfg = config.get("escalation") or {}
 
@@ -650,6 +716,15 @@ def run(
                                    subject=ticket_subject(decision), summary=ticket_summary(decision),
                                    fingerprint_=decision["fingerprint"], now=moment) or {})
             taken["escalation"] = esc
+            # the operator's contract is a PROMPT page (REV 3 H), not a digest slot: the intent above is the durable
+            # record, and this is the three-channel delivery that does not wait for a batch or for 07:00. Guarded
+            # here as well as inside deliver_critical: a page that raises must not abort the run before the state is
+            # saved, because the next hourly run would then open the same ticket and page again.
+            try:
+                taken["critical"] = dict(critical_fn(decision=decision, now=moment) or {})
+            except Exception as exc:  # noqa: BLE001 — a failed page is a recorded outcome, never a lost audit run
+                taken["critical"] = {"ok": False, "delivered": False,
+                                     "reason": f"critical_call_error:{type(exc).__name__}"}
         if action == ACTION_CLEAR and apply and decision.get("ticket"):
             # recovery is ONE line (REV 3 H) and only for a fingerprint the operator was told about.
             taken = dict(escalate_fn(domain=esc_cfg.get("domain") or "data",
@@ -671,6 +746,11 @@ def run(
     counts["heals"] = sum(1 for a in actions if a["action"] == ACTION_HEAL)
     counts["cleared"] = sum(1 for a in actions if a["action"] == ACTION_CLEAR)
     counts["applied"] = apply
+    # A page that reached no channel is not a failed audit, but it is the failure the operator cares about: it gets a
+    # count of its own so a lane (or a reader) sees "3 tickets, 0 paged" without unpacking every action.
+    counts["paged"] = sum(1 for a in actions if (a.get("taken") or {}).get("critical", {}).get("ok") is True)
+    counts["page_failed"] = sum(1 for a in actions if "critical" in (a.get("taken") or {})
+                                and (a["taken"]["critical"] or {}).get("ok") is not True)
     return {
         "schema": SCHEMA,
         "authority": AUTHORITY,

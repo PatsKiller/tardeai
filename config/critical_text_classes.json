@@ -79,6 +79,11 @@
       "part": "M",
       "max_chars": 300,
       "title": "Market outlook (FABLE-OUTLOOK-METHODOLOGY-LQ-946 D1): the Sunday 20:00 ET and Monday 07:00 ET stance, and a move into RISK-OFF. Advisory only; no order. 300 chars because the sentence carries the stance, the week's catalysts, the action and the record id."
+    },
+    "numbers_truth_ticket": {
+      "enabled": true,
+      "part": "O",
+      "title": "Numbers-truth audit (DSN-20261109 REV 3 H, LQ-20261107-1702): a NEW ticket, because a figure the operator sees has failed four hourly runs or has no healable source. Email + Critical chat + this text go out together within the run, including overnight; repeats never re-page (one ticket per fingerprint). No order."
     }
   }
 }

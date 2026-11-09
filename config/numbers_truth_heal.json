@@ -57,6 +57,6 @@
     "domain": "data",
     "kind_ticket": "numbers_truth_ticket",
     "kind_cleared": "numbers_truth_cleared",
-    "channels_note": "email + Telegram + Google Fi email-to-text are the incident notifier's D34 delivery (REV 3 H); this module queues intents and never sends"
+    "channels_note": "A NEW ticket pages immediately through the D34 critical-alert hub (scripts/lib/critical_channels.deliver, class numbers_truth_ticket): Critical Telegram chat + email + every Google Fi email-to-text line, never quiet-held (REV 3 H). The intent queued below is the durable incident record; its P2 copy also reaches email via config/comms_email_mirror.json. A cleared line is an intent only: Telegram + email, never a text."
   }
 }
