@@ -543,12 +543,14 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
     cands.sort(key=lambda c: (order.get(c.get("leadership") if c.get("leadership") == "LEADERSHIP_CONFIRMED" else c["state"], 3), -(c.get("rs20") or 0)))
     plan = None
     if advice_ok and total:
+        # Only a group that actually offers a tranche is in the sum; a missing size is not a zero-dollar tranche, so
+        # nothing is coalesced to 0 here — the filter decides membership, the sum adds the sizes that exist.
         offering = [c for c in cands if (c.get("proposed") or {}).get("tranche1_usd")]
-        t1_total = sum((c.get("proposed") or {}).get("tranche1_usd") or 0 for c in offering)
+        t1_total = sum(c["proposed"]["tranche1_usd"] for c in offering)
         if t1_total:
             # A tranche the book already bought is not money still to be spent: only the UNFILLED tranches come out of
             # cash (LQ-20261107-1689 — the card used to deduct the filled tranche a second time).
-            t1_open = sum((c.get("proposed") or {}).get("tranche1_usd") or 0
+            t1_open = sum(c["proposed"]["tranche1_usd"]
                           for c in offering if not (c.get("held") or {}).get("filled"))
             plan = {"proposed": True, "tranche1_usd": t1_total, "tranche1_pct_book": round(t1_total / total * 100, 1),
                     "tranche1_filled": bool(offering) and all((c.get("held") or {}).get("filled") is True for c in offering),

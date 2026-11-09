@@ -97,12 +97,15 @@ try {
     const amt = (await page.textContent('[data-testid="mr5-amt"]')).replace(/\s+/g, ' ').trim()
     const filled = (await page.textContent('[data-testid="mr5-filled"]')).replace(/\s+/g, ' ').trim()
     const plan = (await page.textContent('[data-testid="mr5-plan"]')).replace(/\s+/g, ' ').trim()
+    const pill = (await page.textContent('[data-testid="mr5-proposed"]')).replace(/\s+/g, ' ').trim()
 
     // The row header stops offering the tranche and reports what was bought.
     assert.equal(amt, 'FILLED · 76 sh @ $181.06', `row amount (${width}px)`)
     // Tranche 1 prints the holding, with its own capture date, not the offer again.
     assert.match(filled, /^FILLED · 76 sh @ \$181\.06 · \w{3} 03-10 \d{1,2}:\d{2} (AM|PM) ET$/,
                  `tranche-1 row (${width}px): ${filled}`)
+    // The card stops asking for OK on the money already spent: the pill names the fill and what is still proposed.
+    assert.equal(pill, 'TRANCHE 1 FILLED · TRANCHES 2–3 PROPOSED', `plan pill (${width}px)`)
     // Tranche 2 is still an offer, and the next step is the CIO's catalyst, not a re-ask of tranche 1.
     assert.match(plan, /Tranche 1 \(30%\)\$12,000 · 1\.2% of book · FILLED/, `plan tranche 1 (${width}px): ${plan}`)
     assert.match(plan, /Tranche 2 \(30%\)after CPI Tue 11-10 08:30 ET/, `plan tranche 2 (${width}px): ${plan}`)

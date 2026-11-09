@@ -70,7 +70,11 @@ function Rotate({ r, stressed }: { r: NonNullable<CioPanel['rotate']>; stressed:
       </div>
       {plan && (
         <>
-          <div><span className="pill prop" data-testid="mr5-proposed">PROPOSED · NEEDS YOUR OK</span></div>
+          {/* LQ-20261107-1689: once tranche 1 is in the book, the card must not keep asking for OK on the money already
+              spent — the pill names the fill and the tranches that are still a proposal. */}
+          <div><span className="pill prop" data-testid="mr5-proposed">{plan.tranche1_filled
+            ? 'TRANCHE 1 FILLED · TRANCHES 2–3 PROPOSED'
+            : 'PROPOSED · NEEDS YOUR OK'}</span></div>
           <div className="tot" data-testid="mr5-plan">
             {plan.tranche1_usd != null && <><span>Tranche 1 ({Math.round((plan.split?.[0] ?? 0.3) * 100)}%)</span><span>{usd(plan.tranche1_usd)}{plan.tranche1_pct_book != null ? ` · ${pct(plan.tranche1_pct_book)} of book` : ''}{plan.tranche1_filled ? ' · FILLED' : ''}</span></>}
             {plan.tranche2_after && <><span>Tranche 2 ({Math.round((plan.split?.[1] ?? 0.3) * 100)}%)</span><span>after {plan.tranche2_after}</span></>}
