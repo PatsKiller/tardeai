@@ -96,6 +96,9 @@ EMPTY_ALLOWED_REASONS = frozenset(
         "market_closed",
         "holiday",
         "no_new_input",
+        # hermes-news-bridge (2026-11-08, LQ-20261107-1330): the run read candidates and every one was a clean
+        # duplicate skip. Input existed, so no_new_input was false; the truthful zero stays an allowed empty.
+        "all_duplicate",
         "nothing_due",
         "window_not_reached",
         # Ask lifecycle producer: respectively no tracked threads, no unseen material events,

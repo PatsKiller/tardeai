@@ -30,6 +30,14 @@ is a legitimate, allowed empty. The contract already declares the answer — N8n
 output store (``hermes_rows_in_window``) and fails with ``no_input_in_window`` (plus a fatal
 ``dependency_unavailable`` skip) when nothing at all has been produced inside it. Per-run zeros stay
 ``no_new_input``; a 48 h zero becomes RUN_FAILED ``empty_output`` at the executor.
+
+2026-11-08 (LQ-20261107-1330): ``no_new_input`` was still a lie in the one case that reads as it: run
+d:hermes-news-bridge:live:20261108T1840 read 2 candidates, the writer skipped both as clean duplicates
+(``skipped_reasons = {duplicate: 2, insert_error: 0}``), and the receipt said ``no_new_input`` — the lane
+had input and said it had none. A zero whose every attempted row was a duplicate now says
+``all_duplicate``: a reviewed idle token (config/run_quality_idle_reasons.json) and an allowed empty
+reason in the lane's contract, so the truthful reason does not turn the run red. A zero with no
+candidate at all stays ``no_new_input``.
 """
 import os, sys, json
 from datetime import datetime, timezone
@@ -47,6 +55,9 @@ LANE_ID = "hermes-news-bridge"
 WINDOW_HOURS = 48
 WINDOW_EMPTY_REASON = "no_input_in_window"
 WINDOW_UNKNOWN_REASON = "window_unreadable"
+# LQ-20261107-1330: the run read candidates and every one was already bridged — input existed, so
+# ``no_new_input`` is false. Reviewed idle token AND allowed empty reason in the lane's contract.
+ALL_DUPLICATE_REASON = "all_duplicate"
 
 
 # Names this bridge reads. The env file also holds broker credentials; those are not copied.
@@ -277,6 +288,19 @@ def main(argv=None) -> int:
     return 1 if failed else 0
 
 
+def _all_duplicate(summary: dict) -> bool:
+    """The run read at least one candidate and every one was a clean duplicate skip (LQ-20261107-1330).
+
+    ``candidates`` is how many rows the SELECT returned — each then ends bridged, dup-skipped or errored —
+    so "every skip is a duplicate" is ``skipped_dup == attempted``, with nothing bridged. An insert error
+    is not a duplicate and keeps the run on the old reason: a mixed zero is not "nothing new".
+    """
+    bridged = int(summary["bridged"])
+    attempted = max(int(summary["candidates"]), bridged)
+    return (bridged == 0 and attempted > 0 and int(summary["skipped_dup"]) == attempted
+            and int(summary["insert_errors"]) == 0)
+
+
 def receipt_outcome(summary: dict, *, failed: bool, window_unknown: bool, window_empty: bool,
                     inserts_failed: bool) -> tuple[str, str]:
     """ok | empty | error (LQ-192). An unreadable window, a dead feed window or all-failed inserts are ERRORS;
@@ -289,16 +313,21 @@ def receipt_outcome(summary: dict, *, failed: bool, window_unknown: bool, window
         return "error", "every_insert_errored"
     if failed:
         return "error", "run_failed"
-    return ("empty", "no_new_input") if int(summary["bridged"]) == 0 else ("ok", "bridged")
+    if int(summary["bridged"]) != 0:
+        return "ok", "bridged"
+    # LQ-20261107-1330: the top-level outcome reason must agree with output.empty_reason — one receipt
+    # stating two different reasons for the same zero is how "no_new_input" survived on a run that read two.
+    return "empty", (ALL_DUPLICATE_REASON if _all_duplicate(summary) else "no_new_input")
 
 
 def lane_output(summary: dict, window_rows=None) -> dict:
     """LaneRunReceipt@v2 output fields (n8n expected_output, unit: news_articles rows inserted, source=hermes).
-    attempted = unbridged Hermes research rows read; no candidate or only duplicates = ``no_new_input``, which
-    the contract allows PER RUN. ``window_rows == 0`` is the different, failing case: nothing at all has been
-    produced across the contract window, so the empty reason is ``no_input_in_window`` (not allowed) and the
-    upstream dependency is recorded as a fatal skip. ``window_rows is None`` (unreadable) is its own reason,
-    never folded into zero."""
+    attempted = unbridged Hermes research rows read; no candidate at all = ``no_new_input``, which the
+    contract allows PER RUN. A run that read candidates and skipped every one as a duplicate is
+    ``all_duplicate`` (LQ-20261107-1330): it had input, so ``no_new_input`` was false. ``window_rows == 0``
+    is the different, failing case: nothing at all has been produced across the contract window, so the
+    empty reason is ``no_input_in_window`` (not allowed) and the upstream dependency is recorded as a fatal
+    skip. ``window_rows is None`` (unreadable) is its own reason, never folded into zero."""
     bridged = int(summary["bridged"])
     empty = bridged == 0
     window_unknown = window_rows is None
@@ -311,6 +340,8 @@ def lane_output(summary: dict, window_rows=None) -> dict:
         empty_reason = WINDOW_EMPTY_REASON
     elif window_unknown:
         empty_reason = WINDOW_UNKNOWN_REASON
+    elif _all_duplicate(summary):
+        empty_reason = ALL_DUPLICATE_REASON
     else:
         empty_reason = "no_new_input"
     return {"produced_count": bridged, "attempted_count": max(int(summary["candidates"]), bridged),

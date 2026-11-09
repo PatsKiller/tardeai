@@ -9,6 +9,7 @@
     "not_due": "nothing was due",
     "window_not_reached": "its window had not opened yet",
     "no_new_input": "there was no new input",
+    "all_duplicate": "every candidate had already been ingested",
     "no_new_events": "there were no new events",
     "no_tracked_threads": "there were no tracked threads",
     "no_due_threads": "no thread was due for a check"

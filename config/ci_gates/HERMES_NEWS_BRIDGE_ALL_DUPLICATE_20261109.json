@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HERMES_NEWS_BRIDGE_ALL_DUPLICATE_20261109",
+  "files": [
+    "tests/test_hermes_news_bridge_all_duplicate_20261109.py"
+  ],
+  "anchor": "HERMES_NEWS_BRIDGE_ALL_DUPLICATE_20261109",
+  "comment": [
+    "ANCHOR: HERMES_NEWS_BRIDGE_ALL_DUPLICATE_20261109 — LQ-20261107-1330: hermes-news-bridge receipt said",
+    "empty_reason=no_new_input on run d:hermes-news-bridge:live:20261108T1840 while attempted_count=2 and",
+    "skipped_reasons={duplicate: 2, insert_error: 0} — a run that read two candidates claimed it had no input.",
+    "The lane now says all_duplicate for a zero whose every attempted row was a clean duplicate skip, and the",
+    "token is registered in all three places a receipt is graded (config/run_quality_idle_reasons.json, the",
+    "lane's contract empty_allowed_reasons, and check_n8n_workflow_framework.EMPTY_ALLOWED_REASONS) so the",
+    "truthful reason stays an allowed empty instead of becoming a RUN_FAILED. Hermetic: synthetic counts, no DB."
+  ]
+}
