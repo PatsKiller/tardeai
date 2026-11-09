@@ -30,7 +30,6 @@ import os
 import sys
 from datetime import datetime, timezone
 from collections import defaultdict
-from pathlib import Path
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -46,7 +45,6 @@ except ImportError:
         def rows(self, n): pass
 
 log = logging.getLogger(__name__)
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LANE_ID = "agent-outcome-scorer"
 
 _SOURCE_PERF_SQL = """
@@ -71,11 +69,47 @@ def _receipt_lib():
     return lr
 
 
+#: The names this connection reads. ``env_bootstrap.load_env`` honours the tmpfs render, the
+#: hermetic ``TRADEAI_ENV_BOOTSTRAP_FILES`` override and the executor's per-lane bound; the ``PG*``
+#: names are read only as a fallback after their ``DB_*`` twin, so a host that sets just
+#: ``PGHOST=/var/run/postgresql`` still gets the socket.
+_DB_ENV_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD",
+                "PGHOST", "PGPORT", "PGDATABASE", "PGUSER")
+
+
+def _first_env(*names: str):
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    return None
+
+
 def _get_conn():
-    pw = ''
-    for line in (PROJECT_ROOT / '.env').read_text().splitlines():
-        if line.startswith('DB_PASSWORD='): pw = line.split('=', 1)[1].strip()
-    return psycopg2.connect(host='127.0.0.1', port=5432, dbname='trade_ai', user='trade_ai', password=pw)
+    """Open the scorer's session from the environment — never by parsing a credential file.
+
+    Until LQ-20261107-917 this function read ``PROJECT_ROOT/.env`` by hand for ``DB_PASSWORD`` and
+    hardcoded host/port/db/user, so it failed outright where no checkout ``.env`` exists (a worktree)
+    or where the password is withheld (the 2026-11-07 emulation recorded the lane
+    ``CANNOT_EMULATE needs_credential``), and it could never connect over the peer socket. The
+    sanction loader applies the usual order; the host defaults to the local socket and the password
+    is passed only when configured, so peer auth / ``.pgpass`` can serve instead.
+    """
+    try:
+        from scripts.lib.env_bootstrap import load_env
+    except ImportError:  # imported as scripts.agent_outcome_scorer
+        from lib.env_bootstrap import load_env
+    load_env(names=_DB_ENV_KEYS)
+    password = os.getenv("DB_PASSWORD") or None
+    return psycopg2.connect(
+        host=_first_env("DB_HOST", "PGHOST") or "/var/run/postgresql",
+        port=_first_env("DB_PORT", "PGPORT") or None,
+        dbname=_first_env("DB_NAME", "PGDATABASE") or "trade_ai",
+        user=_first_env("DB_USER", "PGUSER") or None,
+        password=password,
+        # attribution in pg_stat_activity / idle-txn triage
+        application_name=LANE_ID,
+    )
 
 
 # Candidate trades per recommendation. The pick is one_trade_per_recommendation (LQ-20261107-125).
