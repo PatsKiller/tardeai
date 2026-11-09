@@ -1,0 +1,22 @@
+{
+  "schema": "CiGate@v1",
+  "name": "numbers_truth_audit_lane_20261109",
+  "files": [
+    "tests/test_numbers_truth_audit_lane_20261109.py"
+  ],
+  "anchor": "NUMBERS_TRUTH_AUDIT_LANE_20261109",
+  "comment": [
+    "ANCHOR: NUMBERS_TRUTH_AUDIT_LANE_20261109 — LQ-20261107-1703 (P0, operator ask 2026-11-09 17:10 ET; DSN-20261109",
+    "section 2, aligned by REV 2 A-F and REV 3 G-H): numbers-truth-audit is an n8n dispatcher lane at stage shadow,",
+    "hourly at :07, 24x7. The registry row, the run-allowlist entry, the REVIEWED health contract and this test agree",
+    "on one argv, one signal (data/runtime/numbers-truth-audit_last.json ok_at) and one mode (dry_run; live_arg null,",
+    "so a live fire is refused until the operator promotes the lane). The schedule is re-derived from the expression",
+    "with the DST-safe fires_between rather than trusted as a string: 168 fires a week, each at minute 07, every gap",
+    "exactly 60 minutes. The contract's stage is a copy of the registry's, its baseline timeout equals the allowlist",
+    "timeout (120 s, DSN F) and its degraded bound is 0.8x it; expected_output is min_produced 1 on produced_count",
+    "with no typed empty, because every fire audits and findings are output rather than failure.",
+    "The tests are config-only: no database, no provider, no HTTP, no broker, no durable",
+    "write. The argv emulation and the script-coupled assertions join them with LQ-1701's script (fold order: 1701",
+    "with or before 1703, because the allowlist entry's command path must exist in the tree)."
+  ]
+}
