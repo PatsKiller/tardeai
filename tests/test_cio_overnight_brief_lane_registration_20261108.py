@@ -125,15 +125,18 @@ def test_row_is_a_valid_dispatcher_row_at_canary():
     assert parse_dispatch_block(r).mode == "live"
 
 
-def test_the_cadence_is_the_operators_five_weekday_slots_and_every_six_hours_at_weekends():
+def test_the_cadence_is_the_operators_weekday_slots_including_0800_and_every_six_hours_at_weekends():
+    """LQ-20261107-1317 (operator 2026-11-08 20:23 ET): "I would expect this updated around 6 a.m. with the futures
+    and around 8 a.m. with pre-market." The 08:00 fire is added to the SAME registry expression — the lane has never
+    had a host crontab line — so it is one more slot, not a second scheduler."""
     got = {when.strftime("%a %H:%M") for when in fires()}
     expected = set()
     for day in ("Mon", "Tue", "Wed", "Thu", "Fri"):
-        expected |= {f"{day} 06:00", f"{day} 09:00", f"{day} 12:00", f"{day} 16:15", f"{day} 20:00"}
+        expected |= {f"{day} 06:00", f"{day} 08:00", f"{day} 09:00", f"{day} 12:00", f"{day} 16:15", f"{day} 20:00"}
     for day in ("Sat", "Sun"):
         expected |= {f"{day} 00:00", f"{day} 06:00", f"{day} 12:00", f"{day} 18:00"}
     assert got == expected
-    assert len(fires()) == 5 * 5 + 2 * 4 == 33
+    assert len(fires()) == 5 * 6 + 2 * 4 == 38
 
 
 def test_expected_cadence_hours_is_the_longest_legitimate_gap():

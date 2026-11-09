@@ -51,6 +51,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from lib.cio_buys_gate import buys_block  # noqa: E402  (LQ-1311 synopsis buy gate)
+from lib.cio_regime import reader as regime_reader  # noqa: E402  (LQ-1317 regime block)
+from lib.cio_regime import build as build_regime  # noqa: E402
 
 LANE_ID = "cio-overnight-brief"
 SCHEMA = "CIOOvernightBrief@v1"
@@ -932,17 +934,32 @@ def synopsis_verdict(
     stop_advice: Sequence[Mapping[str, Any]],
     reentry: Mapping[str, Any],
     buys: Optional[Mapping[str, Any]] = None,
+    regime: Optional[Mapping[str, Any]] = None,
 ) -> str:
-    """One sentence, at most ``VERDICT_MAX_CHARS`` — every figure is already sourced above."""
+    """One sentence, at most ``VERDICT_MAX_CHARS`` — every figure is already sourced above.
+
+    LQ-20261107-1317 (operator 2026-11-08 20:23 ET): the bottom line must cite the regime it is drawn under —
+    "RED sector tape after the 11-04 selloff; futures +0.30%; no buys before CPI Tue". The event date comes from
+    the open market-event episode and the futures percent only from a print measured against a settle, so a
+    missing input shortens the sentence instead of inventing a clause for it.
+    """
     kind = "sector" if market.get("market_wide") is False else ("market-wide" if market.get("market_wide") else "")
     if market.get("tier"):
         head = f"{market['tier']}{(' ' + kind) if kind else ''} tape"
     else:
         head = "no market-risk read"
+    regime = regime if isinstance(regime, Mapping) else {}
+    event_short = (regime.get("event") or {}).get("short")
+    if event_short:
+        head += f" {event_short}"
     parts = [head, posture_label.lower()]
     # LQ-1311 (operator 2026-11-08): the buy gate is part of the bottom line, not only a row below it.
     if buys and buys.get("gate") == "NONE" and buys.get("until_short"):
         parts[1] += f", no buys before {buys['until_short']}"
+    # Only a percent the Regime block measured against a settle it can name; a level-only print adds no clause.
+    futures_short = (regime.get("futures") or {}).get("short")
+    if futures_short:
+        parts.append(str(futures_short))
     need = [e for e in stop_advice if e.get("answer") in ("FIX_QTY", "ADD_STOP", "RAISE")]
     if need:
         parts.append(f"{len(need)} stop item(s) need a decision")
@@ -953,8 +970,9 @@ def synopsis_verdict(
         parts.append("not market-wide")
     if not reentry.get("stage2") and not reentry.get("stage3"):
         parts.append("no re-entry past stage 1")
-    # Over the limit, drop "not market-wide" (the Market row says it) before clipping a sentence mid-word.
-    for optional in ("not market-wide", "no re-entry past stage 1"):
+    # Over the limit, drop "not market-wide" (the Market row says it) before clipping a sentence mid-word; the
+    # futures clause goes last, because the operator asked for it in the bottom line (LQ-1317).
+    for optional in ("not market-wide", "no re-entry past stage 1", futures_short):
         if len("; ".join(parts) + ".") > VERDICT_MAX_CHARS and optional in parts:
             parts.remove(optional)
     return _clip("; ".join(parts) + ".", VERDICT_MAX_CHARS)
@@ -973,6 +991,7 @@ def build_synopsis(
     positions: Optional[Mapping[str, Any]],
     week_ahead: Mapping[str, Any],
     service: Any = None,
+    regime: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     market = market_summary(risk_market, as_of, service)
     book = book_summary(
@@ -1035,7 +1054,7 @@ def build_synopsis(
     buys = buys_block(market.get("tier"), this_week["macro"], as_of.astimezone(ET))
 
     source_ids: list[str] = []
-    for block in (market, book, reentry, this_week, do_now):
+    for block in (market, book, reentry, this_week, do_now, regime or {}):
         for sid in block.get("source_ids") or []:
             if sid and sid not in source_ids:
                 source_ids.append(sid)
@@ -1043,11 +1062,13 @@ def build_synopsis(
     return {
         "posture": posture_text,
         "verdict": synopsis_verdict(
-            posture_label=posture_label, market=market, book=book, stop_advice=stop_advice, reentry=reentry, buys=buys
+            posture_label=posture_label, market=market, book=book, stop_advice=stop_advice, reentry=reentry,
+            buys=buys, regime=regime,
         ),
         "buys": buys,
         "book": book,
         "market": market,
+        "regime": regime,
         "reentry": reentry,
         "this_week": this_week,
         "do_now": do_now,
@@ -1428,10 +1449,24 @@ def load_market_risk(root: Optional[Path] = None) -> dict[str, Any]:
         print(f"[{LANE_ID}] market risk unreadable: {type(exc).__name__}", file=sys.stderr)
         return {}
     shock = doc.get("shock_type") if isinstance(doc.get("shock_type"), Mapping) else {}
+    # LQ-20261107-1317: the Regime block needs the parts of the same file the old loader dropped — the sector
+    # breakdown, the breadth category and the count of confirming categories. They are passed through, never
+    # recomputed, so the brief and the Home card cannot disagree about which sectors were stressed.
+    obs = {str(o.get("category")): o for o in (doc.get("observations") or []) if isinstance(o, Mapping)}
+    breadth = obs.get("breadth") or {}
+    confirming = doc.get("confirming")
+    confirming = {"n": confirming, "of": len(doc.get("observations") or [])} if isinstance(confirming, (int, float)) else confirming
     return {
         "as_of": doc.get("as_of"),
         "tier": doc.get("tier") or doc.get("market_tier"),
+        "market_tier": doc.get("market_tier"),
         "score": _f(doc.get("score")),
+        "mode": doc.get("mode"),
+        "carried_only": bool((doc.get("hysteresis") or {}).get("carried_only")),
+        "confirming": confirming,
+        "breadth": {"state": breadth.get("state"), "detail": breadth.get("headline"),
+                    "as_of": breadth.get("observed_at")},
+        "sectors": doc.get("sectors") if isinstance(doc.get("sectors"), Mapping) else None,
         "shock": {
             "class": shock.get("class"),
             "label": shock.get("label"),
@@ -1441,6 +1476,59 @@ def load_market_risk(root: Optional[Path] = None) -> dict[str, Any]:
         "deescalates_if": doc.get("deescalates_if"),
         "source": "market_risk/latest.json",
     }
+
+
+def load_regime(
+    *,
+    as_of: datetime,
+    risk_market: Optional[Mapping[str, Any]],
+    calendar: Mapping[str, Any],
+    symbols: Sequence[str],
+    service: Any = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """The LQ-20261107-1317 Regime block: market, sector, macro gate, event context, futures, pre-market.
+
+    It reads the market-event episode and the off-hours store through its OWN short session, opened read-only under
+    ``--dry-run``. A store that cannot be reached degrades the block — every section states its own ``missing`` — and
+    never the brief: the tier, the sector read and the macro gate come from files and survive it.
+    """
+    conn = None
+    reader = None
+    try:
+        conn = connect()
+        if dry_run:
+            # The guard is armed BEFORE a single row is read, and a guard that cannot be armed means the
+            # block does not read at all: a read-only promise we could not prove is not worth a nicer brief.
+            from scripts.lib.lane_last_receipt import enforce_readonly
+
+            enforce_readonly(conn)
+        reader = regime_reader(conn)
+    except Exception as exc:  # noqa: BLE001 — an unreachable or unprovable store is a stated gap
+        print(f"[{LANE_ID}] regime store unavailable read-only: {type(exc).__name__}", file=sys.stderr)
+        _close_regime_conn(conn)
+        conn = None
+    try:
+        return build_regime(
+            as_of=as_of,
+            market_risk=risk_market,
+            macro=calendar.get("macro") or [],
+            held_symbols=symbols,
+            db_query=reader,
+            service=service,
+        )
+    finally:
+        _close_regime_conn(conn)
+
+
+def _close_regime_conn(conn: Any) -> None:
+    """Close the block's session; a close error is reported, never swallowed, and never fails the brief."""
+    if conn is None:
+        return
+    try:
+        conn.close()
+    except Exception as exc:  # noqa: BLE001 — reported to stderr by name, so the failure is not silent
+        print(f"[{LANE_ID}] regime conn close failed: {type(exc).__name__}", file=sys.stderr)
 
 
 def load_reentry(root: Optional[Path] = None) -> dict[str, Any]:
@@ -1680,6 +1768,7 @@ def build_brief(
     positions: Optional[Mapping[str, Any]] = None,
     risk_market: Optional[Mapping[str, Any]] = None,
     reentry_desk: Optional[Mapping[str, Any]] = None,
+    regime: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     if session_service is None:
         from scripts.lib.cio_market_session import get_session_service
@@ -1883,6 +1972,7 @@ def build_brief(
             positions=positions,
             week_ahead=week_ahead,
             service=session_service,
+            regime=regime,
         ),
         "summary": {"text": summary_text, "source": summary_source},
         "risk_tier": risk,
@@ -2038,6 +2128,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     calendar = load_calendar(next_sessions(as_of, WEEK_AHEAD_SESSIONS, service), root)
     risk_market = load_market_risk(root)
     reentry_desk = load_reentry(root)
+    # LQ-20261107-1317 (operator 2026-11-08 20:23 ET: "is the market right, is the sector right, we also have the
+    # CPI, plus we're coming through the weekend of a crash"): one deterministic Regime block, every fire, so the
+    # 06:00 read carries the futures and the 08:00 read carries pre-market.
+    regime = load_regime(
+        as_of=as_of, risk_market=risk_market, calendar=calendar, symbols=symbols, service=service,
+        dry_run=args.dry_run,
+    )
     budget = None if args.dry_run or args.no_research else ResearchBudget(out_dir / "research_budget.json", as_of=as_of)
     research_fn = None
     if not args.dry_run and not args.no_research:
@@ -2072,6 +2169,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         positions=positions,
         risk_market=risk_market,
         reentry_desk=reentry_desk,
+        regime=regime,
     )
 
     summary = {

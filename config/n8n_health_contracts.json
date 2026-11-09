@@ -42474,7 +42474,7 @@
       "target_reason": "lq1286_operator_go_20261108",
       "stage": "canary",
       "purpose": {
-        "text": "Publish the CIO overnight brief — the move, the news, the filings, the stop cushion against ATR, the last recorded CIO decision and one advisory action per flagged holding, plus the risk tier and the next five sessions — at 06:00, 09:00, 12:00, 16:15 and 20:00 ET on trading days and every 6 h at weekends, so the operator and the Home synopsis have a current, cited read of what changed. Advisory only: every action is computed in the script and the CIO remains the verdict owner.",
+        "text": "Publish the CIO overnight brief — the move, the news, the filings, the stop cushion against ATR, the last recorded CIO decision and one advisory action per flagged holding, plus the risk tier, one deterministic Regime block (market tier and breadth, sector selloff with leaders and laggards, the macro buy gate, the open market-event episode, ES/NQ/RTY against a dated settle, and the held names' pre-market movers) and the next five sessions — at 06:00, 08:00, 09:00, 12:00, 16:15 and 20:00 ET on trading days and every 6 h at weekends, so the operator and the Home synopsis have a current, cited read of what changed. The 06:00 fire is the futures read and the 08:00 fire is the pre-market read (LQ-20261107-1317). Advisory only: every action is computed in the script and the CIO remains the verdict owner.",
         "business_function": "cio",
         "source": "LQ-20261107-1286 operator GO relayed in WORK-QUEUE 2026-11-08; scripts/cio_overnight_brief.py (LQ-20261107-1257, fold-3f)"
       },
@@ -42544,7 +42544,7 @@
       "healthy": [
         {
           "check": "canary_live_done",
-          "text": "every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs) with the same 33 fires/week the row declares; no host cron line runs this script, so a RUN_SKIPPED_LOCK is a finding, not an expected sibling"
+          "text": "every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs) with the same 38 fires/week the row declares (5 weekday slots x 5 days + the 16:15 close read + 4 weekend slots x 2 days); no host cron line runs this script, so a RUN_SKIPPED_LOCK is a finding, not an expected sibling"
         },
         {
           "check": "artifact_written",
@@ -42600,7 +42600,7 @@
         "class": "report",
         "freshness_degraded_after_h": 24.0,
         "freshness_failed_after_h": 36.0,
-        "freshness_rule": "degraded beyond 2x the row's expected_cadence_hours 12.0 (the Sunday 18:00 -> Monday 06:00 gap), failed beyond 3x; a trading-day gap is at most 4 h, so a missing 06:00 brief is visible by midday and a missed Monday 06:00 is failed before Tuesday",
+        "freshness_rule": "degraded beyond 2x the row's expected_cadence_hours 12.0 (the Sunday 18:00 -> Monday 06:00 gap), failed beyond 3x; a trading-day gap is at most 4h15m (12:00 -> 16:15), so a missing 06:00 brief is visible by midday and a missed Monday 06:00 is failed before Tuesday",
         "computed_on": "2026-11-08",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "NOT_MEASURED as a scheduled lane: no dispatcher fire yet (registered 2026-11-08). One manual acceptance run at 2026-11-09T00:20Z by the script's author wrote LaneRunReceipt@v2 status ok, produced_count 8 of 26 held names, summary_source llm, 9m04s wall including the research and model calls (data/runtime/cio-overnight-brief_last.json). Both declared argvs were emulated in an isolated state root in this registration (LQ-20261107-1286 DONE note: --dry-run writes nothing; --apply --no-research --no-llm --emulated writes latest.json + the dated copy and no lane receipt).",
@@ -42643,7 +42643,7 @@
         "status": "REVIEWED",
         "reviewed_by": "operator GO relayed in LQ-20261107-1286 WORK-QUEUE (2026-11-08), applied by agent cc-deepseek-6",
         "reviewed_on": "2026-11-08",
-        "note": "reviewed for registration only: baseline.source is NOT_MEASURED, the event trigger is inert at canary (EVENT_MODES = ('dry_run',)), and review_by 2026-11-22 is when real runtimes, the cost of 33 fires/week against the 40/day model cap and the false-empty rate are due"
+        "note": "reviewed for registration only: baseline.source is NOT_MEASURED, the event trigger is inert at canary (EVENT_MODES = ('dry_run',)), and review_by 2026-11-22 is when real runtimes, the cost of 38 fires/week (the 08:00 fire added by LQ-20261107-1317) against the 40/day model cap and the false-empty rate are due"
       },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",

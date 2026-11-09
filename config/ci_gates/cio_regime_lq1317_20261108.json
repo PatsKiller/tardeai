@@ -1,0 +1,24 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_regime_lq1317_20261108",
+  "files": [
+    "tests/test_cio_regime_lq1317_20261108.py",
+    "tests/test_cio_overnight_brief_20261108.py",
+    "tests/test_cio_overnight_brief_lane_registration_20261108.py"
+  ],
+  "anchor": "CIO_REGIME_LQ1317_20261108",
+  "comment": [
+    "ANCHOR: CIO_REGIME_LQ1317_20261108 — LQ-20261107-1317 (operator 2026-11-08 20:23 ET: \"is the market right, is",
+    "the sector right, we also have the CPI ... I would expect this updated around 6 a.m. with the futures and",
+    "around 8 a.m. with pre-market\").",
+    "scripts/lib/cio_regime.py assembles ONE deterministic Regime block of six sections — market (tier, score,",
+    "breadth, confirming categories), sector (selloff + leaders/laggards by rs20), macro (the LQ-1311 buy gate,",
+    "reused not re-derived), event (the open market_event_episodes row, its baseline close and the completed",
+    "sessions since), futures (/ES, /NQ, /RTY against a dated settle) and pre-market (held-name movers) — and the",
+    "brief cites it in the bottom line. The test pins the honesty law across the three columns: a missing input",
+    "is STATED as missing, an unreadable store is never an empty store, and a futures percent with no settled",
+    "reference is never printed. The cadence test moves with it: the same registry expression now fires 08:00 ET",
+    "on trading days (38 fires/week), so the row, the allowlist entry, the health contract and this test must",
+    "agree on that number and on the unchanged 12 h longest gap."
+  ]
+}
