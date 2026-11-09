@@ -327,10 +327,47 @@ def efficacy_stats(rows: list[dict], *, min_n: int, min_effect: float,
     return out
 
 
-#: Consumers MUST filter with this predicate (LQ-1491). Rows are never deleted.
+#: Prefer ``active_efficacy_predicate(cur)`` in consumers (LQ-1491). This literal is
+#: only valid once the column exists (first ``hermes_tag_engine --apply`` after deploy).
 ACTIVE_EFFICACY_PREDICATE = "superseded_at IS NULL"
 SUPERSEDE_REASON = "not in current compute set"
 SUPERSEDE_FLAG_REASON = "superseded: not in current compute set"
+
+#: Cached probe: None = unknown, True/False = column present. Cleared after DDL that
+#: adds the column, and by ``reset_efficacy_superseded_col_cache`` in tests.
+_efficacy_has_superseded_col: bool | None = None
+
+
+def reset_efficacy_superseded_col_cache() -> None:
+    """Drop the cached information_schema probe (tests / after DDL)."""
+    global _efficacy_has_superseded_col
+    _efficacy_has_superseded_col = None
+
+
+def efficacy_has_superseded_column(cur) -> bool:
+    """True when ``hermes_tag_efficacy.superseded_at`` exists.
+
+    The column is added only by ``tag_efficacy`` on ``--apply``. Consumers that fold
+    before the next 10:50 slot must not reference it yet (LQ-1491 rework).
+    """
+    global _efficacy_has_superseded_col
+    if _efficacy_has_superseded_col is not None:
+        return _efficacy_has_superseded_col
+    cur.execute("""SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public' AND table_name = 'hermes_tag_efficacy'
+                     AND column_name = 'superseded_at'""")
+    _efficacy_has_superseded_col = cur.fetchone() is not None
+    return _efficacy_has_superseded_col
+
+
+def active_efficacy_predicate(cur) -> str:
+    """SQL boolean for a live efficacy row — safe to embed in WHERE/AND.
+
+    Returns ``superseded_at IS NULL`` when the column exists; otherwise ``TRUE`` so
+    consumers do not crash with ``column does not exist`` between release and the
+    first engine ``--apply``. Only these two fixed literals are ever returned.
+    """
+    return ACTIVE_EFFICACY_PREDICATE if efficacy_has_superseded_column(cur) else "TRUE"
 
 
 def list_absent_efficacy_tags(cur, current_tags: list[str]) -> list[dict]:
@@ -338,20 +375,17 @@ def list_absent_efficacy_tags(cur, current_tags: list[str]) -> list[dict]:
 
     Before the ``superseded_at`` column exists (first apply after deploy), every
     row is treated as active. Already-superseded rows are omitted. Pure read.
+    Two constant SQL forms (no f-string) so a missing column cannot be referenced.
     """
-    cur.execute("""SELECT column_name FROM information_schema.columns
-                   WHERE table_schema = 'public' AND table_name = 'hermes_tag_efficacy'""")
-    cols = {r[0] for r in cur.fetchall()}
-    if "tag" not in cols:
-        return []
-    if "superseded_at" in cols:
+    tags = list(current_tags)
+    if efficacy_has_superseded_column(cur):
         cur.execute("""SELECT tag, flagged FROM hermes_tag_efficacy
                        WHERE superseded_at IS NULL AND NOT (tag = ANY(%s))
-                       ORDER BY tag""", (list(current_tags),))
+                       ORDER BY tag""", (tags,))
     else:
         cur.execute("""SELECT tag, flagged FROM hermes_tag_efficacy
                        WHERE NOT (tag = ANY(%s))
-                       ORDER BY tag""", (list(current_tags),))
+                       ORDER BY tag""", (tags,))
     return [{"tag": str(t), "flagged": bool(f)} for t, f in cur.fetchall()]
 
 
@@ -375,6 +409,8 @@ def tag_efficacy(cur, cfg, apply, *, dry_run=False):
                          ADD COLUMN IF NOT EXISTS flag_reason TEXT,
                          ADD COLUMN IF NOT EXISTS superseded_at TIMESTAMPTZ,
                          ADD COLUMN IF NOT EXISTS superseded_reason TEXT""")
+        # Consumers may have probed before this ALTER in the same process.
+        reset_efficacy_superseded_col_cache()
     apply = apply and not dry_run
     # n is the number of GRADED outcomes a tag's rate is computed on; ledger_n is
     # every row that carries the tag. wins = the 20-session return was positive.

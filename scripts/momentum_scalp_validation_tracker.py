@@ -85,12 +85,19 @@ def build() -> dict:
                         ([str(i) for i in ids],))
             w, t = cur.fetchone()
             hermes_ctx["confirmed_with_prior_hermes_research"] = f"{w}/{t}" if t else "0/0"
-        # LQ-1491: hide tags the engine superseded (no longer in the compute set).
-        cur.execute("""SELECT tag, n, hit_rate, lift, trade_n, avg_realized_r
-                       FROM hermes_tag_efficacy
-                       WHERE superseded_at IS NULL
-                         AND tag IN ('momentum_scalp','social_route','large_float_social_scout','catalyst')
-                       ORDER BY n DESC""")
+        # LQ-1491: hide superseded tags when the column exists; unfiltered until first engine --apply.
+        import hermes_tag_engine as _hte
+        if _hte.efficacy_has_superseded_column(cur):
+            cur.execute("""SELECT tag, n, hit_rate, lift, trade_n, avg_realized_r
+                           FROM hermes_tag_efficacy
+                           WHERE superseded_at IS NULL
+                             AND tag IN ('momentum_scalp','social_route','large_float_social_scout','catalyst')
+                           ORDER BY n DESC""")
+        else:
+            cur.execute("""SELECT tag, n, hit_rate, lift, trade_n, avg_realized_r
+                           FROM hermes_tag_efficacy
+                           WHERE tag IN ('momentum_scalp','social_route','large_float_social_scout','catalyst')
+                           ORDER BY n DESC""")
         hermes_ctx["tag_efficacy"] = [
             {"tag": r0, "n": r1, "hit_rate": float(r2) if r2 is not None else None,
              "lift": float(r3) if r3 is not None else None, "trade_n": r4,

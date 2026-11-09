@@ -104,10 +104,15 @@ def _gates_tagging(cur):
                     WHERE created_at > NOW() - interval '30 days'""") or 1
     g["fallback_share"] = {"pass": float(fb) < 0.15, "value": round(float(fb), 3), "target": "<0.15"}
     # >=1 tag family with statistically significant positive lift at n>=50 (z > 1.96)
-    # LQ-1491: hide tags the engine superseded (no longer in the compute set).
-    cur.execute("""SELECT tag, n, lift, base_rate FROM hermes_tag_efficacy
-                   WHERE superseded_at IS NULL
-                     AND n >= 50 AND lift IS NOT NULL AND base_rate IS NOT NULL""")
+    # LQ-1491: hide superseded tags when the column exists; unfiltered until first engine --apply.
+    import hermes_tag_engine as _hte
+    if _hte.efficacy_has_superseded_column(cur):
+        cur.execute("""SELECT tag, n, lift, base_rate FROM hermes_tag_efficacy
+                       WHERE superseded_at IS NULL
+                         AND n >= 50 AND lift IS NOT NULL AND base_rate IS NOT NULL""")
+    else:
+        cur.execute("""SELECT tag, n, lift, base_rate FROM hermes_tag_efficacy
+                       WHERE n >= 50 AND lift IS NOT NULL AND base_rate IS NOT NULL""")
     sig = []
     for tag, n, lift, base in cur.fetchall():
         b = float(base)
