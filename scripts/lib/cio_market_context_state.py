@@ -68,6 +68,37 @@ def _fred_field(row: dict[str, Any] | None, *, evaluated_at: datetime) -> dict[s
     return result
 
 
+def _vix_field(headline: dict[str, Any] | None, *, evaluated_at: datetime) -> dict[str, Any] | None:
+    """``vix_close`` from the ONE shared VIX accessor, with the quote's own freshness carried beside it.
+
+    LQ-20261107-1690: the brain used to print FRED ``VIXCLS`` --- the official close, published with a lag, so
+    the operator saw 28.18 while the market was at 24. ```state`` keeps its meaning (is this field readable?)
+    so ``truth_quality`` does not start blocking cash/capital every evening; the quote's freshness is
+    ``quote_state``/``quote_measured``/``reason``, and no consumer may read a STALE print as the current VIX.
+    """
+    if not isinstance(headline, dict):
+        return None
+    try:
+        from .vix_quote import from_headline
+    except ImportError:  # pragma: no cover - imported as scripts.lib.cio_market_context_state
+        from scripts.lib.vix_quote import from_headline  # type: ignore[no-redef]
+    q = from_headline(headline, now=evaluated_at)
+    source = q.source or "vix_quote"
+    if q.value is None:
+        field: dict[str, Any] = {"state": "UNAVAILABLE", "value": None, "source": source, "as_of": None}
+    else:
+        field = {"state": "VERIFIED", "value": q.value, "source": source, "as_of": q.as_of}
+    field.update(
+        {
+            "quote_state": q.state,
+            "quote_measured": q.measured,
+            "age_hours": q.age_hours,
+            "reason": q.reason,
+        }
+    )
+    return field
+
+
 def _market_risk_field(mr: dict[str, Any] | None) -> dict[str, Any]:
     """One market-context field from the market-risk projection (scripts/lib/market_risk_projection.build)."""
     if not isinstance(mr, dict) or mr.get("state") in (None, "not_evaluated"):
@@ -188,6 +219,7 @@ def build_market_context_state(
     portfolio_earnings_calendar: list[dict[str, Any]] | None = None,
     evaluated_at: datetime | None = None,
     market_risk: dict[str, Any] | None = None,
+    vix_headline: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = evaluated_at or datetime.now(timezone.utc)
     regime = regime_snapshot or {}
@@ -223,7 +255,7 @@ def build_market_context_state(
         "credit_spread_pct": _fred_field(fred.get("BAA10Y"), evaluated_at=now),
         "cpi_index": _fred_field(fred.get("CPIAUCSL"), evaluated_at=now),
         "unemployment_rate_pct": _fred_field(fred.get("UNRATE"), evaluated_at=now),
-        "vix_close": _fred_field(fred.get("VIXCLS"), evaluated_at=now),
+        "vix_close": _vix_field(vix_headline, evaluated_at=now) or _fred_field(fred.get("VIXCLS"), evaluated_at=now),
         "valuation": _field(
             (valuation or {}).get("value"),
             source=(valuation or {}).get("source") or "valuation_state",
@@ -299,6 +331,28 @@ def connect_trade_ai_readonly():
     )
     conn.set_session(readonly=True, autocommit=True)
     return conn
+
+
+def load_vix_headline(conn) -> dict[str, Any]:
+    """The one headline VIX read (Schwab continuous feed, FRED labelled fallback) over an open read-only conn.
+
+    LQ-20261107-1690. A read failure is returned as UNAVAILABLE with its type named --- never silently replaced
+    by the lagged FRED ``VIXCLS`` field the brain used to print.
+    """
+    try:
+        from .vix_headline import vix_headline
+
+        return vix_headline(conn=conn)
+    except Exception as exc:  # noqa: BLE001 - named, never another source
+        return {
+            "vix": None,
+            "vix_source": None,
+            "vix_observation_time": None,
+            "vix_age_hours": None,
+            "vix_state": "UNAVAILABLE",
+            "vix_stale": True,
+            "vix_reason": f"vix_headline read failed: {type(exc).__name__}",
+        }
 
 
 def load_market_context_inputs(conn) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:

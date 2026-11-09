@@ -103,3 +103,45 @@ export function vixFreshness(
   }
   return { state: 'FRESH', value, age, current: true, label: `VIX ${value}, ${age}${suffix}` }
 }
+
+/**
+ * The same reading, judged by the SERVER's one accessor (LQ-20261107-1690).
+ *
+ * The fleet has exactly one VIX freshness rule: `scripts/lib/vix_quote.py` -> `lib.vix_headline` ->
+ * `lib.market_regime.vix_complex` under `config/market_regime_vix_complex.yaml` (30 min through the weekday,
+ * 30 min of the continuous feed; the off-hours line outside it). A browser-side hours threshold is a second
+ * clock: it can call a print current that the engine refused, or refuse one the engine measured. So when the
+ * payload carries `vix_state`, it wins outright and the server's own reason is the sentence shown. Only a
+ * payload without a state falls back to the local rule above (an older served release).
+ */
+export function vixFromState(
+  vix: number | string | null | undefined,
+  state: string | null | undefined,
+  reason: string | null | undefined,
+  observedIso?: string | null,
+  freshHours: number = VIX_FRESH_HOURS,
+  nowMs: number = Date.now(),
+): VixReading {
+  const s = String(state ?? '').trim().toUpperCase()
+  if (s !== 'FRESH' && s !== 'STALE' && s !== 'UNDATED' && s !== 'UNAVAILABLE') {
+    return vixFreshness(vix, undefined, observedIso, nowMs, freshHours)
+  }
+  const n = vix == null || vix === '' ? NaN : Number(vix)
+  const value = Number.isFinite(n) ? n.toFixed(1) : null
+  const why = String(reason ?? '').trim()
+  if (s === 'FRESH' && value !== null) {
+    return { state: 'FRESH', value, age: null, current: true, label: why || `VIX ${value}, current` }
+  }
+  if (value === null) {
+    return {
+      state: 'UNAVAILABLE', value: null, age: null, current: false,
+      label: `VIX not measured${why ? ` — ${why}` : ''}`,
+    }
+  }
+  // A value the server did not measure is shown as a past print, never as today's VIX and never in a value colour.
+  return {
+    state: s === 'FRESH' ? 'UNAVAILABLE' : (s as VixState),
+    value, age: null, current: false,
+    label: `VIX not measured (last ${value})${why ? ` — ${why}` : ''}`,
+  }
+}

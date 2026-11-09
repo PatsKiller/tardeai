@@ -261,6 +261,21 @@ class PgReader:
             r["fetched_at"] = r["as_of"]
         return rows + self.extended_quotes(symbols, start=start, end=end)
 
+    def vix_quote(self, *, end: datetime) -> Any:
+        """The newest VIX observation as of ``end``, graded by the one shared accessor (LQ-20261107-1690).
+
+        Every VIX consumer calls ``scripts.lib.vix_quote.read``; this method only supplies a ``db_query``
+        bound to the reader's read-only session, with ``end`` as the as-of instant so replay never sees a
+        later row. The returned ``VixQuote`` carries value, as_of, source and ``measured`` — a consumer that
+        needs the CURRENT VIX must check ``measured`` and must not fall back to a daily close.
+        """
+        try:
+            from scripts.lib import vix_quote as _accessor
+        except ImportError:  # pragma: no cover - imported as lib.market_risk.reader
+            from lib import vix_quote as _accessor  # type: ignore[no-redef]
+
+        return _accessor.read(query=self._rows, now=_aware(end))
+
     def regular_session_quotes(self, symbols: Iterable[str], *, end: datetime) -> dict[str, dict[str, Any]]:
         """Latest eligible stored regular quote per symbol, independently of confirmed stage bars.
 

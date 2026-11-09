@@ -227,8 +227,38 @@ def _happening(p: Pack, doc: dict, snap: dict, bars: dict[str, list[dict]]) -> N
         p.miss("happening", "sector moves", "fewer than six sector ETFs have daily closes in the reader")
 
 
-def _next(p: Pack, bars: dict[str, list[dict]], snap: dict, cfg: dict) -> dict[str, Any]:
+def _vix_quote(reader: Any, now: datetime):
+    """The shared VIX accessor's answer for this instant, or None on a reader without one (a fixture).
+
+    LQ-20261107-1690: base-rate conditions must be bucketed on the CURRENT VIX, not on yesterday's close.
+    """
+    getter = getattr(reader, "vix_quote", None)
+    if not callable(getter):
+        return None
+    try:
+        return getter(end=now)
+    except Exception:  # noqa: BLE001 — an unreadable accessor is "not measured", never a crash of the brief
+        return None
+
+
+def _next(p: Pack, bars: dict[str, list[dict]], snap: dict, cfg: dict, quote: Any = None) -> dict[str, Any]:
     closes = {s: [x["close"] for x in v] for s, v in bars.items()}
+    if quote is not None:
+        if quote.measured and quote.value is not None:
+            # The current VIX replaces the newest daily close; the earlier closes still carry the 5-day change.
+            hist = list(closes.get("^VIX") or [])
+            closes["^VIX"] = (hist[:-1] if hist else []) + [float(quote.value)]
+            p.add(
+                "next",
+                "VIX",
+                f"VIX {float(quote.value):.2f} ({quote.source or 'unknown source'}), observed {quote.as_of}",
+                source=str(quote.source or "vix_quote"),
+                as_of=quote.as_of,
+            )
+        else:
+            # Not measured: drop the series so no VIX condition is bucketed from a stale close, and say why.
+            closes.pop("^VIX", None)
+            p.miss("next", "VIX", quote.reason or "VIX not measured")
     feats = br.features_at(closes)
     try:
         table = br.load_table()
@@ -826,7 +856,7 @@ def build_fact_pack(
     held = held_symbols(doc, snap)
     bars = _closes(reader, ("SPY", "QQQ", "SOXX", "SMH", "^VIX", "^VIX9D", "^VIX3M", "^VVIX") + br.SECTOR_ETFS, now)
     _happening(p, doc, snap, bars)
-    feats = _next(p, bars, snap, cfg)
+    feats = _next(p, bars, snap, cfg, _vix_quote(reader, now))
     reads = _hedging(p, reader, now, bars, held, sources, cfg) or {}
     cat = _catalysts(p, reader, now, held, sources, doc, cfg)
     cons = _consensus(p, doc, reads, cat, snap, cfg)

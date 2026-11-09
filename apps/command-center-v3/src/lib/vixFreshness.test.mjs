@@ -1,5 +1,5 @@
 // node --experimental-strip-types src/lib/vixFreshness.test.mjs
-import { vixFreshness, VIX_FRESH_HOURS } from './vixFreshness.ts'
+import { vixFreshness, vixFromState, VIX_FRESH_HOURS } from './vixFreshness.ts'
 let pass = 0, fail = 0
 const check = (n, c, d = '') => { if (c) { pass++; console.log(`  [PASS] ${n}`) } else { fail++; console.log(`  [FAIL] ${n} ${d}`) } }
 const NOW = Date.parse('2026-11-04T18:00:00Z')
@@ -66,5 +66,20 @@ for (const zoned of ['2026-11-04T16:00:00Z', '2026-11-04T11:00:00-05:00', '2026-
   check(`explicitly zoned ${JSON.stringify(zoned)} keeps a real age`,
     r.state === 'FRESH' && r.age === '2 h old', `${r.state} ${r.age}`)
 }
+// LQ-20261107-1690: when the payload carries the server's one accessor's state, it wins outright. A stale print
+// reads "not measured"; a fresh one is current; a value the server refused is never coloured as today's VIX.
+const srvFresh = vixFromState(24.4, 'FRESH', 'measured: VIX 24.40 from schwab at 2026-11-04T15:55:00-05:00', '2026-11-04T15:55:00-05:00', 0.5)
+check('server FRESH is current and keeps the server sentence', srvFresh.state === 'FRESH' && srvFresh.current === true && /schwab/.test(srvFresh.label), srvFresh.label)
+const srvStale = vixFromState(24.1, 'STALE', 'last print 03:45 ET 11-04, 12.9 h ago, past the 30 min line', '2026-11-04T03:45:00-05:00', 36)
+check('server STALE is never current, even under a 36 h client line',
+  srvStale.state === 'STALE' && srvStale.current === false, `${srvStale.state} ${srvStale.label}`)
+check('and its label says VIX not measured and keeps the last value', /not measured/.test(srvStale.label) && /24\.1/.test(srvStale.label), srvStale.label)
+const srvUndated = vixFromState(19.2, 'UNDATED', 'observation time unreadable: null', null, 36)
+check('server UNDATED is not current', srvUndated.state === 'UNDATED' && srvUndated.current === false, srvUndated.label)
+const srvGone = vixFromState(null, 'UNAVAILABLE', 'no admissible VIX leg', null, 36)
+check('server UNAVAILABLE has no value and says not measured', srvGone.state === 'UNAVAILABLE' && srvGone.value === null && /not measured/.test(srvGone.label), srvGone.label)
+const legacy = vixFromState(17.4, undefined, undefined, ago(2), 36, NOW)
+check('a payload without vix_state keeps the local rule', legacy.state === 'FRESH' && legacy.current === true, legacy.state)
+
 console.log(`vixFreshness: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

@@ -93,15 +93,19 @@ def load_market_context() -> dict[str, Any]:
         build_market_context_state,
         connect_trade_ai_readonly,
         load_market_context_inputs,
+        load_vix_headline,
     )
 
     try:
         conn = connect_trade_ai_readonly()
         try:
             regime, fred = load_market_context_inputs(conn)
+            vix = load_vix_headline(conn)
         finally:
             conn.close()
-        return build_market_context_state(regime_snapshot=regime, fred_rows=fred, market_risk=load_market_risk_projection())
+        return build_market_context_state(
+            regime_snapshot=regime, fred_rows=fred, market_risk=load_market_risk_projection(), vix_headline=vix
+        )
     except Exception as exc:  # noqa: BLE001 - same degraded state as the API getter
         state = build_market_context_state(regime_snapshot=None, fred_rows=[])
         state["load_error"] = type(exc).__name__

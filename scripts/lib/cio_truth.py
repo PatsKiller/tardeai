@@ -1476,7 +1476,13 @@ def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None
                              for r in p["accounts"]]
     _refresh_position_aggregate(aggregate, p, now)
     out.setdefault("trade_ai", {}).update(market_regime=doc["regime"]["label"], vix=doc["regime"]["vix"],
-                                           vix_observation_time=doc["regime"]["vix_as_of"], regime_truth=doc["regime"])
+                                           vix_observation_time=doc["regime"]["vix_as_of"],
+                                           vix_source=doc["regime"].get("vix_source"),
+                                           vix_state=doc["regime"].get("vix_state"),
+                                           vix_stale=doc["regime"].get("vix_stale"),
+                                           vix_reason=doc["regime"].get("vix_reason"),
+                                           vix_stale_after_hours=doc["regime"].get("vix_stale_after_hours"),
+                                           regime_truth=doc["regime"])
     return out
 
 

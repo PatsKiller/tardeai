@@ -25,9 +25,32 @@ def _realized_pct(closes: list[float], n: int) -> float | None:
     return math.sqrt(var) * math.sqrt(252) * 100.0
 
 
+def _newest_quote(ctx: EvalContext):
+    """The shared VIX accessor's answer for this evaluation instant, or None on a reader that has no accessor.
+
+    LQ-20261107-1690: the category's level must be the CURRENT VIX. Before this, the level was a daily close
+    accepted as fresh for 32 h, so a VIX that had moved overnight still graded CALM. A reader without the method
+    (an old fixture) keeps the previous behaviour; the production PgReader always has it.
+    """
+    getter = getattr(ctx.reader, "vix_quote", None)
+    if not callable(getter):
+        return None
+    try:
+        return getter(end=ctx.now)
+    except Exception:  # noqa: BLE001 — an unreadable accessor is "not measured", never a crash of the engine
+        return None
+
+
 def evaluate(ctx: EvalContext) -> CategoryObservation:
     cfg = ctx.policy[CATEGORY]
     term = cfg["term_symbols"]
+
+    # The current VIX first: a stale level may not grade the category at all (never "calm" on a stale value).
+    quote = _newest_quote(ctx)
+    if quote is not None and not quote.measured:
+        return unknown(CATEGORY, ctx.now, quote.reason)
+    measured_quote = quote is not None and quote.measured and quote.value is not None
+
     syms = [cfg["vix_symbol"], cfg["index_symbol"], cfg["realized_symbol"], *term.values()]
     md_rows = list(ctx.reader.daily_bars(syms, sessions=int(cfg["history_sessions"]), end=ctx.now))
     by = md.closes_by_symbol(md_rows)
@@ -35,22 +58,39 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     if len(vix) < 6:
         return unknown(CATEGORY, ctx.now, "VIX history missing")
     vt, v = vix[-1]
-    if md.stale(vt, ctx.now, cfg["stale_after_hours"], ctx.policy.get("decay")):
+    # With a measured current quote the daily series is HISTORY (the 5-day change and term structure);
+    # its own 32 h daily-staleness line may not veto a level that the accessor just read as current.
+    if not measured_quote and md.stale(vt, ctx.now, cfg["stale_after_hours"], ctx.policy.get("decay")):
         return unknown(CATEGORY, ctx.now, f"VIX stale (newest {md.iso(vt)})")
     asof = md.iso(vt)
     fired: list[tuple[str, Evidence]] = []
     vix_rows = [r for r in md_rows if str(r.get("symbol") or "").upper() == str(cfg["vix_symbol"]).upper()]
     vix_source = str((vix_rows[-1] if vix_rows else {}).get("source") or SOURCE)  # honest label (review B6)
-    context: list[Evidence] = [Evidence("VIX close", v, asof, vix_source, f"VIX {v:.2f}")]
+    level_value, level_asof, level_source = v, asof, vix_source
+    if quote is not None and quote.measured and quote.value is not None:
+        # The measured quote is the level; the daily series stays the history behind the 5-day change and term structure.
+        level_value = float(quote.value)
+        level_asof = quote.as_of or asof
+        level_source = str(quote.source or vix_source)
+    v = level_value  # every later level comparison uses the current VIX
+    context: list[Evidence] = [
+        Evidence(
+            "VIX close" if level_asof == asof else "VIX (current quote)",
+            level_value,
+            level_asof,
+            level_source,
+            f"VIX {level_value:.2f}",
+        )
+    ]
 
     if v >= float(cfg["vix_stress"]):
-        fired.append(("vix_stress", Evidence("VIX level", v, asof, vix_source, f"VIX {v:.1f} ≥ {cfg['vix_stress']}")))
+        fired.append(("vix_stress", Evidence("VIX level", v, level_asof, level_source, f"VIX {v:.1f} ≥ {cfg['vix_stress']}")))
     elif v >= float(cfg["vix_warn"]):
-        fired.append(("vix_warn", Evidence("VIX level", v, asof, vix_source, f"VIX {v:.1f} ≥ {cfg['vix_warn']}")))
+        fired.append(("vix_warn", Evidence("VIX level", v, level_asof, level_source, f"VIX {v:.1f} ≥ {cfg['vix_warn']}")))
     ch5 = md.pct(v, vix[-6][1])
     if ch5 >= float(cfg["vix_5d_change_pct"]):
         fired.append(
-            ("vix_jump", Evidence("VIX 5-day change", round(ch5, 1), asof, vix_source, f"VIX +{ch5:.0f}% in 5d"))
+            ("vix_jump", Evidence("VIX 5-day change", round(ch5, 1), level_asof, level_source, f"VIX +{ch5:.0f}% in 5d"))
         )
 
     idx = by.get(cfg["index_symbol"]) or []
@@ -139,4 +179,12 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
             improving.append(
                 Evidence("VIX falling", round(ch, 1), asof, SOURCE, f"VIX {ch:+.0f}% in {nb} sessions to {v:.1f}")
             )
-    return md.observation(CATEGORY, cfg, fired, context, vt, headline_prefix="Volatility", improving=improving)
+    observed_at = vt
+    if quote is not None and quote.measured and quote.as_of:
+        try:
+            from datetime import datetime as _dt
+
+            observed_at = _dt.fromisoformat(str(quote.as_of).replace("Z", "+00:00"))
+        except ValueError:
+            observed_at = vt
+    return md.observation(CATEGORY, cfg, fired, context, observed_at, headline_prefix="Volatility", improving=improving)

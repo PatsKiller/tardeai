@@ -1,4 +1,4 @@
-import { vixFreshness } from '../lib/vixFreshness'
+import { vixFromState } from '../lib/vixFreshness'
 import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
@@ -88,7 +88,9 @@ export default function HomeBoard14({ data }: { data: any }) {
   // fallback for a payload that carries it. A reading with no clock stays UNDATED rather than borrowing the regime's
   // own age, and a future clock is admitted as unreadable rather than labelled current.
   const vixAsOf = regime.vix_as_of ?? regime.vix_observation_time
-  const vixRead = vixFreshness(regime.vix, undefined, vixAsOf)
+  // LQ-20261107-1690: the server's one VIX accessor decides whether this number is the CURRENT VIX; a stale
+  // print reads "VIX not measured (last 24.1) — ..." instead of a confident value beside an age.
+  const vixRead = vixFromState(regime.vix, regime.vix_state, regime.vix_reason, vixAsOf)
   const questionCount = questions.count == null ? 'Not available' : `${questions.count} new`
   const releaseCount = releases.count == null ? 'Not available' : String(releases.count)
   return <div style={{ ...grid, gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,360px),1fr))' }}>

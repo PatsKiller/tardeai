@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "VIX_QUOTE_20261109",
+  "files": [
+    "tests/test_vix_quote_20261109.py"
+  ],
+  "anchor": "VIX_QUOTE_20261109",
+  "comment": [
+    "ANCHOR: VIX_QUOTE_20261109 — LQ-20261107-1690: one shared VIX accessor (vix_headline) grades FRESH/STALE/UNDATED/UNAVAILABLE; a stale print is never measured, never CALM."
+  ]
+}

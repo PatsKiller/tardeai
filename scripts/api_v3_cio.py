@@ -2328,15 +2328,19 @@ def get_market_context_state_v1() -> dict[str, Any]:
         build_market_context_state,
         connect_trade_ai_readonly,
         load_market_context_inputs,
+        load_vix_headline,
     )
 
     try:
         conn = connect_trade_ai_readonly()
         try:
             regime, fred = load_market_context_inputs(conn)
+            vix = load_vix_headline(conn)
         finally:
             conn.close()
-        state = build_market_context_state(regime_snapshot=regime, fred_rows=fred, market_risk=load_market_risk_projection())
+        state = build_market_context_state(
+            regime_snapshot=regime, fred_rows=fred, market_risk=load_market_risk_projection(), vix_headline=vix
+        )
         return {"ok": True, "market_context": state, "authority": AUTHORITY_ADVISORY}
     except Exception as exc:
         state = build_market_context_state(regime_snapshot=None, fred_rows=[])

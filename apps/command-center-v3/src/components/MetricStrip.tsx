@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { fmt$ } from '../lib/format'
 import { formatPricingTime, pricingStampLine } from '../lib/pricingStamp'
 import { shortPriceStamp, tradingTileValue, vixProvenance } from '../lib/displayLabels'
-import { vixFreshness } from '../lib/vixFreshness'
+import { vixFromState } from '../lib/vixFreshness'
 import { dateOnlyPart, fmtAsOf } from '../lib/asOfDisplay'
 import { runLabel } from '../lib/homeLabels'
 import { overviewSurfaceFreshness, tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
@@ -397,7 +397,11 @@ export default function MetricStrip({ onDrill }: Props) {
   // raw value stays where it always lived: the tooltip and the drill.
   // LQ-20261107-1610: judged by the server's own line (vix_stale_after_hours, the one the CIO risk card uses), not a
   // client-only 36 h, so the two surfaces cannot disagree about whether one VIX observation is current.
-  const vixReading = vixFreshness(vix, undefined, vixObsTime, Date.now(), vixStaleAfterHours(tradeAi?.vix_stale_after_hours))
+  // LQ-20261107-1690: `vix_state` from the one server accessor wins; the local line is only the fallback for a
+  // payload that predates it, so the tile and the CIO card cannot disagree about one observation.
+  const vixReading = vixFromState(
+    vix, tradeAi?.vix_state, tradeAi?.vix_reason, vixObsTime, vixStaleAfterHours(tradeAi?.vix_stale_after_hours),
+  )
   const vixProvenanceText = vixProvenance(vixSource, tradeAi?.run_label, vixObsTime ? fmtAsOf(vixObsTime, { timeOnly: true }) : null)
   // Non-current readings join the header's existing fault contract (tone/stale/undated), so they reach the
   // accessible attention list instead of only recolouring the number. FRESH stays exactly as quiet as before.
