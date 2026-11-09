@@ -64,9 +64,13 @@ def test_pe_and_related_valuation_are_sourced_and_reused():
 def test_watch_separates_operator_priority_from_automated_origin():
     """A starred symbol is an operator favorite (priority); everything else carries
     its automated origin. Priority (the star) is a separate axis from ticket/quality
-    state. Re-pinned 2026-07-26 to the production Watch Operator Queue."""
+    state. Re-pinned 2026-07-26 to the production Watch Operator Queue; re-pinned
+    2026-11-09 (LQ-1663) to the panel's current owner after d2c06eeaa unified Watch."""
     src = read("apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx")
-    page = read("apps/command-center-v3/src/pages/WatchHub.tsx")
+    # d2c06eeaa made WatchIntelligenceUnified the /v3/watch page and kept the truth desk on
+    # the legacy route; the panel still owns the priority/origin separation asserted below.
+    legacy = read("apps/command-center-v3/src/pages/WatchLegacy.tsx")
+    app = read("apps/command-center-v3/src/App.tsx")
     # operator favorite vs automated origin are distinct labels
     assert "Operator favorite" in src and "'Automated'" in src
     assert "★ Favorites" in src and "Automated ${automated.length}" in src
@@ -74,7 +78,8 @@ def test_watch_separates_operator_priority_from_automated_origin():
     assert "PROMOTE ★" in src and "originLabel" in src
     # ticket/quality state is a separate axis, not conflated with the star
     assert "DETERMINISTIC" in src and "RECONCILED" in src
-    assert "<WatchTruthAuditPanel />" in page
+    assert "<WatchTruthAuditPanel />" in legacy
+    assert 'path="watch-legacy"' in app
 
 
 def test_all_review_lanes_are_explicit_and_deterministic_authority_is_preserved():

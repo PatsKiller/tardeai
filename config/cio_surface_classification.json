@@ -1341,6 +1341,34 @@
       "classification": "NOT_OPERATOR_RELEVANT",
       "reason": "Durable per-(symbol, account) CIO memory: position_verdicts.jsonl is where cio_truth records what it decided, with the evidence, the rejected alternatives and the tax constraint behind it. Surfaces render it through render_for_surface() — the stored line is an input to those surfaces, not an operator artifact of its own, and nothing is hidden by classifying the record here.",
       "owner_hint": "scripts/lib/cio_position_verdict.py"
+    },
+    {
+      "name": "schema:CIOOvernightBrief@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "NOT YET SURFACED: the overnight brief is an operator report — cio_overnight_brief.py writes data/runtime/cio_overnight_brief/latest.json, reports_portal.py serves it as an overnight_brief object type, since_close_snapshot.py reads it as its CIO brief source, and cio_preview_render.py renders it to a human-readable page. Classified SURFACE (2026-11-09, LQ-1663) to keep counting it as operator-relevant until a served route proves it visible.",
+      "owner_hint": "scripts/cio_overnight_brief.py"
+    },
+    {
+      "name": "schema:CioRegime@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "NOT YET SURFACED: the regime block inside the overnight brief — cio_overnight_brief.build_regime (lib/cio_regime) computes it and the brief embeds it, so the operator reads this classification whenever the brief is rendered. It has no route of its own, which is exactly why it belongs here as an operator-relevant surface awaiting its own proof of visibility, not a private record.",
+      "owner_hint": "scripts/lib/cio_regime.py"
+    },
+    {
+      "name": "schema:CIOThinkingPacket@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "The reasoning-pass input packet from lib/cio_thinking (LQ-20261107-1320): a per-held-name set of sourced facts built for the model to compose from. The operator-facing output is the composed narrative/validation result, not the packet; no route serves it and nothing is served differently because it exists. Grep 2026-11-09: only its own module and tests import it.",
+      "owner_hint": "scripts/lib/cio_thinking.py"
+    },
+    {
+      "name": "schema:CIOThinking@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "The raw model-answer envelope that lib/cio_thinking validates against the packet (every number must be a fact, every citation a source_id). A rejected answer falls back to the deterministic line, so this envelope is the gate the operator-facing text passed through, never text the operator is shown; classifying it here hides nothing.",
+      "owner_hint": "scripts/lib/cio_thinking.py"
     }
   ]
 }

@@ -8,39 +8,51 @@ def read(path: str) -> str:
 
 
 def test_exit_workbench_uses_full_fidelity_cache_before_redeploy_fallback():
-    src = read("apps/command-center-v3/src/components/reentry/ReEntryExitWorkbench.tsx")
-    assert "portfolio.reentry.exit-universe.v1" in src
-    assert "cacheRows.length ? cacheRows : fallbackRows" in src
-    assert "FULL-FIDELITY BROKER CACHE" in src
-    assert "REDEPLOY SUMMARY FALLBACK" in src
-    assert "quantity" in src
-    assert "price" in src
-    assert "avgExit" in src
+    workbench = read("apps/command-center-v3/src/components/reentry/ReEntryExitWorkbench.tsx")
+    hook = read("apps/command-center-v3/src/hooks/useReEntryExitEvidence.ts")
+    shared = read("apps/command-center-v3/src/lib/reentrySharedContext.ts")
+    # LQ-1663 (2026-11-09): 303128d68 moved the cache-before-fallback read into the shared
+    # evidence hook. The full-fidelity cache (portfolio.reentry.exit-universe.v1) is read
+    # first and preferred FIELD BY FIELD; the redeploy/journal fallback only fills a gap, and
+    # `fullFidelity` says whether the cache answered at all.
+    assert "useReEntryExitEvidence" in workbench
+    assert "portfolio.reentry.exit-universe.v1" in shared and "EXIT_CACHE_KEY" in hook
+    assert "fullFidelity: cacheRows.length > 0" in hook
+    assert "mergeRow(preferred, fallback)" in hook
+    for token in ("quantity", "price", "proceeds_usd"):
+        assert token in hook
+    assert "avgExit" in workbench
 
 
 def test_classification_control_is_in_the_symbol_column_and_opens_a_modal():
-    src = read("apps/command-center-v3/src/components/reentry/ReEntryExitWorkbench.tsx")
-    assert "Symbol / controls" in src
-    assert ">CLASSIFY<" in src
-    assert "role=\"dialog\"" in src
-    assert "SAVE CLASSIFICATION" in src
-    assert "CORE HOLDING" in src
+    workbench = read("apps/command-center-v3/src/components/reentry/ReEntryExitWorkbench.tsx")
+    overlay = read("apps/command-center-v3/src/components/reentry/ReEntryClassificationOverlay.tsx")
+    shared = read("apps/command-center-v3/src/lib/reentrySharedContext.ts")
+    # LQ-1663 (2026-11-09): the modal moved to ReEntryClassificationOverlay (303128d68); the
+    # workbench keeps CLASSIFY in the symbol column and dispatches reentry:classify-symbol.
+    assert "classify([summary.symbol])" in workbench
+    assert "'CLASSIFY'" in workbench
+    assert "role=\"dialog\"" in overlay
+    assert "SAVE CLASSIFICATION" in overlay
+    assert "CORE HOLDING" in overlay
     for flag in ("growth", "compounding", "dividend", "swing", "short", "defensive", "hedge", "rotation"):
-        assert flag in src
+        assert f"'{flag}'" in shared
 
 
 def test_current_intelligence_is_restored_to_the_primary_page():
     src = read("apps/command-center-v3/src/components/reentry/ReEntryCurrentIntelligence.tsx")
+    # LQ-1663 (2026-11-09): the page kept every column, under 303128d68's headings; the old
+    # free-text labels ("Current status / action", "Last / avg exit", "Portfolio flags", ...)
+    # were replaced by named columns and typed states.
     for token in (
         "CURRENT RE-ENTRY INTELLIGENCE",
-        "Current status / action",
-        "Last / avg exit",
+        "Current decision",
+        "Exit evidence",
+        "Entry / levels",
+        "Valuation / analyst",
+        "Evidence audit",
         "RSI",
-        "Pullback",
-        "Candidate entry",
         "Resistance",
-        "Portfolio flags",
-        "Analyst",
         "Alerts",
         "reentry:classify-symbol",
     ):

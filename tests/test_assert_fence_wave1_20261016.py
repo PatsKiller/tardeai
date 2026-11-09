@@ -1,6 +1,7 @@
 """First assert_fence wave (operator OK 2026-10-16): aegis-social-sentiment, hermes-social-sentiment,
-finviz-screener-runner (effect-keyed, late_write_fenced), and finviz-market-movers (fence wired; it has no effect key,
-because the lane is shadow with no live_arg).
+finviz-screener-runner (effect-keyed, late_write_fenced), and finviz-market-movers (fence wired; it was unkeyed as a
+shadow lane, and is keyed since W5 while its empty allowlist live_arg keeps it unable to claim one — see the config
+test's note).
 
 Per lane, these tests pin that:
 1. the fence is called before the lane's first target write (behaviour for the two persist paths; source order for
@@ -55,7 +56,14 @@ def test_wave_lanes_are_keyed_fenced_and_in_the_catalogue():
     for lane in FENCED:
         assert lane in keyed and lane in fenced, lane
         assert any(a["action_id"] == "rerun_live_once" for a in cat[lane]["actions"]), lane
-    assert "finviz-market-movers" not in keyed          # shadow, no live_arg: no key until it is staged (decision)
+    # LQ-1663 (2026-11-09): 3e5058a4b (n8n onboarding W5) gave the already-canary lanes an
+    # effect-key row, so finviz-market-movers is keyed now. The original decision — this lane
+    # is NOT staged for a live run, so it must never claim an effect — is carried by the
+    # allowlist instead: an empty live_arg means n8n can only dry-run it, so no run of this
+    # lane can reach the fence holding a token. A live_arg added here needs an owner first.
+    allow = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())
+    lane = next(item for item in allow["lanes"] if item["lane_id"] == "finviz-market-movers")
+    assert lane["live_arg"] == [], "a live_arg would let an unowned lane claim an effect key"
 
 
 # ---------------------------------------------------------------- 4. no env = unchanged

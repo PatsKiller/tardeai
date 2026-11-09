@@ -38,10 +38,13 @@ def test_day_trade_and_scalp_disposition_is_persistent_and_filterable():
 def test_operator_guide_explains_manual_and_automatic_rotation_boundaries():
     ui = read("apps/command-center-v3/src/components/reentry/ReEntryHelpGuide.tsx")
     doc = read("docs/features/PORTFOLIO_REENTRY_OPERATOR_GUIDE.md")
+    # LQ-1663 (2026-11-09): the guide was reworded by 303128d68 and keeps all three
+    # boundaries: the operator confirms the lineage, the evaluator only advises, and the
+    # rotation-back order is never placed by the system.
     for token in (
-        "manual source/destination confirmation",
-        "automatic 20-minute advisory monitoring",
-        "manual rotation-back order",
+        "operator must confirm the source-to-destination capital lineage",
+        "20-minute RTH evaluator checks it automatically",
+        "never moves capital or places the rotation-back order",
     ):
         assert token.lower() in ui.lower()
     assert "The system may suggest a same-account destination" in doc
@@ -69,6 +72,10 @@ def test_detailed_analyst_evidence_uses_watch_read_models_and_targets():
 def test_reentry_and_redeploy_mount_shared_controls_and_help():
     reentry = read("apps/command-center-v3/src/pages/ReEntryPageV4.tsx")
     redeploy = read("apps/command-center-v3/src/pages/RedeployDeskIntegrated.tsx")
-    for token in ("ReEntryHelpGuide", "AuthoritativeExitUniverse", "ReEntryAnalystEvidence"):
+    # LQ-1663 (2026-11-09): c0064c838 replaced the mounted AuthoritativeExitUniverse with
+    # ReEntryCurrentIntelligence + ReEntryExitWorkbench on both pages (the same two surfaces
+    # the newer visible-classification contract pins); help and analyst evidence stay shared.
+    for token in ("ReEntryHelpGuide", "ReEntryCurrentIntelligence", "ReEntryExitWorkbench",
+                  "ReEntryAnalystEvidence"):
         assert token in reentry
         assert token in redeploy

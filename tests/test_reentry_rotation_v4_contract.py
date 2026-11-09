@@ -21,8 +21,11 @@ def test_authoritative_routes_are_mounted():
     assert 'path="portfolio/re-entry"' in app
     assert "RedeployDeskIntegrated" in app
     assert 'path="redeploy"' in app
-    assert "AuthoritativeExitUniverse" in reentry
-    assert "ReEntryRotationWorkspace" in reentry
+    # LQ-1663 (2026-11-09): c0064c838 replaced the mounted AuthoritativeExitUniverse with
+    # ReEntryCurrentIntelligence + ReEntryExitWorkbench on BOTH pages; the newer
+    # visible-classification contract pins that replacement and forbids the old mount.
+    for component in ("ReEntryCurrentIntelligence", "ReEntryExitWorkbench", "ReEntryRotationWorkspace"):
+        assert component in reentry
     assert "ReEntryRotationWorkspace" in text(REDEPLOY)
 
 
@@ -36,11 +39,13 @@ def test_operator_choices_and_baseline_truth_are_recorded():
 
 
 def test_authoritative_all_real_exit_ledger_is_visible_and_actionable():
-    source = text(AUTHORITATIVE)
-    assert "/api/v2/redeploy/history?days=365" in source
-    assert "AUTHORITATIVE REAL-ACCOUNT EXIT UNIVERSE" in source
-    assert "no $500 minimum" in source
-    assert "PENDING" in source
+    # LQ-1663 (2026-11-09): the mounted surface is ReEntryRotationWorkspace since c0064c838.
+    # It reads the authoritative Capital Book (all real exit events, dismissed included, no
+    # minimum) and carries the same MANDATE + EXIT and ROTATION LINK actions. The old
+    # AuthoritativeExitUniverse component is no longer imported anywhere; its heading and
+    # "no $500 minimum"/PENDING captions went with that layout, so they are not asserted here.
+    source = text(WORKSPACE)
+    assert "/api/v2/redeploy/book?limit=1000&include_dismissed=1" in source
     assert "MANDATE + EXIT" in source
     assert "ROTATION LINK" in source
     assert "portfolio.reentry.mandates.v4" in source
