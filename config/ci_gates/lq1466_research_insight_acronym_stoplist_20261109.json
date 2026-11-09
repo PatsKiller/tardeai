@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1466_research_insight_acronym_stoplist_20261109",
+  "files": [
+    "tests/test_lq1466_research_insight_acronym_stoplist_20261109.py"
+  ],
+  "anchor": "LQ1466_RESEARCH_INSIGHT_ACRONYM_STOPLIST_20261109",
+  "comment": [
+    "ANCHOR: LQ1466_RESEARCH_INSIGHT_ACRONYM_STOPLIST_20261109 — a held or watched source symbol on the acronym stoplist is not an insight symbol.",
+    "The list is config/research_insight_acronym_stoplist.json. A cashtag or the issuer's full name still accepts the symbol. Synthetic fixtures only."
+  ]
+}

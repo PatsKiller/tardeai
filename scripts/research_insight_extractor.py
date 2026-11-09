@@ -131,6 +131,38 @@ def _tracked(session: dict, candidates: list[str]) -> set[str]:
     return set(held) | watch
 
 
+_STOPLIST_REL = Path("config") / "research_insight_acronym_stoplist.json"
+
+
+def load_acronym_stoplist(path: Path | None = None) -> set[str]:
+    """Acronyms that must not become a symbol from the source field or a bare word.
+
+    The symbols live in the config file. This function does not carry its own list. A missing or
+    unreadable file yields an empty set so a held source symbol that is a real ticker still resolves.
+    """
+    p = path if path is not None else PROJECT_ROOT / _STOPLIST_REL
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    raw = doc.get("symbols") if isinstance(doc, dict) else None
+    if not isinstance(raw, list):
+        return set()
+    return {str(item).strip().upper() for item in raw if str(item or "").strip()}
+
+
+def _acronym_stoplist(session: dict) -> set[str]:
+    """A test injects ``acronym_stoplist`` (an empty set means no acronym is blocked). Production reads the file once."""
+    if "acronym_stoplist" in session:
+        raw = session.get("acronym_stoplist") or ()
+        return {str(item).strip().upper() for item in raw if str(item or "").strip()}
+    cached = session.get("_acronym_stoplist_loaded")
+    if cached is None:
+        cached = load_acronym_stoplist()
+        session["_acronym_stoplist_loaded"] = cached
+    return cached
+
+
 def _company_hit_symbols(session: dict, text: str, known: set, universe: set) -> list[str]:
     """Symbols whose issuer name occurs in ``text``, even when the ticker word does not.
 
@@ -285,8 +317,10 @@ def extract_insight(text: str, symbol: str = None, source_type: str = "manual",
     words = set(text_lower.split())
 
     # A symbol needs a cashtag, the company's name, or a source symbol that is held or on the watchlist.
-    # A bare uppercase word that happens to be a listed ticker (COLA, RMD) is refused. lib.symbol_match.evidence
+    # A bare uppercase word that happens to be a listed ticker is refused. lib.symbol_match.evidence
     # is that check; how=ticker is not acceptance, and the LQ-1061 subject filter is a different question.
+    # An acronym on config/research_insight_acronym_stoplist.json is not accepted from the source field
+    # even when that source symbol is held or watched (LQ-20261107-1466). Cashtag and issuer name still count.
     _scripts_on_path()
     from lib.symbol_match import evidence
 
@@ -308,7 +342,8 @@ def extract_insight(text: str, symbol: str = None, source_type: str = "manual",
     symbols_found: list[str] = []
     refused: list[str] = []
     common_refused: list[str] = []
-    if given and given in tracked:
+    stoplist = _acronym_stoplist(session)
+    if given and given in tracked and given not in stoplist:
         symbols_found.append(given)
     for sym in candidates:
         if sym in symbols_found:

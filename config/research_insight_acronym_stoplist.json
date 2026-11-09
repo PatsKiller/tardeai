@@ -1,0 +1,5 @@
+{
+  "schema": "ResearchInsightAcronymStoplist@v1",
+  "symbols": ["COLA", "IRMAA", "NAV", "QCD", "RMD", "SSDI"],
+  "_why": "Active research_insights rows whose headline uses the token as an acronym, not the issuer. Read-only counts on 2026-11-09: COLA 82 (last 2026-11-08, cost-of-living), IRMAA 54 (last 2026-10-30), NAV 34 (last 2026-09-23, net asset value), QCD 8 (last 2026-08-20), RMD 1 (last 2026-11-08, required distribution), SSDI 1 (last 2026-08-24). COLA and RMD are also real instruments on the watchlist, so a held source symbol was accepted before evidence. DSL, FN, GIC, CR, and ALL are real short tickers and are not listed. A cashtag or the issuer's full name still accepts a listed symbol."
+}
