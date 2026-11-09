@@ -122,6 +122,40 @@ def resolve_finviz_auth(*, project_root: Optional[Path] = None) -> dict[str, str
     }
 
 
+def normalize_finviz_cookie_value(value: str) -> str:
+    """Accept a browser cookie-extension JSON export as well as a Cookie header string.
+
+    Operator 2026-11-08: pasting the JSON export (a list of {"name","value","domain",...}) into Admin was rejected as
+    "missing .ASPXAUTH=" because the name/value pairs are JSON fields, not ``name=value``. A JSON list is converted to
+    ``name=value; name=value`` keeping only *.finviz.com cookies, in the order given. Anything else is returned
+    stripped and unchanged. Never logs or echoes the value.
+    """
+    v = (value or "").strip()
+    if not (v.startswith("[") and v.endswith("]")):
+        return v
+    try:
+        import json as _json
+        items = _json.loads(v)
+    except ValueError:
+        return v
+    if not isinstance(items, list):
+        return v
+    pairs: list[str] = []
+    seen: set[str] = set()
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        name, val = it.get("name"), it.get("value")
+        dom = str(it.get("domain") or "finviz.com").lstrip(".").lower()
+        if not isinstance(name, str) or not name or not isinstance(val, str):
+            continue
+        if not (dom == "finviz.com" or dom.endswith(".finviz.com")) or name in seen:
+            continue
+        seen.add(name)
+        pairs.append(f"{name}={val}")
+    return "; ".join(pairs) if pairs else v
+
+
 def validate_finviz_cookie_value(value: str) -> None:
     """Raise ValueError if cookie is truncated/invalid. Never include value in message."""
     v = (value or "").strip()

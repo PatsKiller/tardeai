@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "secrets"))
 
-from resolve_secret import parse_env_file, render_env_path, validate_finviz_cookie_value  # noqa: E402
+from resolve_secret import normalize_finviz_cookie_value, parse_env_file, render_env_path, validate_finviz_cookie_value  # noqa: E402
 
 KEY = "FINVIZ_COOKIE"
 
@@ -82,6 +82,7 @@ def probe() -> dict:
 
 def write(value: str, *, apply: bool, setter=None, actor: str = "operator:finviz_cookie.py") -> dict:
     """Validate, then (only with apply) write through secrets_admin.set_secret and verify."""
+    value = normalize_finviz_cookie_value(value)  # browser JSON export accepted (operator 2026-11-08)
     validate_finviz_cookie_value(value)
     target = fingerprint(value)
     if not apply:

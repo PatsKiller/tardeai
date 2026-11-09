@@ -298,7 +298,8 @@ def set_secret(key, value, actor="operator"):
             _sp = str(Path(__file__).resolve().parent / "secrets")
             if _sp not in _sys.path:
                 _sys.path.insert(0, _sp)
-            from resolve_secret import validate_finviz_cookie_value
+            from resolve_secret import normalize_finviz_cookie_value, validate_finviz_cookie_value
+            value = normalize_finviz_cookie_value(value)  # browser JSON export -> Cookie header (operator 2026-11-08)
             validate_finviz_cookie_value(value)
         except ValueError:
             raise

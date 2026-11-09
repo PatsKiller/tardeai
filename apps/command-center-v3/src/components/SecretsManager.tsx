@@ -164,7 +164,7 @@ export default function SecretsManager() {
             <datalist id="secret-keys">{secrets.filter((s: any) => !s.read_only).map((s: any) => <option key={s.key} value={s.key} />)}</datalist>
             <label style={{ fontSize: 10, color: 'var(--text3)' }}>{selectedConfig ? 'Value (config — not masked)' : isCookieKey ? 'Cookie string (full browser Cookie header)' : 'New value'}</label>
             {isCookieKey ? (
-              <textarea value={val} onChange={e => setVal(e.target.value)} placeholder="Paste the full Cookie header from elite.finviz.com (DevTools → Network → any request → Cookie). Must include .ASPXAUTH and .AspNetCore.Session."
+              <textarea value={val} onChange={e => setVal(e.target.value)} placeholder="Paste the full Cookie header from elite.finviz.com (DevTools → Network → any request → Cookie). Must include .ASPXAUTH and .AspNetCore.Session. A cookie-extension JSON export also works."
                 autoComplete="off" rows={5}
                 style={{ width: '100%', padding: '8px 12px', fontSize: 11, fontFamily: 'monospace', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)', margin: '4px 0 14px', resize: 'vertical' }} />
             ) : (
