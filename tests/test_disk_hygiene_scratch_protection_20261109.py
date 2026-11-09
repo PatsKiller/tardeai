@@ -14,6 +14,12 @@ every emulated lane. This file fixes the boundary by FILE SHAPE, not by where th
   exemption, case-insensitively;
 * every credential STORE shape (``.env``, ``*.pem``, ``*.key``, ``credentials.json``, ``id_ed25519``) still holds.
 
+grok-a's review (2026-11-09) found the first cut of this file proved a list the module did not use: rule T's
+suffix tuple shared a global name with ``_credential_name``'s shorter one, and the later assignment won, so
+``.tmpl``/``.tpl``/``.dist`` still held. The tuple has its own name now, and the three shapes are pinned
+(``test_templates_never_hold``) alongside the constant itself — ``config/env.dist`` was dropped from that
+parametrization because it never matched a credential name at all, so it could only pass for the wrong reason.
+
 Synthetic tmp_path trees only; no host census, no real home.
 COVERS = ["scripts/disk_hygiene.py"]
 """
@@ -63,7 +69,7 @@ def _repo_export(root, rel):
     # a template is not a store, and a source file names a subject: neither holds, marker or not
     ("config/.env.example", False),
     ("config/settings.env.sample", False),
-    ("config/env.dist", False),
+    ("config/.env.dist", False),
     ("scripts/credential_monitor.py", False),
     ("src/lib/designTokens.ts", False),
     ("tokens.css", False),
@@ -111,11 +117,20 @@ def test_scratch_protected_by_file_shape_without_markers(world, rel, holds):
 
 
 @pytest.mark.parametrize("rel", ["config/.env.example", "config/.env.sample", "config/settings.env.template",
-                                 "config/env.dist"])
+                                 "config/.env.tmpl", "config/.env.tpl", "config/.env.dist"])
 def test_templates_never_hold(world, rel):
     root, rules = _root(world)
     target = _make(root, rel)
     assert DH.scratch_protected(target, root, rules) is False
+
+
+def test_the_rule_t_suffix_tuple_is_its_own_global():
+    """grok-a, 2026-11-09. ``_credential_name`` keeps a SHORTER tuple under ``_TEMPLATE_SUFFIXES`` later in the
+    module. A second assignment of one global is read at call time, so the first version of this fix shipped a
+    list that said ``.tmpl``/``.tpl``/``.dist`` while the tuple rule T actually saw did not: those shapes held.
+    The rule-T list has its own name and the long value; a regression here means one of the two was renamed back."""
+    assert DH._SCRATCH_TEMPLATE_SUFFIXES == (".example", ".sample", ".template", ".tmpl", ".tpl", ".dist")
+    assert ".tmpl" in DH._SCRATCH_TEMPLATE_SUFFIXES and ".tpl" in DH._SCRATCH_TEMPLATE_SUFFIXES
 
 
 @pytest.mark.parametrize("body, holds", [

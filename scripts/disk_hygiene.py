@@ -421,7 +421,10 @@ SCRATCH_FIXTURE_DIRS = ("pytest", "pytest-of-*", "pytest-*", "basetemp*", "pt[0-
 #: A template carries no secret: ``.env.example`` names the shape of a credential, never a value. Config
 #: ``releases._why`` already says so; rule T has to agree or a copied template pins the whole scratch dir
 #: (LQ-20261107-1366: every ``.env.example`` under ``agent-tmp`` matched ``.env.*``).
-_TEMPLATE_SUFFIXES = (".example", ".sample", ".template", ".tmpl", ".tpl", ".dist")
+#: Named apart from ``_TEMPLATE_SUFFIXES`` on purpose: ``_credential_name`` keeps a shorter tuple under that
+#: name later in this module, and a second assignment of one global is read at CALL time — the later tuple won,
+#: so ``.tmpl``/``.tpl``/``.dist`` silently held (grok-a review, 2026-11-09). Two lists, two names.
+_SCRATCH_TEMPLATE_SUFFIXES = (".example", ".sample", ".template", ".tmpl", ".tpl", ".dist")
 
 #: Extensions that hold source code or build output, never a credential store. ``token``/``cookie``/``secret``/
 #: ``credential`` in a source FILENAME names a subject, not a value: ``scripts/credential_monitor.py``,
@@ -484,7 +487,7 @@ def scratch_protected(path: Path, root: Path, rules: Mapping[str, Any]) -> bool:
         return True
     if path.is_dir():
         return False  # a credential is a file; a dir named ``test_token_x0`` or ``bin/docker`` holds nothing by its name
-    if path.name.lower().endswith(_TEMPLATE_SUFFIXES):
+    if path.name.lower().endswith(_SCRATCH_TEMPLATE_SUFFIXES):
         return False
     if path.name.lower().endswith(SCRATCH_SOURCE_SUFFIXES):
         return False  # *token* / *secret* in a source FILENAME names a subject, not a value
