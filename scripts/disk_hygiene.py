@@ -384,15 +384,71 @@ def _never_glob_match(globs: Iterable[str], part: str) -> Optional[str]:
 #: ``tradeai_pytest_scratch_*``, ``ci-compat/pytest``) and pytest's per-test ``tmp_path`` dirs (``test_<name><n>``).
 SCRATCH_FIXTURE_DIRS = ("pytest", "pytest-of-*", "pytest-*", "basetemp*", "pt[0-9]*", "tradeai_pytest_scratch_*", "test_*[0-9]")
 
+#: A repo copy made with ``git archive``/``cp``/a partial export has no ``.git``, so the ``.git`` test below
+#: missed it and the copy's own source files held the scratch dir forever (LQ-20261107-1366: 83.87 GiB, 69
+#: scratch entries — ``tokens.css`` matched ``*token*``, ``secret-scan.yml`` and ``secrets-presence-only.spec.ts``
+#: matched ``*secret*``, and every ``.env.example`` matched ``.env.*``). These markers identify the same kind of
+#: tree the ``.git`` test already exempts: a project copy whose matching names are source files, not stores.
+SCRATCH_REPO_MARKERS = ("pyproject.toml", "setup.py", "setup.cfg", "package.json", "tsconfig.json",
+                        "go.mod", "Cargo.toml", "AGENTS.md", "CLAUDE.md")
+
+#: A template carries no secret. Config ``releases._why`` already says ``.env.example`` is fine to keep in a
+#: release; rule T has to agree, or a copied template pins the whole scratch dir. One definition, used by both
+#: rule T (``scratch_protected``) and ``_credential_name`` below.
+_TEMPLATE_SUFFIXES = (".example", ".sample", ".template", ".tmpl", ".tpl", ".dist")
+
+#: Extensions that hold source code or build output, never a credential store. ``token``/``cookie``/``secret``/
+#: ``credential`` in a source FILENAME names a subject, not a value: ``scripts/credential_monitor.py``,
+#: ``tokens.css``, ``src/lib/designTokens.ts``, ``nltk/tokenize/toktok.py``. A partial export (``lq258/base/tests``)
+#: carries no project marker, so the tree test below cannot see it; the extension can. Deliberately narrow —
+#: ``.json``/``.yaml``/``.yml``/``.ini``/``.cfg``/``.txt``/``.log``/``.rc`` and no-suffix names are the shapes a
+#: dumped credential takes and still hold.
+SCRATCH_SOURCE_SUFFIXES = (".py", ".pyc", ".pyi", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts",
+                           ".css", ".scss", ".sass", ".less", ".vue", ".svelte", ".html", ".go", ".rs", ".java",
+                           ".kt", ".rb", ".php", ".c", ".h", ".cc", ".cpp", ".hpp", ".m", ".swift", ".map", ".svg",
+                           ".png", ".jpg", ".jpeg", ".gif", ".ico", ".woff", ".woff2", ".ttf")
+
+#: The emulation harness writes one ``emulation.env`` per lane run: a fixed header, then configuration only — the
+#: cluster password travels in the spec, in memory (LQ-1353). Without this exemption every emulated lane under an
+#: agent's scratch dir pinned that agent's *whole* tree forever through the ``*.env`` glob. Both the header and the
+#: absence of a credential-valued line are required, so a hand-written ``emulation.env`` still holds.
+EMULATION_ENV_HEADER = b"# emulation env: configuration only, written by"
+_EMULATION_SECRET_LINE = re.compile(
+    rb"^(?:export\s+)?[A-Za-z0-9_]*(?:PASSWORD|SECRET|TOKEN|PRIVATE_KEY|API_KEY)[A-Za-z0-9_]*\s*=\s*\S", re.M)
+
+
+def _emulation_env_file(path: Path) -> bool:
+    """Rule T: is ``path`` a harness-written config-only emulation env? Reads at most the first 64 KiB."""
+    if path.name != "emulation.env" or path.is_symlink() or not path.is_file():
+        return False
+    try:
+        with path.open("rb") as fh:
+            body = fh.read(65536)
+    except OSError:
+        return False
+    return body.startswith(EMULATION_ENV_HEADER) and not _EMULATION_SECRET_LINE.search(body)
+
+
+def _scratch_repo_copy(directory: Path) -> bool:
+    """Rule T: is ``directory`` the root of a project copy (a work tree, or an export that lost its ``.git``)?"""
+    return os.path.lexists(directory / DOT_GIT) or any(os.path.lexists(directory / m) for m in SCRATCH_REPO_MARKERS)
+
 
 def scratch_protected(path: Path, root: Path, rules: Mapping[str, Any]) -> bool:
     """Rule T: does this entry inside an agent scratch dir hold the whole dir (2026-10-31)?
 
-    A symlink never holds: removal unlinks the link, never its target. A never-touch PATH always holds. A
-    never-touch NAME or credential-like GLOB holds only outside a repo copy or a pytest temp tree: there it is a
-    tracked repo file (``secret_registry.yaml``, ``check_no_secrets.py``) or a synthetic fixture, not a credential.
+    A symlink never holds: removal unlinks the link, never its target. A template (``.env.example``) never holds:
+    it is not a store. A source file never holds: ``tokens.css`` and ``credential_monitor.py`` are code, and a
+    harness-written ``emulation.env`` never holds: its header says it carries configuration only. A never-touch
+    PATH always holds. A never-touch NAME or credential-like GLOB holds only outside a repo copy or a pytest temp
+    tree: there it is a tracked repo file (``secret_registry.yaml``, ``check_no_secrets.py``) or a synthetic
+    fixture, not a credential. "Repo copy" is a tree with ``.git`` OR an export's project marker
+    (``SCRATCH_REPO_MARKERS``) — the archive copies under ``agent-tmp`` have no ``.git``, and the scratch dir
+    itself may be the copy.
     """
     if path.is_symlink():
+        return False
+    if path.name.lower().endswith(_TEMPLATE_SUFFIXES):
         return False
     why = never_touch_reason(path, rules)
     if not why:
@@ -401,14 +457,24 @@ def scratch_protected(path: Path, root: Path, rules: Mapping[str, Any]) -> bool:
         return True
     if path.is_dir():
         return False  # a credential is a file; a dir named ``test_token_x0`` or ``bin/docker`` holds nothing by its name
+    if path.name.lower().endswith(SCRATCH_SOURCE_SUFFIXES) or _emulation_env_file(path):
+        return False
     try:
         rel = path.relative_to(root)
     except ValueError:
         return True
     probe = root
-    for part in rel.parts[:-1]:
+    parts = rel.parts[:-1]
+    # The scratch dir itself can be the project copy (``agent-tmp/lq110-baseline`` is a repo export with
+    # ``pyproject.toml`` and ``AGENTS.md`` at its top). Checking only the *ancestors below* the root missed that,
+    # so every export pinned itself through its own ``tests/test_secret_*.py`` (LQ-20261107-1366). A matched file
+    # sitting directly in the root still holds: a repo's own ``.env`` is untracked, so the export says nothing
+    # about it.
+    if parts and (any(fnmatch.fnmatch(root.name, g) for g in SCRATCH_FIXTURE_DIRS) or _scratch_repo_copy(root)):
+        return False
+    for part in parts:
         probe = probe / part
-        if any(fnmatch.fnmatch(part, g) for g in SCRATCH_FIXTURE_DIRS) or os.path.lexists(probe / DOT_GIT):
+        if any(fnmatch.fnmatch(part, g) for g in SCRATCH_FIXTURE_DIRS) or _scratch_repo_copy(probe):
             return False
     return True
 
@@ -1447,9 +1513,6 @@ def bundle_nested(item: Mapping[str, Any]) -> Optional[str]:
         if vrc != 0:
             return f"bundle_verify_failed:{rel}"
     return None
-
-
-_TEMPLATE_SUFFIXES = (".example", ".sample", ".template")
 
 
 def _credential_name(name: str, rules: Mapping[str, Any]) -> bool:
