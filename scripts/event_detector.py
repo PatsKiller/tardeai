@@ -23,7 +23,7 @@ Cron: */15 * * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild &
 import json
 import os
 import sys
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, timezone, date
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -31,6 +31,10 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 COOLDOWN_HOURS = 4
+#: LQ-20261107-1511: how old a regime source's newest close may be, in COMPLETED sessions, before the detector
+#: refuses to fire on it. The shipped config carries 0 (the last completed session's close or nothing); an
+#: operator who wants to tolerate a publication lag widens it in config/event_detector_policy.json, never in code.
+POLICY_PATH = PROJECT_ROOT / "config" / "event_detector_policy.json"
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -89,6 +93,44 @@ def _load_json(path: Path) -> dict:
         return json.loads(path.read_text())
     except Exception:
         return {}
+
+
+def regime_policy() -> dict:
+    """The regime-event freshness policy, with the STRICT default when the file is absent or unusable.
+
+    LQ-20261107-1511: the detector fired an urgent ``MARKET_REGIME_CHANGE VIX_25`` from a VIXCLS close dated
+    2026-11-05 read on 2026-11-09 (the FRED ingest had stopped on 11-07) while live VIX was ~24.1. A regime
+    crossing is a STATE, not a stop: refusing an old close delays the alert to the next published close and never
+    sends a false urgent one. The threshold lives in config/event_detector_policy.json so widening it is a config
+    edit, not a code edit; a config that cannot be read falls back to 0 (the last completed session or nothing),
+    which is the safe direction, and says so on the lane's own log line.
+    """
+    doc = _load_json(POLICY_PATH)
+    lag = ((doc.get("regime") or {}) if isinstance(doc, dict) else {}).get("max_observation_lag_sessions")
+    if isinstance(lag, bool) or not isinstance(lag, int) or lag < 0:
+        if doc:
+            _log(f"MARKET_REGIME_CHANGE: {POLICY_PATH.name} regime.max_observation_lag_sessions is not a "
+                 f"non-negative integer ({lag!r}) — using 0 (strictest)")
+        lag = 0
+    return {"max_observation_lag_sessions": lag}
+
+
+def regime_observation_fresh(observation_date, now: datetime, lag_sessions: int = 0) -> tuple[bool, object]:
+    """(is_fresh, oldest_allowed_close). Fresh means the newest source close is no older than the last COMPLETED
+    trading session, minus the configured lag in sessions.
+
+    Sessions come from the repo's own calendar (``lib.market_event_rank``: NYSE holidays, weekday fallback), so a
+    Monday after a holiday weekend is not mistaken for a stale source. Before 16:00 ET the last completed session
+    is the previous trading day; a close published for that day is the newest that can exist.
+    """
+    from lib.market_event_rank import last_completed_session, prev_trading_day
+
+    oldest = last_completed_session(now)
+    for _ in range(max(0, int(lag_sessions))):
+        oldest = prev_trading_day(oldest)
+    if observation_date is None:
+        return False, oldest
+    return observation_date >= oldest, oldest
 
 
 def _fire_event(conn, event_type: str, symbol: str, trigger_data: dict,
@@ -534,6 +576,16 @@ def check_market_regime_change(conn, dry_run: bool = False) -> int:
     vix = float(row.get("value", 0))
     _log(f"MARKET_REGIME_CHANGE: VIX={vix:.2f}")
 
+    # LQ-20261107-1511: a crossing is only news on a CURRENT close. On 2026-11-09 this fired an urgent VIX_25
+    # event from a VIXCLS close dated 2026-11-05 — four days old, because the FRED ingest had stopped on 11-07 —
+    # while live VIX was ~24.1. Refuse and say why; never fire on a source the lane cannot call current.
+    lag = regime_policy()["max_observation_lag_sessions"]
+    fresh, oldest_allowed = regime_observation_fresh(row.get("observation_date"), datetime.now(timezone.utc), lag)
+    if not fresh:
+        _log(f"MARKET_REGIME_CHANGE: VIXCLS close {row.get('observation_date')} is STALE "
+             f"(newest allowed {oldest_allowed}, lag {lag} sessions) — refusing to fire")
+        return 0
+
     fired = 0
     for threshold in [25, 30]:
         if vix >= threshold:
@@ -611,9 +663,10 @@ def check_portfolio_fresh_needed(conn, dry_run: bool = False) -> int:
 
 def main():
     dry_run = "--dry-run" in sys.argv
+    started_at = datetime.now(timezone.utc)
 
     _log("=" * 60)
-    _log(f"Event Detector — Level 3 Autonomous Agent Triggering")
+    _log("Event Detector — Level 3 Autonomous Agent Triggering")
     _log(f"Mode: {'DRY RUN' if dry_run else 'LIVE'}")
     _log("=" * 60)
 
@@ -627,6 +680,8 @@ def main():
         sys.exit(1)
 
     total_fired = 0
+    detector_status = {}
+    errors = 0
     checks = [
         ("SEC_INSIDER_BUY",       check_sec_insider_buy),
         ("RSI_EXTREME",           check_rsi_extreme),
@@ -643,13 +698,40 @@ def main():
     for name, fn in checks:
         try:
             total_fired += fn(conn, dry_run)
+            detector_status[name] = "ok"
         except Exception as e:
+            # The run still completes: the other checks are independent, and a crash in one is recorded, not
+            # hidden. ``detector_status`` carries the class name (never the message) so the receipt shows WHICH
+            # check stopped running (LQ-20261107-1511: PORTFOLIO_FRESH_NEEDED crashed on every run since
+            # 2026-11-08 and the lane still reported "RUN_DONE" with nothing naming it).
+            errors += 1
+            detector_status[name] = f"error:{type(e).__name__}"
             _log(f"ERROR in {name} check: {e}")
 
     conn.close()
 
     _log(f"Checked {len(checks)} event types. Fired: {total_fired} events.")
     _log("")
+
+    # LQ-20261107-1511: the lane declares ``output_signal: data/runtime/event-detector_last.json`` in the registry
+    # and in the n8n allowlist, but nothing ever wrote it — the file on disk was 30 hours old while the lane ran
+    # five times a day, and the contract could only say "declared_not_enforced". A real run now writes its own
+    # LaneRunReceipt@v2; a dry run never does (lane_last_receipt's own rule).
+    if not dry_run:
+        try:
+            from lib.lane_last_receipt import write_lane_receipt
+        except ImportError:
+            from scripts.lib.lane_last_receipt import write_lane_receipt
+        write_lane_receipt(
+            "event-detector",
+            ok=errors == 0,
+            exit_code=0,
+            started_at=started_at,
+            script="scripts/event_detector.py",
+            summary={"checked": len(checks), "ok": len(checks) - errors, "error": errors,
+                     "fired": total_fired, "detector_status": detector_status},
+            produced_count=total_fired,
+        )
 
 
 if __name__ == "__main__":
