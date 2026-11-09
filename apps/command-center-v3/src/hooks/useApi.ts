@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { TransportState } from '../lib/observationEnvelope.ts'
 import { classifyStatus, classifyError, countsAsConnectionFailure } from '../lib/httpOutcome'
+import { coalesceInFlight } from '../lib/inflightGet'
 
 // ── Global connection health ─────────────────────────────────────────────────────────────────────────
 // useApi consumers register/clear when they enter/leave a failed state, so a single top-level indicator
@@ -196,8 +197,6 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
       if (terminalRef.current) return
       if (inFlight) return
       inFlight = true
-      const controller = new AbortController()
-      controllers.add(controller)
       // broker-proposals: 15s hard timeout (P0 2026-07-14) — the endpoint is now bounded
       // server-side (quote budget + background autocal/summary); anything slower should
       // surface the error/Retry state instead of an endless "Loading broker queue…".
@@ -223,18 +222,32 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         const url = `${path}${sep}_=${Date.now()}`
         const etag = _etags.get(path)
         const headers: Record<string, string> = etag ? { 'If-None-Match': etag } : {}
-        let timer: ReturnType<typeof setTimeout> | undefined
-        const scheduled = scheduleApiRequest(async () => {
-          timer = setTimeout(() => controller.abort(), timeoutMs)
+        // Two hooks that poll the same path in the same tick (NavRail and MetricStrip both poll the
+        // approvals summary) join ONE read — lib/inflightGet.ts. The body is read here, once: a
+        // Response body can be consumed only once, so what is shared is its status, headers and text,
+        // which every joined caller can read again.
+        const r = await coalesceInFlight(path, async () => {
+          const controller = new AbortController()
+          controllers.add(controller)
+          let timer: ReturnType<typeof setTimeout> | undefined
+          const scheduled = scheduleApiRequest(async () => {
+            timer = setTimeout(() => controller.abort(), timeoutMs)
+            try {
+              const res = await fetch(url, { signal: controller.signal, cache: 'no-store', headers })
+              return { ok: res.ok, status: res.status, headers: res.headers, text: await res.text() }
+            } finally {
+              if (timer) clearTimeout(timer)
+            }
+          }, background)
+          cancelQueued.add(scheduled.cancel)
           try {
-            return await fetch(url, { signal: controller.signal, cache: 'no-store', headers })
+            return await scheduled.promise
           } finally {
-            if (timer) clearTimeout(timer)
+            // The read is over: this hook's cleanup must no longer abort it on unmount.
+            cancelQueued.delete(scheduled.cancel)
+            controllers.delete(controller)
           }
-        }, background)
-        cancelQueued.add(scheduled.cancel)
-        const r = await scheduled.promise
-        cancelQueued.delete(scheduled.cancel)
+        })
         if (r.status === 304) {
           // Snapshot unchanged — the retained body is still the last-good body.
           // Transport receipt advances; the DATA clock does not. Consumers keep
@@ -254,7 +267,7 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           // whenever heavy endpoints briefly saturated the semaphore (10 feeds × 503).
           let retryAfter = 2
           try {
-            const j = await r.json()
+            const j = JSON.parse(r.text)
             if (j?.retry_after_sec) retryAfter = Number(j.retry_after_sec) || 2
           } catch { /* ignore */ }
           if (dataRef.current != null) {
@@ -314,7 +327,7 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         setAuthState('OK')
         const et = r.headers.get('ETag')
         if (et) _etags.set(path, et)
-        const json = await r.json()
+        const json = JSON.parse(r.text)
         if (cancelled) return
         const next = json.ok !== undefined ? (json.data ?? json) : json
         dataRef.current = next
@@ -357,7 +370,6 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           setLoading(false)
           clearManual()
         }
-        controllers.delete(controller)
         inFlight = false
       }
     }

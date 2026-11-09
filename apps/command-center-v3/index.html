@@ -6,6 +6,12 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
+    <!-- An icon the document names is the ONLY way to stop the browser's implicit GET /favicon.ico. On this
+         server that request is a 404 and prints "Failed to load resource: 404" on every load (LQ-20261107-1305,
+         measured at 412 px on beb570f97). Inline SVG, so the icon costs no request and no file in the release
+         tree; the colours are the dark-theme --bg-0 and --primary-color tokens, which a favicon cannot read
+         from CSS. -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f1117'/%3E%3Cpath d='M7 21l6-8 4 3 8-10' fill='none' stroke='%237db4ff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
     <title>Command Center v3</title>
   </head>
   <body>
