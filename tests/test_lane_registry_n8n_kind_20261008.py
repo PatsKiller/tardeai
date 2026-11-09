@@ -470,6 +470,8 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # Neither ever had a host line.
         "since-close-snapshot",
         "since-close-check",
+        # 2026-11-09 LQ-20261107-1607: n8n-native shadow, every 5 min, dry_run. No host line.
+        "alert-delivery-queue-hygiene",
         # 2026-11-08 LQ-20261107-1286: n8n-native canary. No host line.
         "cio-overnight-brief",
         # 2026-11-04 site-audit: n8n-native capture lane, NEVER_SCHEDULED, no n8n workflow installed yet and no

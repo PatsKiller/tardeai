@@ -27899,6 +27899,55 @@
           }
         ]
       }
+    },
+    {
+      "lane_id": "alert-delivery-queue-hygiene",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/alert_delivery_queue_hygiene.py",
+        "cadence": "*/5 * * * *",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 0.25,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-09",
+      "state_reason": "LQ-20261107-1607 (WORK-QUEUE cc-opus-1, claude-lead 2026-11-09; METHODOLOGY FIRST operator order 2026-11-09): the IMMEDIATE delivery queue gets an owner. Every 5 min the lane classifies each 'queued' alert_notification_deliveries row by the runtime mode it was written under; rows written outside ACTIVE (the legacy sender owned delivery) and ACTIVE rows older than 6 h are closed as 'abandoned' with an 'expired:' reason that keeps the original; nothing is ever sent. A deliverable row still queued after 10 min is BROKEN and raises one system_health CRITICAL per hour. SHADOW: dispatch.mode dry_run and allowlist live_arg null, so a fire runs the read-only dry run.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/alert-delivery-queue-hygiene_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/alert_delivery_queue_hygiene.py main() writes LaneRunReceipt@v2 via scripts/lib/lane_last_receipt.write_lane_receipt under --apply only; the dry run writes nothing"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_alert_delivery_queue_hygiene_20261109.py (shadow writer terminal row, consumer refuses outside ACTIVE, claim filter, emulated slot: dry run writes nothing, apply expires and escalates once)",
+      "review_by": "2026-11-23",
+      "value_class": "Operationally Important",
+      "severity": "High",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/5 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "monitor",
+        "priority": 3,
+        "retry_policy": "transient-2"
+      }
     }
   ],
   "freshness_contracts": [
@@ -28365,6 +28414,23 @@
         "pipeline-freshness-monitor"
       ],
       "note": "Nothing is moved and nothing is retuned: the lane was born with the card on 2026-11-08 and no prior monitor check covered it, so the pipeline freshness monitor is named only as the owner of the check, not as a source that lost one. The operator's two bounds are one number here because the contract carries one max_age_hours: basis lane_due allows max(0.75 h, hours since the last DUE fire + min(0.75 h, 1 h)), so in market hours the lane fires every 15 min and the operative bound is about 45 min, and on a weekend the 2 h cadence plus the 45 min grace gives about 2 h 45 min against the operator's 2 h 30 min — the one place a single-number contract cannot carry both bounds exactly, written down here rather than approximated twice."
+    },
+    {
+      "key": "ops.alert_delivery_queue_hygiene",
+      "lane_id": "alert-delivery-queue-hygiene",
+      "signal": {
+        "kind": "json_key",
+        "path": "data/runtime/alert-delivery-queue-hygiene_last.json",
+        "key": "ok_at"
+      },
+      "max_age_hours": 0.5,
+      "basis": "lane_due",
+      "severity": "P1",
+      "source": "LQ-20261107-1607 (WORK-QUEUE cc-opus-1, claude-lead 2026-11-09; METHODOLOGY FIRST operator order 2026-11-09): the queue contract (queued IMMEDIATE row <= 10 min) is only as good as the lane that measures it, so its own receipt must be under 30 min old (6 missed 5-min slots) once live.",
+      "replaces": [
+        "pipeline-freshness-monitor"
+      ],
+      "note": "born with the lane; no prior check covered the IMMEDIATE delivery queue. pipeline-freshness-monitor is the monitor that carries this lane_due check"
     }
   ],
   "pending_changes": {

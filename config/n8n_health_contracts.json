@@ -42709,6 +42709,172 @@
           "notifier_priority": "P2"
         }
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "alert-delivery-queue-hygiene",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "lq1607_registration_20261109",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Hold the IMMEDIATE alert delivery queue to its contract: no deliverable row stays 'queued' more than 10 min. Close rows that can never be delivered (written outside ACTIVE, or older than 6 h) as 'abandoned' with an 'expired:' reason, never send, and raise one system_health CRITICAL per hour when a deliverable row is stuck (the consumer is not draining).",
+        "business_function": "ops",
+        "source": "scripts/alert_delivery_queue_hygiene.py module docstring"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/alert_delivery_queue_hygiene.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/alert_delivery_queue_hygiene.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock, lock_kind flock"
+        },
+        {
+          "name": "Postgres alert_notification_deliveries, alert_occurrences (read; UPDATE queued->abandoned under --apply only)",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "scripts/alert_delivery_queue_hygiene.py CLASSIFY_SQL / EXPIRE_SQL"
+        },
+        {
+          "name": "Postgres alert_events (system_health CRITICAL on BROKEN, at most one per 60 min)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/alert_event_writer.save_alert_event"
+        },
+        {
+          "name": "data/runtime/alert-delivery-queue-hygiene_last.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/lane_last_receipt.py write_lane_receipt (LaneRunReceipt@v2, produced_count = rows expired)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire ends RUN_DONE in mode dry_run (coordination ledger runs)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry run opens a default_transaction_read_only session and writes no receipt"
+        },
+        {
+          "check": "queue_contract_ok",
+          "text": "verdict OK or DEGRADED: no deliverable IMMEDIATE row queued longer than 10 min"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "healed",
+          "text": "verdict DEGRADED: the run expired undeliverable rows (shadow-written or older than 6 h)"
+        },
+        {
+          "check": "late",
+          "text": "receipt older than 30 min (6 missed 5-min slots) once live"
+        }
+      ],
+      "failed": [
+        {
+          "check": "queue_broken",
+          "text": "verdict BROKEN: a deliverable row is still queued after 10 min; one system_health CRITICAL per hour; the lane does not send or re-queue"
+        },
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "unverifiable",
+          "text": "verdict UNVERIFIABLE: no database reading"
+        },
+        {
+          "check": "sent",
+          "text": "any operator message sent by this lane (summary.sends must be 0)"
+        }
+      ],
+      "baseline": {
+        "timeout_s": 120,
+        "class": "monitor",
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 1.0,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 4x of the 0.25 h expected cadence",
+        "computed_on": "2026-11-08",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED: the lane has never been dispatched by the dispatcher (no run row in the coordination ledger for a live fire); class defaults only. The live argv was emulated in an isolated PROJECT_ROOT before activation (LQ-20261107-1279 DONE note).",
+        "runs_considered": null,
+        "duration_degraded_above_s": 240.0
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "an undrained IMMEDIATE queue means critical operator alerts are not arriving",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity, else the fan-in priority (RUN_* = P2). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md 7)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json yet: regenerate with scripts/build_remediation_catalogue.py --write after this allowlist entry merges (step 7 of the onboarding checklist)"
+      },
+      "evidence": {
+        "receipt": "data/runtime/alert-delivery-queue-hygiene_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, verdict FROM runs WHERE lane_id='alert-delivery-queue-hygiene' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.summary.verdict, .summary.counts, .summary.expired' $STATE_ROOT/data/runtime/alert-delivery-queue-hygiene_last.json"
+        ]
+      },
+      "review_by": "2026-11-23",
+      "review": {
+        "prepared_by": "agent draft (cc-opus-1, LQ-20261107-1607, 2026-11-09)",
+        "status": "DRAFT",
+        "reviewed_by": null,
+        "reviewed_on": null,
+        "note": "the owner (platform) marks this REVIEWED before any canary PR"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "undeliverable queued rows expired",
+        "rule": "empty_allowed",
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "file",
+            "ref": "data/runtime/alert-delivery-queue-hygiene_last.json summary.expired (written under --apply only)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
     }
   ],
   "pending_changes": {
