@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_standing_receipt_skips_invalid_20261109",
+  "files": [
+    "tests/test_disk_standing_receipt_skips_invalid_20261109.py"
+  ],
+  "comment": [
+    "LQ-20261107-1527: standing_hygiene_status returned invalid_receipt on the FIRST unreadable",
+    "or unusable receipt, so one refused run on 2026-11-05 that wrote run_id null blinded the",
+    "directory: disk_hygiene_digest/disk_hygiene_alert queued nothing from 2026-11-02T15:45, a",
+    "refused run holding 25.0 GiB was never reported, and / sat critical at 92.9%. Pins that an",
+    "unusable receipt is skipped and counted, that invalid_receipt survives only for a directory",
+    "with nothing usable, and that a report older than the reviewed freshness bound is not news",
+    "and is never replayed."
+  ]
+}

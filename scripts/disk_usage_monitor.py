@@ -626,32 +626,64 @@ def standing_hygiene_status(rules: Mapping, state_root: Optional[Path], previous
 
     Only distinct manifest runs advance the held-byte streak. Missing/future or
     malformed receipts are not proof of a successful hygiene run.
+
+    ONE UNUSABLE RECEIPT MUST NOT BLIND THE DIRECTORY (LQ-20261107-1527). Until this fix the
+    loop returned on the FIRST bad file, so a single refused run on 2026-11-05 that wrote
+    `run_id: null` made every later poll answer `invalid_receipt`. The monitor's own
+    disk-hygiene reporting went dead with it: `disk_hygiene_digest` / `disk_hygiene_alert`
+    queued nothing between 2026-11-02T15:45 and this fix — 61 distinct unseen runs — while
+    `/` sat in the critical band at 92.9%. An unusable receipt is now SKIPPED and counted in
+    `skipped_unusable`; `invalid_receipt` is returned only when files exist and not one of
+    them is usable, which is the only state that means the directory cannot be read at all.
+
+    A report older than the freshness bound is not news. The monitor polls every 15 minutes,
+    so a real run is read long before the bound; anything past it was missed by an outage or
+    by the fault above, and re-dialling a week of digests is noise, not reporting. Those are
+    counted in `stale_skipped` and never queued. The bound is
+    `standing_apply.monitor.max_report_age_hours` when set, else the already-reviewed
+    `standing_apply.manifest_max_age_hours` — no new operator value is introduced.
     """
     if not isinstance(rules.get("standing_apply"), dict):
         return {"status": "not_configured"}
+    cfg = rules["standing_apply"]
+    max_age_h = (cfg.get("monitor") or {}).get("max_report_age_hours") or cfg.get("manifest_max_age_hours")
+    max_age_h = float(max_age_h) if max_age_h else None
     reports = []
+    usable = invalid = stale = 0
     directory = DH.manifest_dir(rules, state_root)
     for path in sorted(directory.glob("disk_hygiene_standing_apply_*.json")):
         try:
             report = json.loads(path.read_text())
         except (OSError, ValueError):
-            return {"status": "invalid_receipt"}
+            invalid += 1          # unreadable: not evidence of a run, and not a reason to drop the rest
+            continue
         if not isinstance(report, dict) or not report.get("run_id"):
-            return {"status": "invalid_receipt"}
+            invalid += 1
+            continue
         finished = DH.SR.aware(report.get("finished_at"))
         if finished is None or finished > now:
-            return {"status": "invalid_receipt"}
-        if report["run_id"] not in previous.get("seen_run_ids", []) and report["run_id"] != previous.get("run_id"):
-            reports.append(report)
+            invalid += 1
+            continue
+        usable += 1
+        if report["run_id"] in previous.get("seen_run_ids", []) or report["run_id"] == previous.get("run_id"):
+            continue                      # already reported; an old one is not "skipped", it was read
+        if max_age_h is not None and (now - finished).total_seconds() > max_age_h * 3600:
+            stale += 1
+            continue
+        reports.append(report)
+    counts = {k: v for k, v in (("skipped_unusable", invalid), ("stale_skipped", stale)) if v}
+    if not usable and invalid:
+        return {"status": "invalid_receipt", **counts}
     if not reports:
-        return {"status": "already_observed" if previous.get("run_id") else "not_measured", "state": dict(previous)}
+        return {"status": "already_observed" if previous.get("run_id") else "not_measured",
+                "state": dict(previous), **counts}
     report = min(reports, key=lambda r: r["finished_at"])
     result = DH.SR.monitor_decision(report, previous, used_pct)
     after = (report.get("post_apply_usage") or {}).get("used_pct")
     if isinstance(after, (int, float)) and after > 85:
         result["alert"] = "post_apply_disk_above_85"
     result.update(status="new_run", digest=report.get("operator_digest") or "Disk hygiene result unavailable",
-                  refused=report.get("refused"), finished_at=report.get("finished_at"))
+                  refused=report.get("refused"), finished_at=report.get("finished_at"), **counts)
     if report.get("refused"):
         result["alert"] = "hygiene_refused"
     return result
