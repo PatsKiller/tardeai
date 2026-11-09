@@ -423,8 +423,14 @@ def ingest_quotes(symbols: list = None) -> dict:
             yf = ingest_yfinance_quotes(miss2)
         except Exception as e:
             print(f"  [fallback] yfinance failed (non-fatal): {e}")
-    total = a.get("fetched", 0) + fv.get("fetched", 0) + yf.get("fetched", 0)
-    print(f"[quotes] {total}/{len(symbols)} (alpaca {a.get('fetched', 0)} + finviz {fv.get('fetched', 0)} + yf {yf.get('fetched', 0)})"
+    # A tier that raised has no measured count: "we could not read it" is None, never 0 (tq taxonomy
+    # #2 — a swallowed failure reported as an empty success is the same defect one level up).
+    counts = {"alpaca": a.get("fetched"), "finviz": fv.get("fetched"), "yfinance": yf.get("fetched")}
+    measured = all(isinstance(v, int) for v in counts.values())
+    total = sum(counts.values()) if measured else None
+    shown = {k: (v if isinstance(v, int) else "?") for k, v in counts.items()}
+    print(f"[quotes] {total if total is not None else '?'}/{len(symbols)} "
+          f"(alpaca {shown['alpaca']} + finviz {shown['finviz']} + yf {shown['yfinance']})"
           + (f" — finviz tier unavailable: {len(tier_unavailable)} unpriced, not routed" if tier_unavailable else ""))
 
     # 2026-09-13 (Phase 3, "a health ledger that cannot lie"): this used to write
@@ -437,9 +443,9 @@ def ingest_quotes(symbols: list = None) -> dict:
     # reports the real daily yfinance call. When yfinance DID run above,
     # ingest_yfinance_quotes() reported its own ok/error state.
 
-    return {"alpaca": a.get("fetched", 0), "finviz": fv.get("fetched", 0), "yfinance": yf.get("fetched", 0),
+    return {"alpaca": counts["alpaca"], "finviz": counts["finviz"], "yfinance": counts["yfinance"],
             "fetched": total, "total": len(symbols),
-            "finviz_reconnects": fv.get("reconnects", 0),
+            "finviz_reconnects": fv.get("reconnects"),  # unknown when the tier never reported
             "finviz_error": fv.get("error"),
             "unpriced": {"tier_unavailable": tier_unavailable}}
 
