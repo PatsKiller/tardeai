@@ -18,13 +18,18 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from scripts.lib.cron_outage_watchdog import evaluate, identity, instant, iso, job_key  # noqa: E402
+from scripts.lib.cron_outage_watchdog import (  # noqa: E402
+    allowlist_gate, evaluate, identity, instant, iso, job_key)
 
 LATEST = "data/runtime/cron_outage_watchdog_latest.json"
 STATE = "data/runtime/cron_outage_watchdog_state.json"
 ACKS = "data/runtime/cron_outage_watchdog_refusal_acks.jsonl"
 #: Written every 20 min by lane crontab-snapshot-for-health-agent; a file read, never `crontab -l`.
 CRONTAB_SNAPSHOT = "data/runtime/crontab_snapshot.txt"
+#: The dispatcher's own gate declaration (``offpeak_gate`` per lane). Read to know which elapsed fires the policy
+#: will always skip; a missing or unreadable file binds no gate, so every row keeps the pre-fix grade (fail toward
+#: alerting, never toward silence).
+ALLOWLIST = "config/n8n_run_allowlist.json"
 #: Code/config that names the locks of n8n-dispatched and nested (wrapper-script) jobs.
 CENSUS_SOURCES = ("config/n8n_run_allowlist.json", "config/lane_registry.json", "config/pipelines/*.json",
                   "scripts/*.sh", "scripts/**/*.sh")
@@ -100,12 +105,14 @@ def read_acks(state_root: Path) -> tuple[dict[str, dict], list[str]]:
     return acks, sorted(set(gaps))
 
 
-def bind_components(registry: dict, cfg: dict) -> dict:
-    """Reader-only binding to a captured wrapper component, pinned to registry intent.
+def bind_components(registry: dict, cfg: dict, allowlist: dict | None = None) -> dict:
+    """Reader-only binding to a captured wrapper component and a declared off-peak gate, pinned to registry intent.
 
     Most cron registry expressions contain only five schedule fields. Matching a
     Python filename heuristically could attach one stage's success to unrelated
-    lanes, so only explicit exact-source bindings are used.
+    lanes, so only explicit exact-source bindings are used. The off-peak gate is bound the same way
+    (``allowlist_gate``): an entry must name the same lane AND run the script the registry's ``scheduler.match``
+    names, and a lane with no such entry gets no gate and grades exactly as it did before (LQ-20261107-1336).
     """
     rows = []
     for row in registry.get("lanes", []):
@@ -116,6 +123,9 @@ def bind_components(registry: dict, cfg: dict) -> dict:
                 and binding.get("expression") == scheduler.get("expression")
                 and isinstance(binding.get("component"), str)):
             item["watchdog_wrapper_component"] = binding["component"]
+        gate = allowlist_gate(row, allowlist)
+        if gate is not None:
+            item["watchdog_offpeak_gate"] = gate
         rows.append(item)
     return {**registry, "lanes": rows}
 
@@ -324,6 +334,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--registry", type=Path, default=ROOT / "config/lane_registry.json")
     parser.add_argument("--config", type=Path, default=ROOT / "config/cron_outage_watchdog.json")
+    parser.add_argument("--allowlist", type=Path, default=ROOT / ALLOWLIST,
+                        help="dispatch gate declarations (offpeak_gate); unreadable binds no gate")
     parser.add_argument("--state-root", type=Path, default=Path(os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases/persistent-state"))
     parser.add_argument("--snapshot", type=Path, help="captured events/successes only; never collect host inputs")
     parser.add_argument("--at", help="aware historical clock; default current UTC")
@@ -352,7 +364,11 @@ def main() -> int:
                      or not isinstance(cfg.get("approved_by"), str) or not cfg["approved_by"].strip()):
         print(json.dumps({"status": "PENDING_OPERATOR_REVIEW", "reason": "watchdog admission disabled; no write or send"}))
         return 78
-    registry = bind_components(read_json(args.registry, 8 * 1024 * 1024), cfg)
+    try:
+        allowlist = read_json(args.allowlist, 16 * 1024 * 1024)
+    except (OSError, ValueError):
+        allowlist = None
+    registry = bind_components(read_json(args.registry, 8 * 1024 * 1024), cfg, allowlist)
     snapshot = read_json(args.snapshot, 16 * 1024 * 1024) if args.snapshot else collect(registry, args.state_root)
     from scripts.market_session import is_trading_day
     prior = {}

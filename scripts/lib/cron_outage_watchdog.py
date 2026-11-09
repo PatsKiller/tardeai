@@ -21,6 +21,16 @@ SCHEMA = "CronOutageWatchdog@v1"
 #: MISSED_RUNS for ten days while behaving exactly as configured).
 DRY_RUN_DISPATCH_MODES = frozenset({"dry_run", "shadow", "preflight"})
 
+#: The off-peak gates a lane can declare (``config/n8n_run_allowlist.json`` ``offpeak_gate``) -> the predicate
+#: that says whether a fire AT THAT INSTANT may run. The executor (scripts/n8n_run_executor.py, OFFPEAK_GATES) and
+#: the cron wrapper (scripts/lib/deepseek_offpeak.py) use the same three; this map names them, so the watchdog can
+#: never invent a window of its own. ``official`` is inverted: that gate skips INSIDE DeepSeek's billing peak.
+OFFPEAK_GATE_PREDICATES = {
+    "scheduled": "is_scheduled_deepseek_window",
+    "bulk": "is_bulk_deepseek_window",
+    "official": "is_deepseek_peak_utc",
+}
+
 
 def dry_run_dispatch_mode(lane: dict) -> str | None:
     """The declared mode in which this lane cannot write a success receipt, or None.
@@ -35,6 +45,50 @@ def dry_run_dispatch_mode(lane: dict) -> str | None:
     normalized = mode.strip().lower().replace("-", "_")
     return normalized if normalized in DRY_RUN_DISPATCH_MODES else None
 
+
+def _script_token(match: object) -> str | None:
+    """The ``*.py`` token a registry ``scheduler.match`` names, or None."""
+    for token in str(match or "").split():
+        if token.endswith(".py"):
+            return token
+    return None
+
+
+def allowlist_gate(row: dict, allowlist: dict | None) -> str | None:
+    """The off-peak gate this lane's own dispatch entry declares, or None.
+
+    Pinned to registry intent the way ``wrapper_bindings`` are: the allowlist entry must name the SAME lane and
+    run the script the registry's ``scheduler.match`` names, so one lane's gate can never excuse another lane's
+    fires. An unknown gate value is no gate: the row keeps grading exactly as it did before.
+    """
+    if not isinstance(allowlist, dict):
+        return None
+    want = identity(row)
+    script = _script_token((row.get("scheduler") or {}).get("match") or "")
+    for entry in allowlist.get("lanes") or []:
+        if not isinstance(entry, dict) or entry.get("lane_id") != want:
+            continue
+        command = " ".join(str(token) for token in entry.get("command") or [])
+        if script and script not in command:
+            continue
+        gate = entry.get("offpeak_gate")
+        return gate if gate in OFFPEAK_GATE_PREDICATES else None
+    return None
+
+
+def gate_allows_run(gate: object, at: datetime) -> bool | None:
+    """Whether the declared gate permits a run at ``at``: None when there is no gate to ask.
+
+    Delegates to the very functions the executor and the cron wrapper call, so the watchdog cannot drift from the
+    policy that actually skipped the run.
+    """
+    predicate = OFFPEAK_GATE_PREDICATES.get(str(gate or ""))
+    if predicate is None:
+        return None
+    from scripts.lib import deepseek_offpeak as offpeak
+
+    value = getattr(offpeak, predicate)(at)
+    return (not value) if gate == "official" else bool(value)
 
 
 def instant(value: object) -> datetime | None:
@@ -365,11 +419,28 @@ def evaluate(
             in_progress = [fire for fire in late
                            if fire_was_in_progress(fire, job_windows, now=now,
                                                    limit_seconds=in_progress_limit_seconds)]
-            missed = len(late) - len(in_progress)
+            gate = lane.get("watchdog_offpeak_gate")
+            # A fire the lane's own declared gate will skip AT THAT INSTANT cannot produce a success receipt: the
+            # dispatcher returns before the lane runs (receipt reason ``offpeak_skip``) and the cron wrapper prints
+            # PEAK_SKIP and exits 0. Grading it MISSED_RUNS raised a false P1 for due-diligence-questions at 20:25 ET
+            # on 2026-11-08 (INC-261109-jqqyvg): Sunday 20:00-23:00 ET is Monday 01:00-04:00 UTC, DeepSeek's billing
+            # peak, so every 20-minute fire in that band is skipped by policy. The fire is accounted for, so it is
+            # reported (SKIPPED_BY_POLICY, with its instants) and never alerted; a fire the gate would have ALLOWED
+            # is still a miss, and so is a skipped-only band on a lane that declares no gate.
+            policy_skipped = [fire for fire in late
+                              if fire not in in_progress and gate_allows_run(gate, fire) is False]
+            missed = len(late) - len(in_progress) - len(policy_skipped)
             result.update(last_success_at=iso(last), missed_fires=missed,
                           in_progress_fires=len(in_progress),
                           status="MISSED_RUNS" if missed >= 2 else "OK",
                           reason="two_or_more_scheduled_successes_missing" if missed >= 2 else None)
+            if policy_skipped:
+                result["policy_skipped_fires"] = [iso(fire) for fire in sorted(policy_skipped)]
+                result["offpeak_gate"] = str(gate)
+                if missed == 0:
+                    result.update(status="SKIPPED_BY_POLICY",
+                                  reason=(f"offpeak_gate_{gate}: every elapsed fire ({len(policy_skipped)}) is "
+                                          f"outside the gate's window, which the dispatcher and the wrapper skip"))
         if mode and result.get("status") != "OK":
             # The dispatcher runs the dry-run argv for this lane, which writes nothing by design (AGENTS §6), so
             # its receipt cannot advance and "no success since the last fire" says nothing about health. Reported
