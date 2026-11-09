@@ -2,11 +2,12 @@
 
 Root cause: the generic `data_source_stale` finding was mapped to
 `external_market_data_ingest.py --quotes` for EVERY source. That script only
-refreshes quote data (yahoo_finance/finviz/alpaca), so a stale non-quote source
-(finnhub news, sec_edgar, youtube_api, …) was retried against the wrong producer
-forever — a no-op loop that could never clear the finding. `_data_source_retry_cmd`
-now resolves a source-specific producer and skips auto-retry for non-quote sources
-without one.
+refreshes quote data (finviz/alpaca; the yfinance tier was deleted in
+LQ-20261107-1679), so a stale non-quote source (finnhub news, sec_edgar,
+youtube_api, …) — and yahoo_finance, which nothing writes any more — was retried
+against the wrong producer forever, a no-op loop that could never clear the
+finding. `_data_source_retry_cmd` now resolves a source-specific producer and
+skips auto-retry for sources without one.
 """
 from __future__ import annotations
 
@@ -24,12 +25,18 @@ def _cmd(ftype: str, source: str):
 
 
 def test_quote_source_keeps_generic_quote_ingest():
-    assert _cmd("data_source_stale", "yahoo_finance") == (
+    assert _cmd("data_source_stale", "alpaca") == (
         ".venv/bin/python scripts/external_market_data_ingest.py --quotes"
     )
     assert _cmd("data_source_stale", "finviz") == (
         ".venv/bin/python scripts/external_market_data_ingest.py --quotes"
     )
+
+
+def test_yahoo_finance_skips_auto_retry():
+    # LQ-20261107-1679 deleted the yfinance quote tier: --quotes no longer refreshes or reports
+    # yahoo_finance, so the generic retry would loop forever on a marker nothing writes. Escalate.
+    assert _cmd("data_source_stale", "yahoo_finance") is None
 
 
 def test_mapped_non_quote_source_uses_its_own_producer():

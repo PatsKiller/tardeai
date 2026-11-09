@@ -95,7 +95,10 @@ def _rewrite_remediation_cmd(cmd: str) -> str:
 # Source keys that external_market_data_ingest.py --quotes actually refreshes (and whose
 # data_source_health markers it updates). The generic data_source_stale retry is only
 # correct for these; every other source needs an explicit data_source_remediation entry.
-_QUOTE_SOURCE_KEYS = {"yahoo_finance", "finviz", "alpaca"}
+# yahoo_finance is NOT here: LQ-20261107-1679 deleted the yfinance quote tier, so the generic
+# retry can no longer clear a yahoo_finance stall — it would just re-run a producer that never
+# writes that marker again. A stale yahoo_finance now escalates instead of looping.
+_QUOTE_SOURCE_KEYS = {"finviz", "alpaca"}
 
 
 def _data_source_retry_cmd(policy: dict, ftype: str, finding: dict) -> str | None:
@@ -103,9 +106,9 @@ def _data_source_retry_cmd(policy: dict, ftype: str, finding: dict) -> str | Non
 
     The generic `data_source_stale` remediation points at
     `external_market_data_ingest.py --quotes`, which only refreshes quote data
-    (Alpaca/Finviz/yfinance). A stale non-quote source (finnhub news, sec, social, …)
-    would otherwise be retried against the wrong producer forever — a no-op loop that
-    can never clear the finding. Prefer a per-source override from
+    (Alpaca/Finviz; the yfinance tier is retired — LQ-20261107-1679). A stale non-quote source
+    (finnhub news, sec, social, …) would otherwise be retried against the wrong producer forever —
+    a no-op loop that can never clear the finding. Prefer a per-source override from
     `policy.data_source_remediation` (keyed by source_key) when present, and skip auto-retry
     (return None → escalate) for non-quote sources that have no explicit producer.
 
