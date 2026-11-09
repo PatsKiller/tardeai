@@ -20,11 +20,11 @@ cross-connection write lock: the shared path raises ``database is locked`` at ~5
 waits it out and proceeds.
 
 The *classification* half of the queue item (``database is locked`` is retryable, not terminal)
-is LQ-20261107-684, delivered on ``wt/livefix-cc-deepseek-4-lq684`` head ``73749a7db``
-(``DB_LOCK`` in config/n8n_executor.json + the ``SQLITE_LOCK_RE`` rail in
-scripts/lib/n8n_retry_policy.py) and not yet folded into main; this branch does not duplicate it
-and main still classifies the lock as terminal (asserted as a fact below, so the follower who
-folds only one branch sees why both matter).
+landed as LQ-20261107-1383 without touching ``scripts/lib/n8n_retry_policy.py`` (held by another
+live claim): the ``DB_LOCK`` typed-reason marker in config/n8n_executor.json types the reason, and
+this lane's ``transient-2`` policy retries ``^DB_LOCK`` — proved end to end in
+``tests/test_n8n_comms_intent_db_lock_retry_20261109.py``. LQ-684's ``SQLITE_LOCK_RE`` code rail
+(all policies, raw message) is a separate, broader fix and is not duplicated here.
 
 COVERS = ["scripts/n8n_comms_intent_consumer.py", "config/n8n_run_allowlist.json"]
 """
@@ -199,7 +199,7 @@ def test_a_write_lock_past_five_seconds_fails_the_shared_path_and_is_waited_out_
     assert held["ok"], held["error"]
 
 
-# --- the classification half, as it stands on main --------------------------------------------
+# --- the classification half, as it stands on this branch --------------------------------------
 
 
 def _lane_policy():
@@ -210,17 +210,22 @@ def _lane_policy():
     return RP, RP.load_policies().policies[name]
 
 
-def test_the_incident_reason_is_terminal_on_this_base_until_lq684_folds() -> None:
-    """The classification half of the queue item is LQ-684 (`73749a7db`), not yet folded.
+def test_the_incident_reason_is_retryable_once_typed() -> None:
+    """LQ-1383 landed the classification half in config, not in ``n8n_retry_policy.py``.
 
-    Until it lands, the lane's own ``transient-2`` policy reads ``database is locked`` as terminal —
-    which is why the 05:45 slot dead-lettered on attempt 1 with max_attempts 3. Both halves matter:
-    the wider timeout keeps a sibling's write from failing the run, and the classification keeps a
-    failure that does happen from being called terminal. Skips (loudly) once LQ-684 is folded."""
+    The executor config types the reason ``DB_LOCK:exit_1`` from the stdout tail (``DB_LOCK`` marker)
+    and the lane's own ``transient-2`` policy retries it, so the 05:45 slot — attempt 1 of 3 — no
+    longer dead-letters. The raw stdout message alone still reads terminal; the type is what the
+    policy matches. Full end-to-end proof: ``tests/test_n8n_comms_intent_db_lock_retry_20261109.py``.
+    LQ-684's code rail (``SQLITE_LOCK_RE``, all policies) is a separate, broader fix."""
+    from scripts import n8n_run_executor as X
+
     RP, policy = _lane_policy()
     assert policy.name == "transient-2"
-    got = RP.verdict("RUN_FAILED", 1, "OperationalError: database is locked", policy)
-    if got == RP.VERDICT_RETRYABLE:
-        pytest.skip("LQ-684 (73749a7db) has landed: the lock is classified retryable at this base")
-    assert got == RP.VERDICT_TERMINAL, got
+    assert RP.verdict("RUN_FAILED", 1, "DB_LOCK:exit_1", policy) == RP.VERDICT_RETRYABLE
+    assert RP.verdict("RUN_FAILED", 1, "OperationalError: database is locked", policy) == RP.VERDICT_TERMINAL
+    markers = X.load_executor_config(ROOT / "config" / "n8n_executor.json")["typed_reason_markers"]
+    receipt = {"state": "RUN_FAILED", "reason": "exit_1", "exit_code": 1,
+               "stdout_tail": '{"error": "OperationalError: database is locked"}'}
+    assert X.typed_reason(receipt, markers) == "DB_LOCK:exit_1"
 

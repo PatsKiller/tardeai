@@ -23,10 +23,10 @@
       "permitted_classes": ["ingest"]
     },
     "transient-2": {
-      "description": "Default. Two retries on transient failures (timeout, EX_TEMPFAIL 75, 69, 111, executor_lost, spawn EAGAIN/ENOMEM).",
+      "description": "Default. Two retries on transient failures (timeout, EX_TEMPFAIL 75, 69, 111, executor_lost, spawn EAGAIN/ENOMEM, a typed DB_LOCK).",
       "max_attempts": 3, "backoff_s": [30, 120],
       "retryable_states": ["RUN_TIMEOUT", "RUN_FAILED"], "retryable_exit_codes": [69, 75, 111],
-      "retryable_reason_patterns": ["^executor_lost$", "^spawn:.*(EAGAIN|ENOMEM|BlockingIOError|MemoryError)"],
+      "retryable_reason_patterns": ["^executor_lost$", "^spawn:.*(EAGAIN|ENOMEM|BlockingIOError|MemoryError)", "^DB_LOCK(:|$)"],
       "terminal_exit_codes": [2], "terminal_reason_patterns": ["(?i)cost_cap"],
       "catchup_min": 60, "dlq_severity": "P2",
       "permitted_classes": ["monitor", "report", "hygiene", "pipeline"]

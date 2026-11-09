@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_comms_intent_db_lock_retry_20261109",
+  "files": [
+    "tests/test_n8n_comms_intent_db_lock_retry_20261109.py"
+  ],
+  "anchor": "N8N_COMMS_INTENT_DB_LOCK_RETRY_20261109",
+  "comment": [
+    "ANCHOR: N8N_COMMS_INTENT_DB_LOCK_RETRY_20261109 — LQ-20261107-1383: n8n-comms-intent-consumer held 12 unreleased dead letters, every one attempt 1 of 3, last_reason exit_1, verdict terminal, policy transient-2, after 5.6–8.4 s runs whose stdout tail said 'OperationalError: database is locked'. Config only, because scripts/lib/n8n_retry_policy.py is under another live claim: the DB_LOCK typed-reason marker in config/n8n_executor.json types the reason DB_LOCK:exit_1 and ^DB_LOCK in transient-2 makes it retryable, out of the dead-letter queue, with send/learn and unpermitted classes still terminal. The 30 s busy-timeout half is LQ-816."
+  ]
+}

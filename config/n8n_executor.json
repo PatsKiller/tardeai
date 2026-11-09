@@ -18,6 +18,7 @@
   "receipt_history": 200,
   "typed_reason_markers": {
     "COST_CAP": "(?i)cost_cap|skipped_budget",
-    "PEAK_SKIP": "(?i)peak_skip"
+    "PEAK_SKIP": "(?i)peak_skip",
+    "DB_LOCK": "(?i)database (?:table )?is locked|database is busy"
   }
 }
