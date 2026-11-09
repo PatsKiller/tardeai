@@ -19749,7 +19749,7 @@
       "value_class": "observability",
       "rationalization": "SPEC_SITE_AUDIT_AUTOREMEDIATE_LOOP_20261104.md: one capture lane for the whole Command Center, every 48 h at most, rotating market session weekly; replaces ad-hoc screenshot runs.",
       "recommendation": "Install as an n8n workflow (operator rule: new schedules are n8n, never cron). The workflow calls scripts/site_audit/page_audit_capture.py with SITE_AUDIT_CHROME set and SITE_AUDIT_CAPTURE_ROOT=${TRADEAI_STATE_ROOT}/data/audit, obeys the health gate, 4 s pacing, one browser, and aborts on slowdown or restart. That root is what makes the path above resolve: the capture writes a dated page-audit-<stamp>/ directory per run plus the page-audit-latest.json pointer, because both readers of an output_signal (lane_registry.observe_signal, cron_outage_watchdog) take an exact path and never glob.",
-      "note": "Lane definition lives in scripts/site_audit/lane.py (windows, 48 h ceiling, weekly session rotation) and is enforced by tests/test_site_audit_lane_20261104.py. The spec's Mon/Wed/Fri 06:30 ET + Sun 21:00 ET cannot satisfy its own 48 h ceiling (Fri 06:30 -> Sun 21:00 is 62.5 h); Saturday 06:30 ET is added as the bridge. Captures stay outside the repo.",
+      "note": "superseded_by numbers-truth-audit (phase 2 DOM pass). Lane definition lives in scripts/site_audit/lane.py (windows, 48 h ceiling, weekly session rotation) and is enforced by tests/test_site_audit_lane_20261104.py. The spec's Mon/Wed/Fri 06:30 ET + Sun 21:00 ET cannot satisfy its own 48 h ceiling (Fri 06:30 -> Sun 21:00 is 62.5 h); Saturday 06:30 ET is added as the bridge. Captures stay outside the repo.",
       "reason_confidence": "ESTABLISHED",
       "state_reason": "SPEC_SITE_AUDIT_AUTOREMEDIATE_LOOP_20261104.md §2.1 (operator 2026-11-04): one capture every 48 h at most, session rotating weekly, never cron. Not installed yet: no n8n workflow exists, and the registry edit is operator-merged (AGENTS §17). Lane arithmetic and the 48 h ceiling are in scripts/site_audit/lane.py with tests; the spec's named slots alone leave a 62.5 h gap, so a Saturday 06:30 ET run bridges it.",
       "reason_evidence": "persistent-state/handoffs/SPEC_SITE_AUDIT_AUTOREMEDIATE_LOOP_20261104.md §2.1 and §6; scripts/site_audit/lane.py (WINDOWS, MAX_GAP_HOURS, session rotation); tests/test_site_audit_lane_20261104.py (largest gap over a year <= 48 h); scripts/site_audit/deep_crawl.py and tests/test_site_audit_deep_crawl_step_20261104.py; no n8n workflow exists yet (`site-audit` absent from n8n) - state NEVER_SCHEDULED until installed."
@@ -28040,6 +28040,56 @@
         "priority": 4,
         "retry_policy": "none"
       }
+    },
+    {
+      "lane_id": "numbers-truth-audit",
+      "owner": "agents",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/numbers_truth_audit.py",
+        "cadence": "7 * * * *",
+        "stage": "shadow",
+        "wave": "W3",
+        "timezone": "America/New_York"
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "7 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W3",
+        "class": "monitor",
+        "priority": 6,
+        "retry_policy": "transient-2"
+      },
+      "expected_cadence_hours": 1.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-09",
+      "state_reason": "LQ-20261107-1703 (P0, operator ask 2026-11-09 17:10 ET, relayed by claude-lead): hourly 'numbers truth' audit, DSN-20261109 sections 1-2 (REV 2 sections A-F, REV 3 authority family G1-G3). n8n-native dispatcher lane, no cron line and no systemd unit is added. Stage SHADOW: the stage clamp runs every dispatcher fire as --dry-run (prints, writes nothing) and the allowlist has no live_arg, so a live fire is refused; promotion to canary is the operator's word after the dry run against live data and grok-a's review.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/numbers-truth-audit_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/numbers_truth_audit.py writes LaneRunReceipt@v2 through scripts/lib/lane_last_receipt.py on --apply only (produced_count 1 = the audit pass completed; findings are the output, not a failure); tests/test_numbers_truth_audit_lane_20261109.py pins this row against the script's own interface. At shadow no receipt is written: runtime NOT_MEASURED."
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_numbers_truth_audit_lane_20261109.py (this row, the allowlist entry, the REVIEWED contract, and an emulation of the scheduled argv that proves --dry-run writes no receipt); scripts/check_lane_registry.py and scripts/check_n8n_health_contracts.py both read the row.",
+      "review_by": "2026-11-23",
+      "value_class": "Operationally Important",
+      "severity": "Medium",
+      "note": "Read-only (MBI_BEHAVIOR = 0): every displayed figure in the catalog is compared with its truth (positions and stop rows from Postgres through a read-only session, prices from the authoritative providers, derived totals) and every finding carries BOTH sides and their timestamps; an unreadable truth is NOT_MEASURED, never PASS. Between 04:00 and 16:15 ET on a weekday the lane issues NO HTTP to :7777 (AGENTS.md 28.8) and audits the served artifacts in-process; outside that window it may GET the catalog's endpoints, one per endpoint at >=1 s pacing. The script self-bounds at 120 s (DSN F). It never repairs a number, never writes the store, never calls a broker or an order route, and never sends: strikes, self-fix (ACTIVE n8n lanes only) and escalation live in LQ-20261107-1702. An authority finding (G1-G3) skips self-fix by design - a source change is operator-only (AGENTS.md 17). Reuses scripts/lib/site_audit/cross_checks.py and scripts/desk_truth_monitor.py's checks; supersedes the unbuilt site-audit lane for phase 1."
     }
   ],
   "freshness_contracts": [

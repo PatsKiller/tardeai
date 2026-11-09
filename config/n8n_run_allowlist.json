@@ -6104,6 +6104,36 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "New lane: inventory the env NAMES from its first dry-run receipt before enforce (DB_* for the read-only psycopg connection; TRADEAI_ENV_FILE / TRADEAI_STATE_ROOT for the state root). It reads no credential.",
       "source": "LQ-20261107-1656 design + LQ-20261107-1674 build (design build order step 2). SHADOW: live_arg null, so the executor refuses a live mode; dry_run_arg --dry-run reads the stores read-only and prints the transitions. Promotion to [\"--apply\"] is the lead's after migrations/2026_11_09_market_event_lifecycle.sql is applied. Advisory only, MBI_BEHAVIOR = 0."
+    },
+    {
+      "lane_id": "numbers-truth-audit",
+      "command": [
+        "$PY",
+        "scripts/numbers_truth_audit.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_numbers_truth_audit.lock",
+      "lock_kind": "flock",
+      "timeout_s": 120,
+      "market_gate": false,
+      "output_signal": "data/runtime/numbers-truth-audit_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "New lane: inventory/confirm the env NAMES from the first dry-run receipt before enforce (the read-only DB_* five, the state root for the artifact reads and the receipt). No broker credential name, no sender, no model: the lane reads a read-only session and writes one receipt.",
+      "env_evidence": "scripts/numbers_truth_audit.py connect() reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD from os.environ; _state_root() reads TRADEAI_STATE_ROOT (executor base name) and defaults to $HOME/trade-ai-releases/persistent-state; scripts/lib/lane_last_receipt.py and lib/persistent_overlay.py read TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT for the receipt path. The G1 subprocess is scripts/check_data_source_authority.py run with sys.executable, which reads no env of its own beyond the executor base names. --base-url defaults to 127.0.0.1:7777 and TRADEAI_API_BASE, used only outside the 28.8 window; no secret, no broker name.",
+      "source": "LQ-20261107-1703 (P0, operator 2026-11-09 17:10 ET; ASSIGN 20261109T2220Z-claude-lead): register the numbers-truth-audit lane hourly at :07, 24x7. DSN-20261109 section 2. SHADOW: live_arg null; dry_run_arg --dry-run prints the report and writes nothing. lock_kind flock with exit 75 on contention; no host cron line runs this script. timeout_s 120 is the design's runtime ceiling (DSN F) and the script's own MAX_RUNTIME_S: a run that cannot finish is reported, not killed mid-flight by a longer leash."
     }
   ],
   "blocked_reasons": {

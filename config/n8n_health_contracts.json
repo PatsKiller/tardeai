@@ -43234,6 +43234,215 @@
           "notifier_priority": "P2"
         }
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "numbers-truth-audit",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Hourly check that every number a page shows equals its truth (positions/qty, market value and price, account and portfolio totals, day P&L header vs its rows, stop price/qty/state, the unprotected count/list, the stop card's named session, VIX/index tiles, CIO 'now' prices) and that every figure is served from its domain's authoritative source (G1 static, G2 writes in the last hour, G3 served source). Findings carry both sides and their timestamps; an unreadable truth is NOT_MEASURED. It never repairs, sends, or calls a broker.",
+        "business_function": "numbers truth / source-of-truth audit",
+        "source": "operator 2026-11-09 17:10 ET; DSN-20261109 rev 1 sections 1-2, REV 2 (A-F), REV 3 (G-H); scripts/numbers_truth_audit.py; config/numbers_truth_catalog.json"
+      },
+      "owner": "agents",
+      "connects_to": [
+        {
+          "name": "n8n -> relay -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3 (dispatcher row)"
+        },
+        {
+          "name": "$PY scripts/numbers_truth_audit.py --dry-run (shadow) / --apply (after promotion)",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_numbers_truth_audit.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "Postgres positions_current, stop_lifecycle, stop_last_known, market_quotes, cio_decisions, market_regime_snapshots (read-only session)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/numbers_truth_audit.py load_truth/connect"
+        },
+        {
+          "name": "served runtime artifacts under $STATE_ROOT (e.g. the CIO brief, holdings.json)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/numbers_truth_audit.py read_artifact"
+        },
+        {
+          "name": "config/numbers_truth_catalog.json (page -> figure -> served_from -> truth)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/numbers_truth_audit.py load_catalog"
+        },
+        {
+          "name": "scripts/check_data_source_authority.py --json (G1 authority scan, read-only)",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "scripts/numbers_truth_audit.py authority_static"
+        },
+        {
+          "name": "GET 127.0.0.1:7777 API rows, outside the 04:00-16:15 ET weekday window only (AGENTS.md 28.8)",
+          "kind": "service",
+          "direction": "read",
+          "source": "scripts/numbers_truth_audit.py served/http_window_open"
+        },
+        {
+          "name": "data/runtime/numbers-truth-audit_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2 / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire ends RUN_DONE in mode dry_run while stage is shadow; a dry run writes no receipt and no store row"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/numbers-truth-audit_last.json ok_at advances on each successful live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at within 2 h (2x expected_cadence_hours 1.0, 24x7)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 96 s (80% of timeout_s 120; the script self-bounds at 120 s)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count 1 (the audit pass completed); findings are output, not a failure"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "receipt ok_at older than 2 h but younger than 3 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 96 s, or deadline_exceeded rows reported inside the run"
+        },
+        {
+          "check": "partial_sources",
+          "text": "one or two of positions/stops/quotes unreadable: the affected rows are NOT_MEASURED and the receipt names them (unreadable_sources)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "receipt ok_at older than 3 h (3x the hourly tick)"
+        },
+        {
+          "check": "source_unreadable",
+          "text": "all three truth sources unreadable -> exit 1, receipt ok false (dependency_unavailable), ok_at carried forward"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule -> RUN_FAILED empty_output"
+        },
+        {
+          "check": "authority_gate_unavailable",
+          "text": "the G1 authority scan cannot run at all: authority findings would be silently missing, so the run reports authority_gate_unavailable and the contract treats it as a failed audit"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 2.0,
+        "freshness_failed_after_h": 3.0,
+        "freshness_rule": "degraded beyond 2x the hourly tick, failed beyond 3x (24x7 lane, no session grace)",
+        "timeout_s": 120,
+        "class": "monitor",
+        "computed_on": "2026-11-09",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet (stage shadow); class defaults; the dry run against live data bounds duration",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 96.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "lane_registry.json row severity: a wrong served number is an operator-facing defect, not a money movement",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:numbers-truth-audit by scripts/n8n_siem_bridge.py. Findings reach the operator through LQ-20261107-1702 (strike-3 ticket + email/Telegram/Google Fi text on every escalation, DSN REV 3 H) and the audit receipt on GET /api/v2/needs-action. Never PAGE from the lane itself."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json (lane_not_in_catalogue). The lane never repairs: strikes/self-fix/tickets are LQ-20261107-1702, a source change is operator-only (AGENTS.md 17)."
+      },
+      "evidence": {
+        "receipt": "data/runtime/numbers-truth-audit_last.json",
+        "verify": [
+          "python3 scripts/numbers_truth_audit.py --dry-run          # read-only report, writes nothing",
+          "jq '{ok, produced_count, summary: {rows: .summary.rows, finding_count: .summary.finding_count, by_status: .summary.counts.by_status}}' data/runtime/numbers-truth-audit_last.json",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='numbers-truth-audit' ORDER BY requested_at DESC LIMIT 10\""
+        ],
+        "never": "an n8n execution status; prove work with the ledger and the receipt",
+        "expected_output_basis": "expected_output 2026-11-09 from the script's main(): produced_count 1 when the audit pass completed and the receipt was written, 0 when every truth source was unreadable (dependency_unavailable)"
+      },
+      "review_by": "2026-11-23",
+      "review": {
+        "prepared_by": "agent draft (LQ-20261107-1703 2026-11-09, cc-deepseek-8)",
+        "status": "REVIEWED",
+        "reviewed_by": "agent self-review against docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md section 3, LQ-20261107-1703; grok-a adversarial review is the queued next pass and may amend fields",
+        "reviewed_on": "2026-11-09"
+      },
+      "state_note": "Written 2026-11-09 with the lane's registry row (a new lane's contract must be REVIEWED before its registry PR: check_n8n_health_contracts DRAFT_NOT_GRANDFATHERED). The REVIEWED status above is an agent self-review; grok-a's review is the independent pass.",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "one completed audit pass (every catalog figure measured or typed NOT_MEASURED, findings recorded)",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/numbers-truth-audit_last.json produced_count and summary.findings"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
     }
   ],
   "pending_changes": {
