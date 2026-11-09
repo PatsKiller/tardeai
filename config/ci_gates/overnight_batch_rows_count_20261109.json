@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_batch_rows_count_20261109",
+  "files": [
+    "tests/test_overnight_batch_rows_count_20261109.py"
+  ],
+  "comment": [
+    "LQ-20261107-1539: overnight_batch.__main__ hardcoded rows_produced=0 for --tax-sweep,",
+    "--index-embeddings and the default run(), and read a key ('scored') that --outcomes's",
+    "producer never returns. A healthy 06:35 sweep that queued 4 tax_agent jobs raised a",
+    "CRITICAL pipeline_zero_rows alert claiming it had produced nothing. Pins that every",
+    "branch reports its own count and that a branch which cannot measure passes None",
+    "(JSON null = NOT MEASURED), never 0."
+  ]
+}
