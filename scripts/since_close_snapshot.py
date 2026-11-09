@@ -102,6 +102,12 @@ def main(argv: list[str] | None = None) -> int:
             )
         except Exception:  # noqa: BLE001 -- the card degrades to the close, it does not fail to build
             ext = []
+        try:
+            # LQ-20261107-1644: the broker stop book the advice is reconciled against. A failed read is stated as
+            # unread (every actionable row keeps its ask; none claims done) -- it is never an empty book.
+            stops_read = card.fetch_stops(conn, symbols=list(ticker["tickers"]))
+        except Exception as e:  # noqa: BLE001 -- an unread book leaves the advice OPEN, not silently done
+            stops_read = card.unread_stop_read(f"{type(e).__name__}: {e}")
     finally:
         conn.close()
 
@@ -113,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
         llm=_flash if (a.apply and a.llm) else None, prior=prior, calls_today=calls,
         macro_calendar=card.load_json(_macro_path()), earnings=card.load_json(a.state_dir / "earnings_dates.json"),
         ex_divs=ex_divs, if_changed=a.if_changed, source_clocks=clocks, cio_brief=card.load_json(a.cio_brief or (a.state_dir.parents[2] / CIO_BRIEF_REL)),
-        extended_rows=ext, index_labels=card.load_labels(a.labels),
+        extended_rows=ext, index_labels=card.load_labels(a.labels), stop_rows=stops_read,
     )
     if snap is None:
         print(f"unchanged since the last build (window={win['label']!r}, articles={len(arts)}); no write, no LLM call")
@@ -137,6 +143,13 @@ def main(argv: list[str] | None = None) -> int:
         f"indices={len((snap.get('macro') or {}).get('now', {}).get('indices') or [])} "
         f"feed_top={(snap['feed'][0]['holdings'][0]['symbol'] if snap['feed'] and snap['feed'][0].get('holdings') else '-')}"
         f"{(' ' + str(snap['feed'][0].get('score'))) if snap['feed'] else ''}"
+    )
+    sr = (snap.get("cio_brief") or {}).get("stop_read") or {}
+    advice = [r for r in ((snap.get("cio_brief") or {}).get("stop_advice") or []) if isinstance(r, dict)]
+    by_state = {k: sum(r.get("state") == k for r in advice) for k in ("done", "open", "unread")}
+    print(
+        f"stops_read={sr.get('status')} stops_as_of={sr.get('as_of_text')} stops_checked_at={sr.get('checked_at')} "
+        f"advice_done={by_state['done']} advice_open={by_state['open']} advice_unread={by_state['unread']}"
     )
     if not a.apply:
         print("DRY RUN: nothing written, no LLM call. Re-run with --apply [--llm].")

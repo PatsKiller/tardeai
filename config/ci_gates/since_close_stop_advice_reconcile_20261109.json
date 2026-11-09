@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "since_close_stop_advice_reconcile_20261109",
+  "files": [
+    "tests/test_since_close_stop_advice_reconcile_20261109.py"
+  ],
+  "comment": [
+    "LQ-20261107-1644 (operator 13:29 ET): the Home 'Your actions' card rendered a 12:01 ET",
+    "brief while the header's AS OF was the 1:17 check time, and all three rows it still asked",
+    "for had working stops at 2:00 PM ET. The advice is built once per brief run; the stop book",
+    "moves without it. Pins: each row is reconciled against the newest stop_last_known read",
+    "(working status only; coverage per account; the brief's one-share rounding tolerance); a",
+    "done row leaves the actions and says which working stop answers it; an unread book marks",
+    "every ask unread and claims no as-of; the as-of text is the STOPS source's clock, never the",
+    "check time; a newer broker read rebuilds the snapshot with no model call; a caller that",
+    "passes no stop read gets the brief untouched. Stub DB / synthetic AAA rows."
+  ]
+}

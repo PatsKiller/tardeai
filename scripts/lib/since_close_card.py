@@ -925,6 +925,185 @@ def _at_risk(brief: Mapping[str, Any] | None) -> list[str]:
     return seen
 
 
+# ---------------------------------------------------------------------------- the stop read (LQ-20261107-1644)
+
+#: ``stop_last_known`` statuses that mean the order rests at the broker right now. Every other status (filled,
+#: canceled, expired, rejected, replaced, not_in_read) is history and covers nothing. This MIRRORS
+#: ``scripts/cio_overnight_brief.WORKING_STOP_STATUSES`` (that module is a script whose import reads paths and builds
+#: nothing on its own, but a card library must not depend on a script); a test pins the two sets equal, because a
+#: divergence would let a cancelled stop grade as coverage and mark the operator's action done.
+WORKING_STOP_STATUSES = frozenset(
+    {"pending_activation", "active", "working", "open", "placed", "accepted", "new", "queued"}
+)
+#: A quantity gap under one share is rounding — the brief's own MIN_STOP_QTY_DELTA. A 100-share stop against 100.4
+#: shares held is coverage; against 99 it is a MISSING stop and stays open.
+STOP_QTY_TOL = 1.0
+#: Stops are dollars rounded to cents by the writer, so half a cent is the whole comparison resolution.
+STOP_PRICE_TOL = 0.005
+
+
+def unread_stop_read(error: str | None = None) -> dict[str, Any]:
+    """The stops read could not be made. Every actionable row then shows ``unread`` — never ``done``, and never a
+    fresh as-of: an unread book is not evidence that a stop was placed."""
+    return {"status": "unread", "stops": None, "as_of": None, "rows": None, "error": error or "stops not read"}
+
+
+STOP_SQL = """SELECT symbol, account, order_id, stop_price, qty, status, captured_at
+                FROM stop_last_known WHERE symbol = ANY(%s) ORDER BY captured_at DESC"""
+
+
+def _stop_book(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """Working stops per symbol plus the newest capture instant of the whole read — a filled or replaced order's
+    timestamp still proves the book was read, so the card's as-of is the stops source's clock, never the check time."""
+    stops: dict[str, list[dict[str, Any]]] = {}
+    newest: datetime | None = None
+    n = 0
+    for r in rows or ():
+        n += 1
+        cap = _as_dt(r.get("captured_at"))
+        if cap is not None and (newest is None or cap > newest):
+            newest = cap
+        st = str(r.get("status") or "").strip().lower()
+        p, q = _num(r.get("stop_price")), _num(r.get("qty"))
+        if st not in WORKING_STOP_STATUSES or p is None or q is None or q <= 0:
+            continue  # history covers nothing
+        acct = r.get("account")
+        stops.setdefault(str(r.get("symbol") or "").upper(), []).append(
+            {"account": "" if acct is None else str(acct), "order_id": r.get("order_id"), "stop": p, "qty": q,
+             "status": st, "captured_at": cap}
+        )
+    for srows in stops.values():
+        srows.sort(key=lambda s: (-s["stop"], s["account"]))
+    return {"status": "read", "stops": stops, "as_of": newest, "rows": n, "error": None}
+
+
+def fetch_stops(conn: Any, symbols: Sequence[str]) -> dict[str, Any]:
+    """The broker's stop book for ``symbols`` over a read-only connection (the snapshot writer's path)."""
+    syms = sorted({str(s).upper() for s in symbols if str(s).strip()})
+    if not syms:
+        return {"status": "read", "stops": {}, "as_of": None, "rows": 0, "error": None}
+    with conn.cursor() as cur:
+        cur.execute(STOP_SQL, (syms,))
+        raw = cur.fetchall()
+    cols = ("symbol", "account", "order_id", "stop_price", "qty", "status", "captured_at")
+    return _stop_book([dict(zip(cols, r)) if not isinstance(r, Mapping) else r for r in raw])
+
+
+def fetch_stops_query(query: Callable[..., Any], symbols: Sequence[str]) -> dict[str, Any]:
+    """The same read through a ``query(sql, params) -> rows | None`` callable (the API path's ``_db_query``). A query
+    that returns None is an UNREAD book — the route then shows every actionable row as unread with no as-of, never a
+    fresh-looking card built on a read that did not happen."""
+    syms = sorted({str(s).upper() for s in symbols if str(s).strip()})
+    if not syms:
+        return {"status": "read", "stops": {}, "as_of": None, "rows": 0, "error": None}
+    rows = query(STOP_SQL, (syms,))
+    if rows is None:
+        return unread_stop_read("stop read returned no result (DB unavailable)")
+    return _stop_book(rows)
+
+
+def stop_read_block(read: Mapping[str, Any] | None, *, now: datetime) -> dict[str, Any]:
+    """The card's label for the reconcile: the STOPS source's clock, plus when this render checked. ``status:
+    unread`` says the read failed and prints no as-of — a check time is not a stop time."""
+    if not isinstance(read, Mapping) or read.get("status") != "read":
+        err = str(read.get("error") or "stops not read") if isinstance(read, Mapping) else "stops not read"
+        return {"status": "unread", "as_of": None, "as_of_text": "stops unread", "rows": None,
+                "checked_at": _iso(now), "error": err}
+    as_of = _as_dt(read.get("as_of"))
+    return {
+        "status": "read",
+        "as_of": _iso(as_of) if as_of else None,
+        "as_of_text": since_close_stamp.stamp_text(as_of) if as_of else "no stop on record",
+        "rows": read.get("rows"),
+        "checked_at": _iso(now),
+        "error": None,
+    }
+
+
+def _stop_evidence(row: Mapping[str, Any], stops: Mapping[str, Any]) -> dict[str, Any]:
+    """The broker rows that answer one advice row, for that row's ACCOUNT (the brief advises per account)."""
+    sym = str(row.get("symbol") or "").upper()
+    acct = str(row.get("account") or "")
+    working = [s for s in stops.get(sym) or [] if isinstance(s, Mapping) and str(s.get("account") or "") == acct]
+    held = _num(row.get("held_qty"))
+    suggested = _num(row.get("suggested_stop"))
+    covered = round(sum(float(s.get("qty") or 0) for s in working), 4)
+    best = max((float(s.get("stop") or 0) for s in working), default=None)
+    covered_ok = held is not None and covered >= held - STOP_QTY_TOL
+    ans = str(row.get("answer") or "").upper()
+    if ans == "RAISE":
+        # the raise is done when the book holds a stop at least as high as the suggestion, covering the shares
+        done = bool(covered_ok and suggested is not None and best is not None and best >= suggested - STOP_PRICE_TOL)
+    elif ans == "ADD_STOP":
+        done = bool(covered_ok)
+    elif ans == "FIX_QTY":
+        # the quantity is fixed only while a stop still rests: cutting it to zero is the ADD_STOP case, not this one
+        done = bool(held is not None and 0 < covered <= held + STOP_QTY_TOL)
+    else:
+        done = False
+    newest = max((s.get("captured_at") for s in working if s.get("captured_at")), default=None)
+    return {
+        "done": done,
+        "covered_qty": covered,
+        "best_stop": round(best, 2) if best is not None else None,
+        "suggested_stop": round(suggested, 2) if suggested is not None else None,
+        "orders": [{"stop": round(float(s["stop"]), 2), "qty": s["qty"], "account": s["account"],
+                    "order_id": s.get("order_id"), "status": s["status"]} for s in working],
+        "as_of": _iso(newest) if newest else None,
+    }
+
+
+def reconcile_stop_advice(
+    brief: Mapping[str, Any] | None, read: Mapping[str, Any] | None, *, now: datetime
+) -> dict[str, Any]:
+    """Reconcile every ``stop_advice[]`` row against the newest broker stop read.
+
+    ``state`` is ``quiet`` (HOLD/NO_ACTION — nothing was asked), ``done`` (the book already answers the ask: a working
+    stop at or above the suggested level covering the shares for RAISE; coverage for ADD_STOP; a stop qty no larger
+    than the holding for FIX_QTY), ``open`` (still to do), or ``unread`` (the read failed, so the card cannot claim
+    either). The read's own clock travels beside the rows so the UI labels them with the stop time, not a check time.
+    """
+    rows = [r for r in ((brief or {}).get("stop_advice") or []) if isinstance(r, Mapping)]
+    ready = isinstance(read, Mapping) and read.get("status") == "read" and isinstance(read.get("stops"), Mapping)
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        ans = str(row.get("answer") or "").upper()
+        state, evidence = "quiet", None
+        if ans in CIO_ACTIONABLE:
+            if not ready:
+                state = "unread"
+            else:
+                evidence = _stop_evidence(row, read["stops"])
+                state = "done" if evidence["done"] else "open"
+        out.append({**dict(row), "state": state, "stop_evidence": evidence})
+    return {"rows": out, "read": stop_read_block(read, now=now)}
+
+
+def stop_change_decision(prior: Mapping[str, Any] | None, read: Mapping[str, Any] | None) -> dict[str, Any]:
+    """``--if-changed``'s fourth trigger: a broker stop read newer than the one the prior snapshot embedded. A stop
+    read changes no words, so the rebuild is never material (no model call). An unread book is not a change, and a
+    prior snapshot without a stop clock rebuilds once to establish one (it self-heals on the next write)."""
+    if not (isinstance(read, Mapping) and read.get("status") == "read"):
+        return {"changed": False, "material": False, "kind": "none", "reason": "stop read unavailable"}
+    cur = _as_dt(read.get("as_of"))
+    prev_blk = ((prior or {}).get("cio_brief") or {}).get("stop_read") or {}
+    prev = _as_dt(prev_blk.get("as_of")) if isinstance(prev_blk, Mapping) else None
+    if prev is None:
+        if cur is None:
+            return {"changed": False, "material": False, "kind": "none", "reason": "no stop on record"}
+        return {"changed": True, "material": False, "kind": "stops", "symbol": None,
+                "reason": "rebuilt to establish the stop read"}
+    if cur is None or cur <= prev:
+        return {"changed": False, "material": False, "kind": "none", "reason": "stop read unchanged"}
+    sym = next(
+        (s for s, srows in (read.get("stops") or {}).items()
+         if any(isinstance(r, Mapping) and r.get("captured_at") == cur for r in srows)),
+        None,
+    )
+    return {"changed": True, "material": False, "kind": "stops", "symbol": sym,
+            "reason": f"new broker stop read {since_close_stamp.stamp_text(cur)}"}
+
+
 
 # ---------------------------------------------------------------------------- intraday: "Today so far" and change detection (LQ-1260)
 
@@ -1094,9 +1273,14 @@ def build_snapshot(
     source_clocks: Mapping[str, Any] | None = None,
     extended_rows: Iterable[Mapping[str, Any]] = (),
     index_labels: Mapping[str, str] | None = None,
+    stop_rows: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """The whole card.  With ``if_changed`` returns None when nothing material moved since ``prior`` (no write, no LLM
-    call).  A rebuild that is not material keeps the prior summary text; only a material one may spend a call."""
+    call).  A rebuild that is not material keeps the prior summary text; only a material one may spend a call.
+
+    ``stop_rows`` is the broker stop read this build reconciled against (``fetch_stops``, or ``unread_stop_read``).
+    Omitted, the embedded advice is left exactly as the brief wrote it — the legacy callers and tests own no DB read.
+    """
     win = window(now)
     close_at = datetime.fromisoformat(win["start"].replace("Z", "+00:00"))
     moves = attach_news(build_moves(ticker_snapshot, close_tag=win["close_tag"]), articles)
@@ -1108,6 +1292,10 @@ def build_snapshot(
             # LQ-20261107-1304: a print on a name the signature does not carry (a watchlist name, or a held print
             # repeating its rounded percentage) still makes the card stale -- rebuild it, without a model call.
             decision = new_print_decision(prior, moves, extended_rows)
+        if not decision["changed"] and stop_rows is not None:
+            # LQ-20261107-1644: a broker stop read newer than the one this card embedded moves the "done" state of an
+            # advice row, which is exactly what the operator reads. Never material: a broker read changes no words.
+            decision = stop_change_decision(prior, stop_rows)
         if not decision["changed"]:
             return None
     else:
@@ -1119,6 +1307,12 @@ def build_snapshot(
         macro["futures"] = {"status": "available", "quotes": now_block["futures"] + now_block["indices"], "as_of": now_block["as_of"]}
     macro["now"] = now_block
     cio_blk = cio_brief_block(cio_brief)
+    if stop_rows is not None:
+        # LQ-20261107-1644: reconcile the advice against the broker book as it is at build time, and carry the stops
+        # source's own clock beside it. The API re-runs this at render time against a fresh read; this is the
+        # file-level truth for every reader that never reaches the API.
+        rec = reconcile_stop_advice(cio_blk, stop_rows, now=now)
+        cio_blk = {**cio_blk, "stop_advice": rec["rows"], "stop_read": rec["read"]}
     summary = build_summary(
         moves, macro, now=now, llm=llm if decision["material"] else None,
         prior=(prior or {}).get("summary") if prior else None, calls_today=calls_today, carry_prior=not decision["material"],
