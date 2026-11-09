@@ -122,9 +122,10 @@ BAR_SPAN_SLACK_DAYS = 10
 # A series whose first bar starts later than this after the advisory cannot measure that advisory's window.
 BAR_COVER_SLACK_DAYS = 7
 
-# Why a run produced nothing. ``up_to_date`` is the only one that is clean; the rest are failures naming
-# a cause, never a green "0" (AGENTS.md rule 8: exit 0 is not evidence of work).
-CLEAN_EMPTY_REASONS = frozenset({"up_to_date"})
+# Why a run produced nothing. Clean empties exit 0 with an allowed empty_reason; the rest are failures
+# naming a cause, never a green "0" (AGENTS.md rule 8: exit 0 is not evidence of work).
+# LQ-20261107-1416: ``nothing_due`` is clean when Gain Guardian is published and no advisory is due.
+CLEAN_EMPTY_REASONS = frozenset({"up_to_date", "nothing_due"})
 # Skip reasons that describe a quiet but healthy run: the advisory is still inside its horizon, or it was
 # already scored for that horizon. Any other reason in an all-skipped run is a failure, not a quiet week.
 QUIET_SKIP_REASONS = frozenset({"not_due", "already_reconciled"})
@@ -210,13 +211,14 @@ def gain_guardian_published() -> bool | None:
 
 
 def empty_input_reason(state: dict, published: bool | None) -> tuple[str, str]:
-    """Why the selector returned nothing: producers off, a dead feed, up to date, or unattributable.
+    """Why the selector returned nothing: producers off, a dead feed, nothing due, or unattributable.
 
-    The order matters, and only ``up_to_date`` is clean.
+    The order matters. Clean empties: ``up_to_date``, ``nothing_due`` (LQ-20261107-1416).
 
     * a count that did not come back attributes nothing — ``input_unreadable``;
-    * 0 rows ever means no producer of any reconciled type has ever written — ``dependency_unavailable``,
-      naming all three writers and, when it was readable, Gain Guardian's ``published`` switch;
+    * 0 rows ever + Gain Guardian unpublished — ``dependency_unavailable`` (promote or retire);
+    * 0 rows ever + Gain Guardian **published** — ``nothing_due`` (exit 0): the switch is on and there
+      is simply nothing due yet; that must not terminalize as "writer is failing" (LQ-1416);
     * rows present but none newer than INPUT_DEAD_DAYS means the producers died — ``dependency_unavailable``,
       naming the newest date, never "a quiet week";
     * no advisory still owing an outcome is ``up_to_date``;
@@ -232,11 +234,15 @@ def empty_input_reason(state: dict, published: bool | None) -> tuple[str, str]:
             return ("input_unreadable",
                     f"no {'/'.join(EXIT_ADVISORY_TYPES)} rows exist and config/gain_guardian_thresholds.json"
                     " could not be read, so the producers' switch state is unknown")
-        gg = "unpublished (published=false — promote it to reconcile its exit_intelligence rows)" if published is False \
-            else "published (published=true), so its writer is failing"
-        return ("dependency_unavailable",
-                f"no {'/'.join(EXIT_ADVISORY_TYPES)} rows exist: holding_protection_advisor, stop_health_check and"
-                f" gain_guardian_publish have never published an advisory to reconcile; Gain Guardian is {gg}")
+        if published is False:
+            return ("dependency_unavailable",
+                    f"no {'/'.join(EXIT_ADVISORY_TYPES)} rows exist: holding_protection_advisor, stop_health_check and"
+                    " gain_guardian_publish have never published an advisory to reconcile; Gain Guardian is"
+                    " unpublished (published=false — promote it to reconcile its exit_intelligence rows)")
+        # published=True, zero rows: quiet / not yet due — not a terminal dependency failure (LQ-1416).
+        return ("nothing_due",
+                f"Gain Guardian is published and no {'/'.join(EXIT_ADVISORY_TYPES)} advisories are due"
+                " to reconcile yet")
     age = state.get("newest_age_days")
     if age is not None and age > INPUT_DEAD_DAYS:
         return ("dependency_unavailable",
@@ -436,7 +442,9 @@ def reconcile() -> int:
             _receipt(ok=False, produced=0, attempted=attempted, empty_reason="input_inconsistent",
                      skipped=skipped, error=f"selected advisories were not attemptable: {bad}")
             return 1
-        _receipt(ok=True, produced=0, attempted=attempted, empty_reason="all_skipped", skipped=skipped)
+        # LQ-1416: a not_due-only quiet run is ``nothing_due`` (allowed empty), not a generic all_skipped.
+        quiet_reason = "nothing_due" if set(skipped) <= {"not_due"} and skipped else "all_skipped"
+        _receipt(ok=True, produced=0, attempted=attempted, empty_reason=quiet_reason, skipped=skipped)
         return 0
     print(f"[exit-outcomes] evaluated {done} advisory-horizon pairs (of {attempted} attempted)")
     _receipt(ok=True, produced=done, attempted=attempted, skipped=skipped)

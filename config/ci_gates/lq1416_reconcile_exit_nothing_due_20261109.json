@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1416_reconcile_exit_nothing_due_20261109",
+  "files": [
+    "tests/test_lq1416_reconcile_exit_nothing_due_20261109.py"
+  ],
+  "anchor": "lq1416_reconcile_exit_nothing_due",
+  "comment": [
+    "ANCHOR: lq1416_reconcile_exit_nothing_due — published-but-nothing-due → empty_reason nothing_due exit 0 (not dependency_unavailable exit 1)"
+  ]
+}

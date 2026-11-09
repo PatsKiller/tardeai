@@ -298,6 +298,8 @@ def test_create_stop_curation_stays_out(lane, monkeypatch, tmp_path, capsys):
     rows = [_ri_row(9, "stop_curation", "AAA", 60, {"no_price": True})]
     db = _wire(monkeypatch, lane, FakeDB(rows))
     assert "stop_curation" not in lane.EXIT_ADVISORY_TYPES
+    # Unpublished + zero accepted types → dependency_unavailable (LQ-104). Published quiet is LQ-1416.
+    monkeypatch.setattr(lane, "gain_guardian_published", lambda: False)
     assert lane.reconcile() == 1  # nothing accepted exists -> a named dependency failure, not a silent 0
     assert db.inserts == []
     assert "dependency_unavailable" in capsys.readouterr().err
@@ -319,7 +321,13 @@ def test_up_to_date_is_clean_and_named(lane, monkeypatch, tmp_path, capsys):
 
 
 def test_no_rows_ever_is_a_named_failure_not_a_clean_week(lane, monkeypatch, tmp_path, capsys):
+    """Unpublished + ever=0 is still a named dependency failure (LQ-104).
+
+    published=True + ever=0 is ``nothing_due`` exit 0 (LQ-20261107-1416) — covered in
+    test_lq1416_reconcile_exit_nothing_due_20261109.py.
+    """
     db = _wire(monkeypatch, lane, FakeDB([]))
+    monkeypatch.setattr(lane, "gain_guardian_published", lambda: False)
     assert lane.reconcile() == 1
     err = capsys.readouterr().err
     assert "dependency_unavailable" in err and "holding_protection_advisor" in err
