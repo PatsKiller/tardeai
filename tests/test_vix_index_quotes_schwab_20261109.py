@@ -134,15 +134,53 @@ def test_outside_the_window_nothing_is_fetched():
     assert r["status"] == "outside_window"
 
 
-def test_apply_while_disabled_stops_before_any_schwab_module_is_imported(monkeypatch, capsys):
+def test_apply_while_disabled_stops_before_any_schwab_module_is_imported_and_fails_its_receipt(monkeypatch, capsys):
     monkeypatch.setitem(sys.modules, "market_quotes_offhours_schwab", None)  # an import would raise
-    assert lane.main(["--apply"]) == 0
+    got = []
+    monkeypatch.setattr(lane, "_write_receipt", lambda r, s: got.append(r))
+    assert lane.main(["--apply"]) == 1  # a live fire of a disabled lane is never a quiet success (LQ-1684)
+    assert '"status": "disabled"' in capsys.readouterr().out
+    assert [r["status"] for r in got] == ["disabled"]
+
+
+def test_a_shadow_dry_run_while_disabled_imports_nothing_and_writes_no_receipt(monkeypatch, capsys):
+    monkeypatch.setitem(sys.modules, "market_quotes_offhours_schwab", None)
+    monkeypatch.setattr(lane, "_write_receipt", lambda r, s: pytest.fail("a dry run wrote a receipt"))
+    assert lane.main(["--dry-run", "--live-read"]) == 0
     assert '"status": "disabled"' in capsys.readouterr().out
 
 
 def test_a_dry_run_without_a_fixture_refuses_rather_than_call_schwab(capsys):
     assert lane.main(["--dry-run"]) == 2
     assert "--fixture" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("receipt, outcome", [
+    ({"status": "outside_window"}, (True, "outside_window")),
+    ({"status": "vix_stale_print"}, (True, "cboe_not_calculating")),
+    ({"status": "ok", "inserted": 0}, (True, "unchanged")),
+    ({"status": "ok", "inserted": 3}, (True, None)),
+    ({"status": "token_not_fresh"}, (False, None)),
+    ({"status": "disabled"}, (False, None)),
+    ({"status": "vix_not_index"}, (False, None)),
+])
+def test_each_fire_has_one_lane_outcome(receipt, outcome):
+    assert lane.lane_outcome(receipt) == outcome
+
+
+def test_the_lane_receipt_carries_the_vix_print_and_counts(monkeypatch):
+    from lib import lane_last_receipt as llr
+    seen = {}
+    monkeypatch.setattr(llr, "write_lane_receipt", lambda lane_id, **kw: seen.update(lane_id=lane_id, **kw))
+    at = datetime(2026, 11, 9, 14, 0, tzinfo=ET)
+    r = lane.run(cfg=CFG, now=at + FIRE_OFFSET, fetch=lambda s: _payload({"$VIX": (18.0, at), "$VIX9D": (17.0, at),
+                                                                          "$VIX3M": (19.0, at)}),
+                 read_last=lambda s: {x: None for x in s}, write=lambda rows: {"rows_written": len(rows)}, dry_run=False)
+    lane._write_receipt(r, "2026-11-09T19:00:40+00:00")
+    assert seen["lane_id"] == "vix-index-quotes-schwab" and seen["ok"] is True and seen["exit_code"] == 0
+    assert seen["produced_count"] == r["inserted"] and seen["attempted_count"] == 3
+    assert seen["summary"]["vix_price"] == 18.0 and seen["summary"]["vix_print_at"]
+    assert seen["empty_reason"] is None and r["inserted"] == 3
 
 
 # ── the headline reads the continuous row ────────────────────────────────────────────────────────────────────

@@ -12,9 +12,17 @@ only while fresh, never a refresh, never ``schwab_transport``, never an account,
 Every configured symbol must come back as assetMainType INDEX, or it is refused by name.
 
     python3 scripts/vix_index_quotes_schwab.py --dry-run --fixture F [--now ISO]   # parse a recorded payload; no DB, no net
+    python3 scripts/vix_index_quotes_schwab.py --dry-run --live-read             # n8n shadow: live read, writes nothing
     python3 scripts/vix_index_quotes_schwab.py --apply                            # live (only when enabled)
 
-A dry run is fixtures-only: without ``--fixture`` it refuses rather than call Schwab.
+A dry run needs ``--fixture`` or ``--live-read``; with neither it refuses. ``--live-read`` is the n8n shadow argv (the
+dispatcher's dry_run_arg): it reads Schwab and the store but writes nothing, and only while enabled. Agents use
+``--fixture`` (AGENTS.md: an agent never calls a broker endpoint).
+
+Lane receipt (``--apply`` only, LQ-20261107-1684): LaneRunReceipt@v2 at data/runtime/vix-index-quotes-schwab_last.json
+through scripts/lib/lane_last_receipt.write_lane_receipt; produced_count = rows inserted. A fire that writes nothing is
+ok with a typed empty_reason (outside_window, unchanged, cboe_not_calculating); a refused $VIX, a provider error or a
+fire while disabled is ok=false, exit 1.
 
 Receipt (stdout, one JSON object per fire): ``VixIndexQuoteRun@v1`` with the 15-min ``slot`` and, per symbol, one of
   written    -- a print newer than the stored one, no older than max_trade_age_minutes;
@@ -38,6 +46,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 SCHEMA = "VixIndexQuoteRun@v1"
+LANE_ID = "vix-index-quotes-schwab"
 CONFIG_PATH = ROOT / "config" / "vix_index_quotes.yaml"
 ET = ZoneInfo("America/New_York")
 _DAYS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
@@ -176,6 +185,7 @@ def _read_last(symbols: list[str], source: str) -> dict[str, datetime | None]:
     conn = _get_conn()
     try:
         cur = conn.cursor()
+        cur.execute("SET TRANSACTION READ ONLY")  # this read never writes, in a dry run or a live fire
         cur.execute("SELECT symbol, max(fetched_at) FROM market_quotes WHERE symbol = ANY(%s) AND source = %s "
                     "GROUP BY symbol", (symbols, source))
         got = {str(s).upper(): t for s, t in cur.fetchall()}
@@ -202,37 +212,79 @@ def _write(rows: list[dict], source: str) -> dict:
             "rejected": [str(r) for r in getattr(rc, "rejected", [])][:10]}
 
 
+def lane_outcome(receipt: dict[str, Any]) -> tuple[bool, str | None]:
+    """(ok, empty_reason) of one --apply fire. Nothing written is ok only for a named, expected reason."""
+    status = str(receipt.get("status") or "")
+    if status == "outside_window":
+        return True, "outside_window"
+    if status == "vix_stale_print":
+        return True, "cboe_not_calculating"  # Cboe is not calculating the index: the gap is a fact, not a failure
+    if status == "ok":
+        return True, None if receipt.get("inserted") else "unchanged"
+    return False, None
+
+
+def _write_receipt(receipt: dict[str, Any], started_at: str) -> None:
+    try:
+        from lib.lane_last_receipt import write_lane_receipt
+    except ImportError:  # imported as scripts.*
+        from scripts.lib.lane_last_receipt import write_lane_receipt  # type: ignore[no-redef]
+    ok, empty = lane_outcome(receipt)
+    statuses: dict[str, int] = {}
+    for e in receipt.get("symbols") or []:
+        statuses[str(e.get("status"))] = statuses.get(str(e.get("status")), 0) + 1
+    vix = next((e for e in receipt.get("symbols") or [] if e.get("symbol") == "$VIX"), {})
+    write_lane_receipt(
+        LANE_ID, ok=ok, exit_code=0 if ok else 1, started_at=started_at, script=__file__,
+        summary={"status": receipt.get("status"), "slot": receipt.get("slot"), "inserted": receipt.get("inserted"),
+                 "vix_print_at": vix.get("print_at"), "vix_price": vix.get("price"), "symbols": statuses},
+        error=None if ok else str(receipt.get("status") or "unknown"),
+        produced_count=int(receipt.get("inserted") or 0), attempted_count=len(receipt.get("symbols") or []),
+        skipped_reasons={k: v for k, v in statuses.items() if k != "written"} or None,
+        empty_reason=None if not ok else empty,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--apply", action="store_true")
-    ap.add_argument("--fixture", help="recorded Schwab quotes payload (JSON); required for --dry-run")
-    ap.add_argument("--now", help="ISO instant for a dry run (default: now)")
+    ap.add_argument("--fixture", help="recorded Schwab quotes payload (JSON) for a dry run")
+    ap.add_argument("--live-read", action="store_true", help="dry run against Schwab and the store; writes nothing")
+    ap.add_argument("--now", help="ISO instant for a fixture dry run (default: now)")
     ap.add_argument("--config", default=None)
     args = ap.parse_args(argv)
     cfg = load_config(args.config)
-    now = datetime.fromisoformat(args.now) if args.now else datetime.now(timezone.utc)
-    if args.dry_run:
-        if not args.fixture:
-            print(json.dumps({"schema": SCHEMA, "status": "refused", "detail": "--dry-run needs --fixture"}))
-            return 2
+    started = datetime.now(timezone.utc)
+    now = datetime.fromisoformat(args.now) if (args.now and args.fixture) else started
+    src = str(cfg.get("source", "schwab"))
+    if args.dry_run and args.fixture:
         payload = json.loads(Path(args.fixture).read_text())
         receipt = run(cfg=cfg, now=now, fetch=lambda _s: payload, read_last=lambda s: {x: None for x in s},
                       write=None, dry_run=True)
-    else:
-        if not cfg.get("enabled"):
-            print(json.dumps({"schema": SCHEMA, "status": "disabled", "now": now.isoformat(),
-                              "detail": "config/vix_index_quotes.yaml enabled: false (operator approval pending)"}))
-            return 0
-        import market_quotes_offhours_schwab as lane  # the one token-safe Schwab market-data read
+        print(json.dumps(receipt, default=str, indent=1))
+        return 0
+    if args.dry_run and not args.live_read:
+        print(json.dumps({"schema": SCHEMA, "status": "refused", "detail": "--dry-run needs --fixture or --live-read"}))
+        return 2
+    if not cfg.get("enabled"):
+        receipt = {"schema": SCHEMA, "status": "disabled", "now": now.isoformat(), "dry_run": bool(args.dry_run),
+                   "detail": "config/vix_index_quotes.yaml enabled: false (operator approval pending)"}
+        print(json.dumps(receipt))
+        if args.apply:  # a live fire of a disabled lane is a misconfiguration, never a quiet success
+            _write_receipt(receipt, started.isoformat())
+            return 1
+        return 0
+    import market_quotes_offhours_schwab as lane  # the one token-safe Schwab market-data read
 
-        src = str(cfg.get("source", "schwab"))
-        receipt = run(cfg=cfg, now=now, fetch=lambda s: lane.live_fetch(s, cfg),
-                      read_last=lambda s: _read_last(s, src), write=lambda r: _write(r, src), dry_run=False)
+    receipt = run(cfg=cfg, now=now, fetch=lambda s: lane.live_fetch(s, cfg), read_last=lambda s: _read_last(s, src),
+                  write=None if args.dry_run else (lambda r: _write(r, src)), dry_run=bool(args.dry_run))
     print(json.dumps(receipt, default=str, indent=1))
-    return 0 if receipt.get("status") in ("ok", "outside_window", "disabled") or str(
-        receipt.get("status", "")).startswith("vix_") else 1
+    if args.dry_run:
+        return 0
+    _write_receipt(receipt, started.isoformat())
+    return 0 if lane_outcome(receipt)[0] else 1
 
 
 if __name__ == "__main__":
