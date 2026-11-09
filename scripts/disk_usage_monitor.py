@@ -350,7 +350,8 @@ def budget_measurements(rules: Mapping[str, Any], lane_rows: Optional[list],
         name = str(root.get("name") or "")
         path = Path(str(root.get("_path") or root.get("path")))
         base = os.path.normpath(str(path))
-        cap = int(float(root.get("max_total_gb") or 0) * GIB)
+        gb = root.get("max_total_gb")
+        cap = int(float(gb) * GIB) if type(gb) in (int, float) and gb > 0 else None
         e = lane.get(name) or {}
         measured = e.get("measured_bytes") if e.get("status") not in (None, "no_rows") else None
         source = "lane_manifest" if measured is not None else None
@@ -377,12 +378,17 @@ def budget_measurements(rules: Mapping[str, Any], lane_rows: Optional[list],
         row: dict[str, Any] = {
             "root": name, "path": str(path), "cap_bytes": cap, "measured_bytes": measured,
             "measured_gb": round(measured / GIB, 2) if isinstance(measured, int) else None,
-            "cap_gb": round(cap / GIB, 2), "source": source, "partial": partial,
+            "cap_gb": round(cap / GIB, 2) if isinstance(cap, int) else None, "source": source, "partial": partial,
             "floor_bytes": floor,
             "floor_exceeds_cap": bool(e.get("floor_exceeds_cap") is True),
             "over_max_age": e.get("over_max_age"),
         }
-        if isinstance(measured, int):
+        if cap is None:
+            # No readable cap: the budget cannot be evaluated at all. Saying "0 of 0" or "under cap" would be a
+            # thumbs-up for a number that does not exist.
+            row["over_bytes"] = None
+            row["status"] = "cap_unknown"
+        elif isinstance(measured, int):
             row["over_bytes"] = max(0, measured - cap)
             row["status"] = "over_cap" if measured > cap else "under_cap"
         else:
@@ -440,24 +446,28 @@ def budget_findings(rows: list[dict[str, Any]], samples: Mapping[str, Any], now:
     past it. A growth rate above the ceiling is ``warn`` — the root may still be under its cap today, which is exactly
     the state the used% bands are blind to. ``unmeasured`` carries band None so it can never be mistaken for ok.
     """
-    ceiling = float(growth.get("max_gb_per_day") or 0)
+    ceiling = growth.get("max_gb_per_day")
+    ceiling = float(ceiling) if type(ceiling) in (int, float) and ceiling > 0 else None
     out = []
     for row in rows:
         rate = growth_gb_per_day(samples.get(str(row.get("root"))), now, growth)
         row = dict(row)
         row["growth_gb_per_day"] = rate
-        if row.get("status") == "unmeasured":
+        if row.get("status") in ("unmeasured", "cap_unknown"):
+            # No measurement, or no cap to measure against: no band. A missing number is never an "ok".
             row["band"] = None
-            row["why"] = "unmeasured"
-        elif row.get("over_bytes", 0) > 0 or row.get("floor_exceeds_cap"):
+            row["why"] = row.get("status")
+        elif (row.get("over_bytes") or 0) > 0 or row.get("floor_exceeds_cap"):
             row["band"] = "critical"
             row["why"] = "over_cap"
-        elif rate is not None and ceiling > 0 and rate > ceiling:
+        elif ceiling is not None and rate is not None and rate > ceiling:
             row["band"] = "warn"
             row["why"] = "growth_rate"
         else:
+            # A growth rate with no configured ceiling is rateable but not bandable: the row stays ok and carries
+            # `growth_unconfigured` so a reader can see the alarm is off by configuration, not by measurement.
             row["band"] = "ok"
-            row["why"] = None
+            row["why"] = "growth_unconfigured" if (rate is not None and ceiling is None) else None
         out.append(row)
     return out
 
@@ -477,8 +487,9 @@ def budget_intent_text(finding: Mapping[str, Any]) -> tuple[str, str]:
                 f"now {measured} GiB of a {cap} GiB budget. Growth is alerted independently of used%.")
         return subject, text
     subject = f"Disk budget exceeded {name}: {measured} GiB of {cap} GiB"
-    over = round((finding.get("over_bytes") or 0) / GIB, 2)
-    text = (f"{name} ({finding.get('path')}) holds {measured} GiB against an absolute {cap} GiB cap: {over} GiB "
+    over = finding.get("over_bytes")
+    over_gb = f"{over / GIB:.2f}" if isinstance(over, int) else "an unknown number of"
+    text = (f"{name} ({finding.get('path')}) holds {measured} GiB against an absolute {cap} GiB cap: {over_gb} GiB "
             f"must come off. Reclaimable under the reviewed rules is taken oldest-first first.")
     if finding.get("floor_exceeds_cap"):
         floor = finding.get("floor_bytes")
@@ -488,7 +499,9 @@ def budget_intent_text(finding: Mapping[str, Any]) -> tuple[str, str]:
                  f"human decision — nothing protected was touched.")
     age = finding.get("over_max_age") or {}
     if age.get("count"):
-        text += (f" {age['count']} held entr(y/ies) ({round((age.get('bytes') or 0) / GIB, 2)} GiB) are older than "
+        held_gb = age.get("bytes")
+        held_bytes = f"{held_gb / GIB:.2f}" if isinstance(held_gb, int) else "an unknown number of"
+        text += (f" {age['count']} held entr(y/ies) ({held_bytes} GiB) are older than "
                  f"{age.get('max_item_age_days')} days; held by: {', '.join(age.get('reasons') or []) or 'unknown'}.")
     return subject, text
 

@@ -196,6 +196,35 @@ def test_a_root_under_its_cap_touches_nothing():
     assert report[0]["status"] == "under_cap" and report[0]["planned_bytes"] == 0
 
 
+def test_a_root_whose_cap_cannot_be_read_reclaims_nothing_and_escalates():
+    """A missing cap is not "unlimited" and not zero: it is a number the sweep does not have. Reclaiming toward
+    an unreadable cap would either evict the whole root (cap 0) or nothing at all while reporting "under cap"."""
+    rows = [_row("/s/a", 9, 100), _row("/s/b", 9, 90)]
+    roots = [{"name": "s", "path": "/s", "_path": "/s", "rules": ["T"]}]  # no max_total_gb at all
+    out, report = H.apply_root_budgets(rows, roots)
+    assert all(r["candidate"] for r in out)                 # untouched: nothing is taken on a guess
+    e = report[0]
+    assert e["status"] == "cap_unknown" and e["cap_bytes"] is None and e["over_by_bytes"] is None
+    assert e["planned_bytes"] == 0 and e["escalate"] is True
+
+
+def test_an_undated_row_is_never_taken_before_a_dated_one_and_is_counted():
+    """The budget's order is age; a row with no age has no place in that order. It is the LAST resort, and the
+    entry says how much of the root it could not date, so "oldest first" is never claimed over a blind spot."""
+    old = _row("/s/dated_old", 4, 100)
+    undated = _row("/s/undated", 4, 1)
+    undated["fingerprint"] = {}                 # no activity, no mtime
+    undated["evidence"] = {}                    # no idle_days either
+    rows = [undated, old]
+    roots = [{"name": "s", "path": "/s", "_path": "/s", "rules": ["T"], "max_total_gb": 5}]
+    out, report = H.apply_root_budgets(rows, roots)
+    assert [r["path"] for r in out if r["candidate"]] == ["/s/dated_old"]   # 8 -> 4 <= 5 after the dated row only
+    e = report[0]
+    assert e["planned_bytes"] == 4 * GIB
+    assert e["undated_rows"] == 1 and e["undated_bytes"] == 4 * GIB
+    assert "budget_over_cap_kept" in {r["path"]: r for r in out}["/s/undated"]["reasons"]
+
+
 def test_a_cache_entry_is_dated_from_its_newest_mtime():
     """Rule C emits fingerprint.mtime, not activity: before 2026-11-09 the budget saw every cache entry as undatable,
     so "oldest first" degraded to "largest first" and the caches' max_item_age_days counted nothing."""
@@ -298,6 +327,28 @@ def test_an_unmeasured_root_has_no_band_so_it_cannot_read_as_ok():
     assert finding["band"] is None and finding["why"] == "unmeasured"
 
 
+def test_a_root_without_a_readable_cap_is_cap_unknown_and_is_never_ok():
+    """The rules file is the contract, but the monitor must not turn an unreadable cap into a green row: with no
+    cap there is nothing to be "under", and `measured_gb of 0 GiB` would read as a breach against nothing."""
+    rules = {"_budget_roots": [{"name": "r", "path": "/r", "_path": "/r", "rules": ["T"]}]}
+    rows = DM.budget_measurements(rules, [{"root": "r", "status": "over_cap", "measured_bytes": 4 * GIB}], None)
+    assert rows[0]["status"] == "cap_unknown"
+    assert rows[0]["cap_bytes"] is None and rows[0]["cap_gb"] is None and rows[0]["over_bytes"] is None
+    finding = DM.budget_findings(rows, {}, datetime.now(timezone.utc), {"window_days": 3, "min_samples": 3})[0]
+    assert finding["band"] is None and finding["why"] == "cap_unknown"
+
+
+def test_a_growth_rate_with_no_configured_ceiling_is_not_banded():
+    """A rate with no ceiling is measurable but not actionable. It must not be silently warned about, and it must
+    not read as a clean ok either: the row says the alarm is off by configuration."""
+    now = datetime.now(timezone.utc)
+    growth = {"window_days": 3, "min_samples": 3}      # no max_gb_per_day
+    row = {"root": "r", "status": "under_cap", "measured_bytes": 28 * GIB, "over_bytes": 0, "cap_bytes": 40 * GIB}
+    finding = DM.budget_findings([row], {"r": _samples(now, 8.0)}, now, growth)[0]
+    assert finding["band"] == "ok" and finding["why"] == "growth_unconfigured"
+    assert finding["growth_gb_per_day"] is not None
+
+
 # ── 5. growth is a rate, independent of the used% bands ─────────────────────────
 
 
@@ -355,5 +406,16 @@ def test_the_alert_text_names_the_cap_the_measurement_and_the_floor():
                                 "reasons": ["referenced"]}}
     subject, text = DM.budget_intent_text(finding)
     assert "91.3 GiB of 10.0 GiB" in subject
-    assert "81.3 GiB" in text and "89.0 GiB" in text
+    assert "81.30 GiB" in text and "89.0 GiB" in text
     assert "referenced" in text, "the operator needs to know WHAT holds the rest"
+
+
+def test_the_alert_text_never_prints_a_missing_number_as_zero():
+    """An unreadable over-by is a number the alert does not have. Printing "0.00 GiB must come off" beside a cap is
+    the same failure as a green band on an unmeasured root: the reader cannot tell "nothing" from "unknown"."""
+    finding = {"root": "r", "path": "/r", "why": "over_cap", "cap_gb": 10.0, "measured_gb": 12.0,
+               "over_bytes": None, "floor_exceeds_cap": False,
+               "over_max_age": {"count": 1, "bytes": None, "max_item_age_days": 30, "reasons": ["referenced"]}}
+    _, text = DM.budget_intent_text(finding)
+    assert "0.00 GiB" not in text and " 0 GiB" not in text
+    assert text.count("an unknown number of GiB") == 2

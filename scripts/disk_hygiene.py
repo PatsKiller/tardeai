@@ -2317,6 +2317,40 @@ def _under_root(path: str, base: str) -> bool:
     return path == base or path.startswith(base + os.sep)
 
 
+def _budget_cap_bytes(root: Mapping[str, Any]) -> Optional[int]:
+    """The root's absolute cap in bytes, or None when the number cannot be read.
+
+    ``None`` is not zero: a zero cap would make every byte of the root "over cap" and reclaim the whole tree. The
+    loader already refuses a budget root without a positive cap (``budgets_cap``), so this guard is the second
+    line — a hand-edited or partially loaded rules file must never turn a missing number into an eviction.
+    """
+    gb = root.get("max_total_gb")
+    if type(gb) in _NUM and math.isfinite(float(gb)) and float(gb) > 0:
+        return int(float(gb) * GIB)
+    return None
+
+
+def _gib_text(v: Any) -> str:
+    """A byte count as GiB text for the digest; a missing count prints "-", never "0.00".
+
+    A zero beside a cap reads as "this root holds nothing". An unmeasured root or an unreadable cap proves no such
+    thing, so the digest says so instead of inventing the one value a reader would trust.
+    """
+    return f"{v / GIB:.2f}" if isinstance(v, int) else "-"
+
+
+def _budget_sort_key(r: Mapping[str, Any], now_ts: float) -> tuple[int, float, int]:
+    """Oldest-first, but a row whose age is UNKNOWN is never taken before one whose age is known.
+
+    ``0 if age is not None else 1`` keeps the two populations apart: without it an undatable row reads as "age 0"
+    (brand new) and sorts last only by luck, which is how "oldest first" becomes "largest first" the day the ages
+    change. Undated rows are the last resort, and the entry counts them so a reader can see the order was not
+    settled by age.
+    """
+    age = _budget_age_s(r, now_ts)
+    return (0 if age is not None else 1, -(age or 0.0), -int(r.get("size_bytes") or 0))
+
+
 def apply_root_budgets(rows: list[dict], budget_roots: list[Mapping[str, Any]], *,
                        now_ts: Optional[float] = None) -> tuple[list[dict], list[dict]]:
     """Per-root ABSOLUTE caps (LQ-20261107-1638, operator 2026-11-09).
@@ -2353,29 +2387,39 @@ def apply_root_budgets(rows: list[dict], budget_roots: list[Mapping[str, Any]], 
             if type(r.get("size_bytes")) is int and r["size_bytes"] > 0
             and r.get("rule") in rules_for_root and _under_root(str(r.get("path")), base)
         ]
-        cap = int(float(root.get("max_total_gb") or 0) * GIB)
+        cap = _budget_cap_bytes(root)
         measured = sum(r["size_bytes"] for r in members)
         floor = sum(r["size_bytes"] for r in members if not r.get("candidate"))
         entry: dict[str, Any] = {
             "root": root.get("name"), "path": base, "rules": rules_for_root,
             "measured_bytes": measured, "cap_bytes": cap, "floor_bytes": floor,
-            "over_by_bytes": max(0, measured - cap), "planned_bytes": 0,
-            "status": "no_rows" if not members else ("under_cap" if measured <= cap else "over_cap"),
+            # an unreadable cap has no "over by": the number that would say it is the one that is missing
+            "over_by_bytes": (max(0, measured - cap) if cap is not None else None), "planned_bytes": 0,
+            "status": "no_rows" if not members else ("cap_unknown" if cap is None
+                                                     else ("under_cap" if measured <= cap else "over_cap")),
             "floor_exceeds_cap": False, "escalate": False,
             "rows": len(members), "held_rows": sum(1 for r in members if not r.get("candidate")),
             "measure_only_rows": sum(1 for r in members if r.get("budget_measure_only")),
+            "undated_rows": 0, "undated_bytes": 0,
         }
+        if cap is None:
+            # A root whose cap cannot be read is not "unlimited": it is unenforceable. Say so and escalate; never
+            # reclaim, because there is no number to reclaim toward.
+            entry["escalate"] = bool(members)
+            report.append(entry)
+            continue
         if not members:
             report.append(entry)
             continue
         if measured > cap:
-            candidates = sorted(
-                (r for r in members if r.get("candidate")),
-                key=lambda r: (-(_budget_age_s(r, now_ts) or 0.0), -r["size_bytes"]),
-            )
+            undated = [r for r in members if r.get("candidate") and _budget_age_s(r, now_ts) is None]
+            entry["undated_rows"] = len(undated)
+            entry["undated_bytes"] = sum(r["size_bytes"] for r in undated)
+            candidates = sorted((r for r in members if r.get("candidate")),
+                                key=lambda r: _budget_sort_key(r, now_ts))
             projected = measured
             taken: set[str] = set()
-            for r in candidates:  # oldest first
+            for r in candidates:  # oldest first, dated before undated
                 if projected <= cap:
                     break
                 taken.add(r["path"])
@@ -2578,10 +2622,9 @@ def human_summary(m: Mapping[str, Any], top_n: int) -> str:
         # reclaim this pass would make. A root whose protected floor alone is over cap says ESCALATE, never silent.
         lines += ["", "ABSOLUTE BUDGETS  (GiB measured of cap | planned = reclaimed by this pass, floor = held)"]
         for b in m["budget_report"]:
-            gib = lambda v: (v or 0) / 1024 ** 3  # noqa: E731
             lines.append(
-                f"  {b['root']:<18} {gib(b['measured_bytes']):>8.2f} of {gib(b['cap_bytes']):>7.2f}"
-                f"  planned {gib(b['planned_bytes']):>7.2f}  floor {gib(b['floor_bytes']):>8.2f}"
+                f"  {b['root']:<18} {_gib_text(b['measured_bytes']):>8} of {_gib_text(b['cap_bytes']):>7}"
+                f"  planned {_gib_text(b['planned_bytes']):>7}  floor {_gib_text(b['floor_bytes']):>8}"
                 f"  {b['status']}" + ("  ESCALATE" if b.get("escalate") else "")
             )
     lines += ["", f"LARGEST {top_n} CANDIDATES"]
