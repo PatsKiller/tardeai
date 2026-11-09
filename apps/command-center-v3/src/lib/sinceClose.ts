@@ -8,15 +8,50 @@ import type { StampWire } from './sinceCloseStamp.ts'
 export const SINCE_CLOSE_API = '/api/v2/home/since-close'
 
 export interface SinceCloseNews { title: string; source: string; url?: string | null; published_at?: string | null }
+/** LQ-20261107-1282: the newest print after the close, as the producer labelled it. `change_pct` is null unless the
+ *  row's own reference is dated to THIS close; `state: 'level_only'` means the print is real and the percentage is not. */
+export interface SinceCloseExtPrint {
+  state: 'print' | 'level_only'; session: string; session_label: string
+  price: number | null; change_pct: number | null
+  printed_at?: string | null; printed_text?: string
+  reference_close?: number | null; reference_date?: string | null; age_minutes?: number | null
+}
 export interface SinceCloseMove {
   symbol: string; held: boolean; price: number; change_pct: number; week_pct: number | null
   dollar_impact: number | null; close_tag: string; big_move: boolean; news: SinceCloseNews[]; no_news: boolean
+  extended?: SinceCloseExtPrint | null   // LQ-1282: absent on a snapshot built before the extended read
+  extended_note?: string | null
+  move_now_pct?: number | null           // the newest print's change, or the close's when there is no print
+  dollar_impact_now?: number | null
+}
+/** One futures root or cash index in the "Futures / overseas" row (macro.now.futures / macro.now.indices). */
+export interface SinceCloseMarketRow {
+  symbol: string; label: string; level: number | null; change_pct: number | null; level_only?: boolean
+  session: string; session_label: string; printed_at?: string | null; printed_text?: string; reference_date?: string | null
+}
+/** An overseas cash index the host has no feed for: never a level, only the exchange's next open in ET. */
+export interface SinceCloseOverseasRow { label: string; status: string; opens_at?: string | null; opens_text?: string }
+export interface SinceCloseMacroNow {
+  status: 'available' | 'pending'; as_of?: string | null; as_of_text?: string
+  futures: SinceCloseMarketRow[]; indices: SinceCloseMarketRow[]; missing?: string[]
+  overseas?: { status: string; label: string; rows: SinceCloseOverseasRow[] }
 }
 export interface SinceCloseWindow { label: string; close_tag: string; session_date: string; session_open: boolean }
 export interface SinceCloseFeedItem extends SinceCloseNews {
   kind: 'holding' | 'watch' | 'macro'; exposure: number; so_what: string
-  holdings: Array<{ symbol: string; held: boolean; market_value: number | null; change_pct: number }>
+  holdings: Array<{
+    symbol: string; held: boolean; market_value: number | null; change_pct: number
+    move_now_pct?: number | null; dollar_impact_now?: number | null; extended_label?: string | null
+  }>
+  /** LQ-20261107-1283: the producer ranks (rank/score/why) and folds duplicates (sources). Absent on an older
+   *  snapshot, where the card falls back to the order it received and the single `source`. */
+  rank?: number; score?: number; why?: string; sources?: string[]
+  /** Mockup v3: the heat-map level, computed by the producer from the thresholds it stores in `feed_rule.urgency`. */
+  urgency?: 'red' | 'amber' | 'green' | null
+  urgency_why?: string | null
 }
+/** The rules the snapshot's ranks and glows were computed with, so a glow is explainable a month later. */
+export interface SinceCloseFeedRule { score?: string; urgency?: Partial<Record<'red' | 'amber' | 'green' | 'none', string>> }
 export interface WeekAheadEvent { date: string; kind: 'macro' | 'fomc' | 'earnings' | 'ex_div'; label: string; time_et: string | null; symbols: string[] }
 /** LQ-1257 CIO brief, rendered as written; every field optional because that producer owns the shape. */
 export interface CioBriefWire {
@@ -30,6 +65,7 @@ export interface SinceCloseUpdated { at: string; at_et: string; reason: string; 
 export interface SinceCloseToday { label: string; basis: string; since: string; moves: SinceCloseMove[]; news: SinceCloseFeedItem[] }
 export interface SinceCloseWire {
   feed?: SinceCloseFeedItem[]
+  feed_rule?: SinceCloseFeedRule
   updated?: SinceCloseUpdated | null
   today?: SinceCloseToday | null
   week_ahead?: { events: WeekAheadEvent[]; fed_speakers?: string }
@@ -40,7 +76,11 @@ export interface SinceCloseWire {
   window?: SinceCloseWindow
   generated_at?: string
   moves?: SinceCloseMove[]
-  macro?: { headlines: SinceCloseNews[]; futures: { status: string; label?: string; quotes: Array<Record<string, unknown>> } }
+  macro?: {
+    headlines: SinceCloseNews[]
+    futures: { status: string; label?: string; quotes: Array<Record<string, unknown>> }
+    now?: SinceCloseMacroNow   // LQ-1282: the futures/cash-index row with its own as-of
+  }
   summary?: { source: 'llm' | 'cache' | 'deterministic'; text: string | null; lines: string[]; reason?: string }
   freshness?: { age_seconds: number | null; stale: boolean; window_current: boolean }
 }
