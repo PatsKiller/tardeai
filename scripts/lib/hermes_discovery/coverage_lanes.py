@@ -43,8 +43,11 @@ Advisory-only: never imports broker/execution modules.
 """
 from __future__ import annotations
 
+import importlib.util
 import os
+import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -140,21 +143,35 @@ def _cron_zone() -> ZoneInfo:
 
 
 def _health_tick_module():
-    """health_tick lives in scripts/. Cron puts that directory on sys.path[0];
-    a repo-root import uses the scripts package. Either is the same module."""
-    try:
-        import health_tick
-        return health_tick
-    except ImportError:
-        pass
-    try:
-        from scripts import health_tick
-        return health_tick
-    except ImportError as exc:
+    """Load scripts/health_tick.py by path.
+
+    Cron puts ``scripts/`` on sys.path[0]; a repo-root caller does not. One
+    file location serves both, and a missing file raises instead of looking fresh.
+    """
+    loaded = sys.modules.get("health_tick")
+    if loaded is not None and hasattr(loaded, "step_is_due") and hasattr(loaded, "load_table"):
+        return loaded
+    path = Path(__file__).resolve().parents[2] / "health_tick.py"
+    if not path.is_file():
         raise RuntimeError(
-            "health_tick is not importable — cannot judge system_health freshness "
+            f"health_tick.py is not at {path} — cannot judge system_health freshness "
             "from the writer schedule"
-        ) from exc
+        )
+    spec = importlib.util.spec_from_file_location("health_tick", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(
+            f"health_tick.py at {path} has no loader — cannot judge system_health freshness"
+        )
+    module = importlib.util.module_from_spec(spec)
+    # Register before exec so a health_tick import of itself sees this module.
+    # A failed exec must not leave a half-loaded module that the next call treats as fresh.
+    sys.modules["health_tick"] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop("health_tick", None)
+        raise
+    return module
 
 
 def _load_health_writer_schedule() -> tuple[dict[str, Any], int]:
@@ -170,10 +187,16 @@ def _load_health_writer_schedule() -> tuple[dict[str, Any], int]:
         raise RuntimeError(
             "health_tick_steps.json is unreadable — cannot judge system_health freshness"
         ) from exc
-    tick = int(table.get("tick_minutes") or 0)
-    if tick <= 0:
+    raw_tick = table.get("tick_minutes")
+    if raw_tick is None:
         raise RuntimeError(
             "health_tick_steps.json has no tick_minutes — cannot judge system_health freshness"
+        )
+    tick = int(raw_tick)
+    if tick <= 0:
+        raise RuntimeError(
+            "health_tick_steps.json tick_minutes is not positive — cannot judge "
+            "system_health freshness"
         )
     for step in table["steps"]:
         if str(step.get("step_id") or "") == _HEALTH_WRITER_STEP_ID:
@@ -191,8 +214,13 @@ def _writer_grace(step: dict[str, Any]) -> timedelta:
     This is a completion allowance, not a freshness limit.
     """
     cadence_s = int(step["cadence_minutes"]) * 60
-    timeout_s = int(step.get("timeout_s") or 0)
-    grace_s = max(cadence_s, timeout_s)
+    # A missing timeout is not zero. Grace stays one cadence, which is the
+    # stricter allowance. A declared timeout still widens it when it is longer.
+    raw_timeout = step.get("timeout_s")
+    if raw_timeout is None:
+        grace_s = cadence_s
+    else:
+        grace_s = max(cadence_s, int(raw_timeout))
     if grace_s <= 0:
         raise RuntimeError(
             f"health_tick step {_HEALTH_WRITER_STEP_ID} has no cadence — cannot judge freshness"
