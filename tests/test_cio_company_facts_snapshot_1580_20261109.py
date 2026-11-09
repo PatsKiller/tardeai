@@ -18,6 +18,14 @@ reader of an unrelated store.
 Fail-before: with ``load_snapshot`` reverted, the follower in the first test blocks on the global
 lock for the whole 4 s build and is handed the *new* snapshot (the assertion fires), and in the
 third test an unrelated store's rebuild waits behind the first store's build.
+
+LQ-20261107-1594 review round (agent2_grok, head c10db0563) added three more:
+  * a torn rebuild (an append lands inside ``store.all()``) must keep the last published entry —
+    it used to ``pop`` it, so the next rebuild started with an empty memo and every follower that
+    missed the 2 s window waited out that whole rebuild;
+  * the ~100 MB per-caller copy is serialised per store, because the server is ``ThreadingMixIn``
+    and an unbounded number of full copies is the memory the P0 sat under;
+  * and that bound must never be held across a build, or it is the 175 s queue again.
 """
 from __future__ import annotations
 
@@ -57,6 +65,9 @@ def _world(monkeypatch, tmp_path):
     def build(records):
         world["builds"] += 1
         world["started"].set()
+        during = world.get("during")
+        if during is not None:                   # an append that lands while the build reads
+            during()
         time.sleep(world["sleep"].get(world["current"], 0.0))  # nosemgrep: tq-py-missing-as-zero -- seconds to stall a fake build, not a count or a price shown to anyone
         return {"n": len(records), "store": str(world["current"])}
 
@@ -127,6 +138,113 @@ def test_a_fast_rebuild_is_seen_by_the_caller_that_waited_for_it(tmp_path, monke
     assert served == _snap(2, tmp_path)
     assert built["value"] == _snap(2, tmp_path)
     assert world["builds"] == 2, "the waiting caller must reuse the build, not start a second one"
+
+
+def test_a_torn_rebuild_keeps_the_snapshot_the_wait_path_serves(tmp_path, monkeypatch):
+    """LQ-20261107-1594 review: an append during a rebuild must not empty the memo.
+
+    ``store.all()`` is a multi-second full parse and an append during it is the very event that
+    invalidated the memo. The build it produces is torn, so it must not be published — but the
+    entry it replaces must stay, because that entry is the only thing the bounded wait has to
+    serve. Dropping it left the next rebuild with an empty memo, and every follower that missed
+    the 2 s window then blocked for the whole rebuild — the queue this change removes.
+    """
+    world = _world(monkeypatch, tmp_path)
+    _add(world, tmp_path, "g-1")
+    assert cf.load_snapshot(tmp_path) == _snap(1, tmp_path)      # published
+
+    _add(world, tmp_path, "g-2")
+    world["during"] = lambda: _add(world, tmp_path, "g-3")       # lands inside the build's read
+    assert cf.load_snapshot(tmp_path) == _snap(2, tmp_path)      # torn: built, not published
+    world["during"] = None
+
+    _add(world, tmp_path, "g-4")
+    world["sleep"][_store_path(tmp_path)] = 6.0                  # a rebuild no follower can wait for
+    world["started"].clear()
+    thread, built = _run_in_thread(lambda: cf.load_snapshot(tmp_path))
+    assert world["started"].wait(5.0), "the builder never started"
+
+    t0 = time.monotonic()
+    served = cf.load_snapshot(tmp_path)
+    waited = time.monotonic() - t0
+    thread.join(20)
+
+    assert served == _snap(1, tmp_path), "a torn rebuild must leave the last published snapshot to serve"
+    assert waited < cf._SNAPSHOT_WAIT_S + 0.5, f"the follower queued {waited:.1f}s behind the rebuild"
+    assert built["value"] == _snap(4, tmp_path), "the rebuild itself must see every append"
+
+
+def test_concurrent_callers_copy_one_at_a_time(tmp_path, monkeypatch):
+    """LQ-20261107-1594 review: the per-caller copy is bounded.
+
+    The server is ``ThreadingMixIn`` — one thread per request — and a production copy is ~100 MB.
+    Unbounded, N concurrent readers each hold a full copy for the rest of their request on top of
+    the rebuild's parse, which is the allocation the P0 was already sitting under.
+    """
+    world = _world(monkeypatch, tmp_path)
+    _add(world, tmp_path, "g-1")
+    assert cf.load_snapshot(tmp_path) == _snap(1, tmp_path)      # prime the memo: all reads are hits
+
+    real = cf.deepcopy
+    state = {"now": 0, "peak": 0, "lock": threading.Lock()}
+
+    def counting_copy(value):
+        with state["lock"]:
+            state["now"] += 1
+            state["peak"] = max(state["peak"], state["now"])
+        try:
+            time.sleep(0.1)
+            return real(value)
+        finally:
+            with state["lock"]:
+                state["now"] -= 1
+
+    monkeypatch.setattr(cf, "deepcopy", counting_copy)
+    threads = [threading.Thread(target=lambda: cf.load_snapshot(tmp_path), daemon=True) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(15)
+
+    assert state["peak"] == 1, f"{state['peak']} per-caller copies were alive at once (~100 MB each)"
+
+
+def test_an_in_flight_copy_does_not_delay_a_rebuild(tmp_path, monkeypatch):
+    """The copy lock must never be held across a build — that is the 175 s queue, not the fix.
+
+    Passes both ways by design: it pins the property the bound must not break.
+    """
+    world = _world(monkeypatch, tmp_path)
+    _add(world, tmp_path, "g-1")
+    assert cf.load_snapshot(tmp_path) == _snap(1, tmp_path)
+
+    real = cf.deepcopy
+    gate, copying, once = threading.Event(), threading.Event(), {"used": False}
+    guard = threading.Lock()
+
+    def blocking_copy(value):
+        with guard:
+            block = not once["used"]
+            once["used"] = True
+        if block:
+            copying.set()
+            gate.wait(10)
+        return real(value)
+
+    monkeypatch.setattr(cf, "deepcopy", blocking_copy)
+    reader, _ = _run_in_thread(lambda: cf.load_snapshot(tmp_path))   # a memo hit holding the copy
+    assert copying.wait(5), "the first copy never started"
+
+    _add(world, tmp_path, "g-2")
+    world["started"].clear()
+    builder, built = _run_in_thread(lambda: cf.load_snapshot(tmp_path))
+    started = world["started"].wait(2.0)
+    gate.set()
+    reader.join(15)
+    builder.join(15)
+
+    assert started, "a rebuild queued behind an in-flight copy"
+    assert built["value"] == _snap(2, tmp_path)
 
 
 def test_a_slow_rebuild_of_one_store_does_not_stall_another_store(tmp_path, monkeypatch):
