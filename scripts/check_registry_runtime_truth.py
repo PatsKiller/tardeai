@@ -60,6 +60,12 @@ Contradiction codes (rules are pure functions over the two sides; tests/test_reg
   CRON_ROW_RUNS_UNDER_TIMER      (2026-11-07) kind-cron row declared ACTIVE with no active crontab line, but a live
                                  systemd timer runs the same script: the lane runs, the declared MECHANISM is wrong
                                  (reported instead of ACTIVE_CRON_LINE_ABSENT, which would invent a contradiction)
+  CRON_ROW_RUNS_UNDER_N8N        (2026-11-09 / LQ-20261107-1575) the same for the n8n cutover: a kind-cron row
+                                 declared ACTIVE at canary/cutover with dispatch.mode live, whose crontab line was
+                                 retired, while the coordination ledger shows live runs the n8n workflows SCHEDULED
+                                 (slot_key set; a manual --apply run has none and is never scheduling evidence). The
+                                 lane runs and the registry's declared mechanism is stale — reported, not suppressed
+                                 (2026-11-09 dry run: 28 rows, event-detector and trade-ai-scalp-live among them)
   DUPLICATE_SCHEDULER           (2026-11-07 / LQ-20261107-1444) one program reachable from two schedulers at once:
                                  (a) an n8n lane whose entry script imports the module a live timer runs, (b) a cron
                                  row whose script a live timer also runs, or (c) a lane on the relay live list whose
@@ -460,7 +466,14 @@ def connect_ro(path: Path) -> sqlite3.Connection:
 
 
 def read_ledger(path: Path, since: datetime) -> tuple[str, dict[str, Any], str]:
-    """{live_runs: {lane: {count, last}}, owners: {process: {owner, epoch, switched_at}}} from the ledger, mode=ro."""
+    """{live_runs, scheduled_runs, owners} from the ledger, mode=ro.
+
+    ``scheduled_runs`` is the mechanism evidence behind CRON_ROW_RUNS_UNDER_N8N: live runs in the window that the
+    ledger records as SCHEDULED (``slot_key`` set by the dispatcher) and requested by an n8n workflow. A manual
+    ``--apply`` run carries no slot key, so it can never stand in for the scheduler. A ledger built before the
+    ``slot_key`` column existed reads ``ok`` with no scheduling evidence (the reader cannot tell the two apart, so it
+    claims nothing) rather than failing the whole report.
+    """
     try:
         conn = connect_ro(path)
     except (OSError, sqlite3.Error) as exc:
@@ -473,6 +486,18 @@ def read_ledger(path: Path, since: datetime) -> tuple[str, dict[str, Any], str]:
             (since.isoformat(),),
         ):
             live[str(lane)] = {"count": int(n), "last": last}
+        scheduled: dict[str, dict[str, Any]] = {}
+        if any(str(col[1]) == "slot_key" for col in conn.execute("PRAGMA table_info(runs)")):
+            for lane, at, by, state in conn.execute(
+                "SELECT lane_id, requested_at, requested_by, state FROM runs "
+                "WHERE mode = 'live' AND requested_at >= ? AND slot_key IS NOT NULL "
+                "AND requested_by LIKE 'n8n:workflow:%'",
+                (since.isoformat(),),
+            ):
+                ev = scheduled.setdefault(str(lane), {"count": 0, "last": None, "scheduler": None, "last_state": None})
+                ev["count"] += 1
+                if ev["last"] is None or str(at) > str(ev["last"]):
+                    ev["last"], ev["last_state"], ev["scheduler"] = at, state, by
         owners: dict[str, dict[str, Any]] = {}
         has_owners = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'effect_owners'"
@@ -486,7 +511,8 @@ def read_ledger(path: Path, since: datetime) -> tuple[str, dict[str, Any], str]:
         return SOURCE_UNAVAILABLE, {}, type(exc).__name__
     finally:
         conn.close()
-    return SOURCE_OK, {"live_runs": live, "owners": owners}, f"{len(live)} lanes with live RUN_DONE, {len(owners)} owners"
+    return (SOURCE_OK, {"live_runs": live, "scheduled_runs": scheduled, "owners": owners},
+            f"{len(live)} lanes with live RUN_DONE, {len(scheduled)} scheduled by n8n, {len(owners)} owners")
 
 
 # ── declared side ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -619,6 +645,10 @@ def evaluate(
                                   unit=unit, unit_state=state, dispatch_mode=(row.get("dispatch") or {}).get("mode"),
                                   registry_kind=s.get("kind"), registry_stage=s.get("stage")))
 
+    # Scheduling evidence for the cron branch below. An unreadable ledger (None) carries none, so the cron rule falls
+    # back to ACTIVE_CRON_LINE_ABSENT exactly as before; the real report never reaches that path, because an unreadable
+    # ledger is fatal there (build_report returns before evaluate).
+    scheduled_runs = (ledger or {}).get("scheduled_runs") or {}
     if ledger is None:
         not_measured += ["DECLARED_OFF_BUT_RUNS_LIVE", "EFFECT_OWNER_N8N_KIND_NOT_N8N", "EFFECT_OWNER_N8N_NOT_LIVE",
                          "EFFECT_OWNERSHIP_DRIFT"]
@@ -781,6 +811,8 @@ def evaluate(
             hits = [ln for ln in cron_lines if any(m in ln for m in markers)]
             under = _live_timer_for(_live_timers(systemd), _marker_programs(markers))
             if row.get("state") == "ACTIVE" and not hits:
+                sched = scheduled_runs.get(lane) if ((row.get("dispatch") or {}).get("mode") == "live"
+                                                    and s.get("stage") in LIVE_STAGES) else None
                 if under is not None:
                     # The lane does run; the registry names the wrong mechanism. Reported, not suppressed: a
                     # ACTIVE_CRON_LINE_ABSENT here would be a contradiction invented by the reader (LQ-115 lesson).
@@ -788,6 +820,19 @@ def evaluate(
                                   f"registry state ACTIVE (kind cron) but the only live scheduler running {match!r} "
                                   f"is the systemd timer {under[0]}",
                                   registry_state="ACTIVE", match=match, timer_unit=under[0], command=under[1]))
+                elif sched:
+                    # 2026-11-09 (LQ-20261107-1575): the n8n cutover retired the crontab line and left the row
+                    # kind=cron at canary with dispatch.mode live; the dispatcher fires the lane on schedule. The
+                    # ledger says so with a slot_key; a manual --apply run never does. Same class as the timer rule.
+                    out.append(_c("CRON_ROW_RUNS_UNDER_N8N", lane,
+                                  f"registry state ACTIVE (kind cron) but no active crontab line runs {match!r}: the "
+                                  f"n8n scheduler {sched['scheduler']!r} dispatches it on schedule "
+                                  f"({sched['count']} scheduled run(s) in the window, latest {sched['last']} "
+                                  f"{sched['last_state']})",
+                                  registry_state="ACTIVE", match=match, scheduler=sched["scheduler"],
+                                  scheduled_runs=sched["count"], last_requested_at=sched["last"],
+                                  last_state=sched["last_state"],
+                                  dispatch_mode=(row.get("dispatch") or {}).get("mode"), registry_stage=s.get("stage")))
                 else:
                     out.append(_c("ACTIVE_CRON_LINE_ABSENT", lane,
                                   f"registry state ACTIVE (kind cron) but no active crontab line runs {match!r}",

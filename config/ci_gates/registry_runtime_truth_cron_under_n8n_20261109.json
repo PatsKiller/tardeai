@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "registry_runtime_truth_cron_under_n8n_20261109",
+  "files": [
+    "tests/test_registry_runtime_truth_cron_under_n8n_20261109.py"
+  ],
+  "anchor": "REGISTRY_RUNTIME_TRUTH_CRON_UNDER_N8N_20261109",
+  "comment": [
+    "ANCHOR: REGISTRY_RUNTIME_TRUTH_CRON_UNDER_N8N_20261109 — LQ-20261107-1575:",
+    "a kind-cron ACTIVE row at canary with dispatch.mode live whose crontab line the n8n cutover retired",
+    "is named CRON_ROW_RUNS_UNDER_N8N when the ledger records scheduled (slot_key) n8n runs, never reported",
+    "ACTIVE_CRON_LINE_ABSENT. Synthetic fixtures only; no live ledger, docker, crontab or systemctl."
+  ]
+}

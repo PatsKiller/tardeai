@@ -108,6 +108,20 @@ when the declaration has a `kind: systemd` row, so a fixture repo never shells o
 deliberately). Read-only dry run on this host, 2026-11-07: 16 contradictions / fingerprint `32bdd14c5277ca79` before,
 27 / `6e106785948d1ad6` after, `systemd ok 309 units from 2 managers (119 active)` in ~4 s.
 
+### 2b. a cron row the n8n dispatcher runs is named (2026-11-09, LQ-20261107-1575)
+
+The n8n cutover retired crontab lines but left their registry rows `kind: cron` at canary with `dispatch.mode: live`.
+With no active crontab line, the checker reported `ACTIVE_CRON_LINE_ABSENT` — "the registry says the job runs and it
+does not" — for lanes the dispatcher fires on schedule. 28 rows on 2026-11-09, event-detector and trade-ai-scalp-live
+among them, every one with live runs in the coordination ledger whose `slot_key` is set and whose `requested_by` is an
+n8n workflow.
+
+`CRON_ROW_RUNS_UNDER_N8N` names the mechanism instead, with the scheduler, the scheduled-run count and the latest run's
+time and state as evidence. It fires only for an ACTIVE `kind: cron` row at canary/cutover with `dispatch.mode: live`;
+a manual `--apply` run has no `slot_key` and is never scheduling evidence; a live timer under the same row is named
+first (`CRON_ROW_RUNS_UNDER_TIMER`); without scheduled evidence the row is still reported absent. The finding is a
+registry row to correct by its owner — the lane runs, the declared mechanism is stale — never an auto-remediation.
+
 
 ## 3. Options desk quote refresh — `scripts/options_desk_quote_refresh.py`
 
