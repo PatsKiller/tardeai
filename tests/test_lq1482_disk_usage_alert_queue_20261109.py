@@ -2,7 +2,7 @@
 
 A critical mount queues exactly one host intent. A mount under the warn threshold queues none.
 A coordination ledger that is busy for one attempt is retried, so the breach is still queued.
-A ledger that stays busy exits 75, not 1. Synthetic measurements and a temp ledger. No send.
+A ledger that stays busy exits 69, not 75. Synthetic measurements and a temp ledger. No send.
 """
 from __future__ import annotations
 
@@ -117,9 +117,11 @@ def test_a_ledger_that_stays_busy_is_not_a_terminal_exit(tmp_path, monkeypatch):
     assert n == 0
 
 
-def test_exit_69_is_retried_and_exit_75_is_a_flock_skip(tmp_path):
-    """disk-usage-monitor is lock_kind flock. Child exit 75 is RUN_SKIPPED_LOCK, which
-    transient-2 marks skipped. Exit 69 is RUN_FAILED exit_69, which transient-2 retries."""
+def test_exit_69_is_retried_and_bare_exit_75_is_a_flock_skip(tmp_path):
+    """disk-usage-monitor is lock_kind flock. Its busy path does not print
+    'database is locked', so child exit 75 is RUN_SKIPPED_LOCK (n8n_run_executor._spawn
+    only falls through when the child reported a sqlite lock). transient-2 marks that
+    skip skipped. Exit 69 is RUN_FAILED exit_69, which transient-2 retries."""
     from scripts import n8n_run_executor as X
     from scripts.lib.n8n_retry_policy import load_policies, verdict
 
@@ -141,9 +143,9 @@ def test_exit_69_is_retried_and_exit_75_is_a_flock_skip(tmp_path):
     }
     policy = load_policies().policies["transient-2"]
 
-    def _classify(code: int):
+    def _classify(code: int, *, stdout: str = "", stderr: str = ""):
         def runner(argv, *, timeout, env, cwd):
-            return SimpleNamespace(returncode=code, stdout="", stderr="database is locked")
+            return SimpleNamespace(returncode=code, stdout=stdout, stderr=stderr)
 
         receipt = X.execute(
             row, entry, env={}, state_root=tmp_path, code_root=tmp_path, runner=runner,
@@ -160,3 +162,9 @@ def test_exit_69_is_retried_and_exit_75_is_a_flock_skip(tmp_path):
     assert held["state"] == "RUN_SKIPPED_LOCK"
     assert held["reason"] == "flock_held"
     assert held_verdict == "skipped"
+
+    # LQ-1445: lock text on exit 75 is retried. This lane's receipt does not print that text.
+    carved, carved_verdict = _classify(75, stderr="database is locked")
+    assert carved["state"] == "RUN_FAILED"
+    assert carved["reason"] == "exit_75"
+    assert carved_verdict == "retryable"

@@ -1,6 +1,8 @@
 """ANCHOR: lq1409_sqlite_lock_exit_tempfail — LQ-20261107-1409 batch2 REWORK.
 
-sqlite lock / ledger busy must exit EX_TEMPFAIL (75), not 1.
+sqlite lock / ledger busy must not exit 1.
+The comms consumer prints the lock and exits 75. disk-usage-monitor does not print
+it and is lock_kind flock, so a bare 75 is a flock skip; that lane exits 69.
 transient-2 retries {69, 75, 111} only; exit 1 is terminal on attempt 1.
 
 REWORK (grok-b review): prove the connect_rw open path, not only string helpers;
@@ -139,8 +141,11 @@ def test_comms_connect_rw_non_lock_stays_exit_1(monkeypatch, tmp_path):
     assert rc == 1
 
 
-def test_disk_ex_tempfail_constant_is_75():
-    assert DISK.EX_TEMPFAIL == 75
+def test_disk_busy_exit_is_69_because_bare_75_is_a_flock_skip():
+    """LQ-20261107-1493: this lane is lock_kind flock and does not print the sqlite
+    phrase, so exit 75 is RUN_SKIPPED_LOCK. Exit 69 is the code transient-2 retries."""
+    assert DISK.EX_UNAVAILABLE == 69
+    assert not hasattr(DISK, "EX_TEMPFAIL")
     assert "intent_store_unavailable" in DISK._LEDGER_BUSY_REASONS
 
 
@@ -234,7 +239,7 @@ def test_disk_ledger_busy_only_via_counter(monkeypatch, tmp_path):
         now=datetime(2026, 11, 9, 5, 0, tzinfo=timezone.utc),
         state_path=state_path,
     )
-    assert rc == DISK.EX_TEMPFAIL == 75
+    assert rc == DISK.EX_UNAVAILABLE == 69
 
 
 def test_disk_mixed_statvfs_and_ledger_busy_exits_1(monkeypatch, tmp_path):
