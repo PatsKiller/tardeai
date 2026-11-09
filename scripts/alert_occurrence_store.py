@@ -22,6 +22,10 @@ from typing import Any
 
 from alert_dedupe import PriorState, should_notify
 
+#: delivery_reason prefix of the terminal row a non-ACTIVE (SHADOW/OFF) IMMEDIATE decision records: the legacy sender
+#: owned delivery, so the row is evidence of the decision, never work for a consumer (LQ-20261107-1607).
+SHADOW_DELIVERY_REASON_PREFIX = "shadow_legacy_owns_delivery:"
+
 MATERIAL_REASONS = {
     "severity_increased", "operator_action_now_required", "state_version_changed",
     "recurred_after_resolution", "condition_resolved",
@@ -255,18 +259,28 @@ def record_occurrence(
         queued = delivered = False
         delivery_id = None
         if decision.notify and route.route_mode == "IMMEDIATE" and not route.suppression_reason:
+            # LQ-20261107-1607: only ACTIVE hands the row to a delivery worker. In SHADOW (and OFF) the legacy sender
+            # has ALREADY delivered (or legacy-suppressed) this message before this transaction ran, and the
+            # normalized consumer must never send it. Writing 'queued' here built a work queue nobody may drain:
+            # every row from 2026-09-16 on was SHADOW, read by the CC v3 audit as a dead CRITICAL_OPERATIONS
+            # queue, and one deliver_immediate() call away from re-sending all of them. The shadow decision is
+            # still recorded (that is SHADOW's purpose), as a terminal row that says who owned delivery.
+            active = str(runtime_mode or "").upper() == "ACTIVE"
             cur.execute(
                 """
                 INSERT INTO alert_notification_deliveries
                     (occurrence_id, alert_id, incident_id, attempt_seq, logical_destination,
-                     route_mode, delivery_status, delivery_reason)
-                VALUES (%s,%s,%s,1,%s,'IMMEDIATE','queued',%s)
+                     route_mode, delivery_status, delivery_reason, completed_at)
+                VALUES (%s,%s,%s,1,%s,'IMMEDIATE',%s,%s, CASE WHEN %s THEN NULL ELSE now() END)
                 RETURNING id
                 """,
-                (occurrence_id, alert_id, incident_id, route.logical_destination, decision.reason),
+                (occurrence_id, alert_id, incident_id, route.logical_destination,
+                 "queued" if active else "suppressed",
+                 decision.reason if active else f"{SHADOW_DELIVERY_REASON_PREFIX}{decision.reason}",
+                 active),
             )
             delivery_id = cur.fetchone()[0]
-            queued = True
+            queued = active
         elif decision.notify and route.route_mode == "DIGEST" and route.digest_bucket:
             cur.execute(
                 """

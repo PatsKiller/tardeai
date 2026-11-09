@@ -979,6 +979,24 @@
    "expected": "RETIRED 2026-11-06 -> NO_EVIDENCE expected (was PROVEN-partial: CLOSED_BUT_HELD never repaired)",
    "retired": "2026-11-06 operator decision (\"retire alpaca, paper background\"): lane alpaca-paper-reconciler RETIRED in config/lane_registry.json (retire_batch retire-alpaca-paper-20261106); no new evidence will be written",
    "audit_ref": "B-G6"
+  },
+  {
+    "id": "alert_delivery_queue_hygiene",
+    "name": "IMMEDIATE delivery queue expiry + stuck-consumer escalation",
+    "category": "queue_hygiene",
+    "code": "scripts/alert_delivery_queue_hygiene.py",
+    "evidence_source": {
+      "kind": "json",
+      "base": "state",
+      "path": "data/runtime/alert-delivery-queue-hygiene_last.json"
+    },
+    "success_predicate": {
+      "description": "a run closed at least one undeliverable 'queued' row (summary.expired > 0) without sending; escalation is a system_health alert_events row, not a heal",
+      "json_path": "summary.expired",
+      "min_count": 1
+    },
+    "expected": "NO_EVIDENCE until the lane is promoted to canary (shadow dry runs write no receipt)",
+    "audit_ref": "LQ-20261107-1607"
   }
  ]
 }

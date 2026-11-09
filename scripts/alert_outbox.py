@@ -361,15 +361,27 @@ def _record_delivery(cur, alert_id, route_mode, logical_destination, status, rea
             CASE WHEN %s IN ('sent', 'suppressed') THEN now() ELSE NULL END
         )
         ON CONFLICT DO NOTHING
+        RETURNING id
         """,
         (occurrence_id, alert_id, incident_id, occurrence_id,
          logical_destination, route_mode, status, reason, msg_fp,
          rendered_message, status),
     )
-    if cur.rowcount != 1:
+    inserted = cur.fetchone()
+    if not inserted:
         # Conflict — one_sent_per_occurrence or (occurrence_id, attempt_seq).
         # The attempt is already recorded; do not move the counters again.
         return
+
+    # LQ-20261107-1607: the work item this attempt answers is closed. Without this the occurrence's 'queued' row
+    # stayed 'queued' forever beside a 'sent' attempt, so the queue age contract (queued <= 10 min) could never
+    # tell a drained queue from a dead one.
+    cur.execute(
+        """UPDATE alert_notification_deliveries
+              SET delivery_status = 'abandoned', delivery_reason = 'superseded_by_attempt', completed_at = now()
+            WHERE occurrence_id = %s AND delivery_status = 'queued' AND id <> %s""",
+        (occurrence_id, inserted[0]),
+    )
 
     if status == "sent":
         cur.execute(
@@ -403,7 +415,10 @@ def pending_immediate(limit: int = 50) -> list[dict[str, Any]]:
             SELECT e.alert_id, e.logical_destination, e.payload
             FROM alert_notification_events e
             WHERE e.route_mode='IMMEDIATE'
-              AND COALESCE(e.last_delivery_status,'') <> 'sent'
+              -- LQ-20261107-1607: claim only real work. "<> 'sent'" also claimed 'suppressed' (every SHADOW decision,
+              -- whose message the legacy sender already delivered) and 'abandoned' (expired) rows, so flipping to
+              -- ACTIVE would have re-sent the whole shadow history.
+              AND e.last_delivery_status IN ('queued', 'failed')
               AND (e.expires_at IS NULL OR e.expires_at > now())
             ORDER BY e.created_at ASC
             LIMIT %s
@@ -422,8 +437,15 @@ def resolve_channel_secret(logical_destination: str | None) -> tuple[str, str | 
     return os.getenv("TELEGRAM_CHAT_ID", ""), None
 
 
-def deliver_immediate(send_func=None, limit: int = 50) -> dict[str, Any]:
-    """Send pending immediate alerts. Tests should pass send_func; production uses telegram_transport."""
+def deliver_immediate(send_func=None, limit: int = 50, *, mode: str | None = None) -> dict[str, Any]:
+    """Send pending immediate alerts. Tests should pass send_func; production uses telegram_transport.
+
+    LQ-20261107-1607: refuses unless the runtime mode is ACTIVE. In SHADOW/OFF the legacy sender owns delivery; a
+    consumer that sends here duplicates every alert the operator already received.
+    """
+    effective = (mode or get_mode()).upper()
+    if effective != "ACTIVE":
+        return {"ok": False, "sent": 0, "suppressed": 0, "refused": f"runtime_mode_{effective.lower()}_legacy_owns_delivery"}
     if send_func is None:
         from telegram_transport import send_message
         send_func = send_message

@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "alert_delivery_queue_hygiene_20261109",
+  "files": [
+    "tests/test_alert_delivery_queue_hygiene_20261109.py"
+  ],
+  "anchor": "ALERT_DELIVERY_QUEUE_HYGIENE_20261109",
+  "comment": [
+    "ANCHOR: ALERT_DELIVERY_QUEUE_HYGIENE_20261109 — SHADOW IMMEDIATE decisions are terminal rows, the",
+    "consumer never sends outside ACTIVE, and the alert-delivery-queue-hygiene lane expires (never",
+    "sends) and escalates a stuck queue once per hour."
+  ]
+}
