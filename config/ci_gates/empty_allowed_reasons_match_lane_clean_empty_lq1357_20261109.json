@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "empty_allowed_reasons_match_lane_clean_empty_lq1357_20261109",
+  "files": [
+    "tests/test_empty_allowed_reasons_match_lane_clean_empty_lq1357_20261109.py"
+  ],
+  "anchor": "EMPTY_ALLOWED_REASONS_MATCH_LANE_CLEAN_EMPTY_LQ1357_20261109",
+  "comment": [
+    "ANCHOR: EMPTY_ALLOWED_REASONS_MATCH_LANE_CLEAN_EMPTY_LQ1357_20261109 — FINDING 20261109T0255Z:",
+    "health-contract empty_allowed_reasons must include the lane's own clean-empty literals",
+    "(reconcile-exit-advisory-outcomes, build-symbol-profiles-at-0-19, daily-incubator-refresh).",
+    "Pins contracts + EMPTY_ALLOWED_REASONS enum + n8n_output_verdict.evaluate on synthetic receipts."
+  ]
+}

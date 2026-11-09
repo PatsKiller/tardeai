@@ -112,6 +112,11 @@ EMPTY_ALLOWED_REASONS = frozenset(
         "deferred_to_batch",
         "credit_cap_reached",
         "data_blocked",
+        # LQ-20261107-1357 / FINDING 20261109T0255Z: lane-owned clean empties (must match script vocabulary).
+        "up_to_date",          # reconcile-exit-advisory-outcomes CLEAN_EMPTY_REASONS
+        "all_skipped",         # exit-advisory + build-symbol-profiles zero-work after selection
+        "no_stale_symbols",    # build-symbol-profiles-at-0-19: nothing stale to rebuild
+        "already_refreshed",   # daily-incubator-refresh: rows already current (scan_refresh_lost stays fatal)
     }
 )
 EVIDENCE_KINDS = frozenset({"store_rows", "receipt_field", "ledger_row", "file_artifact"})
