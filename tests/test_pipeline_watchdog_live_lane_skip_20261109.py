@@ -19,7 +19,7 @@ import json
 import logging
 import sys
 import types
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -83,7 +83,7 @@ class _Conn:
 
 
 def _row(script, command, *, critical=True):
-    now = datetime.now()
+    now = datetime.now(timezone.utc).astimezone()  # aware local clock; only hour/minute are used
     # due now (latency 0): the check is only reached when the job is overdue
     return (script, script, now.hour, now.minute, 0, 1, critical, command, "*")
 

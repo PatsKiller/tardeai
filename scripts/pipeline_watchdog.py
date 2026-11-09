@@ -329,9 +329,12 @@ def _lane_registry_paths():
     try:
         from lib.live_project_root import get_live_project_root
 
-        paths.append(Path(get_live_project_root()) / "config" / "lane_registry.json")
-    except Exception:
-        pass
+        live_root = Path(get_live_project_root())
+    except Exception as exc:  # an unresolvable release pin must not silence the guard
+        log.warning("[watchdog] live project root unresolved (%s); using this tree's registry", type(exc).__name__)
+        live_root = None
+    if live_root is not None:
+        paths.append(live_root / "config" / "lane_registry.json")
     paths.append(Path(PROJECT_ROOT) / "config" / "lane_registry.json")
     paths.append(Path(__file__).resolve().parents[1] / "config" / "lane_registry.json")
     return list(dict.fromkeys(paths))
@@ -372,9 +375,14 @@ def _live_lane_index(paths=None):
             if not isinstance(row, dict):
                 continue
             try:
-                if dispatch_mode(row) != "live":
-                    continue
-            except Exception:
+                mode = dispatch_mode(row)
+            except Exception as exc:
+                # Not silent: the row cannot be classified, so it is NOT live (the dispatcher
+                # refuses it too) and the watchdog keeps checking it.
+                log.error("[watchdog] lane %s dispatch block unreadable (%s); treating as not live",
+                          row.get("lane_id"), type(exc).__name__)
+                mode = "off"
+            if mode != "live":
                 continue
             sched = row.get("scheduler") or {}
             match = sched.get("match")

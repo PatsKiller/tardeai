@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "pipeline_watchdog_live_lane_skip_20261109",
+  "files": [
+    "tests/test_pipeline_watchdog_live_lane_skip_20261109.py"
+  ],
+  "anchor": "PIPELINE_WATCHDOG_LIVE_LANE_SKIP_20261109",
+  "comment": [
+    "ANCHOR: PIPELINE_WATCHDOG_LIVE_LANE_SKIP_20261109 — LQ-20261107-1722. pipeline_schedule",
+    "rows predate the n8n cutover, so a lane with dispatch.mode live had a second scheduler:",
+    "pipeline_watchdog retried the script outside the coordination ledger, without the lane's",
+    "lock, from the dev checkout (incubator-llm-screener ran twice on 2026-11-09). The watchdog",
+    "now skips any row a live-dispatched lane owns, matching on the script AND the lane's flags",
+    "(news-ingestion-tail runs --tail-rotate live; the un-flagged priority row stays checked).",
+    "A malformed dispatch block parses to off and stays checked; an unreadable registry fails",
+    "closed for the whole cycle. Tests are hermetic: synthetic registry, no DB, no subprocess."
+  ]
+}
