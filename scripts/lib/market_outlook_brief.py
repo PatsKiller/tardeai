@@ -155,6 +155,13 @@ def _anchor(record: Mapping[str, Any], index_key: str) -> Optional[float]:
     row = levels.get(index_key) if isinstance(levels, Mapping) else None
     if not isinstance(row, Mapping):
         return None
+    # The producer stores the cash close on the record. Every medium uses that number.
+    # Recovering an anchor from a level is only for a record that predates the field.
+    explicit = row.get("anchor")
+    if isinstance(explicit, (int, float)) and not isinstance(explicit, bool):
+        return float(explicit)
+    if row.get("basis") == "not_measured":
+        return None
     for side in LEVEL_SIDES:
         for item in row.get(side) or []:
             if not isinstance(item, Mapping):

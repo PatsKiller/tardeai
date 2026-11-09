@@ -248,17 +248,52 @@ def test_brief_lists_every_unknown_with_its_reason(policy):
     assert "DRY RUN: nothing was written" in text
 
 
-# ── 7. levels are stated on the index scale, and labelled ETF-derived -------------------------------------------
-def test_levels_are_scaled_to_the_index_and_labelled(policy):
+# ── 7. the anchor is the cash close, never an ETF times a factor ----------------------------------------------
+def test_a_missing_cash_close_is_not_measured_and_not_an_etf_factor(policy):
     bundle = _equity_bundle()
     levels = lvl_mod.key_levels(bundle, policy)
-    spx = levels["SPX"]
-    assert spx["basis"] == "etf_derived"
     spy_close = bundle.bars["SPY"][-1]["close"]
-    assert spx["anchor"] == pytest.approx(spy_close * policy["levels"]["etf_to_index"]["SPX"], rel=1e-4)
-    # every stated level sits on the index's scale, not the ETF's
-    for row in spx["support"] + spx["resistance"]:
-        assert row["level"] > spy_close * 5
+    factor = policy["levels"]["etf_to_index"]["SPX"]
+    spx = levels["SPX"]
+    assert spx["basis"] == "not_measured"
+    assert spx["anchor"] is None
+    assert spx["anchor"] != pytest.approx(spy_close * factor, rel=1e-4)
+    assert spx["support"] == [] and spx["resistance"] == []
+    assert "not measured" in spx["note"]
+
+
+def test_the_anchor_is_the_stored_cash_close_not_the_etf_factor(policy):
+    bundle = _equity_bundle()
+    bundle.extended = [
+        {"symbol": "$SPX", "price": 7376.86, "feed": "schwab", "session": "overnight",
+         "bar_start": "2026-11-08T20:00:00-05:00", "bar_end": "2026-11-08T20:00:00-05:00"},
+        {"symbol": "$SPX", "price": 100.0, "feed": "yfinance", "session": "overnight",
+         "bar_end": "2026-11-08T21:00:00-05:00"},
+    ]
+    levels = lvl_mod.key_levels(bundle, policy)
+    spx = levels["SPX"]
+    assert spx["basis"] == "cash"
+    assert spx["anchor"] == 7376.86
+    assert spx["source"] == "schwab"
+    assert spx["as_of"] == "2026-11-08T20:00:00-05:00"
+    assert spx["proxy"] is None
+    spy_close = bundle.bars["SPY"][-1]["close"]
+    assert spx["anchor"] != pytest.approx(spy_close * policy["levels"]["etf_to_index"]["SPX"], rel=1e-3)
+    # The producer record carries the cash close. The brief does not recompute it.
+    from scripts.lib.market_outlook_brief import _anchor
+    assert _anchor({"key_levels": {"SPX": spx}}, "SPX") == 7376.86
+    cats = cat_mod.build_categories(_ctx(bundle, policy))
+    built = rec_mod.build(
+        now=SUNDAY, mode="sunday", seq=1, policy_version=policy_mod.policy_version(),
+        score=scoring.compute(cats, policy, None),
+        confidence=conf_mod.compute(cats, policy, SUNDAY, u_event=0.85),
+        regime=regime_mod.Regime(), categories=cats, scenarios={}, levels=levels,
+        catalysts=[], what_would_change_view=[], actions_template={}, prior_record_id=None,
+    )
+    assert built["key_levels"]["SPX"]["anchor"] == 7376.86
+    assert built["key_levels"]["SPX"]["as_of"] == "2026-11-08T20:00:00-05:00"
+    assert built["key_levels"]["COMPX"]["basis"] == "not_measured"
+    assert built["key_levels"]["COMPX"]["anchor"] is None
 
 
 # ── 8. the write path: validation first, then ON CONFLICT DO NOTHING --------------------------------------------

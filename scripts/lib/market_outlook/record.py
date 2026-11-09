@@ -150,6 +150,11 @@ def build(
                 "support": v.get("support") or [],
                 "resistance": v.get("resistance") or [],
                 "basis": v.get("basis"),
+                "anchor": v.get("anchor"),
+                "as_of": v.get("as_of"),
+                "source": v.get("source"),
+                "session": v.get("session"),
+                "note": v.get("note"),
             }
             for k, v in (levels or {}).items()
         },
