@@ -431,3 +431,28 @@ def test_the_alert_text_never_prints_a_missing_number_as_zero():
     _, text = DM.budget_intent_text(finding)
     assert "0.00 GiB" not in text and " 0 GiB" not in text
     assert text.count("an unknown number of GiB") == 2
+
+
+def test_the_digest_prints_a_root_with_no_rows_here_as_not_measured_not_empty():
+    """claude_scratch has no rows in the standing lane (the tmp lane owns /tmp/claude-1000). "0.00 of 10.00 no_rows"
+    still reads as "this root holds nothing"; the digest prints "-" for the three numbers and names no_rows, and a
+    cap_unknown root's unreadable measurement is "-" the same way."""
+    manifest = {
+        "generated_at": "2026-11-09T18:44:05+00:00", "host": "h", "home": "/h",
+        "rules_path": "/r.json", "rules_sha256": "a" * 64, "reference_sources": ["processes"], "process_cwds": 1,
+        "totals": {"candidates": 0, "reclaimable_gb": 0.0, "unmeasured_candidates": 0, "by_kind": {},
+                   "excluded": 0, "excluded_bytes": 0, "excluded_by_reason": {}, "report_only": {}},
+        "per_rule": {}, "items": [], "excluded": [],
+        "budget_report": [
+            {"root": "claude_scratch", "path": "/tmp/claude-1000", "cap_bytes": 10 * GIB, "measured_bytes": 0,
+             "planned_bytes": 0, "floor_bytes": 0, "status": "no_rows", "escalate": False},
+            {"root": "agent_tmp", "path": "/h/.cache/agent-tmp", "cap_bytes": None, "measured_bytes": None,
+             "planned_bytes": 0, "floor_bytes": 0, "status": "cap_unknown", "escalate": True},
+        ],
+    }
+    text = H.human_summary(manifest, 0)
+    scratch = next(ln for ln in text.splitlines() if ln.strip().startswith("claude_scratch"))
+    measured = scratch.split(" of ")[0].strip()          # "claude_scratch   -", never "... 0.00"
+    assert measured.endswith("-") and "no_rows" in scratch
+    agent = next(ln for ln in text.splitlines() if ln.strip().startswith("agent_tmp"))
+    assert agent.split(" of ")[0].strip().endswith("-"), "an unreadable cap/measurement is unknown, never a zero"

@@ -2628,6 +2628,12 @@ def human_summary(m: Mapping[str, Any], top_n: int) -> str:
         # reclaim this pass would make. A root whose protected floor alone is over cap says ESCALATE, never silent.
         lines += ["", "ABSOLUTE BUDGETS  (GiB measured of cap | planned = reclaimed by this pass, floor = held)"]
         for b in m["budget_report"]:
+            # A root with no rows here was not measured by THIS lane (/tmp/claude-1000 belongs to the tmp lane), so
+            # its three numbers print "-", not a 0.00 a reader would take for "this root holds nothing".
+            if b.get("status") == "no_rows":
+                lines.append(f"  {b['root']:<18} {'-':>8} of {_gib_text(b['cap_bytes']):>7}"
+                             f"  planned {'-':>7}  floor {'-':>8}  no_rows")
+                continue
             lines.append(
                 f"  {b['root']:<18} {_gib_text(b['measured_bytes']):>8} of {_gib_text(b['cap_bytes']):>7}"
                 f"  planned {_gib_text(b['planned_bytes']):>7}  floor {_gib_text(b['floor_bytes']):>8}"
