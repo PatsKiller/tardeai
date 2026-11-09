@@ -1631,11 +1631,10 @@ def _receipt_statuses(ledger: Path, keys: list[str], *, project: str = "trade-ai
         conn.row_factory = sqlite3.Row
         for start in range(0, len(keys), _STATUS_IN_CHUNK):
             part = keys[start : start + _STATUS_IN_CHUNK]
-            marks = ",".join("?" * len(part))
-            rows = conn.execute(
-                f"SELECT store_key, receipt_json FROM receipts WHERE store_key IN ({marks})",
-                [f"{project}:{key}" for key in part],
-            ).fetchall()
+            # Placeholders are "?" repeated, never values. The values go in the parameter tuple.
+            marks = ",".join("?" for _ in part)
+            sql = "SELECT store_key, receipt_json FROM receipts WHERE store_key IN (" + marks + ")"
+            rows = conn.execute(sql, tuple(f"{project}:{key}" for key in part)).fetchall()
             for row in rows:
                 store_key = str(row["store_key"] or "")
                 idem = store_key.split(":", 1)[1] if ":" in store_key else store_key
@@ -1759,7 +1758,12 @@ def main(argv: list[str] | None = None) -> int:
     resume = _resume_occurrences(prev)
     prefetched: dict[str, dict[str, Any]] = {}
     if client is not None:
-        asked = [occurrence_key(idem_key(f, day), resume.get(idem_key(f, day), 0)) for f in findings]
+        asked = []
+        for f in findings:
+            base = idem_key(f, day)
+            occ = resume.get(base)
+            # No resumed occurrence means the day key itself. 0 is that case, not a missing measurement.
+            asked.append(base if not isinstance(occ, int) or isinstance(occ, bool) or occ <= 0 else occurrence_key(base, occ))
         prefetched = _receipt_statuses(_ledger_path(root), asked)
         NOTES["status_prefetch"] = f"ok:asked={len(asked)}:hit={sum(1 for key in asked if key in prefetched)}"
     if args.apply:
