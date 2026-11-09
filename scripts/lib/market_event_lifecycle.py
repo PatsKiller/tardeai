@@ -671,6 +671,193 @@ def _canonical(sector: Any) -> str:
     return canonical_sector(str(sector or ""))
 
 
+# --------------------------------------------------------------------------- alerts
+
+
+#: the one suggested action per Fi-text stage; the design's step 6 names exactly these four
+FI_ACTIONS = {
+    "ADD_T2_READY": "review the second tranche; advisory only",
+    "ADD_T3_READY": "review the third tranche; advisory only",
+    "EXIT_READY": "review the exit; advisory only",
+    "STOPPED_OUT": "recovery_state owns re-entry; advisory only",
+}
+
+
+def _alert_trigger(res: Mapping[str, Any]) -> str:
+    """The number/reason that fired it, for the text's ``trigger`` slot (the formatter shortens it)."""
+    reasons = [str(x) for x in (res.get("reasons") or []) if str(x).strip()]
+    head = f"{res.get('stage')}" + (f": {reasons[0]}" if reasons else "")
+    return head[:160]
+
+
+def alert_events(results: Sequence[Mapping[str, Any]], *, now: datetime) -> tuple[list[dict[str, Any]],
+                                                                                 list[dict[str, Any]]]:
+    """``(texts, digest)`` for the transitions this run produced.
+
+    A transition is one row result carrying an ``alert`` (``market_event_plan._with_alert`` attaches it once per
+    ``(episode, symbol, label, to_stage)``). The four Fi-text stages become a ``market_event`` critical text through
+    the same primitive the brief uses; every transition, Fi-text or not, becomes a digest entry. An unchanged stage
+    carries no ``alert`` at all, so it produces neither.
+    """
+    texts: list[dict[str, Any]] = []
+    digest: list[dict[str, Any]] = []
+    for r in results or []:
+        a = r.get("alert")
+        if not isinstance(a, Mapping) or not a.get("event_id"):
+            continue
+        item = {
+            "event_id": a.get("event_id"),
+            "episode_id": r.get("episode_id"),
+            "symbol": r.get("symbol"),
+            "account_label": a.get("account_label"),
+            "from_stage": a.get("from_stage"),
+            "to_stage": a.get("stage"),
+            "class": a.get("class"),
+        }
+        digest.append(item)
+        if str(a.get("class")) != "fi_text":
+            continue
+        texts.append({
+            "alert_class": "market_event",
+            "event_id": a["event_id"],
+            "symbol": r.get("symbol"),
+            "trigger": _alert_trigger(r),
+            "action": FI_ACTIONS.get(str(a.get("stage")), "review the position; advisory only"),
+            "_transition": item,
+        })
+    return texts, digest
+
+
+def _default_text(event: Mapping[str, Any]) -> dict[str, Any]:
+    try:
+        from lib.critical_texts import send_critical_text
+    except ImportError:  # pragma: no cover - scripts/ off sys.path
+        from .critical_texts import send_critical_text  # type: ignore[no-redef]
+    return send_critical_text(dict(event))
+
+
+def deliver_alerts(results: Sequence[Mapping[str, Any]], *, now: datetime, send: bool = False,
+                   text_sender: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+                   ) -> dict[str, Any]:
+    """Plan (``send=False``) or deliver (``send=True``) one text per Fi-text transition.
+
+    The cap, the allowlist and the event-id dedupe are ``critical_texts``' own — this lane passes the event and
+    records what came back. ``send=False`` is the dry run: the planned texts are printed and nothing leaves.
+    """
+    texts, digest = alert_events(results, now=now)
+    out: dict[str, Any] = {"planned": [{k: v for k, v in t.items() if k != "_transition"} for t in texts],
+                           "sent": [], "refused": [], "digest": digest}
+    if not send:
+        return out
+    sender = text_sender or _default_text
+    for t in texts:
+        ev = {k: v for k, v in t.items() if k != "_transition"}
+        try:
+            res = dict(sender(ev) or {})
+        except Exception as exc:  # noqa: BLE001 - one failed text must not lose the run's transitions
+            res = {"sent": False, "reason": f"{type(exc).__name__}: {exc}"}
+        rec = {**t["_transition"], "sent": bool(res.get("sent")),
+               "reason": res.get("reason") or res.get("detail")}
+        (out["sent"] if rec["sent"] else out["refused"]).append(rec)
+    return out
+
+
+def record_alerts(conn: Any, delivered: Mapping[str, Any], now: datetime) -> int:
+    """Stamp ``alert_event_id``/``alerted_at`` on the row each text was sent for. Returns the rows stamped."""
+    cur = conn.cursor()
+    stamped = 0
+    for rec in delivered.get("sent") or []:
+        cur.execute(
+            "UPDATE market_event_lifecycle SET alert_event_id = %s, alerted_at = %s "
+            "WHERE episode_id = %s AND symbol = %s AND account_label = %s AND to_stage = %s "
+            "AND alert_event_id IS NULL",
+            (rec.get("event_id"), now, rec.get("episode_id"), rec.get("symbol"),
+             rec.get("account_label"), rec.get("to_stage")))
+        stamped += max(0, int(cur.rowcount or 0))
+    return stamped
+
+
+def reconcile_unalerted(conn: Any, db_query: Callable[..., list[dict[str, Any]]] | None, *, now: datetime,
+                        send: bool = False, text_sender: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+                        limit: int = 20, lookback_hours: int = 24) -> dict[str, Any]:
+    """Re-send Fi-text transitions that were persisted without a recorded alert — **at most once each**.
+
+    The design's self-heal: a run that wrote the row and then failed to deliver leaves a row with no event id. This
+    step finds those rows (``alert_attempts = 0``, inside the lookback), builds the event back from the row itself,
+    and sends it once. An attempt is recorded whatever the outcome, so a text that is refused for its own reason
+    (the hourly cap, the allowlist) is not retried forever: it becomes a fix item, not a loop.
+    """
+    out: dict[str, Any] = {"candidates": 0, "sent": 0, "refused": 0, "rows": []}
+    if db_query is None:
+        return {**out, "skipped": "no reader"}
+    try:
+        rows = db_query(
+            "SELECT id, episode_id, symbol, account_label, from_stage, to_stage, trigger, at "
+            "FROM market_event_lifecycle WHERE alert_event_id IS NULL AND alert_attempts = 0 "
+            "AND to_stage = ANY(%s) AND created_at > now() - make_interval(hours => %s) "
+            "ORDER BY id LIMIT %s",
+            (list(mep.FI_TEXT_STAGES), int(lookback_hours), int(limit))) or []
+    except Exception as exc:  # noqa: BLE001 - a reconcile that cannot read is reported, never a silent zero
+        return {**out, "error": f"{type(exc).__name__}: {exc}"}
+    out["candidates"] = len(rows)
+    if not send or not rows:
+        return out
+    sender = text_sender or _default_text
+    cur = conn.cursor()
+    for r in rows:
+        stage = str(r.get("to_stage") or "")
+        ev = {
+            "alert_class": "market_event",
+            "event_id": f"{r.get('episode_id')}:{r.get('symbol')}:{r.get('account_label')}:{stage}",
+            "symbol": r.get("symbol"),
+            "trigger": f"{stage} at {r.get('at')} ({r.get('trigger')})"[:160],
+            "action": FI_ACTIONS.get(stage, "review the position; advisory only"),
+        }
+        try:
+            res = dict(sender(ev) or {})
+        except Exception as exc:  # noqa: BLE001
+            res = {"sent": False, "reason": f"{type(exc).__name__}: {exc}"}
+        sent = bool(res.get("sent"))
+        cur.execute(
+            "UPDATE market_event_lifecycle SET alert_attempts = alert_attempts + 1, "
+            "alert_event_id = COALESCE(alert_event_id, %s), alerted_at = CASE WHEN %s THEN %s ELSE alerted_at END "
+            "WHERE id = %s AND alert_attempts = 0",
+            (ev["event_id"] if sent else None, sent, now, r.get("id")))
+        out["sent" if sent else "refused"] += 1
+        out["rows"].append({"id": r.get("id"), "event_id": ev["event_id"], "sent": sent,
+                            "reason": None if sent else res.get("reason")})
+    return out
+
+
+def heal_actions(*, errors: Mapping[str, Any], transitions: int, alerted: int, late_minutes: float,
+                 policy: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """What this run would have fixed, and what it may not fix (design SELF-HEALING).
+
+    Bounded and reported, never dispatched: this lane may not dispatch another lane (the broker-read sync is
+    reported, never called), and it may not write positions, stops, plans other than its own lifecycle rows, or POST
+    a route. A stale input becomes one named owner per source and re-checks on the next tick; an anchored run that
+    was late is labelled; a transition persisted without its alert is the reconcile step's job.
+    """
+    owners = {"positions": "broker-read-sync", "mre": "market-risk-engine", "bars": "market-data-bars",
+              "quotes": "quote-refresh", "calendar": "macro-calendar"}
+    out: list[dict[str, Any]] = []
+    for src, why in (errors or {}).items():
+        owner = owners.get(str(src))
+        if not owner:
+            continue
+        out.append({"kind": "stale_input", "source": str(src), "owner": owner,
+                    "action": "redispatch_owner", "dispatched": False, "reason": str(why),
+                    "next": "re-check on the next tick"})
+    if late_minutes > float(policy.get("anchor_late_slack_minutes", 10)):
+        out.append({"kind": "late_anchor", "action": "rerun_anchored_evaluation", "dispatched": False,
+                    "reason": f"the anchor was {late_minutes:g} min old at this run",
+                    "next": "the next tick evaluates it again and labels it calendar:<KIND>:late"})
+    if transitions and alerted < transitions:
+        out.append({"kind": "persist_without_alert", "action": "reconcile_unalerted", "dispatched": False,
+                    "reason": f"{transitions - alerted} of {transitions} transition(s) have no recorded alert"})
+    return out
+
+
 # --------------------------------------------------------------------------- persistence
 
 
@@ -828,7 +1015,8 @@ def collect_inputs(db_query: Callable[..., list[dict[str, Any]]], now: datetime,
 def run_lane(*, conn: Any, db_query: Callable[..., list[dict[str, Any]]], now: datetime, apply: bool,
              trigger: str | None = "tick", policy: Mapping[str, Any] | None = None,
              calendar_path: Path | str | None = None, mre: Mapping[str, Any] | None = None,
-             inputs: Mapping[str, Any] | None = None) -> dict[str, Any]:
+             inputs: Mapping[str, Any] | None = None,
+             text_sender: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None) -> dict[str, Any]:
     """The whole step: collect, evaluate every held row, and (``apply``) persist the transitions.
 
     ``apply=False`` is the dry run: the same reads and the same evaluation, nothing written. The summary carries the
@@ -845,6 +1033,8 @@ def run_lane(*, conn: Any, db_query: Callable[..., list[dict[str, Any]]], now: d
         "rows_evaluated": 0, "transitions": 0, "plans_written": 0,
         "not_measured": 0, "candidates": 0, "empty_reason": None, "error": None, "errors": {},
         "sleeve_basis": None, "calendar_events": 0, "rows": [],
+        "alerts": {"planned": [], "sent": [], "refused": [], "digest": []},
+        "alerted": 0, "reconcile": {}, "heal": [],
     }
     try:
         inp = dict(inputs) if inputs is not None else collect_inputs(
@@ -882,6 +1072,19 @@ def run_lane(*, conn: Any, db_query: Callable[..., list[dict[str, Any]]], now: d
             wrote = persist_results(conn, results, trigger=summary["trigger"], now=now, previous=previous)
             summary["transitions"] = wrote["transitions"]
             summary["plans_written"] = wrote["plans"]
+            # persist first, alert second: a text that goes out before the row exists can never be reconciled
+            alerts = deliver_alerts(results, now=now, send=True, text_sender=text_sender)
+            summary["alerts"] = alerts
+            summary["alerted"] = record_alerts(conn, alerts, now)
+            if callable(db_query):
+                summary["reconcile"] = reconcile_unalerted(
+                    conn, db_query, now=now, send=True, text_sender=text_sender)
+        else:
+            summary["alerts"] = deliver_alerts(results, now=now, send=False)
+        summary["heal"] = heal_actions(
+            errors=summary["errors"], transitions=summary["transitions"],
+            alerted=len(summary["alerts"].get("sent") or []),
+            late_minutes=float(summary.get("anchor_max_late_minutes") or 0.0), policy=pol)
     except Exception as exc:  # noqa: BLE001 - reported by type AND text, never flattened into a zero
         summary["error"] = f"{type(exc).__name__}: {exc}"
     return summary

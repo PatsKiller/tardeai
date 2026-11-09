@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_event_lifecycle_alerts_20261109",
+  "files": [
+    "tests/test_market_event_lifecycle_alerts_20261109.py"
+  ],
+  "anchor": "MARKET_EVENT_LIFECYCLE_ALERTS_20261109",
+  "comment": [
+    "ANCHOR: MARKET_EVENT_LIFECYCLE_ALERTS_20261109 — scripts/lib/market_event_lifecycle.py::deliver_alerts / record_alerts / reconcile_unalerted / heal_actions (design PROCESS 6 and SELF-HEALING, LQ-20261107-1674 stage 4). The four Fi-text stages (ADD_T2_READY, ADD_T3_READY, EXIT_READY, STOPPED_OUT) are delivered through lib.critical_texts.send_critical_text, the same primitive market_event_brief uses, so the allowlist, the event-id dedupe and the shared hourly cap are the brief's own; every transition, texted or not, becomes a digest entry. Persist comes before alert so a delivered text always has a row. A transition whose alert did not land is re-sent by reconcile at most once (alert_attempts = 0 guard) and a refused attempt is spent, not retried forever. The self-heal plan names each stale source's owner and dispatches nothing: this lane may not dispatch another lane, write positions, stops or plans other than its own lifecycle rows, or POST a route. Synthetic fixtures only; the sender is a test double."
+  ]
+}

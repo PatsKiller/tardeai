@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS market_event_lifecycle (
     -- set when the transition's alert was handed to the brief; the reconcile step looks for NULLs
     alert_event_id  text,
     alerted_at      timestamptz,
+    -- the reconcile bound: a row is attempted at most once, whatever the outcome (design SELF-HEALING), so a text
+    -- refused for its own reason (the hourly cap, the allowlist) becomes a fix item instead of a retry loop
+    alert_attempts  integer NOT NULL DEFAULT 0,
     -- when the transition was observed (the lane's clock, not the row's insert clock)
     at              timestamptz NOT NULL,
     created_at      timestamptz NOT NULL DEFAULT now(),
