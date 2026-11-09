@@ -133,6 +133,50 @@ def _close_instant(d: date) -> datetime:
     return datetime.combine(d, time(16, 0), ET)
 
 
+# Sessions whose print is not the regular-session close. Their as_of is the observation, not 16:00 ET.
+_INTRADAY_SESSIONS = frozenset({"overnight", "premarket", "afterhours", "futures_open"})
+
+
+def _parse_instant(raw: str) -> datetime | None:
+    text = str(raw or "").strip()
+    if "T" not in text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _vix_leg_as_of(leg: dict[str, Any], *, end: datetime) -> datetime | None:
+    """16:00 ET for a real daily close. An intraday or overnight print keeps its own time.
+
+    A stamp after ``end`` is not knowable yet and is omitted. It is not clamped onto ``end``: that would
+    make a future close look fresh (LQ-20261107-1470).
+    """
+    raw = str(leg.get("as_of") or "")
+    observed = _parse_instant(raw)
+    if observed is not None:
+        day = observed.astimezone(ET).date()
+    else:
+        try:
+            day = date.fromisoformat(raw[:10])
+        except ValueError:
+            return None
+    close = _close_instant(day)
+    session = str(leg.get("session") or "").strip().lower()
+    intraday = session in _INTRADAY_SESSIONS or (observed is not None and observed.astimezone(ET) < close)
+    if intraday and observed is not None:
+        stamp = observed.astimezone(ET)
+    else:
+        stamp = close
+    if stamp > end:
+        return None
+    return stamp
+
+
 def _default_conn():
     try:
         from scripts.session13_db import get_conn
@@ -484,6 +528,9 @@ class PgReader:
             src = str(leg.get("source") or "vix_complex")
             if any(b in src.lower() for b in BANNED_VIX_SOURCE_KEYS):
                 continue  # never launder a Yahoo MRI row through the complex
+            stamp = _vix_leg_as_of(leg, end=end)
+            if stamp is None:
+                continue  # a close that has not happened, or a print after this read
             out.append({
                 "symbol": sym,
                 "date": d.isoformat(),
@@ -494,7 +541,7 @@ class PgReader:
                 "volume": None,
                 "source": f"vix_complex:{leg.get('value_source') or src}",
                 "provisional": not bool(leg.get("fresh")),
-                "as_of": _iso(_close_instant(d)),
+                "as_of": _iso(stamp),
                 "fresh": bool(leg.get("fresh")),
             })
         return out
