@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_batch_tax_lane_lq1512_20261109",
+  "files": [
+    "tests/test_overnight_batch_tax_lane_lq1512_20261109.py"
+  ],
+  "comment": [
+    "overnight-batch-tax (LQ-20261107-1512): the lane's first n8n run reported rows_produced 0 not because",
+    "it produced nothing but because the cron twin had queued the same (symbol, request_type, tax_agent)",
+    "work nine seconds earlier and insert_agent_job_unless_pending dedups pending work by design.",
+    "Pins the lane's own boundary with a recording fake connection: every holding with an unrealized",
+    "loss worse than -500 and every SSDI-flagged proposal is queued when nothing is pending, pending",
+    "work is skipped, the holdings leg stops at ten, and the returned count equals the rows actually",
+    "inserted (never a constant). Mutation-checked: forcing the lane back to a constant 0 turns 7 of",
+    "these 10 red. Synthetic symbols only; no DB, no network. L345 is retired, so the lane is",
+    "single-run from its next slot. Its caller's reporting is LQ-20261107-1539, a separate file."
+  ]
+}
