@@ -221,12 +221,13 @@ def build(state_root:Optional[Path]=None,now:Optional[datetime]=None)->dict[str,
 
 
 def get_n8n_today(state_root:Optional[Path]=None,now:Optional[datetime]=None,*,ttl_s=None,stale_s=None):
-    """Return the daily projection. A changed receipt directory does not force a rebuild
-    while the last projection is inside ``stale_s`` (config/needs_action_probes.json).
+    """Return the daily projection.
 
-    Needs-action gives this probe 5s. Rebuilding on every ``n8n_runs`` mtime (a new
-    receipt every few seconds) reads thousands of files and misses that budget. The
-    caller still passes ``ttl_s=0`` to force a rebuild.
+    The cache key is the state root, the ET date, and the mtimes of the run, relay,
+    diagnosis, and cutover inputs. The same key younger than ``ttl_s`` is a hit. The
+    same key between ``ttl_s`` and ``stale_s`` is served as ``cache: STALE`` without a
+    rebuild. A different key rebuilds, so a removed source is not reported as a known
+    zero (LQ-20261107-1510 r2). ``ttl_s=0`` always rebuilds.
     """
     from scripts.lib.needs_action_probe_config import n8n_today_stale_s, n8n_today_ttl_s
     if ttl_s is None:ttl_s=n8n_today_ttl_s()
@@ -241,7 +242,7 @@ def get_n8n_today(state_root:Optional[Path]=None,now:Optional[datetime]=None,*,t
             last=_parse(doc.get('last_good_at'))
             doc['last_good_age_s']=max(0,int((clock-last).total_seconds())) if last else None
             return doc
-        if previous and ttl_s>0 and stale_s>0 and age<stale_s:
+        if previous and ttl_s>0 and stale_s>0 and previous['key']==key and age<stale_s:
             doc={**previous['doc'],'cache':'STALE'}
             last=_parse(doc.get('last_good_at'))
             doc['last_good_age_s']=max(0,int((clock-last).total_seconds())) if last else None

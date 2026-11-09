@@ -1,8 +1,8 @@
 """ANCHOR: LQ1510_NEEDS_ACTION_PROBE_COST_20261109. LQ-20261107-1510.
 
-Home needs_action times out at 5s because n8n-today rebuilds on every receipt-directory
-mtime and the Anthropic probe rereads the whole provider-cost log. A changed n8n input
-inside the configured stale window is served from the last projection. An appended
+Home needs_action times out at 5s when n8n-today rebuilds on every call and the
+Anthropic probe rereads the whole provider-cost log. An unchanged n8n source key
+past the TTL is served stale. A changed or removed source rebuilds. An appended
 Anthropic event is parsed from the new bytes only. Hermetic files. No network.
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ def test_config_holds_the_n8n_cache_windows():
     assert n8n_today_stale_s() == 180
 
 
-def test_n8n_today_serves_stale_when_the_run_directory_changes(tmp_path, monkeypatch):
+def test_a_changed_n8n_source_rebuilds_and_an_unchanged_key_stays_stale(tmp_path, monkeypatch):
     calls = {"n": 0}
     real = NT.build
 
@@ -36,18 +36,24 @@ def test_n8n_today_serves_stale_when_the_run_directory_changes(tmp_path, monkeyp
         return real(root, now)
 
     monkeypatch.setattr(NT, "build", counting)
+    clock = {"t": 1_000.0}
+    monkeypatch.setattr(NT.time, "monotonic", lambda: clock["t"])
     NT._CACHE.clear()
     assert NT.get_n8n_today(tmp_path, NOW)["cache"] == "MISS"
     assert calls["n"] == 1
     runs = tmp_path / "data" / "runtime" / "n8n_runs"
     runs.mkdir(parents=True)
     (runs / "extra.json").write_text("{}\n", encoding="utf-8")
-    again = NT.get_n8n_today(tmp_path, NOW)
-    assert again["cache"] == "STALE"
-    assert calls["n"] == 1
-    forced = NT.get_n8n_today(tmp_path, NOW, ttl_s=0)
-    assert forced["cache"] == "MISS"
+    changed = NT.get_n8n_today(tmp_path, NOW)
+    assert changed["cache"] == "MISS"
     assert calls["n"] == 2
+    clock["t"] = 1_090.0
+    stale = NT.get_n8n_today(tmp_path, NOW, ttl_s=60, stale_s=180)
+    assert stale["cache"] == "STALE"
+    assert calls["n"] == 2
+    forced = NT.get_n8n_today(tmp_path, NOW, ttl_s=0, stale_s=180)
+    assert forced["cache"] == "MISS"
+    assert calls["n"] == 3
 
 
 def test_appended_anthropic_events_parse_only_the_new_bytes(tmp_path, monkeypatch):
