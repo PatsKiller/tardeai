@@ -2,9 +2,7 @@
  *  Render only: the CIO owns every verdict and nothing here places or edits an order. "Done" is per-viewer state. */
 import { useState, type CSSProperties } from 'react'
 import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../../lib/designTokens'
-import { type StopList, type StopRow } from '../../lib/stopAdvice'
-import type { StampWire } from '../../lib/sinceCloseStamp'
-import { AsOfBadge } from './SinceCloseStamp'
+import { type StopList, type StopRead, type StopRow } from '../../lib/stopAdvice'
 
 const info = toneVars('info')
 const warn = toneVars('warning')
@@ -12,6 +10,22 @@ const dn = toneVars('danger')
 const up = toneVars('success')
 
 const price = (n: number | null | undefined) => (n == null ? '—' : `$${n.toFixed(2)}`)
+
+/** LQ-20261107-1644 — the as-of label is the STOPS SOURCE's clock, never the time this card was checked. The old badge
+ *  printed the snapshot's check time beside advice reconciled two hours earlier. Unread and not-recorded say so. */
+function StopsAsOf({ read }: { read: StopRead }) {
+  const tone = read.status === 'read' ? up : warn
+  const text = read.status === 'read'
+    ? `STOPS AS OF ${read.asOfText ?? '—'}`
+    : read.status === 'unread' ? 'STOPS UNREAD — not checked at Schwab' : 'STOPS READ NOT RECORDED'
+  return (
+    <span data-testid="stops-asof" data-read={read.status}
+      style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, padding: '4px 10px', borderRadius: RADIUS.md, fontWeight: 800,
+        fontSize: 12, letterSpacing: '.03em', fontFamily: FONT.mono, color: tone.color, background: tone.bg, border: `1px solid ${tone.border}` }}>
+      {text}
+    </span>
+  )
+}
 const KEY = 'tradeai.sinceClose.stopsDone.v1'
 /** LQ-1311 (operator 2026-11-08): the action cards sit side by side — three across on a desktop, one column on a phone. */
 const GRID: CSSProperties = { margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 8, alignItems: 'stretch' }
@@ -24,8 +38,7 @@ function holdLine(r: StopRow): string {
   return `hold · stop ${price(r.stopNow)} already set${room}`
 }
 
-function QuietRow({ r }: { r: StopRow }) {
-  return (
+function QuietRow({ r }: { r: StopRow }) {  return (
     <li data-testid="stops-quiet-row" style={{ listStyle: 'none', minWidth: 0, padding: '6px 10px', border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, background: TOKENS.bg[0] }}>
       <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
         <b style={{ fontSize: 14, color: TOKENS.text[0] }}>{r.symbol}</b>
@@ -72,6 +85,12 @@ function Row({ r, done, toggle, v5 }: { r: StopRow; done: boolean; toggle: () =>
         </div>
         <div style={{ fontSize: 12, color: TOKENS.text[3] }}>{o.sub}</div>
         {r.consequence && tone && <div data-testid="stop-consequence" style={{ fontWeight: 800, fontSize: 15, color: tone.color }}>{r.consequence.text}</div>}
+        {/* LQ-20261107-1644: an unread broker book cannot clear this row, and does not pretend it was checked. */}
+        {r.state === 'unread' && (
+          <div data-testid="stop-unread" style={{ fontSize: 12, fontWeight: 700, color: warn.color }}>
+            Not checked: the Schwab stop read failed — this is still to do.
+          </div>
+        )}
         {r.reason && <div style={{ fontSize: 13, color: TOKENS.text[1], overflowWrap: 'anywhere' }}>{r.reason}</div>}
         {r.worstCase != null && r.worstCase > 0 && <div style={{ fontSize: 12, color: TOKENS.text[3] }}>Worst case if the stop fills: about ${Math.round(r.worstCase).toLocaleString('en-US')} below Friday's close.</div>}
         {r.qa && (
@@ -91,7 +110,7 @@ function Row({ r, done, toggle, v5 }: { r: StopRow; done: boolean; toggle: () =>
 
 /** `v5` (LQ-20261107-1352): the same list inside the v5 CIO card — cards on the card's raised surface, display-face
  *  symbols, the header in the card's condensed face. Content, order, Done state and rule line are unchanged. */
-export default function SinceCloseStops({ list, stamp, nowMs, v5 }: { list: StopList | null; stamp: StampWire | null; nowMs: number; v5?: boolean }) {
+export default function SinceCloseStops({ list, v5 }: { list: StopList | null; v5?: boolean }) {
   const [done, setDone] = useState<Record<string, boolean>>(loadDone)
   if (!list) {
     return (
@@ -111,10 +130,12 @@ export default function SinceCloseStops({ list, stamp, nowMs, v5 }: { list: Stop
     <div data-testid="since-close-stops" style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
         <h3 style={{ margin: 0, fontSize: v5 ? 15 : 16, fontWeight: v5 ? 700 : 800, color: TOKENS.text[0], fontFamily: v5 ? 'var(--font-display)' : undefined }}>{list.header}</h3>
-        <AsOfBadge stamp={stamp} nowMs={nowMs} />
+        <StopsAsOf read={list.read} />
       </div>
+      {/* LQ-20261107-1644: what the broker book already answers is stated once, by its own stop time, not asked again. */}
+      {list.settledLine && <p data-testid="stops-settled" style={{ margin: 0, fontSize: 13, fontWeight: 700, color: up.color }}>{list.settledLine}</p>}
       {list.actions.length === 0
-        ? <p style={{ margin: 0, fontSize: 14, color: up.color }} data-testid="stops-none">Nothing to change at Schwab today.</p>
+        ? <p style={{ margin: 0, fontSize: 14, color: up.color }} data-testid="stops-none">{list.settled.length ? 'Nothing left to change at Schwab today.' : 'Nothing to change at Schwab today.'}</p>
         : <ol data-testid="stops-grid" style={GRID}>{list.actions.map(r => <Row key={dayKey(r)} r={r} done={!!done[dayKey(r)]} toggle={flip(r)} v5={v5} />)}</ol>}
       {list.quiet.length > 0 && (
         // LQ-1318: a quiet row that carries an event says the event, never a bare "hold" — QuietRow draws r.what,

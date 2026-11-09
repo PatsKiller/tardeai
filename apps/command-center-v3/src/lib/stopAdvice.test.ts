@@ -83,6 +83,43 @@ describe('quietLine', () => {
   })
 })
 
+// LQ-20261107-1644: the operator saw a 12:01 ET action it had already placed at 14:00 ET, and an as-of label that was
+// the card's check time. The write side reconciles each row against the broker book; this side drops the answered rows
+// and labels the list with the STOPS source's clock.
+describe('stopList — reconciled against the broker stop read', () => {
+  const read = { status: 'read', as_of: '2031-03-10T18:00:18Z', as_of_text: 'Mon 03-10 · 2:00 PM ET', checked_at: '2031-03-10T19:05:00Z' }
+  const raised = { symbol: 'BBB', answer: 'RAISE', stop_now: 160.78, suggested_stop: 164, qty: 200, account: 'Roth',
+    state: 'done', stop_evidence: { done: true, covered_qty: 200, best_stop: 164, suggested_stop: 164, as_of: read.as_of } }
+  const missing = { symbol: 'AAA', answer: 'ADD STOP', stop_suggested: 120.46, qty: 200, account: 'Brokerage', state: 'open' }
+  it('a row the broker book already answers leaves the actions and is stated as placed', () => {
+    const L = stopList([raised, missing], Q, {}, read)
+    expect(L.actions.map(r => r.symbol)).toEqual(['AAA'])
+    expect(L.settled.map(r => r.symbol)).toEqual(['BBB'])
+    expect(L.read.status).toBe('read')
+    expect(L.settledLine).toBe('Done at Schwab · Mon 03-10 · 2:00 PM ET: BBB $164.00 × 200')
+    expect(L.header).toBe('Your actions · 1 stop change at Schwab')
+  })
+  it('every ask answered: a header that says so, and the empty line says nothing is left', () => {
+    const L = stopList([raised], Q, {}, read)
+    expect(L.actions).toEqual([])
+    expect(L.header).toBe('Your actions · every stop change is already placed at Schwab')
+    expect(L.settledLine).toContain('BBB $164.00 × 200')
+  })
+  it('an unread book never clears a row and never claims a stop time', () => {
+    const L = stopList([{ ...missing, state: 'unread' }], Q, {}, { status: 'unread', checked_at: '2031-03-10T19:05:00Z', error: 'db down' })
+    expect(L.actions.map(r => [r.symbol, r.state])).toEqual([['AAA', 'unread']])
+    expect(L.settled).toEqual([])
+    expect(L.read).toEqual({ status: 'unread', asOf: null, asOfText: null, checkedAt: '2031-03-10T19:05:00Z' })
+    expect(L.settledLine).toBeNull()
+  })
+  it('a snapshot with no stop read says so: the rows stay open, the state is missing, not the card clock', () => {
+    const L = stopList([missing], Q)
+    expect(L.read.status).toBe('missing')
+    expect(L.actions.map(r => [r.symbol, r.state])).toEqual([['AAA', 'open']])
+  })
+})
+
+
 const wire = (over: Partial<StampWire> = {}): StampWire => ({
   updated_at: '2031-03-10T13:46:00Z', updated_text: '', next_refresh_at: '', next_refresh_text: 'Tue 03-10 · 10:30 AM ET', sources: [], any_warn: false,
   schedule: {

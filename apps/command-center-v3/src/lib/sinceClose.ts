@@ -66,6 +66,8 @@ export interface CioBriefWire {
   status: 'available' | 'pending'; label?: string; summary?: string; risk_tier?: string
   actions?: Array<{ symbol: string; action: string; reason?: string }>; week_ahead?: string[] | string
   stop_advice?: unknown[]
+  /** LQ-20261107-1644: the broker stop read the advice was reconciled against — the stops source's own clock. */
+  stop_read?: { status?: string; as_of?: string | null; as_of_text?: string | null; checked_at?: string | null; error?: string | null }
   synopsis?: unknown   // LQ-1257 amendment 2: {posture, risk, verdict, book, market, reentry, this_week, do_now, generated_at}
   run?: CioBriefRun     // LQ-1318: written by since_close_card.cio_brief_block
   [k: string]: unknown   // LQ-1257 writes data/runtime/cio_overnight_brief/latest.json; aliases are read in cioFrom()
@@ -202,7 +204,7 @@ export function sinceCloseModel(w: SinceCloseWire | null | undefined, nowMs: num
     stamp: w.stamp ?? null,
     synopsis: synopsisModel(w.cio_brief?.synopsis, typeof w.cio_brief?.generated_at === 'string' ? w.cio_brief.generated_at : null, nowMs),
     stops: w.cio_brief?.status === 'available' && Array.isArray(w.cio_brief.stop_advice)
-      ? stopList(w.cio_brief.stop_advice, Object.fromEntries(moves.map(m => [m.symbol, { price: m.price }])))
+      ? stopList(w.cio_brief.stop_advice, Object.fromEntries(moves.map(m => [m.symbol, { price: m.price }])), {}, w.cio_brief.stop_read)
       : null,
     futuresText: fut?.status === 'available' && fut.quotes.length
       ? fut.quotes.map(q => `${String(q.symbol ?? q.name ?? '')} ${pctText(Number(q.change_pct))}`).join(' · ')

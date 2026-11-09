@@ -74,7 +74,7 @@ export default function SinceCloseCard({ cio5 }: { cio5?: CioCardWire | null } =
   const showStops = m.state !== 'none' && (m.stops !== null || m.cio.actions.length === 0)
   const v5Card = v5 ? (
     <CioCardV5 card={v5.card} adviceOk={!!v5.advice?.ok} adviceReason={v5.advice?.reason} nowMs={nowMs}
-      actions={showStops ? <SinceCloseStops list={m.stops} stamp={m.stamp} nowMs={nowMs} v5 /> : undefined} />
+      actions={showStops ? <SinceCloseStops list={m.stops} v5 /> : undefined} />
   ) : null
 
   if (m.state === 'collapsed' && !open) {
@@ -105,7 +105,7 @@ export default function SinceCloseCard({ cio5 }: { cio5?: CioCardWire | null } =
         <>
           {!v5 && <SinceCloseSynopsis s={m.synopsis} stamp={m.stamp} nowMs={nowMs} />}
 
-          {!v5 && showStops && <SinceCloseStops list={m.stops} stamp={m.stamp} nowMs={nowMs} />}
+          {!v5 && showStops && <SinceCloseStops list={m.stops} />}
 
           <SinceCloseStamp stamp={m.stamp} nowMs={nowMs} part="detail" />
 

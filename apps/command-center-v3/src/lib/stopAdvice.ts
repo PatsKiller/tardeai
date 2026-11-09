@@ -4,6 +4,27 @@
 
 export type StopKind = 'ADD_STOP' | 'RAISE' | 'FIX_QTY' | 'HOLD' | 'NO_ACTION'
 export type Tone = 'danger' | 'success' | 'warning'
+/** LQ-20261107-1644: what the newest broker stop read says about this ask. `done` = the book already answers it, so
+ *  the row leaves "Your actions"; `open` = still to do; `unread` = the read failed, so the card may claim neither. */
+export type StopState = 'done' | 'open' | 'quiet' | 'unread'
+export type StopReadStatus = 'read' | 'unread' | 'missing'
+
+/** The stops source's own clock — never the time the card was checked. Written by since_close_card.fetch_stops. */
+export interface StopRead {
+  status: StopReadStatus
+  asOf: string | null
+  asOfText: string | null
+  checkedAt: string | null
+}
+
+/** The broker rows that answer one advice row (see since_close_card._stop_evidence). */
+export interface StopEvidence {
+  coveredQty: number | null
+  bestStop: number | null
+  suggestedStop: number | null
+  asOf: string | null
+  orders: Array<{ stop: number | null; qty: number | null; account: string | null }>
+}
 
 export interface StopRow {
   n: number; symbol: string; account: string | null; kind: StopKind; urgent: boolean; verb: string
@@ -14,8 +35,17 @@ export interface StopRow {
   /** LQ-1311: the working stop and last price, kept for HOLD rows too (they explain why nothing moves). */
   stopNow: number | null; last: number | null
   qa: { question: string | null; answer: string | null; correction: string | null } | null
+  /** LQ-20261107-1644: the reconcile state and the broker rows that produced it. */
+  state: StopState; evidence: StopEvidence | null
 }
-export interface StopList { actions: StopRow[]; quiet: StopRow[]; header: string; rule: string }
+export interface StopList {
+  actions: StopRow[]; quiet: StopRow[]
+  /** Actionable rows the broker book already answers: shown as placed, never asked again. */
+  settled: StopRow[]
+  settledLine: string | null
+  read: StopRead
+  header: string; rule: string
+}
 
 export const STOP_RULE = 'a stop moves on price and structure, never on a headline alone; a planned insider sale (10b5-1) counts as neutral.'
 const VERB: Record<StopKind, string> = { ADD_STOP: 'ADD A SELL STOP', RAISE: 'EDIT THE STOP', FIX_QTY: 'EDIT THE STOP QUANTITY', HOLD: 'HOLD', NO_ACTION: 'NO ACTION' }
@@ -41,9 +71,46 @@ export function kindOf(v: unknown): StopKind | null {
   return null
 }
 
+/** LQ-20261107-1644: the card's stop-read block. A snapshot built before this field existed has none — that is
+ *  `missing` (the label says so), never a silent fall back to the card's own check time. */
+export function stopReadOf(raw: unknown): StopRead {
+  const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null
+  const status = str(o?.status)
+  const checkedAt = str(o?.checked_at)
+  if (status === 'read') return { status: 'read', asOf: str(o?.as_of), asOfText: str(o?.as_of_text), checkedAt }
+  if (status === 'unread') return { status: 'unread', asOf: null, asOfText: null, checkedAt }
+  return { status: 'missing', asOf: null, asOfText: null, checkedAt: null }
+}
+
+function evidenceOf(raw: unknown): StopEvidence | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const orders = Array.isArray(o.orders) ? o.orders : []
+  return {
+    coveredQty: num(o.covered_qty), bestStop: num(o.best_stop), suggestedStop: num(o.suggested_stop), asOf: str(o.as_of),
+    orders: orders.flatMap(x => {
+      if (!x || typeof x !== 'object') return []
+      const r = x as Record<string, unknown>
+      return [{ stop: num(r.stop), qty: num(r.qty), account: str(r.account) }]
+    }),
+  }
+}
+
+/** "ANET $174.38 × 200 · SKYD $7.97 × 1,000" — a placed row says which working stop answers it. */
+const priceText = (n: number | null) => (n == null ? '—' : `$${n.toFixed(2)}`)
+function placedCell(r: StopRow): string {
+  const ev = r.evidence
+  const stop = ev?.bestStop ?? r.order?.stop ?? null
+  const qty = ev?.coveredQty ?? r.order?.qty ?? null
+  const q = qty != null && qty > 0 ? ` × ${qty.toLocaleString('en-US')}` : ''
+  return `${r.symbol} ${priceText(stop)}${q}`
+}
+
 export function stopList(
   raw: unknown, quotes: Record<string, { price: number } | undefined>, heldQty: Record<string, number | undefined> = {},
+  stopReadRaw: unknown = null,
 ): StopList {
+  const read = stopReadOf(stopReadRaw)
   const rows: StopRow[] = []
   for (const x of Array.isArray(raw) ? raw : []) {
     if (!x || typeof x !== 'object') continue
@@ -80,12 +147,34 @@ export function stopList(
       reason: str(pick(o, ['why', 'reason', 'rationale'])), what: str(pick(o, ['event_summary', 'what_happened', 'what', 'headline'])),
       stopNow: oldStop, last,
       qa: q || a || c ? { question: q, answer: a, correction: c } : null,
+      // LQ-20261107-1644: the writer reconciled each row against the broker stop read. A row with no state (an older
+      // snapshot) is OPEN — unverified is not done — and an unread book is `unread`, never `open` the card pretends
+      // to have checked.
+      state: stopStateOf(o.state, kind, read),
+      evidence: evidenceOf(o.stop_evidence),
     })
   }
   rows.sort((p, q) => RANK[p.kind] - RANK[q.kind] || (q.consequence?.usd ?? 0) - (p.consequence?.usd ?? 0) || p.symbol.localeCompare(q.symbol))
-  const actions = rows.filter(r => r.kind === 'ADD_STOP' || r.kind === 'RAISE' || r.kind === 'FIX_QTY').map((r, i) => ({ ...r, n: i + 1 }))
+  const actionable = rows.filter(r => r.kind === 'ADD_STOP' || r.kind === 'RAISE' || r.kind === 'FIX_QTY')
+  const settled = actionable.filter(r => r.state === 'done')
+  const actions = actionable.filter(r => r.state !== 'done').map((r, i) => ({ ...r, n: i + 1 }))
   const quiet = rows.filter(r => r.kind === 'HOLD' || r.kind === 'NO_ACTION')
-  return { actions, quiet, header: `Your actions · ${actions.length} stop change${actions.length === 1 ? '' : 's'} at Schwab`, rule: STOP_RULE }
+  const header = actions.length
+    ? `Your actions · ${actions.length} stop change${actions.length === 1 ? '' : 's'} at Schwab`
+    : settled.length ? 'Your actions · every stop change is already placed at Schwab' : 'Your actions · 0 stop changes at Schwab'
+  const settledLine = settled.length
+    ? `Done at Schwab${read.asOfText ? ` · ${read.asOfText}` : ''}: ${settled.map(placedCell).join(' · ')}`
+    : null
+  return { actions, quiet, settled, settledLine, read, header, rule: STOP_RULE }
+}
+
+function stopStateOf(v: unknown, kind: StopKind, read: StopRead): StopState {
+  if (kind === 'HOLD' || kind === 'NO_ACTION') return 'quiet'
+  const s = str(v)
+  if (s === 'done' || s === 'open' || s === 'unread') return s
+  // no reconcile state on the row: an older snapshot, or a caller that did not pass the read. The card says the
+  // read was not recorded (read.status === 'missing') and the row stays to do; an unread book says so per row.
+  return read.status === 'unread' ? 'unread' : 'open'
 }
 
 /** LQ-20261107-1318 — the "no change needed" line. A quiet row that carries an event says the event: "ANET (hold) —
