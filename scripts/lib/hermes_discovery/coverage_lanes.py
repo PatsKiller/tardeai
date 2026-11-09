@@ -12,7 +12,10 @@ external host, no LLM call:
                   → TOPIC_CANDIDATEs pinned to domain taxes / retirement
   system_ops      coverage.system_ops_findings (latest failing/stale
                   system_health_checks components) → TOPIC_CANDIDATEs pinned to
-                  domain system_ops, behind a source-freshness probe
+                  domain system_ops, behind a source-freshness probe that
+                  follows the system-health-agent step in
+                  config/health_tick_steps.json (quiet outside that step's
+                  weekdays and hours is not a stale writer)
   custom_domain   the operator's custom research domains
                   (config/hermes_custom_research_domains.yaml) that the lane's
                   allowed_domains admit: their classification_keywords drive the
@@ -40,14 +43,23 @@ Advisory-only: never imports broker/execution modules.
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import coverage, domains, worker_pool
 
 WINDOW_DAYS = 7               # term-recurrence look-back (lanes run daily)
 MIN_MATCHES = 2               # a term must recur to become a candidate
-SYSTEM_HEALTH_FRESH_HOURS = 48  # system_health_checks must have been written within this
+# The only writer of system_health_checks is this health_tick step. Freshness
+# is "last write is at or after the latest fire of that step that has had one
+# grace interval to finish." Grace and the window come from the step. There is
+# no wall-clock hour limit: a larger constant would hide a stall inside the
+# writer's own window (Tue 14:00 ET with a last write at Tue 08:00).
+_HEALTH_WRITER_STEP_ID = "system-health-agent"
+# Loop bound so a step that is never due cannot spin. Not an allowed age.
+_DEADLINE_SEARCH_DAYS = 8
 
 # blocked_source_types (custom domain yaml) → news_articles.source substrings
 SOURCE_TYPE_HINTS: dict[str, tuple[str, ...]] = {
@@ -107,16 +119,142 @@ def _system_health_last_write() -> datetime | None:
     return last if last.tzinfo else last.replace(tzinfo=timezone.utc)
 
 
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _cron_zone() -> ZoneInfo:
+    """Hours and weekdays in health_tick_steps.json are cron-zone clocks.
+
+    Host local time is not that clock, and UTC hours are not either
+    (Fri 20:55 ET is Sat 01:55 UTC while EST is in force).
+    """
+    name = os.environ.get("TRADEAI_CRON_TZ") or "America/New_York"
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise RuntimeError(
+            f"TRADEAI_CRON_TZ {name!r} is not a usable zone — cannot judge "
+            "system_health freshness on the writer clock"
+        ) from exc
+
+
+def _health_tick_module():
+    """health_tick lives in scripts/. Cron puts that directory on sys.path[0];
+    a repo-root import uses the scripts package. Either is the same module."""
+    try:
+        import health_tick
+        return health_tick
+    except ImportError:
+        pass
+    try:
+        from scripts import health_tick
+        return health_tick
+    except ImportError as exc:
+        raise RuntimeError(
+            "health_tick is not importable — cannot judge system_health freshness "
+            "from the writer schedule"
+        ) from exc
+
+
+def _load_health_writer_schedule() -> tuple[dict[str, Any], int]:
+    """The system-health-agent step and the table tick.
+
+    A missing step or an unreadable table raises. An unreadable schedule must
+    not look like a fresh health table.
+    """
+    ht = _health_tick_module()
+    try:
+        table = ht.load_table(ht.DEFAULT_TABLE)
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(
+            "health_tick_steps.json is unreadable — cannot judge system_health freshness"
+        ) from exc
+    tick = int(table.get("tick_minutes") or 0)
+    if tick <= 0:
+        raise RuntimeError(
+            "health_tick_steps.json has no tick_minutes — cannot judge system_health freshness"
+        )
+    for step in table["steps"]:
+        if str(step.get("step_id") or "") == _HEALTH_WRITER_STEP_ID:
+            return step, tick
+    raise RuntimeError(
+        f"health_tick step {_HEALTH_WRITER_STEP_ID} is missing — cannot tell a quiet "
+        "schedule from a stalled system_health writer"
+    )
+
+
+def _writer_grace(step: dict[str, Any]) -> timedelta:
+    """How long after a due tick the write may still be in flight.
+
+    The longer of one cadence and the step timeout, both read from the step.
+    This is a completion allowance, not a freshness limit.
+    """
+    cadence_s = int(step["cadence_minutes"]) * 60
+    timeout_s = int(step.get("timeout_s") or 0)
+    grace_s = max(cadence_s, timeout_s)
+    if grace_s <= 0:
+        raise RuntimeError(
+            f"health_tick step {_HEALTH_WRITER_STEP_ID} has no cadence — cannot judge freshness"
+        )
+    return timedelta(seconds=grace_s)
+
+
+def _latest_due_at_or_before(
+    step: dict[str, Any], tick_minutes: int, horizon: datetime,
+) -> datetime | None:
+    """Latest cron tick at or before ``horizon`` on which this step is due.
+
+    ``horizon`` is in the cron zone. The walk calls health_tick.step_is_due so
+    this gate cannot grow a second reading of the cron fields.
+    """
+    ht = _health_tick_module()
+    tick = ht.snap_to_tick(horizon, tick_minutes)
+    if tick > horizon:
+        tick -= timedelta(minutes=tick_minutes)
+    stop = horizon - timedelta(days=_DEADLINE_SEARCH_DAYS)
+    while tick >= stop:
+        if ht.step_is_due(step, tick, tick_minutes):
+            return tick
+        tick -= timedelta(minutes=tick_minutes)
+    return None
+
+
+def system_health_deadline(now_utc: datetime | None = None) -> tuple[datetime, dict[str, Any]]:
+    """UTC instant the latest writer fire must have landed by.
+
+    Deadline = the latest due tick at or before ``now - grace``. A write at
+    that tick is still fresh. No due tick inside the search bound raises.
+    """
+    step, tick_minutes = _load_health_writer_schedule()
+    now = now_utc if now_utc is not None else _utc_now()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    horizon = now.astimezone(_cron_zone()) - _writer_grace(step)
+    due = _latest_due_at_or_before(step, tick_minutes, horizon)
+    if due is None:
+        raise RuntimeError(
+            f"no scheduled fire of {_HEALTH_WRITER_STEP_ID} within {_DEADLINE_SEARCH_DAYS} days "
+            "of the grace horizon — refusing to treat system_health_checks as fresh"
+        )
+    return due.astimezone(timezone.utc), step
+
+
 def system_ops_runner(lane_cfg: dict[str, Any], *, dry_run: bool) -> list[dict[str, Any]]:
     """Failing/stale health-check components. Zero payloads is a healthy
     result ONLY when the health table is being written — otherwise raise."""
     last = _system_health_last_write()
     if last is None:
         raise RuntimeError("system_health_checks is empty — cannot tell healthy from unread")
-    age = datetime.now(timezone.utc) - last
-    if age > timedelta(hours=SYSTEM_HEALTH_FRESH_HOURS):
-        raise RuntimeError(f"system_health_checks last written {age.total_seconds() / 3600:.1f} h "
-                           f"ago (> {SYSTEM_HEALTH_FRESH_HOURS} h) — health source is stale")
+    deadline, step = system_health_deadline(_utc_now())
+    if last < deadline:
+        raise RuntimeError(
+            "system_health_checks last written "
+            f"{last.isoformat()} is before the latest due {_HEALTH_WRITER_STEP_ID} fire "
+            f"{deadline.isoformat()} "
+            f"(weekdays={step.get('weekdays')} hours={step.get('hours')} "
+            f"cadence_minutes={step.get('cadence_minutes')}) — health source is stale"
+        )
     return coverage.system_ops_findings(limit=_cap(lane_cfg), strict=True)
 
 

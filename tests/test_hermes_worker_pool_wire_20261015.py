@@ -438,7 +438,10 @@ def test_system_ops_runner_raises_on_stale_or_empty_source(monkeypatch):
 
 def test_system_ops_runner_fresh_source(monkeypatch):
     cfg = dict(worker_pool.load_lanes()["system_ops"])
-    fresh = datetime.now(timezone.utc) - timedelta(hours=1)
+    # One cadence of grace, read from the writer step, is the whole allowance.
+    # A write one wall-clock hour ago is already behind the latest due tick
+    # while that step's window is open, so "fresh" is seconds, not an hour.
+    fresh = datetime.now(timezone.utc) - timedelta(seconds=30)
     monkeypatch.setattr(coverage, "_rows", FakeRows(health_last=fresh))
     assert coverage_lanes.system_ops_runner(cfg, dry_run=True) == []  # healthy platform, zero_output_ok
     failing = [{"component": "alex_daily", "check_type": "cron", "status": "MISSING",

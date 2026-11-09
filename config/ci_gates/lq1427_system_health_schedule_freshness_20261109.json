@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1427_system_health_schedule_freshness_20261109",
+  "files": [
+    "tests/test_lq1427_system_health_schedule_freshness_20261109.py"
+  ],
+  "anchor": "LQ1427_SYSTEM_HEALTH_SCHEDULE_FRESHNESS_20261109",
+  "comment": [
+    "ANCHOR: LQ1427_SYSTEM_HEALTH_SCHEDULE_FRESHNESS_20261109 — freshness follows the system-health-agent step.",
+    "Mon 01:00 ET with a Fri 20:55 write passes. Tue 14:00 ET with a Tue 08:00 write raises. No wall-clock hour limit."
+  ]
+}
