@@ -666,7 +666,18 @@ def rank_feed(
     risk = {s.upper() for s in at_risk}
     scored = []
     for it in items:
-        held = [h for h in it.get("holdings", []) if h.get("held")]
+        # One position per symbol. ``_title_key`` folds "Story" and "Story - Yahoo Finance" into ONE item, so the two
+        # feed copies of one story each appended the same position: the item printed twice the money ("$760 moved"
+        # for a $380 move on V, 2026-11-08) and twice the exposure. A name held in two accounts is still one move here
+        # -- ``build_moves`` carries the account total -- so a second entry for a symbol is a copy, never a second
+        # account (LQ-20261107-1387). Held here, defensively, where the dollars are actually summed.
+        held: list[Mapping[str, Any]] = []
+        seen: set[str] = set()
+        for h in it.get("holdings", []):
+            sym = h.get("symbol")
+            if h.get("held") and sym not in seen:
+                seen.add(sym)
+                held.append(h)
         moved: list[float] = []
         for h in held:
             mv = h.get("market_value")
@@ -777,13 +788,29 @@ def urgency_for(item: Mapping[str, Any]) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _add_holding(it: dict[str, Any], entry: dict[str, Any]) -> None:
+    """One position per symbol per item (LQ-20261107-1387). ``_title_key`` deliberately folds "Story" and
+    "Story - Yahoo Finance" into ONE item, so two feed copies of one story arrive here twice and each appended the
+    same position; the item then printed twice the money and twice the exposure. A name held in two accounts is
+    still ONE move -- ``build_moves`` carries ``holdings_context.market_value_total`` -- so a second entry for a
+    symbol is a copy, never a second account. The newer copy is kept only when it carries the extended print the
+    first lacks (the same position measured at a fresher print)."""
+    for i, kept in enumerate(it["holdings"]):
+        if kept["symbol"] == entry["symbol"]:
+            if kept.get("move_now_pct") is None and entry.get("move_now_pct") is not None:
+                it["holdings"][i] = entry
+            return
+    it["holdings"].append(entry)
+
+
 def build_feed(
     moves: Sequence[Mapping[str, Any]], macro: Mapping[str, Any], *, limit: int = FEED_LIMIT,
     cio_actions: Mapping[str, str] | None = None, at_risk: Sequence[str] = (),
 ) -> list[dict[str, Any]]:
     """A clean news feed, most important first (LQ-20261107-1283): headline, every source that carried it, the
     holdings it touches with their $ move since the close, a one-line "So what" built from those numbers (no LLM per
-    item), and the rank with its reason. The same story under two feed names is one item."""
+    item), and the rank with its reason. The same story under two feed names is one item, and that item carries each
+    position once (``_add_holding``), so its $ move and its exposure are the book's, not a copy's."""
     by_key: dict[str, dict[str, Any]] = {}
     total_mv = sum(m["market_value"] or 0.0 for m in moves if m["held"])
     for m in moves:
@@ -795,11 +822,12 @@ def build_feed(
             src = str(n.get("source") or "")
             if src and src not in it["sources"]:
                 it["sources"].append(src)
-            it["holdings"].append(
+            _add_holding(
+                it,
                 {"symbol": m["symbol"], "held": m["held"], "market_value": m["market_value"], "change_pct": m["change_pct"],
                  "week_pct": m.get("week_pct"), "dollar_impact": m["dollar_impact"], "close_tag": m["close_tag"],
                  "move_now_pct": m.get("move_now_pct"), "dollar_impact_now": m.get("dollar_impact_now"),
-                 "extended_label": (m.get("extended") or {}).get("session_label") if m.get("extended") else None}
+                 "extended_label": (m.get("extended") or {}).get("session_label") if m.get("extended") else None},
             )
     for h in macro.get("headlines", []):
         k = _title_key(h["title"])

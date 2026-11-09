@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "since_close_card_position_dedupe_lq1387_20261108",
+  "files": [
+    "tests/test_since_close_card_position_dedupe_lq1387_20261108.py"
+  ],
+  "anchor": "SINCE_CLOSE_POSITION_DEDUPE_LQ1387_20261108",
+  "comment": [
+    "ANCHOR: SINCE_CLOSE_POSITION_DEDUPE_LQ1387_20261108 — the 2026-11-08 23:06 ET Home card printed $760 moved on",
+    "a Visa position that had moved $380, $218 for a $109 PFE move and $483 for a $243 ANET move, and doubled the",
+    "item's exposure with it. _title_key folds 'Story' and 'Story - Yahoo Finance' into ONE item on purpose, and",
+    "build_feed appended a holdings entry per news row, so two feed copies of one story appended the same position",
+    "twice and rank_feed summed both. A name in two accounts is still one move (build_moves carries",
+    "holdings_context.market_value_total), so a second entry for a symbol is a copy, never a second account.",
+    "One position per symbol at construction (_add_holding) and, defensively, where the dollars are summed.",
+    "Synthetic fixtures; no DB, no network, no live file."
+  ]
+}
