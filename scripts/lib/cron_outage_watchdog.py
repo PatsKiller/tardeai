@@ -12,6 +12,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from scripts.lib.cron_schedule import cron_schedules, last_fire_at_or_before, parse
+from scripts.lib.llm_priority_guard import AUTO, guard_defers, resolve_guard_window
 
 SCHEMA = "CronOutageWatchdog@v1"
 
@@ -278,6 +279,7 @@ def evaluate(
     previous_refusal_keys: set[str] | None = None, trading_day=None,
     registered_jobs: set[str] | None = None, acknowledged: dict[str, dict] | None = None,
     in_progress_limit_seconds: int = IN_PROGRESS_LIMIT_SECONDS,
+    guard_window=AUTO,
 ) -> dict:
     """One point-in-time result. Future observations are ignored, never backdated.
 
@@ -338,6 +340,9 @@ def evaluate(
             attributed.append(refusal)
     refusals = attributed
     windows = run_windows(events, now=now)
+    # AUTO loads the script only when a lane is flagged, and never raises. An explicit None
+    # (the script did not parse, or no window was found) must not be reloaded.
+    guard = resolve_guard_window(guard_window, registry.get("lanes"))
     rows = []
     dry_run_only_lane_ids = []
     dry_run_only_missed_lane_ids = []
@@ -398,6 +403,12 @@ def evaluate(
                 at = fire.at.astimezone(timezone.utc)
                 cursor = at - timedelta(microseconds=1)
                 if gated and not trading_day(at.astimezone(zone)):
+                    continue
+                # A guard-deferred fire is not an opportunity: the shell exits before the job.
+                # Skip it and keep walking, the same way a closed market day is skipped. Marking
+                # only the last two elapsed fires SKIPPED_BY_POLICY would hide a real gap that
+                # sits just before the defer window.
+                if lane.get("watchdog_llm_priority_guard") is True and guard_defers(at, guard):
                     continue
                 required.add(at)
                 count += 1

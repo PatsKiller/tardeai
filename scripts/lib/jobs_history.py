@@ -39,6 +39,7 @@ from zoneinfo import ZoneInfo
 from scripts.lib import cron_outage_watchdog as W
 from scripts.lib.cron_schedule import fires_between
 from scripts.lib.jobs_health import plain_reason
+from scripts.lib.llm_priority_guard import AUTO, guard_defers, load_guard_window, resolve_guard_window
 
 SCHEMA = "JobRunHistory@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -129,6 +130,7 @@ def cadence_of(lane: dict) -> dict:
     gated = lane.get("respect_calendar") is True or "market_day_gate.sh" in str(
         scheduler.get("command_text") or scheduler.get("expression") or "")
     return {"expressions": expressions, "timezone": tz, "every_hours": hours, "market_days_only": gated,
+            "llm_priority_guard": lane.get("watchdog_llm_priority_guard") is True,
             "schedule_gap": None if expressions else (
                 "The declared schedule could not be read" if issue == "unreadable"
                 else "No wall-clock schedule is declared for this job" if issue == "recurring_schedule_not_measured"
@@ -143,22 +145,37 @@ def _fires(expr, start, end, tz):
         return []
 
 
-def expected_slots(cadence: dict, now: datetime, trading_day, *, days=SLOT_DAYS, limit=SLOT_LIMIT) -> list[dict]:
-    """The newest ``limit`` fires in the last ``days``, oldest first, each with the end of its matching window."""
+def expected_slots(cadence: dict, now: datetime, trading_day, *, days=SLOT_DAYS, limit=SLOT_LIMIT,
+                   guard_window=None) -> list[dict]:
+    """The newest ``limit`` fires in the last ``days``, oldest first, each with the end of its matching window.
+
+    A fire the lane's llm-priority guard defers is not a slot the job was expected to run.
+    """
     exprs, tz = cadence["expressions"], cadence["timezone"]
     if not exprs:
         return []
     zone = ZoneInfo(tz)
+    deferring = cadence.get("llm_priority_guard") is True and guard_window is not None
+
+    def keep(fire, *, market: bool) -> bool:
+        if market and cadence["market_days_only"] and not trading_day(fire.at.astimezone(zone)):
+            return False
+        return not (deferring and guard_defers(fire.at, guard_window))
+
     fires: list[datetime] = []
     for span in (timedelta(hours=6), timedelta(hours=48), timedelta(days=days)):
         start = now - span
-        fires = sorted({f.at.astimezone(timezone.utc) for ex in exprs for f in _fires(ex, start, now, tz)
-                        if not cadence["market_days_only"] or trading_day(f.at.astimezone(zone))})
+        fires = sorted({
+            f.at.astimezone(timezone.utc)
+            for ex in exprs for f in _fires(ex, start, now, tz) if keep(f, market=True)
+        })
         if len(fires) > limit:
             break
     fires = fires[-(limit + 1):]
-    upcoming = sorted({f.at.astimezone(timezone.utc) for ex in exprs
-                       for f in _fires(ex, now, now + MAX_SLOT_WINDOW, tz)})
+    upcoming = sorted({
+        f.at.astimezone(timezone.utc)
+        for ex in exprs for f in _fires(ex, now, now + MAX_SLOT_WINDOW, tz) if keep(f, market=False)
+    })
     out = []
     for index, fire in enumerate(fires):
         nxt = fires[index + 1] if index + 1 < len(fires) else (upcoming[0] if upcoming else None)
@@ -390,7 +407,7 @@ def _same_run(run: dict, at: datetime) -> bool:
 def lane_history(lane: dict, *, now: datetime, trading_day, ledger: list[dict], journal: list[dict],
                  ledger_since: datetime | None, journal_since: datetime | None, last_live_success: datetime | None,
                  receipt: dict | None, output_at: datetime | None, fixes: list[dict],
-                 lane_receipt: dict | None = None) -> dict:
+                 lane_receipt: dict | None = None, guard_window=None) -> dict:
     lane_id = W.identity(lane)
     scheduler = lane.get("scheduler") or {}
     kind = scheduler.get("kind") or "unknown"
@@ -446,7 +463,7 @@ def lane_history(lane: dict, *, now: datetime, trading_day, ledger: list[dict], 
                                  receipt.get("_success_at") if receipt else None,
                                  lane_receipt.get("_success_at") if lane_receipt else None] if t and t <= now]
     last_success = max(success_times) if success_times else None
-    slots = expected_slots(cadence, now, trading_day) if state == "ACTIVE" else []
+    slots = expected_slots(cadence, now, trading_day, guard_window=guard_window) if state == "ACTIVE" else []
     # Missed slots are judged only where ledger/journal history covers them; a slot a receipt run started in is "ran".
     history = bool(sources) and any(s not in _RECEIPT_SOURCES for s in sources)
     judged = judge_slots(slots, runs, now=now, covered_from=min(covered) if covered and history else None)
@@ -517,9 +534,10 @@ def lane_history(lane: dict, *, now: datetime, trading_day, ledger: list[dict], 
     }
 
 
-def build(registry: dict, inputs: dict, *, now: datetime, trading_day) -> dict:
+def build(registry: dict, inputs: dict, *, now: datetime, trading_day, guard_window=AUTO) -> dict:
     if now.tzinfo is None:
         raise ValueError("job history requires an aware clock")
+    window = resolve_guard_window(guard_window, registry.get("lanes"))
     since = now - timedelta(days=FIX_DAYS)
     ledger_by_lane = defaultdict(list)
     for row in inputs.get("ledger_runs") or []:
@@ -559,7 +577,8 @@ def build(registry: dict, inputs: dict, *, now: datetime, trading_day) -> dict:
                            last_live_success=_at((inputs.get("last_live_success") or {}).get(lane_id)),
                            receipt=(inputs.get("receipts") or {}).get(lane_id),
                            output_at=(inputs.get("output_times") or {}).get(lane_id), fixes=fixes,
-                           lane_receipt=(inputs.get("lane_receipts") or {}).get(lane_id))
+                           lane_receipt=(inputs.get("lane_receipts") or {}).get(lane_id),
+                           guard_window=window)
         row.update(describe(lane, (inputs.get("descriptions") or {}).get(lane_id), category_keys))
         rows.append(row)
     # Every status key is present (a counted 0 is a real 0), so the page never has to default a missing count.
@@ -867,10 +886,12 @@ def read_lane_receipts(registry: dict, root: Path) -> dict:
 
 def _load(root: Path, registry_path: Path, now: datetime, descriptions_dir: Path | None = None,
           categories_path: Path | None = None) -> dict:
-    from scripts.cron_outage_watchdog import bind_components
+    from scripts.cron_outage_watchdog import bind_components, read_crontab_snapshot
     from scripts.market_session import is_trading_day
     registry = _read_json(registry_path, 32 * 1024 * 1024) or {}
-    registry = bind_components(registry, _read_json(ROOT / "config/cron_outage_watchdog.json") or {})
+    crontab = read_crontab_snapshot(root)
+    registry = bind_components(registry, _read_json(ROOT / "config/cron_outage_watchdog.json") or {},
+                               crontab_text=crontab)
     gaps, sources = [], []
     ledger = read_ledger(root / "data/governance/n8n_coordination_ledger.sqlite", now)
     journal = read_journal(root / "logs/safe_flock_events.jsonl")
@@ -917,7 +938,8 @@ def _load(root: Path, registry_path: Path, now: datetime, descriptions_dir: Path
     inputs.update(descriptions=descriptions, categories=categories)
     if not registry.get("lanes"):
         gaps.append("the job list could not be read")
-    result = build(registry, inputs, now=now, trading_day=is_trading_day)
+    result = build(registry, inputs, now=now, trading_day=is_trading_day,
+                   guard_window=load_guard_window(crontab_text=crontab))
     from scripts.lib.run_quality import attach  # per-row run QUALITY grade (RUNQ 2026-11-06); read-only
     return attach(result, registry, root, now=now)
 

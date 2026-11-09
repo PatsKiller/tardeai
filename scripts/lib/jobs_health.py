@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 
 from scripts.lib import cron_outage_watchdog as W, recovery_validator as RV
 from scripts.lib.cron_schedule import fires_between
+from scripts.lib.llm_priority_guard import AUTO, guard_defers, load_guard_window, resolve_guard_window
 from scripts.lib.n8n_dlq_disposition import cause, instant
 from scripts.lib.scheduler_operations import successful_execution
 
@@ -169,14 +170,20 @@ def _json(path, limit=8 * 1024 * 1024):
         return {}
 
 
-def _schedule(lane, now, trading_day):
+def _schedule(lane, now, trading_day, guard_window=None):
     expressions, tz, issue = W.schedules(lane)
     zone = ZoneInfo(tz)
     today = now.astimezone(zone).replace(hour=0, minute=0, second=0, microsecond=0)
     scheduler = lane.get("scheduler") or {}
     gated = lane.get("respect_calendar") is True or "market_day_gate.sh" in str(scheduler.get("command_text") or scheduler.get("expression") or "")
+    deferring = lane.get("watchdog_llm_priority_guard") is True and guard_window is not None
+
     def allowed(fire):
-        return not gated or trading_day(fire.at.astimezone(zone))
+        if gated and not trading_day(fire.at.astimezone(zone)):
+            return False
+        if deferring and guard_defers(fire.at, guard_window):
+            return False
+        return True
     day_end = today + timedelta(days=1) - timedelta(microseconds=1)
     today_fires = sorted({f.at.astimezone(timezone.utc) for ex in expressions
                          for f in fires_between(ex, today - timedelta(microseconds=1), day_end, tz) if allowed(f)})
@@ -370,7 +377,7 @@ def _apply_monitor(result: dict, watchdog: dict, read_at: datetime) -> dict:
 
 
 def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, now: datetime, trading_day,
-          read_at: datetime | None = None) -> dict:
+          read_at: datetime | None = None, guard_window=AUTO) -> dict:
     """``now`` is the projection clock. ``read_at`` is when the watchdog receipt was read.
 
     Defaults to ``now`` so a caller that captured every store at one clock keeps that clock.
@@ -379,6 +386,7 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
     """
     if now.tzinfo is None:
         raise ValueError("jobs health requires an aware clock")
+    window = resolve_guard_window(guard_window, registry.get("lanes"))
     read_at = read_at or now
     by_lane = {}
     #: Lanes the ledger shows EXECUTING, but only as a dry run / shadow. Today they are dropped here and the
@@ -401,7 +409,8 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
         for run in values:
             if successful_execution(run, now):
                 captured["successes"].setdefault(lane, []).append({"at": run["finished_at"], "validated_success": True})
-    report = W.evaluate(registry, captured.get("events") or [], captured["successes"], now=now, trading_day=trading_day)
+    report = W.evaluate(registry, captured.get("events") or [], captured["successes"], now=now, trading_day=trading_day,
+                        guard_window=window)
     checks = {r["lane_id"]: r for r in report["rows"]}
     rows = []
     for lane in registry.get("lanes") or []:
@@ -435,7 +444,7 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
             if failure_at is None or last_at and last_at >= failure_at:
                 failure_at, diagnostic = instant(last.get("finished_at")), cause(RV.receipt_of(last), last.get("reason"))
         try:
-            due, upcoming, issue, gated, due_today = _schedule(lane, now, trading_day)
+            due, upcoming, issue, gated, due_today = _schedule(lane, now, trading_day, window)
         except (ValueError, TypeError, KeyError):
             due, upcoming, issue, gated, due_today = [], None, "schedule could not be measured", False, False
         outcome, reason = "unknown", "Successful execution is not yet measured"
@@ -522,13 +531,14 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
 
 def _load(root: Path, registry_path: Path, now: datetime, *, read_at: datetime | None = None):
     """``read_at`` pins the monitor clock in tests. None reads the wall clock after the receipt."""
-    from scripts.cron_outage_watchdog import bind_components, collect
+    from scripts.cron_outage_watchdog import bind_components, collect, read_crontab_snapshot
     from scripts.lib.scheduler_operations import read_run_ledger
     from scripts.market_session import is_trading_day
     registry = _json(registry_path)
     cfg = _json(ROOT / "config/cron_outage_watchdog.json")
     allowlist = _json(ROOT / "config/n8n_run_allowlist.json") or None
-    registry = bind_components(registry, cfg, allowlist)
+    crontab = read_crontab_snapshot(root)
+    registry = bind_components(registry, cfg, allowlist, crontab_text=crontab)
     snapshot = collect(registry, root)
     log_paths = Counter(str((lane.get("output_signal") or {}).get("path")) for lane in registry.get("lanes") or []
                         if (lane.get("output_signal") or {}).get("kind") == "file_mtime")
@@ -553,7 +563,8 @@ def _load(root: Path, registry_path: Path, now: datetime, *, read_at: datetime |
         snapshot.setdefault("collection_gaps", []).append("lane registry unavailable")
     watchdog = _json(root / "data/runtime/cron_outage_watchdog_latest.json")
     report = build(registry, snapshot, runs, watchdog, now=now, trading_day=is_trading_day,
-                   read_at=read_at or datetime.now(timezone.utc))
+                   read_at=read_at or datetime.now(timezone.utc),
+                   guard_window=load_guard_window(crontab_text=crontab))
     from scripts.lib.jobs_conflict_errors import get_data_errors
     report["data_errors"] = get_data_errors(root)
     return report

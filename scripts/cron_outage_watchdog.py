@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts.lib.cron_outage_watchdog import (  # noqa: E402
     allowlist_gate, evaluate, identity, instant, iso, job_key)
+from scripts.lib.llm_priority_guard import (  # noqa: E402
+    lane_behind_llm_priority_guard, load_guard_window)
 
 LATEST = "data/runtime/cron_outage_watchdog_latest.json"
 STATE = "data/runtime/cron_outage_watchdog_state.json"
@@ -105,7 +107,7 @@ def read_acks(state_root: Path) -> tuple[dict[str, dict], list[str]]:
     return acks, sorted(set(gaps))
 
 
-def bind_components(registry: dict, cfg: dict, allowlist: dict | None = None) -> dict:
+def bind_components(registry: dict, cfg: dict, allowlist: dict | None = None, crontab_text: str = "") -> dict:
     """Reader-only binding to a captured wrapper component and a declared off-peak gate, pinned to registry intent.
 
     Most cron registry expressions contain only five schedule fields. Matching a
@@ -126,8 +128,19 @@ def bind_components(registry: dict, cfg: dict, allowlist: dict | None = None) ->
         gate = allowlist_gate(row, allowlist)
         if gate is not None:
             item["watchdog_offpeak_gate"] = gate
+        command = str(scheduler.get("command_text") or "")
+        if lane_behind_llm_priority_guard(scheduler.get("match"), crontab_text, command):
+            item["watchdog_llm_priority_guard"] = True
         rows.append(item)
     return {**registry, "lanes": rows}
+
+
+def read_crontab_snapshot(state_root: Path) -> str:
+    """Captured crontab text. Unreadable is empty, so no lane is stamped (fail toward alerting)."""
+    try:
+        return read_text(Path(state_root) / CRONTAB_SNAPSHOT, 4 * 1024 * 1024)
+    except (OSError, ValueError):
+        return ""
 
 
 def read_json(path: Path, max_bytes=2 * 1024 * 1024) -> dict:
@@ -368,7 +381,8 @@ def main() -> int:
         allowlist = read_json(args.allowlist, 16 * 1024 * 1024)
     except (OSError, ValueError):
         allowlist = None
-    registry = bind_components(read_json(args.registry, 8 * 1024 * 1024), cfg, allowlist)
+    crontab = read_crontab_snapshot(args.state_root)
+    registry = bind_components(read_json(args.registry, 8 * 1024 * 1024), cfg, allowlist, crontab_text=crontab)
     snapshot = read_json(args.snapshot, 16 * 1024 * 1024) if args.snapshot else collect(registry, args.state_root)
     from scripts.market_session import is_trading_day
     prior = {}
@@ -382,7 +396,8 @@ def main() -> int:
     report = evaluate(registry, snapshot.get("events") or [], snapshot.get("successes") or {}, now=now,
                       grace_seconds=int(cfg.get("grace_seconds", 120)),
                       previous_refusal_keys=set(prior.get("delivered_refusal_keys") or []), trading_day=is_trading_day,
-                      registered_jobs=set(census) if isinstance(census, list) else None, acknowledged=acks)
+                      registered_jobs=set(census) if isinstance(census, list) else None, acknowledged=acks,
+                      guard_window=load_guard_window(crontab_text=crontab))
     report["mode"] = "monitor" if args.run else "dry_run"
     snapshot = {**snapshot, "collection_gaps": sorted(set((snapshot.get("collection_gaps") or []) + ack_gaps))}
     report = monitor_findings(report, snapshot)

@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "llm_priority_guard_window_lq1499_20261109",
+  "files": [
+    "tests/test_llm_priority_guard_window_lq1499_20261109.py"
+  ],
+  "anchor": "LLM_PRIORITY_GUARD_WINDOW_LQ1499_20261109",
+  "comment": [
+    "ANCHOR: LLM_PRIORITY_GUARD_WINDOW_LQ1499_20261109 — guard-deferred cron slots are expected, not missed.",
+    "The defer window is parsed from scripts/llm_priority_guard.sh and a crontab START/END assignment.",
+    "Inside that window a guarded lane is not a missed run and not late; outside it, a real gap still is."
+  ]
+}
