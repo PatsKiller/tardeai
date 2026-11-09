@@ -8,7 +8,7 @@ must show red, not disappear.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from scripts.lib import jobs_health as J
 
@@ -57,6 +57,44 @@ def test_active_successful_watcher_is_ok():
     monitor = {"status": "OK", "cause": None}
     w = {x["id"]: x for x in J._watchers({"lanes": lanes}, rows, monitor, True)}
     assert w["self-heal-fixer"]["status"] == "ok"
+
+
+def _watchdog(observed: datetime, status: str = "CRIT", mode: str = "monitor") -> dict:
+    return {"schema": "CronOutageWatchdog@v1", "mode": mode, "status": status,
+            "observed_at": observed.isoformat().replace("+00:00", "Z"),
+            "notification": {"status": "NOT_REQUIRED", "delivered": False}}
+
+
+def _build_monitor(watchdog: dict, *, now: datetime, read_at: datetime | None = None) -> dict:
+    return J.build({"lanes": []}, {"events": [], "successes": {}}, [], watchdog,
+                   now=now, trading_day=lambda d: d.weekday() < 5, read_at=read_at)["monitor"]
+
+
+def test_receipt_read_after_the_build_clock_stays_armed():
+    """Emulate a receipt rewritten 17 s after the projection clock. Ageing it at read time keeps
+    the watchdog's own status; ageing it at the build clock used to report UNKNOWN."""
+    now = datetime(2026, 11, 9, 8, 23, 28, tzinfo=timezone.utc)
+    receipt = _watchdog(now + timedelta(seconds=17), status="CRIT")
+    armed = _build_monitor(receipt, now=now, read_at=now + timedelta(seconds=20))
+    assert armed["status"] == "CRIT" and armed["cause"] is None
+    # The same receipt is still inside the 60 s future-skew fence of the build clock itself.
+    also = _build_monitor(receipt, now=now)
+    assert also["status"] == "CRIT" and also["cause"] is None
+
+
+def test_receipt_far_ahead_of_the_read_clock_stays_unknown():
+    now = datetime(2026, 11, 9, 8, 23, 28, tzinfo=timezone.utc)
+    receipt = _watchdog(now + timedelta(minutes=5), status="OK")
+    monitor = _build_monitor(receipt, now=now, read_at=now + timedelta(seconds=20))
+    assert monitor["status"] == "UNKNOWN"
+    assert monitor["cause"] == "Independent monitor receipt missing, stale or a dry run"
+
+
+def test_receipt_older_than_180s_at_the_read_clock_stays_unknown():
+    now = datetime(2026, 11, 9, 8, 23, 28, tzinfo=timezone.utc)
+    receipt = _watchdog(now - timedelta(seconds=181), status="OK")
+    monitor = _build_monitor(receipt, now=now, read_at=now)
+    assert monitor["status"] == "UNKNOWN"
 
 
 def test_failed_watcher_is_down():

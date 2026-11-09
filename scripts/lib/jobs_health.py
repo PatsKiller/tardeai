@@ -26,6 +26,12 @@ _CACHE = {}
 _LOCK = threading.Lock()
 _SINGLE = threading.Lock()
 _FAILURES = {"RUN_FAILED", "RUN_TIMEOUT", "RUN_REFUSED"}
+#: The independent watchdog writes every minute. An observation arms the Jobs light for this long.
+MONITOR_MAX_AGE = timedelta(seconds=180)
+#: A receipt may be stamped just ahead of the clock that reads it (rewritten while this projection
+#: was being built, or small skew between the writers). Beyond this it is not trusted: a receipt
+#: from the future is not evidence that anything ran.
+MONITOR_CLOCK_SKEW = timedelta(seconds=60)
 #: Modes that execute the lane without doing the work. Evidence that a lane RUNS; never evidence that it worked.
 _DRY_MODES = {"dry_run", "shadow", "preflight"}
 #: Why a job's execution could not be measured, as the page groups it (LQ-20261107-246). The order here is the
@@ -311,9 +317,69 @@ def _watchers(registry: dict, rows: list[dict], monitor: dict, monitor_ok: bool)
     return out
 
 
-def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, now: datetime, trading_day) -> dict:
+def _grade_monitor(watchdog: dict, read_at: datetime) -> tuple[dict, bool]:
+    """Age the independent-monitor receipt against the clock that read it.
+
+    ``read_at`` is that clock, not the projection clock captured before a slow jobs-board build.
+    A receipt rewritten during the build is newer than the build clock; measuring against the
+    build clock makes a fresh receipt look future-dated and the 180 s check reports UNKNOWN.
+    """
+    if read_at.tzinfo is None:
+        raise ValueError("jobs health requires an aware receipt clock")
+    seen = instant(watchdog.get("observed_at"))
+    age = (read_at - seen) if seen else None
+    monitor_ok = bool(
+        watchdog.get("schema") == W.SCHEMA and watchdog.get("mode") == "monitor"
+        and age is not None and -MONITOR_CLOCK_SKEW <= age <= MONITOR_MAX_AGE)
+    monitor = {
+        "observed_at": watchdog.get("observed_at"),
+        "status": watchdog.get("status") if monitor_ok else "UNKNOWN",
+        "cause": None if monitor_ok else "Independent monitor receipt missing, stale or a dry run",
+        "notification": watchdog.get("notification") if monitor_ok else None,
+    }
+    return monitor, monitor_ok
+
+
+def _apply_monitor(result: dict, watchdog: dict, read_at: datetime) -> dict:
+    """Re-grade the monitor on a served jobs-board body. Row data stays. The cached body is not mutated.
+
+    The jobs board is a request cache (no lane writes it) and may be served for up to six hours.
+    Its frozen monitor verdict is whatever the 180 s check said at compute time. The page prints
+    that verdict, so an hour-old snapshot keeps reporting UNKNOWN after the watchdog receipt,
+    which is rewritten every minute, has recovered. The receipt is a small read; the row rebuild is not.
+    """
+    if not isinstance(result, dict) or "monitor" not in result:
+        return result
+    monitor, monitor_ok = _grade_monitor(watchdog, read_at)
+    watchers = []
+    for row in result.get("watchers") or []:
+        if row.get("id") == "missed-run-watchdog":
+            watchers.append({**row, "status": "ok" if monitor_ok else "degraded",
+                             "cause": None if monitor_ok else monitor["cause"]})
+        else:
+            watchers.append(row)
+    incidents = [row for row in (result.get("incidents") or []) if row.get("id") != "job_monitor_unmeasured"]
+    if not monitor_ok:
+        incidents.append({"id": "job_monitor_unmeasured", "severity": "warning",
+                          "title": "Job monitoring needs attention", "message": monitor["cause"],
+                          "href": "/ops/jobs", "source": "job_execution"})
+    out = {**result, "monitor": monitor, "incidents": incidents, "incident_count": len(incidents)}
+    if result.get("watchers") is not None:
+        out["watchers"] = watchers
+    return out
+
+
+def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, now: datetime, trading_day,
+          read_at: datetime | None = None) -> dict:
+    """``now`` is the projection clock. ``read_at`` is when the watchdog receipt was read.
+
+    Defaults to ``now`` so a caller that captured every store at one clock keeps that clock.
+    ``_load`` passes the wall clock just after the receipt read, so a receipt rewritten during
+    collection is graded against that read, not against the clock from before collection.
+    """
     if now.tzinfo is None:
         raise ValueError("jobs health requires an aware clock")
+    read_at = read_at or now
     by_lane = {}
     #: Lanes the ledger shows EXECUTING, but only as a dry run / shadow. Today they are dropped here and the
     #: page cannot tell them from a lane that never ran at all (LQ-20261107-246: 191 "not measured" rows, of
@@ -432,12 +498,7 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
             "evidence_gap": gap,
             "evidence": last.get("run_id") or ("wrapper event" if events else None)})
     counts = Counter(row["result"] for row in rows)
-    seen = instant(watchdog.get("observed_at"))
-    monitor_ok = bool(watchdog.get("schema") == W.SCHEMA and watchdog.get("mode") == "monitor"
-                      and seen and 0 <= (now - seen).total_seconds() <= 180)
-    monitor = {"observed_at": watchdog.get("observed_at"), "status": watchdog.get("status") if monitor_ok else "UNKNOWN",
-        "cause": None if monitor_ok else "Independent monitor receipt missing, stale or a dry run",
-        "notification": watchdog.get("notification") if monitor_ok else None}
+    monitor, monitor_ok = _grade_monitor(watchdog, read_at)
     incidents = [{"id": row["lane_id"], "severity": "critical" if row["result"] == "failed" else "warning",
                   "title": f"{row['job']}: {row['result'].replace('_', ' ')}", "message": row["cause"],
                   "href": "/ops/jobs", "source": "job_execution"}
@@ -459,7 +520,8 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
         "note": "Execution evidence only. An enabled schedule, fresh log or dry run does not prove successful work."}
 
 
-def _load(root: Path, registry_path: Path, now: datetime):
+def _load(root: Path, registry_path: Path, now: datetime, *, read_at: datetime | None = None):
+    """``read_at`` pins the monitor clock in tests. None reads the wall clock after the receipt."""
     from scripts.cron_outage_watchdog import bind_components, collect
     from scripts.lib.scheduler_operations import read_run_ledger
     from scripts.market_session import is_trading_day
@@ -489,8 +551,9 @@ def _load(root: Path, registry_path: Path, now: datetime):
         snapshot.setdefault("collection_gaps", []).append(why or "run ledger unavailable")
     if not registry.get("lanes"):
         snapshot.setdefault("collection_gaps", []).append("lane registry unavailable")
-    report = build(registry, snapshot, runs, _json(root / "data/runtime/cron_outage_watchdog_latest.json"),
-                   now=now, trading_day=is_trading_day)
+    watchdog = _json(root / "data/runtime/cron_outage_watchdog_latest.json")
+    report = build(registry, snapshot, runs, watchdog, now=now, trading_day=is_trading_day,
+                   read_at=read_at or datetime.now(timezone.utc))
     from scripts.lib.jobs_conflict_errors import get_data_errors
     report["data_errors"] = get_data_errors(root)
     return report
@@ -592,6 +655,10 @@ def get_jobs_health(query=None, *, state_root=None, registry_path=None, now=None
                 else:
                     result, as_of = _compute(root, registry, key)
             swr = {"as_of": as_of, "age_s": 0.0, "stale": False, "refreshing": False, "source": "computed"}
+        # The served body can be an hour old. Re-grade only the monitor from the live receipt so
+        # the 180 s check sees that receipt, not the snapshot's frozen observed_at.
+        result = _apply_monitor(result, _json(root / "data/runtime/cron_outage_watchdog_latest.json"),
+                                datetime.now(timezone.utc))
     scope = query.get("filter", "attention")
     rows = [r for r in result["rows"] if scope == "all" or scope == "attention" and r["result"] in {"failed", "missed", "unknown"}
             or scope == "market" and r["market_hours_only"] or scope in {"n8n", "cron"} and r["scheduler"] == scope]
