@@ -207,11 +207,15 @@ def sessions_between(a: str, b: str, trading_days: list[str]) -> int | None:
 
 
 #: Verdict changes that page the operator. Status only: no size, order or stop (MBI_BEHAVIOR = 0).
+#: "Price recovered" is deliberately absent: it fires on the price crossing a Stage 2 level while Stage 1 is
+#: incomplete, which can happen and un-happen between sessions. It is a card state, not a page (LQ-20261107-1643).
 STAGE_CARD_VERDICTS = ("Early setup", "Confirmed", "Invalidated")
 #: Bumped when the stage computation changes in a way that makes old verdicts incomparable. A prior
 #: watch without this exact marker is a FIRST classification, even if it carries verdicts from the
 #: old computation (deploy day: XNDU/NAVN Confirmed and NFLX Basing came from the bad pre-market bar).
-STAGES_CONTRACT = "ReentryStages@v2"
+#: v3 (2026-11-09, LQ-20261107-1643): "Confirmed" now requires Stage 1 complete, so a v2 "Confirmed" over an
+#: incomplete Stage 1 reads "Price recovered" under v3. The two are not comparable, hence the bump.
+STAGES_CONTRACT = "ReentryStages@v3"
 #: Behavior phrasing a status card must never carry, on top of the shared sizing-text guard.
 _STOP_INSTRUCTION = re.compile(
     r"\b(place|set|move|raise|lower|use|honou?r)\s+(a\s+|the\s+)?stop\b"

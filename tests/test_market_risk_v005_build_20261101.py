@@ -87,13 +87,19 @@ def test_close_below_swing_low_after_a_setup_is_invalidated():
     assert out["invalidated"]["level"] == 88
 
 
-def test_close_above_exit_is_confirmed():
+def test_close_above_exit_alone_is_price_recovered_not_confirmed():
+    """2026-11-09 LQ-20261107-1643: this asserted "Confirmed" for a close above the exit while Stage 1 held only
+    the tier check — the operator read exactly that as "buy now?". The price check alone now reads "Price
+    recovered"; "Confirmed" needs all of Stage 1 too (tests/test_reentry_confirmed_gate_1643_20261109.py)."""
     hist = _history(25)
     tail = [(95, 96, 90, 91, 1000), (91, 92, 88, 89, 1000), (90, 97, 89.5, 96.5, 1000)]
     bars = _bars(hist + tail)
     out = rs.evaluate(symbol="AAA", exit_date=bars[25]["date"], exit_price=95.0, bars=bars, group_ratio=[],
                       hedging_series=[], market_tier="YELLOW", policy=POLICY)
-    assert out["verdict"] == "Confirmed"
+    assert out["stage2"]["met"] is True
+    assert out["stage1"]["met"] < out["stage1"]["of"]
+    assert out["stage1_complete"] is False
+    assert out["verdict"] == "Price recovered"
 
 
 def test_short_history_uses_anchored_vwap():

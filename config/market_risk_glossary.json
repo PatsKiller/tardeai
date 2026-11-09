@@ -56,7 +56,7 @@
     },
     "stage2": {
       "label": "Stage 2",
-      "text": "Confirmation: a close back above the 10-day or 20-day average, or above the price you were stopped out at."
+      "text": "Price check: a close back above the 10-day or 20-day average, or above the price you were stopped out at. On its own it is a recovery, not a confirmation — the card reads Price recovered until Stage 1 is complete too."
     },
     "invalidates_below": {
       "label": "Invalidates below",

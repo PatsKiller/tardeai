@@ -204,9 +204,11 @@ def _reentry_line(sym: str, rec: dict[str, Any]) -> list[str]:
         state = f"all {len(conds)} conditions met"
     else:
         state = f"{met} of {len(conds)} conditions met"
-    # Counts only. The engine's stage label (reentry_stages.evaluate) is a different rule: "Confirmed" when any one
-    # stage-2 price check passes, regardless of these five conditions, so printing both reads as a contradiction
-    # ("Confirmed" at 2 of 5). The label returns once the two agree (selloff package B).
+    # Counts only. The engine's stage label (reentry_stages.evaluate) was a different rule: "Confirmed" when any one
+    # stage-2 price check passed, regardless of these five conditions, so printing both read as a contradiction
+    # ("Confirmed" at 2 of 5). LQ-20261107-1643 made the two agree — "Confirmed" now requires all of Stage 1, and the
+    # price check alone reads "Price recovered" — so the label *could* be printed here without contradicting these
+    # counts. Restoring it to the brief is a separate change; this line stays counts-only until then.
     lines = [f"- {sym}: {state} · as of {rec.get('as_of') or 'unknown'}"]
     # LQ-1327 (2026-11-08): an exit is per ACCOUNT, never flat across the book. V was sold in the rollover IRA on
     # 11-06 and ~101 shares are still held in another account; the brief printed "V exited 11-06 @413" with no

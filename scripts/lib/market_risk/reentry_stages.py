@@ -15,11 +15,14 @@ Stage 1 ("early setup"), all five:
 Invalidation level = the swing low FROZEN at the bar where the setup completed: any later close below it cancels the
 setup, and the count restarts from that bar with a new swing low; the "Invalidated" badge shows for
 ``invalidation_sessions`` sessions after that close.
-Stage 2 ("confirmed"), any one: a close above a ``confirm_ma_sessions`` average, or above the exit price. With fewer
+Stage 2 ("price check"), any one: a close above a ``confirm_ma_sessions`` average, or above the exit price. With fewer
 bars since the swing low than the average needs (a recent IPO), the anchored VWAP from the swing low stands in.
 
-Verdict, first match: Invalidated · Confirmed · Early setup · Basing · Still falling (thresholds under
-``reentry_watch.verdict``). Every threshold comes from ``config/market_risk_policy.yaml`` ``reentry_watch``; the
+Verdict, first match: Invalidated · Confirmed · Price recovered · Early setup · Basing · Still falling (thresholds
+under ``reentry_watch.verdict``). **Confirmed needs Stage 1 complete as well as a Stage 2 price check** — operator
+2026-11-09, shown "Confirmed" on four names whose Stage 1 was 0 or 1 of 5 and asking "buy now?": the price check alone
+is the recovery, not the confirmation. While Stage 1 is incomplete it reads **Price recovered** ("price recovered —
+waiting for Stage 1 (n of 5)"). Every threshold comes from ``config/market_risk_policy.yaml`` ``reentry_watch``; the
 defaults below only apply when a key is absent. MBI_BEHAVIOR = 0: signal and status only — no size, no order, no price
 to pay. Prices shown are market facts (exit fill, closes, the swing low), never an instruction.
 """
@@ -31,9 +34,24 @@ from typing import Any
 
 from scripts.lib.market_risk import contract as c
 
-VERDICTS = ("Invalidated", "Confirmed", "Early setup", "Basing", "Still falling")
+VERDICTS = ("Invalidated", "Confirmed", "Price recovered", "Early setup", "Basing", "Still falling")
 #: the Stage 1 conditions, in card order (the card shows "k of len(STAGE1_KEYS)")
 STAGE1_KEYS = ("follow_through", "volume", "group_no_new_low", "hedging_easing", "tier_ok")
+
+
+def verdict_for(*, invalidated: bool, stage1_met: int, stage1_of: int, stage2_met: bool, basing: bool) -> str:
+    """The verdict, first match. LQ-20261107-1643: ``Confirmed`` requires **all** of Stage 1 as well as a Stage 2
+    price check — a Stage 2 pass over an incomplete Stage 1 is ``Price recovered`` (operator 2026-11-09, option 1:
+    "CONFIRMED only after Stage 1 complete; otherwise show 'Price recovered - waiting for Stage 1 (n of 5)'").
+    ``stage1_of`` of 0 (nothing to complete) can never confirm."""
+    if invalidated:
+        return "Invalidated"
+    complete = stage1_of > 0 and stage1_met >= stage1_of
+    if stage2_met:
+        return "Confirmed" if complete else "Price recovered"
+    if complete:
+        return "Early setup"
+    return "Basing" if basing else "Still falling"
 
 
 def _f(v: Any) -> float | None:
@@ -173,7 +191,8 @@ def evaluate(
         "last_date": str(bars[-1]["date"])[:10] if bars else None,
     }
     if not since or last is None:
-        out.update(verdict="Still falling", stage1={"met": 0, "of": len(STAGE1_KEYS), "conditions": []},
+        out.update(verdict="Still falling", stage1_complete=False,
+                   stage1={"met": 0, "of": len(STAGE1_KEYS), "conditions": []},
                    stage2={"met": False, "conditions": []}, note="no session since the exit")
         c.assert_no_behavior_fields(out)
         return out
@@ -270,16 +289,15 @@ def evaluate(
     basing = (not recent_low) and len(after) >= k["basing_min_sessions"] and all(
         float(b["close"]) <= band for b in after[-k["basing_min_sessions"] :]
     )
-    if invalidated:
-        verdict = "Invalidated"
-    elif s2_met:
-        verdict = "Confirmed"
-    elif s1_met == len(conds):
-        verdict = "Early setup"
-    elif basing:
-        verdict = "Basing"
-    else:
-        verdict = "Still falling"
+    # LQ-20261107-1643: the rule is in one place so a replay can apply the same decision to a stored row.
+    stage1_complete = s1_met == len(conds)
+    verdict = verdict_for(
+        invalidated=invalidated,
+        stage1_met=s1_met,
+        stage1_of=len(conds),
+        stage2_met=s2_met,
+        basing=basing,
+    )
     tn, tb = k["trend_sessions"], k["trend_band_pct"] / 100.0
     trend = None
     if len(closes) > tn:
@@ -296,6 +314,9 @@ def evaluate(
         pct_vs_sma20=round((last / sma20 - 1) * 100, 2) if sma20 else None,
         trend=trend,
         verdict=verdict,
+        # Confirmed needs both: Stage 2 (price) AND this flag. Exposed so a card can say why it is not confirmed
+        # without re-deriving the rule from the five booleans.
+        stage1_complete=stage1_complete,
         stage1={"met": s1_met, "of": len(conds), "conditions": conds},
         stage2={"met": s2_met, "conditions": s2},
     )

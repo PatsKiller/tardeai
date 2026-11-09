@@ -8,7 +8,7 @@ const assert = {
 }
 import { plainEngineReason, unwrapMarketRisk, bannerVisible, factLine, tierTone, contributorsLine, pointsSum, episodeLine, fmtPct, shadowMarker, SHADOW_MARKER, CARRIED_MARKER,
   summaryVisible, summaryDefaultOpen, summaryModel, fmtPoints, budgetLabel, SUMMARY_PHONE_MAX_PX,
-  actionableModel, verdictLine, fmtUsd, fmtSignedPct, hedgeModel, rotateModel, pointsToScore } from './marketRisk.ts'
+  actionableModel, verdictLine, fmtUsd, fmtSignedPct, hedgeModel, rotateModel, pointsToScore, reentryVerdictDisplay } from './marketRisk.ts'
 
 const notEval = unwrapMarketRisk({ ok: true, data: { state: 'not_evaluated', tier: 'NOT_EVALUATED', score: null, as_of: null, age_hours: null, stale: false,
   reason: 'engine not live', contributors: [], categories: [], sources: { options_flow: { findings: [{ symbol: 'QQQ', state: 'STRESS', pc_vol_ratio: 3.309 }] } } } })
@@ -376,4 +376,36 @@ assert.equal(plainEngineReason('ValueError: bad frame'), 'the check failed on it
 assert.equal(plainEngineReason('something new'), 'something new', 'an unknown engine sentence is shown as written')
 assert.equal(plainEngineReason(null), 'the engine gave no reason')
 assert.equal(summaryModel(unwrapMarketRisk({ ok: true, data: yBase }))!.contributors[0].pointsLabel, `${summaryModel(unwrapMarketRisk({ ok: true, data: yBase }))!.contributors[0].points} pts to score`)
+
+// LQ-20261107-1643 (operator 2026-11-09, option 1): the Stage 2 price check is the recovery, never the confirmation.
+// The operator read CONFIRMED beside Stage 1 at 0-1 of 5 and asked "buy now?".
+const stageRow = (verdict: string, met: number, of: number) => ({
+  verdict, exit_price: 10, last_close: 10.5, last_date: '2031-03-10',
+  stage1: { met, of, conditions: of ? [{ key: 'tier_ok', met: true, text: 'market tier YELLOW' }] : [] },
+  stage2: { met: true, conditions: [] },
+} as any)
+const gateCtx = { exitDate: '2031-03-07', asOfDate: '2031-03-10' }
+const recovered = reentryVerdictDisplay(stageRow('Price recovered', 1, 5), null, 10, gateCtx)
+assert.equal(recovered.shown, 'Price recovered', 'the producer word is shown')
+assert.equal(recovered.tone, 'warning', 'a recovery without Stage 1 is not a green light')
+assert.match(recovered.note!, /waiting for Stage 1 \(1 of 5\)/, 'the note says how much of Stage 1 is done')
+assert.match(recovered.note!, /not a confirmation/)
+// A document written before the producer change still says "Confirmed" over an incomplete Stage 1: the card refuses
+// to repeat that contradiction, so a stale build cannot re-create the defect the operator reported.
+for (const met of [0, 1, 4]) {
+  const legacy = reentryVerdictDisplay(stageRow('Confirmed', met, 5), null, 10, gateCtx)
+  assert.equal(legacy.shown, 'Price recovered', `Confirmed over ${met} of 5 is refused`)
+  assert.match(legacy.note!, new RegExp(`waiting for Stage 1 \\(${met} of 5\\)`))
+}
+const notMeasured = reentryVerdictDisplay({ verdict: 'Confirmed', exit_price: 10, last_close: 10.5, last_date: '2031-03-10',
+  stage1: { met: 0, of: 5, conditions: [] }, stage2: { met: true, conditions: [] } } as any, null, 10, gateCtx)
+assert.equal(notMeasured.shown, 'Price recovered')
+assert.match(notMeasured.note!, /waiting for Stage 1 \(not checked yet\)/, 'never "0 of 5" when nothing was measured')
+// Neither stage 1 complete nor the price check alone is enough: the words it does NOT show matter most.
+for (const shown of [recovered, notMeasured]) assert.ok(!/^Confirmed$/.test(shown.shown))
+const confirmedRow = reentryVerdictDisplay(stageRow('Confirmed', 5, 5), null, 10, gateCtx)
+assert.equal(confirmedRow.shown, 'Confirmed', 'all of Stage 1 plus the price check is still Confirmed')
+assert.equal(confirmedRow.tone, 'success')
+assert.equal(confirmedRow.note, null)
+assert.equal(reentryVerdictDisplay(stageRow('Early setup', 5, 5), null, 10, gateCtx).shown, 'Early setup', 'Stage 1 without a price check is unchanged')
 console.log('marketRisk LIVEFIX-R ok')

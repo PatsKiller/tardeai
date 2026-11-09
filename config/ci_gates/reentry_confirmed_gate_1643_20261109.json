@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "reentry_confirmed_gate_1643_20261109",
+  "files": [
+    "tests/test_reentry_confirmed_gate_1643_20261109.py"
+  ],
+  "anchor": "REENTRY_CONFIRMED_GATE_1643_20261109",
+  "comment": [
+    "ANCHOR: REENTRY_CONFIRMED_GATE_1643_20261109 — a re-entry is Confirmed only when Stage 1 is complete AND a Stage 2 price check passes; a price check over an incomplete Stage 1 reads \"Price recovered\" with how much of Stage 1 is done (operator 2026-11-09, option 1: they were shown CONFIRMED at 0-1 of 5 and asked \"buy now?\"). Covers the verdict rule table, the live shape through evaluate(), the all-five-plus-price-check case that is still Confirmed, quote-only bars that can never confirm, and that the new field is status-only. Hermetic: synthetic bars, no DB, no network."
+  ]
+}

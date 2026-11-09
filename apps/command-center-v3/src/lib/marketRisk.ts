@@ -113,6 +113,9 @@ export interface ReentryStages {
   verdict?: string; exit_price?: number | null; last_close?: number | null; last_date?: string | null; swing_low?: number | null; invalidation_level?: number | null
   sma10?: number | null; sma20?: number | null; anchored_vwap?: number | null; pct_vs_exit?: number | null; pct_vs_sma20?: number | null; trend?: 'up' | 'down' | 'flat' | null
   stage1?: { met: number; of: number; conditions: StageCond[] }; stage2?: { met: boolean; conditions: StageCond[] }; error?: string
+  /** True only when every Stage 1 condition is met and measured. "Confirmed" needs this AND a Stage 2 check
+   *  (LQ-20261107-1643); the card re-derives it from stage1 when a document predates that producer change. */
+  stage1_complete?: boolean
   /** The producer's own explanation when no stage could be measured ("no session since the exit"). */
   note?: string | null
 }
@@ -632,7 +635,7 @@ export function rotateModel(r: RotateBlock | null | undefined): RotateModel | nu
   }
 }
 
-const VERDICT_TONE: Record<string, Tone> = { 'Still falling': 'danger', Invalidated: 'danger', Basing: 'warning', 'Early setup': 'success', Confirmed: 'success', Mixed: 'warning', 'Check after close': 'neutral', 'Not checked yet': 'neutral' }
+const VERDICT_TONE: Record<string, Tone> = { 'Still falling': 'danger', Invalidated: 'danger', Basing: 'warning', 'Early setup': 'success', Confirmed: 'success', 'Price recovered': 'warning', Mixed: 'warning', 'Check after close': 'neutral', 'Not checked yet': 'neutral' }
 
 /** The producer's note when no bar exists on or after the exit date (scripts/lib/market_risk/reentry_stages.py). */
 const NO_SESSION_NOTE = /^no session since the exit$/i
@@ -668,13 +671,31 @@ export function stage1Display(st: ReentryStages, ctx?: { exitDate?: string | nul
  *  "+2.6% vs exit"). "Still falling" is the producer's fall-through word, so:
  *  - no stage condition evaluated  → "Check after close" (or "Not checked yet" with the producer's reason in plain words);
  *  - price now at/above the exit, a last close at/above the exit, or closes trending up → "Mixed", naming both sides.
- *  Every other verdict is shown as given. */
+ *  "Confirmed" is shown only when Stage 1 is complete; over an incomplete Stage 1 it reads "Price recovered — waiting
+ *  for Stage 1 (n of 5)" (operator 2026-11-09, LQ-20261107-1643). Every other verdict is shown as given. */
 export function reentryVerdictDisplay(st: ReentryStages, vsExitNow: number | null, exitPrice: number | null | undefined, ctx?: { exitDate?: string | null; asOfDate?: string | null }): { shown: string; note: string | null; tone: Tone } {
   const given = verdictText(st)
   const tone = (w: string): Tone => VERDICT_TONE[w] ?? 'neutral'
+  const s1 = stage1Display(st, ctx)
+  // LQ-20261107-1643 (operator 2026-11-09, option 1): a Stage 2 price check is the recovery, not the confirmation.
+  // The producer now emits "Price recovered" while Stage 1 is incomplete; a document written before that change can
+  // still carry "Confirmed" over 0-1 of 5 (that is the contradiction the operator read as "buy now?"), so the card
+  // refuses it too instead of repeating it.
+  const stage1Of = st.stage1?.of ?? (st.stage1?.conditions ?? []).length
+  // A document that does not say how many conditions were met cannot claim they are all met: an absent count is
+  // "not confirmed", not a zero measurement.
+  const stage1Met = st.stage1?.met
+  const complete = s1.measured && stage1Of > 0 && stage1Met != null && stage1Met >= stage1Of
+  if (given === 'Price recovered' || (given === 'Confirmed' && !complete)) {
+    return {
+      shown: 'Price recovered',
+      note: `Price is above a Stage 2 level — waiting for Stage 1 (${s1.count}). The price check alone is not a confirmation.`,
+      tone: tone('Price recovered'),
+    }
+  }
   if (given !== 'Still falling') return { shown: given, note: null, tone: tone(given) }
   const closes = st.last_date ? `closes through ${shortDay(st.last_date)}` : 'the closes'
-  if (!stage1Display(st).measured) {
+  if (!s1.measured) {
     const p = stagesPendingText(st, ctx)
     return { shown: p.chip, note: `${p.text}.`, tone: tone(p.chip) }
   }

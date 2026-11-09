@@ -143,7 +143,9 @@ function Reentry({ m }: { m: ActionableModel }) {
               </div>
               {r.verdictNote && <div data-testid="mr-reentry-verdict-note" style={{ ...sub, marginTop: 0, color: TOKENS.text[2] }}>{r.verdictNote}</div>}
               <div><b>Stage 1 <Explain term="stage1" /> (early setup): {r.stage1}</b><span style={{ color: TOKENS.text[2] }}> — waiting: {r.waiting}</span></div>
-              <div>Invalidates below <Explain term="invalidates_below" /> <b style={numStyle}>{r.invalidates}</b><span style={{ color: TOKENS.text[2] }}> (selloff low) · Stage 2 <Explain term="stage2" /> (confirmed): {r.stage2}</span></div>
+              {/* "price check", not "confirmed": Stage 2 is the price condition; only a complete Stage 1 makes a
+                  re-entry Confirmed (LQ-20261107-1643 — the operator read "CONFIRMED" beside Stage 1 at 1 of 5). */}
+              <div>Invalidates below <Explain term="invalidates_below" /> <b style={numStyle}>{r.invalidates}</b><span style={{ color: TOKENS.text[2] }}> (selloff low) · Stage 2 <Explain term="stage2" /> (price check): {r.stage2}</span></div>
               {r.wash && <div data-testid="mr-reentry-wash" data-tone={r.wash.tone} style={{ color: r.wash.tone === 'warning' ? toneVars('warning').color : TOKENS.text[2], fontWeight: r.wash.tone === 'warning' ? 600 : 400 }}>{r.wash.tone === 'warning' ? '⚠ ' : 'ⓘ '}{r.wash.text}</div>}
               {r.earnings && <div style={{ color: toneVars('warning').color, fontWeight: 600 }}>⚠ {r.earnings}</div>}
               <div style={{ ...sub, marginTop: 0, overflowWrap: 'anywhere' }}>{r.lookThrough}{r.lookThroughMissing && <> <Explain term="look_through_missing" /></>}</div>
