@@ -39821,8 +39821,13 @@ def _trade_chart(query=None):
 
 def _finviz_chart(query=None):
     """GET /api/v2/finviz-chart?symbol=&p= — proxy the Finviz Elite chart IMAGE (attaches the Elite cookie
-    server-side; the browser can't). Returns the PNG bytes. Tier-3 fallback when Alpaca/Schwab have no bars."""
-    import os as _os, urllib.request
+    server-side; the browser can't). Returns the PNG bytes. Tier-3 fallback when Alpaca/Schwab have no bars.
+
+    Failure is this route's HTTP status, not a field inside a 200: it returns `(502, {"ok": False, ...})`
+    and the dispatcher honours the tuple (LQ-20261107-1300). A `302` here is the login bounce —
+    follow-redirect gives up on the loop — so it is named as an expired cookie, not as a raw urlopen
+    string the operator cannot act on."""
+    import os as _os, urllib.error, urllib.request
 
     q = query or {}
     g = lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k)
@@ -39852,6 +39857,16 @@ def _finviz_chart(query=None):
             "ok": False,
             "error": "finviz returned non-image (cookie expired — refresh FINVIZ_COOKIE in System > secrets)",
         }
+    except urllib.error.HTTPError as e:
+        # Follow-redirect gives up on the login bounce (the live 19:33 ET case: "HTTP Error 302 …
+        # infinite loop"). Same cause as the non-image branch above, so it says the same thing.
+        if int(getattr(e, "code", 0) or 0) in (301, 302, 303, 307, 308):
+            msg = (
+                "cookie expired — Finviz redirected the chart request to its login page"
+                " (refresh FINVIZ_COOKIE in System > secrets)"
+            )
+            return 502, {"ok": False, "error": msg}
+        return 502, {"ok": False, "error": f"finviz chart HTTP {e.code} {e.reason}"[:120]}
     except Exception as e:
         return 502, {"ok": False, "error": str(e)[:120]}
 
@@ -50369,6 +50384,23 @@ ROUTES.update(
 _current_query = {}  # Thread-local would be better; single-threaded server is fine
 
 
+def _is_status_body(out) -> bool:
+    """True when a ROUTES handler returned `(http_status, body)` instead of a data payload.
+
+    The dispatcher honours such a return verbatim; every other return keeps the v2
+    `{"ok": true, "data": ...}` envelope. A status is an int in 100..599 and never a bool — a payload
+    that happens to be a 2-tuple cannot be JSON-serialized anyway, so the shape is unambiguous.
+    """
+    return (
+        isinstance(out, tuple)
+        and len(out) == 2
+        and isinstance(out[0], int)
+        and not isinstance(out[0], bool)
+        and 100 <= out[0] <= 599
+        and isinstance(out[1], (dict, list))
+    )
+
+
 def handle(path: str, method: str = "GET", body: dict = None, query: dict = None):
     """Dispatch a v2 API path. Returns (status, dict) or None if not a v2 route."""
     global _current_query
@@ -56074,7 +56106,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             import inspect as _insp
 
             _np = len(_insp.signature(handler).parameters)
-            return 200, {"ok": True, "data": (handler(query) if _np >= 1 else handler())}
+            out = handler(query) if _np >= 1 else handler()
+            # LQ-20261107-1300: a handler may own its HTTP status. /api/v2/finviz-chart proxies an image
+            # and answers (502, {"ok": False, ...}) when the cookie is dead; wrapping that in the v2
+            # envelope reported the failure as a success — body {"ok": true, "data": [502, {...}]}, HTTP 200.
+            if _is_status_body(out):
+                return out
+            return 200, {"ok": True, "data": out}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 

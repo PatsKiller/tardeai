@@ -128,11 +128,11 @@ def test_token_ok_sends_one_telegram_and_one_fi_text_and_records_the_et_day(tmp_
         assert label in tg["body"]
     assert len(text) == 1 and text[0]["channel"] == "email" and text[0]["to"] == FI
     assert "FINVIZ COOKIE EXPIRED (Elite token OK)" in text[0]["body"]
-    assert "3 features degraded" in text[0]["body"]
+    assert f"{len(fcf.labels())} features degraded" in text[0]["body"]
     assert len(text[0]["body"]) <= 280
     doc = json.loads(_state(tmp_path).read_text(encoding="utf-8"))
     assert doc["last_alert_et_date"] == "2026-11-08" and doc["last_cookie_state"] == "expired"
-    assert doc["last_alert"]["degraded_features"] == 3 and doc["last_alert"]["gateways"] == 1
+    assert doc["last_alert"]["degraded_features"] == len(fcf.labels()) and doc["last_alert"]["gateways"] == 1
 
 
 def test_the_same_et_day_sends_at_most_once_however_many_polls_ask(tmp_path):

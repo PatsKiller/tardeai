@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "route_status_tuple_lq1300_20261108",
+  "files": [
+    "tests/test_route_status_tuple_lq1300_20261108.py"
+  ],
+  "comment": [
+    "LQ-20261107-1300: a ROUTES handler that returns (status, body) has its status honoured by the dispatcher; /api/v2/finviz-chart is the only such route and answers 502 with ok:false when the Finviz cookie is dead (a 302 login bounce is named 'cookie expired'), while every payload return keeps the v2 {ok, data} envelope."
+  ]
+}

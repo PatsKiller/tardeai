@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from lib import finviz_cookie_features as fcf  # noqa: E402
 
 CONFIG = ROOT / "config" / "finviz_cookie_features.json"
-PINNED = ["position_technicals", "options_universe_completeness", "news_headline_fallback"]
+PINNED = ["position_technicals", "options_universe_completeness", "news_headline_fallback", "chart_image_proxy"]
 
 
 def test_registry_names_the_audited_cookie_only_features_in_file_order():
