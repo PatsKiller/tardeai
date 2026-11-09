@@ -86,9 +86,20 @@ def repo_root() -> Path:
 
 
 def load_policy(path: Path | str | None = None) -> dict[str, Any]:
-    """``config/market_event_policy.json`` — the same document WP1-WP3 read; ``plan.lifecycle`` is this lane's block."""
-    p = Path(path) if path else repo_root() / "config" / "market_event_policy.json"
-    return json.loads(p.read_text(encoding="utf-8"))
+    """The merged ``plan`` block of ``config/market_event_policy.json`` — defaults under the file's block.
+
+    Delegates to :func:`market_event_plan.load_policy` so the lane and the state machine read one policy shape: the
+    block that carries ``lifecycle``, merged over ``DEFAULT_POLICY``. Returning the raw document here would leave
+    every ``lc.get(...)`` on a code default and silently ignore the operator's file.
+    """
+    return mep.load_policy(Path(path) if path else None)
+
+
+def plan_block(policy: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The policy as a plan block, whether the caller handed us the document (``{"plan": ...}``) or the block."""
+    pol = dict(policy or {})
+    inner = pol.get("plan")
+    return dict(inner) if isinstance(inner, Mapping) else pol
 
 
 def load_events(*, now: datetime, kinds: Sequence[str] | None = None, path: Path | str | None = None,
@@ -525,8 +536,104 @@ def evaluate_rows(rows: Sequence[Mapping[str, Any]], policy: Mapping[str, Any],
         res["entry_tier"] = cand.get("entry_tier")
         res["schema"] = SCHEMA_ROW
         res["first_observation"] = not r.get("previous_recorded")
+        # carried into the state map so the next run can tell a qty or stop CHANGE from an unchanged book
+        res["qty"] = (r.get("holding") or {}).get("qty")
+        res["stop_state"] = (r.get("holding") or {}).get("stop_state")
+        res["tier"] = (r.get("snapshot") or {}).get("tier")
         out.append(res)
     return out
+
+
+# --------------------------------------------------------------------------- triggers
+
+
+def calendar_anchor_triggers(events: Sequence[Mapping[str, Any]], *, now: datetime, settle_min: float = 15.0,
+                             late_slack_min: float = 10.0, window_min: float = 60.0) -> list[dict[str, Any]]:
+    """The calendar anchors that are due at ``now``: released, settled, and inside the catch-up window.
+
+    An anchor is the release instant plus the policy's ``settle_min`` — the same instant the t2 gate opens at, so the
+    trigger and the gate can never disagree about when "the event has landed". A run more than ``late_slack_min``
+    after its anchor is labelled ``calendar:<kind>:late`` (design SELF-HEALING: the next tick runs the anchored
+    evaluation late and says so), and an anchor older than ``window_min`` has been missed outright and is not claimed
+    by a routine tick — a lane that was down for an hour does not get to relabel the gap as on time.
+    """
+    out: list[dict[str, Any]] = []
+    for e in events or []:
+        if not isinstance(e, Mapping):
+            continue
+        rel = mep._parse_at(e.get("released_at"))  # noqa: SLF001 - the module's own ISO parser
+        if rel is None:
+            continue  # not released yet: a scheduled anchor is not a due one
+        anchor = rel + timedelta(minutes=float(settle_min))
+        if now < anchor:
+            continue
+        late_min = (now - anchor).total_seconds() / 60.0
+        if late_min > float(window_min):
+            continue
+        kind = str(e.get("kind") or "").upper()
+        if not kind:
+            continue
+        out.append({
+            "kind": kind,
+            "anchor_at": _iso(anchor),
+            "late_minutes": round(late_min, 1),
+            "trigger": f"calendar:{kind}" + (":late" if late_min > float(late_slack_min) else ""),
+        })
+    out.sort(key=lambda a: a["anchor_at"])
+    return out
+
+
+def state_triggers(rows: Sequence[Mapping[str, Any]]) -> list[str]:
+    """``tier:`` / ``qty:`` / ``stop:`` triggers — what changed since the last run recorded it.
+
+    The comparison base is the lifecycle state the previous run persisted (``last_tier``, and each label's ``qty``
+    and ``stop``). A first run has no base, so it reports a ``tick``: an absence of history is not a change.
+    """
+    out: list[str] = []
+    for r in rows or []:
+        stored = r.get("stored_lifecycle") if isinstance(r.get("stored_lifecycle"), Mapping) else {}
+        sym = str(r.get("symbol") or "").upper()
+        prev_tier = str(stored.get("last_tier") or "").upper()
+        cur_tier = str((r.get("snapshot") or {}).get("tier") or "").upper()
+        if prev_tier and cur_tier and prev_tier != cur_tier:
+            out.append(f"tier:{prev_tier}->{cur_tier}")
+        prev_pos = (stored.get("positions") or {})
+        prev_pos = prev_pos.get(r.get("account_label")) if isinstance(prev_pos, Mapping) else None
+        prev_pos = prev_pos if isinstance(prev_pos, Mapping) else {}
+        holding = r.get("holding") or {}
+        pq, cq = _f(prev_pos.get("qty")), _f(holding.get("qty"))
+        if pq is not None and cq is not None and pq != cq:
+            out.append(f"qty:{sym}")
+        ps = str(prev_pos.get("stop") or "").upper()
+        cs = str(holding.get("stop_state") or "").upper()
+        if "stop" in prev_pos and ps != cs:
+            out.append(f"stop:{sym}")
+    return out
+
+
+def derive_trigger(*, rows: Sequence[Mapping[str, Any]], events: Sequence[Mapping[str, Any]], now: datetime,
+                   policy: Mapping[str, Any]) -> dict[str, Any]:
+    """The trigger label for this run, from what actually fired (design PROCESS 4).
+
+    Every due calendar anchor and every observed state change is reported in ``triggers`` (deduplicated, calendar
+    first); ``trigger`` is the first of them, or ``tick`` when nothing fired. Never a guess: each entry names the
+    thing observed, so a receipt's ``trigger`` can be checked against the anchors and the stored state.
+    """
+    lc = policy.get("lifecycle") if isinstance(policy.get("lifecycle"), Mapping) else {}
+    anchors = calendar_anchor_triggers(
+        events, now=now, settle_min=float(lc.get("settle_min", 15)),
+        late_slack_min=float(lc.get("anchor_late_slack_minutes", 10)),
+        window_min=float(lc.get("anchor_window_minutes", 60)))
+    ordered: list[str] = []
+    for t in [a["trigger"] for a in anchors] + state_triggers(rows):
+        if t not in ordered:
+            ordered.append(t)
+    return {
+        "trigger": ordered[0] if ordered else "tick",
+        "triggers": ordered or ["tick"],
+        "calendar": anchors,
+        "anchor_max_late_minutes": max((a["late_minutes"] for a in anchors), default=0.0),
+    }
 
 
 def _position_asof(pos: Mapping[str, Any] | None, max_asof: Optional[datetime],
@@ -617,9 +724,14 @@ def persist_results(conn: Any, results: Sequence[Mapping[str, Any]], *, trigger:
             inserted += max(0, int(cur.rowcount or 0))
         prior = (st["positions"].get(label) or {}) if isinstance(st["positions"].get(label), Mapping) else {}
         st["positions"][label] = {"stage": r.get("stage"), "at": _iso(now), "trigger": trigger,
-                                  "verdict": r.get("verdict")}
+                                  "verdict": r.get("verdict"), "qty": r.get("qty"),
+                                  "stop": r.get("stop_state") or None}
         if prior.get("stage") == st["positions"][label]["stage"]:
             st["positions"][label]["at"] = prior.get("at") or _iso(now)
+        # the comparison base for the next run's tier trigger; only a row that could be read may set it, so an
+        # unverifiable run cannot move the base and mask the transition it could not measure
+        if str(r.get("tier") or "").upper():
+            st["last_tier"] = str(r["tier"]).upper()
     changed = 0
     for (eid, sym), st in plans.items():
         if not eid or not sym:
@@ -714,7 +826,7 @@ def collect_inputs(db_query: Callable[..., list[dict[str, Any]]], now: datetime,
 
 
 def run_lane(*, conn: Any, db_query: Callable[..., list[dict[str, Any]]], now: datetime, apply: bool,
-             trigger: str = "tick", policy: Mapping[str, Any] | None = None,
+             trigger: str | None = "tick", policy: Mapping[str, Any] | None = None,
              calendar_path: Path | str | None = None, mre: Mapping[str, Any] | None = None,
              inputs: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """The whole step: collect, evaluate every held row, and (``apply``) persist the transitions.
@@ -722,10 +834,15 @@ def run_lane(*, conn: Any, db_query: Callable[..., list[dict[str, Any]]], now: d
     ``apply=False`` is the dry run: the same reads and the same evaluation, nothing written. The summary carries the
     four receipt fields the contract names — ``rows_evaluated``, ``transitions``, ``not_measured`` and ``trigger`` —
     plus one compact entry per row so a dry run can be quoted. Never raises: an error is reported by type and text.
+
+    ``trigger="auto"`` derives the label from what actually fired (:func:`derive_trigger`); an explicit string is
+    recorded as given, which is what a replay wants.
     """
-    pol = dict(policy) if policy is not None else load_policy()
+    pol = plan_block(policy) if policy is not None else plan_block(load_policy())
     summary: dict[str, Any] = {
-        "lane": LANE, "trigger": trigger, "rows_evaluated": 0, "transitions": 0, "plans_written": 0,
+        "lane": LANE, "trigger": str(trigger or "tick"), "triggers": [str(trigger or "tick")],
+        "calendar_anchors": [], "anchor_max_late_minutes": 0.0,
+        "rows_evaluated": 0, "transitions": 0, "plans_written": 0,
         "not_measured": 0, "candidates": 0, "empty_reason": None, "error": None, "errors": {},
         "sleeve_basis": None, "calendar_events": 0, "rows": [],
     }
@@ -740,6 +857,12 @@ def run_lane(*, conn: Any, db_query: Callable[..., list[dict[str, Any]]], now: d
         summary["candidates"] = len(inp.get("candidates") or [])
         rows = build_rows(inp, pol, now)
         summary["rows_evaluated"] = len(rows)
+        if str(trigger or "").lower() == "auto":
+            derived = derive_trigger(rows=rows, events=inp.get("events") or [], now=now, policy=pol)
+            summary["trigger"] = derived["trigger"]
+            summary["triggers"] = derived["triggers"]
+            summary["calendar_anchors"] = derived["calendar"]
+            summary["anchor_max_late_minutes"] = derived["anchor_max_late_minutes"]
         results = evaluate_rows(rows, pol, now)
         summary["not_measured"] = sum(1 for r in results if r.get("verdict") != "OK")
         summary["rows"] = [{
@@ -756,7 +879,7 @@ def run_lane(*, conn: Any, db_query: Callable[..., list[dict[str, Any]]], now: d
                 stored = r.get("stored_lifecycle")
                 if isinstance(stored, Mapping) and stored:
                     previous[(str(r.get("episode_id") or ""), str(r.get("symbol") or "").upper())] = stored
-            wrote = persist_results(conn, results, trigger=trigger, now=now, previous=previous)
+            wrote = persist_results(conn, results, trigger=summary["trigger"], now=now, previous=previous)
             summary["transitions"] = wrote["transitions"]
             summary["plans_written"] = wrote["plans"]
     except Exception as exc:  # noqa: BLE001 - reported by type AND text, never flattened into a zero

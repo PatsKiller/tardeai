@@ -71,8 +71,10 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--dry-run", action="store_true", default=True,
                       help="read-only; evaluate every row and print what would be written (default)")
     mode.add_argument("--apply", action="store_true", help="write the transitions and the lane receipt")
-    ap.add_argument("--trigger", default="tick",
-                    help="what fired this run: tick | calendar:<KIND> | tier:<from>-><to> | stop:<SYM> | qty:<SYM>")
+    ap.add_argument("--trigger", default="auto",
+                    help="what fired this run: auto (derive from anchors and observed changes; the scheduled "
+                         "default) | tick | calendar:<KIND> | calendar:<KIND>:late | tier:<from>-><to> | "
+                         "stop:<SYM> | qty:<SYM>")
     ap.add_argument("--calendar", help="MacroCalendar@v1 file (default: the state root's macro_calendar.json)")
     ap.add_argument("--now", help="ISO time to evaluate at (replay)")
     a = ap.parse_args(argv)

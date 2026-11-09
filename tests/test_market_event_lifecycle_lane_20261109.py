@@ -24,10 +24,10 @@ PROXY = "XLV"
 
 
 def policy(**lc_over):
-    p = life.load_policy()
-    lc = dict(p["plan"]["lifecycle"])
+    p = life.load_policy()          # the merged plan block, the shape evaluate_position reads
+    lc = dict(p["lifecycle"])
     lc.update(lc_over)
-    p["plan"] = {**p["plan"], "lifecycle": lc}
+    p["lifecycle"] = lc
     return p
 
 
@@ -315,7 +315,7 @@ def test_the_lane_is_advisory_and_never_reaches_a_broker():
     src = Path(life.__file__).read_text(encoding="utf-8")
     for banned in ("place_order", "requests.post", "import psycopg", "from lib import broker"):
         assert banned not in src
-    p = life.load_policy()["plan"]["lifecycle"]
+    p = life.load_policy()["lifecycle"]
     assert p["tranche_held_fraction"] == 0.8
     assert (p["trim_gain_pct"], p["rs_loss_pct"], p["rs_loss_sessions"]) == (25.0, 5.0, 3)
     assert p["t3_max_tier"] == "YELLOW"           # operator 2026-11-09: "YELLOW+" is YELLOW or BETTER

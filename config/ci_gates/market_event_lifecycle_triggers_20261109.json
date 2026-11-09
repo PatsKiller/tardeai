@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_event_lifecycle_triggers_20261109",
+  "files": [
+    "tests/test_market_event_lifecycle_triggers_20261109.py"
+  ],
+  "anchor": "MARKET_EVENT_LIFECYCLE_TRIGGERS_20261109",
+  "comment": [
+    "ANCHOR: MARKET_EVENT_LIFECYCLE_TRIGGERS_20261109 — scripts/lib/market_event_lifecycle.py::derive_trigger names what fired a run (design PROCESS 4, LQ-20261107-1674 stage 3): each CPI/FOMC/NFP/PCE anchor at release + the policy's settle_min, labelled calendar:<KIND> or calendar:<KIND>:late past the slack and not claimed at all past the catch-up window; plus tier:<from>-><to>, qty:<SYM> and stop:<SYM> against the state the previous run persisted. Nothing fired is tick. This file also pins that load_policy returns the merged plan block — reading the raw document left every lc.get on a code default and silently ignored config/market_event_policy.json. Synthetic fixtures only; no DB, no network, no broker."
+  ]
+}
