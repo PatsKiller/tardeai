@@ -743,6 +743,8 @@ def test_dry_run_writes_nothing_and_never_calls_a_provider(tmp_path, monkeypatch
         "load_news": news(),
         "load_filings": {},
         "load_stops": stops(),
+        # LQ-20261107-1700: main reads the stop rows once and derives the working map from them.
+        "load_stop_rows": [row for rows in stops().values() for row in rows],
         "load_daily_bars": bars(),
         "load_cio_decisions": {},
         "load_risk_tier": risk(),

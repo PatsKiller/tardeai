@@ -266,6 +266,26 @@ def aggregate_holdings(holdings: Sequence[Mapping[str, Any]]) -> dict[str, dict[
     return out
 
 
+def position_value(pos: Mapping[str, Any], quote: Optional[Mapping[str, Any]] = None) -> float:
+    """A holding's market value: the larger of the store's figure and price x shares.
+
+    One definition for both populations that read the floor (``select_names`` and the uncovered
+    holds of LQ-20261107-1699): a store row can carry shares with a stale ``market_value``, and a
+    large position must never drop out of either list on that field alone.
+
+    An absent figure is no candidate at all — it can never outbid a known one — and a holding with
+    neither figure known has no value to protect, so it stays below the floor exactly as the floor
+    read it before this helper existed. (tq-py-missing-as-zero: the zero here is "no candidate",
+    not a stand-in for an unknowable figure.)
+    """
+    price = _f((quote or {}).get("price"))
+    shares = _f(pos.get("shares"))
+    mv = _f(pos.get("market_value"))
+    implied = (shares * price) if shares is not None and price else None
+    known = [v for v in (mv, implied) if v is not None]
+    return max(known) if known else 0.0
+
+
 def working_stops(rows: Iterable[Mapping[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     """Resting stops per symbol. ``rows`` is the full stop_last_known picture for the symbols."""
     out: dict[str, list[dict[str, Any]]] = {}
@@ -335,6 +355,31 @@ def stop_coverage(
         "stops_in_accounts_without_holding": orphaned,
         "fully_covered": not uncovered,
     }
+
+
+def expired_stops_today(
+    rows: Iterable[Mapping[str, Any]], as_of: datetime
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """The newest ``status='expired'`` stop per (symbol, account) captured on ``as_of``'s ET date.
+
+    LQ-20261107-1700. An expired row is a historical record and covers nothing (``WORKING_STOP_STATUSES``),
+    so on its own it reads exactly like "no stop was ever placed". The operator needs the difference: a
+    Day order that lapsed at the close is one GTC re-entry away from protection, not a stop to design.
+    Only a row captured on the same ET date as the brief counts — last week's expiry is history.
+    """
+    day = (as_of if as_of.tzinfo else as_of.replace(tzinfo=ET)).astimezone(ET).date()
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        if str(row.get("status") or "").strip().lower() != "expired":
+            continue
+        ts = _ts(row.get("captured_at"))
+        if ts is None or ts.astimezone(ET).date() != day:
+            continue
+        key = (str(row.get("symbol") or "").upper(), str(row.get("account") or ""))
+        prev = out.get(key)
+        if prev is None or (_ts(prev.get("captured_at")) or ts) <= ts:
+            out[key] = dict(row)
+    return out
 
 
 def atr14(bars: Sequence[Mapping[str, Any]], window: int = 14) -> Optional[float]:
@@ -542,12 +587,17 @@ def stop_advice_for_account(
     event: Mapping[str, Any],
     source_ids: Sequence[str],
     as_of: str,
+    expired_stop: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     """One advisory entry per account per holding (LQ-1257 AMENDMENT 1).
 
     Order of precedence: a position too small to act on, then a quantity mismatch in either
     direction, then — only on price and structure — a raise, else hold. The insider event can
     never move the answer: it is recorded, and a plan sale is marked neutral.
+
+    ``expired_stop`` is today's lapsed Day order for this symbol and account (LQ-20261107-1700):
+    it covers nothing, so the answer is still ADD_STOP, but the reason names the expiry and the
+    one-click remedy instead of reading like a stop that never existed.
     """
     in_account = [
         s
@@ -574,6 +624,9 @@ def stop_advice_for_account(
         "held_qty": _r(held_qty, 4),
         "suggested_stop": None,
         "reason": "",
+        # LQ-20261107-1700: today's lapsed Day order, when there is one, so the card can say
+        # "expired at the close" rather than showing a stop that never existed.
+        "expired_stop": None,
         "premise_correction": event.get("premise_correction"),
         "source_ids": list(source_ids),
         "as_of": as_of,
@@ -605,6 +658,29 @@ def stop_advice_for_account(
         if suggested is None and price and atr:
             suggested = min(price - atr, price * (1 - RAISE_MIN_DISTANCE_BELOW_CLOSE))
         base["suggested_stop"] = _r(suggested)
+        if stop_qty <= 0 and expired_stop is not None:
+            # LQ-20261107-1700: a Day order lapses at the close and covers nothing afterwards. Saying
+            # "no working stop" of it would ask the operator to design a stop they already set.
+            exp_p = _f(expired_stop.get("stop_price"))
+            # A missing quantity stays unknown (null, and no "for N sh" claim in the reason): a 0
+            # here would read as a stop the operator placed for zero shares.
+            exp_q = _f(expired_stop.get("qty"))
+            captured = expired_stop.get("captured_at")
+            base["expired_stop"] = {
+                "stop": _r(exp_p),
+                "qty": _r(exp_q, 4),
+                "order_id": expired_stop.get("order_id"),
+                "captured_at": captured.isoformat() if isinstance(captured, datetime) else captured,
+            }
+            detail = f" at {exp_p:.2f}" if exp_p is not None else ""
+            detail += f" for {exp_q:g} sh" if exp_q else ""
+            base["reason"] = (
+                f"your Day stop{detail} expired at the close (a Day order does not carry past the session) — "
+                f"re-enter it as a GTC stop to cover {held_qty:g} sh in {_acct(account)}"
+            )
+            if suggested is not None:
+                base["reason"] += f"; a stop near {suggested:.2f} would restore the protection"
+            return base
         if stop_qty <= 0:
             base["reason"] = f"{held_qty:g} sh in {_acct(account)} have no working stop"
         else:
@@ -660,12 +736,7 @@ def select_names(
         quote = quotes.get(symbol) or {}
         price = _f(quote.get("price"))
         shares = _f(pos.get("shares"), 0.0) or 0.0
-        mv = _f(pos.get("market_value"), 0.0) or 0.0
-        # A store row can carry shares without a value; price x shares is the honest fallback and
-        # the floor check uses whichever is larger, so a large position never drops out on a stale
-        # market_value field.
-        implied = (shares * price) if price else 0.0
-        value = max(mv, implied)
+        value = position_value(pos, quote)
         if value < min_market_value:
             continue
         move = _f(quote.get("change_pct"))
@@ -1320,9 +1391,11 @@ def load_filings(conn, symbols: Sequence[str], since: date) -> dict[str, list[di
     return out
 
 
-def load_stops(conn, symbols: Sequence[str]) -> dict[str, list[dict[str, Any]]]:
+def load_stop_rows(conn, symbols: Sequence[str]) -> list[dict[str, Any]]:
+    """Every ``stop_last_known`` row for ``symbols``, newest capture first — every status, including
+    the ones that no longer rest at the broker. LQ-20261107-1700 needs today's expired rows."""
     if not symbols:
-        return {}
+        return []
     with conn.cursor() as cur:
         cur.execute(
             """SELECT symbol, account, order_id, stop_price, qty, status, captured_at, origin
@@ -1331,7 +1404,7 @@ def load_stops(conn, symbols: Sequence[str]) -> dict[str, list[dict[str, Any]]]:
                 ORDER BY captured_at DESC""",
             (list(symbols),),
         )
-        rows = [
+        return [
             {
                 "symbol": r[0],
                 "account": r[1],
@@ -1344,7 +1417,11 @@ def load_stops(conn, symbols: Sequence[str]) -> dict[str, list[dict[str, Any]]]:
             }
             for r in cur.fetchall()
         ]
-    return working_stops(rows)
+
+
+def load_stops(conn, symbols: Sequence[str]) -> dict[str, list[dict[str, Any]]]:
+    """The resting stops per symbol (``working_stops`` over every row)."""
+    return working_stops(load_stop_rows(conn, symbols))
 
 
 def load_daily_bars(conn, symbols: Sequence[str], as_of: datetime) -> dict[str, list[dict[str, Any]]]:
@@ -1782,6 +1859,7 @@ def build_brief(
     risk_market: Optional[Mapping[str, Any]] = None,
     reentry_desk: Optional[Mapping[str, Any]] = None,
     regime: Optional[Mapping[str, Any]] = None,
+    stop_rows: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> dict[str, Any]:
     if session_service is None:
         from scripts.lib.cio_market_session import get_session_service
@@ -1792,6 +1870,10 @@ def build_brief(
     sessions = next_sessions(as_of, WEEK_AHEAD_SESSIONS, session_service)
     held = aggregate_holdings(holdings_doc.get("holdings") or [])
     selected = select_names(held, quotes, news_by_symbol)
+    # LQ-20261107-1700: the raw stop rows, every status, so a Day order that lapsed today is
+    # distinguishable from one that was never placed. Callers that pass only working stops simply
+    # get no expiry annotation.
+    expired = expired_stops_today(stop_rows or [], as_of)
     excluded = selection_exclusions(held)
     note_gaps: list[str] = []
     if excluded.get("below_position_floor"):
@@ -1906,6 +1988,55 @@ def build_brief(
                     event=event,
                     source_ids=source_ids + [f"stop_last_known:{symbol}:{account}"],
                     as_of=as_of.isoformat(),
+                    expired_stop=expired.get((symbol, account)),
+                )
+            )
+
+    # ── stop advice for held names the selection did not brief (LQ-20261107-1699) ──
+    # select_names() answers "what deserves a briefing" — a move or a headline. A stop is not news:
+    # the largest unprotected position can sit still all day and carry no story. Every held name
+    # above the floor with uncovered shares in an account gets an ADD_STOP row for that account,
+    # whatever it did on the tape. Research and news stay gated by the selection.
+    briefed = {sig["symbol"] for sig in selected}
+    for symbol in sorted(held):
+        if symbol in briefed:
+            continue
+        pos = held[symbol]
+        quote = quotes.get(symbol) or {}
+        if position_value(pos, quote) < MIN_POSITION_MARKET_VALUE:
+            continue
+        stops = list(stops_by_symbol.get(symbol) or [])
+        gaps = stop_coverage(pos, stops).get("uncovered_by_account") or {}
+        if not gaps:
+            continue
+        price = _f(quote.get("price"))
+        bars = list(bars_by_symbol.get(symbol) or [])
+        if price is None:
+            for b in reversed(bars):
+                price = _f(b.get("close"))
+                if price is not None:
+                    break
+        atr = atr14(bars)
+        per_account = pos.get("per_account") or {}
+        for account in sorted(gaps):
+            # A gap is measured against a share count, so an account named by one holds shares. If
+            # that count is somehow unreadable, advise nothing for it rather than for zero shares.
+            acct_qty = _f(per_account.get(account))
+            if not acct_qty:
+                continue
+            stop_advice.append(
+                stop_advice_for_account(
+                    symbol=symbol,
+                    account=account,
+                    held_qty=acct_qty,
+                    price=price,
+                    move_pct=_r(quote.get("change_pct")),
+                    atr=atr,
+                    stops=stops,
+                    event={},
+                    source_ids=[f"stop_last_known:{symbol}:{account}"],
+                    as_of=as_of.isoformat(),
+                    expired_stop=expired.get((symbol, account)),
                 )
             )
 
@@ -2008,7 +2139,14 @@ def build_brief(
             "selected": len(items),
             "with_news": sum(1 for it in items if "news" in (it["reasons"] or [])),
             "with_move": sum(1 for it in items if "move" in (it["reasons"] or [])),
-            "uncovered_positions": sum(1 for it in items if not it["stops"]["coverage"].get("fully_covered")),
+            # LQ-20261107-1699: counted over the HOLDINGS, not over the briefed items — a quiet name
+            # with no stop is exactly the position the count used to omit.
+            "uncovered_positions": sum(
+                1
+                for sym, pos in held.items()
+                if position_value(pos, quotes.get(sym)) >= MIN_POSITION_MARKET_VALUE
+                and not stop_coverage(pos, list(stops_by_symbol.get(sym) or [])).get("fully_covered")
+            ),
         },
     }
     return doc
@@ -2105,7 +2243,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         quotes_db = load_quotes(conn, symbols)
         news = load_news(conn, symbols, since, as_of)
         filings = load_filings(conn, symbols, close_date - timedelta(days=FILING_LOOKBACK_DAYS))
-        stops = load_stops(conn, symbols)
+        stop_rows = load_stop_rows(conn, symbols)
+        stops = working_stops(stop_rows)
         bars = load_daily_bars(conn, symbols, as_of)
         decisions = load_cio_decisions(conn, symbols)
         risk = load_risk_tier(conn)
@@ -2183,6 +2322,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         risk_market=risk_market,
         reentry_desk=reentry_desk,
         regime=regime,
+        stop_rows=stop_rows,
     )
 
     summary = {

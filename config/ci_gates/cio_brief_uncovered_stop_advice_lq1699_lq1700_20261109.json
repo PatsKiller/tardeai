@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_brief_uncovered_stop_advice_lq1699_lq1700_20261109",
+  "files": [
+    "tests/test_cio_brief_uncovered_stop_advice_lq1699_lq1700_20261109.py"
+  ],
+  "anchor": "CIO_BRIEF_UNCOVERED_STOP_ADVICE_LQ1699_LQ1700_20261109",
+  "comment": [
+    "ANCHOR: CIO_BRIEF_UNCOVERED_STOP_ADVICE_LQ1699_LQ1700_20261109 — LQ-20261107-1699: a stop is not news. A held name at or above the position floor with uncovered shares in an account gets an ADD_STOP row whether or not it moved or carried a headline, and counts.uncovered_positions counts the holdings rather than the briefed items. LQ-20261107-1700: a Day stop captured as expired today is named as expired at the close with the GTC re-entry as the fix, keyed per symbol AND account, and every other terminal status still reads as a stop that was never placed."
+  ]
+}

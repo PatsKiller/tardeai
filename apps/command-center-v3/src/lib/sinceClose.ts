@@ -66,6 +66,9 @@ export interface CioBriefWire {
   status: 'available' | 'pending'; label?: string; summary?: string; risk_tier?: string
   actions?: Array<{ symbol: string; action: string; reason?: string }>; week_ahead?: string[] | string
   stop_advice?: unknown[]
+  /** LQ-20261107-1698: the session the brief's figures are measured against. The stop card names its weekday, so
+   *  "below Monday's close" is the session that actually closed — never a hard-coded day. */
+  last_close?: { session_date?: string | null; closed_at?: string | null }
   /** LQ-20261107-1644: the broker stop read the advice was reconciled against — the stops source's own clock. */
   stop_read?: { status?: string; as_of?: string | null; as_of_text?: string | null; checked_at?: string | null; error?: string | null }
   synopsis?: unknown   // LQ-1257 amendment 2: {posture, risk, verdict, book, market, reentry, this_week, do_now, generated_at}
@@ -204,7 +207,9 @@ export function sinceCloseModel(w: SinceCloseWire | null | undefined, nowMs: num
     stamp: w.stamp ?? null,
     synopsis: synopsisModel(w.cio_brief?.synopsis, typeof w.cio_brief?.generated_at === 'string' ? w.cio_brief.generated_at : null, nowMs),
     stops: w.cio_brief?.status === 'available' && Array.isArray(w.cio_brief.stop_advice)
-      ? stopList(w.cio_brief.stop_advice, Object.fromEntries(moves.map(m => [m.symbol, { price: m.price }])), {}, w.cio_brief.stop_read)
+      // LQ-20261107-1698: the brief's own last close names the session on the stop card (window as a fallback).
+      ? stopList(w.cio_brief.stop_advice, Object.fromEntries(moves.map(m => [m.symbol, { price: m.price }])), {}, w.cio_brief.stop_read,
+        w.cio_brief.last_close?.session_date ?? win?.session_date)
       : null,
     futuresText: fut?.status === 'available' && fut.quotes.length
       ? fut.quotes.map(q => `${String(q.symbol ?? q.name ?? '')} ${pctText(Number(q.change_pct))}`).join(' · ')

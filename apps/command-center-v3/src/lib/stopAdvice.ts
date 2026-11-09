@@ -37,6 +37,9 @@ export interface StopRow {
   qa: { question: string | null; answer: string | null; correction: string | null } | null
   /** LQ-20261107-1644: the reconcile state and the broker rows that produced it. */
   state: StopState; evidence: StopEvidence | null
+  /** LQ-20261107-1700: today's lapsed Day order for this row, when the writer read one. The card says "expired at
+   *  the close — re-enter it as GTC" so an expiry never reads like a stop that was never placed. */
+  expiredStop: { stop: number | null; qty: number | null; capturedAt: string | null } | null
 }
 export interface StopList {
   actions: StopRow[]; quiet: StopRow[]
@@ -45,6 +48,9 @@ export interface StopList {
   settledLine: string | null
   read: StopRead
   header: string; rule: string
+  /** LQ-20261107-1698: the last regular session's weekday, from the brief's own `last_close.session_date`.
+   *  Null when the snapshot does not say — the card then prints "the last close", never an invented day. */
+  closeLabel: string | null
 }
 
 export const STOP_RULE = 'a stop moves on price and structure, never on a headline alone; a planned insider sale (10b5-1) counts as neutral.'
@@ -58,6 +64,26 @@ const num = (v: unknown): number | null => {
 }
 const pick = (o: Record<string, unknown>, keys: string[]): unknown => keys.map(k => o[k]).find(v => v !== undefined && v !== null && v !== '')
 const usd0 = (n: number) => `$${Math.round(Math.abs(n)).toLocaleString('en-US')}`
+
+const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+/** LQ-20261107-1698: the weekday of the session a figure is measured against, read from the brief's own
+ *  `last_close.session_date` — "below Monday's close", never a hard-coded "Friday". A date the card cannot parse
+ *  yields null, and the caller prints "the last close"; an unknown session is not guessed. */
+export function closeLabelOf(sessionDate: unknown): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(str(sessionDate) ?? '')
+  if (!m) return null
+  const [y, mo, da] = [Number(m[1]), Number(m[2]), Number(m[3])]
+  const d = new Date(Date.UTC(y, mo - 1, da))
+  // Date.UTC rolls 2026-13-45 over into February; a session date that does not round-trip is not a date.
+  if (Number.isNaN(d.getTime()) || d.getUTCFullYear() !== y || d.getUTCMonth() !== mo - 1 || d.getUTCDate() !== da) return null
+  return WEEKDAY[d.getUTCDay()]
+}
+
+function expiredStopOf(raw: unknown): StopRow['expiredStop'] {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  return { stop: num(o.stop), qty: num(o.qty), capturedAt: str(o.captured_at) }
+}
 
 /** The CIO's answer word, whatever spelling it uses ("ADD STOP", "add_a_stop", "Raise"), to one of five kinds. */
 export function kindOf(v: unknown): StopKind | null {
@@ -108,9 +134,10 @@ function placedCell(r: StopRow): string {
 
 export function stopList(
   raw: unknown, quotes: Record<string, { price: number } | undefined>, heldQty: Record<string, number | undefined> = {},
-  stopReadRaw: unknown = null,
+  stopReadRaw: unknown = null, sessionDate: unknown = null,
 ): StopList {
   const read = stopReadOf(stopReadRaw)
+  const closeLabel = closeLabelOf(sessionDate)
   const rows: StopRow[] = []
   for (const x of Array.isArray(raw) ? raw : []) {
     if (!x || typeof x !== 'object') continue
@@ -129,8 +156,10 @@ export function stopList(
       const usd = uncovered * last
       consequence = { text: `${usd0(usd)} has no stop`, tone: 'danger', usd }
     } else if (kind === 'RAISE' && oldStop != null && newStop != null && qty != null && newStop > oldStop) {
+      // LQ-20261107-1698: (new - old) x qty is a FLOOR improvement, not a realised gain, and the session it is
+      // measured against is the brief's own close — not a hard-coded weekday.
       const usd = (newStop - oldStop) * qty
-      consequence = { text: `Locks in ${usd0(usd)} of Friday's gain`, tone: 'success', usd }
+      consequence = { text: `Raises your floor by ${usd0(usd)}`, tone: 'success', usd }
     } else if (kind === 'FIX_QTY') consequence = { text: 'The stop is for more shares than you hold', tone: 'warning', usd: 0 }
     const stopForWorst = newStop ?? oldStop
     const qa = pick(o, ['qa', 'question_answer']) as Record<string, unknown> | undefined
@@ -152,6 +181,7 @@ export function stopList(
       // to have checked.
       state: stopStateOf(o.state, kind, read),
       evidence: evidenceOf(o.stop_evidence),
+      expiredStop: expiredStopOf(o.expired_stop),
     })
   }
   rows.sort((p, q) => RANK[p.kind] - RANK[q.kind] || (q.consequence?.usd ?? 0) - (p.consequence?.usd ?? 0) || p.symbol.localeCompare(q.symbol))
@@ -167,7 +197,7 @@ export function stopList(
   const settledLine = settled.length
     ? `No change needed — done at Schwab${read.asOfText ? ` (${read.asOfText})` : ''}: ${settled.map(placedCell).join(' · ')}`
     : null
-  return { actions, quiet, settled, settledLine, read, header, rule: STOP_RULE }
+  return { actions, quiet, settled, settledLine, read, header, rule: STOP_RULE, closeLabel }
 }
 
 function stopStateOf(v: unknown, kind: StopKind, read: StopRead): StopState {

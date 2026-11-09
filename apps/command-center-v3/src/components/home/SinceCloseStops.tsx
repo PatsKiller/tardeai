@@ -65,7 +65,7 @@ function orderText(r: StopRow): { main: string; sub: string } {
   return { main: `${o.qty ?? '—'} sh @ ${price(o.stop ?? o.oldStop)}`, sub: `set quantity to the shares you hold${gtc}` }
 }
 
-function Row({ r, done, toggle, v5 }: { r: StopRow; done: boolean; toggle: () => void; v5?: boolean }) {
+function Row({ r, done, toggle, v5, closeLabel }: { r: StopRow; done: boolean; toggle: () => void; v5?: boolean; closeLabel: string | null }) {
   const edge = r.urgent ? dn : warn
   const o = orderText(r)
   const tone = r.consequence ? (r.consequence.tone === 'danger' ? dn : r.consequence.tone === 'success' ? up : warn) : null
@@ -91,8 +91,16 @@ function Row({ r, done, toggle, v5 }: { r: StopRow; done: boolean; toggle: () =>
             Not checked: the Schwab stop read failed — this is still to do.
           </div>
         )}
+        {/* LQ-20261107-1700: a Day order that lapsed at the close covers nothing now, and the one fix is GTC. */}
+        {r.expiredStop && (
+          <div data-testid="stop-expired" style={{ fontSize: 13, fontWeight: 800, color: warn.color }}>
+            Your Day stop expired at the close — re-enter it as a GTC stop.
+          </div>
+        )}
         {r.reason && <div style={{ fontSize: 13, color: TOKENS.text[1], overflowWrap: 'anywhere' }}>{r.reason}</div>}
-        {r.worstCase != null && r.worstCase > 0 && <div style={{ fontSize: 12, color: TOKENS.text[3] }}>Worst case if the stop fills: about ${Math.round(r.worstCase).toLocaleString('en-US')} below Friday's close.</div>}
+        {/* LQ-20261107-1698: the session named is the brief's own last close (`last_close.session_date`), never a
+            hard-coded weekday; an unknown session prints "the last close" rather than inventing one. */}
+        {r.worstCase != null && r.worstCase > 0 && <div style={{ fontSize: 12, color: TOKENS.text[3] }}>Worst case if the stop fills: about ${Math.round(r.worstCase).toLocaleString('en-US')} below {closeLabel ? `${closeLabel}'s close` : 'the last close'}.</div>}
         {r.qa && (
           <details data-testid="stop-qa" style={{ marginTop: 4 }}>
             <summary style={{ cursor: 'pointer', fontSize: 13, color: up.color, minHeight: 28 }}>{r.qa.answer ?? 'Question and answer'}</summary>
@@ -136,7 +144,7 @@ export default function SinceCloseStops({ list, v5 }: { list: StopList | null; v
       {list.settledLine && <p data-testid="stops-settled" style={{ margin: 0, fontSize: 13, fontWeight: 700, color: up.color }}>{list.settledLine}</p>}
       {list.actions.length === 0
         ? <p style={{ margin: 0, fontSize: 14, color: up.color }} data-testid="stops-none">{list.settled.length ? 'Nothing left to change at Schwab today.' : 'Nothing to change at Schwab today.'}</p>
-        : <ol data-testid="stops-grid" style={GRID}>{list.actions.map(r => <Row key={dayKey(r)} r={r} done={!!done[dayKey(r)]} toggle={flip(r)} v5={v5} />)}</ol>}
+        : <ol data-testid="stops-grid" style={GRID}>{list.actions.map(r => <Row key={dayKey(r)} r={r} done={!!done[dayKey(r)]} toggle={flip(r)} v5={v5} closeLabel={list.closeLabel} />)}</ol>}
       {list.quiet.length > 0 && (
         // LQ-1318: a quiet row that carries an event says the event, never a bare "hold" — QuietRow draws r.what,
         // and stopAdvice reads the writer's `event_summary` into it. (LQ-1311's card layout is kept as it is.)

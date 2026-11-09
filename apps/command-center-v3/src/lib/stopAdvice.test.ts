@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { kindOf, quietLine, stopList } from './stopAdvice.ts'
+import { closeLabelOf, kindOf, quietLine, stopList } from './stopAdvice.ts'
 import { badgeText, stampModel, type StampWire } from './sinceCloseStamp.ts'
 
 
@@ -46,7 +46,8 @@ describe('stopList', () => {
   })
   it('computes the dollar consequences from qty and quotes', () => {
     expect(L.actions[0].consequence).toMatchObject({ text: '$26,800 has no stop', tone: 'danger' }) // 200 x 134.00
-    expect(L.actions[2].consequence).toMatchObject({ text: "Locks in $644 of Friday's gain", tone: 'success' }) // (164-160.78) x 200
+    // LQ-20261107-1698: (164 - 160.78) x 200 is a raised FLOOR, not a gain "locked in", and no weekday is baked in.
+    expect(L.actions[2].consequence).toMatchObject({ text: 'Raises your floor by $644', tone: 'success' })
     expect(L.actions[1].consequence?.tone).toBe('warning')
   })
   it('worst case is (close - stop) x qty', () => {
@@ -56,6 +57,41 @@ describe('stopList', () => {
     expect(stopList([raw[2]], Q).header).toBe('Your actions · 1 stop change at Schwab')
     expect(stopList(undefined, Q).actions).toEqual([])
     expect(stopList([null, 5, { symbol: 'X' }], Q).actions).toEqual([])
+  })
+})
+
+// LQ-20261107-1698: the card said "Friday's close" on a Monday. The session named is the brief's own last close.
+describe('stopList — the session the figures are measured against', () => {
+  it('names the weekday of the brief\'s own last close, not a hard-coded one', () => {
+    expect(closeLabelOf('2026-11-09')).toBe('Monday')
+    expect(closeLabelOf('2026-11-06')).toBe('Friday')
+    expect(closeLabelOf('2026-11-10T16:00:00-05:00')).toBe('Tuesday')
+  })
+  it('an unknown or unparseable session is null, never an invented day', () => {
+    expect(closeLabelOf(null)).toBeNull()
+    expect(closeLabelOf('')).toBeNull()
+    expect(closeLabelOf('last close')).toBeNull()
+    expect(closeLabelOf('2026-13-45')).toBeNull()
+  })
+  it('the list carries it; a caller that passes no session gets null', () => {
+    expect(stopList([], Q, {}, null, '2026-11-09').closeLabel).toBe('Monday')
+    expect(stopList([], Q).closeLabel).toBeNull()
+  })
+})
+
+// LQ-20261107-1700: a Day stop that lapsed at the close covers nothing, and the card must say so — with the fix.
+describe('stopList — an expired Day stop', () => {
+  const row = { symbol: 'AAA', answer: 'ADD STOP', qty: 79, held_qty: 79, account: 'Brokerage',
+    expired_stop: { stop: 170, qty: 79, order_id: 'E1', captured_at: '2026-11-09T15:59:00-05:00' },
+    reason: 'your Day stop at 170.00 for 79 sh expired at the close — re-enter it as a GTC stop' }
+  it('carries the expiry so the card can instruct the GTC re-entry', () => {
+    const r = stopList([row], Q, {}, null, '2026-11-09').actions[0]
+    expect(r.expiredStop).toEqual({ stop: 170, qty: 79, capturedAt: '2026-11-09T15:59:00-05:00' })
+    expect(r.reason).toContain('expired at the close')
+  })
+  it('a row without one carries null, so no card invents an expiry', () => {
+    const r = stopList([{ symbol: 'AAA', answer: 'ADD STOP', qty: 200 }], Q, {}, null, '2026-11-09').actions[0]
+    expect(r.expiredStop).toBeNull()
   })
 })
 

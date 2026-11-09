@@ -288,6 +288,7 @@ def state_root(tmp_path, monkeypatch):
         "load_news",
         "load_filings",
         "load_stops",
+        "load_stop_rows",  # LQ-20261107-1700: main reads every status, not only the resting ones
         "load_daily_bars",
         "load_cio_decisions",
         "load_risk_tier",
