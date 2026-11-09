@@ -1,0 +1,19 @@
+{
+  "schema": "CiGate@v1",
+  "name": "rotation_cash_sweep_lq1688_20261109",
+  "files": [
+    "tests/test_rotation_cash_sweep_lq1688_20261109.py"
+  ],
+  "comment": [
+    "ANCHOR: LQ-20261107-1688 — the cash sweep is a row, not a ticker. /api/v2/rotation/summary",
+    "published CASH (Pathward Financial) as its top candidate at 68% concentration, trim 25, with",
+    "CASH -> SPCX/NVDA ideas, because positions_current's synthetic per-account cash row",
+    "(symbol='CASH', is_cash=true) entered the rotation engine unfiltered and the symbol-card layer",
+    "resolved it to a real ticker. The engine now drops cash rows with the repo's one predicate",
+    "(lib.holdings_universe.is_cash_row) before enrichment, scoring and idea pairing, while the",
+    "denominator stays portfolio_totals.total_value (cash included). Tests run the real engine on",
+    "synthetic holdings: the sweep is never a candidate, never card-enriched, never paired; a row",
+    "with asset_type=CASH or a known sweep symbol is cash without the flag; a real holding keeps",
+    "its 25% weight. No DB, no network."
+  ]
+}

@@ -20,6 +20,13 @@ from typing import Any
 DEFAULT_ETF_OVERRIDES = Path("config/etf_classification_overrides.json")
 DEFAULT_FUND_MAP = Path("config/fidelity_fund_code_map.json")
 
+# The one cash predicate the repo already owns (scripts/lib/holdings_universe.py): is_cash=true,
+# asset_type cash, or a known sweep/money-market symbol. LQ-20261107-1688.
+try:
+    from lib.holdings_universe import is_cash_row
+except ImportError:  # imported as scripts.<module>
+    from scripts.lib.holdings_universe import is_cash_row
+
 
 @dataclass
 class Candidate:
@@ -362,7 +369,15 @@ def main() -> int:
     args = ap.parse_args()
 
     payload = json.loads(Path(args.input).read_text())
-    rows = rows_from_payload(payload)
+    payload_rows = rows_from_payload(payload)
+    # LQ-20261107-1688 — the cash sweep is a row, not a ticker. positions_sync and every broker
+    # reader write one synthetic row per account with symbol "CASH", is_cash=true; the symbol-card
+    # layer resolves that symbol to Pathward Financial (ticker CASH), so the row was scored as a
+    # holding: $840,191.81 of a $1,256,476.87 book read as 66.9% concentration (trim 25) and "CASH"
+    # became a rotate-out source. Cash is dropped BEFORE enrichment, scoring and idea pairing; the
+    # denominator from portfolio_totals still includes cash, so every real holding keeps its weight.
+    rows = [r for r in payload_rows if not is_cash_row(r)]
+    cash_rows_excluded = len(payload_rows) - len(rows)
     symbol_overrides = load_symbol_overrides(Path(args.etf_overrides))
     fund_codes = load_fund_codes(Path(args.fund_map))
     cards = cards_from_payload(json.loads(Path(args.cards).read_text())) if args.cards else {}
@@ -381,6 +396,7 @@ def main() -> int:
     ideas = build_ideas(candidates, args.min_pair_score)
     data_quality = {
         "holding_rows": len(rows),
+        "cash_rows_excluded": cash_rows_excluded,
         "symbol_cards_loaded": len(cards),
         "etf_overrides_loaded": len(symbol_overrides),
         "fund_codes_loaded": len(fund_codes),
