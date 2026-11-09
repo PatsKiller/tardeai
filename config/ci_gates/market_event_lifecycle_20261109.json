@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_event_lifecycle_20261109",
+  "files": [
+    "tests/test_market_event_lifecycle_20261109.py"
+  ],
+  "anchor": "MARKET_EVENT_LIFECYCLE_20261109",
+  "comment": [
+    "ANCHOR: MARKET_EVENT_LIFECYCLE_20261109 — scripts/lib/market_event_plan.py::evaluate_position is the stage machine after ENTERED (LQ-20261107-1656 design, LQ-20261107-1674 build): the same plan row that the detector carried from CANDIDATE to ENTERED keeps being advised — t2 after the named event is released and has settled, t3 only at YELLOW-or-better with the SMA20 reclaimed, TRIM_READY on an overweight sleeve or a 25% gain at RSI 75, EXIT_READY on a 5% relative-strength loss for 3 sessions or a RED tier, INVALIDATED on a close below the recorded invalidation, STOPPED_OUT with a recovery_state handoff when the working stop fills. A stale positions snapshot (30 min) or market snapshot (60 min) is UNVERIFIABLE and never advances a stage; a missing cost basis is DEGRADED, never a zero. Advisory only, MBI_BEHAVIOR = 0: the module is pure, imports no psycopg and never sizes, orders or touches a broker. Synthetic fixtures only; no network, no DB."
+  ]
+}
