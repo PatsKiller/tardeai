@@ -214,6 +214,38 @@ def holdings_drift(store: Mapping[str, Any], current: list[Mapping[str, Any]], c
                          "accounts": accounts}}
 
 
+# ── portfolio total (PortfolioTotal@v1) ───────────────────────────────────────────────────────────────────────
+
+
+def portfolio_total_agreement(store: Mapping[str, Any], cfg: Mapping[str, Any]) -> dict[str, Any]:
+    """Pure. The one total the pages publish, checked where it is decided.
+
+    LQ-20261107-1611: Home header, Book and the All-accounts row read one contract
+    (``scripts/lib/portfolio_total_contract.py``). Its alerting findings are this lane's findings, so a
+    store whose ``portfolio_totals.total_value`` stops equalling its rows pages without anyone opening
+    the page — the header would otherwise show a number its own rows do not sum to. The broker total is
+    reported for the receipt only: the repricer's re-mark between passes is expected, not drift.
+    """
+    try:
+        from scripts.lib import portfolio_total_contract as ptc
+    except ImportError:  # pragma: no cover
+        from lib import portfolio_total_contract as ptc  # type: ignore[no-redef]
+
+    contract = ptc.build_portfolio_total(
+        store,
+        tolerance_usd=float(cfg.get("tolerance_usd", ptc.DEFAULT_TOLERANCE_USD)),
+        min_position_usd=float(cfg.get("min_position_usd", ptc.MIN_POSITION_USD)),
+    )
+    findings = [_f(f["code"], f"portfolio_total:{f['code']}", f["detail"], alert=bool(f["alert"]),
+                   **f.get("evidence", {}))
+                for f in contract.get("findings") or [] if f.get("alert")]
+    report = {k: contract.get(k) for k in ("contract_version", "value", "basis", "as_of", "cash",
+                                           "position_count", "position_scope", "agree")}
+    report["alternatives"] = [{"name": a["name"], "value": a["value"], "delta": a["delta"],
+                               "basis": a["basis"]} for a in contract.get("alternatives") or []]
+    return {"portfolio_total": report, "findings": findings}
+
+
 # ── options desk staleness ──────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -350,9 +382,15 @@ def run_check(check: str, *, now: datetime, cfg: Mapping[str, Any], sources: Map
             rep["error"] = "holdings_unreadable: empty store"
             return rep
         pc_as_of = max([t for t in (_ts(r.get("as_of")) for r in rows or []) if t], default=None)
-        rep.update(holdings_drift(store, list(rows or []), c, now=now, pc_as_of=pc_as_of,
-                                  session=in_session(now, c["session_start_et"], c["session_end_et"],
-                                                     trading_day=trading_day)))
+        drift = holdings_drift(store, list(rows or []), c, now=now, pc_as_of=pc_as_of,
+                               session=in_session(now, c["session_start_et"], c["session_end_et"],
+                                                  trading_day=trading_day))
+        # The store's own total is checked on the same read: the pages publish it, so a field that
+        # has stopped equalling its rows is a page defect even when no one is looking at the page.
+        total = portfolio_total_agreement(store, c.get("portfolio_total") or {})
+        rep.update(drift)
+        rep["portfolio_total"] = total["portfolio_total"]
+        rep["findings"] = list(drift.get("findings") or []) + total["findings"]
     elif check == "options-desk-staleness":
         doc = get("options_desk")
         if rep.get("error"):

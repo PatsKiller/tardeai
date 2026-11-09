@@ -19,6 +19,7 @@ import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
   doNowFrom, homeWithCurrentTruth, positionsFreshness, moversBars, moversHeading, accountRows, cashPct, money, pct, ageLabel, ageFromClock, briefingSummary, briefingProvenance,
+  portfolioTotalView,
 } from '../lib/homeDoNow'
 import { platformHealthFrom, countsLabel } from '../lib/platformHealth'
 import { renderSetupCounts } from '../lib/setupRunSummary'
@@ -172,7 +173,8 @@ export default function HomeDoNow() {
     error: doNowApi.error ?? (doNowApi.stale ? 'queue refresh failed; showing the last answer' : undefined), nowMs: now }),
     cio, overview, cioApi.error, { positionsStale: cioApi.stale, approvalsStale: overviewStale || !!overviewError, nowMs: now })
   const pos = positionsFreshness(overview, now)
-  const pv: number | null = overview?.portfolio_value ?? null
+  const pt = portfolioTotalView(overview)
+  const pv: number | null = pt.value
   // Same rule as the header TODAY tile (lib/todayPnlState): economic total when proven, else the
   // reported market-day move — the figure the Accounts table shows as 1D. Never invented.
   const todayState = deriveTodayPnlState(overview)
@@ -259,7 +261,7 @@ export default function HomeDoNow() {
       {/* Slim header */}
       <header data-testid="home-header" style={{ ...card, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 24px', flexDirection: 'row' }}>
         <HeadFact name="Portfolio" big testId="home-portfolio" value={pv != null ? money(pv) : ovLoading ? '…' : '—'}
-          tip={`Total of all accounts, broker-reported and repriced (/api/v2/overview portfolio_value; holdings.json). ${overview?.position_count ?? '?'} positions.`} />
+          tip={pt.tip} />
         <HeadFact name="Today" testId="home-today" color={signTone(todayChg)} value={todayChg != null ? `${money(todayChg, true)} · ${pct(todayPct)}` : '—'}
           tip={todayState.reportedMove
             ? `Today's market-day move across all accounts (/api/v2/overview today_move = /api/v2/portfolio/performance periods.1D, the Accounts 1D) · session ${todayState.sessionDate ?? 'UNDATED'}${todayState.label ? ` · ${todayState.label}` : ''}. ${todayState.moveNote ?? ''}`
@@ -372,7 +374,7 @@ export default function HomeDoNow() {
               <span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 600, color: n.heatPct != null && n.heatPct > n.heatLimitPct ? TOKENS.warning : TOKENS.text[0] }}>{n.heatPct != null ? `${n.heatPct.toFixed(1)}%` : '—'}</span>
               <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>portfolio heat (limit {n.heatLimitPct}%)</span>
             </div>
-            <div title={cash != null ? `Cash ${money(overview?.total_cash)} of ${money(pv)} (/api/v2/overview total_cash ÷ portfolio_value; overview total_cash and portfolio_value).` : 'Unavailable: /api/v2/overview has no total_cash or portfolio_value.'}
+            <div title={cash != null ? `Cash ${money(overview?.total_cash)} of ${money(pv)} (the published portfolio total — ${pt.basisLabel ?? 'portfolio_total'}).` : 'Unavailable: /api/v2/overview has no total_cash or published portfolio total.'}
               style={{ display: 'flex', flexDirection: 'column', gap: 2, cursor: 'help' }} data-testid="num-cash">
               <span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 600 }}>{cash != null ? `${cash.toFixed(1)}%` : '—'}</span>
               <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>cash</span>

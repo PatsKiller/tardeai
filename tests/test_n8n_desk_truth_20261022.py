@@ -44,7 +44,10 @@ def _store(**over):
         {"account": "schwab_roth", "symbol": "ZQCE", "shares": 391.4955},
         {"account": "fidelity_x", "symbol": "ZZZ", "shares": 15},
     ]
-    doc = {"holdings": rows, "positions_built_at": "2026-10-10T00:00:00+00:00"}
+    doc = {"holdings": rows, "positions_built_at": "2026-10-10T00:00:00+00:00",
+           # LQ-1611: the store carries its own total; the pages publish it, so a fixture store
+           # without one is now a finding of its own (TOTAL_FIELD_MISSING).
+           "portfolio_totals": {"total_value": 600000.0, "total_cash": 600000.0}}
     doc.update(over)
     return doc
 
@@ -107,6 +110,60 @@ def test_holdings_drift_clean_and_unreadable_sources():
     assert rep["error"].startswith("positions_current_unreadable")
     rep = _run("holdings-drift", {"holdings": lambda: {}, "positions_current": lambda: same})
     assert rep["error"].startswith("holdings_unreadable")
+
+
+# ── portfolio total (PortfolioTotal@v1, LQ-20261107-1611) ──────────────────────────────────────────────────────
+
+TOTAL_ROWS = [
+    {"account": "schwab_taxable", "symbol": "SCHD", "market_value": 40_000.0},
+    {"account": "schwab_taxable", "symbol": "V", "market_value": 30_000.0},
+    {"account": "schwab_taxable", "symbol": "CASH", "is_cash": True, "market_value": 930_000.0},
+]
+TOTAL = 1_000_000.0
+
+
+def _total_store(total=TOTAL, broker=None):
+    doc = {"holdings": [dict(r) for r in TOTAL_ROWS],
+           "portfolio_totals": {"total_value": total, "total_cash": 930_000.0}}
+    if broker is not None:
+        doc["portfolio_totals"]["broker_market_value_total"] = broker
+    return doc
+
+
+def _totals(store):
+    return DTM.portfolio_total_agreement(store, CFG["holdings_drift"]["portfolio_total"])
+
+
+def test_portfolio_total_is_clean_when_the_field_equals_its_rows():
+    out = _totals(_total_store())
+    pt = out["portfolio_total"]
+    assert out["findings"] == [] and pt["agree"] is True
+    assert pt["value"] == TOTAL and pt["basis"] == "portfolio_totals.total_value"
+    assert pt["position_count"] == 2 and pt["position_scope"] == "holdings.non_cash_over_100"
+
+
+def test_a_total_that_disagrees_with_its_rows_alerts_on_this_lane():
+    """The page would publish the row sum, so the store field is now a page-truth finding, not a tooltip."""
+    out = _totals(_total_store(total=TOTAL - 3_771.15))
+    f = next(f for f in out["findings"] if f["code"] == "TOTAL_FIELD_DRIFT")
+    assert f["key"] == "portfolio_total:TOTAL_FIELD_DRIFT" and f["alert"] is True
+    assert out["portfolio_total"]["value"] == TOTAL
+    assert out["portfolio_total"]["basis"] == "holdings[].market_value"
+    assert out["portfolio_total"]["agree"] is False
+
+
+def test_the_broker_marks_are_reported_for_the_receipt_and_never_alert():
+    out = _totals(_total_store(broker=TOTAL - 36.0))
+    assert out["findings"] == [], "a reprice between passes is expected, not drift"
+    alt = next(a for a in out["portfolio_total"]["alternatives"] if a["name"] == "broker_marks")
+    assert alt["delta"] == pytest.approx(36.0)
+
+
+def test_the_totals_check_runs_inside_the_holdings_drift_report():
+    rep = _run("holdings-drift", {"holdings": lambda: _total_store(total=TOTAL - 10.0),
+                                  "positions_current": lambda: []})
+    assert "portfolio_total:TOTAL_FIELD_DRIFT" in rep["alertable"]
+    assert rep["portfolio_total"]["value"] == TOTAL
 
 
 def test_positions_current_stale_is_named_and_not_trusted():

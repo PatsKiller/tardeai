@@ -11,6 +11,11 @@
     "session_end_et": "16:30",
     "accounts": ["schwab_taxable", "schwab_roth_ira", "schwab_rollover_ira"],
     "holdings_account_aliases": {"schwab_roth": "schwab_roth_ira"},
+    "portfolio_total": {
+      "tolerance_usd": 1.0,
+      "min_position_usd": 100.0,
+      "_note": "LQ-1611: the one total the pages publish (PortfolioTotal@v1, scripts/lib/portfolio_total_contract.py). This lane compares portfolio_totals.total_value with the sum of the rows the page publishes; a disagreement beyond tolerance is TOTAL_FIELD_DRIFT and alerts, because the header would otherwise not equal its own rows. broker_market_value_total is reported for the receipt only: the repricer's re-mark is expected between passes, so it never alerts here."
+    },
     "_note": "accounts = the positions_current account keys compared (config/portfolio_positions.yaml required_accounts). Holdings freshness = the newest broker_position_as_of_at on those accounts' holdings.json rows (what schwab_position_sync stamps per row), falling back to the document's positions_built_at, which only moves when the position list changes."
   },
   "options_desk_staleness": {

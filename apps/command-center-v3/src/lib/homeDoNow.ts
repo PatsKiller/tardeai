@@ -415,6 +415,47 @@ export function accountName(a: string): string {
   return accountLabelName(a)
 }
 
+/** PortfolioTotal@v1 (scripts/lib/portfolio_total_contract.py) as the pages read it: the one total, the one
+ *  position count, and the sentence that says what both are. LQ-20261107-1611 (was LQ-1391): the header read
+ *  overview.portfolio_value (the broker projection), the Book and this table read performance.current_value
+ *  (the store's own total) and the Book re-summed its rows — three numbers, none labelled as the book. Every
+ *  surface now reads this one object, so they cannot print different totals while claiming one portfolio.
+ *  `present` says whether the server sent the contract; when it did not (a server still rolling out) the
+ *  legacy fields are used and the tip says so, rather than pretending the contract answered. When it is
+ *  present, its `value` is authoritative even when null: a missing total renders as unknown, never as $0. */
+export interface PortfolioTotalView {
+  present: boolean
+  value: number | null
+  count: number | null
+  scope: string | null
+  definition: string | null
+  basis: string | null
+  basisLabel: string | null
+  asOf: string | null
+  agree: boolean | null
+  tip: string
+}
+
+export function portfolioTotalView(overview: any): PortfolioTotalView {
+  const c = overview?.portfolio_total && typeof overview.portfolio_total === 'object' ? overview.portfolio_total : null
+  const present = c != null
+  const value = present ? num(c.value) : num(overview?.portfolio_value)
+  const count = present ? num(c.position_count) : num(overview?.position_count)
+  const scope = present ? str(c.position_scope) : null
+  const definition = present ? str(c.position_scope_definition) : null
+  const basisLabel = present ? str(c.basis_label) : null
+  const asOf = present ? str(c.as_of) : null
+  const basis = present ? str(c.basis) : null
+  const agree = present ? Boolean(c.agree) : null
+  const head = present
+    ? `Portfolio · ${basisLabel ?? 'one total'}${asOf ? ` (as of ${asOf})` : ''}`
+    : 'Portfolio · /api/v2/overview portfolio_value (this server has no portfolio_total contract)'
+  const positions = count != null
+    ? `${count} positions${scope ? ` (${scope}${definition ? `: ${definition}` : ''})` : ''}`
+    : 'position count unavailable'
+  return { present, value, count, scope, definition, basis, basisLabel, asOf, agree, tip: `${head}\n${positions}` }
+}
+
 function periodChange(d: any): { ch: number | null; approx: boolean; note: string | null } {
   if (!d || typeof d !== 'object') return { ch: null, approx: false, note: null }
   const preferDisp = Boolean(d.nav_is_not_market_only || d.display_change != null)
@@ -423,15 +464,18 @@ function periodChange(d: any): { ch: number | null; approx: boolean; note: strin
 }
 
 /** Accounts table: value, 1D, YTD from /api/v2/portfolio/performance (display_change preferred, i.e. ex-transfers
- *  when flagged, the same rule as Portfolio → Returns); 1D falls back to overview.today_by_account. */
+ *  when flagged, the same rule as Portfolio → Returns); the All-accounts value is the published portfolio total
+ *  (portfolioTotalView), so it is the same figure the Home header and the Book print; 1D falls back to
+ *  overview.today_by_account. */
 export function accountRows(perf: any, overview: any): AccountRow[] {
   const rows: AccountRow[] = []
+  const pt = portfolioTotalView(overview)
   const all1d = periodChange(perf?.periods?.['1D'])
   const allYtd = periodChange(perf?.periods?.YTD)
-  const allValue = num(perf?.current_value) ?? num(overview?.portfolio_value)
+  const allValue = pt.present ? pt.value : (num(perf?.current_value) ?? num(overview?.portfolio_value))
   if (allValue != null || all1d.ch != null) {
     rows.push({ key: 'all', name: 'All accounts', value: allValue, d1: all1d.ch ?? num(overview?.today_change), ytd: allYtd.ch, ytdApprox: allYtd.approx,
-      tip: ['All accounts · /api/v2/portfolio/performance', allYtd.approx ? 'YTD ≈ market change ex-transfers' : null, allYtd.note].filter(Boolean).join('\n') })
+      tip: [pt.tip, allYtd.approx ? 'YTD ≈ market change ex-transfers' : null, allYtd.note].filter(Boolean).join('\n') })
   }
   const accts = perf?.accounts && typeof perf.accounts === 'object' ? perf.accounts : null
   if (accts) {
@@ -450,10 +494,11 @@ export function accountRows(perf: any, overview: any): AccountRow[] {
   return rows
 }
 
-/** Cash as % of the book from /api/v2/overview (total_cash / portfolio_value). null when either is missing. */
+/** Cash as % of the book from /api/v2/overview: total_cash ÷ the published portfolio total, so the denominator
+ *  is the same figure the header prints (portfolioTotalView). null when either is missing or the total is ≤ 0. */
 export function cashPct(overview: any): number | null {
   const cash = num(overview?.total_cash)
-  const pv = num(overview?.portfolio_value)
+  const pv = portfolioTotalView(overview).value
   if (cash == null || pv == null || pv <= 0) return null
   return (cash / pv) * 100
 }

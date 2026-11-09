@@ -1,5 +1,5 @@
 import {
-  doNowFrom, homeWithCurrentTruth, visibleItems, routerPath, positionsFreshness, moversBars, moversHeading, accountRows, cashPct, inMarketHours, money, pct, ageLabel, ageFromClock, briefingSummary, briefingProvenance, parseObservedTime,
+  doNowFrom, homeWithCurrentTruth, visibleItems, routerPath, positionsFreshness, moversBars, moversHeading, accountRows, cashPct, portfolioTotalView, inMarketHours, money, pct, ageLabel, ageFromClock, briefingSummary, briefingProvenance, parseObservedTime,
 } from './homeDoNow.ts'
 import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH, opportunitiesQuery, isHomeBestOpportunities } from './bestOpportunities.ts'
 declare const process: { exit(code?: number): never }
@@ -76,6 +76,30 @@ check('all-accounts row prefers display_change (ex-transfers) and flags ≈', ro
 check('account rows by NAME; 1D falls back to overview', rows[1].name === 'Schwab Roth IRA' && rows[2].d1 === -1 && rows[2].ytd === null)
 check('fallback to today_by_account when performance missing', accountRows(null, { portfolio_value: 1, today_by_account: { a_b: { value: 5, change: 1 } } })[1].name === 'A B')
 check('cash pct', Math.abs((cashPct({ total_cash: 823000, portfolio_value: 1255076 }) ?? 0) - 65.57) < 0.01 && cashPct({ portfolio_value: 0, total_cash: 1 }) === null && cashPct({}) === null)
+
+// LQ-1611 (was LQ-1391): ONE total and ONE count. The All-accounts row, the Home header and the Book header
+// read the published portfolio_total; the projection (portfolio_value) and performance.current_value are
+// alternates the contract names, never the figure the page prints while claiming to be the book.
+const contractOverview = {
+  portfolio_value: 1244915.17,           // the projection: the number the header used to print
+  position_count: 12,
+  total_cash: 951096.24,
+  portfolio_total: {
+    contract_version: 'PortfolioTotal@v1', value: 1248686.32, basis: 'portfolio_totals.total_value',
+    basis_label: "the holdings store's portfolio_totals.total_value — every row repriced on the last pass",
+    as_of: '2026-11-08T23:00:00+00:00', position_count: 12, position_scope: 'holdings.non_cash_over_100',
+    position_scope_definition: 'non-cash holding rows whose market_value is above $100', agree: true,
+  },
+}
+const ptv = portfolioTotalView(contractOverview)
+check('portfolio_total wins over the projection', ptv.present && ptv.value === 1248686.32 && ptv.count === 12)
+check('the tip names the basis, the scope and its definition', ptv.tip.includes('portfolio_totals.total_value') && ptv.tip.includes('holdings.non_cash_over_100') && ptv.tip.includes('above $100'))
+const allRow = accountRows(perf, contractOverview)[0]
+check('the All-accounts row is the published total, not performance.current_value', allRow.value === 1248686.32)
+check('the All-accounts tip carries the contract sentence', allRow.tip.startsWith('Portfolio · the holdings store'))
+check('cash uses the published denominator', Math.abs((cashPct(contractOverview) ?? 0) - (951096.24 / 1248686.32) * 100) < 1e-9)
+check('a null contract total renders unknown, never the legacy projection', portfolioTotalView({ portfolio_value: 5, portfolio_total: { value: null } }).value === null)
+check('a server without the contract falls back and says so', portfolioTotalView({ portfolio_value: 5, position_count: 2 }).value === 5 && portfolioTotalView({ portfolio_value: 5 }).tip.includes('no portfolio_total contract'))
 check('formatting', money(-6795, true) === '−$6,795' && money(25097, true) === '+$25,097' && money(null) === '—' && pct(-0.54) === '−0.54%' && ageLabel(3000) === '50 min')
 // briefingSummary — /api/v2/command serves {content, generated_at}; never "[object Object]" (site validation 2026-10-22)
 const bObj = briefingSummary({ content: 'The portfolio shows   limited exposure.', generated_at: '2026-10-22 16:20' })

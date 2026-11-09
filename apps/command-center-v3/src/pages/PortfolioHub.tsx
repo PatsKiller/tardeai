@@ -24,6 +24,7 @@ import type { HoldingsCvdMode } from '../lib/holdingsTerminalTokens'
 import { accountFullName, buildHoldingsRowModel, isCashHolding } from '../lib/holdingsRowModel'
 import { isDeadCusipHolding } from '../lib/deadCusipHolding'
 import { portfolioDayFigure } from '../lib/portfolioDayFigure'
+import { portfolioTotalView } from '../lib/homeDoNow'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
 import PortfolioDeskHealth from '../components/PortfolioDeskHealth'
@@ -354,6 +355,14 @@ export default function PortfolioHub({ onDrill }: Props) {
   // +$5,592 beside the header's +$5,576 and holdings.json's $10,409 while /api/v2/overview said today_change
   // was null because economic day P&L is unproven (OI-044, data-truth audit defect 6).
   const viewTotal = holdingsList.reduce((s: number, h: any) => s + (h.market_value ?? 0), 0)
+  // LQ-1611: unfiltered, the header prints the ONE published total and count (PortfolioTotal@v1) — the same
+  // figures the Home header and the All-accounts row print. A filter narrows to the rows on screen, so it
+  // then prints those rows' own sum and says "rows", never a portfolio total that would not match the rows
+  // beneath it.
+  const pt = portfolioTotalView(overview)
+  const filtered = acctFilter != null || sigSet.length > 0
+  const headerValue = filtered ? viewTotal : pt.value
+  const headerCount = filtered ? holdingsList.length : pt.count
   const viewDay = portfolioDayFigure(overview, { account: acctFilter, signalFiltered: sigSet.length > 0 })
   const priceStamp = pricingStampLine(holdings?.pricing ?? holdings, { includeTechnicals: true })
 
@@ -474,7 +483,9 @@ export default function PortfolioHub({ onDrill }: Props) {
         <div>
           <div style={hubTitle()}>Portfolio</div>
           <div style={hubSubtitle(terminalUi)}>
-            {(needLookthrough || needAllocation) ? 'Current holdings opened into their underlying exposures' : !needHoldingsData ? 'Select Holdings for position totals and stop coverage' : holdingsPending ? 'Loading holdings…' : holdingsUnavailable ? 'Holdings temporarily unavailable' : `${holdingsList.length} holdings · ${fmt$(viewTotal, 0)}`}
+            {(needLookthrough || needAllocation) ? 'Current holdings opened into their underlying exposures' : !needHoldingsData ? 'Select Holdings for position totals and stop coverage' : holdingsPending ? 'Loading holdings…' : holdingsUnavailable ? 'Holdings temporarily unavailable' : filtered
+              ? `${holdingsList.length} rows · ${fmt$(headerValue, 0)}`
+              : <><span title={pt.tip}>{headerValue != null ? fmt$(headerValue, 0) : '—'} · {headerCount ?? '—'} positions</span>{` · ${holdingsList.length} rows (cash included)`}</>}
             {needHoldingsData && !needLookthrough && !needAllocation && !holdingsPending && !holdingsUnavailable && <>
               {' · '}
               {/* The day figure is the backend's and says what it is. With no figure it states the backend's

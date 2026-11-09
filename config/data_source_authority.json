@@ -1165,6 +1165,30 @@
       "cadence": "broker sync + */15 repricer",
       "stale_after_hours": 24,
       "projection": "portfolio_snapshot",
+      "value_contract": {
+        "contract": "PortfolioTotal@v1",
+        "module": "scripts/lib/portfolio_total_contract.py",
+        "total": {
+          "published_as": "value",
+          "basis": "portfolio_totals.total_value",
+          "rule": "the store's own total is published only while it equals the sum of the rows the page shows (tolerance 1 USD); otherwise the row sum is published, the basis says so, and TOTAL_FIELD_DRIFT alerts",
+          "never": "the data-broker projection total is an alternative with its delta, never the published total"
+        },
+        "position_count": {
+          "published_as": "position_count",
+          "scope": "holdings.non_cash_over_100",
+          "definition": "non-cash holding rows (symbol not CASH/SPAXX/FDRXX) whose market_value is above $100, one per (account, symbol)",
+          "also_published": "position_counts.scopes carries holdings.all_rows, holdings.non_cash, holdings.cash and risk.risk_included, each with its own definition"
+        },
+        "surfaces": [
+          "/api/v2/overview portfolio_value, position_count, portfolio_total",
+          "/api/v2/portfolio/performance current_value, portfolio_total",
+          "/api/v2/portfolio/holdings total_value, portfolio_total",
+          "v3 Home header, Book header and All-accounts row read portfolio_total"
+        ],
+        "tolerance_usd": 1.0,
+        "verdict": "one total and one count on every surface; a surface that computes its own is a defect"
+      },
       "required_fields": [
         "accounts[].state",
         "accounts[].state_reason",

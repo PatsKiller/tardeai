@@ -1,5 +1,6 @@
 import { Link, useSearchParams } from 'react-router-dom'
 import { accountName, accountsBadge } from '../lib/accountLabels'
+import { portfolioTotalView } from '../lib/homeDoNow'
 import HomeDecision from '../components/decision/HomeDecision'
 import { Collapsible } from '../components/primitives/Collapsible'
 import { makeEnvelope, retainObservation, stateLabel, stateAriaLabel, formatBusinessDate, freshnessFromOverviewObservation } from '../lib/observationEnvelope.ts'
@@ -58,10 +59,6 @@ const SkelBlock = ({ h }: { h: number }) => (
 
 const PERF_PERIODS = ['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y'] as const
 
-function acctPretty(a: string) {
-  return a.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-}
-
 /** Home router (operator-approved Home redesign, 2026-10-22): the "Do now" layout is the default; the previous Home
  *  (HomeClassic below, unchanged) stays reachable at /v3/?view=classic for one release. */
 export default function HomeHub({ onDrill }: Props) {
@@ -94,18 +91,15 @@ function HomeClassic({ onDrill }: Props) {
   const cmd = command?.data ?? command ?? {}
   const healthFindings: any[] = (health?.findings ?? []).filter((f: any) => f.severity === 'critical' || f.severity === 'warning').slice(0, 3)
 
-  const pv = overview?.portfolio_value
-  // LQ-1391: the accounts table's value and the header Portfolio figure are two different price
-  // bases, and the page said so nowhere. This table reads performance.current_value — broker
-  // position marks rendered into holdings.json at the last sync; the header reads
-  // overview.portfolio_value — Finviz re-marks, and Finviz carries the LAST REGULAR-SESSION close
-  // while the market is shut (scripts/portfolio_repricer.py, overnight branch). Name both.
+  // LQ-1611 (was LQ-1391): the header figure, the Book header and this All-accounts row read ONE
+  // published object — overview.portfolio_total (PortfolioTotal@v1, lib/portfolio_total_contract.py).
+  // The two-bases story this comment used to tell (header = Finviz projection, table = broker marks)
+  // is retired: the divergence was real, and the fix is one total, not a better tooltip.
+  const pt = portfolioTotalView(overview)
+  const pv = pt.value
   const bookValueTip = [
-    'All accounts · /api/v2/portfolio/performance current_value',
-    `basis: broker position marks from ${perfData?.snapshot_source || 'holdings.json (canonical)'}, at the last sync`,
-    overview?.pricing?.reprice_source
-      ? `The header Portfolio figure is /api/v2/overview portfolio_value on Finviz re-marks (${overview.pricing.reprice_source}, last pass ${overview.pricing.last_repriced ?? '—'}); Finviz carries the last regular-session close while the market is shut. Two price bases, so the totals differ by the move between them, not by an error.`
-      : 'The header Portfolio figure is /api/v2/overview portfolio_value on a different price basis; the totals differ by the move between them, not by an error.',
+    `All accounts · ${pt.present ? 'portfolio_total (PortfolioTotal@v1)' : '/api/v2/portfolio/performance current_value'}`,
+    pt.tip,
   ].join('\n')
   // Same rule as the header TODAY tile: proven economic total, else the reported market-day move.
   const todayChg = deriveTodayPnlState(overview).change
@@ -210,7 +204,7 @@ function HomeClassic({ onDrill }: Props) {
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={hubTitle()}>Home</div>
-          <div style={hubSubtitle(terminalUi)}>{overviewLoading ? <Skel w={180} h={12} /> : <>{fmt$(pv ?? 0, 0)} · <span title={'overview.position_count: non-cash holdings over $100 (all accounts). Risk Hub counts risk-tracked positions and Portfolio counts every holding row per account, so the numbers differ by scope (observation.position_counts).'}>{overview?.position_count ?? 0} positions over $100</span> · command router</>}</div>
+          <div style={hubSubtitle(terminalUi)}>{overviewLoading ? <Skel w={180} h={12} /> : <>{pv != null ? fmt$(pv, 0) : '—'} · <span title={pt.definition ? `${pt.scope}: ${pt.definition}` : 'The published position count (PortfolioTotal@v1).'}>{pt.count ?? '—'} positions over $100</span> · command router</>}</div>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <Link to="/" data-testid="new-home-link" style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textDecoration: 'none' }}>New Home (Do now) →</Link>
@@ -375,8 +369,10 @@ function HomeClassic({ onDrill }: Props) {
                       All
                     </td>
                     <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700, cursor: 'help' }} title={bookValueTip}>
-                      {/* A missing book value renders as unknown, never as $0 (tq-ts-missing-as-zero). */}
-                      {perfData?.current_value != null ? fmt$(perfData.current_value, 0) : pv != null ? fmt$(pv, 0) : '—'}
+                      {/* A missing book value renders as unknown, never as $0 (tq-ts-missing-as-zero). The
+                          All-accounts figure is the published total (portfolioTotalView), the same number
+                          the header prints; the performance field is the pre-contract fallback only. */}
+                      {pv != null ? fmt$(pv, 0) : perfData?.current_value != null ? fmt$(perfData.current_value, 0) : '—'}
                     </td>
                     {PERF_PERIODS.map(p => {
                       const d = perfData?.periods?.[p]
@@ -414,8 +410,8 @@ function HomeClassic({ onDrill }: Props) {
                   </tr>
                   {Object.entries(perfData?.accounts || {}).map(([acct, row]: [string, any]) => (
                     <tr key={acct} style={{ borderTop: '1px solid var(--border)' }}>
-                      <td style={{ padding: '7px 8px', textAlign: 'left', fontWeight: 700, color: 'var(--text1)' }}>{acctPretty(acct)}</td>
-                      <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700, cursor: 'help' }} title={`${acctPretty(acct)} · /api/v2/portfolio/performance current_value · basis: ${perfData?.snapshot_source || 'holdings.json (canonical)'}, broker position marks at the last sync`}>
+                      <td style={{ padding: '7px 8px', textAlign: 'left', fontWeight: 700, color: 'var(--text1)' }}>{accountName(acct)}</td>
+                      <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700, cursor: 'help' }} title={`${accountName(acct)} · /api/v2/portfolio/performance accounts.${acct}.current_value (the store's per-account total at the last sync; the All-accounts row above is the published portfolio_total)`}>
                         {/* Unknown value renders as unknown — this row carried a $ figure the endpoint
                             never reported (tq-ts-missing-as-zero) and it looked like a real zero. */}
                         {row?.current_value != null ? fmt$(row.current_value, 0) : '—'}
@@ -455,7 +451,7 @@ function HomeClassic({ onDrill }: Props) {
                   {/* If performance.accounts empty, fall back to today_by_account only */}
                   {!perfData?.accounts && overview?.today_by_account && Object.entries(overview.today_by_account).map(([acct, row]: [string, any]) => (
                     <tr key={acct} style={{ borderTop: '1px solid var(--border)' }}>
-                      <td style={{ padding: '7px 8px', textAlign: 'left', fontWeight: 700 }}>{acctPretty(acct)}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'left', fontWeight: 700 }}>{accountName(acct)}</td>
                       <td style={{ padding: '7px 8px', fontFamily: 'monospace' }}>{fmt$(row?.value ?? 0, 0)}</td>
                       {PERF_PERIODS.map(p => {
                         if (p !== '1D') return <td key={p} style={{ padding: '5px 8px', color: 'var(--text3)', textAlign: 'right' }}>—</td>
