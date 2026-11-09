@@ -138,6 +138,14 @@ def run(table: str, limit: int, apply: bool, mark=None, deadline: float | None =
     sql, params = select_sql(table, spec, text_expr, mark)
     cur.execute(sql, params + (limit,))
     rows = cur.fetchall()
+    # LQ-20261107-1576: role `trade_ai` ends an idle-in-transaction session after 120 s, and psycopg2
+    # keeps the SELECT's transaction open until a commit. The loop below extracts over up to `limit`
+    # documents and writes nothing for the ones it cannot decide (`no_mention` rows never reach
+    # persist()), so on 2026-11-09 09:25 the transaction sat open across that work and the server
+    # killed the session at 09:27:14. Ending the read transaction here means no transaction spans the
+    # extraction loop; persist() still opens and commits one transaction per document.
+    if not getattr(conn, "autocommit", False):
+        conn.commit()
 
     stat = {"table": table, "documents": len(rows), "subject": 0, "mentioned": 0,
             "undecided_docs": 0, "no_mention": 0, "written": 0, "multi": 0,

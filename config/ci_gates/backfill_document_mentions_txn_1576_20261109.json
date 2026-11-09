@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "backfill_document_mentions_txn_1576_20261109",
+  "files": [
+    "tests/test_backfill_document_mentions_txn_1576_20261109.py"
+  ],
+  "anchor": "BACKFILL_DOCUMENT_MENTIONS_TXN_1576_20261109",
+  "comment": [
+    "ANCHOR: BACKFILL_DOCUMENT_MENTIONS_TXN_1576_20261109 — the backfill's read transaction may not",
+    "span its own extraction loop. Role trade_ai ends an idle-in-transaction session after 120 s; the",
+    "2026-11-09 08:25 and 09:25 ET slots opened a session and were terminated ~121 s later because the",
+    "batch SELECT's transaction stayed open while the loop extracted documents it could not decide (no",
+    "write, so no commit). run() now commits the read transaction before the loop; persist() keeps its",
+    "per-document transaction. Hermetic fake connection enforces the server rule; synthetic rows only."
+  ]
+}
