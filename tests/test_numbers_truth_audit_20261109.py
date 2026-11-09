@@ -64,9 +64,11 @@ X_VIX = {"symbol": "$VIX", "source": "schwab", "price": 15.0, "fetched_at": QUOT
 
 
 def H(account="zz_taxable", symbol="ZQAA", shares=100, market_value=10000.0, price=100.0,
-      stop_price=80.0, stop_state="active", stop_qty=100, quote_source="market_quotes") -> dict:
+      current_price=None, stop_price=80.0, stop_state="active", stop_qty=100,
+      quote_source="market_quotes") -> dict:
     return {"account_key": account, "symbol": symbol, "shares": shares, "market_value": market_value,
-            "price": price, "current_price": price, "quote_source": quote_source,
+            "price": price, "current_price": price if current_price is None else current_price,
+            "quote_source": quote_source,
             "stop_price": stop_price, "stop_state": stop_state, "stop_qty": stop_qty,
             "broker_position_as_of_at": POS_AS_OF}
 
@@ -256,6 +258,19 @@ def test_price_compares_within_half_a_percent_against_an_allowed_quote(tmp_path)
     rep = run(root, "holdings.price")
     assert codes(rep) == ["NT_PRICE_MISMATCH"]
     assert "2" in rep["findings"][0]["detail"]  # the drift is named
+
+
+def test_the_stale_broker_price_field_is_not_the_displayed_price(tmp_path):
+    """Live 2026-11-09: holdings.json carries the broker's own mark in `price` and the repriced figure in
+    `current_price` (SKYD 8.59 vs 8.70; SRNE 0.0003 vs 0.2954), and the API republishes `current_price` as its
+    `price`. Grading the stale field reported two mismatches the page does not show."""
+    root = write_state(tmp_path, holdings=[H(price=0.0003, current_price=0.2954)])
+    b = bundle(quotes=[dict(Q_AA, price=0.2954)])
+    assert run(root, "holdings.price", b=b)["findings"] == []
+    root = write_state(tmp_path, holdings=[H(price=0.0003, current_price=0.2)])
+    rep = run(root, "holdings.price", b=b)
+    assert codes(rep) == ["NT_PRICE_MISMATCH"]  # the displayed number is graded, not the stale one
+    assert rep["findings"][0]["shown"]["value"] == 0.2
 
 
 def test_a_price_matching_only_a_retired_provider_is_a_fail_not_a_pass(tmp_path):

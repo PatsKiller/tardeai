@@ -430,8 +430,8 @@
           "symbol": "symbol"
         },
         "value": [
-          "/price",
           "/current_price",
+          "/price",
           "/mark"
         ],
         "code": "NT_PRICE_MISMATCH",
@@ -444,7 +444,7 @@
         "unit": "%"
       },
       "only_displayed": true,
-      "_note": "REV 2 A + REV 3 G3: the displayed price is graded against the store the row's own `quote_source` names (market_quotes or market_quotes_extended). Never yfinance: a price whose only row is a retired provider is a FAIL, and a price whose own source says 'unavailable' is a provenance defect (NT_QUOTE_SOURCE) even when some other store holds a number. The page moved to `market_quotes_extended` for extended-hours names on 2026-11-09, so a single fixed store graded correct prices wrong."
+      "_note": "REV 2 A + REV 3 G3: the displayed price is graded against the store the row's own `quote_source` names (market_quotes or market_quotes_extended). Never yfinance: a price whose only row is a retired provider is a FAIL, and a price whose own source says 'unavailable' is a provenance defect (NT_QUOTE_SOURCE) even when some other store holds a number. The page moved to `market_quotes_extended` for extended-hours names on 2026-11-09, so a single fixed store graded correct prices wrong. `current_price` precedes `price`: inside holdings.json `price` is the broker's own stale mark (live 2026-11-09: SKYD price 8.59 vs current_price 8.70; SRNE 0.0003 vs 0.2954) while `current_price` is the repriced figure the API republishes as its own `price` -- grading the stale field reported two defects the page does not show."
     },
     {
       "page": "/portfolio",
