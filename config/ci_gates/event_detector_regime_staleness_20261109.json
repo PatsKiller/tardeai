@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "event_detector_regime_staleness_20261109",
+  "files": [
+    "tests/test_event_detector_regime_staleness_20261109.py"
+  ],
+  "comment": [
+    "LQ-20261107-1511. The 2026-11-09 07:00 ET run fired an urgent MARKET_REGIME_CHANGE VIX_25",
+    "(agent_event_queue 7524) from a FRED VIXCLS close dated 2026-11-05, read on a Monday whose",
+    "last completed session was 2026-11-06, while live VIX was ~24.1: the lane never looked at",
+    "`observation_date`. These tests pin the refusal, the NYSE-calendar boundary (Thanksgiving",
+    "2026-11-26 is not a session), the configured lag, the strict fallback for an unusable policy,",
+    "and the LaneRunReceipt@v2 the registry's `output_signal` declares but nothing wrote."
+  ]
+}
