@@ -398,6 +398,8 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # (no host line; tests/test_market_event_wp12_20261107.py).
         "market-event-detect",
         "market-event-brief",
+        # 2026-11-09 LQ-1674 market-event-lifecycle: n8n-native dispatcher row at shadow, dispatch dry_run (no host line).
+        "market-event-lifecycle",
         # 2026-11-09 AGENTS 32.0.0 §23.20a: n8n-native read-only Schwab index-quote lane ($VIX/$VIX9D/$VIX3M),
         # dispatcher row at shadow, dispatch dry_run, */15 in the overnight/weekday windows. No host line.
         "vix-index-quotes-schwab",
