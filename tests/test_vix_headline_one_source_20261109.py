@@ -48,7 +48,7 @@ def test_a_schwab_print_is_the_headline_with_its_own_zoned_clock():
     assert h["vix"] == 21.5 and h["vix_source"] == "market_quotes_extended:schwab:$VIX"
     assert h["vix_observation_time"] == "2026-01-12T08:45:00+00:00" and h["vix_age_hours"] == 8.25
     # LQ-1669: a 03:45 ET print at 12:00 ET predates the session's open, so it is STALE, value kept and labelled.
-    assert (h["vix_state"], h["vix_stale"], h["vix_fresh_rule"]) == ("STALE", True, "rth_intraday")
+    assert (h["vix_state"], h["vix_stale"], h["vix_fresh_rule"]) == ("STALE", True, "continuous_30m")
     assert "predates" in h["vix_reason"]
     fresh = vh.vix_headline(db_query=_db([_quote(21.5, datetime(2026, 1, 12, 16, 50, tzinfo=timezone.utc))]), now=NOW)
     assert (fresh["vix_state"], fresh["vix_stale"], fresh["vix_age_hours"]) == ("FRESH", False, 0.17)

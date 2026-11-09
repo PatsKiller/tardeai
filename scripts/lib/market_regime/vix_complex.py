@@ -139,8 +139,15 @@ def _carried_print_as_of(basis: Any, cfg: dict[str, Any]) -> datetime | None:
     return datetime(day.year, day.month, day.day, 16, 0, tzinfo=et)
 
 
+def _row_clock(row: tuple, cfg: dict[str, Any]) -> datetime:
+    """When a stored row's value was observed: a carried level's print date, else its bar_end (unreadable = oldest)."""
+    clock = _carried_print_as_of(row[4], cfg) or _aware(row[3])
+    return clock.astimezone(timezone.utc) if clock else datetime.min.replace(tzinfo=timezone.utc)
+
+
 def read_quotes(conn, now: datetime, cfg: dict[str, Any]) -> tuple[dict[str, dict], list[str], list[dict]]:
-    """Latest ``market_quotes_extended`` row per configured symbol under the configured feed.
+    """Latest row per configured symbol: ``market_quotes_extended`` under the configured feed and, when configured,
+    the continuous ``market_quotes`` Schwab index row (LQ-20261107-1669); the newer print of the two wins.
 
     Returns ``(values_by_key, missing, receipts)``. ``missing`` names every refusal: no row, a stale row, a row
     under a banned feed, a non-positive price. ``receipts`` is the evidence list the caller prints in a dry run
@@ -161,24 +168,43 @@ def read_quotes(conn, now: datetime, cfg: dict[str, Any]) -> tuple[dict[str, dic
             f"FROM {store} WHERE symbol = ANY(%s) AND feed = %s ORDER BY symbol, bar_end DESC",
             [symbols, feed],
         )  # nosemgrep: tq-py-sql-fstring -- store is the config's single literal 'market_quotes_extended'
-        rows = cur.fetchall() or []
+        rows = [(*tuple(r.values() if isinstance(r, dict) else r), store) for r in (cur.fetchall() or [])]
     except Exception as exc:  # noqa: BLE001 — a read failure is reported by name, the collector keeps its other rows
         try:
             conn.rollback()
         except Exception:  # noqa: BLE001 — best effort on an already-broken connection
             pass
         missing.append(f"vix_complex_read_failed:{type(exc).__name__}")
+        rows = []
+    cstore, csource = cfg.get("continuous_store"), cfg.get("continuous_source")
+    if cstore and csource:
+        # LQ-20261107-1669: the continuous lane's rows (scripts/vix_index_quotes_schwab.py), in the same columns.
+        # fetched_at IS the print's own Schwab tradeTime there, so it is the bar_end here; no session is stored.
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                f"SELECT DISTINCT ON (symbol) symbol, price, 'continuous' AS session, NULL AS session_date, "
+                f"fetched_at AS bar_end, 'schwab_index_quote_continuous' AS reference_basis, source AS feed "
+                f"FROM {cstore} WHERE symbol = ANY(%s) AND source = %s ORDER BY symbol, fetched_at DESC",
+                [symbols, str(csource)],
+            )  # nosemgrep: tq-py-sql-fstring -- cstore is the config's single literal 'market_quotes'
+            rows += [(*tuple(r.values() if isinstance(r, dict) else r), str(cstore)) for r in (cur.fetchall() or [])]
+        except Exception as exc:  # noqa: BLE001 — named, and the off-hours store's rows still stand
+            try:
+                conn.rollback()
+            except Exception:  # noqa: BLE001 — best effort on an already-broken connection
+                pass
+            missing.append(f"vix_complex_continuous_read_failed:{type(exc).__name__}")
+    if not rows and any(m.startswith("vix_complex_") for m in missing):
         return {}, missing, receipts
 
     seen: dict[str, tuple] = {}
     for r in rows:
-        if isinstance(r, dict):
-            sym, price, session, sdate, bar_end, basis, row_feed = (
-                r.get("symbol"), r.get("price"), r.get("session"), r.get("session_date"),
-                r.get("bar_end"), r.get("reference_basis"), r.get("feed"))
-        else:
-            sym, price, session, sdate, bar_end, basis, row_feed = r
-        seen[str(sym).upper()] = (price, session, sdate, bar_end, basis, row_feed)
+        sym, price, session, sdate, bar_end, basis, row_feed, row_store = r
+        cand = (price, session, sdate, bar_end, basis, row_feed, row_store)
+        prev = seen.get(str(sym).upper())
+        if prev is None or _row_clock(cand, cfg) > _row_clock(prev, cfg):  # the NEWER print of the two stores wins
+            seen[str(sym).upper()] = cand
 
     for sym in symbols:
         key = key_of[sym]
@@ -187,13 +213,13 @@ def read_quotes(conn, now: datetime, cfg: dict[str, Any]) -> tuple[dict[str, dic
             missing.append(f"{key}_unavailable:no_row")
             receipts.append({"symbol": sym, "key": key, "refused": "no_row"})
             continue
-        price, session, sdate, bar_end, basis, row_feed = row
+        price, session, sdate, bar_end, basis, row_feed, row_store = row
         if str(row_feed or "").strip().lower() in BANNED_FEEDS:
             # A banned source may not be scored; name the writer, do not launder it into "no row".
             missing.append(f"{key}_banned_source:{row_feed}")
             receipts.append({"symbol": sym, "key": key, "refused": f"banned_source:{row_feed}"})
             continue
-        if str(row_feed or "") != feed:
+        if str(row_feed or "") != (str(csource) if cstore and row_store == str(cstore) else feed):
             missing.append(f"{key}_unexpected_feed:{row_feed}")
             receipts.append({"symbol": sym, "key": key, "refused": f"unexpected_feed:{row_feed}"})
             continue
@@ -215,7 +241,7 @@ def read_quotes(conn, now: datetime, cfg: dict[str, Any]) -> tuple[dict[str, dic
             receipts.append({"symbol": sym, "key": key, "refused": f"stale:{age_h:.1f}h",
                              "carried_from": carried_at.date().isoformat() if carried_at else None})
             continue
-        values[key] = {"value": val, "source": f"{store}:{feed}", "symbol": sym, "age_hours": round(age_h, 2),
+        values[key] = {"value": val, "source": f"{row_store}:{feed}", "symbol": sym, "age_hours": round(age_h, 2),
                        "as_of": clock.isoformat(), "session": session,
                        "session_date": str(sdate) if sdate is not None else None,
                        "reference_basis": basis, "fresh": age_h <= float(cfg.get("fresh_after_hours") or 0),

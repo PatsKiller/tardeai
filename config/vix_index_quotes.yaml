@@ -1,0 +1,35 @@
+# Continuous Schwab VIX index quotes (LQ-20261107-1669). Read by scripts/vix_index_quotes_schwab.py.
+# Operator order 2026-11-09 14:50 ET: "VIX must refresh at least every 15 min during the trading day AND pre-market AND
+# after-hours (and the existing overnight) ... no gaps at 03:45/04:00/09:30/16:00/20:00 boundaries".
+#
+# Why a lane of its own: the off-hours lane (scripts/market_quotes_offhours_schwab.py) fetches a fresh $VIX every
+# 15 min, but its store cannot hold it. market_quotes_extended's DB CHECKs allow no 'regular' session, and allow a
+# reference-less (level-only) row only overnight. Measured from 527 receipts (11-01..11-09): every pre-market $VIX print
+# was refused no_dated_reference_for_premarket, every 16:00-16:15 print no_dated_reference_for_afterhours, and the
+# regular session was never fetched (skip_regular_session).
+#
+# OFF until the operator approves (a) the supply grant below in config/data_source_authority.json and (b) the n8n
+# schedule. While off, --apply stops at ``disabled`` before any Schwab or database module is imported.
+schema: VixIndexQuotes@v1
+enabled: false
+requires_grant: "data_source_authority providers.schwab.supply_grants: market_data_quotes for quote_price, symbols below only (PROPOSED, LQ-20261107-1669)"
+symbols: ["$VIX", "$VIX9D", "$VIX3M"]
+# STORE: market_quotes through its single writer (scripts/lib/writers/market_quotes_writer.py), source 'schwab'.
+# fetched_at holds Schwab's own quote.tradeTime (the instant the level was observed), NEVER the fetch time, so a
+# level Cboe stopped calculating can never read as new. A print whose tradeTime is already stored is not written again.
+store: market_quotes
+source: schwab
+schwab:
+  marketdata_base_url: "https://api.schwabapi.com/marketdata/v1/"
+  batch_size: 100
+# ET. Continuous from Sunday 18:00 to Friday 20:00: overnight, pre-market, regular and after-hours are one span.
+# The scheduler fires every 15 min inside it; a fire outside it records outside_window and fetches nothing.
+window:
+  start_day: sun
+  start: "18:00"
+  end_day: fri
+  end: "20:00"
+cadence_minutes: 15
+# A print older than this when fetched is not written as new (Cboe is not calculating the index). The slot's receipt
+# still names the print and its age, so the timeline shows the gap as a fact, never as a missing run.
+max_trade_age_minutes: 30
