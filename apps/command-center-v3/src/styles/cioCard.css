@@ -41,8 +41,16 @@
 .cio5 .drv-h h4 { margin: 0; font: 700 14px/1.2 var(--font-display); }
 .cio5 .src { font: 400 10px/1.3 var(--font-mono); color: var(--text-2); }
 .cio5 .meter { display: flex; height: 8px; border-radius: var(--radius-sm); overflow: hidden; background: var(--border-color); margin: 10px 12px 2px; }
-.cio5 .meter i { display: block; height: 100%; }
-.cio5 .meter i:nth-child(odd) { background: var(--danger-color); } .cio5 .meter i:nth-child(even) { background: var(--warning-color); }
+/* LQ-20261107-1642: a segment's colour is its DRIVER STATE (set inline from lib/cioCard.driverTone), never its
+   position in the list. The old nth-child(odd)=red / nth-child(even)=amber rule is gone: it drew a RED badge
+   beside an amber bar and made the colour a fact about the array, not about the market. */
+.cio5 .meter i { display: block; height: 100%; background: var(--neutral-color); }
+.cio5 .meter-ticks { position: relative; height: 15px; margin: 2px 12px 0; font: 400 9px/15px var(--font-mono); color: var(--text-2); }
+.cio5 .meter-ticks .tk { position: absolute; top: 0; transform: translateX(-50%); display: grid; justify-items: center; }
+.cio5 .meter-ticks .tk::before { content: ''; display: block; width: 1px; height: 4px; background: var(--border-color); }
+.cio5 .meter-ticks .tk[data-tick="25"] { transform: none; justify-items: start; }
+.cio5 .meter-ticks .tk[data-tick="75"] { transform: translateX(-100%); justify-items: end; }
+.cio5 .meter-ticks .tn { line-height: 10px; }
 .cio5 .meter-k { display: flex; justify-content: space-between; gap: 8px; font: 400 10px/1.2 var(--font-mono); color: var(--text-2); padding: 0 12px 6px; }
 .cio5 .d { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 8px 12px; border-top: 1px solid var(--border-color); }
 .cio5 .d .n { font-weight: 600; }

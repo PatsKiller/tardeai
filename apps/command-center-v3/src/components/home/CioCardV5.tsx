@@ -6,7 +6,7 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import '../../styles/cioCard.css'
 import { toneVars } from '../../lib/designTokens'
-import { actionVerb, accountText, calDay, daysUntil, etDay, etTime, fv, meterParts, usd, usdShort, tierToneOf, type CioCard } from '../../lib/cioCard'
+import { actionVerb, accountText, calDay, daysUntil, etDay, etTime, fv, meterParts, TIER_CUTOFFS, usd, usdShort, tierToneOf, type CioCard } from '../../lib/cioCard'
 
 /** "DEFENSIVE — HOLD CASH" → "Hold cash." (the part after the dash, sentence case). */
 function postureLine(p: string | undefined): string | null {
@@ -95,8 +95,20 @@ export default function CioCardV5({ card, adviceOk, adviceReason, nowMs, actions
           </div>
           {parts.length > 0 && (
             <>
-              <div className="meter" role="img" aria-label={`Risk score ${score?.toFixed(1) ?? '—'}: ${drivers.map(d => `${d.name} ${(d.points ?? 0).toFixed(1)}`).join(', ')}`}>
-                {parts.map(p => <i key={p.name} style={{ width: `${p.width}%` }} />)}
+              <div className="meter" role="img" aria-label={`Risk score ${score?.toFixed(1) ?? '—'}: ${parts.map(p => `${p.name} ${p.state} ${p.points.toFixed(1)}`).join(', ')}. Tiers start at ${TIER_CUTOFFS.map(t => `${t.tier} ${t.score}`).join(', ')}.`}>
+                {parts.map(p => (
+                  <i key={p.name} data-testid="cio5-seg" data-state={p.state} title={`${p.name}: ${p.state} · +${p.points.toFixed(1)}`}
+                    style={{ width: `${p.width}%`, background: toneVars(p.tone).color }} />
+                ))}
+              </div>
+              {/* LQ-20261107-1642: the tier boundaries on the same 0-100 scale the segments use, so "YELLOW 44"
+                  reads as "just past the 40 tick" instead of an unexplained label. */}
+              <div className="meter-ticks" data-testid="cio5-ticks" aria-hidden="true">
+                {TIER_CUTOFFS.map(t => (
+                  <span key={t.tier} className="tk" data-tick={t.score} style={{ left: `${t.score}%` }} title={`${t.tier} from ${t.score}`}>
+                    <span className="tn">{t.score}</span>
+                  </span>
+                ))}
               </div>
               <div className="meter-k"><span>0</span><span>{tier} {score?.toFixed(1)}</span><span>100</span></div>
             </>

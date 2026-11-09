@@ -197,10 +197,49 @@ export function pct(n: number | null | undefined, digits = 1, signed = false): s
   return `${signed && n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toFixed(digits)}%`
 }
 
-/** Driver meter: each driver's share of the score, in the order given; the rest of the bar is empty. */
-export function meterParts(drivers: Driver[] | undefined, max = 100): { name: string; width: number }[] {
-  return (drivers ?? []).filter(d => (d.points ?? 0) > 0).map(d => ({ name: d.name, width: Math.max(0, Math.min(100, ((d.points ?? 0) / max) * 100)) }))
+/** Driver meter: each driver's share of the score, in the order given; the rest of the bar is empty.
+ *  LQ-20261107-1642: each part carries the category's own STATE and the tone it is drawn in, so the segment's
+ *  colour explains the reading. Before this the colour was the segment's position in the list
+ *  (`cioCard.css` `nth-child(odd)=red / nth-child(even)=amber`), so a RED badge could sit beside an amber bar. */
+export function meterParts(drivers: Driver[] | undefined, max = 100): { name: string; state: string; points: number; width: number; tone: Tone }[] {
+  // A driver without a number is NOT a zero-point segment: it is absent from the meter entirely. Nothing is
+  // drawn for it and no 0 is implied (a missing number is "not reported", never 0).
+  return (drivers ?? []).flatMap(d => {
+    const pts = d.points
+    if (pts == null || !Number.isFinite(pts) || pts <= 0) return []
+    return [{
+      name: d.name,
+      state: String(d.state ?? '').toUpperCase() || 'UNKNOWN',
+      points: pts,
+      width: Math.max(0, Math.min(100, (pts / max) * 100)),
+      tone: driverTone(d.state),
+    }]
+  })
 }
+
+/** A market-risk category state → the tone its segment is drawn in. The vocabulary is the engine's own
+ *  (`scripts/lib/market_risk/contract.py` STATES: CALM, IMPROVING, WARN, STRESS, UNKNOWN): STRESS is the danger
+ *  colour, WARN the warning colour, IMPROVING the info colour, CALM success. An absent or unrecognised state is
+ *  NEUTRAL — never a stress colour for a reading that was not measured. */
+export function driverTone(state: string | null | undefined): Tone {
+  switch (String(state ?? '').toUpperCase()) {
+    case 'STRESS': return 'danger'
+    case 'WARN': return 'warning'
+    case 'IMPROVING': return 'info'
+    case 'CALM': return 'success'
+    default: return 'neutral'
+  }
+}
+
+/** The score at which each market tier starts (config/market_risk_policy.yaml `tiers`: blue 25, yellow 40,
+ *  orange 60, red 75; green is the max_score 20 band below blue). Drawn as ticks on the 0-100 meter so the
+ *  tier label above it can be read off the scale instead of guessed. */
+export const TIER_CUTOFFS = [
+  { tier: 'BLUE', score: 25 },
+  { tier: 'YELLOW', score: 40 },
+  { tier: 'ORANGE', score: 60 },
+  { tier: 'RED', score: 75 },
+] as const
 
 /** What the stop action asks for, in plain words. */
 export function actionVerb(a: Pick<StopAction, 'answer'>): string {
