@@ -160,9 +160,11 @@ def lane_behind_llm_priority_guard(match, crontab_text: str = "", command_text: 
 
     One uncommented line that runs the same script without the guard means the slot
     can still be required, so the lane is not stamped (fail toward alerting). A
-    commented line does not count. With no crontab hit, the lane's own command text
-    stamps only when it contains both the match and the guard script.
+    commented line does not count. No uncommented hit means the lane is not stamped:
+    registry command text is not a live crontab, including a retired ``n8n-cutover``
+    line whose registry text still names the guard.
     """
+    del command_text  # not a live crontab; an empty hit list never stamps
     token = _usable_token(match)
     if token is None:
         return False
@@ -173,7 +175,6 @@ def lane_behind_llm_priority_guard(match, crontab_text: str = "", command_text: 
             continue
         if token in stripped:
             hits.append(stripped)
-    if hits:
-        return all(_GUARD_SCRIPT in line for line in hits)
-    command = str(command_text or "")
-    return token in command and _GUARD_SCRIPT in command
+    if not hits:
+        return False
+    return all(_GUARD_SCRIPT in line for line in hits)

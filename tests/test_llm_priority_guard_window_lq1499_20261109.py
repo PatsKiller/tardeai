@@ -244,7 +244,8 @@ def test_bind_stamps_only_when_every_live_line_is_wrapped():
     assert not stamped(commented)
     assert not stamped("")
     assert not stamped(f"{wrapped}\n{bare}")
-    assert stamped("", f"bash scripts/llm_priority_guard.sh && python {MATCH}")
+    # Registry command text is not a live crontab. No uncommented hit does not stamp.
+    assert not stamped("", f"bash scripts/llm_priority_guard.sh && python {MATCH}")
     assert not stamped("", f"python {MATCH}")
     directive = f"*/30 * * * * bash scripts/llm_priority_guard.sh && python {DIRECTIVE}"
     assert lane_behind_llm_priority_guard(DIRECTIVE, f"{directive}\n*/30 * * * * python {DIRECTIVE}") is False
@@ -253,6 +254,51 @@ def test_bind_stamps_only_when_every_live_line_is_wrapped():
     bind_components({"lanes": [lane]}, {}, crontab_text=wrapped)
     assert lane["scheduler"] == before
     assert "watchdog_llm_priority_guard" not in lane
+
+
+def test_a_retired_crontab_line_does_not_hide_an_unguarded_n8n_gap():
+    """A commented n8n-cutover line plus registry text that still names the guard is not a deferral.
+
+    The live allowlist argv does not wrap the guard. Monday 09:20 with a success
+    from before the morning fires is a real miss, not OK and not OUTSIDE_WINDOW.
+    """
+    script = "scripts/synthetic_cutover_lane.py"
+    retired = (
+        "# RETIRED 2026-11-01 n8n-cutover synthetic-cutover-lane\n"
+        f"# */30 6-19 * * 1-5 bash scripts/llm_priority_guard.sh && python {script}\n"
+    )
+    command = f"bash scripts/llm_priority_guard.sh && python {script}"
+    lane = {
+        "lane_id": "synthetic-cutover-lane",
+        "state": "ACTIVE",
+        "expected_cadence_hours": 0.5,
+        "scheduler": {
+            "kind": "n8n",
+            "expression": "*/30 6-19 * * 1-5",
+            "timezone": "America/New_York",
+            "match": script,
+            "command_text": command,
+        },
+        "dispatch": {"cron": "*/30 6-19 * * 1-5", "tz": "America/New_York", "mode": "live"},
+        "output_signal": {"kind": "log_line", "path": "logs/synthetic_cutover_lane.log"},
+    }
+    allowlist = {"lanes": [{"lane_id": "synthetic-cutover-lane", "command": ["python", script]}]}
+    bound = bind_components({"lanes": [lane]}, {}, allowlist, crontab_text=retired)
+    stamped = bound["lanes"][0]
+    assert stamped.get("watchdog_llm_priority_guard") is not True
+    assert lane_behind_llm_priority_guard(script, retired, command) is False
+    assert "llm_priority_guard.sh" not in " ".join(allowlist["lanes"][0]["command"])
+    now = et(2026, 11, 9, 9, 20)
+    success = et(2026, 11, 9, 5, 30)
+    result = evaluate(
+        {"lanes": [stamped]}, [],
+        {"synthetic-cutover-lane": [{"at": success.isoformat(), "validated_success": True}]},
+        now=now, trading_day=lambda at: True,
+    )
+    row = next(item for item in result["rows"] if item["lane_id"] == "synthetic-cutover-lane")
+    assert row["status"] == "MISSED_RUNS"
+    assert row["missed_fires"] == 2
+    assert row["status"] != "OUTSIDE_WINDOW"
 
 
 def test_missing_crontab_snapshot_is_empty(tmp_path):
