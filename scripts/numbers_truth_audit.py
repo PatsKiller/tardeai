@@ -124,11 +124,11 @@ def _session_date(v: Any) -> Optional[date]:
     if isinstance(v, date):
         return v
     s = str(v or "").strip()
-    if len(s) >= 10:
+    if len(s) == 10 and s[4:5] == "-" and s[7:8] == "-":
         try:
-            return date.fromisoformat(s[:10])
+            return date.fromisoformat(s)  # a date-only string is its own calendar date, never UTC midnight
         except ValueError:
-            pass
+            return None
     d = _ts(v)
     return d.astimezone(ET).date() if d is not None else None
 
@@ -307,7 +307,7 @@ def load_truth(policy: Mapping[str, Any], *, conn_factory: Callable[[], Any] = p
                                "source FROM positions_current")
         newest = max([t for t in (_ts(r.get("as_of")) for r in rows) if t], default=None)
         b.put("positions", rows=rows, as_of=newest)
-    except Exception as exc:  # noqa: BLE001 — a source that cannot answer is NOT_MEASURED, never clean
+    except Exception as exc:  # noqa: BLE001 -- a source that cannot answer is NOT_MEASURED, never clean
         b.put("positions", reason=f"positions_unreadable: {type(exc).__name__}")
     try:
         rows = _select(conn(), "SELECT account, symbol, broker, order_id, order_type, status, stop_price, qty, "
@@ -315,12 +315,12 @@ def load_truth(policy: Mapping[str, Any], *, conn_factory: Callable[[], Any] = p
                                "WHERE snapshot_at = (SELECT max(snapshot_at) FROM stop_lifecycle)")
         newest = max([t for t in (_ts(r.get("snapshot_at")) for r in rows) if t], default=None)
         b.put("stops", rows=rows, as_of=newest)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- an unreadable stop snapshot is NOT_MEASURED, never a silent pass
         b.put("stops", reason=f"stops_unreadable: {type(exc).__name__}")
     try:
         b.put("stop_last_known", rows=_select(conn(), "SELECT broker, account, symbol, order_id, order_type, "
                                                       "stop_price, qty, status, captured_at FROM stop_last_known"))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- the retiring copy is evidence only; its absence is recorded
         b.put("stop_last_known", reason=f"stop_last_known_unreadable: {type(exc).__name__}")
     try:
         where, params = _quote_where(policy)
@@ -334,11 +334,11 @@ def load_truth(policy: Mapping[str, Any], *, conn_factory: Callable[[], Any] = p
                 for r in _select(conn(), "SELECT DISTINCT ON (symbol) symbol, source FROM market_quotes "
                                          "WHERE source = ANY(%s) ORDER BY symbol, fetched_at DESC", [never]):
                     retired[str(r.get("symbol") or "").upper()] = str(r.get("source") or "")
-            except Exception:  # noqa: BLE001 — the retired-row view is evidence, not a required source
+            except Exception:  # noqa: BLE001 -- the retired-row view is evidence, not a required source
                 retired = {}
         b.put("quotes", rows=rows, as_of=newest, retired_by_symbol=retired,
               by_symbol={str(r.get("symbol") or "").upper(): r for r in rows})
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- unreadable quotes are NOT_MEASURED downstream, never a pass
         b.put("quotes", reason=f"quotes_unreadable: {type(exc).__name__}")
     try:
         b.put("brief", doc=json.loads(Path(brief_path).read_text(encoding="utf-8")) if brief_path else None,
@@ -349,8 +349,8 @@ def load_truth(policy: Mapping[str, Any], *, conn_factory: Callable[[], Any] = p
     if "c" in holder:
         try:
             holder["c"].close()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001 -- a close failure cannot change what was already read
+            holder["close_error"] = type(exc).__name__
     return b
 
 
@@ -392,7 +392,7 @@ def http_get_json(base_url: str, path_with_query: str, *, sleeper: Callable[[flo
         return opener(url, HTTP_TIMEOUT_S)
     import urllib.request
 
-    with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT_S) as resp:  # noqa: S310 — host-local :7777 only
+    with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT_S) as resp:  # noqa: S310 -- host-local :7777 only
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -414,7 +414,7 @@ def served(row: Mapping[str, Any], *, state_root: Path, http_open: bool, base_ur
             raise Unreadable("in_window_artifact_only", "inside 04:00-16:15 ET: no HTTP to :7777 (§28.8)")
         try:
             doc = (fetcher or (lambda q: http_get_json(base_url, q)))(str(spec.get("path")) + query)
-        except Exception as exc:  # noqa: BLE001 — an unreachable endpoint is NOT_MEASURED
+        except Exception as exc:  # noqa: BLE001 -- an unreachable endpoint is NOT_MEASURED
             raise Unreadable("source_unreadable", f"api unreadable: {type(exc).__name__}")
         if isinstance(doc, Mapping) and isinstance(doc.get("data"), Mapping) and "ok" in doc:
             doc = doc["data"]  # every /api/v2 route wraps its payload as {ok, data}: the pointers read `data`
@@ -968,10 +968,11 @@ def authority_writes(policy: Mapping[str, Any], *, conn_factory: Callable[[], An
                      now: Optional[datetime] = None) -> list[dict[str, Any]]:
     """G2: rows written in the last hour by a provider the authority file does not declare for that domain."""
     out: list[dict[str, Any]] = []
+    open_errors: list[str] = []  # a close failure cannot change what was read; keep the fact, not silence
     now = now or datetime.now(timezone.utc)
     try:
         conn = conn_factory()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- an unreachable DB is reported as truth_unreadable, not raised
         return [not_measured({"page": "*", "figure_id": "authority.writes", "severity": "P1",
                               "domain": "authority", "producer_lane": "numbers-truth-audit"},
                              "truth_unreadable", f"DB unavailable: {type(exc).__name__}")]
@@ -986,7 +987,7 @@ def authority_writes(policy: Mapping[str, Any], *, conn_factory: Callable[[], An
             try:
                 rows = _select(conn, f"SELECT {pcol} AS provider, count(*) AS n, max({tcol}) AS newest "
                                      f"FROM {table} WHERE {tcol} > now() - interval '1 hour' GROUP BY {pcol}")
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001 -- one domain's read failure is that domain's finding
                 out.append(not_measured({"page": "*", "figure_id": f"authority.writes.{dom_name}",
                                          "severity": "P1", "domain": dom_name,
                                          "producer_lane": "numbers-truth-audit"},
@@ -996,9 +997,8 @@ def authority_writes(policy: Mapping[str, Any], *, conn_factory: Callable[[], An
                 prov = _canon(r.get("provider"))
                 # An account-scoped writer name (moomoo_opend, alpaca_live_api) is the registered provider
                 # under a suffix; only an undeclared or retired provider is a finding.
-                if prov in never:
-                    pass
-                elif prov in declared or (prefixes and prov.startswith(prefixes)):
+                retired = prov in never
+                if not retired and (prov in declared or (prefixes and prov.startswith(prefixes))):
                     continue
                 row = {"page": "*", "figure_id": f"authority.writes.{dom_name}", "severity": "P1",
                        "domain": dom_name, "producer_lane": dom.get("producer_lane")}
@@ -1013,8 +1013,8 @@ def authority_writes(policy: Mapping[str, Any], *, conn_factory: Callable[[], An
     finally:
         try:
             conn.close()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001 -- a close failure cannot change what was already read
+            open_errors.append(type(exc).__name__)
     return out
 
 
@@ -1033,7 +1033,7 @@ def authority_static(*, root: Optional[Path] = None, runner: Optional[Callable[[
         doc = json.loads(getattr(proc, "stdout", "") or "{}")
     except subprocess.TimeoutExpired:
         return [not_measured(row, "authority_gate_unavailable", "the authority gate exceeded its time budget")]
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- any runner failure is an unavailable gate, never a pass
         return [not_measured(row, "authority_gate_unavailable", f"the authority gate did not answer: "
                              f"{type(exc).__name__}")]
     findings = doc.get("findings") if isinstance(doc, Mapping) else None
@@ -1168,7 +1168,7 @@ def audit(catalog: Mapping[str, Any], bundle: Bundle, *, now: datetime, state_ro
         except Unreadable as exc:
             findings.append(not_measured(row, exc.reason, exc.detail))
             continue
-        except Exception as exc:  # noqa: BLE001 — one row's defect never stops the audit
+        except Exception as exc:  # noqa: BLE001 -- one row's defect never stops the audit
             findings.append(not_measured(row, "audit_error", f"{kind} failed: {type(exc).__name__}"))
             continue
         measured[kind] = measured.get(kind, 0) + 1
