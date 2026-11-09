@@ -57,7 +57,7 @@ def _world(monkeypatch, tmp_path):
     def build(records):
         world["builds"] += 1
         world["started"].set()
-        time.sleep(world["sleep"].get(world["current"], 0.0))
+        time.sleep(world["sleep"].get(world["current"], 0.0))  # nosemgrep: tq-py-missing-as-zero -- seconds to stall a fake build, not a count or a price shown to anyone
         return {"n": len(records), "store": str(world["current"])}
 
     monkeypatch.setattr(cio_instrument_record, "_store_for_root", store_for)
