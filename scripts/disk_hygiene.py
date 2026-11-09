@@ -418,6 +418,50 @@ def _never_glob_match(globs: Iterable[str], part: str) -> Optional[str]:
 #: ``tradeai_pytest_scratch_*``, ``ci-compat/pytest``) and pytest's per-test ``tmp_path`` dirs (``test_<name><n>``).
 SCRATCH_FIXTURE_DIRS = ("pytest", "pytest-of-*", "pytest-*", "basetemp*", "pt[0-9]*", "tradeai_pytest_scratch_*", "test_*[0-9]")
 
+#: A template carries no secret: ``.env.example`` names the shape of a credential, never a value. Config
+#: ``releases._why`` already says so; rule T has to agree or a copied template pins the whole scratch dir
+#: (LQ-20261107-1366: every ``.env.example`` under ``agent-tmp`` matched ``.env.*``).
+_TEMPLATE_SUFFIXES = (".example", ".sample", ".template", ".tmpl", ".tpl", ".dist")
+
+#: Extensions that hold source code or build output, never a credential store. ``token``/``cookie``/``secret``/
+#: ``credential`` in a source FILENAME names a subject, not a value: ``scripts/credential_monitor.py``,
+#: ``tokens.css``, ``src/lib/designTokens.ts``. Deliberately excludes ``.json``/``.yaml``/``.yml``/``.txt``/
+#: ``.env``/``.pem``/``.key``: a dump of a credential is a dump of a credential whatever it is named.
+SCRATCH_SOURCE_SUFFIXES = (".py", ".pyc", ".pyi", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts",
+                           ".css", ".scss", ".sass", ".less", ".vue", ".svelte", ".html", ".go", ".rs", ".java",
+                           ".kt", ".rb", ".php", ".c", ".h", ".cc", ".cpp", ".hpp", ".m", ".swift", ".map", ".svg",
+                           ".png", ".jpg", ".jpeg", ".gif", ".ico", ".woff", ".woff2", ".ttf")
+
+#: The harness that writes an agent's emulation env (``scripts/ops/n8n_lane_emulate.py``) states in its own header
+#: that the file is configuration only: the cluster password travels in the spec, in memory (LQ-1353). Without this
+#: exemption every emulated lane under an agent's scratch dir pinned that agent's whole tree through ``*.env``.
+#: Both the header and the absence of a credential-valued line are required, so a harness file whose contract was
+#: broken still holds, and a hand-written ``emulation.env`` still holds.
+EMULATION_ENV_HEADER = b"# emulation env: configuration only, written by"
+_EMULATION_SECRET_LINE = re.compile(
+    rb"^(?:export\s+)?[A-Za-z0-9_]*(?:PASSWORD|SECRET|TOKEN|PRIVATE_KEY|API_KEY)[A-Za-z0-9_]*\s*=\s*\S",
+    re.M | re.I)
+
+
+def _emulation_env_secret(path: Path) -> Optional[bool]:
+    """Rule T: ``None`` if ``path`` is not a harness-written emulation env, else whether it carries a credential.
+
+    Three-valued on purpose: a config-only harness file is exempt, but one whose fixed header is followed by a
+    credential line has broken the harness's own contract and holds wherever it sits. The scan is
+    case-insensitive: ``db_password=`` is a password whether or not it is shouted (review, 2026-11-09). Reads at
+    most the first 64 KiB.
+    """
+    if path.name != "emulation.env" or path.is_symlink() or not path.is_file():
+        return None
+    try:
+        with path.open("rb") as fh:
+            body = fh.read(65536)
+    except OSError:
+        return None
+    if not body.startswith(EMULATION_ENV_HEADER):
+        return None
+    return bool(_EMULATION_SECRET_LINE.search(body))
+
 
 def scratch_protected(path: Path, root: Path, rules: Mapping[str, Any]) -> bool:
     """Rule T: does this entry inside an agent scratch dir hold the whole dir (2026-10-31)?
@@ -425,6 +469,11 @@ def scratch_protected(path: Path, root: Path, rules: Mapping[str, Any]) -> bool:
     A symlink never holds: removal unlinks the link, never its target. A never-touch PATH always holds. A
     never-touch NAME or credential-like GLOB holds only outside a repo copy or a pytest temp tree: there it is a
     tracked repo file (``secret_registry.yaml``, ``check_no_secrets.py``) or a synthetic fixture, not a credential.
+
+    Two file SHAPES are exempt wherever they sit (review of LQ-20261107-1366, 2026-11-09): a template
+    (``.env.example``) carries no value, and source code names a subject, not a value. A harness-written
+    ``emulation.env`` is exempt on its header, and a credential line beside that header outranks every tree
+    exemption. No other name is exempted by where it sits beyond the repo-copy and fixture-tree rules above.
     """
     if path.is_symlink():
         return False
@@ -435,6 +484,15 @@ def scratch_protected(path: Path, root: Path, rules: Mapping[str, Any]) -> bool:
         return True
     if path.is_dir():
         return False  # a credential is a file; a dir named ``test_token_x0`` or ``bin/docker`` holds nothing by its name
+    if path.name.lower().endswith(_TEMPLATE_SUFFIXES):
+        return False
+    if path.name.lower().endswith(SCRATCH_SOURCE_SUFFIXES):
+        return False  # *token* / *secret* in a source FILENAME names a subject, not a value
+    emu_secret = _emulation_env_secret(path)
+    if emu_secret is False:
+        return False
+    if emu_secret is True:
+        return True
     try:
         rel = path.relative_to(root)
     except ValueError:

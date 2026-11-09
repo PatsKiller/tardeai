@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_hygiene_scratch_protection_20261109",
+  "files": [
+    "tests/test_disk_hygiene_scratch_protection_20261109.py"
+  ],
+  "anchor": "DISK_HYGIENE_SCRATCH_PROTECTION_20261109",
+  "comment": [
+    "ANCHOR: DISK_HYGIENE_SCRATCH_PROTECTION_20261109 — LQ-20261107-1366 rework on top of LQ-1456. A template never holds; a source file never holds; a harness emulation.env holds only when a credential line breaks its contract (case-insensitive); every credential store shape still holds below a repo marker."
+  ]
+}
