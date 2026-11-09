@@ -324,7 +324,10 @@ def test_a_transient_failure_retries_three_times_then_dead_letters(env, monkeypa
 
     monkeypatch.setattr(C, "map_intent", broken)
     for i in range(3):
-        assert _cli(env, "--apply", now=NOW + timedelta(minutes=i)) == 1  # honest exit
+        # 75 = EX_TEMPFAIL, the only retryable code this lane returns (transient-2 retries 69/75/111, so exit 1 is
+        # terminal and would describe a lane the executor runs once — never reaching the MAX_ATTEMPTS=3 dead letter
+        # asserted below). Lane docstring lines 21-25; LQ-1409/LQ-1445.
+        assert _cli(env, "--apply", now=NOW + timedelta(minutes=i)) == CLI.EX_TEMPFAIL
     c = _q(env, "SELECT * FROM comms_intent_consumption")[0]
     assert (c["state"], c["attempts"], c["terminal"]) == ("FAILED", 3, 0)
     assert c["last_error"].startswith("RuntimeError: synthetic")

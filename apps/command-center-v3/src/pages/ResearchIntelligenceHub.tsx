@@ -15,6 +15,10 @@ import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
+// LQ-20261107-1515: the chips and primary buttons below used the literal radius 6, which is --radius-md (6px) in the
+// default theme and 3px in the compact one. The token keeps both themes right and brings the file back under its
+// frozen ui-standards radius baseline (config/ui_standards_baseline.json: 41).
+import { RADIUS } from '../lib/designTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -318,7 +322,7 @@ function Tag({ children, color }: { children: ReactNode; color?: string }) {
     <span style={{
       fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
       color: c, background: `color-mix(in srgb, ${c} 8%, transparent)`, border: `1px solid color-mix(in srgb, ${c} 20%, transparent)`,
-      borderRadius: 6, padding: '3px 8px',
+      borderRadius: RADIUS.md, padding: '3px 8px',
     }}>
       {children}
     </span>
@@ -640,7 +644,7 @@ function ActionStrip({
                         {t.hermes && (
                           <span title="Hermes composite score · rank · scope tier (read-only join)" style={{
                             fontFamily: 'var(--mono)', fontSize: 10.5, fontWeight: 800, color: C.accent,
-                            border: `1px solid color-mix(in srgb, ${C.accent} 27%, transparent)`, borderRadius: 6, padding: '1px 6px',
+                            border: `1px solid color-mix(in srgb, ${C.accent} 27%, transparent)`, borderRadius: RADIUS.md, padding: '1px 6px',
                           }}>
                             ★{t.hermes.rank != null ? `#${t.hermes.rank}` : ''} · {t.hermes.composite}
                             {t.hermes.scope_tier ? ` · ${String(t.hermes.scope_tier).toUpperCase()}` : ''}
@@ -649,7 +653,7 @@ function ActionStrip({
                         {t.score_divergence && (
                           <span title="RI conviction and Hermes composite disagree — both shown, neither blended" style={{
                             fontSize: 10, fontWeight: 800, color: C.stale,
-                            border: `1px solid color-mix(in srgb, ${C.stale} 33%, transparent)`, borderRadius: 6, padding: '1px 6px',
+                            border: `1px solid color-mix(in srgb, ${C.stale} 33%, transparent)`, borderRadius: RADIUS.md, padding: '1px 6px',
                           }}>
                             ⚠ divergence: RI {t.score_divergence.ri_tier} / Hermes {t.score_divergence.hermes_composite}
                           </span>
@@ -657,7 +661,7 @@ function ActionStrip({
                         {t.watch_directive && (
                           <span title="Active watch directive on this symbol" style={{
                             fontSize: 10, fontWeight: 800, color: 'var(--warning-color)',
-                            border: '1px solid color-mix(in srgb, var(--warning-color) 33%, transparent)', borderRadius: 6, padding: '1px 6px',
+                            border: '1px solid color-mix(in srgb, var(--warning-color) 33%, transparent)', borderRadius: RADIUS.md, padding: '1px 6px',
                           }}>
                             Directive
                           </span>
@@ -823,7 +827,7 @@ function ActionStrip({
                 style={{
                   fontSize: 11, fontWeight: 650, cursor: onThemeClick ? 'pointer' : 'default',
                   border: `1px solid ${C.lineStrong}`, background: C.accentSoft, color: C.muted,
-                  borderRadius: 6, padding: '3px 8px',
+                  borderRadius: RADIUS.md, padding: '3px 8px',
                 }}
               >
                 {r.label}
@@ -1197,7 +1201,7 @@ function ArticleCard({
                     <span key={`${t.symbol}-${i}`} style={{
                       fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 800,
                       color: C.accent, background: `color-mix(in srgb, ${rc} 8%, transparent)`, border: `1px solid color-mix(in srgb, ${rc} 27%, transparent)`,
-                      borderRadius: 6, padding: '3px 8px',
+                      borderRadius: RADIUS.md, padding: '3px 8px',
                     }}>
                       {t.symbol}
                       {t.suggested_weight_pct ? (
@@ -1295,7 +1299,7 @@ function iconBtn(color: string): CSSProperties {
 }
 function voteBtn(active: boolean, color: string): CSSProperties {
   return {
-    fontSize: 11, fontWeight: 800, padding: '3px 7px', borderRadius: 6, cursor: 'pointer',
+    fontSize: 11, fontWeight: 800, padding: '3px 7px', borderRadius: RADIUS.md, cursor: 'pointer',
     border: `1px solid ${active ? color : C.line}`,
     background: active ? `color-mix(in srgb, ${color} 13%, transparent)` : 'transparent',
     color: active ? color : C.soft,
@@ -1872,15 +1876,15 @@ function ResearchBriefs({ onDrill }: Props) {
                       {promotable && idea.id && (
                         <>
                           <button type="button" onClick={() => handlePromoteStaged(idea.id!, 'watchlist')}
-                            style={{ fontSize: 10, fontWeight: 750, color: 'var(--info-color)', border: '1px solid color-mix(in srgb, var(--info-color) 27%, transparent)', background: 'transparent', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>
+                            style={{ fontSize: 10, fontWeight: 750, color: 'var(--info-color)', border: '1px solid color-mix(in srgb, var(--info-color) 27%, transparent)', background: 'transparent', borderRadius: RADIUS.md, padding: '3px 8px', cursor: 'pointer' }}>
                             → Watchlist
                           </button>
                           <button type="button" onClick={() => handlePromoteStaged(idea.id!, 'directive')}
-                            style={{ fontSize: 10, fontWeight: 750, color: 'var(--warning-color)', border: '1px solid color-mix(in srgb, var(--warning-color) 27%, transparent)', background: 'transparent', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>
+                            style={{ fontSize: 10, fontWeight: 750, color: 'var(--warning-color)', border: '1px solid color-mix(in srgb, var(--warning-color) 27%, transparent)', background: 'transparent', borderRadius: RADIUS.md, padding: '3px 8px', cursor: 'pointer' }}>
                             → Watch Directive
                           </button>
                           <button type="button" onClick={() => handlePromoteStaged(idea.id!, 'paper_proposal')}
-                            style={{ fontSize: 10, fontWeight: 750, color: 'var(--ai-color)', border: '1px solid color-mix(in srgb, var(--ai-color) 27%, transparent)', background: 'transparent', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>
+                            style={{ fontSize: 10, fontWeight: 750, color: 'var(--ai-color)', border: '1px solid color-mix(in srgb, var(--ai-color) 27%, transparent)', background: 'transparent', borderRadius: RADIUS.md, padding: '3px 8px', cursor: 'pointer' }}>
                             → Paper proposal
                           </button>
                         </>
@@ -1902,7 +1906,7 @@ function ResearchBriefs({ onDrill }: Props) {
                     </div>
                   </div>
                   <button type="button" onClick={() => idea.id && handleDismissStaged(idea.id)}
-                    style={{ fontSize: 10, fontWeight: 700, color: C.soft, border: `1px solid ${C.line}`, background: 'transparent', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}>
+                    style={{ fontSize: 10, fontWeight: 700, color: C.soft, border: `1px solid ${C.line}`, background: 'transparent', borderRadius: RADIUS.md, padding: '4px 8px', cursor: 'pointer' }}>
                     Dismiss
                   </button>
                 </div>
@@ -2318,7 +2322,7 @@ function ResearchBriefs({ onDrill }: Props) {
                           setToast('Unhidden — back on the desk after refresh')
                           refetch()
                         }}
-                        style={{ fontSize: 10, fontWeight: 700, color: C.accent, border: `1px solid color-mix(in srgb, ${C.accent} 27%, transparent)`, background: 'transparent', borderRadius: 6, padding: '2px 8px', cursor: 'pointer' }}>
+                        style={{ fontSize: 10, fontWeight: 700, color: C.accent, border: `1px solid color-mix(in srgb, ${C.accent} 27%, transparent)`, background: 'transparent', borderRadius: RADIUS.md, padding: '2px 8px', cursor: 'pointer' }}>
                         Unhide
                       </button>
                     </div>
@@ -2615,7 +2619,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
           <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => select(t.id)}
             data-testid={`ri-tab-${t.id}`}
             style={{
-              minHeight: 44, padding: '7px 14px', borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer',
+              minHeight: 44, padding: '7px 14px', borderRadius: RADIUS.md, border: '1px solid var(--border)', cursor: 'pointer',
               background: tab === t.id ? 'var(--accent-dim)' : 'var(--bg2)', color: tab === t.id ? 'var(--accent)' : 'var(--text2)',
               fontSize: 12, fontWeight: tab === t.id ? 700 : 500,
             }}>{t.label}</button>

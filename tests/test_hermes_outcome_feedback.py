@@ -5,6 +5,7 @@ import json
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +37,16 @@ from hermes_outcome_feedback_agent import (
     _symbol_poor_outcomes,
     _resolve_symbol_gate,
 )
+
+
+def _utc_days_back(n: int) -> str:
+    """A UTC day string ``n`` days before today: fixtures must stay inside the loader's moving window.
+
+    ``load_outcome_bus_trend`` keeps only points in ``[now - days, now]`` and the notification cooldown measures
+    elapsed hours from ``now``. Fixtures pinned to 2026-07-01..06 passed on the day they were written and went red
+    once the calendar moved past the window (LQ-20261107-1515), so these tests derive their dates from the clock.
+    """
+    return (datetime.now(timezone.utc) - timedelta(days=n)).date().isoformat()
 
 
 class TestTagMultiplier(unittest.TestCase):
@@ -188,10 +199,12 @@ class TestOutcomeBusTrend(unittest.TestCase):
                 bus_mod.HISTORY_DIR = hist
                 bus_mod.OUTCOME_BUS_PATH = Path(td) / "outcome_bus.json"
 
+                day_prev = _utc_days_back(1)
+                day_today = _utc_days_back(0)
                 early = {
                     "version": OUTCOME_BUS_VERSION,
                     "run_id": "ofb_early",
-                    "generated_at": "2026-07-01T03:25:00+00:00",
+                    "generated_at": f"{day_prev}T03:25:00+00:00",
                     "global": {"hit_rate_promotions": 0.31},
                     "by_symbol": {"AAA": {"gate": "neutral"}},
                     "feedback_to_governor": [],
@@ -199,16 +212,16 @@ class TestOutcomeBusTrend(unittest.TestCase):
                 late = {
                     "version": OUTCOME_BUS_VERSION,
                     "run_id": "ofb_late",
-                    "generated_at": "2026-07-01T03:40:00+00:00",
+                    "generated_at": f"{day_prev}T03:40:00+00:00",
                     "global": {"hit_rate_promotions": 0.37},
                     "by_symbol": {"AAA": {"gate": "neutral"}, "BBB": {"gate": "demote_pressure"}},
                     "feedback_to_governor": [{"symbol": "BBB", "action": "demote_pressure"}],
                 }
-                (hist / "outcome_bus_2026-07-01T0325_ofb_early.json").write_text(json.dumps(early))
-                (hist / "outcome_bus_2026-07-01T0340_ofb_late.json").write_text(json.dumps(late))
+                (hist / f"outcome_bus_{day_prev}T0325_ofb_early.json").write_text(json.dumps(early))
+                (hist / f"outcome_bus_{day_prev}T0340_ofb_late.json").write_text(json.dumps(late))
                 write_outcome_bus({
                     "run_id": "ofb_now",
-                    "generated_at": "2026-07-02T03:25:00+00:00",
+                    "generated_at": f"{day_today}T03:25:00+00:00",
                     "global": {"hit_rate_promotions": 0.372},
                     "by_symbol": {"AAA": {"gate": "neutral"}},
                     "feedback_to_governor": [],
@@ -217,12 +230,12 @@ class TestOutcomeBusTrend(unittest.TestCase):
                 trend = load_outcome_bus_trend(days=30)
                 self.assertGreaterEqual(trend["count"], 2)
                 days = [s["day"] for s in trend["series"]]
-                self.assertIn("2026-07-01", days)
-                self.assertIn("2026-07-02", days)
-                july1 = next(s for s in trend["series"] if s["day"] == "2026-07-01")
-                self.assertEqual(july1["hit_rate_promotions"], 0.37)
-                self.assertEqual(july1["symbols_in_bus"], 2)
-                self.assertEqual(july1["governor_feedback_count"], 1)
+                self.assertIn(day_prev, days)
+                self.assertIn(day_today, days)
+                prev_day = next(s for s in trend["series"] if s["day"] == day_prev)
+                self.assertEqual(prev_day["hit_rate_promotions"], 0.37)
+                self.assertEqual(prev_day["symbols_in_bus"], 2)
+                self.assertEqual(prev_day["governor_feedback_count"], 1)
             finally:
                 bus_mod.OUTCOME_BUS_PATH = old_bus
                 bus_mod.HISTORY_DIR = old_hist
@@ -376,7 +389,12 @@ class TestAlertNotifications(unittest.TestCase):
                 mod.STATE_PATH = Path(td) / "state.json"
                 mod.AUDIT_PATH = Path(td) / "audit.jsonl"
                 mod.STATE_PATH.write_text(json.dumps({
-                    "last_sent": {"efficiency_declining": "2026-07-03T12:00:00+00:00"}
+                    # One hour ago, inside the 24 h cooldown. A fixed July date is years-stale once the clock moves
+                    # past it, so the repeat is no longer suppressed (LQ-20261107-1515).
+                    "last_sent": {
+                        "efficiency_declining": (datetime.now(timezone.utc)
+                                                 - timedelta(hours=1)).isoformat()
+                    }
                 }))
                 cfg = {
                     "enabled": True,
@@ -423,7 +441,10 @@ class TestBusReactions(unittest.TestCase):
                 hist.mkdir()
                 bus_mod.HISTORY_DIR = hist
                 bus_mod.OUTCOME_BUS_PATH = Path(td) / "bus.json"
-                for i, day in enumerate(["2026-07-01", "2026-07-02", "2026-07-03", "2026-07-04"], 1):
+                # Four consecutive UTC days ending today, so the reaction trend window sees them
+                # (LQ-20261107-1515: a fixed July list falls outside the moving window).
+                for i in range(1, 5):
+                    day = _utc_days_back(4 - i)
                     snap = {
                         "version": OUTCOME_BUS_VERSION,
                         "generated_at": f"{day}T03:25:00+00:00",
@@ -517,13 +538,16 @@ class TestBusReactions(unittest.TestCase):
                 bus_mod.HISTORY_DIR = hist
                 bus_mod.OUTCOME_BUS_PATH = Path(td) / "bus.json"
                 r_vals = [0.20, 0.22, 0.25, 0.28, 0.32, 0.36]
-                for i, day in enumerate(["2026-07-01", "2026-07-02", "2026-07-03", "2026-07-04", "2026-07-05", "2026-07-06"], 0):
+                # Six consecutive UTC days ending today, so the reaction trend window sees them
+                # (LQ-20261107-1515: a fixed July list falls outside the moving window).
+                for i, r_val in enumerate(r_vals):
+                    day = _utc_days_back(len(r_vals) - 1 - i)
                     snap = {
                         "version": OUTCOME_BUS_VERSION,
                         "generated_at": f"{day}T03:25:00+00:00",
                         "resource_efficiency": {"score": 0.65},
                         "stop_quality": {
-                            "r_left_on_table_avg": r_vals[i],
+                            "r_left_on_table_avg": r_val,
                             "by_tier": {"hot": {"trail_activation_rate": 0.5}, "cold": {"trail_activation_rate": 0.4}},
                             "correlations": [{"metric": "trail_activation_rate", "hot_vs_cold_trail_activation_delta": 0.10}],
                         },

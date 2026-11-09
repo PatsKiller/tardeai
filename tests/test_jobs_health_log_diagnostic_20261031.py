@@ -120,7 +120,9 @@ def test_load_attaches_log_errors_from_the_declared_log(tmp_path, monkeypatch):
     monkeypatch.setattr(J, "build", spy)
     monkeypatch.setattr(J, "_json", lambda p, limit=0: {"lanes": [_lane()]} if str(p).endswith("lane_registry.json") else {})
     monkeypatch.setattr(COW, "collect", lambda registry, root: {"events": [_event()], "successes": {}})
-    monkeypatch.setattr(COW, "bind_components", lambda registry, cfg: registry)
+    # Match the real signature: _load also passes the allowlist and the crontab snapshot (crontab_text=).
+    monkeypatch.setattr(COW, "bind_components",
+                        lambda registry, cfg, allowlist=None, crontab_text="": registry)
     import scripts.lib.scheduler_operations as SO
     monkeypatch.setattr(SO, "read_run_ledger", lambda p: ([], True, None))
     import scripts.lib.jobs_conflict_errors as JCE
@@ -226,7 +228,8 @@ def _load_with(tmp_path, monkeypatch, lanes):
     monkeypatch.setattr(J, "build", spy)
     monkeypatch.setattr(J, "_json", lambda p, limit=0: {"lanes": lanes} if str(p).endswith("lane_registry.json") else {})
     monkeypatch.setattr(COW, "collect", lambda registry, root: {"events": [_event()], "successes": {}})
-    monkeypatch.setattr(COW, "bind_components", lambda registry, cfg: registry)
+    monkeypatch.setattr(COW, "bind_components",
+                        lambda registry, cfg, allowlist=None, crontab_text="": registry)
     monkeypatch.setattr(SO, "read_run_ledger", lambda p: ([], True, None))
     monkeypatch.setattr(JCE, "get_data_errors", lambda root: [])
     J._load(root, tmp_path / "lane_registry.json", NOW)
