@@ -143,6 +143,15 @@ def _breach_findings(rt: Path, now: datetime) -> list[dict[str, Any]]:
     for key, r in latest.items():
         if r.get("state") != "OPEN":
             continue
+        ev = r.get("evidence") if isinstance(r.get("evidence"), dict) else {}
+        observed = ev.get("observed") if isinstance(ev.get("observed"), dict) else {}
+        kind = str(r.get("kind") or "")
+        # LQ-20261107-1446: an unreadable signal is UNVERIFIABLE, not an incident. Older ledger rows still
+        # say so inside a NO_OUTPUT note (or readable=false) and stay OPEN until the next UTC day, so drop
+        # them here. A STALE_OUTPUT row that mentions UNVERIFIABLE is a freshness finding and stays.
+        unreadable_note = "UNVERIFIABLE" in str(ev.get("note") or "") or observed.get("readable") is False
+        if kind == "UNVERIFIABLE" or (kind == "NO_OUTPUT" and unreadable_note):
+            continue
         if NC.superseded(r, detector, now):  # LQ-20261107-456: the fresh detector run no longer re-emits it
             closed += 1
             continue

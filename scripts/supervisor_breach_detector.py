@@ -8,7 +8,9 @@ registered output signal (lane_registry.observe_signal), and raises:
 
   UNGOVERNED         no SLA row
   SILENT             last beat older than max_silence_s (only when the lane has ever beaten)
-  NO_OUTPUT          output signal older than 3 × cadence (or unreadable) for an ACTIVE lane
+  NO_OUTPUT          output signal older than 3 × cadence plus the lane's own run timeout,
+                     or never produced, for an ACTIVE lane. An unreadable signal is
+                     UNVERIFIABLE (diagnostics only), not a NO_OUTPUT incident.
   MEMORY_UNREACHABLE last beat says memory_context_ok = false on a fail-closed lane
   STALE_OUTPUT       (W1-9, 2026-10-11) a registry ``freshness_contracts`` entry — a store table/file the
                      freshness monitors and job_coverage_monitor watch — is older than its max_age_hours
@@ -141,14 +143,37 @@ def _last_cron_fire(fields: str, ref: _dt.datetime) -> tuple[_dt.datetime, str] 
     return None
 
 
-def _expected_since(lane: dict, now: _dt.datetime, max_run_s: float = 900.0) -> tuple[_dt.datetime | None, str]:
+def _output_grace_s(lane: dict, sla: dict | None) -> float:
+    """Seconds past the 3× cadence window before a stale signal is NO_OUTPUT.
+
+    The lane's own SLA ``max_run_s`` (its timeout) when that is a positive number, otherwise one of its own
+    cadence hours. Zero only when both are absent. No fixed grace (LQ-20261107-1446).
+    """
+    raw = (sla or {}).get("max_run_s")
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool) and float(raw) > 0:
+        return float(raw)
+    cad = lane.get("expected_cadence_hours")
+    if isinstance(cad, (int, float)) and not isinstance(cad, bool) and float(cad) > 0:
+        return float(cad) * 3600.0
+    return 0.0
+
+
+def _expected_since(
+    lane: dict,
+    now: _dt.datetime,
+    max_run_s: float = 900.0,
+    *,
+    grace_s: float = 0.0,
+) -> tuple[_dt.datetime | None, str]:
     """When should this lane have produced by? Returns (deadline, basis).
 
     cron lanes: the most recent scheduled fire ≤ now (each `` + ``-joined schedule's first 5 fields, see
     cron_schedule.cron_fields; the latest over all of them), so a weekday-only or market-hours lane is not
-    judged over a weekend (2026-09-27 triage: 6 false breaches).
-    Other lanes, ``@reboot`` lanes and cron lanes with no fire inside the lookback: 3 × cadence (min 15 min);
-    inactive days are not due days.
+    judged over a weekend (2026-09-27 triage: 6 false breaches). The cron path already waits ``max_run_s``
+    before that fire counts, so ``grace_s`` is not added again there.
+    Other lanes, ``@reboot`` lanes and cron lanes with no fire inside the lookback: 3 × cadence (min 15 min)
+    plus ``grace_s`` (the lane timeout, passed by ``detect``). Callers that omit ``grace_s`` keep the
+    historical 3× window. Inactive days are not due days.
     """
     sched = lane.get("scheduler") or {}
     expr = str(sched.get("expression") or "")
@@ -172,7 +197,10 @@ def _expected_since(lane: dict, now: _dt.datetime, max_run_s: float = 900.0) -> 
             return max(fires, key=lambda f: f[0])
     if not cad_h:
         return None, "no_cadence"
-    limit_s = max(3 * float(cad_h) * 3600, 900)
+    grace = 0.0
+    if isinstance(grace_s, (int, float)) and not isinstance(grace_s, bool) and float(grace_s) > 0:
+        grace = float(grace_s)
+    limit_s = max(3 * float(cad_h) * 3600, 900) + grace
     days = lane.get("active_days")
     if isinstance(days, (list, tuple)) and days:
         # These lane schedules are in Eastern market time. Extending a 45 min
@@ -180,7 +208,10 @@ def _expected_since(lane: dict, now: _dt.datetime, max_run_s: float = 900.0) -> 
         # no output is due on an inactive day, regardless of the clock hour.
         if now.astimezone(SCHEDULE_TZ).weekday() not in days:
             return None, "inactive_day:America/New_York"
-    return now - _dt.timedelta(seconds=limit_s), f"cadence:{cad_h}h×3"
+    basis = f"cadence:{cad_h}h×3"
+    if grace:
+        basis = f"{basis}+grace"
+    return now - _dt.timedelta(seconds=limit_s), basis
 
 
 def dispatch_never_live(lane: dict) -> str | None:
@@ -211,6 +242,9 @@ def detect(
     ``diagnostics`` (optional, filled in place) collects ``dry_run_dispatch``: one entry per lane whose only
     scheduler runs it in a dry mode, with the mode and what its signal currently reads. Those lanes raise no
     NO_OUTPUT row (they cannot write the signal by design); the caller prints the count on the run summary.
+    It also collects ``unverifiable``: one entry per lane whose signal could not be read (``readable`` is
+    false). That is its own class, not a NO_OUTPUT incident (LQ-20261107-1446). A missing file stays
+    "never produced".
     """
     day = now.strftime("%Y-%m-%d")
     out: list[dict] = []
@@ -291,22 +325,19 @@ def detect(
             }
             continue
         max_run = float(sla.get("max_run_s") or 900)
-        deadline, basis = _expected_since(lane, now, max_run)
+        deadline, basis = _expected_since(lane, now, max_run, grace_s=_output_grace_s(lane, sla))
         if deadline is None:
             continue
         obs = {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in (observe(sig) or {}).items()}
         lo = _parse(obs.get("last_output_at"))
         if obs.get("readable") is False:
-            add(
-                lane,
-                "NO_OUTPUT",
-                {
-                    "signal": sig,
-                    "observed": obs,
-                    "basis": basis,
-                    "note": "signal unreadable (UNVERIFIABLE, reported as NO_OUTPUT)",
-                },
-            )
+            # Not an incident. The signal could not be read, so silence and staleness are both unknown.
+            diag.setdefault("unverifiable", {})[lid] = {
+                "class": "UNVERIFIABLE",
+                "signal": sig,
+                "observed": obs,
+                "basis": basis,
+            }
         elif lo is None:
             add(lane, "NO_OUTPUT", {"signal": sig, "observed": obs, "basis": basis, "note": "never produced"})
         elif lo < deadline:
@@ -386,7 +417,9 @@ def detect_freshness(
     """Pure: STALE_OUTPUT Breach@v1 rows from the registry's freshness_contracts.
 
     A contract tied to a lane is only judged while that lane is ACTIVE (a retired producer stops raising).
-    An unreadable signal is reported (UNVERIFIABLE, as for NO_OUTPUT); an absent row/file is "never produced".
+    An unreadable freshness signal is still a STALE_OUTPUT row whose note says UNVERIFIABLE. That is not
+    the lane NO_OUTPUT path: ``detect`` records an unreadable lane signal under diagnostics["unverifiable"]
+    and does not open a breach (LQ-20261107-1446). An absent row/file is "never produced".
     Detect + record only: the rows carry the contract's severity and never enter the ladder.
     """
     day = now.strftime("%Y-%m-%d")
@@ -882,6 +915,7 @@ def main() -> int:
     # never reads as "producing". Promotion is a config change and is reported separately.
     dry_lanes = diagnostics.get("dry_run_dispatch") or {}
     dry_by_mode = dict(Counter(str(d.get("dispatch_mode")) for d in dry_lanes.values()))
+    blind = diagnostics.get("unverifiable") or {}
     summary = {
         "schema": "BreachDetectorRun@v1",
         "as_of": now.isoformat(),
@@ -898,6 +932,15 @@ def main() -> int:
                 "dispatch.mode is a dry mode on the lane's only (n8n) scheduler: the declared output signal "
                 "cannot be written, so no NO_OUTPUT row is raised (LQ-20261107-297). Promotion = "
                 "dispatch.mode live + the allowlist live_arg."
+            ),
+        },
+        "unverifiable": {
+            "lanes": len(blind),
+            "lane_ids": sorted(str(k) for k in blind),
+            "class": "UNVERIFIABLE",
+            "note": (
+                "the output signal could not be read, so the lane is not a NO_OUTPUT incident "
+                "(LQ-20261107-1446). A missing file is silence (never produced), not this class."
             ),
         },
         "ladder": "detect+record only (L1–L5 not executed in Wave 1)",
