@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "portfolio_total_contract_20261109",
+  "files": [
+    "tests/test_portfolio_total_contract_20261109.py"
+  ],
+  "anchor": "PORTFOLIO_TOTAL_CONTRACT_20261109",
+  "comment": [
+    "ANCHOR: PORTFOLIO_TOTAL_CONTRACT_20261109 — one portfolio total and one position count across the Home",
+    "header, the Book and the All-accounts row (LQ-20261107-1611, was LQ-1391). The contract publishes the",
+    "store's portfolio_totals.total_value only while it equals the rows the page shows; otherwise the row sum",
+    "is published with a named basis and an alerting finding, and every other number is an alternative with",
+    "its delta. Synthetic documents only."
+  ]
+}
