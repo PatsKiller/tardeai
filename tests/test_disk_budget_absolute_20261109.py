@@ -225,6 +225,18 @@ def test_an_undated_row_is_never_taken_before_a_dated_one_and_is_counted():
     assert "budget_over_cap_kept" in {r["path"]: r for r in out}["/s/undated"]["reasons"]
 
 
+def test_a_row_with_no_readable_size_sorts_after_every_sized_row_never_as_zero():
+    """A sort key is still a place a missing number can be read as a measurement. An unknown size must sort after
+    every sized row (the sentinel is a rank, not "0 bytes"), and an unknown age must not enter the dated bucket."""
+    now = time.time()
+    dated = {"path": "/s/dated", "size_bytes": GIB, "fingerprint": {"activity": now - 30 * 86400.0}}
+    undated_sized = {"path": "/s/undated_sized", "size_bytes": 4 * GIB, "fingerprint": {}}
+    undated_nosize = {"path": "/s/undated_nosize", "size_bytes": None, "fingerprint": {}}
+    order = [r["path"] for r in sorted([undated_nosize, undated_sized, dated],
+                                       key=lambda r: H._budget_sort_key(r, now))]
+    assert order == ["/s/dated", "/s/undated_sized", "/s/undated_nosize"]
+
+
 def test_a_cache_entry_is_dated_from_its_newest_mtime():
     """Rule C emits fingerprint.mtime, not activity: before 2026-11-09 the budget saw every cache entry as undatable,
     so "oldest first" degraded to "largest first" and the caches' max_item_age_days counted nothing."""

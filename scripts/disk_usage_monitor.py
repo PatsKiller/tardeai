@@ -457,7 +457,7 @@ def budget_findings(rows: list[dict[str, Any]], samples: Mapping[str, Any], now:
             # No measurement, or no cap to measure against: no band. A missing number is never an "ok".
             row["band"] = None
             row["why"] = row.get("status")
-        elif (row.get("over_bytes") or 0) > 0 or row.get("floor_exceeds_cap"):
+        elif (row.get("over_bytes") is not None and row.get("over_bytes") > 0) or row.get("floor_exceeds_cap"):
             row["band"] = "critical"
             row["why"] = "over_cap"
         elif ceiling is not None and rate is not None and rate > ceiling:

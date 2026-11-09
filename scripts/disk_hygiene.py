@@ -2348,7 +2348,13 @@ def _budget_sort_key(r: Mapping[str, Any], now_ts: float) -> tuple[int, float, i
     settled by age.
     """
     age = _budget_age_s(r, now_ts)
-    return (0 if age is not None else 1, -(age or 0.0), -int(r.get("size_bytes") or 0))
+    raw_size = r.get("size_bytes")
+    # Neither number defaults to a measurement here: an unknown age stays in the undated bucket (key 1), and an
+    # unknown size sorts after every sized row (the sentinel is stated, never a fake 0 bytes).
+    size_bytes = int(raw_size) if isinstance(raw_size, int) and not isinstance(raw_size, bool) else -1
+    if age is None:
+        return (1, 0.0, -size_bytes)
+    return (0, -age, -size_bytes)
 
 
 def apply_root_budgets(rows: list[dict], budget_roots: list[Mapping[str, Any]], *,
