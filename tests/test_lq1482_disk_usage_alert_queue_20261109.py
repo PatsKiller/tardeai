@@ -10,6 +10,7 @@ import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -112,5 +113,50 @@ def test_a_ledger_that_stays_busy_is_not_a_terminal_exit(tmp_path, monkeypatch):
 
     monkeypatch.setattr(CommsIntentStore, "accept", accept)
     rc, n = _run(tmp_path, monkeypatch, 91.7)
-    assert rc == M.EX_TEMPFAIL
+    assert rc == M.EX_UNAVAILABLE == 69
     assert n == 0
+
+
+def test_exit_69_is_retried_and_exit_75_is_a_flock_skip(tmp_path):
+    """disk-usage-monitor is lock_kind flock. Child exit 75 is RUN_SKIPPED_LOCK, which
+    transient-2 marks skipped. Exit 69 is RUN_FAILED exit_69, which transient-2 retries."""
+    from scripts import n8n_run_executor as X
+    from scripts.lib.n8n_retry_policy import load_policies, verdict
+
+    entry = {
+        "lane_id": "disk-usage-monitor",
+        "command": ["python", "scripts/disk_usage_monitor.py"],
+        "lock": "/tmp/tradeai_disk_usage_monitor.lock",
+        "lock_kind": "flock",
+        "timeout_s": 30,
+        "dry_run_arg": ["--dry-run"],
+        "live_arg": ["--apply"],
+        "env_allowlist_mode": "report",
+        "env_names": [],
+    }
+    row = {
+        "run_id": "d:disk-usage-monitor:dry_run:20261109T0530",
+        "lane_id": "disk-usage-monitor",
+        "mode": "dry_run",
+    }
+    policy = load_policies().policies["transient-2"]
+
+    def _classify(code: int):
+        def runner(argv, *, timeout, env, cwd):
+            return SimpleNamespace(returncode=code, stdout="", stderr="database is locked")
+
+        receipt = X.execute(
+            row, entry, env={}, state_root=tmp_path, code_root=tmp_path, runner=runner,
+        )
+        return receipt, verdict(receipt["state"], receipt["exit_code"], receipt["reason"], policy)
+
+    busy, busy_verdict = _classify(69)
+    assert busy["state"] == "RUN_FAILED"
+    assert busy["reason"] == "exit_69"
+    assert busy["exit_code"] == 69
+    assert busy_verdict == "retryable"
+
+    held, held_verdict = _classify(75)
+    assert held["state"] == "RUN_SKIPPED_LOCK"
+    assert held["reason"] == "flock_held"
+    assert held_verdict == "skipped"

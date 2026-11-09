@@ -58,9 +58,11 @@ if str(ROOT) not in sys.path:
 from scripts import disk_hygiene as DH  # noqa: E402
 from scripts.lib import lane_last_receipt as R  # noqa: E402
 
-# A locked coordination ledger is transient. Exit 75 matches flock -E 75 so transient-2
-# retries the lane instead of dead-lettering a breach that was never queued.
-EX_TEMPFAIL = 75
+# A locked coordination ledger is transient. Exit 69 (EX_UNAVAILABLE) is in transient-2's
+# retryable_exit_codes, so the executor records RUN_FAILED exit_69 and the policy retries.
+# Exit 75 is not usable here: disk-usage-monitor is lock_kind flock, and n8n_run_executor
+# classifies child exit 75 as RUN_SKIPPED_LOCK/flock_held, which the policy marks skipped.
+EX_UNAVAILABLE = 69
 _BUSY_ATTEMPTS = 4
 _BUSY_BACKOFF_S = (0.05, 0.1, 0.2)
 _LEDGER_BUSY_REASONS = frozenset({"intent_store_unavailable"})
@@ -875,7 +877,7 @@ def _run_locked(
                "standing_pressure": pressure, "consumer_snapshot": consumer_snapshot,
                "consumer_snapshot_refreshed": refreshed, "failures": failures}
     if failures and failures == ledger_busy_failures:
-        busy_rc = EX_TEMPFAIL
+        busy_rc = EX_UNAVAILABLE
     else:
         busy_rc = 1
     if not apply:
@@ -906,7 +908,7 @@ def _run_locked(
     if ok:
         rc = 0
     elif failures and failures == ledger_busy_failures:
-        rc = EX_TEMPFAIL
+        rc = EX_UNAVAILABLE
     else:
         rc = 1
     written = R.write_lane_receipt(
