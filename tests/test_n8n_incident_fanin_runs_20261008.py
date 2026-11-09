@@ -11,6 +11,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -188,3 +190,121 @@ def test_no_n8n_lanes_no_ledger_or_env_opt_out_yield_nothing_and_a_note(monkeypa
         _runs(fanin.collect(tmp_path, NOW)) == []
         and fanin.NOTES["runs_source"] == "unavailable:RuntimeError:disabled_by_env"
     )
+
+
+def _not_ok(item: str) -> dict:
+    """One upstream the fan-in detected as not ok. Synthetic; no live lane or receipt."""
+    return {
+        "source": "runs",
+        "item": item,
+        "severity": "P2",
+        "detail": "upstream not ok",
+        "artifact_rel": "data/runtime/synthetic_upstream.json",
+        "store": "data/runtime",
+        "detected_at": "2026-11-09T00:00:00+00:00",
+    }
+
+
+def _apply(monkeypatch, tmp_path, findings, status_for):
+    monkeypatch.setattr(fanin, "state_root", lambda: tmp_path)
+    monkeypatch.setattr(fanin, "served_sha", lambda: "c" * 40)
+    monkeypatch.setattr(fanin, "collect", lambda root, now: list(findings))
+    monkeypatch.setattr(fanin, "_flood_policy", lambda root, found: {"applied": False, "mode": "report_only"})
+
+    class Client:
+        url, has_key = "http://127.0.0.1:9", True
+
+        def __init__(self, caller_id):
+            pass
+
+        def healthz(self):
+            return {"ok": True}
+
+        def status(self, key):
+            return status_for(key)
+
+        def accept_event(self, ev):
+            return {"state": "REFUSED", "reason": "unknown_lane"}
+
+        def transition(self, op, key, **kwargs):
+            return {"state": "ARTIFACT_WRITTEN", "reason": None}
+
+    monkeypatch.setattr(fanin, "GatewayClient", Client)
+    receipt = tmp_path / "data" / "runtime" / "n8n_incident_fanin_last.json"
+    rc = fanin.main(["--apply", "--receipt", str(receipt)])
+    doc = json.loads(receipt.read_text(encoding="utf-8"))
+    lane = json.loads((tmp_path / "data" / "runtime" / "n8n-incident-fanin_last.json").read_text(encoding="utf-8"))
+    return rc, doc, lane
+
+
+def test_a_not_ok_upstream_is_recorded_and_the_slot_exits_0(monkeypatch, tmp_path):
+    finding = _not_ok("demo-lane:RUN_FAILED")
+    rc, doc, lane = _apply(
+        monkeypatch, tmp_path, [finding], lambda key: {"state": "ARTIFACT_WRITTEN", "reason": None}
+    )
+    assert rc == 0 and doc["ok"] is True
+    assert doc["incidents"][0]["item"] == "demo-lane:RUN_FAILED"
+    assert doc["incidents"][0]["state"] == "ARTIFACT_WRITTEN"
+    assert lane["status"] == "ok" and lane["exit"] == 0 and lane["produced_count"] == 1
+
+
+def test_a_partial_gateway_miss_keeps_the_detection_and_exits_0(monkeypatch, tmp_path):
+    """The landed-report shape: the report landed, one row did not. That detection is exit 0.
+
+    A fatal dependency_unavailable on the landed report would make the executor record
+    RUN_FAILED again after the process exit."""
+    landed = _not_ok("demo-lane:RUN_FAILED")
+    missed = _not_ok("other-lane:RUN_TIMEOUT")
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    missed_key = fanin.idem_key(missed, day)
+
+    def status_for(key):
+        if key == missed_key:
+            return {"state": "UNREACHABLE", "reason": "timeout"}
+        return {"state": "ARTIFACT_WRITTEN", "reason": None}
+
+    rc, doc, lane = _apply(monkeypatch, tmp_path, [landed, missed], status_for)
+    assert rc == 0 and doc["ok"] is True
+    assert {row["item"]: row["state"] for row in doc["incidents"]} == {
+        "demo-lane:RUN_FAILED": "ARTIFACT_WRITTEN",
+        "other-lane:RUN_TIMEOUT": "UNREACHABLE",
+    }
+    assert lane["status"] == "ok" and lane["exit"] == 0
+    assert lane["produced_count"] == 1 and lane["attempted_count"] == 2
+    assert lane["skipped_reasons"].get("gateway_unreachable") == 1
+    assert "dependency_unavailable" not in lane["skipped_reasons"]
+
+
+def test_a_total_gateway_miss_and_a_refusal_still_fail_the_slot(monkeypatch, tmp_path):
+    finding = _not_ok("demo-lane:RUN_FAILED")
+    rc, doc, lane = _apply(
+        monkeypatch, tmp_path, [finding], lambda key: {"state": "UNREACHABLE", "reason": "timeout"}
+    )
+    assert rc == 1 and doc["ok"] is False
+    assert doc["incidents"][0]["item"] == "demo-lane:RUN_FAILED"
+    assert lane["status"] == "failed" and lane["exit"] == 1
+    assert lane["skipped_reasons"].get("dependency_unavailable") == 1
+
+    refused = _not_ok("demo-lane:RUN_FAILED")
+    rc, doc, lane = _apply(
+        monkeypatch,
+        tmp_path,
+        [refused],
+        lambda key: {"state": "REFUSED", "reason": "unknown_lane"},
+    )
+    assert rc == 1 and doc["ok"] is False
+    assert doc["incidents"][0]["state"] == "REFUSED"
+    assert lane["status"] == "failed" and lane["exit"] == 1
+    assert lane["skipped_reasons"].get("gateway_refused") == 1
+
+
+def test_an_internal_exception_is_not_swallowed(monkeypatch, tmp_path):
+    monkeypatch.setattr(fanin, "state_root", lambda: tmp_path)
+    monkeypatch.setattr(fanin, "served_sha", lambda: "c" * 40)
+
+    def boom(root, now):
+        raise RuntimeError("fanin-internal")
+
+    monkeypatch.setattr(fanin, "collect", boom)
+    with pytest.raises(RuntimeError, match="fanin-internal"):
+        fanin.main(["--dry-run"])
