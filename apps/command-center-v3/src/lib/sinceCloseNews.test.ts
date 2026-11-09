@@ -43,7 +43,7 @@ const wire = (feed: SinceCloseFeedItem[], o: Partial<SinceCloseWire> = {}): Sinc
   assert.equal(c.lead, 'AAA')
   assert.equal(c.leadText, '+2.50%')
   assert.equal(c.leadArrow, '▲')
-  assert.equal(c.basisText, 'vs Fri close')
+  assert.equal(c.basisText, 'Fri close', 'no print since the close -> the number IS the close move, and says so')
   assert.equal(c.glow, null, 'no urgency in the snapshot -> no glow, never a guessed one')
   assert.equal(c.glowText, null)
 }
@@ -105,6 +105,7 @@ const wire = (feed: SinceCloseFeedItem[], o: Partial<SinceCloseWire> = {}): Sinc
   assert.equal(m.top[0].symbolsText, 'SPCX ▼ -1.40%')
   assert.equal(m.top[0].leadPct, -1.4)
   assert.equal(m.top[0].leadArrow, '▼')
+  assert.equal(m.top[0].basisText, 'vs Fri close', 'a print since the close makes the number a move SINCE the close')
   const n = newsModel(wire([item({ title: 'y', holdings: [{ symbol: 'SPCX', held: true, market_value: 1, change_pct: 8.62, move_now_pct: null }] })]))
   assert.equal(n.top[0].symbolsText, 'SPCX ▲ +8.62%')
 }

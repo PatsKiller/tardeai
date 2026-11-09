@@ -62,14 +62,19 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 export const pct2 = (n: number | null | undefined): string =>
   n == null || !Number.isFinite(n) ? '—' : `${n > 0 ? '+' : ''}${n.toFixed(2)}%`
 
-function moveOf(it: SinceCloseFeedItem): { pct: number | null; symbol: string | null } {
+/** The number the card leads with, and what it is a move FROM. A newer print since the close is "vs Fri close"; with
+ *  no print the only honest number is the close's own move, and then the basis is just the close tag. */
+function moveOf(it: SinceCloseFeedItem): { pct: number | null; symbol: string | null; sinceClose: boolean } {
   const h = (it.holdings ?? [])[0]
-  if (!h) return { pct: null, symbol: null }
-  return { pct: num(h.move_now_pct) ?? num(h.change_pct), symbol: h.symbol }
+  if (!h) return { pct: null, symbol: null, sinceClose: false }
+  const now = num(h.move_now_pct)
+  return now != null
+    ? { pct: now, symbol: h.symbol, sinceClose: true }
+    : { pct: num(h.change_pct), symbol: h.symbol, sinceClose: false }
 }
 
 export function newsCard(it: SinceCloseFeedItem, i: number, closeTag: string): NewsCard {
-  const { pct, symbol } = moveOf(it)
+  const { pct, symbol, sinceClose } = moveOf(it)
   const sources = (it.sources && it.sources.length ? it.sources : [it.source]).filter(Boolean)
   const rank = typeof it.rank === 'number' ? it.rank : null
   const glow = it.urgency === 'red' || it.urgency === 'amber' || it.urgency === 'green' ? it.urgency : null
@@ -86,7 +91,7 @@ export function newsCard(it: SinceCloseFeedItem, i: number, closeTag: string): N
     leadPct: pct,
     leadText: pct2(pct),
     leadArrow: arrowFor(pct),
-    basisText: pct == null ? closeTag : `vs ${closeTag}`,
+    basisText: sinceClose ? `vs ${closeTag}` : closeTag,
     kind: it.kind,
     isWatch: it.kind === 'watch',
     title: it.title,

@@ -1,6 +1,7 @@
 /** LQ-20261107-1253 Home "Since last close" card — always on, top of Home. From the last regular close to now it is
  *  the overnight / weekend / holiday recap; 09:30-16:00 ET it shrinks to one line (a link, not removed).
- *  Order: CIO brief (LQ-1257, advisory only) · analysis · held moves · futures · week ahead · news feed.
+ *  Order: CIO brief (LQ-1257, advisory only) · analysis · held moves + futures/overseas (LQ-1282) · week ahead ·
+ *  news ranked by the CIO (LQ-1283, mockup v3).
  *  Reads GET /api/v2/home/since-close (a snapshot n8n refreshes overnight); nothing here orders, sizes or stops.
  *  LIVE (LQ-20261107-1269, operator 18:15 ET "make sure it's not static"): re-fetched every 60 s while the tab is
  *  VISIBLE, and re-read immediately on `visibilitychange` when it becomes visible again — a phone left on Home shows
@@ -12,7 +13,9 @@ import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../../lib/designTokens'
 import SinceCloseStamp, { useNow } from './SinceCloseStamp'
 import SinceCloseSynopsis from './SinceCloseSynopsis'
 import SinceCloseStops from './SinceCloseStops'
-import { SINCE_CLOSE_API, pctText, sinceCloseModel, usdText, type SinceCloseWire } from '../../lib/sinceClose'
+import SinceCloseMoves from './SinceCloseMoves'
+import SinceCloseNews from './SinceCloseNews'
+import { SINCE_CLOSE_API, pctText, sinceCloseModel, type SinceCloseWire } from '../../lib/sinceClose'
 
 /** The operator's target cadence (LQ-1269): one read a minute while the card is being looked at. */
 export const SINCE_CLOSE_POLL_MS = 60_000
@@ -126,21 +129,9 @@ export default function SinceCloseCard() {
             </div>
           )}
 
-          <div data-testid="since-close-moves">
-            <h3 style={S.h3}>Held · {m.closeTag}</h3>
-            <div style={S.row}>
-              {m.held.map(h => (
-                <span key={h.symbol} style={{ ...S.box, fontSize: 13, display: 'inline-flex', gap: 6, alignItems: 'baseline' }}>
-                  <b>{h.symbol}</b><span style={{ color: tone(h.change_pct), fontFamily: FONT.mono }}>{pctText(h.change_pct)}</span>
-                  <span style={S.meta}>{usdText(h.dollar_impact)} · wk {pctText(h.week_pct)}</span>
-                  {h.no_news && <span style={{ ...S.meta, color: warn.color }}>no news</span>}
-                </span>
-              ))}
-            </div>
-            {m.watch.length > 0 && <p style={{ ...S.p, fontSize: 13, marginTop: 6 }}>Watchlist: {m.watch.map(w => `${w.symbol} ${pctText(w.change_pct)}${w.no_news ? ' (no news)' : ''}`).join(' · ')}</p>}
-          </div>
-
-          <p style={{ ...S.p, fontSize: 13 }} data-testid="since-close-futures"><b>Futures / overseas:</b> {m.futuresText}</p>
+          {/* LQ-1282 (mockup v3): every chip carries its close move AND its newest print since the close, and the
+              futures/overseas row replaces the old one-line "futures feed pending". */}
+          <SinceCloseMoves wire={api.data} />
 
           <div data-testid="since-close-week">
             <h3 style={S.h3}>Week ahead</h3>
@@ -154,21 +145,9 @@ export default function SinceCloseCard() {
             </div>
           </div>
 
-          <div data-testid="since-close-feed">
-            <h3 style={S.h3}>News since the close</h3>
-            {m.feed.length === 0 && <p style={S.p}>No news on your names since the close.</p>}
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {m.feed.map(it => (
-                <li key={it.title} style={S.box}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: TOKENS.text[0], overflowWrap: 'anywhere' }}>
-                    {it.url ? <a href={it.url} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{it.title}</a> : it.title}
-                  </div>
-                  <div style={S.meta}>{it.source} · {timeOf(it.published_at)}{it.holdings.length > 0 ? ` · ${it.holdings.map(h => h.symbol).join(', ')}` : ''}{it.exposure > 0 ? ` · ${usdText(it.exposure).replace('+', '')} exposed` : ''}</div>
-                  <div style={{ ...S.p, fontSize: 13 }}>{it.so_what}</div>
-                </li>
-              ))}
-            </ul>
-          </div>
+          {/* LQ-1283 (mockup v3): the one tall column becomes a grid, the ticker leads each story, and the glow and
+              the order are the producer's (rank, urgency, feed_rule in the snapshot). */}
+          <SinceCloseNews wire={api.data} />
         </>
       )}
     </section>
