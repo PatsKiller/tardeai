@@ -71,19 +71,23 @@ def _carried_row(symbol, *, shares, market_value, price, day_change, day_change_
     return row
 
 
+def _total(rows, key):
+    """Sum of a numeric field over the rows that have one; a missing value is skipped, never read as zero."""
+    return sum(v for r in rows if isinstance(v := r.get(key), (int, float)))
+
+
 def _prior(rows, *, day_change_total, marks_fp=None):
     return {"holdings": rows,
-            "portfolio_totals": {"total_value": sum(r.get("market_value") or 0 for r in rows),
+            "portfolio_totals": {"total_value": _total(rows, "market_value"),
                                  "day_change": day_change_total},
             "account_summaries": {ACCOUNT: {"account_key": ACCOUNT,
-                                            "total_value": sum(r.get("market_value") or 0 for r in rows)}},
+                                            "total_value": _total(rows, "market_value")}},
             "export_provenance": {"day_change_marks_fp": marks_fp} if marks_fp else {},
             "positions_fingerprint": "prior", "positions_built_at": "2026-11-09T00:00:00Z"}
 
 
 def _render(rows, *, quotes, prior, now):
-    summaries = {ACCOUNT: {"account_key": ACCOUNT,
-                           "total_value": sum((r.get("broker_market_value") or 0) for r in rows)}}
+    summaries = {ACCOUNT: {"account_key": ACCOUNT, "total_value": _total(rows, "broker_market_value")}}
     return he.render_document(rows, generated_at=now, quotes=quotes, profiles={}, lookthrough={},
                               gaps=[], account_summaries=summaries, aliases={}, prior=prior)
 

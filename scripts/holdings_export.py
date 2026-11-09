@@ -604,7 +604,7 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
         outcome = ("floored" if floored_day_change else
                    _refresh_day_change(out, mark_price=_number(out.get("broker_position_price")),
                                        mark_as_of=stamp, now=generated_at))
-        dc_outcomes[outcome] = dc_outcomes.get(outcome, 0) + 1
+        dc_outcomes[outcome] = dc_outcomes.get(outcome, 0) + 1  # nosemgrep: tq-py-missing-as-zero -- a counter, not a missing value
         holdings.append(out)
         if market_value is not None:
             total_value += market_value
