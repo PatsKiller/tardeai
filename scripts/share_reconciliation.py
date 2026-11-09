@@ -27,6 +27,10 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from lib.ddl_guard import relation_exists
+except ImportError:  # pragma: no cover - imported as scripts.share_reconciliation
+    from scripts.lib.ddl_guard import relation_exists  # type: ignore[no-redef] -- imported through the scripts. package
 PROJECT_ROOT = Path(os.environ.get("TRADE_AI_ROOT") or Path(__file__).resolve().parents[1])
 HOLDINGS_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
 
@@ -62,13 +66,21 @@ def _f(x, default=0.0) -> float:
 
 
 def ensure_tables(cur=None) -> None:
-    """Idempotent DDL (also in migrations/2026_07_15_share_reconciliation.sql)."""
+    """Idempotent DDL (also in migrations/2026_07_15_share_reconciliation.sql).
+
+    LQ-20261107-1686 — this runs on every reconciliation (the ``*/15`` lane plus each of the module's
+    own entry points), so all four statements asserted a schema that is already deployed, every time.
+    A ``CREATE ... IF NOT EXISTS`` resolves the name and takes its lock before it can decide the
+    relation is there; the catalog answers that question with no lock at all, so the statement is
+    issued only for a relation that is genuinely absent. On a deployed database: no DDL.
+    """
     own = cur is None
     if own:
         from db_adapter import _get_conn
         conn = _get_conn()
         cur = conn.cursor()
-    cur.execute("""
+    for name, ddl in (
+        ("position_share_drift", """
         CREATE TABLE IF NOT EXISTS position_share_drift (
             id SERIAL PRIMARY KEY,
             account_key TEXT NOT NULL,
@@ -82,12 +94,12 @@ def ensure_tables(cur=None) -> None:
             notes TEXT,
             detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )""")
-    cur.execute("""
+        )"""),
+        ("ux_position_share_drift_open_lot", """
         CREATE UNIQUE INDEX IF NOT EXISTS ux_position_share_drift_open_lot
             ON position_share_drift (account_key, symbol)
-            WHERE status IN ('open', 'snoozed')""")
-    cur.execute("""
+            WHERE status IN ('open', 'snoozed')"""),
+        ("position_reconciliation_log", """
         CREATE TABLE IF NOT EXISTS position_reconciliation_log (
             id SERIAL PRIMARY KEY,
             account_key TEXT NOT NULL,
@@ -102,10 +114,13 @@ def ensure_tables(cur=None) -> None:
             notes TEXT,
             impact_json JSONB,
             drift_task_id INTEGER
-        )""")
-    cur.execute("""
+        )"""),
+        ("ix_position_recon_log_lot", """
         CREATE INDEX IF NOT EXISTS ix_position_recon_log_lot
-            ON position_reconciliation_log (account_key, symbol, reconciled_at DESC)""")
+            ON position_reconciliation_log (account_key, symbol, reconciled_at DESC)"""),
+    ):
+        if not relation_exists(cur, name):
+            cur.execute(ddl)
     if own:
         conn.commit()
 
@@ -229,7 +244,7 @@ def stamp_broker_qty(
         "broker_shares": broker_qty,
         "drift_amount": round(delta, 6),
         "source": source,
-        "notes": f"Detected on broker sync; system shares held sticky pending operator approval",
+        "notes": "Detected on broker sync; system shares held sticky pending operator approval",
     }
     return fields, event
 
