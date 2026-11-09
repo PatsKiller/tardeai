@@ -71,6 +71,17 @@ def _display_quote_cutoff_et(day: date) -> time:
 
 
 VIX_SYMBOL = "^VIX"
+#: CBOE volatility-complex symbols the MRE volatility category asks for via daily_bars. Filled from the store-backed
+#: complex_record (LQ-20261107-969) when no bar exists — never from Yahoo.
+VIX_COMPLEX_BAR_KEYS = {
+    "vix_close": "^VIX",
+    "vix9d_close": "^VIX9D",
+    "vix3m_close": "^VIX3M",
+    "vvix_close": "^VVIX",
+    "skew_close": "^SKEW",
+    "vxn_close": "^VXN",
+}
+BANNED_VIX_SOURCE_KEYS = frozenset({"yahoo", "yahoo_finance", "yfinance"})
 DAILY_TIMEFRAME = "daily"
 QUOTE_SOURCE_FOR_CLOSES = "alpaca"
 #: ticker_prices sources that carry an official end-of-day close (review of #2460, B1). Alpaca's SIP daily close,
@@ -392,6 +403,13 @@ class PgReader:
         if VIX_SYMBOL in syms:
             for row in self._vix_closes(start=end - span, end=end):
                 out.setdefault((VIX_SYMBOL, date.fromisoformat(row["date"])), row)
+        # Point-in-time legs from the single VIX-complex record (Schwab dated close / FRED; never Yahoo). Only fills
+        # a (symbol, day) neither bars nor the VIX history already supplied — term-structure symbols have no OHLCV.
+        want_complex = [s for s in syms if s in VIX_COMPLEX_BAR_KEYS.values()]
+        if want_complex:
+            for row in self._vix_complex_bar_rows(end=end):
+                if row["symbol"] in want_complex:
+                    out.setdefault((row["symbol"], date.fromisoformat(row["date"])), row)
         by_sym: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for (sym, _d), row in sorted(out.items()):
             by_sym[sym].append(row)
@@ -421,22 +439,85 @@ class PgReader:
             by_sym[sym].append(row)
         return [r for sym in sorted(by_sym) for r in by_sym[sym][-int(sessions) :]]
 
+    def vix_complex(self, *, end: datetime | None = None) -> dict[str, Any]:
+        """One VIX/VIX3M/VVIX record with source precedence and freshness (LQ-20261107-969 / design WU-6).
+
+        The single read for MRE consumers: Schwab dated close first, FRED displaces a *carried* Schwab level, never
+        Yahoo. Read-only; never writes. Term structure is ``unknown`` unless both legs are real and accepted.
+        """
+        end = _aware(end or datetime.now(timezone.utc))
+        try:
+            from scripts.lib.market_regime import vix_complex as vc
+        except ImportError:  # scripts/ on sys.path
+            from lib.market_regime import vix_complex as vc  # type: ignore[no-redef]
+        self._cur()  # ensure the read-only session is open
+        return vc.complex_record(self._conn, now=end)
+
+    def _vix_complex_bar_rows(self, *, end: datetime) -> list[dict[str, Any]]:
+        """Map complex_record legs onto daily_bars shape for symbols with no OHLCV (^VIX3M, ^VVIX, …)."""
+        try:
+            rec = self.vix_complex(end=end)
+        except Exception as exc:  # noqa: BLE001 — a complex read failure must not blank the rest of daily_bars
+            log.warning("market_risk reader: vix_complex unavailable: %s", type(exc).__name__)
+            return []
+        out: list[dict[str, Any]] = []
+        key_to_leg = {
+            "vix_close": rec.get("vix"),
+            "vix9d_close": rec.get("vix9d"),
+            "vix3m_close": rec.get("vix3m"),
+            "vvix_close": rec.get("vvix"),
+            "skew_close": rec.get("skew"),
+            "vxn_close": rec.get("vxn"),
+        }
+        for key, leg in key_to_leg.items():
+            if not leg or leg.get("value") is None:
+                continue
+            sym = VIX_COMPLEX_BAR_KEYS[key]
+            raw_as_of = str(leg.get("as_of") or "")
+            try:
+                if "T" in raw_as_of:
+                    d = datetime.fromisoformat(raw_as_of.replace("Z", "+00:00")).astimezone(ET).date()
+                else:
+                    d = date.fromisoformat(raw_as_of[:10])
+            except ValueError:
+                d = _aware(end).astimezone(ET).date()
+            src = str(leg.get("source") or "vix_complex")
+            if any(b in src.lower() for b in BANNED_VIX_SOURCE_KEYS):
+                continue  # never launder a Yahoo MRI row through the complex
+            out.append({
+                "symbol": sym,
+                "date": d.isoformat(),
+                "open": None,
+                "high": None,
+                "low": None,
+                "close": float(leg["value"]),
+                "volume": None,
+                "source": f"vix_complex:{leg.get('value_source') or src}",
+                "provisional": not bool(leg.get("fresh")),
+                "as_of": _iso(_close_instant(d)),
+                "fresh": bool(leg.get("fresh")),
+            })
+        return out
+
     def _vix_closes(self, *, start: datetime, end: datetime) -> list[dict[str, Any]]:
         """VIX daily closes when no ^VIX bars exist: FRED VIXCLS (the official close, published with a lag; ``fred``
         applies it) first, then — only for days FRED has not published yet — the regime collector's ``vix_close``,
         which is a 16:05 ET snapshot taken BEFORE the 16:15 settlement and is labelled as such (review of #2362, B6:
-        10-29 snapshot 16.59 vs VIXCLS 17.20). Same shape as a bar."""
+        10-29 snapshot 16.59 vs VIXCLS 17.20). Same shape as a bar. Yahoo ``source_key`` rows are refused (LQ-969)."""
         rows = self._rows(
             "SELECT DISTINCT ON ((created_at AT TIME ZONE 'America/New_York')::date) "
-            "(created_at AT TIME ZONE 'America/New_York')::date AS d, value, created_at "
+            "(created_at AT TIME ZONE 'America/New_York')::date AS d, value, created_at, source_key "
             "FROM market_regime_indicators WHERE indicator_key = 'vix_close' AND value IS NOT NULL "
             "AND created_at >= %s AND created_at <= %s "
             "AND (created_at AT TIME ZONE 'America/New_York')::time >= %s "
             "ORDER BY (created_at AT TIME ZONE 'America/New_York')::date, created_at DESC",
             [start, end, REGULAR_CLOSE_CUTOFF_ET],
         )
-        out = {
-            r["d"]: {
+        out = {}
+        for r in rows:
+            if str(r.get("source_key") or "").strip().lower() in BANNED_VIX_SOURCE_KEYS:
+                continue  # LQ-969: never feed a banned Yahoo MRI row into MRE history
+            out[r["d"]] = {
                 "symbol": VIX_SYMBOL,
                 "date": r["d"].isoformat(),
                 "open": None,
@@ -448,8 +529,6 @@ class PgReader:
                 "provisional": True,
                 "as_of": _iso(r["created_at"]),
             }
-            for r in rows
-        }
         for f in self.fred(["VIXCLS"], observations=400, end=end):
             d = date.fromisoformat(str(f["observation_date"])[:10])
             if d >= _aware(start).astimezone(ET).date() and f.get("value") is not None:

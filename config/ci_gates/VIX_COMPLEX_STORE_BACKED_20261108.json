@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "VIX_COMPLEX_STORE_BACKED_20261108",
+  "files": [
+    "tests/test_market_regime_vix_complex_20261108.py"
+  ],
+  "anchor": "VIX_COMPLEX_STORE_BACKED_20261108",
+  "comment": [
+    "ANCHOR: VIX_COMPLEX_STORE_BACKED_20261108 — LQ-20261107-940/969 (design WU-6): the volatility complex is REBUILT off Yahoo onto Schwab index rows in market_quotes_extended plus a labelled FRED T+1 fallback; a banned feed is refused by name and no absence is ever written as a zero."
+  ]
+}

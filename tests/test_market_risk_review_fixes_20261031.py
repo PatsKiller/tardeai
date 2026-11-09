@@ -447,24 +447,26 @@ def test_fred_ingest_never_rewrites_first_fetched_at():
 # ── M2 guards ───────────────────────────────────────────────────────────────────────────────────────────────
 
 
-def test_m2_collector_vol_proxy_failure_never_aborts(monkeypatch):
+def test_m2_collector_vol_complex_failure_is_named_and_never_raises(monkeypatch):
+    """A store read that fails is a NAMED absence, not an exception out of the additive vol complex (LQ-969)."""
     import market_regime_collector as mrc
-
-    monkeypatch.setattr(mrc, "_yahoo_last", lambda sym: (_ for _ in ()).throw(TimeoutError("no network")))
 
     class Conn:
         def cursor(self):
             class C:
                 def execute(self, *a):
-                    raise RuntimeError("relation market_quotes does not exist")
+                    raise RuntimeError("relation market_quotes_extended does not exist")
 
             return C()
 
         def rollback(self):
             pass
 
-    out, missing = mrc.collect_vol_complex("snap", conn=Conn(), vix=None)
-    assert out == [] and any(m.startswith("vol_proxy_unavailable") for m in missing)
+    out, missing, summary = mrc.collect_volatility_complex(Conn(), "snap")
+    assert out == []
+    assert "vix_complex_read_failed:RuntimeError" in missing
+    assert "fred_read_failed:RuntimeError" in missing
+    assert summary["values"] == {}
 
 
 def test_m2_torn_files_never_crash_readers(tmp_path):

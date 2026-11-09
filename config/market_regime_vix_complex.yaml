@@ -1,0 +1,51 @@
+# The volatility complex the regime collector records — read from stores, never from Yahoo.
+#
+# LQ-20261107-940 + LQ-20261107-969 (design WU-6, FABLE-OUTLOOK-METHODOLOGY §1.3/§5). Until 2026-11-08 the collector
+# asked query1.finance.yahoo.com for ^VIX ^VIX9D ^VIX3M ^VVIX ^SKEW ^VXN and stamped every row
+# source_key='yahoo_finance'. yfinance is a banned price source (operator price rule 2026-11-07; market-event spec §2)
+# and the complex was PARTIAL(BANNED). The rebuild reads the Schwab off-hours lane's rows — the same CBOE indices the
+# lane quotes by symbol — out of market_quotes_extended, with FRED's published closes as the labelled fallback for
+# the two series FRED carries. Nothing here is a hardcoded number: thresholds, symbols, feed and staleness are config.
+schema: MarketRegimeVixComplex@v1
+authority: LQ-20261107-969 design WU-6 (lead-approved 2026-11-08 10:58 ET, FABLE-OUTLOOK-METHODOLOGY-LQ-946 §5)
+
+# The store the Schwab off-hours lane writes (its single writer: scripts/lib/writers/market_quotes_extended_writer.py)
+# and the feed identity this collector accepts. A row under any other feed is refused by name on the receipt.
+store: market_quotes_extended
+feed: schwab
+
+# Schwab CBOE index symbol -> market_regime_indicators.indicator_key. The lane's own `schwab.indices` list must carry
+# these symbols (config/market_risk_offhours_quotes.yaml, symbol patch in the LQ-20261107-969 handoff) and the lane
+# receipt names any the provider refuses; this collector then reports that key UNKNOWN rather than substituting one.
+symbols:
+  "$VIX": vix_close
+  "$VIX9D": vix9d_close
+  "$VIX3M": vix3m_close
+  "$VVIX": vvix_close
+  "$SKEW": skew_close
+  "$VXN": vxn_close
+
+# FRED publishes these closes T+1 and they are already ingested into fred_economic_series. Used ONLY for a key no
+# Schwab row supplied; the payload names the series and observation date so a T+1 close is never shown as a print.
+fred:
+  VIXCLS: vix_close
+  VXNCLS: vxn_close
+
+# A quote older than this is not this complex's close: refused and named (`<key>_stale:<age>h`), never zeroed.
+# 96 h covers a Friday close observed by a Monday 16:05 fire across a holiday weekend; the freshness flag below is
+# the softer "is this still today's session" line carried in the payload for the outlook engine.
+max_age_hours: 96
+fresh_after_hours: 26
+# FRED's T+1 publication plus a weekend or a holiday: an older observation is named (`<key>_fred_stale:<n>d`).
+fred_max_age_days: 7
+
+# Off-hours lane carry stamp (config/market_risk_offhours_quotes.yaml index_levels.basis_prefix). Age a carried
+# print from the YYYY-MM-DD in this prefix, never from bar_end (REVIEW-LQ-969: carried Friday ≠ fresh Sunday).
+carried_basis_prefix: schwab_index_level_carried_print
+# The collector's VIX-level bucket (the retired Yahoo collector's old literals, now config). Applies to vix_close
+# only; the rest of the complex is recorded as `observed` and graded from config/market_risk_policy.yaml by the
+# Market Risk Engine.
+vix_signal:
+  extreme: 30
+  high: 20
+  normal: 14

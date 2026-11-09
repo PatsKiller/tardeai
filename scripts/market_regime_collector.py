@@ -143,96 +143,18 @@ def collect_scan_based_indicators(conn, snapshot_id):
     return indicators
 
 
-def collect_vix(snapshot_id):
-    """Fetch VIX from Yahoo Finance chart API."""
-    try:
-        import urllib.request
+def collect_volatility_complex(conn, snapshot_id, now=None, cfg=None):
+    """The volatility complex, read from the stores (LQ-20261107-940/969, design WU-6).
 
-        url = "https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1d&range=1d"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        resp = urllib.request.urlopen(req, timeout=10)
-        data = json.loads(resp.read())
-        vix = float(data["chart"]["result"][0]["meta"]["regularMarketPrice"])
-        signal = "extreme" if vix > 30 else ("high" if vix > 20 else ("normal" if vix > 14 else "low"))
-        return {
-            "indicator_id": _uid(),
-            "snapshot_id": snapshot_id,
-            "indicator_key": "vix_close",
-            "indicator_group": "volatility",
-            "value": round(vix, 2),
-            "signal": signal,
-            "source_key": "yahoo_finance",
-        }
-    except Exception:
-        return None
+    Replaces the Yahoo chart path entirely: ``^VIX ^VIX9D ^VIX3M ^VVIX ^SKEW ^VXN`` come from the Schwab off-hours
+    lane's ``market_quotes_extended`` rows, and FRED's published VIXCLS/VXNCLS closes cover only the keys no Schwab
+    row supplied. Returns ``(indicators, missing, summary)``; every absent, stale, banned-source or non-positive
+    value is named in ``missing`` and never written as a zero.
+    """
+    from lib.market_regime import vix_complex
 
-
-# Volatility complex (DSN-20261031-market-risk-engine P1-T2): same Yahoo chart endpoint as collect_vix. Values are
-# recorded with signal "observed"; the engine's volatility category grades them from config/market_risk_policy.yaml.
-VOL_COMPLEX = {"^VVIX": "vvix_close", "^VIX9D": "vix9d_close", "^VIX3M": "vix3m_close", "^VXN": "vxn_close",
-               "^SKEW": "skew_close"}
-VOL_ETF_FALLBACK = ("UVXY", "VIXY")
-
-
-def _yahoo_last(symbol):
-    import urllib.parse
-    import urllib.request
-
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(symbol)}?interval=1d&range=1d"
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        meta = json.loads(resp.read())["chart"]["result"][0]["meta"]
-    return float(meta["regularMarketPrice"]), meta.get("chartPreviousClose"), meta.get("regularMarketTime")
-
-
-def _ind(snapshot_id, key, value, signal, source, payload=None):
-    return {"indicator_id": _uid(), "snapshot_id": snapshot_id, "indicator_key": key, "indicator_group": "volatility",
-            "value": round(value, 4) if value is not None else None, "signal": signal, "source_key": source,
-            "payload": payload or {}}
-
-
-def collect_vol_complex(snapshot_id, conn=None, vix=None):
-    """VVIX, VIX9D, VIX3M, VXN, SKEW and the VIX term-structure ratios. Returns (indicators, missing): a fetch
-    failure is reported in ``missing`` by name, never silently dropped. When VIX itself is unavailable the
-    UVXY/VIXY day change from market_quotes is recorded as a labelled proxy."""
-    out, missing, got = [], [], {}
-    for sym, key in VOL_COMPLEX.items():
-        try:
-            price, prev, ts = _yahoo_last(sym)
-        except Exception as exc:  # network/shape failure: named in missing_data, the run continues
-            missing.append(f"{key}_unavailable:{type(exc).__name__}")
-            continue
-        got[key] = price
-        out.append(_ind(snapshot_id, key, price, "observed", "yahoo_finance",
-                        {"prev_close": prev, "market_time": ts, "symbol": sym}))
-    if vix:
-        if got.get("vix9d_close"):
-            r = got["vix9d_close"] / vix
-            out.append(_ind(snapshot_id, "vix9d_vix_ratio", r, "inverted" if r > 1 else "contango", "derived"))
-        if got.get("vix3m_close"):
-            r = vix / got["vix3m_close"]
-            out.append(_ind(snapshot_id, "vix_vix3m_ratio", r, "inverted" if r > 1 else "contango", "derived"))
-    else:
-        missing.append("vix_close_unavailable")
-        if conn is not None:
-            # A proxy lookup must never abort the collector (the 16:05 run is chained to the classifier with &&).
-            try:
-                cur = conn.cursor()
-                cur.execute("SELECT DISTINCT ON (symbol) symbol, day_change_pct, fetched_at FROM market_quotes "
-                            "WHERE symbol = ANY(%s) AND fetched_at > now() - interval '24 hours' "
-                            "ORDER BY symbol, fetched_at DESC", [list(VOL_ETF_FALLBACK)])
-                for sym, chg, at in cur.fetchall():
-                    out.append(_ind(snapshot_id, f"vol_proxy_{sym.lower()}_change_pct", _f(chg), "proxy",
-                                    "market_quotes", {"fetched_at": str(at)}))
-                cur.close()
-            except Exception as exc:  # noqa: BLE001 — named in missing_data and logged, the run continues
-                print(f"[regime_collector] vol proxy lookup failed: {type(exc).__name__}: {exc}", file=sys.stderr)
-                missing.append(f"vol_proxy_unavailable:{type(exc).__name__}")
-                try:
-                    conn.rollback()
-                except Exception:  # noqa: BLE001 — best effort to clear an aborted transaction
-                    pass
-    return out, missing
+    cfg = cfg or vix_complex.load_config()
+    return vix_complex.collect(conn, snapshot_id, now or datetime.now(timezone.utc), cfg, lambda: _uid())
 
 
 def collect_market_session(snapshot_id):
@@ -283,14 +205,19 @@ def save_indicators(conn, indicators, dry_run=True):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Market Regime Collector", allow_abbrev=False)
-    parser.add_argument("--dry-run", action="store_true", help="collect and report; never write (wins over --apply)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="structural plan; never opens the DB, never writes (wins over --apply)")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--symbols")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
 
+    # Explicit --dry-run is the structural plan the refactor wave 1 train pinned: no DB session at all
+    # (tests/test_refactor_w1_regime_collector_20261010.py). The read-only PREVIEW below (no --apply) is the
+    # dry run that exercises the real stores, including the rebuilt volatility complex.
     if args.dry_run:
-        print("DRY-RUN market-regime-collector: would collect regime indicators and persist market_regime_indicators; no DB, network or writes performed")
+        print("DRY-RUN market-regime-collector: would collect regime indicators and persist "
+              "market_regime_indicators; no DB, network or writes performed")
         return 0
     # --dry-run wins: a dispatcher passing both must never write (AGENTS.md §6).
     dry_run = args.dry_run or not args.apply
@@ -306,14 +233,12 @@ def main(argv=None):
             enforce_readonly(conn)  # legacy preview: the server refuses any write
         indicators = collect_scan_based_indicators(conn, snapshot_id)
         indicators.append(collect_market_session(snapshot_id))
-        vix_ind = collect_vix(snapshot_id)
-        if vix_ind:
-            indicators.append(vix_ind)
+        now = datetime.now(timezone.utc)
         try:
-            vol_inds, missing = collect_vol_complex(snapshot_id, conn, (vix_ind or {}).get("value"))
+            vol_inds, missing, vol_summary = collect_volatility_complex(conn, snapshot_id, now)
         except Exception as exc:  # noqa: BLE001 — the vol complex is additive; it can never stop the classifier
             print(f"[regime_collector] vol complex failed: {type(exc).__name__}: {exc}", file=sys.stderr)
-            vol_inds, missing = [], [f"vol_complex_unavailable:{type(exc).__name__}"]
+            vol_inds, missing, vol_summary = [], [f"vol_complex_unavailable:{type(exc).__name__}"], {}
         indicators.extend(vol_inds)
 
         for sym in INDEX_SYMBOLS:
@@ -325,10 +250,11 @@ def main(argv=None):
             "indicators_collected": len(indicators),
             "missing_data": missing,
             "stale_data": len(indicators) < 3,
+            "volatility_complex": vol_summary,
         }
         if dry_run:
             out["would_write"] = {"table": "market_regime_indicators", "rows": len(indicators)}
-            _emit(args, out, indicators)
+            _emit(args, out, indicators)  # --json stays machine-readable: one JSON document, nothing before it
             return 0  # returns before save_indicators is reachable
 
         save_indicators(conn, indicators, dry_run=False)
@@ -339,6 +265,9 @@ def main(argv=None):
                 "snapshot_id": snapshot_id,
                 "indicators_collected": len(indicators),
                 "stale_data": out["stale_data"],
+                "missing_data": missing,
+                "volatility_complex": {"sources": vol_summary.get("sources"),
+                                       "values": vol_summary.get("values")},
             },
         )
         _emit(args, out, indicators)

@@ -70,8 +70,11 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     conn = FakeConn()
     monkeypatch.setattr(mrc, "_get_conn", lambda: conn)
-    monkeypatch.setattr(mrc, "collect_vix", lambda sid: None)
-    monkeypatch.setattr(mrc, "collect_vol_complex", lambda sid, conn=None, vix=None: ([], []))  # no network in tests
+    monkeypatch.setattr(
+        mrc,
+        "collect_volatility_complex",
+        lambda sid, c, now=None, cfg=None: ([], [], {}),  # store-backed rebuild (LQ-20261107-940): no reads in tests
+    )
     monkeypatch.setattr(
         mrc,
         "collect_market_session",
