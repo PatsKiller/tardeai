@@ -71,6 +71,10 @@ from pathlib import Path
 from typing import NamedTuple
 
 BASE_REF = "origin/main"
+# CURRENT is a symlink. Reading GIT_SHA through it follows the live release.
+# Tests replace this path with a temporary file.
+SERVED_GIT_SHA_PATH = Path.home() / "trade-ai-releases" / "portfolio-server" / "CURRENT" / "GIT_SHA"
+_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 UI_APP = "apps/command-center-v3"
 EVIDENCE_PREFIX = "docs/evidence/"
 MAX_OPEN_PRS = 3
@@ -170,6 +174,67 @@ def _git(args: list[str], root: Path, *, text: bool = True, what: str = "git"):
         detail = detail.strip().splitlines()[0] if detail.strip() else f"exit {proc.returncode}"
         raise PreflightError(f"{what} failed ({detail})")
     return proc
+
+
+def _git_probe(args: list[str], root: Path):
+    """A git read whose exit code is the answer. Never raises on exit 1."""
+    try:
+        return _run(["git", *args], root)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise PreflightError(f"git {' '.join(args[:2])} could not run ({type(exc).__name__})") from exc
+
+
+def _is_ancestor(root: Path, ancestor: str, descendant: str = "HEAD") -> bool:
+    proc = _git_probe(["merge-base", "--is-ancestor", ancestor, descendant], root)
+    if proc.returncode in (0, 1):
+        return proc.returncode == 0
+    raise PreflightError(f"could not compare {ancestor} with {descendant} (exit {proc.returncode})")
+
+
+def _served_merge_base(root: Path) -> str | None:
+    """Merge-base of HEAD and the served GIT_SHA, or None when that pin cannot be used.
+
+    None covers a missing file, a value that is not 40 hex, a SHA this clone
+    does not have, and a history that does not meet. Callers then keep
+    ``origin/main``.
+    """
+    try:
+        text = SERVED_GIT_SHA_PATH.read_text(encoding="utf-8").strip().lower()
+    except OSError:
+        return None
+    if not _COMMIT_RE.fullmatch(text):
+        return None
+    kind = _git_probe(["cat-file", "-t", text], root)
+    if kind.returncode != 0 or (kind.stdout or "").strip() != "commit":
+        return None
+    merged = _git_probe(["merge-base", "HEAD", text], root)
+    base = (merged.stdout or "").strip()
+    if merged.returncode != 0 or not _COMMIT_RE.fullmatch(base):
+        return None
+    return base
+
+
+def diff_base(root: Path) -> str:
+    """The commit this branch is compared against.
+
+    ``origin/main`` stays the base when the branch is cut from it. When HEAD
+    contains the served release and that release is strictly ahead of
+    ``origin/main``, the base is the merge-base of HEAD and the served
+    GIT_SHA — the pin itself when the branch was cut from the release.
+    The same merge-base is used when ``origin/main`` is not an ancestor of
+    HEAD and the served commit is present in this clone.
+    """
+    main_is_ancestor = _is_ancestor(root, BASE_REF)
+    base = _served_merge_base(root)
+    if base is None:
+        return BASE_REF
+    if _is_ancestor(root, BASE_REF, base):
+        main_sha = _git_probe(["rev-parse", "--verify", BASE_REF], root)
+        if main_sha.returncode == 0 and (main_sha.stdout or "").strip() != base:
+            return base
+    if not main_is_ancestor:
+        return base
+    return BASE_REF
 
 
 def gh_run(args: list[str], cwd: Path | None = None):
@@ -363,10 +428,11 @@ def git_dir(root: Path) -> Path:
 
 
 def _changed(root: Path, diff_filter: str) -> list[str]:
+    base = diff_base(root)
     out = _git(
-        ["diff", "--name-only", f"--diff-filter={diff_filter}", f"{BASE_REF}...HEAD"],
+        ["diff", "--name-only", f"--diff-filter={diff_filter}", f"{base}...HEAD"],
         root,
-        what=f"git diff {BASE_REF}...HEAD",
+        what=f"git diff {base}...HEAD",
     ).stdout
     return [line for line in out.splitlines() if line.strip()]
 
@@ -411,10 +477,11 @@ def touched_test_files(root: Path) -> list[str]:
 
 
 def new_or_renamed(root: Path) -> list[str]:
+    base = diff_base(root)
     out = _git(
-        ["diff", "--name-status", "--diff-filter=AR", f"{BASE_REF}...HEAD"],
+        ["diff", "--name-status", "--diff-filter=AR", f"{base}...HEAD"],
         root,
-        what=f"git diff --name-status {BASE_REF}...HEAD",
+        what=f"git diff --name-status {base}...HEAD",
     ).stdout
     paths: list[str] = []
     for line in out.splitlines():
@@ -479,14 +546,15 @@ def _skip_list_is_a_branch_change(root: Path) -> bool:
 
     Tolerance is project provenance, not a property a branch can grant itself: a branch that
     changes the list could name its own zero-execution file and get a receipt. Tolerance is
-    therefore refused unless the list is unchanged relative to ``origin/main``. A provenance check
-    that cannot run is also treated as a branch change (fail closed).
+    therefore refused unless the list is unchanged relative to the comparison base.
+    A provenance check that cannot run is also treated as a branch change (fail closed).
     """
     try:
+        base = diff_base(root)
         out = _git(
-            ["diff", "--name-only", f"{BASE_REF}...HEAD", "--", SKIP_TOLERANT_REL],
+            ["diff", "--name-only", f"{base}...HEAD", "--", SKIP_TOLERANT_REL],
             root,
-            what=f"git diff {BASE_REF}...HEAD -- {SKIP_TOLERANT_REL}",
+            what=f"git diff {base}...HEAD -- {SKIP_TOLERANT_REL}",
         ).stdout
     except PreflightError:
         return True
@@ -500,7 +568,7 @@ def load_skip_tolerant(root: Path) -> set[str]:
     from a caller argument and never from the receipt: a caller flag is not a project exception,
     and a receipt cannot declare its own tolerance. Every entry must carry a non-empty reason; a
     missing or malformed list tolerates nothing (fail closed). The list's provenance is bound to
-    ``origin/main``: when this branch changes the list, tolerance is refused outright.
+    the comparison base: when this branch changes the list, tolerance is refused outright.
     """
     if _skip_list_is_a_branch_change(root):
         return set()
@@ -880,7 +948,8 @@ def check_plain_english(root: Path, body_file: str | None, title_arg: str | None
 
 
 def check_merge(root: Path) -> list[dict]:
-    proc = _run(["git", "merge-tree", "--write-tree", "--name-only", BASE_REF, "HEAD"], root)
+    base = diff_base(root)
+    proc = _run(["git", "merge-tree", "--write-tree", "--name-only", base, "HEAD"], root)
     if proc.returncode == 0:
         return []
     conflicted: list[str] = []
@@ -897,7 +966,7 @@ def check_merge(root: Path) -> list[dict]:
             if m:
                 conflicted.append(m.group(1).strip())
     files = ", ".join(sorted(set(conflicted)))
-    msg = "merging origin/main into this branch would conflict"
+    msg = f"merging {base} into this branch would conflict"
     msg += f" in: {files}" if files else f" (git merge-tree exited {proc.returncode})"
     return [_refusal("merge-conflict", msg)]
 
@@ -910,7 +979,9 @@ def _is_binary(root: Path, path: str) -> bool:
     proc = _run(["git", "show", f"HEAD:{path}"], root, text=False)
     if proc.returncode == 0 and b"\x00" in (proc.stdout or b"")[:8000]:
         return True
-    numstat = _run(["git", "diff", "--numstat", "--diff-filter=A", f"{BASE_REF}...HEAD", "--", path], root)
+    numstat = _run(
+        ["git", "diff", "--numstat", "--diff-filter=A", f"{diff_base(root)}...HEAD", "--", path], root
+    )
     return numstat.returncode == 0 and any(line.startswith("-\t-") for line in numstat.stdout.splitlines())
 
 
@@ -1242,7 +1313,7 @@ def record_tests(root: Path, *, verbose: bool = True) -> int:
         "schema": RECEIPT_SCHEMA,
         "head_sha": head,
         "tree_sha": _git(["rev-parse", "HEAD^{tree}"], root, what="git rev-parse HEAD^{tree}").stdout.strip(),
-        "base_ref": BASE_REF,
+        "base_ref": diff_base(root),
         "recorded_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source_clean": True,
         "files": [row["path"] for row in results],
@@ -1291,9 +1362,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--pr-title", help="the PR title to check with --pr-body-file")
     args = parser.parse_args(argv)
+    base_ref = BASE_REF
 
     try:
         root = repo_root()
+        base_ref = diff_base(root)
         if args.record_tests:
             code = record_tests(root, verbose=not args.json)
             if args.json:
@@ -1322,7 +1395,7 @@ def main(argv: list[str] | None = None) -> int:
             "schema": RESULT_SCHEMA,
             "ok": not refusals,
             "head_sha": head,
-            "base_ref": BASE_REF,
+            "base_ref": base_ref,
             "skipped": {"wip_cap": bool(args.skip_wip_cap)},
             "refusals": refusals,
         }
