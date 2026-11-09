@@ -167,14 +167,57 @@ def fetch_finviz_base(symbols: list[str]) -> dict[str, dict]:
     return results
 
 
+_SSL_CLOSED = "SSL connection has been closed unexpectedly"
+
+
+def is_ssl_closed(exc: BaseException) -> bool:
+    """True when the server closed the socket under us (psycopg2's ``closed`` flag may still read 0)."""
+    return _SSL_CLOSED in str(exc)
+
+
+def reconnect_after_drop(conn):
+    """Close a dropped connection (best effort) and open a fresh one."""
+    try:
+        conn.close()
+    except Exception as exc:  # noqa: BLE001 -- close is best-effort after a drop
+        logger.debug("close after DB drop failed: %s", type(exc).__name__)
+    return get_db()
+
+
+def write_with_reconnect(conn, fn, *args, **kwargs):
+    """Run one single-statement write unit; reconnect once if the server dropped the socket.
+
+    Returns ``(conn, value)`` -- the caller must keep the new connection. Every write unit in
+    this scanner is a single guarded statement (``INSERT ... WHERE NOT EXISTS``, an upsert), so
+    a retry cannot double-write. Any other error, and a second drop, still raises.
+    """
+    try:
+        return conn, fn(conn, *args, **kwargs)
+    except psycopg2.OperationalError as exc:
+        if not is_ssl_closed(exc):
+            raise
+        logger.warning("DB socket dropped (%s); reconnecting once", type(exc).__name__)
+        fresh = reconnect_after_drop(conn)
+        return fresh, fn(fresh, *args, **kwargs)
+
+
 def get_db():
-    return psycopg2.connect(
+    conn = psycopg2.connect(
         host=os.getenv("DB_HOST", "localhost"),
         port=int(os.getenv("DB_PORT", 5432)),
         dbname=os.getenv("DB_NAME", "trade_ai"),
         user=os.getenv("DB_USER", "trade_ai"),
         password=os.getenv("DB_PASSWORD", ""),
     )
+    # 2026-11-09 (LQ-20261107-1576): role trade_ai carries idle_in_transaction_session_timeout=120s.
+    # This scanner reads, then spends ~2 minutes on Finviz/Hermes network work, then writes. In
+    # driver-managed transaction mode the FIRST SELECT opens a transaction that stays open through
+    # that work, so the 09:30 ET run died at the routed INSERT with
+    # "psycopg2.OperationalError: SSL connection has been closed unexpectedly" (agent_job_queue.py:69).
+    # Autocommit means no statement leaves a transaction open; every write below is a single
+    # guarded statement, so each is still atomic on its own.
+    conn.autocommit = True
+    return conn
 
 
 def get_social_candidates(conn) -> list[dict]:
@@ -1095,7 +1138,9 @@ def run_scan():
 
         # Route retirement/income tickers to portfolio agents
         if any(t in PORTFOLIO_ROUTE_TAGS for t in strategy_tags):
-            route_to_portfolio_agents(conn, symbol, candidate["mention_count"], strategy_tags)
+            conn, _ = write_with_reconnect(
+                conn, route_to_portfolio_agents, symbol, candidate["mention_count"], strategy_tags
+            )
             continue
 
         # Skip if already alerted recently
@@ -1141,12 +1186,16 @@ def run_scan():
         # Scalp filters — route large/expensive tickers to portfolio agents
         if price > SKIP_IF_PRICE_ABOVE:
             logger.info("SKIP %s — price $%.2f > $%.0f (route to portfolio)", symbol, price, SKIP_IF_PRICE_ABOVE)
-            route_to_portfolio_agents(conn, symbol, mention_count, strategy_tags)
+            conn, _ = write_with_reconnect(
+                conn, route_to_portfolio_agents, symbol, mention_count, strategy_tags
+            )
             continue
 
         if float_m > SKIP_IF_FLOAT_ABOVE:
             logger.info("SKIP %s — float %.0fM > %.0fM (route to portfolio)", symbol, float_m, SKIP_IF_FLOAT_ABOVE)
-            route_to_portfolio_agents(conn, symbol, mention_count, strategy_tags)
+            conn, _ = write_with_reconnect(
+                conn, route_to_portfolio_agents, symbol, mention_count, strategy_tags
+            )
             continue
 
         # Build ticker_row in the format scoring.py expects

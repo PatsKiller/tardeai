@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "social_scalp_scanner_txn_1576_20261109",
+  "files": [
+    "tests/test_social_scalp_scanner_txn_1576_20261109.py"
+  ],
+  "anchor": "SOCIAL_SCALP_SCANNER_TXN_1576_20261109",
+  "comment": [
+    "ANCHOR: SOCIAL_SCALP_SCANNER_TXN_1576_20261109 — no Postgres transaction may span a lane's network",
+    "work: role trade_ai has idle_in_transaction_session_timeout=120s, and the 2026-11-09 09:30 ET social",
+    "scalp run read posts (opening a driver-managed transaction), spent ~121 s on Finviz, then died at the",
+    "routed INSERT with 'SSL connection has been closed unexpectedly' (agent_job_queue.py:69). The scanner",
+    "connection is autocommit; write_with_reconnect() reopens once as a backstop. Hermetic fake connection",
+    "enforces the server rule; synthetic rows only."
+  ]
+}
