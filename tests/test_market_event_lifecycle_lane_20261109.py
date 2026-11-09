@@ -145,6 +145,20 @@ def test_the_sleeve_pct_is_the_direct_basis_and_says_so():
     assert pct  # never an empty map when there is a book
 
 
+def test_a_look_through_that_raises_falls_back_and_records_why(monkeypatch):
+    """Fail-before: the exception was swallowed with ``pass`` and the receipt showed a bare ``direct`` basis with no
+    reason, so a broken fund-weight file was invisible. Pass-after: the basis is still ``direct`` (never a wrong
+    number) and the failure is named in ``errors``."""
+    def boom(rows):
+        raise RuntimeError("config/fund_lookthrough.json is unreadable")
+
+    monkeypatch.setattr(life, "_lookthrough", boom)
+    errs: dict[str, str] = {}
+    pct, basis = life.sleeve_pct_by_sector([position(qty=1, value=1000.0)], {SYM: "Healthcare"}, errs)
+    assert basis == "direct" and pct
+    assert "RuntimeError" in errs["sleeve_lookthrough"] and "unreadable" in errs["sleeve_lookthrough"]
+
+
 # --------------------------------------------------------------------------- the calendar
 
 

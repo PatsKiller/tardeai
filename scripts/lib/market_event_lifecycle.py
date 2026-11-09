@@ -34,7 +34,7 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 try:  # imported as ``lib.market_event_lifecycle`` from a lane (scripts/ on sys.path)
     from lib import market_event_plan as mep
 except ImportError:  # imported as ``scripts.lib.market_event_lifecycle`` (repo root on sys.path, tests)
-    from . import market_event_plan as mep  # type: ignore[no-redef]
+    from . import market_event_plan as mep  # type: ignore[no-redef] -- both import paths are live on purpose (package-relative first, then the flat fallback): the redefinition is the fallback, not a bug
 
 try:  # the look-through basis is the board's sleeve basis when it is importable
     from fund_lookthrough import effective_sector_exposure as _lookthrough
@@ -117,7 +117,7 @@ def load_events(*, now: datetime, kinds: Sequence[str] | None = None, path: Path
     try:
         from lib import macro_calendar as mcal
     except ImportError:  # pragma: no cover - scripts/ off sys.path
-        from . import macro_calendar as mcal  # type: ignore[no-redef]
+        from . import macro_calendar as mcal  # type: ignore[no-redef] -- both import paths are live on purpose (package-relative first, then the flat fallback): the redefinition is the fallback, not a bug
     wanted = {str(k).upper() for k in (kinds or ("CPI", "FOMC", "NFP", "PCE"))}
     try:
         body = mcal.load(path)
@@ -200,7 +200,7 @@ def read_guardian(db_query: Callable[..., list[dict[str, Any]]]) -> tuple[dict[t
         rows = db_query(
             "SELECT symbol, account, giveback_state, rsi14, run_at FROM holding_exit_metrics "
             "WHERE run_at = (SELECT max(run_at) FROM holding_exit_metrics)") or []
-    except Exception as exc:  # noqa: BLE001 - an unreadable store is reported, never a silent empty
+    except Exception as exc:  # noqa: BLE001 -- an unreadable store is reported, never a silent empty
         return {}, f"{type(exc).__name__}: {exc}"
     out: dict[tuple[str, str], dict[str, Any]] = {}
     run_at = None
@@ -228,7 +228,7 @@ def read_sectors(db_query: Callable[..., list[dict[str, Any]]],
     try:
         from lib import market_event_api
     except ImportError:  # pragma: no cover
-        from . import market_event_api  # type: ignore[no-redef]
+        from . import market_event_api  # type: ignore[no-redef] -- both import paths are live on purpose (package-relative first, then the flat fallback): the redefinition is the fallback, not a bug
     return market_event_api.read_sectors(db_query, symbols)
 
 
@@ -293,21 +293,23 @@ def proxy_for_candidate(candidate: Mapping[str, Any], groups: Mapping[str, Mappi
 
 
 def sleeve_pct_by_sector(positions: Sequence[Mapping[str, Any]],
-                         sector_by_symbol: Mapping[str, str]) -> tuple[dict[str, float], str]:
+                         sector_by_symbol: Mapping[str, str],
+                         errors: dict[str, str] | None = None) -> tuple[dict[str, float], str]:
     """``{sector: pct of the equity book}`` and the basis actually used (``lookthrough`` or ``direct``).
 
     The look-through basis (``scripts/fund_lookthrough.py``, direct + configured fund weights) is the board's sleeve
     basis and is used whenever it is importable; otherwise the direct basis is used and labelled so a caller can see
     which one a trim was decided on. Fund weights live in ``config/fund_lookthrough.json``; that file's absence is
-    the direct basis, not an error.
+    the direct basis, not an error. A look-through that RAISES falls back to the direct basis and records why in
+    ``errors``: the fallback is silent in the number, never silent in the receipt.
     """
     try:
         from .cio_sector_opportunity import canonical_sector
     except ImportError:  # pragma: no cover
         try:
-            from lib.cio_sector_opportunity import canonical_sector  # type: ignore[no-redef]
+            from lib.cio_sector_opportunity import canonical_sector  # type: ignore[no-redef] -- both import paths are live on purpose (package-relative first, then the flat fallback): the redefinition is the fallback, not a bug
         except ImportError:
-            canonical_sector = lambda s: s  # noqa: E731 - last resort; a label that does not canonicalise stays as-is
+            canonical_sector = lambda s: s  # noqa: E731 -- last resort; a label that does not canonicalise stays as-is
     rows = []
     for p in positions or []:
         val = _f(p.get("broker_market_value"))
@@ -323,8 +325,9 @@ def sleeve_pct_by_sector(positions: Sequence[Mapping[str, Any]],
             out = {canonical_sector(str(s)): _f(v.get("pct")) for s, v in exp.items()
                    if not str(s).startswith("_") and isinstance(v, Mapping) and _f(v.get("pct")) is not None}
             return {k: float(v) for k, v in out.items() if v is not None}, "lookthrough"
-        except Exception:  # noqa: BLE001 - fall through to the direct basis and label it; never a wrong number
-            pass
+        except Exception as exc:  # noqa: BLE001 -- the look-through falls back to the direct basis and says why
+            if errors is not None:
+                errors["sleeve_lookthrough"] = f"{type(exc).__name__}: {exc}"
     total = sum(r["value"] for r in rows)
     agg: dict[str, float] = {}
     for r in rows:
@@ -373,7 +376,7 @@ def build_snapshot(*, symbol: str, bars: Sequence[Mapping[str, Any]], quote_asof
 
 
 def _minutes_since(v: Any, now: datetime) -> Optional[float]:
-    dt = mep._parse_at(v)  # noqa: SLF001 - the module's own ISO parser; one implementation, not a copy
+    dt = mep._parse_at(v)  # noqa: SLF001 -- the module's own ISO parser; one implementation, not a copy
     return None if dt is None else (now - dt).total_seconds() / 60.0
 
 
@@ -396,7 +399,7 @@ def plan_for_holding(candidate: Mapping[str, Any], holding_qty: Optional[float])
     }
     qty = [t.get("shares") for t in (stored.get("tranches") or []) if isinstance(t, Mapping)]
     if qty and all(_f(q) is not None and _f(q) > 0 for q in qty):
-        out["tranche_qty"] = [int(_f(q)) for q in qty]  # type: ignore[arg-type]
+        out["tranche_qty"] = [int(_f(q)) for q in qty]  # type: ignore[arg-type] -- _f() dropped the non-numbers, so every element left is a number
     elif holding_qty is not None:
         out["planned_shares"] = float(holding_qty)
     return out
@@ -428,10 +431,10 @@ def build_rows(inputs: Mapping[str, Any], policy: Mapping[str, Any], now: dateti
     groups = inputs.get("proxy_groups") or {}
     benchmark = str((inputs.get("benchmark") or "SPY")).upper()
 
-    pos_max_asof = mep._parse_at(inputs.get("positions_as_of"))  # noqa: SLF001 - the snapshot's own clock
+    pos_max_asof = mep._parse_at(inputs.get("positions_as_of"))  # noqa: SLF001 -- the snapshot's own clock
     for p in positions:
         a = p.get("as_of")
-        dt = mep._parse_at(a)  # noqa: SLF001
+        dt = mep._parse_at(a)  # noqa: SLF001 -- the module's own ISO parser; one implementation, not a copy
         if dt is not None and (pos_max_asof is None or dt > pos_max_asof):
             pos_max_asof = dt
 
@@ -570,7 +573,7 @@ def calendar_anchor_triggers(events: Sequence[Mapping[str, Any]], *, now: dateti
     for e in events or []:
         if not isinstance(e, Mapping):
             continue
-        rel = mep._parse_at(e.get("released_at"))  # noqa: SLF001 - the module's own ISO parser
+        rel = mep._parse_at(e.get("released_at"))  # noqa: SLF001 -- the module's own ISO parser
         if rel is None:
             continue  # not released yet: a scheduled anchor is not a due one
         anchor = rel + timedelta(minutes=float(settle_min))
@@ -648,7 +651,7 @@ def derive_trigger(*, rows: Sequence[Mapping[str, Any]], events: Sequence[Mappin
 def _position_asof(pos: Mapping[str, Any] | None, max_asof: Optional[datetime],
                    now: datetime) -> datetime:
     """The row's own ``as_of`` when it has one, else the snapshot's newest, else ``now`` (which then fails fresh)."""
-    dt = mep._parse_at((pos or {}).get("as_of"))  # noqa: SLF001
+    dt = mep._parse_at((pos or {}).get("as_of"))  # noqa: SLF001 -- the module's own ISO parser; one implementation, not a copy
     return dt or max_asof or now
 
 
@@ -664,7 +667,7 @@ def _label(account_key: Any) -> str:
     try:
         from lib import account_display
     except ImportError:  # pragma: no cover
-        from . import account_display  # type: ignore[no-redef]
+        from . import account_display  # type: ignore[no-redef] -- both import paths are live on purpose (package-relative first, then the flat fallback): the redefinition is the fallback, not a bug
     return account_display.account_label(account_key)
 
 
@@ -676,7 +679,7 @@ def _canonical(sector: Any) -> str:
     try:
         from lib.cio_sector_opportunity import canonical_sector
     except ImportError:  # pragma: no cover
-        from .cio_sector_opportunity import canonical_sector  # type: ignore[no-redef]
+        from .cio_sector_opportunity import canonical_sector  # type: ignore[no-redef] -- both import paths are live on purpose (package-relative first, then the flat fallback): the redefinition is the fallback, not a bug
     return canonical_sector(str(sector or ""))
 
 
@@ -741,7 +744,7 @@ def _default_text(event: Mapping[str, Any]) -> dict[str, Any]:
     try:
         from lib.critical_texts import send_critical_text
     except ImportError:  # pragma: no cover - scripts/ off sys.path
-        from .critical_texts import send_critical_text  # type: ignore[no-redef]
+        from .critical_texts import send_critical_text  # type: ignore[no-redef] -- both import paths are live on purpose (package-relative first, then the flat fallback): the redefinition is the fallback, not a bug
     return send_critical_text(dict(event))
 
 
@@ -763,7 +766,7 @@ def deliver_alerts(results: Sequence[Mapping[str, Any]], *, now: datetime, send:
         ev = {k: v for k, v in t.items() if k != "_transition"}
         try:
             res = dict(sender(ev) or {})
-        except Exception as exc:  # noqa: BLE001 - one failed text must not lose the run's transitions
+        except Exception as exc:  # noqa: BLE001 -- one failed text must not lose the run's transitions
             res = {"sent": False, "reason": f"{type(exc).__name__}: {exc}"}
         rec = {**t["_transition"], "sent": bool(res.get("sent")),
                "reason": res.get("reason") or res.get("detail")}
@@ -806,7 +809,7 @@ def reconcile_unalerted(conn: Any, db_query: Callable[..., list[dict[str, Any]]]
             "AND to_stage = ANY(%s) AND created_at > now() - make_interval(hours => %s) "
             "ORDER BY id LIMIT %s",
             (list(mep.FI_TEXT_STAGES), int(lookback_hours), int(limit))) or []
-    except Exception as exc:  # noqa: BLE001 - a reconcile that cannot read is reported, never a silent zero
+    except Exception as exc:  # noqa: BLE001 -- a reconcile that cannot read is reported, never a silent zero
         return {**out, "error": f"{type(exc).__name__}: {exc}"}
     out["candidates"] = len(rows)
     if not send or not rows:
@@ -824,7 +827,7 @@ def reconcile_unalerted(conn: Any, db_query: Callable[..., list[dict[str, Any]]]
         }
         try:
             res = dict(sender(ev) or {})
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 -- a sender that raises is recorded as a refused text, never a lost run
             res = {"sent": False, "reason": f"{type(exc).__name__}: {exc}"}
         sent = bool(res.get("sent"))
         cur.execute(
@@ -968,7 +971,7 @@ def collect_inputs(db_query: Callable[..., list[dict[str, Any]]], now: datetime,
     try:
         positions = read_positions(db_query)
         positions_as_of = read_positions_asof(db_query)
-    except Exception as exc:  # noqa: BLE001 - an unreadable positions table is a reported failure, not an empty book
+    except Exception as exc:  # noqa: BLE001 -- an unreadable positions table is a reported failure, not an empty book
         positions, positions_as_of = [], None
         errors["positions"] = f"{type(exc).__name__}: {exc}"
     symbols = sorted({str(p.get("symbol") or "").upper() for p in positions} |
@@ -976,12 +979,12 @@ def collect_inputs(db_query: Callable[..., list[dict[str, Any]]], now: datetime,
     symbols = [s for s in symbols if s]
     try:
         stops = read_stops(db_query)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- an unreadable stops table is recorded and leaves the stop gate unmeasured, never "no stop"
         stops, errors["stops"] = {}, f"{type(exc).__name__}: {exc}"
     guardian, guardian_run_at = read_guardian(db_query)
     try:
         sectors = read_sectors(db_query, symbols)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- an unreadable sectors table is recorded and leaves the sleeve unmeasured, never an empty map
         sectors, errors["sectors"] = {}, f"{type(exc).__name__}: {exc}"
     groups = proxy_group_map()
     proxies = sorted({proxy_for_candidate(c, groups) for c in candidates})
@@ -993,7 +996,7 @@ def collect_inputs(db_query: Callable[..., list[dict[str, Any]]], now: datetime,
         quote_asof = read_quote_asof(db_query, symbols)
     except Exception as exc:  # noqa: BLE001
         quote_asof, errors["quotes"] = {}, f"{type(exc).__name__}: {exc}"
-    sleeve_pct, sleeve_basis = sleeve_pct_by_sector(positions, sectors)
+    sleeve_pct, sleeve_basis = sleeve_pct_by_sector(positions, sectors, errors)
     targets: dict[str, float] = {}
     band: dict[str, Any] = {}
     try:
@@ -1095,7 +1098,7 @@ def run_lane(*, conn: Any, db_query: Callable[..., list[dict[str, Any]]], now: d
             errors=summary["errors"], transitions=summary["transitions"],
             alerted=len(summary["alerts"].get("sent") or []),
             late_minutes=float(summary.get("anchor_max_late_minutes") or 0.0), policy=pol)
-    except Exception as exc:  # noqa: BLE001 - reported by type AND text, never flattened into a zero
+    except Exception as exc:  # noqa: BLE001 -- reported by type AND text, never flattened into a zero
         summary["error"] = f"{type(exc).__name__}: {exc}"
     return summary
 
