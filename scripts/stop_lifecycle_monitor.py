@@ -27,6 +27,11 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from lib import stop_alert_price as sap  # noqa: E402 -- scripts/ is on sys.path above
 
+try:
+    from lib.ddl_guard import column_exists, relation_exists  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.stop_lifecycle_monitor
+    from scripts.lib.ddl_guard import column_exists, relation_exists  # type: ignore[no-redef]
+
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 _TERMINAL_CANCEL = {"canceled", "cancelled", "rejected", "expired", "replaced"}
 _TERMINAL_FILL = {"filled"}
@@ -348,20 +353,29 @@ def _persist(records: list[dict]) -> None:
         import json
         from db_adapter import _get_conn
         conn = _get_conn(); cur = conn.cursor()
-        cur.execute("""CREATE TABLE IF NOT EXISTS stop_lifecycle (
-                         id SERIAL PRIMARY KEY, account TEXT, symbol TEXT, broker TEXT, order_id TEXT,
-                         order_type TEXT, status TEXT, stop_price NUMERIC, qty NUMERIC, held_qty NUMERIC,
-                         current_price NUMERIC, proximity_pct NUMERIC, coverage TEXT, lifecycle TEXT,
-                         health TEXT, flags JSONB, snapshot_at TIMESTAMPTZ DEFAULT NOW())""")
+        # LQ-20261107-1686 — catalog first. These five statements used to run on every scan
+        # (stop_health_check */10 9-16 and the 45 s-cached /api/v2/stops/lifecycle), and each
+        # ALTER took an ACCESS EXCLUSIVE lock on stop_lifecycle to assert a column that was
+        # already there. On an up-to-date table the scan now writes only its snapshot.
+        if not relation_exists(cur, "stop_lifecycle"):
+            cur.execute("""CREATE TABLE IF NOT EXISTS stop_lifecycle (
+                             id SERIAL PRIMARY KEY, account TEXT, symbol TEXT, broker TEXT, order_id TEXT,
+                             order_type TEXT, status TEXT, stop_price NUMERIC, qty NUMERIC, held_qty NUMERIC,
+                             current_price NUMERIC, proximity_pct NUMERIC, coverage TEXT, lifecycle TEXT,
+                             health TEXT, flags JSONB, snapshot_at TIMESTAMPTZ DEFAULT NOW())""")
         # A trailing order has no fixed trigger price: its trail offset IS the protection, so the persisted
         # snapshot must carry it or a stored-only page cannot recognise the order at all (codex review of PR 2180).
-        cur.execute("ALTER TABLE stop_lifecycle ADD COLUMN IF NOT EXISTS trail_offset NUMERIC")
         # Price provenance travels with the snapshot (LQ-20261107-03): a stored-only page can show that a
         # current_price is a stale mark rather than presenting it as the live one. as_of is TEXT because the
         # Finviz cache stamps it "YYYY-MM-DD HH:MM:SS ET", which is not a timestamp Postgres should guess.
-        cur.execute("ALTER TABLE stop_lifecycle ADD COLUMN IF NOT EXISTS price_source TEXT")
-        cur.execute("ALTER TABLE stop_lifecycle ADD COLUMN IF NOT EXISTS price_as_of TEXT")
-        cur.execute("ALTER TABLE stop_lifecycle ADD COLUMN IF NOT EXISTS price_stale BOOLEAN")
+        for column, ddl in (
+            ("trail_offset", "ALTER TABLE stop_lifecycle ADD COLUMN IF NOT EXISTS trail_offset NUMERIC"),
+            ("price_source", "ALTER TABLE stop_lifecycle ADD COLUMN IF NOT EXISTS price_source TEXT"),
+            ("price_as_of", "ALTER TABLE stop_lifecycle ADD COLUMN IF NOT EXISTS price_as_of TEXT"),
+            ("price_stale", "ALTER TABLE stop_lifecycle ADD COLUMN IF NOT EXISTS price_stale BOOLEAN"),
+        ):
+            if not column_exists(cur, "stop_lifecycle", column):
+                cur.execute(ddl)
         cur.execute("DELETE FROM stop_lifecycle")   # snapshot table — latest scan only
         for r in records:
             cur.execute("""INSERT INTO stop_lifecycle

@@ -15,6 +15,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    from .ddl_guard import column_exists, relation_exists
+except ImportError:  # pragma: no cover - loaded flat (scripts/lib on sys.path), not as a package
+    try:
+        from lib.ddl_guard import column_exists, relation_exists  # type: ignore[no-redef]
+    except ImportError:
+        from ddl_guard import column_exists, relation_exists  # type: ignore[no-redef]
+
 ROOT = Path(__file__).resolve().parent.parent.parent
 REGISTRY_PATH = ROOT / "config" / "llm_process_registry.json"
 
@@ -39,11 +47,30 @@ def _conn():
 
 
 def ensure_schema() -> None:
+    """Create the LLM accounting schema without taking a lock to assert what already holds.
+
+    LQ-20261107-1686. This ran once per process start and issued 23 statements whose
+    effect was already achieved. ``IF NOT EXISTS`` suppresses the error, not the lock:
+    each ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS`` asked for an **ACCESS EXCLUSIVE**
+    lock on ``llm_consumption_log`` — the table every LLM call appends to — and on
+    ``llm_process_config``. Between 14:18 and 15:19 ET on 2026-11-09 that cost 124 lock
+    timeouts and 5 deadlocks: a 3 s ``lock_timeout`` reader queued behind a writer that
+    had nothing to write.
+
+    Every statement is now preceded by a catalog read (``lib.ddl_guard`` —
+    ``relation_exists`` / ``column_exists``, neither of which locks the relation) and is
+    issued only when the catalog says it is genuinely absent. On an up-to-date schema
+    this function executes no DDL at all; the additive column loop keeps its
+    per-statement rollback, so one column that cannot be added does not abort the rest.
+    """
     global _SCHEMA_OK
     if _SCHEMA_OK:
         return
     cur = _conn().cursor()
-    cur.execute("""
+    # A CREATE that has real work to do still takes its lock; a no-op one no longer
+    # asks for it on every process start.
+    for name, ddl in (
+        ("llm_consumption_log", """
         CREATE TABLE IF NOT EXISTS llm_consumption_log (
             id BIGSERIAL PRIMARY KEY,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -62,8 +89,8 @@ def ensure_schema() -> None:
             error_message TEXT,
             duration_ms INT,
             metadata_json JSONB
-        )""")
-    cur.execute("""
+        )"""),
+        ("llm_process_config", """
         CREATE TABLE IF NOT EXISTS llm_process_config (
             process_id TEXT PRIMARY KEY,
             process_name TEXT NOT NULL,
@@ -73,31 +100,51 @@ def ensure_schema() -> None:
             daily_soft_cap INT,
             notes TEXT,
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )""")
-    cur.execute("""
+        )"""),
+        ("idx_llm_consumption_log_created", """
         CREATE INDEX IF NOT EXISTS idx_llm_consumption_log_created
-            ON llm_consumption_log (created_at DESC)""")
-    cur.execute("""
+            ON llm_consumption_log (created_at DESC)"""),
+        ("idx_llm_consumption_log_process", """
         CREATE INDEX IF NOT EXISTS idx_llm_consumption_log_process
-            ON llm_consumption_log (process_id, created_at DESC)""")
-    # Additive migrations for paid-token accounting (safe on existing DBs)
-    for stmt in (
-        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS relative_units NUMERIC(12,6) DEFAULT 0",
-        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS cost_basis TEXT",
-        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS pricing_effective_at TEXT",
-        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS reasoning_tokens INT",
-        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS cache_hit_tokens INT",
-        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS cache_miss_tokens INT",
-        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS requested_policy TEXT",
-        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS executed_policy TEXT",
-        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS requested_model_id TEXT",
-        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS returned_model TEXT",
-        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS thinking TEXT",
-        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS reasoning_effort TEXT",
-        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS provider_request_id TEXT",
-        "ALTER TABLE llm_process_config ADD COLUMN IF NOT EXISTS daily_cost_cap_usd NUMERIC(12,4)",
+            ON llm_consumption_log (process_id, created_at DESC)"""),
+    ):
+        if not relation_exists(cur, name):
+            cur.execute(ddl)
+    # Additive columns for paid-token accounting. The name is the catalog key, the DDL is
+    # issued only when the column is absent (safe on existing DBs, and free once applied).
+    for table, column, stmt in (
+        ("llm_consumption_log", "relative_units",
+         "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS relative_units NUMERIC(12,6) DEFAULT 0"),
+        ("llm_consumption_log", "cost_basis",
+         "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS cost_basis TEXT"),
+        ("llm_consumption_log", "pricing_effective_at",
+         "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS pricing_effective_at TEXT"),
+        ("llm_consumption_log", "reasoning_tokens",
+         "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS reasoning_tokens INT"),
+        ("llm_consumption_log", "cache_hit_tokens",
+         "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS cache_hit_tokens INT"),
+        ("llm_consumption_log", "cache_miss_tokens",
+         "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS cache_miss_tokens INT"),
+        ("llm_consumption_log", "requested_policy",
+         "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS requested_policy TEXT"),
+        ("llm_consumption_log", "executed_policy",
+         "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS executed_policy TEXT"),
+        ("llm_consumption_log", "requested_model_id",
+         "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS requested_model_id TEXT"),
+        ("llm_consumption_log", "returned_model",
+         "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS returned_model TEXT"),
+        ("llm_consumption_log", "thinking",
+         "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS thinking TEXT"),
+        ("llm_consumption_log", "reasoning_effort",
+         "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS reasoning_effort TEXT"),
+        ("llm_consumption_log", "provider_request_id",
+         "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS provider_request_id TEXT"),
+        ("llm_process_config", "daily_cost_cap_usd",
+         "ALTER TABLE llm_process_config ADD COLUMN IF NOT EXISTS daily_cost_cap_usd NUMERIC(12,4)"),
     ):
         try:
+            if column_exists(cur, table, column):
+                continue
             cur.execute(stmt)
         except Exception:
             try:
@@ -106,21 +153,23 @@ def ensure_schema() -> None:
                 pass
             cur = _conn().cursor()
     try:
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS llm_cost_reservations (
-                id BIGSERIAL PRIMARY KEY,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                process_id TEXT NOT NULL,
-                projected_usd NUMERIC(12,6) NOT NULL DEFAULT 0,
-                actual_usd NUMERIC(12,6),
-                status TEXT NOT NULL DEFAULT 'reserved',
-                model_id TEXT,
-                request_key TEXT,
-                metadata_json JSONB
-            )""")
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_llm_cost_reservations_process
-                ON llm_cost_reservations (process_id, created_at DESC)""")
+        if not relation_exists(cur, "llm_cost_reservations"):
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS llm_cost_reservations (
+                    id BIGSERIAL PRIMARY KEY,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    process_id TEXT NOT NULL,
+                    projected_usd NUMERIC(12,6) NOT NULL DEFAULT 0,
+                    actual_usd NUMERIC(12,6),
+                    status TEXT NOT NULL DEFAULT 'reserved',
+                    model_id TEXT,
+                    request_key TEXT,
+                    metadata_json JSONB
+                )""")
+        if not relation_exists(cur, "idx_llm_cost_reservations_process"):
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_llm_cost_reservations_process
+                    ON llm_cost_reservations (process_id, created_at DESC)""")
     except Exception:
         try:
             _conn().rollback()

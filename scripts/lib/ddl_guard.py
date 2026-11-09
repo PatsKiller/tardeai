@@ -108,6 +108,18 @@ def column_exists(cur: Any, table: str, column: str) -> bool:
     return cur.fetchone() is not None
 
 
+def relation_exists(cur: Any, name: str) -> bool:
+    """Catalog read: is `name` (table, index, sequence, view) already present?
+
+    Takes no lock on the relation. `to_regclass` resolves through the current
+    search_path and returns NULL rather than raising when nothing matches, which
+    is the idiom the rest of this tree already uses (``option_chain_runs.py``).
+    """
+    cur.execute("SELECT to_regclass(%s) IS NOT NULL", (name,))
+    row = cur.fetchone()
+    return bool(row and row[0])
+
+
 def apply_ddl(cur: Any, ddl: str) -> dict[str, Any]:
     """Execute `ddl`, skipping ADD COLUMN statements that are already satisfied.
 
