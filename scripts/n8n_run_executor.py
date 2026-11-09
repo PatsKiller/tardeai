@@ -1198,8 +1198,9 @@ class EffectGate:
 
         2026-11-08 21:30 ET (material-change-detector-stage1): one ``database is locked`` during the claim became
         ``effect:effect_store_unavailable``, a terminal RUN_REFUSED on attempt 1, and a dead letter for a lane whose
-        21:00 run finished in 13 s. The refusal is kept for every error a retry cannot fix; only ``locked``/``busy``
-        is retried, and a refusal result (e.g. ``already_claimed``) is returned, never retried.
+        21:00 run finished in 2.0 s and every neighbour in 2-11 s. The refusal is kept for every error a retry
+        cannot fix; only ``locked``/``busy`` is retried, and a refusal result (e.g. ``already_claimed``) is returned,
+        never retried.
         """
         for attempt in range(self.claim_attempts):
             try:
