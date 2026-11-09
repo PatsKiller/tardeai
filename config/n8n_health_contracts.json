@@ -34534,10 +34534,11 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "operator_approved_shadow_20261026; contract reviewed against scripts/prospectus_window.py, scripts/lib/prospectus/{schedule,delivery,pipeline,batch}.py at the go-live PR (shadow; live_arg null).",
-      "stage": "shadow",
+      "target_reason": "operator_approved_shadow_20261026, promoted to canary 2026-11-07 (LQ-20261107-297: the operator delegated the decision to the lead, the lane's spend stays inside the governed Anthropic credit cap and the lane sends nothing); contract reviewed against scripts/prospectus_window.py, scripts/lib/prospectus/{schedule,delivery,pipeline,batch}.py at the go-live PR (then shadow; live_arg null).",
+      "stage": "canary",
+      "state_note": "LQ-20261107-1709: stage shadow -> canary to follow config/lane_registry.json and config/n8n_run_allowlist.json as committed in 8f50354e9 (dispatch.mode dry_run -> live, live_arg --apply), which this contract was not updated with; scripts/check_n8n_health_contracts.py reported STAGE_DRIFT until this change, and the healthy check named shadow_dry_run_done described behaviour the lane no longer has. baseline.timeout_s 7200 is left as the CLASS_DEFAULT_PROVISIONAL value the allowlist still carries.",
       "purpose": {
-        "text": "Run the Ticker Prospectus at set times: at each run window (17:45 ET after the close for holdings + watch, 07:00 ET pre-market for holdings, weekdays) collect finished Watch batch results, enqueue what the cadence and triggers say is due, submit queued Watch rows to the Message Batches API and write holdings synchronously through the governed Anthropic credit path; between windows drain only operator 'Rewrite now' rows; leave one delivery outbox record per run for the host sender. At shadow a fire only plans (dry run).",
+        "text": "Run the Ticker Prospectus at set times: at each run window (17:45 ET after the close for holdings + watch, 07:00 ET pre-market for holdings, weekdays) collect finished Watch batch results, enqueue what the cadence and triggers say is due, submit queued Watch rows to the Message Batches API and write holdings synchronously through the governed Anthropic credit path; between windows drain only operator 'Rewrite now' rows; leave one delivery outbox record per run for the host sender. At canary a fire runs live (--apply) under the governed credit cap; this lane still sends nothing (prospectus-deliver is the sender).",
         "business_function": "research",
         "source": "scripts/prospectus_window.py module docstring; operator 2026-10-26 ('queued up and run a certain time of the day')"
       },
@@ -34559,7 +34560,7 @@
           "name": "/tmp/prospectus_build.lock",
           "kind": "lock",
           "direction": "read_write",
-          "source": "allowlist lock (no cron line exists; a dry_run fire takes /tmp/prospectus_build.lock.dryrun)"
+          "source": "allowlist lock (no cron line exists; a live fire takes /tmp/prospectus_build.lock, a dry_run fire /tmp/prospectus_build.lock.dryrun)"
         },
         {
           "name": "data/runtime/prospectus-build_last.json",
@@ -34618,8 +34619,8 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+          "check": "canary_live_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live (coordination ledger; the n8n dispatcher is the only scheduler — there is no cron twin to skip against)"
         },
         {
           "check": "dry_run_writes_nothing",
@@ -34748,7 +34749,7 @@
         "prepared_by": "claude prospectus-schedule-delivery 2026-10-26 (PR #2207)",
         "reviewed_by": "claude-coordinator 2026-10-26",
         "reviewed_on": "2026-10-26",
-        "note": "Reviewed against the code at the go-live PR (supersedes #2193/#2207): purpose, connections (window runner, governed credit sync + batch, quality gate, CIO memory, stores, outbox; no sender in the lane), healthy/degraded/failed, timeout, evidence and expected output. Fixed in review: expected_output rule min_produced -> empty_allowed (a 15-min lane produces 0 on most fires) with typed reasons; batch connections added. Stage stays shadow (live_arg null)."
+        "note": "Reviewed against the code at the go-live PR (supersedes #2193/#2207): purpose, connections (window runner, governed credit sync + batch, quality gate, CIO memory, stores, outbox; no sender in the lane), healthy/degraded/failed, timeout, evidence and expected output. Fixed in review: expected_output rule min_produced -> empty_allowed (a 15-min lane produces 0 on most fires) with typed reasons; batch connections added. Stage stays shadow (live_arg null) — superseded 2026-11-07 by LQ-20261107-297 (canary, live_arg --apply, commit 8f50354e9; see state_note)."
       },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",

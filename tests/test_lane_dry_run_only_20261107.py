@@ -7,6 +7,10 @@ receipt is from 2026-10-28, so `cron_outage_watchdog.evaluate()` graded it `MISS
 opened a P1 "cron/lane outage: prospectus-build missed its schedule", and the incidents page has said
 "missed" for ten days about a lane that is behaving exactly as configured.
 
+Since 2026-11-07 the lane is at canary with `dispatch.mode: "live"` (LQ-20261107-297, commit 8f50354e9), so the
+shipped-row case below now exercises the *live* branch of these rules (a stale receipt is a real outage); the rules
+themselves are unchanged, and rule 5 still means the classification comes from the row, not a name list.
+
 The rules pinned here:
 
   1. a lane whose row declares `dispatch.mode: dry_run` is `DRY_RUN_ONLY` — visible in `rows`, named in
@@ -172,14 +176,17 @@ def test_both_kinds_in_one_document_produce_two_distinct_findings(tmp_path):
 
 # ── 4. the shipped row, not a name list ──────────────────────────────────────────────────────────
 
-def test_the_shipped_prospectus_build_row_is_classified_dry_run_only():
+def test_the_shipped_prospectus_build_row_is_classified_live_not_dry_run_only():
+    """LQ-20261107-1709: the lane was promoted shadow -> canary (dispatch.mode dry_run -> live) by
+    LQ-20261107-297, commit 8f50354e9; the same stale receipt is now a real outage, so the watchdog must
+    grade it MISSED_RUNS, not DRY_RUN_ONLY. Rule 5 still holds: classification comes from the row."""
     registry = json.loads((ROOT / "config" / "lane_registry.json").read_text())
     row = next(r for r in registry["lanes"] if r["lane_id"] == "prospectus-build")
-    assert row["dispatch"]["mode"] == "dry_run", "the row changed shape; re-read it before trusting this pin"
+    assert row["dispatch"]["mode"] == "live", "the row changed shape; re-read it before trusting this pin"
 
     result = evaluate({"lanes": [row]}, [], {"prospectus-build": [{"at": STALE, "validated_success": True}]},
                       now=NOW)
 
-    assert result["rows"][0]["status"] == "DRY_RUN_ONLY"
-    assert "prospectus-build" in result["dry_run_only_lane_ids"]
-    assert "prospectus-build" not in result["missed_lane_ids"]
+    assert result["rows"][0]["status"] == "MISSED_RUNS"
+    assert "prospectus-build" in result["missed_lane_ids"]
+    assert "prospectus-build" not in result["dry_run_only_lane_ids"]

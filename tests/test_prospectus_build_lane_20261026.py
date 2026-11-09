@@ -1,7 +1,12 @@
-"""prospectus-build as an n8n-native lane at stage shadow (operator 2026-10-26, Ticker Prospectus contract).
+"""prospectus-build as an n8n-native lane at stage canary (operator 2026-10-26, promoted 2026-11-07).
 
-Registry row (dispatcher, shadow, dry_run), allowlist entry (dry_run_arg only, live_arg null, flock, no broker env),
+Registry row (dispatcher, canary, live), allowlist entry (dry_run_arg and live_arg --apply, flock, no broker env),
 REVIEWED health contract, CI gate, and an import closure with no direct sender and only lazy (baselined) broker reach.
+
+The lane was created at shadow and promoted to canary by LQ-20261107-297 (commit 8f50354e9, 2026-11-07 16:57 ET:
+dispatch.mode dry_run -> live, allowlist live_arg null -> ["--apply"], on an operator decision delegated to the lead,
+spend inside the governed Anthropic credit cap). This file and the health contract were not updated with it; both
+pinned shadow and went red on the live line (LQ-20261107-1709). The registry is truth: the promotion was deliberate.
 """
 from __future__ import annotations
 
@@ -20,31 +25,33 @@ def _json(rel):
     return json.loads((ROOT / rel).read_text(encoding="utf-8"))
 
 
-def test_lane_is_n8n_native_shadow_dry_run():
+def test_lane_is_n8n_native_canary_live():
     from scripts.lib import lane_dispatch as LD
     from scripts.lib.lane_stage_clamp import clamp_mode
 
     rows = _json("config/lane_registry.json")["lanes"]
     row = next(r for r in rows if r["lane_id"] == LANE)
     sched = row["scheduler"]
-    assert (sched["kind"], sched["expression"], sched["stage"]) == ("n8n", "dispatcher", "shadow")
+    assert (sched["kind"], sched["expression"], sched["stage"]) == ("n8n", "dispatcher", "canary")
     assert sched["match"] == "scripts/prospectus_window.py"  # run windows (2026-10-26)
-    assert row["dispatch"]["mode"] == "dry_run" and row["dispatch"]["cron"] == [sched["cadence"]]
+    assert row["dispatch"]["mode"] == "live" and row["dispatch"]["cron"] == [sched["cadence"]]
     assert row["output_signal"]["path"] == f"data/runtime/{LANE}_last.json"
     assert LD.validate_dispatch_block(row) == []
     assert LD.dispatchable(row)
-    assert clamp_mode(LANE, "live", rows)["effective_mode"] == "dry_run"
+    assert clamp_mode(LANE, "live", rows)["effective_mode"] == "live"
 
     allow = _json("config/n8n_run_allowlist.json")
     entry = next(e for e in allow["lanes"] if e["lane_id"] == LANE)
     assert entry["command"][:2] == ["$PY", "scripts/prospectus_window.py"] and "--apply" not in entry["command"]
-    assert entry["dry_run_arg"] == ["--dry-run"] and entry["live_arg"] is None
+    assert entry["dry_run_arg"] == ["--dry-run"] and entry["live_arg"] == ["--apply"]
     assert entry["lock_kind"] == "flock" and entry["output_signal"] == row["output_signal"]["path"]
     assert not any(n.startswith(("SCHWAB", "ALPACA", "SNAPTRADE", "MOOMOO", "IBKR")) for n in entry["env_names"])
     assert LANE not in json.dumps(allow.get("never"))
 
     contract = next(c for c in _json("config/n8n_health_contracts.json")["contracts"] if c["id"] == LANE)
-    assert contract["stage"] == "shadow" and contract["evidence"]["receipt"] == row["output_signal"]["path"]
+    assert contract["stage"] == "canary" and contract["evidence"]["receipt"] == row["output_signal"]["path"]
+    # the contract must describe the stage it is at, not the one it left (LQ-20261107-1709)
+    assert not any(h["check"] == "shadow_dry_run_done" for h in contract["healthy"])
     from scripts.lib.n8n_output_verdict import validate_expected_output
 
     assert validate_expected_output(contract["expected_output"]) == []
