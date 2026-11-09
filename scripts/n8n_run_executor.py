@@ -1573,7 +1573,18 @@ EXECUTOR_DEFAULTS: dict[str, tuple[float, float, float]] = {
     "finish_retry_backoff_max_s": (8.0, 0.0, 120.0),
     "status_queue_limit": (5000, 10, 100000),
     "receipt_history": (200, 1, 10000),
+    # LQ-20261107-1685 (A): rolling intake while draining, then a bounded final drain.
+    "drain_predict_s": (150.0, 10.0, 1800.0),  # enter the final drain when every run is predicted to end in this
+    "drain_final_cap_s": (180.0, 10.0, 3600.0),  # intake stays off at most this long; then it re-opens
+    "drain_p95_ttl_s": (600.0, 30.0, 7200.0),  # how often the lane-duration predictor is re-read from the ledger
 }
+
+#: The predictor's window and the sample floor below which a lane falls back to its allowlist ``timeout_s``.
+DRAIN_HISTORY_WINDOW_S = 7 * 86400.0
+DRAIN_P95_MIN_SAMPLES = 5
+#: The final drain's hard cap (config ``drain_final_cap_s`` defaults to it); the replay test pins the gap to it.
+FINAL_DRAIN_CAP_S = 180.0
+DRAIN_PREDICT_S = 150.0
 _INT_KEYS = frozenset(
     {
         "max_workers",
@@ -1811,6 +1822,17 @@ def upgrade_receipt(
     return out
 
 
+def _p95(values: list[float]) -> float:
+    """Linear-interpolated 95th percentile (the same form the lane-duration report uses)."""
+    ordered = sorted(values)
+    if not ordered:
+        return 0.0
+    pos = 0.95 * (len(ordered) - 1)
+    lo = int(pos)
+    hi = min(lo + 1, len(ordered) - 1)
+    return ordered[lo] + (ordered[hi] - ordered[lo]) * (pos - lo)
+
+
 class ExecutorV2:
     """Scheduler loop + N worker threads over one LedgerRunStore (design 02 §5). ``clock``, ``runner_factory``,
     ``pid_alive``, ``sleeper`` and every interval are injectable so tests run on a fake clock with fake runners.
@@ -1889,6 +1911,18 @@ class ExecutorV2:
             lambda now: executor_drain.drain_state(self.state_root, self.code_root, now)
         )
         self._draining: dict[str, Any] | None = None
+        #: LQ-20261107-1685 (A): when the FINAL drain (intake off) started, and the floor until it may re-enter.
+        self._final_drain_at: float | None = None
+        self._final_drain_cooldown_until = 0.0
+        #: lane_id -> p95 duration_s from the ledger's last DRAIN_HISTORY_WINDOW_S (refreshed every ttl).
+        self._lane_p95: dict[str, float] = {}
+        self._lane_p95_at: float | None = None
+        #: D: a forced exit postponed because a run in flight is still inside its own timeout.
+        self._drain_deadline_override: dict[str, float] | None = None
+        self._force_postponed_for: float | None = None
+        self.drain_predict_s = float(cfg["drain_predict_s"])
+        self.drain_final_cap_s = float(cfg["drain_final_cap_s"])
+        self.drain_p95_ttl_s = float(cfg["drain_p95_ttl_s"])
 
     # -- helpers --
     def entries(self) -> Mapping[str, Mapping[str, Any]]:
@@ -1921,39 +1955,175 @@ class ExecutorV2:
     # -- scheduler --
     def step(self) -> int:
         """One scheduler iteration: retry pending completions, reap when due, fill free workers, write
-        ExecutorStatus@v1. Returns runs started."""
+        ExecutorStatus@v1. Returns runs started.
+
+        LQ-20261107-1685 (A): a drain no longer stops every start. The old executor keeps claiming (rolling
+        intake) and closes intake for a FINAL drain only once each in-flight run is predicted to end within
+        ``drain_predict_s``. Before, one 3114 s disk-hygiene run meant 2894 s with zero run starts."""
         self.retry_pending()
         now = self.clock()
         if self._last_reap is None or now - self._last_reap >= self.reap_every_s:
             self.reap(now)
             self._last_reap = now
         draining = self._check_drain(now)
-        started = 0 if draining else self.fill(self.clock())
+        if draining:
+            self._postpone_forced(now)
+        started = 0 if draining and self._final_drain_ready(now) else self.fill(self.clock())
         self.write_status(self.clock())
         return started
 
     def _check_drain(self, now: float) -> dict[str, Any] | None:
         """LQ-20261107-137: a promote asked this executor to hand over to a newer release. A failing check is
-        no drain (keep working, as before)."""
+        no drain (keep working, as before).
+
+        LQ-20261107-1685 (D): a postponed deadline (``_postpone_forced``) is re-applied here for the same
+        request only (``requested_at`` unchanged), so the extension survives every step."""
         try:
             d = self.drain_check(now)
         except Exception as exc:  # noqa: BLE001 -- a broken drain check must never stop the executor
             self._log({"executor": "drain_check_error", "error": f"{type(exc).__name__}:{str(exc)[:120]}"})
             d = None
+        if d is None:
+            self._drain_deadline_override = None
+            self._final_drain_at = None
+        elif (
+            self._drain_deadline_override is not None
+            and self._drain_deadline_override["requested_at"] == d["requested_at"]
+            and self._drain_deadline_override["deadline_at"] > d["deadline_at"]
+        ):
+            d["deadline_at"] = self._drain_deadline_override["deadline_at"]
+            d["forced"] = float(now) >= d["deadline_at"]
+            d["deadline_extended"] = True
         if d and not self._draining:
             self._log({"executor": "draining", **d})
         self._draining = dict(d) if d else None
         return self._draining
+
+    # -- LQ-20261107-1685: rolling intake, bounded final drain, postponed force --
+
+    def _timeout_s(self, lane_id: str) -> float:
+        """The lane's allowlist ``timeout_s`` (its own worker enforces it), else ``unknown_lane_timeout_s``."""
+        entry = self.entries().get(lane_id) or {}
+        timeout_s = entry.get("timeout_s")
+        if isinstance(timeout_s, (int, float)) and not isinstance(timeout_s, bool):
+            return float(timeout_s)
+        return float(self.cfg["unknown_lane_timeout_s"])
+
+    def _predicted_s(self, lane_id: str) -> float:
+        """How long this lane is expected to run: its 7-day p95, else its allowlist ``timeout_s``."""
+        return self._lane_p95.get(lane_id) or self._timeout_s(lane_id)
+
+    def _refresh_lane_p95(self, now: float) -> None:
+        """Re-read the ledger's per-lane durations at most once per ``drain_p95_ttl_s``."""
+        if self._lane_p95_at is not None and now - self._lane_p95_at < self.drain_p95_ttl_s:
+            return
+        try:
+            raw = self.store.lane_durations(since_epoch=now - DRAIN_HISTORY_WINDOW_S)
+        except Exception as exc:  # noqa: BLE001 - an unreadable history is "no p95": the timeout_fallback covers it
+            self._log({"executor": "drain_p95_error", "error": f"{type(exc).__name__}:{str(exc)[:120]}"})
+            raw = {}
+        self._lane_p95 = {
+            lane: _p95(values) for lane, values in raw.items() if len(values) >= DRAIN_P95_MIN_SAMPLES
+        }
+        self._lane_p95_at = now
+
+    def _remaining_s(self, slot: Mapping[str, Any], now: float, *, hard: bool = False) -> float:
+        """Seconds this run is predicted (its p95) or allowed (its own ``timeout_s``) to keep the executor busy.
+
+        ``hard=True`` is what a forced exit must respect: the run cannot outlive its own timeout, so extending
+        the deadline past that is pointless — but a run that has merely outlived its p95 is still a live child."""
+        lane = str(slot.get("lane_id"))
+        horizon = self._timeout_s(lane) if hard else self._predicted_s(lane)
+        try:
+            started = datetime.fromisoformat(str(slot.get("started_at")))
+        except (TypeError, ValueError):
+            return horizon
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        return max(0.0, horizon - (now - started.timestamp()))
+
+    def _final_drain_ready(self, now: float) -> bool:
+        """True when intake is off: nothing is in flight, or every in-flight run is about to end.
+
+        The final drain is hard-capped: a run that outlives its p95 re-opens intake (and is never killed),
+        with a cooldown of one cap so the rolling phase always gets a chance to start queued work."""
+        busy = self.busy()
+        if self._final_drain_at is not None:
+            if now - self._final_drain_at < self.drain_final_cap_s:
+                return True
+            self._log({"executor": "final_drain_reopened", "reason": "cap", "busy": len(busy)})
+            self._final_drain_at = None
+            self._final_drain_cooldown_until = now + self.drain_final_cap_s
+            return False
+        if not busy:
+            return True  # nothing to wait for: drain_done() exits this process now
+        if now < self._final_drain_cooldown_until:
+            return False
+        self._refresh_lane_p95(now)
+        remaining = {str(s.get("lane_id")): self._remaining_s(s, now) for s in busy}
+        if any(v > self.drain_predict_s for v in remaining.values()):
+            return False  # rolling: keep starting queued runs; the long one has more than a final drain to go
+        self._final_drain_at = now
+        self._log(
+            {
+                "executor": "final_drain",
+                "busy": len(busy),
+                "max_remaining_s": round(max(remaining.values(), default=0.0), 1),
+                "predicted": remaining,
+            }
+        )
+        return True
+
+    def _postpone_forced(self, now: float) -> None:
+        """D: never exit on the backstop while a run is still inside its own timeout.
+
+        The request's deadline is a fixed instant; rolling intake can start a run after it. Exiting then
+        SIGTERMs the cgroup and the next executor reaps ``executor_lost`` (the defect LQ-137 removed for the
+        ordinary case). Extend to the predicted end plus ``lost_grace_s``, never past the instant the request
+        itself becomes history (``MAX_AGE_S``)."""
+        d = self._draining
+        if not d or not d.get("forced"):
+            return
+        busy = self.busy()
+        if not busy:
+            return
+        self._refresh_lane_p95(now)
+        # Hard horizon (the lane's own timeout), never the p95: a run that has outlived its p95 is still a live
+        # child, and forcing there is exactly how a 3114 s disk-hygiene run was reaped as executor_lost.
+        remaining = max((self._remaining_s(s, now, hard=True) for s in busy), default=0.0)
+        if remaining <= 0.0:
+            return
+        hard_cap = float(d["requested_at"]) + executor_drain.MAX_AGE_S - 60.0
+        extended = min(now + remaining + self.lost_grace_s, hard_cap)
+        if extended <= float(d["deadline_at"]):
+            return
+        first = self._force_postponed_for != float(d["requested_at"])
+        self._force_postponed_for = float(d["requested_at"])
+        self._drain_deadline_override = {"requested_at": float(d["requested_at"]), "deadline_at": extended}
+        d["deadline_at"] = extended
+        d["forced"] = False
+        d["deadline_extended"] = True
+        if first:
+            self._log(
+                {
+                    "executor": "drain_force_postponed",
+                    "deadline_at": _iso(extended),
+                    "busy": len(busy),
+                    "max_remaining_s": round(remaining, 1),
+                }
+            )
 
     def drain_done(self) -> str | None:
         """'drained' when draining and nothing is in flight or pending; 'drain_forced' past the deadline."""
         d = self._draining
         if not d:
             return None
-        if d.get("forced"):
-            return "drain_forced"
+        # LQ-20261107-1685: emptiness is judged first. A deadline that passes while nothing is in flight is not
+        # a force — the hand-over is as clean as an idle drain, and the journal should say so.
         if not self.busy() and not self.pending():
             return "drained"
+        if d.get("forced"):
+            return "drain_forced"
         return None
 
     def fill(self, now: float) -> int:
@@ -2373,6 +2543,10 @@ class ExecutorV2:
             },
             "retry_policies_sha256": getattr(self.policies, "sha256", None),
             "draining": None if self._draining is None else dict(self._draining),
+            # LQ-20261107-1685 (A): "rolling" still claims; "final" has intake off for one bounded wait.
+            "drain_mode": None
+            if self._draining is None
+            else ("final" if self._final_drain_at is not None else "rolling"),
             "authority": "READ_ONLY_ADVISORY",
         }
 

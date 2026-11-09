@@ -16,6 +16,9 @@
   "finish_retry_backoff_max_s": 8,
   "status_queue_limit": 5000,
   "receipt_history": 200,
+  "drain_predict_s": 150,
+  "drain_final_cap_s": 180,
+  "drain_p95_ttl_s": 600,
   "typed_reason_markers": {
     "COST_CAP": "(?i)cost_cap|skipped_budget",
     "PEAK_SKIP": "(?i)peak_skip"

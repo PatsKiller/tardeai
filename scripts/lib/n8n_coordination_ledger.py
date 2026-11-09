@@ -880,6 +880,20 @@ class LedgerRunStore:
             " ORDER BY finished_at DESC LIMIT ?", (lane_id, *modes, int(limit))).fetchall()
         return [self._row_dict(r) for r in rows]
 
+    @_locked
+    def lane_durations(self, *, since_epoch: float, limit: int = 50_000) -> dict[str, list[float]]:
+        """``{lane_id: [duration_s, ...]}`` for runs started at or after ``since_epoch`` (LQ-20261107-1685).
+
+        The cut is bound in the writer's own ISO form (``_iso``), never a ``Z`` suffix: the rows carry
+        ``+00:00`` and a text comparison against ``Z`` matches nothing. One pass, newest first, capped."""
+        rows = self._l._conn.execute(
+            "SELECT lane_id, duration_s FROM runs WHERE started_at >= ? AND duration_s IS NOT NULL"
+            " ORDER BY started_at DESC LIMIT ?", (_iso(float(since_epoch)), int(limit))).fetchall()
+        out: dict[str, list[float]] = {}
+        for r in rows:
+            out.setdefault(str(r["lane_id"]), []).append(float(r["duration_s"]))
+        return out
+
     # ── B5.4: verdicts, dead letters, breakers, event cursors (design 02 §3.3/§3.4) ──
 
     def _write(self, sql: str, args: tuple) -> int:

@@ -1095,7 +1095,7 @@ restart_root_frozen_units() {
     done
   fi
   local u pid cwd failures=0
-  local -a restarted=() restart_failed=() deferred=()
+  local -a restarted=() restart_failed=() deferred=() refused=()
   for u in "${keep[@]}"; do
     systemctl --user list-unit-files "$u" >/dev/null 2>&1 || { log "  skip $u (not installed)"; continue; }
     systemctl --user is-active --quiet "$u" || { log "  skip $u (not running)"; continue; }
@@ -1106,10 +1106,15 @@ restart_root_frozen_units() {
     if [[ "$u" == "tradeai-n8n-run-executor.service" && "$have_py" == "1" && -f "${ROOT}/scripts/n8n_executor_drain.py" ]]; then
       local dres=""
       dres="$("$VENV_PYTHON" "${ROOT}/scripts/n8n_executor_drain.py" request --target "$dir" --unit "$u" \
-        --wait-s "${TRADEAI_EXECUTOR_DRAIN_WAIT_S:-90}" 2>/dev/null | sed -n 's/^DRAIN_RESULT=//p' | tail -1)" || dres=""
+        --wait-s "${TRADEAI_EXECUTOR_DRAIN_WAIT_S:-90}" \
+        ${TRADEAI_EXECUTOR_DRAIN_WAIT_MAX:+--wait-max "$TRADEAI_EXECUTOR_DRAIN_WAIT_MAX"} \
+        2>/dev/null | sed -n 's/^DRAIN_RESULT=//p' | tail -1)" || dres=""
       case "$dres" in
         re_resolved) log "  $u drained its in-flight runs and restarted itself"; restarted+=("$u"); continue ;;
         deferred_draining) log "  DEFER $u: in-flight run(s) still running; it restarts itself on this release when idle"; deferred+=("$u"); continue ;;
+        # LQ-20261107-1685 (E): market hours and a run older than 300 s in flight. A restart would kill it
+        # (executor_lost) and a drain would stop every start for up to an hour, so the release waits for later.
+        refused_market_busy) log "  REFUSE $u: in-flight run(s) in market hours; not restarting — the release waits for an off-hours promote"; refused+=("$u"); continue ;;
         *) log "  $u drain not acknowledged (${dres:-no result}); restarting (in-flight runs end executor_lost)" ;;
       esac
     fi
@@ -1143,7 +1148,8 @@ restart_root_frozen_units() {
       vpre=(env -u TRADE_AI_CI -u TRADEAI_TEST_HARNESS)
     fi
     "${vpre[@]}" "$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" verify --current "$dir" --event "$event" \
-      --restarted "${restarted[*]}" --restart-failed "${restart_failed[*]}" --deferred "${deferred[*]}" || vrc=$?
+      --restarted "${restarted[*]}" --restart-failed "${restart_failed[*]}" --deferred "${deferred[*]}" \
+      --refused "${refused[*]}" || vrc=$?
     case "$vrc" in
       0) ;;
       4) log "  ERROR current-bound verify REFUSED to page or write its receipt (harness guard) — check the deploy env" ;;

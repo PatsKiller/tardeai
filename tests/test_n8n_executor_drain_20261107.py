@@ -253,12 +253,37 @@ def test_drain_finishes_the_in_flight_run_and_claims_nothing_new(rig):
     assert rig.store.get("run-other-00000000001")["state"] == "REQUESTED"
 
 
-def test_forced_drain_exits_after_the_deadline(rig):
+def test_forced_drain_postpones_while_a_run_is_in_flight(rig):
+    """LQ-20261107-1685 (D): the backstop never SIGTERMs a live child. Before, a 2400 s deadline met a 3114 s
+    disk-hygiene run and the next executor reaped it executor_lost."""
     rig.request("run-sweep-00000000002", "sweep")
     rig.ex.step()
     _wait(lambda: rig.gates.started == ["sweep"])
     D.write_request(rig.rel.state, rig.rel.new, now=rig.clock.t, deadline_s=30)
     rig.clock.t += 31
+    rig.ex.step()
+    draining = rig.ex.status(rig.clock.t)["draining"]
+    assert draining["forced"] is False and draining.get("deadline_extended") is True
+    rig.gates.gate("sweep").set()
+    assert rig.ex.serve(poll_s=0.01) == "drained"
+    assert rig.store.get("run-sweep-00000000002")["state"] == "RUN_DONE"
+
+
+def test_a_deadline_passed_with_nothing_in_flight_is_a_clean_drain(rig):
+    """LQ-20261107-1685: emptiness is judged first, so the hand-over reports 'drained' (exit 0 either way)."""
+    D.write_request(rig.rel.state, rig.rel.new, now=rig.clock.t, deadline_s=30)
+    rig.clock.t += 31
+    assert rig.ex.serve(poll_s=0.01) == "drained"
+
+
+def test_forced_drain_is_the_last_resort_at_the_request_expiry(rig):
+    """LQ-20261107-1685 (D): past the point where the request itself becomes history there is nothing left to
+    postpone to, so a live child is the only case that still forces (and it is named as such)."""
+    rig.request("run-sweep-00000000006", "sweep")
+    rig.ex.step()
+    _wait(lambda: rig.gates.started == ["sweep"])
+    D.write_request(rig.rel.state, rig.rel.new, now=rig.clock.t, deadline_s=D.MAX_AGE_S - 30)
+    rig.clock.t += D.MAX_AGE_S - 29
     assert rig.ex.serve(poll_s=0.01) == "drain_forced"
 
 

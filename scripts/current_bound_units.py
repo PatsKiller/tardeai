@@ -197,13 +197,20 @@ def cmd_verify(args: argparse.Namespace) -> int:
     # LQ-20261107-137: units the deploy asked to drain (n8n run executor finishing in-flight runs). They restart
     # themselves when idle, so being on the old release right now is expected, not a stale unit to page.
     deferred = _split(getattr(args, "deferred", ""))
+    # LQ-20261107-1685 (E): units the market-hours guard kept on the old release on purpose (a long run in
+    # flight). Recorded, never paged as stale — the release waits for an off-hours promote by design.
+    refused_units = _split(getattr(args, "refused", ""))
     checks = cbu.verify(args.current, restarted)
     failed = sorted({*restart_failed, *(k for k, v in checks.items() if not v["ok"])})
     p = cbu.plan(args.current)
     stale_page_only = [
         {"name": u.name, "cwd": u.cwd, "reason": u.reason if u.action == "page_only" else "not_in_this_deploy_list"}
         for u in p.units
-        if u.stale and u.name not in restarted and u.name not in restart_failed and u.name not in deferred
+        if u.stale
+        and u.name not in restarted
+        and u.name not in restart_failed
+        and u.name not in deferred
+        and u.name not in refused_units
     ]
     now = datetime.now(timezone.utc)
     out: dict = {
@@ -214,6 +221,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         "restarted": restarted,
         "restart_failed": restart_failed,
         "deferred_draining": deferred,
+        "refused_market_busy": refused_units,
         "verify": checks,
         "failed": failed,
         "stale_page_only": stale_page_only,
@@ -247,7 +255,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
         json.dumps(out, indent=2)
         if args.json
         else f"verify[{args.event}]: {len(checks) - len([k for k, v in checks.items() if not v['ok']])}/{len(checks)} "
-        f"on new release; failed={failed} stale_page_only={[u['name'] for u in stale_page_only]} paged={out['paged']}"
+        f"on new release; failed={failed} refused_market_busy={refused_units} "
+        f"stale_page_only={[u['name'] for u in stale_page_only]} paged={out['paged']}"
     )
     refused = bool(out.get("receipt_refused")) or str(out.get("page_error") or "").startswith("refused")
     if refused and not args.dry_run:
@@ -278,6 +287,11 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--restarted", default="")
     b.add_argument("--restart-failed", default="")
     b.add_argument("--deferred", default="", help="units draining in-flight work; they restart themselves when idle")
+    b.add_argument(
+        "--refused",
+        default="",
+        help="units whose activation the market-hours guard refused; recorded, never paged as stale (LQ-1685)",
+    )
     b.add_argument("--state-root")
     b.add_argument("--dry-run", action="store_true", help="print the page; send nothing; write no receipt")
     b.add_argument("--json", action="store_true")

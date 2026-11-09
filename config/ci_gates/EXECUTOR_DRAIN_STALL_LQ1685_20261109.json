@@ -1,0 +1,19 @@
+{
+  "schema": "CiGate@v1",
+  "name": "EXECUTOR_DRAIN_STALL_LQ1685_20261109",
+  "files": [
+    "tests/test_n8n_executor_drain_stall_20261109.py"
+  ],
+  "anchor": "EXECUTOR_DRAIN_STALL_LQ1685",
+  "comment": [
+    "ANCHOR: EXECUTOR_DRAIN_STALL_LQ1685 — 2026-11-09 14:22 ET a promote drained the n8n run executor while",
+    "disk-hygiene was in flight: started=0 for 2894 s (next start 15:10:18), and the 15:36 promote repeated it",
+    "(1730 s). A second request rewrote requested_at and pushed the backstop from 15:03:43 to 15:37:16.",
+    "The gate pins: while draining the old executor keeps claiming and only closes intake for a final drain",
+    "once every in-flight run is predicted to end within 150 s (hard cap 180 s, then intake re-opens); a forced",
+    "exit is postponed while a run is inside its own timeout; a rewritten request keeps the earliest requested_at",
+    "and the largest deadline_s; the deadline covers the longest in-flight timeout plus lost_grace; and the",
+    "deploy helper refuses (exit 3) to start a drain in market hours while a run older than 300 s is in flight.",
+    "Hermetic: temporary ledgers and release dirs, a fake clock, fake runners; no live ledger, no systemd."
+  ]
+}

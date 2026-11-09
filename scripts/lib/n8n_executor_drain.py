@@ -15,6 +15,16 @@ How (no unit change, no operator install):
    release.
 3. The new executor's ``code_root`` is ``target``, so the same request is inert for it. Nothing has to clear it.
 
+LQ-20261107-1685 (measured 2026-11-09: a 2894 s and a 1730 s window with zero run starts):
+
+* A rewritten request keeps the earliest ``requested_at`` and the largest ``deadline_s``. Before, a second
+  promote overwrote both, and the backstop moved 33 minutes later (14:57:16 asked again; deadline
+  15:03:43 -> 15:37:16).
+* ``deadline_for`` raises the deadline to the longest in-flight lane timeout plus ``lost_grace_s``, so a
+  forced exit never meets a live child.
+* ``market_guard`` is the activation check (E): in regular market hours on a trading day, a drain that would
+  stop starts while a run older than 300 s is in flight is refused and the release waits.
+
 Fail-safe in both directions:
 
 * An unreadable, malformed, old (``MAX_AGE_S``) or pointless request (target missing, or already the code root)
@@ -35,6 +45,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from datetime import datetime, time as dt_time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -46,10 +57,24 @@ EXECUTOR_UNIT = "tradeai-n8n-run-executor.service"
 DEFAULT_DEADLINE_S = 2400.0
 #: A request older than this is history, not an instruction.
 MAX_AGE_S = 6 * 3600.0
+#: A lane with no allowlist entry is allowed this long (ExecutorV2 config unknown_lane_timeout_s).
+DEFAULT_LANE_TIMEOUT_S = 3600.0
+
+#: LQ-20261107-1685 (E): the activation window and the run age that makes a drain unsafe.
+try:
+    from zoneinfo import ZoneInfo  # noqa: PLC0415 - stdlib on 3.9+; the fallback keeps the module importable
+
+    ET = ZoneInfo("America/New_York")
+except ImportError:  # pragma: no cover - the repo runs 3.12+
+    ET = timezone(timedelta(hours=-5))
+MARKET_GUARD_START = dt_time(9, 30)
+MARKET_GUARD_END = dt_time(16, 15)
+MARKET_GUARD_MIN_AGE_S = 300.0
 
 RESULT_RE_RESOLVED = "re_resolved"
 RESULT_DEFERRED = "deferred_draining"
 RESULT_NOT_ACKED = "not_acknowledged"
+RESULT_REFUSED_MARKET_BUSY = "refused_market_busy"
 
 
 def request_path(state_root: Path) -> Path:
@@ -64,14 +89,28 @@ def write_request(
     deadline_s: float = DEFAULT_DEADLINE_S,
     requested_by: str = "deploy",
 ) -> Path:
-    """Atomically write the drain request. Returns its path."""
+    """Atomically write the drain request. Returns its path.
+
+    LQ-20261107-1685 (D): an un-acted request keeps its ``requested_at`` and its largest ``deadline_s``; only
+    the target moves. A rewrite therefore never postpones the backstop, which is what let the 14:22 ET drain
+    run to 15:37 instead of 15:03.
+    """
     path = request_path(state_root)
     path.parent.mkdir(parents=True, exist_ok=True)
+    at = float(time.time() if now is None else now)
+    requested_at, deadline = at, float(deadline_s)
+    prev = read_request(state_root)
+    if prev is not None:
+        age = at - prev["requested_at"]
+        if 0.0 <= age <= MAX_AGE_S:  # the same un-acted drain: earliest request wins, never a later deadline
+            requested_at = prev["requested_at"]
+            deadline = max(deadline, float(prev["deadline_s"]))
     doc = {
         "schema": SCHEMA,
         "target": str(Path(target).resolve()),
-        "requested_at": float(time.time() if now is None else now),
-        "deadline_s": float(deadline_s),
+        "requested_at": requested_at,
+        "deadline_s": deadline,
+        "written_at": at,
         "requested_by": str(requested_by)[:80],
     }
     tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
@@ -121,6 +160,100 @@ def drain_state(state_root: Path, code_root: Path, now: float) -> dict[str, Any]
         "forced": float(now) >= deadline_at,
         "requested_by": req.get("requested_by"),
     }
+
+
+def timeout_by_lane(allowlist: Mapping[str, Any] | None) -> dict[str, float]:
+    """``{lane_id: timeout_s}`` from an N8nRunAllowlist@v1 document (or a ``{lane: entry}`` mapping)."""
+    out: dict[str, float] = {}
+    if not isinstance(allowlist, Mapping):
+        return out
+    lanes = allowlist.get("lanes")
+    entries: list[Mapping[str, Any]] = []
+    if isinstance(lanes, list):
+        entries = [e for e in lanes if isinstance(e, Mapping)]
+    else:  # a resolved mapping: {lane_id: entry}
+        entries = [dict(e, lane_id=str(k)) for k, e in allowlist.items() if isinstance(e, Mapping)]
+    for entry in entries:
+        lane = entry.get("lane_id")
+        timeout_s = entry.get("timeout_s")
+        if isinstance(lane, str) and isinstance(timeout_s, (int, float)) and not isinstance(timeout_s, bool):
+            out[lane] = float(timeout_s)
+    return out
+
+
+def deadline_for(
+    busy: Any,
+    allowlist: Mapping[str, Any] | None,
+    *,
+    default: float = DEFAULT_DEADLINE_S,
+    lost_grace_s: float = 120.0,
+) -> float:
+    """LQ-20261107-1685 (D): a backstop that outlives every in-flight run's own timeout.
+
+    The old fixed 2400 s was documented as ``heavy_timeout_s 1800 + lost_grace 120``, which is false for the
+    22 allowlist rows with ``timeout_s >= 1800`` (disk-hygiene is 3600). A forced exit below that kills the
+    child and the next executor reaps it ``executor_lost``."""
+    timeouts = timeout_by_lane(allowlist)
+    longest = default
+    for row in busy or ():
+        lane = row.get("lane_id") if isinstance(row, Mapping) else None
+        longest = max(longest, timeouts.get(str(lane), DEFAULT_LANE_TIMEOUT_S) + float(lost_grace_s))
+    return float(max(default, longest))
+
+
+def _trading_day_default(d) -> bool:
+    try:
+        from scripts.market_session import is_trading_day  # noqa: PLC0415 - a heavy import, only on this path
+
+        return bool(is_trading_day(d))
+    except Exception:  # noqa: BLE001 - an unreadable calendar fails closed: weekdays are trading days
+        return d.weekday() < 5
+
+
+def market_guard(
+    status: Mapping[str, Any] | None,
+    *,
+    now: float | None = None,
+    allowlist: Mapping[str, Any] | None = None,
+    trading_day: Callable[[datetime], bool] | None = None,
+    min_age_s: float = MARKET_GUARD_MIN_AGE_S,
+) -> dict[str, Any] | None:
+    """LQ-20261107-1685 (E): why a drain must wait, or None when it may proceed.
+
+    During 09:30-16:15 ET on a trading day, a run already in flight for longer than ``min_age_s`` means a
+    drain would stop every new start for up to an hour (2026-11-09: 2894 s and 1730 s). The refusal names the
+    lane, its age and how long it may still run."""
+    at = float(time.time() if now is None else now)
+    when = datetime.fromtimestamp(at, ET)
+    if not (MARKET_GUARD_START <= when.time() <= MARKET_GUARD_END):
+        return None
+    if not (trading_day or _trading_day_default)(when):
+        return None
+    timeouts = timeout_by_lane(allowlist)
+    oldest: dict[str, Any] | None = None
+    for row in (status or {}).get("busy") or ():
+        if not isinstance(row, Mapping):
+            continue
+        try:
+            started = datetime.fromisoformat(str(row.get("started_at")))
+        except (TypeError, ValueError):
+            continue
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        age = at - started.timestamp()
+        if age < float(min_age_s) or (oldest is not None and age <= oldest["age_s"]):
+            continue
+        lane = str(row.get("lane_id") or "?")
+        remaining = max(0.0, timeouts.get(lane, DEFAULT_LANE_TIMEOUT_S) - age)
+        oldest = {
+            "reason": "market_hours_long_run",
+            "lane_id": lane,
+            "run_id": row.get("run_id"),
+            "age_s": round(age, 3),
+            "predicted_end_s": round(remaining, 3),
+            "started_at": started.isoformat(),
+        }
+    return oldest
 
 
 def acknowledged(status: Mapping[str, Any] | None, target: str | Path) -> bool:
