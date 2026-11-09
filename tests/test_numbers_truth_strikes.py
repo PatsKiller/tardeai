@@ -511,16 +511,19 @@ def test_a_new_ticket_at_2300_et_pages_email_telegram_and_fi_text_promptly(tmp_p
         "telegram_critical": "sent", "email": "sent", "text_gateway": "sent"}
     assert out["counts"]["paged"] == 1 and out["counts"]["page_failed"] == 0
 
-    # the event itself: the class the allowlist enables, both sides with timestamps, deduped by ticket id, and a
-    # sentence the text primitive accepts (it would refuse an over-cap or URL-carrying one)
+    # the event itself: the class the allowlist enables, both sides with timestamps in the email copy, the short
+    # both-sides sentence for the phone, dedupe by ticket id, and a text the primitive accepts (it refuses an
+    # over-cap or URL-carrying one)
     (event,) = events
     assert event["alert_class"] == S.CRITICAL_CLASS
     assert event["event_id"] == S.ticket_id(fp)
-    assert "qty FAIL 3x" in event["trigger"]
-    assert "0 (served-json @ 2026-11-09T22:00:00+00:00)" in event["trigger"]
-    assert "100 (db @ 2026-11-09T21:59:30+00:00)" in event["trigger"]
+    assert "qty FAIL 3x" in event["what"]
+    assert "0 (served-json @ 2026-11-09T22:00:00+00:00)" in event["what"]
+    assert "100 (db @ 2026-11-09T21:59:30+00:00)" in event["what"]
+    assert event["trigger"] == "served 0 vs truth 100 on holdings/qty"
     text = CT.format_text(event, max_chars=CT.MAX_TEXT_CHARS)
-    assert text.endswith("CC Risk") and "check the figure's source" in text
+    assert "served 0 vs truth 100" in text and "check the figure's source" in text
+    assert text.endswith("CC Risk")
 
 
 def test_a_cleared_line_never_pages_and_rides_the_intent_only(tmp_path):

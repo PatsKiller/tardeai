@@ -563,6 +563,15 @@ PRODUCER = "numbers_truth_strikes"
 CRITICAL_CLASS = "numbers_truth_ticket"
 
 
+def _bare(side: Optional[Mapping[str, Any]]) -> str:
+    """Just the value. The text sentence has 160 characters, and the sources and timestamps belong where there is room
+    for them: the email body, the FINDING and the state row all carry the full `_fmt` form."""
+    if not isinstance(side, Mapping):
+        return "unreadable"
+    value = side.get("value")
+    return "unreadable" if value is None else str(value)
+
+
 def critical_event(decision: Mapping[str, Any]) -> dict[str, Any]:
     """The one CRITICAL event a NEW ticket raises, in the shape `critical_producers` builds for its own classes.
 
@@ -570,19 +579,22 @@ def critical_event(decision: Mapping[str, Any]) -> dict[str, Any]:
     pins that set exactly. A non-D35 producer builds its event in place — the same thing
     ``scripts/llm_paid_spend_watch.py`` does — so this page adds no row to another module's pinned map.
 
+    ``what`` is the full both-sides line (the email subject and body). ``trigger`` is the short form the phone gets:
+    the hub's text primitive shortens the TRIGGER and never the action, so the numbers go first and the timestamps —
+    which the phone sentence has no room for and the email already carries — are left out of it.
+
     ``event_id`` is the ticket id: the key `critical_texts` dedupes on for 12 hours, so a re-run inside that window
     cannot text the operator twice about the same fingerprint.
     """
+    where = f"{decision.get('page')}/{decision.get('figure_id')}"
     return {
         "alert_class": CRITICAL_CLASS,
         "event_id": ticket_id(decision["fingerprint"]),
         "symbol": str(decision.get("symbol") or "PORTFOLIO").upper(),
         "account": str(decision.get("account") or ""),
-        # the same both-sides line the FINDING carries: what disagrees, each side with its source and timestamp.
-        # The text primitive shortens the TRIGGER to fit its cap and never the action, which is why the evidence is
-        # here and the one instruction is in `action`.
         "what": ticket_summary(decision),
-        "trigger": ticket_summary(decision),
+        "trigger": (f"served {_bare(decision.get('served'))} vs truth {_bare(decision.get('truth'))} "
+                    f"on {where}"),
         "action": "check the figure's source",
         "evidence": {"fingerprint": decision["fingerprint"], "page": decision.get("page"),
                      "figure_id": decision.get("figure_id")},
