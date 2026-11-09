@@ -22,7 +22,7 @@ NOW = datetime.now(timezone.utc)
 BRIEF_AT = (NOW - timedelta(minutes=90)).isoformat()      # the session's own build, still inside the 3 h window
 STOPCLOCK = (NOW - timedelta(minutes=4)).isoformat()      # the broker read that answers four of the five asks
 
-ROLLOVER, TAXABLE = "schwab_rollover_ira", "schwab_taxable"
+ROLLOVER, TAXABLE, ROTH = "schwab_rollover_ira", "schwab_taxable", "schwab_roth"
 
 
 def _row(symbol, account, answer, state, *, suggested=None, stop_now=None, stop_qty=None, held=None, src="1"):
@@ -36,25 +36,25 @@ def _row(symbol, account, answer, state, *, suggested=None, stop_now=None, stop_
 ADVICE = [
     _row("SKYD", ROLLOVER, "RAISE", "done", suggested=7.97, stop_now=7.07, stop_qty=1000, held=1000, src="388564"),
     _row("SPCX", ROLLOVER, "RAISE", "done", suggested=132.65, stop_now=129.12, stop_qty=600, held=600, src="382436"),
-    _row("ANET", TAXABLE, "RAISE", "done", suggested=174.38, stop_now=164.27, stop_qty=200, held=200, src="388102"),
+    _row("ANET", ROLLOVER, "RAISE", "done", suggested=174.38, stop_now=164.27, stop_qty=200, held=200, src="388102"),
     _row("SPCX", TAXABLE, "RAISE", "done", suggested=132.65, stop_now=129.00, stop_qty=200, held=200, src="374500"),
-    _row("XAR", TAXABLE, "ADD_STOP", "open", suggested=228.12, stop_now=None, stop_qty=0, held=100, src="374501"),
-    _row("T", TAXABLE, "HOLD", "quiet", stop_now=20.26, stop_qty=2000, held=2000),
-    _row("PFE", TAXABLE, "HOLD", "quiet", stop_now=26.68, stop_qty=1000, held=1000),
-    _row("V", TAXABLE, "HOLD", "quiet", stop_now=407.72, stop_qty=100, held=100.7963),
+    _row("XAR", ROLLOVER, "ADD_STOP", "open", suggested=228.12, stop_now=None, stop_qty=0, held=100, src="374501"),
+    _row("T", ROLLOVER, "HOLD", "quiet", stop_now=20.26, stop_qty=2000, held=2000),
+    _row("PFE", ROLLOVER, "HOLD", "quiet", stop_now=26.68, stop_qty=1000, held=1000),
+    _row("V", ROLLOVER, "HOLD", "quiet", stop_now=407.72, stop_qty=100, held=100.7963),
     _row("BAH", TAXABLE, "HOLD", "quiet", stop_now=59.99, stop_qty=9, held=9),
-    _row("V", TAXABLE, "NO_ACTION", "quiet", stop_now=None, stop_qty=0, held=0.4985),
+    _row("V", ROTH, "NO_ACTION", "quiet", stop_now=None, stop_qty=0, held=0.4985),
 ]
 
 # What Schwab holds now: the four asks above, answered. XAR has no stop at the broker, so it stays to do.
 BROKER_STOPS = [
-    {"symbol": "SKYD", "account": ROLLOVER, "order_id": "o1", "stop_price": 8.10, "qty": 1000,
-     "status": "working", "captured_at": STOPCLOCK},
-    {"symbol": "SPCX", "account": ROLLOVER, "order_id": "o2", "stop_price": 132.75, "qty": 600,
-     "status": "working", "captured_at": STOPCLOCK},
-    {"symbol": "ANET", "account": TAXABLE, "order_id": "o3", "stop_price": 174.50, "qty": 200,
-     "status": "active", "captured_at": STOPCLOCK},
-    {"symbol": "SPCX", "account": TAXABLE, "order_id": "o4", "stop_price": 133.00, "qty": 200,
+    {"symbol": "SKYD", "account": ROLLOVER, "order_id": "o1", "stop_price": 7.97, "qty": 1000,
+     "status": "pending_activation", "captured_at": STOPCLOCK},
+    {"symbol": "SPCX", "account": ROLLOVER, "order_id": "o2", "stop_price": 132.65, "qty": 600,
+     "status": "pending_activation", "captured_at": STOPCLOCK},
+    {"symbol": "ANET", "account": ROLLOVER, "order_id": "o3", "stop_price": 174.38, "qty": 200,
+     "status": "pending_activation", "captured_at": STOPCLOCK},
+    {"symbol": "SPCX", "account": TAXABLE, "order_id": "o4", "stop_price": 132.65, "qty": 200,
      "status": "working", "captured_at": STOPCLOCK},
 ]
 
