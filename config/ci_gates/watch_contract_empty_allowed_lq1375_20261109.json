@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_contract_empty_allowed_lq1375_20261109",
+  "files": [
+    "tests/test_watch_contract_empty_allowed_lq1375_20261109.py"
+  ],
+  "anchor": "WATCH_CONTRACT_EMPTY_ALLOWED_LQ1375_20261109",
+  "comment": [
+    "ANCHOR: WATCH_CONTRACT_EMPTY_ALLOWED_LQ1375_20261109 — LQ-20261107-1375 (MERGE by grok-b, LQ-1385). reconcile-watch-outcomes empty_allowed_reasons is nothing_due and no_new_input. no_new_input is the script's clean empty on the declared dead feed; without it the v2 verdict is empty_violation. quiet_day stays a violation. Same bytes as grok-a's LQ-1409 batch1 patch."
+  ]
+}

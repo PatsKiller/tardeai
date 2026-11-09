@@ -38633,7 +38633,7 @@
         },
         {
           "check": "output_produced",
-          "text": "a live run reports produced_count (watch candidate event); zero is normal only with an allowed empty_reason ['nothing_due']"
+          "text": "a live run reports produced_count (watch candidate event); zero is normal only with an allowed empty_reason ['nothing_due', 'no_new_input']"
         }
       ],
       "degraded": [
@@ -38723,7 +38723,8 @@
           "dependency_unavailable"
         ],
         "empty_allowed_reasons": [
-          "nothing_due"
+          "nothing_due",
+          "no_new_input"
         ],
         "evidence": [
           {
