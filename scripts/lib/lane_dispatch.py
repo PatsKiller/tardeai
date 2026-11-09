@@ -121,6 +121,24 @@ ADVISORY_MD_CLASSES = frozenset({"pipeline"})
 #: Sends a §23.20 lane may make with bypass_router=True: only call sites the AGENTS 5.1.0 shrink-only allowlist
 #: (tests/test_notification_intents_20261010.py BYPASS_ALLOWLIST) already holds. The amendment adds none.
 ADVISORY_MD_BYPASS_FILES = frozenset({"scripts/active_trader/momentum_alerts.py", "scripts/lib/scalp_advisory_alert.py"})
+# ── §23.20a one broker market-data QUOTE lane (AGENTS.md 32.0.0, PROPOSED; operator GO 2026-11-09 15:45 ET) ────────
+#: LQ-20261107-1684 option B: "n8n with a narrow exception for this one read-only Schwab quote lane". Exactly one lane,
+#: one script, one argv shape. While SCHWAB_QUOTE_READ_STATUS is ACTIVE (only the 32.0.0 ratifying edit flips it) the
+#: forbidden token `schwab` (and no other) is lifted for that lane when its allowlist entry is the pinned shape
+#: (schwab_quote_read_shape_problem); the import-graph half (schwab_quote_read_static_errors, check_lane_registry / CI)
+#: allows the token manager module only, and no trade context, account read, order verb or send. It is an R1 `ingest`
+#: lane like any price ingest: every other R1, stage, env and lock rule still applies. Widening = a code change + MAJOR.
+SCHWAB_QUOTE_READ_POLICY_VERSION = "32.0.0"
+SCHWAB_QUOTE_READ_STATUS = "PROPOSED"  # PENDING APPROVE_AGENTS_POLICY_32_0_0 <pr> <head_sha>
+SCHWAB_QUOTE_READ_LANE = "vix-index-quotes-schwab"
+SCHWAB_QUOTE_READ_COMMAND = ("$PY", "scripts/vix_index_quotes_schwab.py")
+SCHWAB_QUOTE_READ_DRY_RUN_ARGS = (("--dry-run", "--live-read"),)  # a bare --dry-run is refused by the lane itself
+SCHWAB_QUOTE_READ_LIVE_ARGS = (None, ("--apply",))
+SCHWAB_QUOTE_READ_CLASS = "ingest"
+#: The only forbidden token lifted, and the only broker module its import graph may reach (OAuth token read/refresh
+#: for the market-data host; the module also holds no order verb the guard can see from this entry).
+SCHWAB_QUOTE_READ_TOKENS = frozenset({"schwab"})
+SCHWAB_QUOTE_READ_MODULES = frozenset({"schwab_token_manager"})
 
 #: argv tokens by which an LLM job would pick its own provider or model (§23.4: capability, never a provider).
 LLM_PROVIDER_ARGV_TOKENS = ("--model", "--provider", "--lane", "anthropic", "openai", "api_key", "--api-key")
@@ -947,6 +965,71 @@ def advisory_md_static_errors(row: Mapping[str, Any], entry: Optional[Mapping[st
     return out
 
 
+def schwab_quote_read_shape_problem(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]] = None) -> Optional[str]:
+    """AGENTS 32.0.0 §23.20a, the cheap half (hot path, through dispatch_eligible). None when the row is the one
+    admitted lane in its pinned shape: lane id, registry match, dispatch class `ingest`, allowlist command exactly
+    SCHWAB_QUOTE_READ_COMMAND, a pinned dry-run and live argv, flock lock, and no broker credential name in env_names
+    (the child loads its credential on the host, as the cron lane does; n8n and the executor env carry none)."""
+    if row.get("lane_id") != SCHWAB_QUOTE_READ_LANE:
+        return "schwab_quote_read_not_the_lane"
+    sched = row.get("scheduler") if isinstance(row.get("scheduler"), Mapping) else {}
+    if sched.get("match") != SCHWAB_QUOTE_READ_COMMAND[1]:
+        return "schwab_quote_read_match"
+    block = row.get("dispatch") if isinstance(row.get("dispatch"), Mapping) else {}
+    if block.get("class") != SCHWAB_QUOTE_READ_CLASS:
+        return f"schwab_quote_read_class:{block.get('class')!r}"
+    if entry is None:
+        entry = load_run_allowlist_entries().get(SCHWAB_QUOTE_READ_LANE)
+    if not isinstance(entry, Mapping):
+        return "schwab_quote_read_not_allowlisted"
+    if tuple(entry.get("command") or ()) != SCHWAB_QUOTE_READ_COMMAND:
+        return "schwab_quote_read_command"
+    dry = entry.get("dry_run_arg")
+    if not isinstance(dry, list) or tuple(dry) not in SCHWAB_QUOTE_READ_DRY_RUN_ARGS:
+        return "schwab_quote_read_dry_run_arg"
+    live = entry.get("live_arg")
+    if (None if live is None else tuple(live) if isinstance(live, list) else live) not in SCHWAB_QUOTE_READ_LIVE_ARGS:
+        return "schwab_quote_read_live_arg"
+    if entry.get("lock_kind") != "flock" or not isinstance(entry.get("lock"), str):
+        return "schwab_quote_read_lock"
+    for name in entry.get("env_names") or []:
+        if any(frag in str(name).upper() for frag in BROKER_CREDENTIAL_ENV_FRAGMENTS):
+            return f"broker_credential_env:{name}"
+    return None
+
+
+def _schwab_quote_read_lift(row: Mapping[str, Any], *, status: Optional[str] = None) -> frozenset[str]:
+    """The tokens §23.20a lifts for this row: SCHWAB_QUOTE_READ_TOKENS when 32.0.0 is ACTIVE and the shape holds;
+    otherwise nothing. The status is the module constant (or the explicit `status` argument), never a row key: a
+    registry row cannot ratify itself."""
+    if row.get("lane_id") != SCHWAB_QUOTE_READ_LANE:
+        return frozenset()
+    st = status or SCHWAB_QUOTE_READ_STATUS
+    if st != "ACTIVE" or schwab_quote_read_shape_problem(row) is not None:
+        return frozenset()
+    return SCHWAB_QUOTE_READ_TOKENS
+
+
+def schwab_quote_read_static_errors(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]] = None) -> list[str]:
+    """AGENTS 32.0.0 §23.20a by import-graph scan (scripts/lib/advisory_lane_guard.py), off the hot path
+    (check_lane_registry / CI): no trade context, no account / position read, no send of any kind, and no broker
+    module outside SCHWAB_QUOTE_READ_MODULES. [] = clean."""
+    g = _guard()
+    lane = str(row.get("lane_id") or "?")
+    if entry is None:
+        entry = load_run_allowlist_entries().get(lane)
+    script = g.entry_script((entry or {}).get("command") or [])
+    if not script:
+        return [f"{lane}: §23.20a no entry script in the allowlist command"]
+    rep = g.scan_entry(script)
+    out = [f"{lane}: §23.20a trade_context:{x}" for x in rep.trade_context]
+    out += [f"{lane}: §23.20a account_read:{x}" for x in rep.account_reads]
+    out += [f"{lane}: §23.20a broker_module:{x}" for x in rep.broker_modules
+            if not set(x.split(".")) & SCHWAB_QUOTE_READ_MODULES]
+    out += [f"{lane}: §23.20a send:{x}" for x in [*rep.sends, *rep.direct_sends, *rep.bypass_router]]
+    return out
+
+
 # §27.1 SHADOW read rows. Kept here, standard library only, with no import of n8n_broker_read_shadow /
 # n8n_broker_read_carveout: lane_dispatch is in every dispatched lane's static import closure. These rules mirror
 # n8n_broker_read_shadow.row_problem after its entry check; tests/test_f09_read_shadow_20261024.py holds both to the
@@ -1047,18 +1130,21 @@ def dispatch_eligible(row: Mapping[str, Any], *, allowlist_argv: Optional[Mappin
         problem = broker_read_row_problem(row, load_run_allowlist_entries().get(str(row.get("lane_id"))))
         return (False, problem) if problem else (True, "eligible:broker_read_shadow_27_1")
     all_hits = forbidden_hits(row, allowlist_argv=allowlist_argv)
-    lift = exempt | (CUTOVER_SOFT_TOKENS if directive else frozenset())
+    quote_lift = _schwab_quote_read_lift(row)  # AGENTS 32.0.0 §23.20a: one lane, `schwab` only, pinned shape
+    lift = exempt | quote_lift | (CUTOVER_SOFT_TOKENS if directive else frozenset())
     hits = [h for h in all_hits if h[0] not in lift]
     if hits:
         tok, field = hits[0]
         return False, f"forbidden_token:{tok}@{field}"
     if directive:
         # Name only what §23.25 lifted beyond the old rules (a policy-exception lift keeps its old reason).
-        lifted = ({h[0] for h in all_hits} - exempt) \
+        lifted = ({h[0] for h in all_hits} - exempt - quote_lift) \
             | ({"stay_on_cron"} if row.get("stay_on_cron") not in (None, False, {}, "") and not gate_exempt else set()) \
             | ({"keep_on_cron"} if _keep_on_cron(row, lift_top_level=gate_exempt) else set())
         if lifted:
             return True, "eligible:cutover_directive_23_25:" + ",".join(sorted(lifted))
+    if quote_lift and {h[0] for h in all_hits} <= quote_lift:
+        return True, "eligible:schwab_quote_read_23_20a"
     used = sorted({h[0] for h in all_hits} | ({row["stay_on_cron"]["token"]} if gate_exempt else set()))
     if used:
         return True, "eligible:policy_exception:" + ",".join(used)
@@ -1407,6 +1493,8 @@ def registry_dispatch_errors(reg: Mapping[str, Any], *,
             out.append(f"{issue.lane_id}: dispatch {issue.code}: {issue.detail}")
         if r.get("lane_id") in ADVISORY_MARKET_DATA_LANES and dispatch_mode(r) != "off":
             out.extend(advisory_md_static_errors(r))   # §23.20 (a)/(c): import-graph scan, off the hot path
+        if r.get("lane_id") == SCHWAB_QUOTE_READ_LANE:
+            out.extend(schwab_quote_read_static_errors(r))  # §23.20a: token manager only, no trade/account/send
         if dispatch_mode(r) != "off":
             out.extend(cutover_direct_sender_errors(r))  # §23.25 sender gate: direct senders only, off the hot path
     return out
