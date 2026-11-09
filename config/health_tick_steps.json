@@ -180,6 +180,8 @@
     },
     {
       "step_id": "pipeline-freshness-monitor",
+      "finding_rc": [3],
+      "finding_note": "2026-11-09 LQ-20261107-1420: a stale or missing pipeline exits 3 (EXIT_FINDING) by design (pipeline_freshness_monitor.py). health_tick records outcome=finding and keeps the tick green. rc 1 or a traceback is a crash.",
       "command": ["$PY", "scripts/pipeline_freshness_monitor.py", "--send"],
       "cadence_minutes": 240,
       "minute_offset": 20,
@@ -305,6 +307,8 @@
     },
     {
       "step_id": "pipeline-watchdog",
+      "finding_rc": [3],
+      "finding_note": "2026-11-09 LQ-20261107-1420: an unaccepted repair handoff exits 3 (EXIT_FINDING) by design (pipeline_watchdog.py). health_tick records outcome=finding and keeps the tick green. rc 1 (enrichment failed) or a traceback is a crash.",
       "command": ["$PY", "scripts/pipeline_watchdog.py"],
       "cadence_minutes": 120,
       "minute_offset": 0,

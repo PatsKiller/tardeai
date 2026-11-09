@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1420_health_tick_finding_rc_20261109",
+  "files": [
+    "tests/test_lq1420_health_tick_finding_rc_20261109.py"
+  ],
+  "anchor": "lq1420_health_tick_finding_rc",
+  "comment": [
+    "ANCHOR: lq1420_health_tick_finding_rc — LQ-20261107-1420. pipeline-freshness-monitor and pipeline-watchdog declare finding_rc [3] so a designed EXIT_FINDING is not recorded as a health-tick crash. rc 1 stays a crash."
+  ]
+}
