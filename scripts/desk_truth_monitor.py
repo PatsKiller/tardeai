@@ -229,7 +229,7 @@ def portfolio_total_agreement(store: Mapping[str, Any], cfg: Mapping[str, Any]) 
     try:
         from scripts.lib import portfolio_total_contract as ptc
     except ImportError:  # pragma: no cover
-        from lib import portfolio_total_contract as ptc  # type: ignore[no-redef]
+        from lib import portfolio_total_contract as ptc  # type: ignore[no-redef] -- the host lane runs with scripts/ on sys.path, tests with the repo root; one of the two names is always missing
 
     contract = ptc.build_portfolio_total(
         store,

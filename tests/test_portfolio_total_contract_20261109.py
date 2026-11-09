@@ -113,7 +113,7 @@ def test_an_empty_store_publishes_none_never_zero():
 
 def test_a_malformed_document_never_raises():
     for doc in (None, {}, {"holdings": "nope"}, {"holdings": [None, 3], "portfolio_totals": 7}):
-        pt = build_portfolio_total(doc)  # type: ignore[arg-type]
+        pt = build_portfolio_total(doc)  # type: ignore[arg-type] -- the malformed shapes are the point of this test
         assert pt["value"] is None
 
 
@@ -200,7 +200,7 @@ def test_cash_is_published_with_its_own_basis():
 # ── the loader: a missing store is a finding, not a crash and not a zero ───────────────────────────────────────
 
 def test_load_portfolio_total_reads_the_store(tmp_path: Path):
-    (tmp_path / "holdings.json").write_text(json.dumps(document(ROWS, ROW_SUM)), encoding="utf-8")
+    (tmp_path / "holdings.json").write_text(json.dumps(document(ROWS, ROW_SUM)), encoding="utf-8")  # nosemgrep: tq-py-nonatomic-store-write -- a tmp_path fixture, not a store; nothing outside this test reads it
     pt = load_portfolio_total(tmp_path)
     assert pt["value"] == ROW_SUM and pt["position_count"] == 3
 
@@ -212,7 +212,7 @@ def test_load_portfolio_total_on_a_missing_store_alerts_and_publishes_none(tmp_p
 
 
 def test_load_portfolio_total_on_an_unparseable_store_alerts(tmp_path: Path):
-    (tmp_path / "holdings.json").write_text("{not json", encoding="utf-8")
+    (tmp_path / "holdings.json").write_text("{not json", encoding="utf-8")  # nosemgrep: tq-py-nonatomic-store-write -- a tmp_path fixture, deliberately unparseable, not a store
     pt = load_portfolio_total(tmp_path)
     assert pt["value"] is None
     assert [f["code"] for f in pt["findings"]][-1] == "HOLDINGS_UNREADABLE"

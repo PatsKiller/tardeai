@@ -35,7 +35,7 @@ from typing import Any, Iterable, Mapping, Optional
 try:  # scripts/ on sys.path (the served API) vs repo root (tests)
     from scripts.lib.canonical_observation import position_count_contract
 except ImportError:  # pragma: no cover - import shape depends on the caller
-    from lib.canonical_observation import position_count_contract  # type: ignore[no-redef]
+    from lib.canonical_observation import position_count_contract  # type: ignore[no-redef] -- the served API puts scripts/ on sys.path, tests put the repo root; one of the two names is always missing
 
 CONTRACT_VERSION = "PortfolioTotal@v1"
 TOTAL_FIELD = "portfolio_totals.total_value"
@@ -170,7 +170,7 @@ def build_portfolio_total(document: Optional[Mapping[str, Any]], *,
                              "why": "the rows this page lists, summed; it agrees with the store field"})
     broker_total = _num(totals.get("broker_market_value_total"))
     if broker_total is not None:
-        delta = round((value or 0.0) - broker_total, 2) if value is not None else None
+        delta = round(value - broker_total, 2) if value is not None else None
         alternatives.append({
             "name": "broker_marks",
             "value": broker_total,
@@ -181,7 +181,7 @@ def build_portfolio_total(document: Optional[Mapping[str, Any]], *,
         })
     proj = _num((snapshot_totals or {}).get("total_value"))
     if proj is not None:
-        delta = round((value or 0.0) - proj, 2) if value is not None else None
+        delta = round(value - proj, 2) if value is not None else None
         alternatives.append({
             "name": "broker_projection",
             "value": proj,

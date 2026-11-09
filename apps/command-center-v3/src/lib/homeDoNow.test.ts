@@ -97,7 +97,8 @@ check('the tip names the basis, the scope and its definition', ptv.tip.includes(
 const allRow = accountRows(perf, contractOverview)[0]
 check('the All-accounts row is the published total, not performance.current_value', allRow.value === 1248686.32)
 check('the All-accounts tip carries the contract sentence', allRow.tip.startsWith('Portfolio · the holdings store'))
-check('cash uses the published denominator', Math.abs((cashPct(contractOverview) ?? 0) - (951096.24 / 1248686.32) * 100) < 1e-9)
+const cp = cashPct(contractOverview)
+check('cash uses the published denominator', cp != null && Math.abs(cp - (951096.24 / 1248686.32) * 100) < 1e-9)
 check('a null contract total renders unknown, never the legacy projection', portfolioTotalView({ portfolio_value: 5, portfolio_total: { value: null } }).value === null)
 check('a server without the contract falls back and says so', portfolioTotalView({ portfolio_value: 5, position_count: 2 }).value === 5 && portfolioTotalView({ portfolio_value: 5 }).tip.includes('no portfolio_total contract'))
 check('formatting', money(-6795, true) === '−$6,795' && money(25097, true) === '+$25,097' && money(null) === '—' && pct(-0.54) === '−0.54%' && ageLabel(3000) === '50 min')
