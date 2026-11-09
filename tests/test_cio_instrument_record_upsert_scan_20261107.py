@@ -96,18 +96,26 @@ def test_an_external_append_to_another_key_is_seen_before_it_matters(tmp_path):
 
 
 def test_the_index_never_starts_mid_line(tmp_path):
-    """A crash mid-append leaves a line with no newline; the index must go cold,
-    not start parsing from the middle of that record."""
+    """A crash mid-append leaves a line with no newline; the index must never start
+    parsing from the middle of that record — and the half line must not be lost."""
     store, path = _store(tmp_path, rows=2)
     store._load()
-    assert store._scan_end == path.stat().st_size
+    complete = path.stat().st_size
+    assert store._scan_end == complete
 
     with open(path, "a", encoding="utf-8") as fh:   # a writer died mid-append
         fh.write('{"subject_key": "WATCH:PARTI')
     fresh = InstrumentRecordStore(path)
     fresh._load()
-    assert fresh._scan_end == 0                     # cold index, re-read in full
+    # 2026-11-09 LQ-20261107-1634: the old contract was "cold index (0), re-read in full". The
+    # index now stops at the last *complete* line instead, which is the same guarantee (no offset
+    # inside a record) without making a hot, append-only store re-parse from zero on every crash
+    # tail. The half line is still owed to the next read, which the second half of this test pins.
+    assert fresh._scan_end == complete              # at the last complete line, never mid-record
     assert fresh.load("WATCH:S1")["mark"] == 1      # the complete lines still read
+    with open(path, "a", encoding="utf-8") as fh:   # the writer came back and finished the line
+        fh.write('", "mark": 7}\n')
+    assert fresh.load("WATCH:PARTI")["mark"] == 7   # absorbed from the tail, nothing skipped
 
 
 def test_a_truncated_store_cold_starts_instead_of_parsing_from_a_stale_offset(tmp_path):

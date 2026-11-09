@@ -1,0 +1,22 @@
+{
+  "schema": "CiGate@v1",
+  "name": "instrument_store_incremental_reload_20261109",
+  "files": [
+    "tests/test_instrument_store_incremental_reload_20261109.py",
+    "tests/test_cio_instrument_record_upsert_scan_20261107.py"
+  ],
+  "anchor": "INSTRUMENT_STORE_INCREMENTAL_RELOAD_20261109",
+  "comment": [
+    "ANCHOR: INSTRUMENT_STORE_INCREMENTAL_RELOAD_20261109 — one InstrumentRecordStore per resolved path, and a",
+    "read catches up from the append tail instead of re-parsing the whole canonical store.",
+    "Measured defect (2026-11-09): /api/v2/overview spent 7.36 of its 8.49 s in cio_company_facts.load_snapshot ->",
+    "InstrumentRecordStore.all(), re-parsing 805,710,421 bytes / 86,558 lines into a 5,680-subject projection",
+    "(6.76 s warm, 18.3 s cold), because _store_for_root built a new store per call and _load returned a stale",
+    "_cache once populated. The store is append-hot (+139,046 bytes in 6 m 15 s), so every append forced a full",
+    "parse and its ~191 MB transient ratcheted the heap. This gate fails if _store_for_root stops returning one",
+    "object per resolved path, if a reused store stops seeing rows appended after its first read, if an append",
+    "costs a full parse, if truncation / replacement / an in-place same-length rewrite / a half-written final",
+    "line stop being re-read, if the rows handed out stop being copies, or if the stale-write guard stops firing.",
+    "Hermetic: tmp dirs only, no DB, no network."
+  ]
+}

@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
@@ -265,44 +266,142 @@ class InstrumentRecordStore:
         # Test-visible count: lines absorbed by the incremental scan, never the
         # whole file again.
         self._tail_lines_parsed = 0
+        # One process-wide store per path means the projection is shared by every thread: the
+        # read-side refresh and the write-side compare-and-swap must not interleave.
+        self._lock = threading.RLock()
+        # (st_dev, st_ino) of the file this projection was read from. A replaced file (rotation,
+        # truncation, a fresh test store on the same path) cannot be caught up from a tail.
+        self._ident: Optional[tuple[int, int]] = None
+        self._mtime_ns: Optional[int] = None
+        # Test-visible count: full parses of the file. A reused store must not increment this for an
+        # append; that is the whole point of ``_refresh_tail``.
+        self._full_parses = 0
 
     # ---------------------------------------------------------------- read
-    def _load(self) -> dict[str, dict[str, Any]]:
-        if self._cache is not None:
+    def _load(self, *, refresh: bool = True) -> dict[str, dict[str, Any]]:
+        """The projection, caught up from the append tail before it is served.
+
+        ``refresh=False`` is for the write path only: ``upsert`` compares the tip it observed at
+        read time against what is on disk under the lock, so its own load must not advance that
+        observation past an external append (that would silently defeat the stale-write guard).
+        """
+        with self._lock:
+            if self._cache is None:
+                return self._read_all()
+            if refresh:
+                self._refresh_tail()
             return self._cache
-        proj: dict[str, dict[str, Any]] = {}
-        size_before, ended_clean, last = 0, True, ""
+
+    def _identify(self) -> Optional[tuple[int, int]]:
         try:
-            if self.path.is_file():
-                size_before = self.path.stat().st_size
-                with open(self.path, encoding="utf-8", errors="replace") as fh:
-                    for line in fh:
-                        last = line
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            row = json.loads(line)
-                        except Exception:                        # noqa: BLE001
-                            continue
-                        key = str(row.get("subject_key") or "")
-                        if key:
-                            proj[key] = row
-                ended_clean = not last or last.endswith("\n")
+            st = self.path.stat()
+        except OSError:
+            return None
+        return (st.st_dev, st.st_ino)
+
+    def _read_all(self) -> dict[str, dict[str, Any]]:
+        """Parse the whole store and index the byte offset of the last complete line read.
+
+        Streamed in binary so the index is the offset this read actually consumed. The old
+        size-before/size-after pair reset the index to 0 whenever an append landed mid-read, which
+        on an append-hot store (the canonical one gains ~140 KB every six minutes) would make every
+        read after a reuse a full read — the opposite of what the index is for.
+        """
+        proj: dict[str, dict[str, Any]] = {}
+        scan_end = 0
+        ident: Optional[tuple[int, int]] = None
+        mtime_ns: Optional[int] = None
+        try:
+            st = self.path.stat()
+            ident = (st.st_dev, st.st_ino)
+            with open(self.path, "rb") as fh:
+                for raw in fh:
+                    if not raw.endswith(b"\n"):
+                        break          # a half-written final line waits for the next read
+                    scan_end += len(raw)
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    try:
+                        row = json.loads(line.decode("utf-8", "replace"))
+                    except Exception:  # noqa: BLE001 -- one unparsable line is skipped, as the pre-existing loader did; it must not fail the whole projection
+                        continue
+                    key = str(row.get("subject_key") or "")
+                    if key:
+                        proj[key] = row
+            after = self.path.stat()
+            # Only a stamp taken after the read can say "nothing has changed since": an append that
+            # landed mid-read leaves the index short of EOF, and a stale stamp would then look like
+            # an in-place rewrite. Unknown (None) means the next call trusts the size alone.
+            mtime_ns = after.st_mtime_ns if after.st_size == scan_end else None
         except OSError:
             pass
         self._cache = proj
         self._observed_hashes = {k: content_hash(r) for k, r in proj.items()}
         self._disk_hashes = dict(self._observed_hashes)
-        # The index may only start where this read actually ended: an append that
-        # landed mid-read, or a half-written final line, would otherwise be
-        # skipped and a stale write would look current. Cold (0) re-reads.
-        try:
-            unchanged = self.path.stat().st_size == size_before
-        except OSError:
-            unchanged = False
-        self._scan_end = size_before if (ended_clean and unchanged) else 0
+        self._scan_end = scan_end
+        self._ident = ident
+        self._mtime_ns = mtime_ns
+        self._full_parses += 1
         return proj
+
+    def _refresh_tail(self) -> None:
+        """Apply the complete lines appended since the last read (caller holds ``_lock``).
+
+        Only complete lines are consumed, so a concurrent partial append is read on the next call
+        rather than half-parsed. A file that shrank, vanished, was replaced in place, or was
+        rewritten at the same length is read in full instead.
+        """
+        if self._cache is None:
+            self._read_all()
+            return
+        ident = self._identify()
+        if ident is None or ident != self._ident:
+            self._read_all()
+            return
+        try:
+            st = self.path.stat()
+        except OSError:
+            return
+        size = st.st_size
+        if size == self._scan_end:
+            if self._mtime_ns is not None and st.st_mtime_ns != self._mtime_ns:
+                self._read_all()   # rewritten in place at the same length: a tail cannot see it
+            return
+        if size < self._scan_end:
+            self._read_all()       # truncated or rotated: a tail cannot catch this up
+            return
+        try:
+            with open(self.path, "rb") as fh:
+                fh.seek(self._scan_end)
+                chunk = fh.read()
+        except OSError:
+            return
+        end = chunk.rfind(b"\n") + 1
+        if end <= 0:
+            return                 # only a partial line so far
+        for raw in chunk[:end].splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line.decode("utf-8", "replace"))
+            except Exception:  # noqa: BLE001 -- a malformed appended line is skipped, not fatal; the tail index still advances past it
+                continue
+            key = str(row.get("subject_key") or "")
+            if key:
+                digest = content_hash(row)
+                self._cache[key] = row
+                self._disk_hashes[key] = digest
+                self._observed_hashes[key] = digest
+                self._tail_lines_parsed += 1
+        self._scan_end += end
+        try:
+            after = self.path.stat()
+        except OSError:
+            after = None
+        self._mtime_ns = (after.st_mtime_ns if after is not None and after.st_size == self._scan_end
+                          else None)
 
     def _absorb_tail(self, fh) -> None:
         """Index the complete lines appended since the last read (caller holds the lock).
@@ -333,14 +432,23 @@ class InstrumentRecordStore:
             key = str(row.get("subject_key") or "")
             if key:
                 self._disk_hashes[key] = content_hash(row)
+                if self._cache is not None:
+                    # The write path already advanced the index; the projection must not lag it,
+                    # or the next read would serve a store missing this append.
+                    self._cache[key] = row
                 self._tail_lines_parsed += 1
         self._scan_end += end
 
     def load(self, key: str) -> Optional[dict[str, Any]]:
-        return self._load().get(str(key))
+        row = self._load().get(str(key))
+        return dict(row) if row is not None else None
 
     def all(self) -> list[dict[str, Any]]:
-        return list(self._load().values())
+        # Copies, not the cached rows. ``_store_for_root`` now hands every caller in the process one
+        # store, and callers may mutate a row in place before upsert; handing out the shared dicts
+        # would let one caller rewrite the projection another caller is reading. Measured cost for
+        # the production projection (5,680 rows): 14 ms.
+        return [dict(r) for r in self._load().values()]
 
     def by_kind(self, kind: str) -> list[dict[str, Any]]:
         k = str(kind or "").upper()
@@ -403,11 +511,13 @@ class InstrumentRecordStore:
         row["schema"] = SCHEMA
         row["authority"] = AUTHORITY
         row["memory_behavior_influence"] = MBI_BEHAVIOR
-        proj = self._load()
+        # refresh=False: ``observed`` must stay the tip this caller read, so that an append made
+        # between that read and this lock is detected below rather than read back as if expected.
+        proj = self._load(refresh=False)
         observed = self._observed_hashes.get(key)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         import fcntl
-        with open(self.path, "a+", encoding="utf-8") as fh:
+        with self._lock, open(self.path, "a+", encoding="utf-8") as fh:
             fcntl.flock(fh, fcntl.LOCK_EX)
             self._absorb_tail(fh)
             current = self._disk_hashes.get(key)
@@ -418,6 +528,7 @@ class InstrumentRecordStore:
             fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
             fh.flush()
             self._scan_end = os.fstat(fh.fileno()).st_size
+            self._mtime_ns = os.fstat(fh.fileno()).st_mtime_ns
             self._disk_hashes[key] = content_hash(row)
             fcntl.flock(fh, fcntl.LOCK_UN)
         proj[key] = row
@@ -831,8 +942,20 @@ def hash_changed(record: dict[str, Any], name: str, value: Any) -> bool:
 # explicitly LOADED | IR_MISSING | IR_ERROR rather than silently empty.
 
 
+#: One store object per resolved path, per process. LQ-20261107-1634: a fresh object per call threw
+#: away ``_scan_end``/``_cache`` every time, so every caller re-parsed the whole canonical store
+#: (768 MiB / 86,558 lines / ~6.8 s warm, ~18 s cold) and the portfolio server's overview endpoint
+#: spent 7.4 of its 8.5 s there while the repeated parse ratcheted the heap.
+_STORES: dict[str, InstrumentRecordStore] = {}
+_STORES_LOCK = threading.Lock()
+
+
 def _store_for_root(root: Path | str | None = None) -> InstrumentRecordStore:
     """The record store for a state root; ``None`` means the registered store.
+
+    Memoised by resolved path: the object carries the projection and the append index, and it is
+    safe to share because ``_load`` refreshes from the tail before serving. Two resolved paths never
+    share a store; a path whose file is replaced is detected by ``st_dev``/``st_ino`` and re-read.
 
     2026-09-24 (agentic-memory tranche 1, R6): ``resolve_store`` returns a
     ``dict`` (``{"ok", "path", ...}``), and the previous body did
@@ -843,19 +966,32 @@ def _store_for_root(root: Path | str | None = None) -> InstrumentRecordStore:
     they are two different files. Resolve the registry path properly and record
     which file was read (``store_path``) so the consult evidence can prove it.
     """
+    path: Optional[Path] = None
     if root is None:
         try:
             from scripts.lib.canonical_store_registry import resolve_store
 
             loc = resolve_store(STORE_ID)
-            path = loc.get("path") if isinstance(loc, dict) else getattr(loc, "path", None)
-            if path:
-                return InstrumentRecordStore(Path(path))
+            found = loc.get("path") if isinstance(loc, dict) else getattr(loc, "path", None)
+            if found:
+                path = Path(found)
         except Exception:  # noqa: BLE001
-            pass
-        return InstrumentRecordStore(DEFAULT_PATH)
-    root_p = Path(root)
-    return InstrumentRecordStore(root_p / DEFAULT_PATH)
+            path = None
+        if path is None:
+            path = DEFAULT_PATH
+    else:
+        path = Path(root) / DEFAULT_PATH
+    try:
+        key = str(path.resolve())
+    except OSError:
+        key = str(path)
+    with _STORES_LOCK:
+        store = _STORES.get(key)
+        if store is None:
+            # The resolved path, not the raw one: the store is memoised by it, so it must keep
+            # reading the file the key names even if the caller's cwd changes later.
+            store = _STORES[key] = InstrumentRecordStore(Path(key))
+        return store
 
 
 def subject_key_for_symbol(symbol: Any, *, store: InstrumentRecordStore | None = None,

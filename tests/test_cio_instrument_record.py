@@ -221,7 +221,10 @@ def test_store_for_root_falls_back_only_when_the_registry_cannot_answer(monkeypa
     from scripts.lib import canonical_store_registry as csr
 
     monkeypatch.setattr(csr, "resolve_store", lambda store_id, **kw: {"ok": False})
-    assert cir._store_for_root(None).path == cir.DEFAULT_PATH
+    # 2026-11-09 LQ-20261107-1634: the store is memoised by *resolved* path and keeps reading the
+    # file its key names, so the fallback store reports the absolute path of DEFAULT_PATH. The
+    # policy under test — the fallback is taken only when the registry cannot answer — is unchanged.
+    assert cir._store_for_root(None).path == cir.DEFAULT_PATH.resolve()
 
 
 # ── entity policy: industry / theme are tags, not records (2026-09-24) ──────
