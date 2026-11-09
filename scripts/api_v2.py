@@ -45631,7 +45631,7 @@ def _finviz_cookie_feature_labels():
     One config source for the banner text and the operator alert (LQ-20261107-1289). An unreadable
     registry yields []: the verdict still says the cookie is expired, it just cannot name the cost.
     """
-    try:
+    try:  # nosemgrep: tq-py-broad-except-returns-default -- an empty list is never shown as a confident count: the verdict still says "cookie expired" and the message drops the count and the (…) clause rather than claiming zero
         try:
             from lib import finviz_cookie_features as _ref
         except ImportError:
