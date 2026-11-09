@@ -55,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--llm", action="store_true", help="allow the flash summary call (needs --apply)")
     ap.add_argument("--state-dir", type=Path, default=STATE_DIR)
     ap.add_argument("--futures", type=Path, default=None, help="futures/overseas quotes JSON (default: the LQ-1239 path)")
-    ap.add_argument("--if-changed", action="store_true", help="rebuild only on new held-name news or a held +/-3%% cross; else exit 0 untouched")
+    ap.add_argument("--if-changed", action="store_true", help="rebuild only on new held-name news, a held +/-3%% cross, or a new held/watch extended print; else exit 0 untouched")
     ap.add_argument("--cio-brief", type=Path, default=None, help="LQ-1257 CIO brief JSON (default: <state root>/data/runtime/cio_overnight_brief/latest.json)")
     ap.add_argument("--now", default=None, help="ISO instant, for replay (default: the clock)")
     ap.add_argument("--labels", type=Path, default=None,

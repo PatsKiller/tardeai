@@ -1008,6 +1008,61 @@ def detect_change(
     return {"changed": True, "material": False, "reason": "minor change", "kind": "minor"}
 
 
+def newest_print_since(rows: Iterable[Mapping[str, Any]], symbols: Iterable[str], *, after: datetime) -> dict[str, Any] | None:
+    """The newest extended print on one of ``symbols`` strictly after ``after``, or None (LQ-20261107-1304).
+
+    Unlike :func:`attach_extended` this does not care whether the row carries a usable percentage: a print with an
+    unreadable ``change_pct`` is still a print the card has not shown, and the trigger is the ROW CLOCK, never a
+    dollar or percentage value -- an unpriced name must not read as "nothing moved".
+    """
+    want = {str(s).upper() for s in symbols}
+    best: tuple[datetime, str, Mapping[str, Any]] | None = None
+    for r in rows:
+        sym = str(r.get("symbol") or "").upper()
+        if sym not in want:
+            continue
+        at = _as_dt(r.get("bar_end"))
+        if at is None or at <= after:
+            continue
+        if best is None or at > best[0]:
+            best = (at, sym, r)
+    if best is None:
+        return None
+    at, sym, row = best
+    return {
+        "symbol": sym,
+        "bar_end": _iso(at),
+        "printed_text": _print_time(at),
+        "session_label": session_label(row.get("session")),
+    }
+
+
+def new_print_decision(
+    prior: Mapping[str, Any] | None, moves: Sequence[Mapping[str, Any]], extended_rows: Iterable[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """LQ-20261107-1304: rebuild (non-material) when a held/watch name printed after the snapshot was built.
+
+    ``change_state()`` carries the newest print of each HELD name, so a held print usually rebuilds through the
+    signature -- but a watchlist name's print does not move it, and neither does a held print whose rounded
+    percentage repeats. Without this rule such a print sat in ``market_quotes_extended`` until the next forced
+    rebuild, which is exactly the "no print since Friday" the operator reported. The rule is measured against the
+    snapshot's OWN ``generated_at``: a rebuild never re-fires for the print it just showed.
+    """
+    gen = _as_dt((prior or {}).get("generated_at"))
+    if gen is None:
+        # an unreadable prior clock cannot vouch that no print has landed since: rebuild to establish one (cheap --
+        # a print changes numbers, never the words, so no model call follows). Every snapshot this module writes
+        # carries generated_at, so this is the legacy/hand-made case, and it self-heals on the next write.
+        return {"changed": True, "material": False, "kind": "print", "symbol": None,
+                "reason": "rebuilt to establish the prior clock"}
+    hit = newest_print_since(extended_rows, [m["symbol"] for m in moves], after=gen)
+    if hit is None:
+        return {"changed": False, "material": False, "reason": "no new print", "kind": "none"}
+    label = hit["session_label"] or "extended"
+    return {"changed": True, "material": False, "kind": "print", "symbol": hit["symbol"],
+            "reason": f"new {hit['symbol']} print {hit['printed_text']} {label}".strip()}
+
+
 # ---------------------------------------------------------------------------- the snapshot
 
 
@@ -1039,6 +1094,10 @@ def build_snapshot(
     if if_changed:
         decision = detect_change((prior or {}).get("change_state"), state, moves, articles)
         if not decision["changed"]:
+            # LQ-20261107-1304: a print on a name the signature does not carry (a watchlist name, or a held print
+            # repeating its rounded percentage) still makes the card stale -- rebuild it, without a model call.
+            decision = new_print_decision(prior, moves, extended_rows)
+        if not decision["changed"]:
             return None
     else:
         decision = {"changed": True, "material": True, "reason": "scheduled", "kind": "scheduled"}
@@ -1054,7 +1113,7 @@ def build_snapshot(
         prior=(prior or {}).get("summary") if prior else None, calls_today=calls_today, carry_prior=not decision["material"],
     )
     feed = build_feed(moves, macro, cio_actions=_cio_actions(cio_brief), at_risk=_at_risk(cio_brief))
-    if decision["kind"] in ("news", "move", "first"):
+    if decision["kind"] in ("news", "move", "first", "print"):
         updated = {
             "at": now.astimezone(UTC).isoformat().replace("+00:00", "Z"), "at_et": now.astimezone(ET).strftime("%H:%M ET"),
             "reason": decision["reason"], "kind": decision["kind"], "symbol": decision.get("symbol"), "headline": decision.get("headline"),

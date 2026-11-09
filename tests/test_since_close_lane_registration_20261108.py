@@ -13,7 +13,8 @@ other and to the script:
   ``lane_dispatch.validate_dispatch_block``;
 * the cadence tables are ``dispatch.cron``, one expression per row, and the fire sets are asserted against an
   independently computed week — the rebuild fires 12 times a weekday and 4 times a weekend day, the check fires at
-  :15/:30/:45 only, and the two never land in the same minute (the property that lets them take distinct locks);
+  :15/:30/:45 only (every weekday, plus Sunday 20:00-23:45 since LQ-20261107-1304), and the two never land in the same
+  minute (the property that lets them take distinct locks);
 * each allowlist entry is accepted by the executor's own ``validate_entry``: the rebuild's ``live_arg`` is
   ``--apply`` against persistent-state with NO ``--llm`` (the operator keeps the model off), the check's is
   ``--apply --if-changed``, and the locks are distinct;
@@ -153,14 +154,24 @@ def test_the_rebuild_is_forced_every_2h_on_trading_days_and_every_6h_at_weekends
 
 def test_the_check_fires_every_quarter_hour_except_the_rebuild_minute():
     """LQ-20261107-1279: 'between those, a cheap --if-changed check every 15 min'. Between rebuilds at :00, so
-    :15/:30/:45 — 72 fires a weekday and none at the weekend (the rebuild covers those every 6 h)."""
+    :15/:30/:45 — 72 fires a weekday. LQ-20261107-1304 adds 12 Sunday fires (20:00-23:45) so a Sunday-night
+    print reaches the card the same evening instead of waiting for Monday 00:00; Saturday still has none."""
     expected: set[str] = set()
     for d in range(5):
         day = (WEEK_START + timedelta(days=d)).date()
         expected |= {_slot(day, h, m) for h in range(24) for m in (15, 30, 45)}
+    sunday = (WEEK_START + timedelta(days=6)).date()  # WEEK_START is a Monday; cron day 0 = Sunday
+    expected |= {_slot(sunday, h, m) for h in range(20, 24) for m in (15, 30, 45)}
     got = _fired(CHECK_ROW)
     assert got == expected
-    assert len(got) == 5 * 72
+    assert len(got) == 5 * 72 + 12
+
+
+def test_the_sunday_check_slot_keeps_sunday_an_active_day():
+    """A lane that fires on Sunday but lists no Sunday in active_days is excused as SILENT_OK by heartbeat_watch
+    (0=Mon..6=Sun), so a dead Sunday fire would never be graded. The expression and the day list move together."""
+    assert 6 in CHECK_ROW["active_days"]
+    assert set(CHECK_ROW["active_days"]) <= set(range(7))
 
 
 def test_the_two_rows_never_land_in_the_same_minute():

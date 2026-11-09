@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "since_close_new_print_rebuild_lq1304_20261109",
+  "files": [
+    "tests/test_since_close_new_print_rebuild_lq1304_20261109.py"
+  ],
+  "anchor": "SINCE_CLOSE_NEW_PRINT_REBUILD_LQ1304_20261109",
+  "comment": [
+    "ANCHOR: SINCE_CLOSE_NEW_PRINT_REBUILD_LQ1304_20261109 — LQ-20261107-1304 (operator 2026-11-08 19:44 ET: 'no print since Friday is an error'). --if-changed compared only change_state()'s signature, which carries the newest print per HELD name; a watchlist name's print did not move it, so a Sunday-night or after-hours print could sit in market_quotes_extended until the next forced rebuild. since_close_card.newest_print_since() and new_print_decision() rebuild (non-material: the summary is carried, no model call) when any held/watch name has a bar_end newer than the snapshot's own generated_at. The Schwab lane's Friday 16:00-20:00 registry slot and the Sunday 20:00-23:45 check slot are covered by tests/test_since_close_lane_registration_20261108.py. Synthetic fixtures only — no database, no network, no production state."
+  ]
+}

@@ -19472,16 +19472,17 @@
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/15 18-23 * * 0 + */15 * * * 1-4 + */15 0-9 * * 5",
+        "expression": "*/15 18-23 * * 0 + */15 * * * 1-4 + */15 0-9 * * 5 + */15 16-20 * * 5",
         "match": "scripts/market_quotes_offhours_schwab.py --apply",
         "schedules": [
           "*/15 18-23 * * 0",
           "*/15 * * * 1-4",
-          "*/15 0-9 * * 5"
+          "*/15 0-9 * * 5",
+          "*/15 16-20 * * 5"
         ],
         "command_text": "cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_offhours_schwab.lock $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1"
       },
-      "expected_cadence_hours": 56.25,
+      "expected_cadence_hours": 45.25,
       "state": "ACTIVE",
       "state_since": "2026-11-01",
       "state_reason": "Operator, in session 2026-11-01 ~13:45 ET (verbatim): \"enable schwab\", under the 2026-10-31 broker-market-data allowance (AGENTS.md 29.2.0 §24.11: read-only market data via host lanes; never orders, accounts, stops, 2FA, auth endpoints or credentials). #2454 set schwab.enabled true and recorded the grant (config/data_source_authority.json providers.schwab.supply_grants). The coordinator's session installed three host crontab lines (crontab -l L1092-L1094; backup persistent-state/archive/crontab/crontab.pre-schwab-offhours.20261101T161509.txt) running scripts/market_quotes_offhours_schwab.py --apply every 15 minutes from Sunday 18:00 to Friday 09:45 ET; the script's own window (Sunday 18:00 to Friday 09:30, regular session skipped) decides when Schwab is called.",
@@ -19492,7 +19493,7 @@
         "path": "logs/market_quotes_offhours_schwab.log",
         "evidence": "CRON_LOG_REDIRECT"
       },
-      "note": "Installed host crontab lines L1092-L1094 (host TZ America/New_York, no CRON_TZ, ungated: overnight and Sunday futures trade on NYSE holidays' eves): '*/15 18-23 * * 0', '*/15 * * * 1-4' and '*/15 0-9 * * 5', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_offhours_schwab.lock $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1'. The script enforces its own window (config/market_risk_offhours_quotes.yaml schwab.window Sunday 18:00 to Friday 09:30 ET, skip_regular_session on trading days), so fires outside it exit outside_window without a Schwab call. Rail: GET https://api.schwabapi.com/marketdata/v1/quotes only (marketdata_url refuses any other URL); never imports schwab_transport; reads the stored access token only while the token manager's health() says it is fresh, and never refreshes; never reads a credential file; schwab_access_mode must allow reads. expected_cadence_hours 56.25 is the max gap of the union of the three expressions (Friday 09:45 to Sunday 18:00, reconcile_lane_registry.cron_cadence_hours_union); inside the window the cadence is 15 minutes.",
+      "note": "Installed host crontab lines L1092-L1094 (host TZ America/New_York, no CRON_TZ, ungated: overnight and Sunday futures trade on NYSE holidays' eves): '*/15 18-23 * * 0', '*/15 * * * 1-4' and '*/15 0-9 * * 5', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_offhours_schwab.lock $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1'. The script enforces its own window (config/market_risk_offhours_quotes.yaml schwab.window Sunday 18:00 to Friday 09:30 ET, skip_regular_session on trading days), so fires outside it exit outside_window without a Schwab call. Rail: GET https://api.schwabapi.com/marketdata/v1/quotes only (marketdata_url refuses any other URL); never imports schwab_transport; reads the stored access token only while the token manager's health() says it is fresh, and never refreshes; never reads a credential file; schwab_access_mode must allow reads. expected_cadence_hours 45.25 is the max gap of the union of the four expressions (Friday 20:45 to Sunday 18:00, reconcile_lane_registry.cron_cadence_hours_union; it was 56.25 with three); inside the window the cadence is 15 minutes. LQ-20261107-1304 (2026-11-08, operator 19:44 ET: 'no print since Friday is an error'): the script's window ALREADY permits Friday 16:00-20:00 ET (config/market_risk_offhours_quotes.yaml schwab.window.extra_segments, LQ-1264 amendment 1), but no cron slot fired in those hours, so the 116-name held/watchlist universe got no Friday after-hours print and the card said 'no print since Fri'. This row now carries '*/15 16-20 * * 5' as the fourth expression; the host crontab still holds only L1096-L1098, so until the coordinator installs the matching line the registry records the INTENDED schedule (registry change only by agent rule: never crontab) and reconcile reports that one missing line.",
       "adopted_on": "2026-11-01",
       "adopted_reason": "2026-11-01: flipped NEVER_SCHEDULED -> ACTIVE after the operator-approved install of crontab L1092-L1094 (\"enable schwab\"); hand-maintained.",
       "value_class": "UNCLASSIFIED",
@@ -27762,11 +27763,12 @@
         1,
         2,
         3,
-        4
+        4,
+        6
       ],
       "state": "ACTIVE",
       "state_since": "2026-11-08",
-      "state_reason": "LQ-20261107-1279 (operator GO 2026-11-08 19:01 ET): the conditional half of the since-close cadence — 'between those, a cheap --if-changed check every 15 min that writes ONLY when something significant changed'. One fire carries one argv, so the forced rebuild lives in the sibling lane since-close-snapshot (--apply at :00 every 2 h) and this lane carries --apply --if-changed at :15/:30/:45; the two are disjoint by construction and share no lock. CANARY. The significance set is coarser than the operator's list today (see note): market_event and stop/at-risk are not in scripts/lib/since_close_card.py, which another worker holds.",
+      "state_reason": "LQ-20261107-1279 (operator GO 2026-11-08 19:01 ET): the conditional half of the since-close cadence — 'between those, a cheap --if-changed check every 15 min that writes ONLY when something significant changed'. One fire carries one argv, so the forced rebuild lives in the sibling lane since-close-snapshot (--apply at :00 every 2 h) and this lane carries --apply --if-changed at :15/:30/:45; the two are disjoint by construction and share no lock. CANARY. The significance set is coarser than the operator's list today (see note): market_event and stop/at-risk are not in scripts/lib/since_close_card.py, which another worker holds. LQ-20261107-1304 (2026-11-08 19:44 ET) adds Sunday 20:00-23:45 fires; Sunday (active_days 6, the registry's 0=Mon..6=Sun convention) is now an active day so heartbeat_watch and the supervisor grade a silent Sunday instead of excusing it as an inactive day.",
       "output_signal": {
         "kind": "json_key",
         "path": "data/portfolios/state/since_close_latest.json",
@@ -27779,11 +27781,12 @@
       "review_by": "2026-11-22",
       "value_class": "Operationally Important",
       "severity": "Medium",
-      "note": "15,30,45 * * * 1-5 = every 15 minutes at :15, :30 and :45 on trading days (72 fires), i.e. every 15 min except the :00 minutes, which the sibling forced rebuild owns; the two slots cannot overlap because a fire is killed at timeout_s 300 well before the next one is due. Weekends have no check fires: the sibling rebuild writes every 6 h then, and there is no 15-min duty to be quiet about. A market holiday is a weekday, so this lane fires and writes nothing. The operator's significance list — a market_event fired, a held name moved past the big_move threshold, a new stop/at-risk flag — maps onto the card as follows: big_move is implemented (MATERIAL_MOVE_PCT = BIG_MOVE_PCT = 3.0 in scripts/lib/since_close_card.py, so a held name crossing +/-3% is material); market_event and stop/at-risk are NOT read by the card, so this lane cannot see them, and --if-changed also writes on an unmaterial change (a watchlist article, a held 1% bucket step). Tightening the gate is an edit to that card, not to this row. No spend: the live argv carries no --llm, and --llm needs --apply plus a governed process row that since_close_card does not have. The live argv must pass --state-dir <state root>/data/portfolios/state because the script's default is checkout-relative.",
+      "note": "15,30,45 * * * 1-5 = every 15 minutes at :15, :30 and :45 on trading days (72 fires), i.e. every 15 min except the :00 minutes, which the sibling forced rebuild owns; the two slots cannot overlap because a fire is killed at timeout_s 300 well before the next one is due. LQ-20261107-1304 (2026-11-08, operator 19:44 ET: 'no print since Friday is an error'): Sunday 20:00-23:45 ET now has its own check row — 15,30,45 20-23 * * 0 (12 fires) — because the Sunday futures open and the overnight session produce prints while the sibling rebuild's weekend expression (0 */6 * * 0,6) fires only at 18:00 on Sunday, so without these slots a Sunday-night print waited until Monday 00:00 to reach the card. Saturday still has no check fires: nothing trades, and the sibling rebuild covers it every 6 h. A market holiday is a weekday, so this lane fires and writes nothing. The operator's significance list — a market_event fired, a held name moved past the big_move threshold, a new stop/at-risk flag — maps onto the card as follows: big_move is implemented (MATERIAL_MOVE_PCT = BIG_MOVE_PCT = 3.0 in scripts/lib/since_close_card.py, so a held name crossing +/-3% is material); market_event and stop/at-risk are NOT read by the card, so this lane cannot see them, and --if-changed also writes on an unmaterial change (a watchlist article, a held 1% bucket step, and — LQ-20261107-1304 — any new extended print on a held/watch name after the last build). Tightening the gate is an edit to that card, not to this row. No spend: the live argv carries no --llm, and --llm needs --apply plus a governed process row that since_close_card does not have. The live argv must pass --state-dir <state root>/data/portfolios/state because the script's default is checkout-relative.",
       "dispatch": {
         "mode": "live",
         "cron": [
-          "15,30,45 * * * 1-5"
+          "15,30,45 * * * 1-5",
+          "15,30,45 20-23 * * 0"
         ],
         "tz": "America/New_York",
         "wave": "W5",
