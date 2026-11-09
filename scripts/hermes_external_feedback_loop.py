@@ -26,8 +26,8 @@ its own process ``hermes_usefulness_score_n8n`` (routing row n8n_oauth_first: gr
 D10), so the n8n route and caps never move the cron line's row. A refusal is terminal for the run (BRIDGE_ROUTE_REFUSED,
 rows stay unscored and eligible). --dry-run makes no model call.
 """
-import os, sys, json, argparse
-from datetime import datetime
+import os, sys, json, time, argparse
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -48,6 +48,30 @@ NO_ELIGIBLE_REASON = "no_new_input"
 #: research in them; over-fetching lets one pass reach past them. The rating budget is still
 #: ``--max-rows`` (see ``_run_feedback``): this only widens the window it is chosen from.
 REFUSAL_OVERFETCH = 4
+
+#: A bridge that is restarting under us: the socket is refused or dropped before any HTTP status exists. This is
+#: not a provider fault and not a governance refusal -- waiting it out is the correct response. 2026-11-09 14:15 ET
+#: the cio-governed-bridge activation restart refused eight ratings in a row, the run exited 1, and with the lane's
+#: single-attempt policy (dispatch.retry_policy "none") the slot dead-lettered for a six-second blip
+#: (d:hermes-usefulness-backfill:live:20261109T1415).
+READINESS_MARKERS = ("connection refused", "errno 111", "connection reset", "errno 104", "connection aborted",
+                     "connection abort", "broken pipe", "remote disconnected", "remotedisconnected",
+                     "remote end closed connection", "temporary failure in name resolution",
+                     "name or service not known")
+#: Waits between readiness attempts, in order: 180 s in all. The observed restart is seconds; a bridge still gone
+#: after three minutes is not coming back inside this run, and the run then gives up instead of burning the queue.
+READINESS_BACKOFF_S = (2, 4, 8, 16, 30, 60, 60)
+#: The readiness receipt: one line per episode (never one per attempt), so the file stays small on a persistent root.
+READINESS_EVENT_FILE = "hermes_bridge_readiness.jsonl"
+READINESS_SCHEMA = "HermesBridgeReadiness@v1"
+#: EX_TEMPFAIL: a dependency was unreachable and nothing was written. The executor's retry policies name it
+#: (transient-1-ingest, class ingest), so a longer outage can re-arm the slot instead of dead-lettering on exit_1.
+EXIT_TEMPFAIL = 75
+
+
+class BridgeNotReady(RuntimeError):
+    """The bridge stayed unreachable through the whole bounded wait. Typed so the run aborts ONCE instead of
+    counting every remaining row as a provider failure and spending the queue."""
 
 
 def _via_bridge():
@@ -129,6 +153,86 @@ def _is_terminal(message: str) -> bool:
     return any(m.upper() in upper for m in TERMINAL_MARKERS)
 
 
+def _is_readiness(message: str) -> bool:
+    """True for a transport-level refusal or drop: the bridge process is gone or restarting, not answering badly.
+    Checked only after :func:`_is_terminal`, so a governance refusal that happens to mention a connection is
+    never waited on."""
+    lowered = message.lower()
+    return any(m in lowered for m in READINESS_MARKERS)
+
+
+def readiness_event_path() -> Path:
+    """``<state_root>/data/runtime/hermes_bridge_readiness.jsonl`` -- the persistent root, never the release dir."""
+    from lib.lane_last_receipt import runtime_dir
+    return runtime_dir() / READINESS_EVENT_FILE
+
+
+def record_readiness_event(event: dict) -> None:
+    """Append one episode to the readiness receipt. A receipt failure is reported and never raised into the run."""
+    try:
+        path = readiness_event_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        line = {"schema": READINESS_SCHEMA, "lane": "hermes-usefulness-backfill",
+                "ts": datetime.now(timezone.utc).isoformat(), **event}
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(line, sort_keys=True) + "\n")
+    except Exception as exc:  # noqa: BLE001 -- a receipt must never fail the run it describes
+        print(f"  readiness receipt not written: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+
+class ReadinessWait:
+    """Bounded wait around one bridge call: retry ONLY a transport refusal, and only while the schedule lasts.
+
+    ``call`` is the rating function; ``sleep`` and ``emit`` are injectable so a test proves the schedule without
+    sleeping or writing. After the schedule is spent the last refusal is re-raised as :class:`BridgeNotReady`,
+    which the run treats as one typed abort rather than a provider failure per row.
+    """
+
+    def __init__(self, call, *, schedule=READINESS_BACKOFF_S, sleep=None, emit=None):
+        self.call = call
+        self.schedule = tuple(schedule)
+        # Resolved per instance (not as a default argument) so a test can substitute the sleeper and the receipt.
+        self.sleep = sleep if sleep is not None else time.sleep
+        self.emit = emit if emit is not None else record_readiness_event
+        self.retries = 0
+        self.waited_s = 0
+
+    def __call__(self, *args, **kwargs):
+        first_error = None
+        retries = 0
+        waited = 0
+        while True:
+            try:
+                value = self.call(*args, **kwargs)
+            except Exception as exc:
+                message = str(exc)
+                if _is_terminal(message) or not _is_readiness(message):
+                    raise
+                if retries >= len(self.schedule):
+                    self.emit({"outcome": "gave_up", "attempts": retries + 1, "waited_s": waited,
+                               "wait_budget_s": sum(self.schedule), "first_error": (first_error or "")[:200],
+                               "last_error": message[:200]})
+                    raise BridgeNotReady(
+                        f"bridge unreachable after {retries + 1} attempts over {waited}s; last: {message[:120]}"
+                    ) from exc
+                first_error = first_error or message
+                delay = self.schedule[retries]
+                retries += 1
+                waited += delay
+                self.retries += 1
+                self.waited_s += delay
+                print(f"  bridge not ready (attempt {retries + 1}/{len(self.schedule) + 1}): {message[:80]}"
+                      f" -- retrying in {delay}s")
+                self.sleep(delay)
+                continue
+            if retries:
+                self.emit({"outcome": "recovered", "attempts": retries + 1, "waited_s": waited,
+                           "wait_budget_s": sum(self.schedule), "first_error": (first_error or "")[:200]})
+                print(f"  bridge recovered after {retries} retr{'y' if retries == 1 else 'ies'} "
+                      f"({waited}s); continuing the queue")
+            return value
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--dry-run", action="store_true", help="offline plan; takes precedence over --apply")
@@ -158,6 +262,10 @@ def main(argv=None):
                            started_at=started, script="hermes_external_feedback_loop.py", error=type(exc).__name__)
         raise
     rc = 1 if result["failed"] or result["aborted"] else 0
+    if result.get("abort_reason") == "bridge_not_ready":
+        # EX_TEMPFAIL, not a bare exit_1: the slot lost nothing (the rows were never written), and
+        # transient-1-ingest names 75, so a longer outage can re-arm the slot instead of dead-lettering.
+        rc = EXIT_TEMPFAIL
     # LaneRunReceipt@v2 counts: what the run actually produced (rows scored) and what it selected. Without them a
     # zero-work run is indistinguishable from a silent failure on the Jobs page (LQ-20261107-120).
     write_lane_receipt("hermes-usefulness-backfill", ok=rc == 0, exit_code=rc,
@@ -192,6 +300,8 @@ def _run_feedback(args):
     reclassified = 0
     consecutive_failures = 0
     aborted = None
+    abort_reason = None
+    rate = ReadinessWait(_rate)
     for rid, lane, symbol, question, rec, dissent, created in rows:
         # A refusal is not a piece of research: never rate it. Flipping its stored status is the
         # one-off backfill (--reclassify-refusals), not part of every hourly run: that status feeds
@@ -213,7 +323,13 @@ def _run_feedback(args):
             break
         outcome = _outcome(cur, symbol, created)
         try:
-            u, rationale, pack = _rate(question, rec, dissent, outcome)
+            u, rationale, pack = rate(question, rec, dissent, outcome)
+        except BridgeNotReady as exc:
+            # One typed abort for the whole run: the remaining rows stay unscored and eligible, and nothing is
+            # written. Counting each as FAILED_PROVIDER is what made a six-second restart look like eight faults.
+            abort_reason = "bridge_not_ready"
+            aborted = f"bridge_not_ready: {exc}"
+            break
         except Exception as exc:
             failed += 1
             message = str(exc)
@@ -221,10 +337,12 @@ def _run_feedback(args):
             # Stop, rather than spending the rest of the queue on a refusal that
             # will not change. The rows are left unscored and stay eligible.
             if _is_terminal(message):
+                abort_reason = "governance_refused"
                 aborted = f"governance refused the request: {message[:120]}"
                 break
             consecutive_failures += 1
             if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                abort_reason = "consecutive_provider_failures"
                 aborted = (f"{consecutive_failures} consecutive provider failures; "
                            f"last: {message[:120]}")
                 break
@@ -257,7 +375,8 @@ def _run_feedback(args):
                                  "per_lane_usefulness": agg}))
     result = {"selected": len(rows), "scored": scored, "failed": failed,
               "refusals_skipped": refusals_skipped, "reclassified": reclassified,
-              "aborted": bool(aborted)}
+              "aborted": bool(aborted), "abort_reason": abort_reason,
+              "readiness_retries": rate.retries, "readiness_waited_s": rate.waited_s}
     if not rows or (not scored and not failed):
         # Nothing eligible is a CORRECT outcome for this hourly lane, not a failure: every sent research row that
         # can be scored already is (this loop is the only writer of usefulness_score; the researcher's INSERT

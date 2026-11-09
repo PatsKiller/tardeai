@@ -30,6 +30,26 @@
    "audit_ref": "B-F1"
   },
   {
+   "id": "hermes_usefulness_bridge_readiness",
+   "name": "hermes-usefulness-backfill waits out a governed-bridge restart",
+   "category": "retry",
+   "code": "scripts/hermes_external_feedback_loop.py",
+   "evidence_source": {
+    "kind": "jsonl",
+    "base": "state",
+    "path": "data/runtime/hermes_bridge_readiness.jsonl",
+    "ts_key": "ts"
+   },
+   "success_predicate": {
+    "description": "a rating that met a refused or dropped bridge then scored on retry (outcome=recovered)",
+    "field": "outcome",
+    "equals": "recovered",
+    "min_count": 1
+   },
+   "expected": "PROVEN (2026-11-09 14:15 ET: a bridge activation restart refused every rating and the slot dead-lettered at attempt 1; the lane now waits up to 180 s, then exits 75 bridge_not_ready; one line per episode, never per attempt)",
+   "audit_ref": "LQ-1670"
+  },
+  {
    "id": "n8n_run_retry_wrapper",
    "name": "n8n run executor retry wrapper",
    "category": "retry",
