@@ -60,6 +60,33 @@ def test_prospectus_index_helper_drops_only_the_unpriced_cusip():
     assert [i["symbol"] for i in out] == [TICKER, PRICED]
 
 
+def test_prospectus_index_keeps_symbol_when_any_account_row_is_priced():
+    """LQ-1458 / REVIEW-1454: one dead zero row must not hide a priced row of the same symbol."""
+    from scripts.lib.prospectus_api import dead_cusip_symbols, without_dead_cusip_index_items
+
+    from scripts.lib.security_identity import is_dead_cusip_holding
+
+    mixed = [
+        {"symbol": PRICED, "account": "a", "current_price": 0.0, "market_value": 0.0, "shares": 1},
+        {"symbol": PRICED, "account": "b", "current_price": 12.5, "market_value": 40.0, "shares": 3.2},
+        {"symbol": DEAD, "account": "a", "current_price": 0.0, "market_value": 0.0, "shares": 7},
+        {"symbol": TICKER, "account": "a", "current_price": 10.0, "market_value": 50.0, "shares": 5},
+    ]
+    # Fail-before shape of the old any-row rule: one zero row condemned the symbol.
+    any_row_dead = {str(r["symbol"]).upper() for r in mixed if is_dead_cusip_holding(r)}
+    assert PRICED in any_row_dead and DEAD in any_row_dead
+
+    assert PRICED not in dead_cusip_symbols(mixed)
+    assert DEAD in dead_cusip_symbols(mixed)
+    items = [
+        {"symbol": TICKER, "status": "ready"},
+        {"symbol": DEAD, "status": "ready"},
+        {"symbol": PRICED, "status": "ready"},
+    ]
+    out = without_dead_cusip_index_items(items, mixed)
+    assert [i["symbol"] for i in out] == [TICKER, PRICED]
+
+
 def test_prospectus_index_payload_hides_dead_cusip_when_holdings_present(tmp_path: Path):
     from scripts.lib import prospectus_api as api
     from scripts.lib.prospectus import load_config, store

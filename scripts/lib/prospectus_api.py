@@ -143,23 +143,37 @@ def holdings_rows_for_dead_filter(root: Path) -> list[dict[str, Any]]:
 
 
 def dead_cusip_symbols(holdings_rows: list[Any] | None) -> set[str]:
-    """Symbols ``is_dead_cusip_holding`` accepts from a holdings list."""
-    out: set[str] = set()
+    """Symbols whose *every* holdings row is a dead CUSIP (LQ-20261107-1458).
+
+    ``is_dead_cusip_holding`` is applied per row. A symbol stays when any row for
+    it fails that predicate (e.g. account A unpriced, account B still priced).
+    A symbol whose rows are all dead is dropped. Symbols with no holdings rows
+    are not returned here.
+    """
+    by_sym: dict[str, list[Any]] = {}
     for row in holdings_rows or []:
-        if isinstance(row, dict) and is_dead_cusip_holding(row):
-            sym = str(row.get("symbol") or "").strip().upper()
-            if sym:
-                out.add(sym)
-    return out
+        if not isinstance(row, dict):
+            continue
+        sym = str(row.get("symbol") or "").strip().upper()
+        if not sym:
+            continue
+        by_sym.setdefault(sym, []).append(row)
+    return {
+        sym
+        for sym, rows in by_sym.items()
+        if rows and all(is_dead_cusip_holding(r) for r in rows)
+    }
 
 
 def without_dead_cusip_index_items(
     items: list[Any] | None,
     holdings_rows: list[Any] | None,
 ) -> list[dict[str, Any]]:
-    """Drop prospectus index items whose symbol is a dead CUSIP holding.
+    """Drop prospectus index items whose holdings rows are all dead CUSIPs.
 
-    A priced CUSIP stays. Non-CUSIP tickers stay. The store is not written.
+    Per-row predicate (LQ-1458): one zero row must not hide a priced row of the
+    same symbol. A priced CUSIP stays. Non-CUSIP tickers stay. The store is not
+    written.
     """
     dead = dead_cusip_symbols(holdings_rows)
     if not dead:
