@@ -1027,8 +1027,9 @@ def _stop_evidence(row: Mapping[str, Any], stops: Mapping[str, Any]) -> dict[str
     working = [s for s in stops.get(sym) or [] if isinstance(s, Mapping) and str(s.get("account") or "") == acct]
     held = _num(row.get("held_qty"))
     suggested = _num(row.get("suggested_stop"))
-    covered = round(sum(float(s.get("qty") or 0) for s in working), 4)
-    best = max((float(s.get("stop") or 0) for s in working), default=None)
+    # a row with no readable qty covers nothing and one with no readable stop sets no level: neither is a zero
+    covered = round(sum(q for q in (_num(s.get("qty")) for s in working) if q is not None), 4)
+    best = max((v for v in (_num(s.get("stop")) for s in working) if v is not None), default=None)
     covered_ok = held is not None and covered >= held - STOP_QTY_TOL
     ans = str(row.get("answer") or "").upper()
     if ans == "RAISE":
