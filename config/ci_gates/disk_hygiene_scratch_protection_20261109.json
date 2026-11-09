@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_hygiene_scratch_protection_20261109",
+  "files": [
+    "tests/test_disk_hygiene_scratch_protection_20261109.py"
+  ],
+  "anchor": "DISK_HYGIENE_SCRATCH_PROTECTION_20261109",
+  "comment": [
+    "ANCHOR: DISK_HYGIENE_SCRATCH_PROTECTION_20261109 — what 'protected' means inside an agent scratch dir (LQ-20261107-1366). A credential-named file aborts the activity measurement, and the planner then reports the unmeasured fallback scratch_not_older_than_12_hours, so a false hold is indistinguishable from a fresh tree; on 2026-11-08 that held 158.8 GiB while / ran to 89%. Repo content never holds: source extensions (token/secret/credential in a source filename names a subject), template suffixes (.env.example), a tree carrying a project marker with no .git (git archive and cp copies), the scratch dir itself being that copy, and a harness-written emulation.env whose header says configuration only and whose body carries no credential-valued line. Everything at risk still holds: a never-touch PATH, a credential-shaped extension (.json/.yaml/.ini/.txt/.log/.rc/no suffix), a .env at a copy's top level (a repo's own .env is untracked), and an emulation.env without the harness header or with a password/token line. Hermetic: synthetic tmp_path trees only, no host census, no real home, no deletion."
+  ]
+}

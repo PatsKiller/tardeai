@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 
 from scripts import disk_hygiene as DH
-from tests.test_disk_standing_apply_20261024 import world  # noqa: F401
+from tests.test_disk_standing_apply_20261024 import world  # noqa: F401 -- a pytest fixture, used by name in the signatures
 
 HARNESS_HEADER = ("# emulation env: configuration only, written by scripts/ops/n8n_lane_emulate.py; "
                   "no secret lives here\n")
