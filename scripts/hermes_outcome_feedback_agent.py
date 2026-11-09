@@ -206,7 +206,9 @@ def fetch_by_symbol(cur, cfg: dict[str, Any]) -> dict[str, Any]:
         tag_counts.setdefault(sym, {})[tag] = int(c)
 
     tag_meta: dict[str, dict[str, Any]] = {}
-    cur.execute("SELECT tag, lift, flagged, hit_rate FROM hermes_tag_efficacy")
+    # LQ-1491: hide tags the engine superseded (no longer in the compute set).
+    cur.execute("""SELECT tag, lift, flagged, hit_rate FROM hermes_tag_efficacy
+                   WHERE superseded_at IS NULL""")
     for tag, lift, flagged, hr in cur.fetchall():
         tag_meta[str(tag)] = {
             "lift": float(lift) if lift is not None else None,
@@ -250,8 +252,9 @@ def fetch_by_symbol(cur, cfg: dict[str, Any]) -> dict[str, Any]:
 
 
 def fetch_by_tag(cur, cfg: dict[str, Any]) -> dict[str, Any]:
+    # LQ-1491: hide tags the engine superseded (no longer in the compute set).
     cur.execute("""SELECT tag, n, hits, hit_rate, lift, flagged, trade_n, avg_realized_r
-                   FROM hermes_tag_efficacy ORDER BY n DESC""")
+                   FROM hermes_tag_efficacy WHERE superseded_at IS NULL ORDER BY n DESC""")
     tg = cfg.get("tag_gates") or {}
     out: dict[str, Any] = {}
     for tag, n, hits, hr, lift, flagged, trade_n, avg_r in cur.fetchall():

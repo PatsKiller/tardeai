@@ -12,7 +12,9 @@
   efficacy  hermes_tag_efficacy: per-tag 20-session win rate vs the base rate from the ledger's
             graded outcomes — a tag that underperforms its base credibly (sample, effect size
             and one-sided significance) gets flagged. Tags become falsifiable; "a directive
-            was surfaced" is reported as engagement, never scored as a win.
+            was surfaced" is reported as engagement, never scored as a win. Tags the engine
+            no longer computes are superseded (flagged cleared, superseded_at set) and hidden
+            from consumers — never deleted (LQ-1491).
 
 The 3-axis taxonomy cron is retired with this change (zero readers repo-wide — write-only cost).
 Zero paid LLM. Advisory-only; honors data/runtime/HERMES_DISABLED.
@@ -325,6 +327,34 @@ def efficacy_stats(rows: list[dict], *, min_n: int, min_effect: float,
     return out
 
 
+#: Consumers MUST filter with this predicate (LQ-1491). Rows are never deleted.
+ACTIVE_EFFICACY_PREDICATE = "superseded_at IS NULL"
+SUPERSEDE_REASON = "not in current compute set"
+SUPERSEDE_FLAG_REASON = "superseded: not in current compute set"
+
+
+def list_absent_efficacy_tags(cur, current_tags: list[str]) -> list[dict]:
+    """Active ``hermes_tag_efficacy`` rows whose tag this run did not compute.
+
+    Before the ``superseded_at`` column exists (first apply after deploy), every
+    row is treated as active. Already-superseded rows are omitted. Pure read.
+    """
+    cur.execute("""SELECT column_name FROM information_schema.columns
+                   WHERE table_schema = 'public' AND table_name = 'hermes_tag_efficacy'""")
+    cols = {r[0] for r in cur.fetchall()}
+    if "tag" not in cols:
+        return []
+    if "superseded_at" in cols:
+        cur.execute("""SELECT tag, flagged FROM hermes_tag_efficacy
+                       WHERE superseded_at IS NULL AND NOT (tag = ANY(%s))
+                       ORDER BY tag""", (list(current_tags),))
+    else:
+        cur.execute("""SELECT tag, flagged FROM hermes_tag_efficacy
+                       WHERE NOT (tag = ANY(%s))
+                       ORDER BY tag""", (list(current_tags),))
+    return [{"tag": str(t), "flagged": bool(f)} for t, f in cur.fetchall()]
+
+
 def tag_efficacy(cur, cfg, apply, *, dry_run=False):
     if not dry_run:  # DDL is a write: a read-only dry-run session refuses it (the SELECTs below never read this table)
         cur.execute("""CREATE TABLE IF NOT EXISTS hermes_tag_efficacy (
@@ -334,6 +364,7 @@ def tag_efficacy(cur, cfg, apply, *, dry_run=False):
         # One ALTER carries the prior migration's column and this one's: the statement count on the
         # apply path stays at three (CREATE + 2 ALTERs), which the cutover pin in
         # tests/test_hermes_learning_unblock_20261015.py asserts.
+        # superseded_* hide tags this run no longer computes (LQ-1491); never DELETE.
         cur.execute("""ALTER TABLE hermes_tag_efficacy
                          ADD COLUMN IF NOT EXISTS avg_realized_r NUMERIC,
                          ADD COLUMN IF NOT EXISTS ledger_n INT,
@@ -341,7 +372,9 @@ def tag_efficacy(cur, cfg, apply, *, dry_run=False):
                          ADD COLUMN IF NOT EXISTS actioned_hits INT,
                          ADD COLUMN IF NOT EXISTS directive_hits INT,
                          ADD COLUMN IF NOT EXISTS p_value NUMERIC,
-                         ADD COLUMN IF NOT EXISTS flag_reason TEXT""")
+                         ADD COLUMN IF NOT EXISTS flag_reason TEXT,
+                         ADD COLUMN IF NOT EXISTS superseded_at TIMESTAMPTZ,
+                         ADD COLUMN IF NOT EXISTS superseded_reason TEXT""")
     apply = apply and not dry_run
     # n is the number of GRADED outcomes a tag's rate is computed on; ledger_n is
     # every row that carries the tag. wins = the 20-session return was positive.
@@ -376,16 +409,19 @@ def tag_efficacy(cur, cfg, apply, *, dry_run=False):
                          min_n=int(eff.get("min_samples_per_tag", 15)),
                          min_effect=float(eff.get("min_effect", 0.05)),
                          alpha=float(eff.get("alpha", 0.05)))
+    current_tags = [t["tag"] for t in out["tags"]]
     for t in out["tags"]:
         tn, avg_r = r_by_tag.get(t["tag"], (0, None))
         t["trade_n"] = tn
         t["avg_realized_r"] = round(avg_r, 3) if avg_r is not None else None
         if apply:
+            # Returning to the compute set clears any prior supersede marker.
             cur.execute("""INSERT INTO hermes_tag_efficacy (tag, n, hits, hit_rate, base_rate, lift,
                                                             flagged, trade_n, avg_realized_r, ledger_n,
                                                             outcome_n, actioned_hits, directive_hits,
-                                                            p_value, flag_reason, updated_at)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                                                            p_value, flag_reason, superseded_at,
+                                                            superseded_reason, updated_at)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NULL,NULL,NOW())
                            ON CONFLICT (tag) DO UPDATE SET n=EXCLUDED.n, hits=EXCLUDED.hits,
                              hit_rate=EXCLUDED.hit_rate, base_rate=EXCLUDED.base_rate,
                              lift=EXCLUDED.lift, flagged=EXCLUDED.flagged,
@@ -394,11 +430,31 @@ def tag_efficacy(cur, cfg, apply, *, dry_run=False):
                              actioned_hits=EXCLUDED.actioned_hits,
                              directive_hits=EXCLUDED.directive_hits,
                              p_value=EXCLUDED.p_value, flag_reason=EXCLUDED.flag_reason,
+                             superseded_at=NULL, superseded_reason=NULL,
                              updated_at=NOW()""",
                         (t["tag"], t["n"], t["hits"], t["hit_rate"], out["base_rate"],
                          t["lift"], t["flagged"], t["trade_n"], t["avg_realized_r"],
                          t["ledger_n"], t["n"], t["actioned"], t["directive_hits"],
                          t["p_value"], t["flag_reason"]))
+    # Tags the engine no longer computes stay in the table for audit but must not
+    # surface as live flags (LQ-1491 / old LQ-133b remainder). Never DELETE.
+    absent = list_absent_efficacy_tags(cur, current_tags)
+    out["would_supersede"] = [a["tag"] for a in absent]
+    out["would_supersede_flagged"] = [a["tag"] for a in absent if a.get("flagged")]
+    if apply and absent:
+        cur.execute("""UPDATE hermes_tag_efficacy
+                          SET flagged = FALSE,
+                              flag_reason = %s,
+                              superseded_at = NOW(),
+                              superseded_reason = %s,
+                              updated_at = NOW()
+                        WHERE superseded_at IS NULL
+                          AND NOT (tag = ANY(%s))""",
+                    (SUPERSEDE_FLAG_REASON, SUPERSEDE_REASON, current_tags))
+        # len(absent) is the intended set; rowcount is only a driver echo.
+        out["superseded"] = len(absent)
+    else:
+        out["superseded"] = 0
     return out
 
 

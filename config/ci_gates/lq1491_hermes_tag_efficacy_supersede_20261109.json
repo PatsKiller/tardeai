@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HERMES_TAG_EFFICACY_SUPERSEDE_LQ1491_20261109",
+  "files": [
+    "tests/test_hermes_tag_efficacy_supersede_lq1491_20261109.py"
+  ],
+  "anchor": "HERMES_TAG_EFFICACY_SUPERSEDE_LQ1491_20261109",
+  "comment": [
+    "ANCHOR: HERMES_TAG_EFFICACY_SUPERSEDE_LQ1491_20261109 — LQ-20261107-1491.",
+    "After the LQ-133b metric change, 7 old-metric hermes_tag_efficacy rows (5 flagged)",
+    "stayed visible because the engine only UPSERTs tags it still computes. The engine now",
+    "stamps superseded_at / clears flagged for tags not in the current compute set (never",
+    "DELETE). Consumers filter superseded_at IS NULL. Hermetic: fake cursor, no DB, no network."
+  ]
+}
