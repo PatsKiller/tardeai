@@ -623,6 +623,22 @@ def check_market_regime_change(conn, dry_run: bool = False) -> int:
     return fired
 
 
+def _is_cusip_identifier(symbol: str) -> bool:
+    """True when a holding's ``symbol`` is really a CUSIP, not a ticker (LQ-20261107-1626).
+
+    The broker returns the CUSIP as the ``symbol`` when a position has no active ticker (delisted/closed), and
+    ``holdings.json`` keeps those rows. ``watchlist_agent_results`` is keyed by ticker, so such a row can never be
+    analyzed: firing PORTFOLIO_FRESH_NEEDED for it can never clear, and it permanently holds one of the three slots
+    a run has — so the detector would stop reporting the real holdings behind it. The predicate is the shared one
+    (``security_identity.is_cusip_like``, the same rule the quote and advisory readers use); this module only asks.
+    """
+    try:
+        from scripts.lib.security_identity import is_cusip_like
+    except ImportError:  # scripts/ is on sys.path when this runs as a script or from cron
+        from lib.security_identity import is_cusip_like
+    return bool(is_cusip_like(str(symbol or "")))
+
+
 def check_portfolio_fresh_needed(conn, dry_run: bool = False) -> int:
     """PORTFOLIO_FRESH_NEEDED: holdings not analyzed by any agent in >48h. Max 3 per run."""
     import psycopg2.extras
@@ -630,10 +646,19 @@ def check_portfolio_fresh_needed(conn, dry_run: bool = False) -> int:
 
     holdings = _load_json(STATE_DIR / "holdings.json")
     held = set()
+    identifiers = 0
     for h in holdings.get("holdings", []):
-        sym = h.get("symbol", "")
-        if sym and not h.get("is_cash"):
-            held.add(sym)
+        sym = str(h.get("symbol") or "").strip()
+        if not sym or h.get("is_cash"):
+            continue
+        if _is_cusip_identifier(sym):
+            identifiers += 1  # counted, never named: an identifier is not a thing to analyze
+            continue
+        held.add(sym)
+
+    if identifiers:
+        _log(f"PORTFOLIO_FRESH_NEEDED: {identifiers} CUSIP identifier(s) skipped — not tickers, "
+             f"so no analysis of them can exist")
 
     if not held:
         _log("PORTFOLIO_FRESH_NEEDED: no holdings — skipping")

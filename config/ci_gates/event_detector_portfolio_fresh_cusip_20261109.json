@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "event_detector_portfolio_fresh_cusip_20261109",
+  "files": [
+    "tests/test_event_detector_portfolio_fresh_cusip_20261109.py"
+  ],
+  "comment": [
+    "LQ-20261107-1626: PORTFOLIO_FRESH_NEEDED fired on three holdings stored as CUSIPs. The broker returns the",
+    "CUSIP as the symbol when a position has no active ticker, and holdings.json keeps those rows;",
+    "watchlist_agent_results is keyed by ticker, so no analysis of them can exist, their event can never",
+    "clear, and each run spent one of its three fires on an identifier. A never-analyzed CUSIP sorts first",
+    "(the None sentinel) and therefore crowded a genuinely stale holding out of the cap. Pins: the CUSIP is",
+    "never fired and never named, only counted in one line; the three real holdings behind it all fire; the",
+    "denominator is holdings, not identifiers; a book of only CUSIPs reports the skip count and then no",
+    "holdings; and the shared predicate (security_identity.is_cusip_like) does not mistake a digit-bearing",
+    "ticker or a nine-letter name for a CUSIP. Synthetic ZQ* fixtures; no store is read."
+  ]
+}
