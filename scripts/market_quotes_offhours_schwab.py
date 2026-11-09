@@ -8,7 +8,8 @@ Schwab or database module is imported.
 
 What it reads: GET ``/marketdata/v1/quotes`` only (the host in ``schwab.marketdata_base_url``; any other URL is
 refused), with the stored access token from the Schwab token manager's public read API (``health`` then
-``get_access_token``, only while the access token is fresh: this lane never refreshes a token). It does not
+``get_access_token``, only while the access token is fresh: this lane never refreshes a token). A read that
+lands while another caller is refreshing waits and re-reads ``health()``; it still does not refresh. It does not
 import ``schwab_transport`` (the module that also carries the order surface), never touches an account, order, stop,
 2FA or auth-flow endpoint, and never reads a credential file itself. ``config/schwab_access_mode.yaml`` must allow
 reads. Rows go to ``market_quotes_extended`` (feed ``schwab``) through its single writer
@@ -30,6 +31,7 @@ import argparse
 import importlib.util
 import json
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -40,6 +42,43 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from lib import offhours_quotes as oq  # noqa: E402
 
 QUOTES_PATH = "quotes"
+# health() is false for the last ACCESS_REFRESH_MARGIN_S (300s) of the ~30 min access token.
+# Measured 2026-11-09 from the lane log and broker_oauth_token_audit (event/status/time only):
+# all 14 no_token runs were 1500–1720s after the previous refresh_rotation, and the next
+# refresh_rotation committed 0.5–3.9s later. Eight seconds covers that gap twice. The wait
+# re-reads health(); it never calls get_access_token until access_fresh is true, so this lane
+# still never refreshes and never loads the Schwab app credentials.
+FRESH_WAIT_S = 8.0
+FRESH_POLL_S = 0.5
+
+
+def _wait_for_access_fresh(tm, key, *, sleep=None, monotonic=None, fresh_wait_s=None) -> bool:
+    """True when health() says the stored access token is fresh, after a short re-read.
+
+    ``sleep`` and ``monotonic`` are the real clock unless a test supplies its own. A sleep
+    that does not advance the clock still stops: the step cap is the budget divided by the poll.
+    """
+    if not key:
+        return False
+    sleep_fn = time.sleep if sleep is None else sleep
+    clock = time.monotonic if monotonic is None else monotonic
+    budget = FRESH_WAIT_S if fresh_wait_s is None else float(fresh_wait_s)
+    if tm.health(key).get("access_fresh"):
+        return True
+    if budget <= 0:
+        return False
+    deadline = clock() + budget
+    steps = 0
+    max_steps = int(budget / FRESH_POLL_S) + 2
+    while steps < max_steps:
+        steps += 1
+        now = clock()
+        if now >= deadline:
+            return False
+        sleep_fn(min(FRESH_POLL_S, deadline - now))
+        if tm.health(key).get("access_fresh"):
+            return True
+    return False
 
 
 def marketdata_url(cfg: dict) -> str:
@@ -50,7 +89,7 @@ def marketdata_url(cfg: dict) -> str:
     return base + QUOTES_PATH
 
 
-def live_fetch(symbols: list[str], cfg: dict) -> dict:
+def live_fetch(symbols: list[str], cfg: dict, *, sleep=None, monotonic=None, fresh_wait_s=None) -> dict:
     """Live Schwab quotes. Only reached with schwab.enabled true and --apply; never in a dry run or a test."""
     from lib import schwab_access_mode as sam
 
@@ -64,8 +103,9 @@ def live_fetch(symbols: list[str], cfg: dict) -> dict:
     key = tm.canonical_token_key()
     # This lane never refreshes a token. get_access_token() refreshes a stale access token when the operator has
     # armed HTTP refresh, and that path loads the Schwab app credentials; so the lane reads the stored token only
-    # while health() says it is fresh, and otherwise fails closed and leaves refresh to the token manager's owner.
-    if key and not tm.health(key).get("access_fresh"):
+    # while health() says it is fresh. A slot that overlaps another caller's refresh re-reads health() for
+    # FRESH_WAIT_S and still does not call get_access_token until that read is fresh.
+    if key and not _wait_for_access_fresh(tm, key, sleep=sleep, monotonic=monotonic, fresh_wait_s=fresh_wait_s):
         return {"_status": "no_token", "_detail": "access token not fresh; this lane never refreshes (fail closed)"}
     token = tm.get_access_token(key) if key else None
     if not token:

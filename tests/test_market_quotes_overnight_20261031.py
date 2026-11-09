@@ -333,15 +333,62 @@ def _fake_fetch_env(monkeypatch, statuses):
     return ent, calls
 
 
+def _virtual_clock():
+    """A monotonic clock sleep advances. Tests must not wait the real freshness budget."""
+    state = {"t": 0.0}
+
+    def monotonic():
+        return state["t"]
+
+    def sleep(seconds):
+        state["t"] += float(seconds)
+
+    return state, sleep, monotonic
+
+
 def test_stale_access_token_fails_closed_without_refresh(ocfg, monkeypatch):
     """The lane never refreshes: a stale access token stops before get_access_token (which can refresh) and before
-    any Schwab request."""
+    any Schwab request. The whole freshness budget elapses on a virtual clock."""
     ent, calls = _fake_fetch_env(monkeypatch, [200])
     tm = sys.modules["schwab_token_manager"]
+    state, sleep, monotonic = _virtual_clock()
     monkeypatch.setattr(tm, "health", lambda key: {"access_fresh": False, "refresh_valid": True})
     monkeypatch.setattr(tm, "get_access_token", lambda key: (_ for _ in ()).throw(AssertionError("refresh path")))
-    out = ent.live_fetch(["/ES"], ocfg)
+    out = ent.live_fetch(["/ES"], ocfg, sleep=sleep, monotonic=monotonic)
     assert out["_status"] == "no_token" and "never refreshes" in out["_detail"] and calls == []
+    assert state["t"] >= ent.FRESH_WAIT_S
+
+
+def test_not_fresh_waits_for_the_in_progress_refresh_then_reads(ocfg, monkeypatch):
+    """A slot that lands in the last 300s of the access token sees access_fresh false, then the other caller's
+    refresh commits. Re-read health(); call get_access_token only once it is fresh. Never refresh here."""
+    ent, calls = _fake_fetch_env(monkeypatch, [200])
+    tm = sys.modules["schwab_token_manager"]
+    state, sleep, monotonic = _virtual_clock()
+    tokens, refreshed = [], []
+
+    def health(_key):
+        return {"access_fresh": state["t"] >= 1.0, "refresh_valid": True}
+
+    monkeypatch.setattr(tm, "health", health)
+    monkeypatch.setattr(tm, "get_access_token", lambda key: tokens.append(key) or "fake-token")
+    monkeypatch.setattr(tm, "refresh_access_token", lambda *a, **k: refreshed.append("refresh"), raising=False)
+    out = ent.live_fetch(["/ES"], ocfg, sleep=sleep, monotonic=monotonic)
+    assert "_status" not in out and calls == ["/ES"] and tokens == ["k"] and refreshed == []
+    assert 0 < state["t"] < ent.FRESH_WAIT_S
+
+
+def test_not_fresh_for_the_whole_wait_still_fails_closed(ocfg, monkeypatch):
+    """No refresh during the budget is still no_token. The lane does not become the refresher."""
+    ent, calls = _fake_fetch_env(monkeypatch, [200])
+    tm = sys.modules["schwab_token_manager"]
+    state, sleep, monotonic = _virtual_clock()
+    tokens = []
+    monkeypatch.setattr(tm, "health", lambda key: {"access_fresh": False, "refresh_valid": True})
+    monkeypatch.setattr(tm, "get_access_token", lambda key: tokens.append(key) or "fake-token")
+    out = ent.live_fetch(["/ES"], ocfg, sleep=sleep, monotonic=monotonic)
+    assert out["_status"] == "no_token" and "never refreshes" in out["_detail"]
+    assert calls == [] and tokens == [] and state["t"] >= ent.FRESH_WAIT_S
 
 
 def test_all_schwab_batches_failing_is_an_error_not_ok(ocfg, monkeypatch, capsys):
