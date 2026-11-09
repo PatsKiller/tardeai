@@ -42464,6 +42464,220 @@
           "notifier_priority": "P2"
         }
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "cio-overnight-brief",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "lq1286_operator_go_20261108",
+      "stage": "canary",
+      "purpose": {
+        "text": "Publish the CIO overnight brief — the move, the news, the filings, the stop cushion against ATR, the last recorded CIO decision and one advisory action per flagged holding, plus the risk tier and the next five sessions — at 06:00, 09:00, 12:00, 16:15 and 20:00 ET on trading days and every 6 h at weekends, so the operator and the Home synopsis have a current, cited read of what changed. Advisory only: every action is computed in the script and the CIO remains the verdict owner.",
+        "business_function": "cio",
+        "source": "LQ-20261107-1286 operator GO relayed in WORK-QUEUE 2026-11-08; scripts/cio_overnight_brief.py (LQ-20261107-1257, fold-3f)"
+      },
+      "owner": "cio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/cio_overnight_brief.py --apply",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command + live_arg"
+        },
+        {
+          "name": "/tmp/cio_overnight_brief.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock, lock_kind flock (no host cron line runs this script; the lane was never on crontab)"
+        },
+        {
+          "name": "data/runtime/cio_overnight_brief/latest.json, data/runtime/cio_overnight_brief/<YYYY-MM-DD>.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/cio_overnight_brief.py write_brief (atomic tempfile + os.replace, --apply only)"
+        },
+        {
+          "name": "data/runtime/cio-overnight-brief_last.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/lane_last_receipt.py write_lane_receipt (LaneRunReceipt@v2 with produced_count = counts.selected)"
+        },
+        {
+          "name": "Postgres news_articles, sec_form4, sec_form8k, sec_filing_documents, stop_last_known, market_ohlcv_bars, cio_decisions, market_regime_snapshots, risk_regime_run_log, positions/watchlist tables (READ ONLY session)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/cio_overnight_brief.py connect() and the load_* helpers; the session is opened read-only by the dry-run path and writes nothing on any path"
+        },
+        {
+          "name": "data/portfolios/state/holdings.json, data/portfolios/state/ticker_snapshot_latest.json, data/runtime/macro_calendar.json, data/portfolios/state/earnings_dates.json",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/cio_overnight_brief.py main() and load_calendar/load_market_risk/load_reentry"
+        },
+        {
+          "name": "$PY scripts/hermes_external_researcher.py --lane T0 --trigger holdings --apply --no-store",
+          "kind": "service",
+          "direction": "calls",
+          "source": "scripts/cio_overnight_brief.py research_one subprocess; at most --max-research 8 questions, 60/day reservation in research_budget.json; the researcher writes its own receipts/accounting rows"
+        },
+        {
+          "name": "governed DeepSeek FAST via scripts/llm_lane.generate (process cio_overnight_brief)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "config/llm_process_registry.json row cio_overnight_brief (40 calls/day, 0.10 USD/day); one call per fire, prose only; no bridge route, so a bridge outage falls back to the deterministic summary"
+        },
+        {
+          "name": "scripts/since_close_snapshot.py (cio_brief block reads data/runtime/cio_overnight_brief/latest.json)",
+          "kind": "service",
+          "direction": "read",
+          "source": "scripts/since_close_snapshot.py load_cio_brief; the Home card's cio_brief line is 'pending' until the first brief exists"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "canary_live_done",
+          "text": "every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs) with the same 33 fires/week the row declares; no host cron line runs this script, so a RUN_SKIPPED_LOCK is a finding, not an expected sibling"
+        },
+        {
+          "check": "artifact_written",
+          "text": "latest.json advances generated_at and its run_id equals the run's TRADEAI_RUN_ID, and the dated <YYYY-MM-DD>.json carries the same run_id; the executor receipt's output_signal_mtime_before < after"
+        },
+        {
+          "check": "model_optional",
+          "text": "a model or researcher outage still writes the brief: summary.source is deterministic and research.unanswered is recorded, so the run ends RUN_DONE — the wording degrades, the advice and the file do not"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 720.0 s (80% of timeout_s 900)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "slow",
+          "text": "duration above 720.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy transient-2) or ended RUN_SKIPPED_LOCK in two consecutive slots"
+        },
+        {
+          "check": "research_degraded",
+          "text": "the brief was written but every research question went unanswered (research.answered == 0 while names were flagged): WHO/WHY/IMPACT falls back to the deterministic citation, which is a wording gap, not a failed run"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "the quote snapshot, holdings document or calendar is missing so the brief carries gaps[] naming it; the run still writes what it can prove"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 36 h (3x the row's expected_cadence_hours 12.0): the longest legitimate gap is Sunday 18:00 -> Monday 06:00 ET"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "empty_without_citation",
+          "text": "produced_count 0 and summary.held_names also 0: the brief examined nothing, which is not the legitimate 'no held name moved or carried news' empty"
+        }
+      ],
+      "baseline": {
+        "timeout_s": 900,
+        "class": "report",
+        "freshness_degraded_after_h": 24.0,
+        "freshness_failed_after_h": 36.0,
+        "freshness_rule": "degraded beyond 2x the row's expected_cadence_hours 12.0 (the Sunday 18:00 -> Monday 06:00 gap), failed beyond 3x; a trading-day gap is at most 4 h, so a missing 06:00 brief is visible by midday and a missed Monday 06:00 is failed before Tuesday",
+        "computed_on": "2026-11-08",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED as a scheduled lane: no dispatcher fire yet (registered 2026-11-08). One manual acceptance run at 2026-11-09T00:20Z by the script's author wrote LaneRunReceipt@v2 status ok, produced_count 8 of 26 held names, summary_source llm, 9m04s wall including the research and model calls (data/runtime/cio-overnight-brief_last.json). Both declared argvs were emulated in an isolated state root in this registration (LQ-20261107-1286 DONE note: --dry-run writes nothing; --apply --no-research --no-llm --emulated writes latest.json + the dated copy and no lane receipt).",
+        "runs_considered": null,
+        "duration_degraded_above_s": 720.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "the brief is the operator's scheduled read of the book before and after the session; a silent stop leaves the Home synopsis on the last brief it had. Advisory only, no order is affected, so it does not carry the since-close card's P2-at-once treatment",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity, else the fan-in priority (RUN_* = P2)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: regenerate with scripts/build_remediation_catalogue.py --write after this allowlist entry merges (step 7 of the onboarding checklist)"
+      },
+      "evidence": {
+        "receipt": "data/runtime/cio-overnight-brief_last.json (last live run) + data/runtime/lane_attempts/cio-overnight-brief/<run_id>.json (immutable per-attempt), plus data/governance/n8n_coordination_ledger.sqlite runs and data/runtime/cio_overnight_brief/latest.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='cio-overnight-brief' ORDER BY requested_at DESC LIMIT 20\"",
+          "jq '.generated_at, .run_id, .counts, .summary.source, .research, .gaps' $STATE_ROOT/data/runtime/cio_overnight_brief/latest.json",
+          "jq '{status, ok_at, produced_count, attempted_count, empty_reason, held: .summary.held_names}' $STATE_ROOT/data/runtime/cio-overnight-brief_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL, and prove the work with the ledger row plus the artifact's run_id, never with exit 0 alone",
+        "evidence_class": "SOURCE_ONLY",
+        "expected_output_basis": "expected_output is empty_allowed by design: a fire with no held name above the move threshold and no held-name news is a legitimate brief that still names the risk tier and the week ahead. scripts/cio_overnight_brief.py writes LaneRunReceipt@v2 with produced_count = counts.selected and summary.held_names, so upstream_count_field cites the examined universe. THE RULE IS NOT ARMED: the allowlist entry deliberately omits output_receipt v2 because the script's empty_reason is currently the free-text sentence 'no held name moved more than 3% or carried news since the close', and a sentence cannot be listed in empty_allowed_reasons — arming now would fail a legitimate empty night. Arming is one line (add \"output_receipt\": \"v2\" to the allowlist entry) once the script emits the typed reason no_new_input; at registration time scripts/cio_overnight_brief.py was claimed by another lane (LQ-20261107-1295), so that edit was not made here."
+      },
+      "review_by": "2026-11-22",
+      "review": {
+        "prepared_by": "agent draft (cc-deepseek-6, LQ-20261107-1286, 2026-11-08)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator GO relayed in LQ-20261107-1286 WORK-QUEUE (2026-11-08), applied by agent cc-deepseek-6",
+        "reviewed_on": "2026-11-08",
+        "note": "reviewed for registration only: baseline.source is NOT_MEASURED, the event trigger is inert at canary (EVENT_MODES = ('dry_run',)), and review_by 2026-11-22 is when real runtimes, the cost of 33 fires/week against the 40/day model cap and the false-empty rate are due"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "held names flagged in the brief (move past 3% or news since the last close)",
+        "rule": "empty_allowed",
+        "produced_field": "produced_count",
+        "upstream_count_field": "summary.held_names",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/lane_attempts/cio-overnight-brief/<run_id>.json produced_count and summary.held_names (LaneRunReceipt@v2 from scripts/lib/lane_last_receipt.py)"
+          },
+          {
+            "kind": "file_artifact",
+            "ref": "data/runtime/cio_overnight_brief/latest.json generated_at + run_id + counts.selected"
+          },
+          {
+            "kind": "ledger_row",
+            "ref": "data/governance/n8n_coordination_ledger.sqlite runs + run_outcomes for lane_id=cio-overnight-brief"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
     }
   ],
   "pending_changes": {

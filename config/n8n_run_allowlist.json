@@ -6001,6 +6001,36 @@
       "env_report_reason": "Report until the import closure is re-inventoried for enforce: the same binary and the same closure as since-close-snapshot (quote snapshot, macro calendar, earnings and dividends from the state root, news from Postgres READ ONLY). The only credential names read are DB_* for its own READ ONLY session. No model, provider or broker credential.",
       "env_evidence": "Same closure as since-close-snapshot: scripts/lib/cio_market_context_state.connect_trade_ai_readonly reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (session set READ ONLY); TRADEAI_STATE_DIR is the script's default state dir (overridden explicitly by --state-dir); scripts/lib/macro_calendar.default_path reads TRADEAI_STATE_ROOT else TRADEAI_PERSISTENT_STATE_ROOT. TRADEAI_RUN_ID / TRADEAI_RUN_ATTEMPT / TRADEAI_RUN_MODE / TRADEAI_CODE_SHA are executor base names.",
       "source": "LQ-20261107-1279 (operator GO 2026-11-08 19:01 ET): 'between those, a cheap --if-changed check every 15 min that writes ONLY when something significant changed'. One fire carries one argv, so the conditional half is its own lane rather than a flag the forced rebuild cannot carry. --if-changed (LQ-20261107-1260, folded) exits 0 without writing when nothing changed and writes no LaneRunReceipt of its own: the fire's proof is its RunReceipt@v2 in the coordination ledger, and a write lands in the snapshot the rebuild row owns. Separate lock (not the rebuild's) because the slots are disjoint by construction: a fire is killed at timeout_s 300, the rebuild starts at :00 and this lane at :15/:30/:45."
+    },
+    {
+      "lane_id": "cio-overnight-brief",
+      "command": [
+        "$PY",
+        "scripts/cio_overnight_brief.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "lock": "/tmp/cio_overnight_brief.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "market_gate": false,
+      "output_signal": "data/runtime/cio_overnight_brief/latest.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Report until the import closure is re-inventoried for enforce: the brief reads Postgres READ ONLY, spawns scripts/hermes_external_researcher.py (its own DB + provider closure) and calls the governed DeepSeek path through scripts/llm_lane.py; the credential names are DB_* for its own session, plus whatever the researcher and model client resolve internally. No broker credential is named or needed.",
+      "env_evidence": "scripts/cio_overnight_brief.py connect() reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD from os.environ; state_root() reads TRADEAI_STATE_ROOT (a CHILD_ENV_BASE_NAME in scripts/n8n_run_executor.py) and defaults to the persistent-state root. The research subprocess is scripts/hermes_external_researcher.py, whose own closure reads DB_* (grep of its env reads: DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD) and the model client's provider names; llm_lane.generate resolves its own route. TRADEAI_RUN_ID / TRADEAI_RUN_ATTEMPT / TRADEAI_RUN_MODE / TRADEAI_CODE_SHA are executor base names.",
+      "source": "LQ-20261107-1286 (P0, operator GO relayed in WORK-QUEUE 2026-11-08): 'Weekends every 6 h. Trading days: 06:00, 09:00, 12:00, 16:15, 20:00 ET, plus on market_event.' The script is LQ-20261107-1257 (fold-3f); this entry is its n8n registration. dry_run_arg --dry-run (assemble and print, no research, no model, no write) and live_arg --apply under the operator's standing word for the Home synopsis. The executor sets TRADEAI_STATE_ROOT, which is the script's default state root, so no --state-root is passed (a home path literal would in any case be refused by the repo PII gate). --emulated is an acceptance-run flag, not a scheduled argv: it writes --out-dir only and skips the lane receipt, so it can never advance the scheduled lane's ok_at. lock_kind flock matches the cron-style lock convention and exit 75 on contention; no host cron line runs this script (the lane was never put on crontab)."
     }
   ],
   "blocked_reasons": {

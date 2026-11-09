@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_overnight_brief_lane_registration_20261108",
+  "files": [
+    "tests/test_cio_overnight_brief_lane_registration_20261108.py"
+  ],
+  "anchor": "CIO_OVERNIGHT_BRIEF_LANE_REGISTRATION_20261108",
+  "comment": [
+    "ANCHOR: CIO_OVERNIGHT_BRIEF_LANE_REGISTRATION_20261108 — LQ-20261107-1286 (operator GO relayed in WORK-QUEUE):",
+    "scripts/cio_overnight_brief.py is an n8n lane at canary. The row, allowlist entry, health contract and this test",
+    "agree on the cadence (trading days 06:00/09:00/12:00/16:15/20:00 ET, weekends every 6 h, plus a market_event",
+    "trigger that is DECLARED BUT INERT while EVENT_MODES = ('dry_run',)), on the two argvs (--dry-run and --apply),",
+    "and on the 12 h longest gap. Both argvs are emulated against a throwaway state root: the dry run writes",
+    "nothing, the live form writes latest.json + the dated copy with no lane receipt."
+  ]
+}
