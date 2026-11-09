@@ -97,6 +97,22 @@ def assert_simple_ddl(ddl: str) -> None:
         )
 
 
+def _first_value(row: Any) -> Any:
+    """The single column of a one-column result, whichever row type the cursor builds.
+
+    `stop_lifecycle_monitor._manual_stops` asks for a `RealDictCursor`, whose rows are keyed by
+    column name: `row[0]` raises `KeyError: 0` there. That function's broad `except` would have
+    swallowed it and returned no manual stops at all — silently, since 2026-11-09's guard (LQ-1686).
+    A tuple row is indexed; a mapping row is read by its one value.
+    """
+    if row is None:
+        return None
+    keys = getattr(row, "keys", None)
+    if callable(keys):
+        return next(iter(row.values()), None)
+    return row[0]
+
+
 def column_exists(cur: Any, table: str, column: str) -> bool:
     """Catalog read. Takes no lock on `table`."""
     cur.execute(
@@ -116,8 +132,7 @@ def relation_exists(cur: Any, name: str) -> bool:
     is the idiom the rest of this tree already uses (``option_chain_runs.py``).
     """
     cur.execute("SELECT to_regclass(%s) IS NOT NULL", (name,))
-    row = cur.fetchone()
-    return bool(row and row[0])
+    return bool(_first_value(cur.fetchone()))
 
 
 def apply_ddl(cur: Any, ddl: str) -> dict[str, Any]:

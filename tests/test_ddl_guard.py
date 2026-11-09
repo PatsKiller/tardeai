@@ -24,6 +24,7 @@ from scripts.lib.ddl_guard import (  # noqa: E402
     apply_ddl,
     assert_simple_ddl,
     column_exists,
+    relation_exists,
 )
 
 COVERS = ["scripts/lib/ddl_guard.py"]
@@ -130,6 +131,45 @@ def test_column_exists_reads_the_catalog_not_the_table():
     assert column_exists(cur, "material_changes", "notified_at") is True
     assert column_exists(cur, "material_changes", "nope") is False
     assert cur.executed == [], "a catalog read must not execute table DDL/DML"
+
+
+class _RelationCur:
+    """Answers `to_regclass` the way PostgreSQL does — but in the row type asked for.
+
+    `dict_rows=True` models `psycopg2.extras.RealDictCursor`, whose rows are mappings keyed by
+    column name. One caller really holds that cursor (``stop_lifecycle_monitor._manual_stops``).
+    """
+
+    def __init__(self, relations: set[str], dict_rows: bool):
+        self.relations = relations
+        self.dict_rows = dict_rows
+        self._row = None
+
+    def execute(self, sql, params=None):
+        assert "to_regclass" in sql, sql
+        present = params[0] in self.relations
+        self._row = {"?column?": present} if self.dict_rows else (present,)
+
+    def fetchone(self):
+        return self._row
+
+
+@pytest.mark.parametrize("dict_rows", [False, True])
+def test_relation_exists_answers_for_any_cursor_row_shape(dict_rows):
+    """A guard that raises on the caller's cursor is worse than no guard at all.
+
+    With a RealDictCursor, `row[0]` is a KeyError; `_manual_stops` swallows it and returns no
+    manual stops, so the guard would have emptied the operator's stop book silently.
+    """
+    cur = _RelationCur({"manual_broker_stops"}, dict_rows=dict_rows)
+    assert relation_exists(cur, "manual_broker_stops") is True
+    assert relation_exists(cur, "absent_relation") is False
+
+
+def test_relation_exists_reads_the_catalog_not_the_relation():
+    """to_regclass is the read: no CREATE/ALTER may be issued by the check itself."""
+    cur = _RelationCur(set(), dict_rows=False)
+    assert relation_exists(cur, "anything") is False
 
 
 COMMENTED_DDL = """

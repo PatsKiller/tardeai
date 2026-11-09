@@ -28,16 +28,23 @@ _COLUMNS = ("trail_offset", "price_source", "price_as_of", "price_stale")
 
 class _Catalog:
     def __init__(self, table: bool = True, columns=_COLUMNS):
-        self.table = table
+        #: Which relations the catalog already holds. ``table=False`` models a fresh database for
+        #: stop_lifecycle; manual_broker_stops is listed separately by the tests that read it.
+        self.relations = {"stop_lifecycle"} if table else set()
         self.columns = set(columns)
         self.statements: list[str] = []
         self.ddl: list[str] = []
+        #: Rows a SELECT returns. ``dict_rows`` models psycopg2's RealDictCursor, whose rows are
+        #: keyed by column name — ``_manual_stops`` really asks for one.
+        self.rows: list[dict] = []
+        self.dict_rows = False
 
 
 class _FakeCursor:
     def __init__(self, catalog: _Catalog):
         self.catalog = catalog
         self._row = None
+        self._rows = []
 
     def execute(self, sql, params=None):
         text = " ".join(str(sql).split())
@@ -47,14 +54,20 @@ class _FakeCursor:
             self._row = (1,) if (table == "stop_lifecycle" and column in self.catalog.columns) else None
             return
         if "to_regclass" in text:
-            self._row = (params[0] == "stop_lifecycle" and self.catalog.table,)
+            present = params[0] in self.catalog.relations
+            # a RealDictCursor row is a mapping keyed by the column expression
+            self._row = {"?column?": present} if self.catalog.dict_rows else (present,)
             return
         self._row = None
+        self._rows = self.catalog.rows
         if text.split(" ", 1)[0].upper() in ("CREATE", "ALTER"):
             self.catalog.ddl.append(text)
 
     def fetchone(self):
         return self._row
+
+    def fetchall(self):
+        return self._rows
 
 
 class _FakeConn:
@@ -62,7 +75,7 @@ class _FakeConn:
         self.cursor_obj = _FakeCursor(catalog)
         self.commits = 0
 
-    def cursor(self):
+    def cursor(self, *args, **kwargs):   # _manual_stops asks for a RealDictCursor factory
         return self.cursor_obj
 
     def commit(self):
@@ -121,6 +134,64 @@ def test_a_missing_table_is_created_and_its_additive_columns_added(monkeypatch):
     for column in _COLUMNS:
         assert f"ADD COLUMN IF NOT EXISTS {column}" in joined
     assert sum("INSERT INTO stop_lifecycle" in s for s in catalog.statements) == 1
+
+
+def test_the_manual_stop_read_does_not_create_its_table_every_scan(monkeypatch):
+    """The same scan also CREATEs manual_broker_stops — a table fidelity_stop_sync owns and alters.
+
+    The scan's read of the operator's manually recorded stops ran `CREATE TABLE IF NOT EXISTS
+    manual_broker_stops` on every pass, so the */10 stop_health_check and every expired 45 s API
+    cache re-issued it against a table another writer creates, alters and indexes.
+    """
+    catalog = _Catalog()
+    catalog.relations.add("manual_broker_stops")
+    conn = _FakeConn(catalog)
+    stub = types.ModuleType("db_adapter")
+    stub._get_conn = lambda: conn
+    monkeypatch.setitem(sys.modules, "db_adapter", stub)
+    slm._manual_stops()
+
+    assert catalog.ddl == [], f"DDL issued on the read path: {catalog.ddl}"
+    assert sum("SELECT account, symbol, broker" in s for s in catalog.statements) == 1
+
+
+def test_the_manual_stop_read_still_creates_a_missing_table(monkeypatch):
+    catalog = _Catalog(table=False)
+    conn = _FakeConn(catalog)
+    stub = types.ModuleType("db_adapter")
+    stub._get_conn = lambda: conn
+    monkeypatch.setitem(sys.modules, "db_adapter", stub)
+    slm._manual_stops()
+
+    assert len(catalog.ddl) == 1, catalog.ddl
+    assert "CREATE TABLE IF NOT EXISTS manual_broker_stops" in catalog.ddl[0]
+
+
+def test_the_manual_stop_read_keeps_its_rows_under_a_dict_cursor(monkeypatch):
+    """`_manual_stops` asks for a RealDictCursor, so its rows are mappings, not tuples.
+
+    A catalog helper that indexes `row[0]` raises `KeyError: 0` there; the function's broad
+    `except` turns that into an empty list, and every operator-recorded stop silently leaves
+    the snapshot. The guard must answer for the cursor the caller actually holds.
+    """
+    catalog = _Catalog()
+    catalog.relations.add("manual_broker_stops")
+    catalog.dict_rows = True
+    catalog.rows = [{
+        "account": "ZQ_ACCOUNT", "symbol": "ZQAAA", "broker": "zqbroker", "order_id": "ZQ-ORDER-1",
+        "order_type": "stop", "stop_price": 10.0, "qty": 5, "status": "open",
+        "trail_pct": None, "trail_link": None,
+    }]
+    conn = _FakeConn(catalog)
+    stub = types.ModuleType("db_adapter")
+    stub._get_conn = lambda: conn
+    monkeypatch.setitem(sys.modules, "db_adapter", stub)
+
+    rows = slm._manual_stops()
+
+    assert catalog.ddl == [], f"DDL issued on the read path: {catalog.ddl}"
+    assert len(rows) == 1, f"the operator's stop was dropped: {rows}"
+    assert rows[0]["symbol"] == "ZQAAA" and rows[0]["manual"] is True
 
 
 def test_the_guard_uses_the_shared_catalog_helper():

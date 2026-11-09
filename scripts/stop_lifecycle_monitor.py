@@ -316,7 +316,18 @@ def _manual_stops() -> list[dict]:
         import psycopg2.extras
         conn = _get_conn()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("""CREATE TABLE IF NOT EXISTS manual_broker_stops (
+        # LQ-20261107-1686 — the same scan, the same shape: this CREATE ran on every stop scan (and
+        # therefore on every /api/v2/stops/lifecycle once its 45 s cache expires) against a table that
+        # lib/fidelity_stop_sync.ensure_manual_broker_stops_table also creates, alters and indexes.
+        # Catalog first; the write of a genuinely missing table still happens. A guard that cannot
+        # answer at all falls back to the idempotent CREATE: the operator's stops must never be lost
+        # because the probe failed (this function's broad `except` would hide that as "no stops").
+        try:
+            _present = relation_exists(cur, "manual_broker_stops")
+        except Exception:
+            _present = False
+        if not _present:
+            cur.execute("""CREATE TABLE IF NOT EXISTS manual_broker_stops (
                          id SERIAL PRIMARY KEY, account TEXT, symbol TEXT, broker TEXT,
                          order_id TEXT, order_type TEXT DEFAULT 'STOP', stop_price NUMERIC,
                          qty NUMERIC, status TEXT DEFAULT 'open', placed_date DATE, note TEXT,
