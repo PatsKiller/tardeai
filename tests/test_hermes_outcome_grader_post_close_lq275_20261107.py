@@ -16,9 +16,10 @@ built its session calendar from the cached SPY dates, so a Saturday row shifted 
 from __future__ import annotations
 
 import importlib
+import json
 import re
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -237,7 +238,7 @@ def test_a_saturday_row_does_not_shift_the_20_session_horizon():
     px.update({("ZZZQ", d): 50.0 for d in sess})
     px[("ZZZQ", sess[20])] = 55.0          # +10% exactly 20 sessions after the base session
     px[("ZZZQ", saturday)] = 50.0
-    ledger = [(1, "external_rec", "ZZZQ", sess[0], "long")]
+    ledger = [(1, "external_rec", "ZZZQ", sess[0], "long", "pending", None)]
     cfg = {"benchmark": "SPY", "horizons": {"short_sessions": 5, "long_sessions": 20},
            "verdict": {"hit_pct": 2.0, "miss_pct": -2.0}, "max_rows_per_run": 10}
     cur = GradeCursor(spy_dates, ledger, px)
@@ -245,6 +246,20 @@ def test_a_saturday_row_does_not_shift_the_20_session_horizon():
     assert out["sessions"] == 30
     final = [p for s, p in cur.updates if "verdict=%s" in s]
     assert final and final[0][2] == 55.0 and final[0][5] == "hit", final
+
+
+@pytest.fixture
+def archive_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(tmp_path))
+    monkeypatch.setenv("TRADE_AI_CI", "1")
+    return tmp_path
+
+
+def _archive_lines(root: Path) -> list[dict]:
+    path = root / "data" / "cio" / "hermes_outcome_verdict_archive.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def _research_cfg():
@@ -259,53 +274,148 @@ def _flat_book(sess, sym="ZZZQ"):
     return px
 
 
-def test_a_research_row_inside_the_20_session_horizon_stays_pending():
+def test_a_research_row_inside_the_20_session_horizon_stays_pending(archive_root):
     """Engagement is not a verdict. Before 20 sessions the row is not graded."""
     g = _grader()
     sess = _trading_days(date(2026, 9, 1), 30)
     px = _flat_book(sess)
-    ledger = [(7, "research_row", "ZZZQ", sess[20], "long")]
+    ledger = [(7, "research_row", "ZZZQ", sess[20], "long", "pending", None)]
     cur = GradeCursor(sess, ledger, px)
     out = g.grade(cur, _research_cfg())
     assert out["still_pending"] == 1
+    assert out["verdicts_archived"] == 0
     assert [p for s, p in cur.updates if "verdict=%s" in s] == []
     assert any("verdict='pending'" in s for s, _p in cur.updates)
+    assert _archive_lines(archive_root) == []
 
 
-def test_a_research_row_hit_is_the_20_session_excess_not_a_directive():
+def test_a_research_row_hit_is_the_20_session_excess_not_a_directive(archive_root):
     g = _grader()
     sess = _trading_days(date(2026, 9, 1), 30)
     px = _flat_book(sess)
     px[("ZZZQ", sess[20])] = 55.0
-    ledger = [(7, "research_row", "ZZZQ", sess[0], "long")]
+    ledger = [(7, "research_row", "ZZZQ", sess[0], "long", "pending", None)]
     cur = GradeCursor(sess, ledger, px)
     g.grade(cur, _research_cfg())
     final = [p for s, p in cur.updates if "verdict=%s" in s]
     assert final and final[0][5] == "hit" and final[0][4] == 10.0
 
 
-def test_a_research_row_miss_is_the_20_session_excess():
+def test_a_research_row_miss_is_the_20_session_excess(archive_root):
     g = _grader()
     sess = _trading_days(date(2026, 9, 1), 30)
     px = _flat_book(sess)
     px[("ZZZQ", sess[20])] = 40.0
-    ledger = [(7, "research_row", "ZZZQ", sess[0], "long")]
+    ledger = [(7, "research_row", "ZZZQ", sess[0], "long", "pending", None)]
     cur = GradeCursor(sess, ledger, px)
     g.grade(cur, _research_cfg())
     final = [p for s, p in cur.updates if "verdict=%s" in s]
     assert final and final[0][5] == "miss"
 
 
-def test_a_research_row_inside_the_band_is_neutral_once_the_horizon_arrives():
+def test_a_research_row_inside_the_band_is_neutral_once_the_horizon_arrives(archive_root):
     g = _grader()
     sess = _trading_days(date(2026, 9, 1), 30)
     px = _flat_book(sess)
     px[("ZZZQ", sess[20])] = 50.5
-    ledger = [(7, "research_row", "ZZZQ", sess[0], "long")]
+    ledger = [(7, "research_row", "ZZZQ", sess[0], "long", "pending", None)]
     cur = GradeCursor(sess, ledger, px)
     g.grade(cur, _research_cfg())
     final = [p for s, p in cur.updates if "verdict=%s" in s]
     assert final and final[0][5] == "neutral"
+
+
+def test_a_research_hit_is_archived_before_the_rewrite(archive_root):
+    """The prior verdict is on disk even when the UPDATE then fails."""
+    g = _grader()
+    sess = _trading_days(date(2026, 9, 1), 30)
+    px = _flat_book(sess)
+    px[("ZZZQ", sess[20])] = 40.0
+    prior_at = datetime(2026, 10, 1, 15, 0, tzinfo=timezone.utc)
+    ledger = [(7, "research_row", "ZZZQ", sess[0], "long", "hit", prior_at)]
+
+    class Stop(GradeCursor):
+        def execute(self, sql, params=None):
+            compact = " ".join(str(sql).split())
+            if compact.startswith("UPDATE") and "verdict=%s" in compact:
+                raise RuntimeError("update refused")
+            super().execute(sql, params)
+
+    with pytest.raises(RuntimeError, match="update refused"):
+        g.grade(Stop(sess, ledger, px), _research_cfg())
+    lines = _archive_lines(archive_root)
+    assert len(lines) == 1
+    assert lines[0]["ledger_id"] == 7
+    assert lines[0]["subject_type"] == "research_row"
+    assert lines[0]["prior_verdict"] == "hit"
+    assert lines[0]["prior_graded_at"] == "2026-10-01T15:00:00Z"
+    assert lines[0]["new_verdict"] == "miss"
+    assert lines[0]["reason"] == "price_verdict"
+    assert lines[0]["schema"] == "HermesOutcomeVerdictArchive@v1"
+    assert "symbol" not in lines[0]
+
+
+def test_a_premature_research_hit_is_archived_before_it_returns_to_pending(archive_root):
+    g = _grader()
+    sess = _trading_days(date(2026, 9, 1), 30)
+    px = _flat_book(sess)
+    prior_at = datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc)
+    ledger = [(7, "research_row", "ZZZQ", sess[20], "long", "hit", prior_at)]
+    cur = GradeCursor(sess, ledger, px)
+    out = g.grade(cur, _research_cfg())
+    assert out["still_pending"] == 1 and out["verdicts_archived"] == 1
+    lines = _archive_lines(archive_root)
+    assert len(lines) == 1
+    assert lines[0]["prior_verdict"] == "hit"
+    assert lines[0]["prior_graded_at"] == "2026-10-02T12:00:00Z"
+    assert lines[0]["new_verdict"] == "pending"
+    assert lines[0]["new_graded_at"] is None
+    assert lines[0]["reason"] == "reset_pending"
+    assert any("verdict='pending'" in sql for sql, _params in cur.updates)
+
+
+def test_a_non_research_grade_does_not_archive(archive_root):
+    g = _grader()
+    sess = _trading_days(date(2026, 9, 1), 30)
+    px = _flat_book(sess)
+    px[("ZZZQ", sess[20])] = 55.0
+    ledger = [(1, "external_rec", "ZZZQ", sess[0], "long", "pending", None)]
+    cur = GradeCursor(sess, ledger, px)
+    out = g.grade(cur, _research_cfg())
+    assert out["verdicts_archived"] == 0
+    assert _archive_lines(archive_root) == []
+    final = [params for sql, params in cur.updates if "verdict=%s" in sql]
+    assert final and final[0][5] == "hit"
+
+
+def test_the_archive_appends_and_skips_a_same_state_write(archive_root):
+    g = _grader()
+    stamp = datetime(2026, 10, 1, 15, 0, tzinfo=timezone.utc)
+    assert g.remember_research_verdict(
+        ledger_id=7, prior_verdict="hit", prior_graded_at=stamp,
+        new_verdict="hit", new_graded_at=stamp, reason="price_verdict",
+    ) is False
+    assert _archive_lines(archive_root) == []
+    assert g.remember_research_verdict(
+        ledger_id=7, prior_verdict="hit", prior_graded_at=stamp,
+        new_verdict="miss", new_graded_at=stamp, reason="price_verdict",
+    ) is True
+    assert g.remember_research_verdict(
+        ledger_id=9, prior_verdict="neutral", prior_graded_at=stamp,
+        new_verdict="pending", new_graded_at=None, reason="reset_pending",
+    ) is True
+    lines = _archive_lines(archive_root)
+    assert [row["ledger_id"] for row in lines] == [7, 9]
+    assert lines[0]["prior_verdict"] == "hit" and lines[0]["new_verdict"] == "miss"
+    text = (archive_root / "data" / "cio" / "hermes_outcome_verdict_archive.jsonl").read_text(encoding="utf-8")
+    assert text.count("\n") == 2
+
+
+def test_a_test_process_refuses_the_live_archive(monkeypatch):
+    monkeypatch.setenv("TRADE_AI_CI", "1")
+    monkeypatch.delenv("TRADEAI_PERSISTENT_STATE_ROOT", raising=False)
+    with pytest.raises(RuntimeError, match="live hermes verdict archive"):
+        _grader().verdict_archive_path()
 
 
 def test_recording_a_directive_does_not_write_a_hit(monkeypatch):

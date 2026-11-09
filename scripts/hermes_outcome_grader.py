@@ -9,8 +9,9 @@ One canonical join from every Hermes claim to money, in hermes_outcome_ledger:
                 (long/short/neutral), graded direction-adjusted vs SPY
   research_row  symbol-linked hermes_research_intelligence — graded on the 20-session
                 excess return (outcome_ret_20d). A directive, proposal, or trade is
-                engagement only. Inside the horizon the verdict stays pending. Also
-                fills hermes_research_intelligence.downstream_outcome from actioned.
+                engagement only. Inside the horizon the verdict stays pending. A rewrite
+                appends the prior verdict and graded_at to the persistent-state archive
+                first. Also fills hermes_research_intelligence.downstream_outcome from actioned.
   trade         closed trade_instances — realized_r attached; claim records whether
                 Hermes research existed at entry
 
@@ -27,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -241,6 +243,68 @@ def seed(cur, cfg) -> dict:
     return counts
 
 
+def _utc_stamp(value) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    text = str(value).strip()
+    return text or None
+
+
+def verdict_archive_path() -> Path:
+    """Append-only prior-verdict log. A test must not open the live file."""
+    from lib.persistent_state_root import GOOD_PERSISTENT_ROOT, good_persistent_root
+
+    root = good_persistent_root()
+    if os.environ.get("TRADE_AI_CI") == "1":
+        try:
+            live = root.resolve() == Path(GOOD_PERSISTENT_ROOT).resolve()
+        except OSError:
+            live = False
+        if live:
+            raise RuntimeError("TRADE_AI_CI refuses the live hermes verdict archive")
+    return root / "data" / "cio" / "hermes_outcome_verdict_archive.jsonl"
+
+
+def remember_research_verdict(
+    *,
+    ledger_id,
+    prior_verdict,
+    prior_graded_at,
+    new_verdict,
+    new_graded_at,
+    reason: str,
+) -> bool:
+    """Append one research row's prior verdict before a rewrite. A no-op appends nothing."""
+    prior_at = _utc_stamp(prior_graded_at)
+    new_at = _utc_stamp(new_graded_at)
+    if prior_verdict == new_verdict and prior_at == new_at:
+        return False
+    record = {
+        "archived_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "ledger_id": ledger_id,
+        "new_graded_at": new_at,
+        "new_verdict": new_verdict,
+        "prior_graded_at": prior_at,
+        "prior_verdict": prior_verdict,
+        "reason": reason,
+        "schema": "HermesOutcomeVerdictArchive@v1",
+        "subject_type": "research_row",
+    }
+    path = verdict_archive_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    fd = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o644)
+    try:
+        os.write(fd, payload)
+    finally:
+        os.close(fd)
+    return True
+
+
 # ── grading ──────────────────────────────────────────────────────────────────
 def grade(cur, cfg, max_rows=None) -> dict:
     bench = cfg["benchmark"].upper()
@@ -256,8 +320,9 @@ def grade(cur, cfg, max_rows=None) -> dict:
         i = bisect.bisect_right(sessions, d) - 1
         return i if i >= 0 else None
 
-    # pending verdicts + verdict-holding rows whose 20d context prices haven't filled yet
-    cur.execute("""SELECT id, subject_type, symbol, emitted_at::date, direction
+    # pending verdicts + verdict-holding rows whose 20d context prices haven't filled yet.
+    # verdict and graded_at come back so a rewrite can archive them first.
+    cur.execute("""SELECT id, subject_type, symbol, emitted_at::date, direction, verdict, graded_at
                     FROM hermes_outcome_ledger
                     WHERE verdict='pending'
                        OR (price_20d IS NULL AND verdict IN ('hit','miss','neutral'))
@@ -270,7 +335,7 @@ def grade(cur, cfg, max_rows=None) -> dict:
                 (hit_pct, miss_pct, max_rows or int(cfg["max_rows_per_run"]),))
     pending = cur.fetchall()
     if not pending:
-        return {"graded": 0, "still_pending": 0}
+        return {"graded": 0, "still_pending": 0, "verdicts_archived": 0}
 
     # bulk price lookup: every (symbol|SPY, session-date) we might need
     need_syms = sorted({p[2] for p in pending} | {bench})
@@ -288,15 +353,28 @@ def grade(cur, cfg, max_rows=None) -> dict:
                     return v
         return None
 
-    graded = still = ungradeable = 0
+    graded = still = ungradeable = archived = 0
     now = datetime.now(timezone.utc)
-    for lid, stype, sym, edate, direction in pending:
+    for lid, stype, sym, edate, direction, prior_verdict, prior_graded_at in pending:
+        def _keep(new_verdict, new_graded_at, reason, *,
+                  lid=lid, stype=stype, prior_verdict=prior_verdict,
+                  prior_graded_at=prior_graded_at) -> None:
+            nonlocal archived
+            if stype != "research_row":
+                return
+            if remember_research_verdict(
+                ledger_id=lid, prior_verdict=prior_verdict, prior_graded_at=prior_graded_at,
+                new_verdict=new_verdict, new_graded_at=new_graded_at, reason=reason,
+            ):
+                archived += 1
+
         # Price sets the VERDICT for price-claims and for research_row (measured
         # outcome_ret_20d). trade is R/P&L-graded — for those, price columns are context.
         price_verdict = stype in ("promotion", "external_rec", "research_row")
         bi = base_idx(edate)
         if bi is None:
             if price_verdict:
+                _keep("ungradeable", now, "ungradeable")
                 cur.execute("UPDATE hermes_outcome_ledger SET verdict='ungradeable', graded_at=NOW() WHERE id=%s", (lid,))
                 ungradeable += 1
             continue
@@ -305,10 +383,12 @@ def grade(cur, cfg, max_rows=None) -> dict:
         if base is None or b_spy is None:
             # no price series for this symbol (delisted/OTC/fund)
             if long_ready and price_verdict:
+                _keep("ungradeable", now, "ungradeable")
                 cur.execute("UPDATE hermes_outcome_ledger SET verdict='ungradeable', graded_at=NOW() WHERE id=%s", (lid,))
                 ungradeable += 1
             else:
                 if stype == "research_row":
+                    _keep("pending", None, "reset_pending")
                     cur.execute("""UPDATE hermes_outcome_ledger
                                    SET verdict='pending', graded_at=NULL
                                    WHERE id=%s AND subject_type='research_row' AND verdict <> 'pending'""",
@@ -330,6 +410,7 @@ def grade(cur, cfg, max_rows=None) -> dict:
                 cur.execute("""UPDATE hermes_outcome_ledger SET base_price=%s, price_5d=%s, outcome_ret_5d=%s
                                WHERE id=%s""", (base, p5, round(e5, 3) if e5 is not None else None, lid))
             if stype == "research_row":
+                _keep("pending", None, "reset_pending")
                 cur.execute("""UPDATE hermes_outcome_ledger
                                SET verdict='pending', graded_at=NULL
                                WHERE id=%s AND subject_type='research_row' AND verdict <> 'pending'""",
@@ -338,6 +419,7 @@ def grade(cur, cfg, max_rows=None) -> dict:
             continue
         if price_verdict:
             verdict = "hit" if e20 >= hit_pct else ("miss" if e20 <= miss_pct else "neutral")
+            _keep(verdict, now, "price_verdict")
             cur.execute("""UPDATE hermes_outcome_ledger
                            SET base_price=%s, price_5d=%s, price_20d=%s, outcome_ret_5d=%s, outcome_ret_20d=%s,
                                verdict=%s, graded_at=%s
@@ -351,7 +433,7 @@ def grade(cur, cfg, max_rows=None) -> dict:
                         (base, p5, p20, round(e5, 3) if e5 is not None else None, round(e20, 3), lid))
         graded += 1
     return {"graded": graded, "still_pending": still, "ungradeable": ungradeable,
-            "sessions": len(sessions)}
+            "verdicts_archived": archived, "sessions": len(sessions)}
 
 
 def grade_research_actions(cur, cfg) -> dict:
