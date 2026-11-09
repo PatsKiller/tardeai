@@ -25,8 +25,10 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 try:
+    from lib import cio_market_session as ms
     from lib.market_regime import vix_complex as vc
 except ImportError:  # imported as scripts.lib.*
+    from scripts.lib import cio_market_session as ms  # type: ignore[no-redef]
     from scripts.lib.market_regime import vix_complex as vc  # type: ignore[no-redef]
 
 SCHEMA = "VixHeadline@v1"
@@ -34,6 +36,32 @@ ET = ZoneInfo("America/New_York")
 # FRED VIXCLS is the official close; CBOE settles VIX at 16:15 ET. A date-only FRED observation is dated there so
 # its age is real and its timestamp carries a zone (a date with no zone is not an instant).
 FRED_CLOSE_ET = time(16, 15)
+# LQ-20261107-1669: in the regular session an intraday print older than this is STALE. The VIX store today is the
+# Schwab off-hours lane only, so in session the headline says STALE until an intraday source exists. Config key
+# ``rth_fresh_after_minutes`` in config/market_regime_vix_complex.yaml overrides this default.
+RTH_FRESH_AFTER_MINUTES = 20.0
+
+
+def freshness_line(now: datetime, cfg_minutes: Any, off_hours_line: float) -> dict[str, Any]:
+    """Which staleness rule applies at ``now``: ``rth_intraday``, ``session_open`` (after the close) or ``off_hours``.
+
+    On a trading day after the official open, a print older than the open predates the session it would describe.
+    A session read failure keeps the off-hours line and says so; it never makes a print fresher.
+    """
+    try:
+        sess = ms.get_market_session(now)
+        opened = datetime.fromisoformat(sess["official_open"]) if sess.get("official_open") else None
+    except Exception as exc:  # noqa: BLE001 — named in the rule, never a fresher answer
+        return {"rule": f"off_hours:session_unreadable:{type(exc).__name__}", "line_h": off_hours_line, "open": None}
+    if opened is None or now < opened:
+        return {"rule": "off_hours", "line_h": off_hours_line, "open": None}
+    if sess.get("state") == ms.STATE_RTH:
+        try:
+            minutes = float(cfg_minutes) if cfg_minutes is not None else RTH_FRESH_AFTER_MINUTES
+        except (TypeError, ValueError):
+            minutes = RTH_FRESH_AFTER_MINUTES
+        return {"rule": "rth_intraday", "line_h": round(minutes / 60.0, 4), "open": opened}
+    return {"rule": "session_open", "line_h": off_hours_line, "open": opened}
 
 
 class _QueryConn:
@@ -82,12 +110,16 @@ def _zoned(as_of: Any) -> datetime | None:
     return dt if dt.tzinfo else None  # an unzoned stamp is not an instant; its age stays unknown
 
 
-def from_record(record: dict[str, Any] | None, *, now: datetime, stale_after_hours: float) -> dict[str, Any]:
+def from_record(
+    record: dict[str, Any] | None, *, now: datetime, stale_after_hours: float, rth_fresh_after_minutes: Any = None
+) -> dict[str, Any]:
     """Shape one ``complex_record`` into the headline fields every surface publishes."""
     record = record or {}
     leg = record.get("vix") or None
     missing = [m for m in (record.get("missing") or []) if str(m).startswith("vix_close")]
-    base = {"schema": SCHEMA, "vix_stale_after_hours": stale_after_hours}
+    line = freshness_line(now, rth_fresh_after_minutes, stale_after_hours)
+    stale_after_hours = line["line_h"]
+    base = {"schema": SCHEMA, "vix_stale_after_hours": stale_after_hours, "vix_fresh_rule": line["rule"]}
     if not leg or leg.get("value") is None:
         return {**base, "vix": None, "vix_source": None, "vix_observation_time": None, "vix_age_hours": None,
                 "vix_state": "UNAVAILABLE", "vix_stale": True,
@@ -100,9 +132,17 @@ def from_record(record: dict[str, Any] | None, *, now: datetime, stale_after_hou
     if age is not None and age < -5 / 60:  # a stamp ahead of now is a clock we cannot read, not a fresh print
         obs, age = None, None
     state = "UNDATED" if age is None else ("STALE" if age > stale_after_hours else "FRESH")
+    predates_open = obs is not None and line["open"] is not None and obs < line["open"]
+    if predates_open:
+        state = "STALE"
     reason = None
     if state == "UNDATED":
         reason = f"observation time unreadable: {leg.get('as_of')!r}"
+    elif predates_open:
+        reason = (
+            f"last print {obs.astimezone(ET):%H:%M} ET {obs.astimezone(ET):%m-%d} predates today's "
+            f"{line['open'].astimezone(ET):%H:%M} ET open; no intraday VIX print since"
+        )
     elif state == "STALE":
         reason = f"observed {age:.1f} h ago, past the {stale_after_hours:g} h line"
     if leg.get("carried_from"):
@@ -123,15 +163,17 @@ def vix_headline(*, conn=None, db_query: Callable[..., Any] | None = None, now: 
     try:
         cfg = cfg or vc.load_config()
         stale_after = float(cfg.get("fresh_after_hours") or 26)
+        rth_min = cfg.get("rth_fresh_after_minutes")
     except Exception as exc:  # noqa: BLE001 — a broken config is named, never served as a value
         return {"schema": SCHEMA, "vix": None, "vix_source": None, "vix_observation_time": None,
                 "vix_age_hours": None, "vix_state": "UNAVAILABLE", "vix_stale": True,
                 "vix_stale_after_hours": None, "vix_reason": f"vix_complex config: {type(exc).__name__}"}
     if conn is None and db_query is None:
-        return from_record(None, now=now, stale_after_hours=stale_after) | {"vix_reason": "no database handle"}
+        return from_record(None, now=now, stale_after_hours=stale_after, rth_fresh_after_minutes=rth_min) | {
+            "vix_reason": "no database handle"}
     try:
         record = vc.complex_record(conn if conn is not None else _QueryConn(db_query), now=now, cfg=cfg)
     except Exception as exc:  # noqa: BLE001 — UNAVAILABLE by name; a surface must not fall back to another source
-        return from_record(None, now=now, stale_after_hours=stale_after) | {
+        return from_record(None, now=now, stale_after_hours=stale_after, rth_fresh_after_minutes=rth_min) | {
             "vix_reason": f"vix_complex read failed: {type(exc).__name__}"}
-    return from_record(record, now=now, stale_after_hours=stale_after)
+    return from_record(record, now=now, stale_after_hours=stale_after, rth_fresh_after_minutes=rth_min)

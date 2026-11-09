@@ -47,7 +47,11 @@ def test_a_schwab_print_is_the_headline_with_its_own_zoned_clock():
     h = vh.vix_headline(db_query=_db([_quote(21.5, datetime(2026, 1, 12, 8, 45, tzinfo=timezone.utc))]), now=NOW)
     assert h["vix"] == 21.5 and h["vix_source"] == "market_quotes_extended:schwab:$VIX"
     assert h["vix_observation_time"] == "2026-01-12T08:45:00+00:00" and h["vix_age_hours"] == 8.25
-    assert (h["vix_state"], h["vix_stale"], h["vix_stale_after_hours"]) == ("FRESH", False, 26.0)
+    # LQ-1669: a 03:45 ET print at 12:00 ET predates the session's open, so it is STALE, value kept and labelled.
+    assert (h["vix_state"], h["vix_stale"], h["vix_fresh_rule"]) == ("STALE", True, "rth_intraday")
+    assert "predates" in h["vix_reason"]
+    fresh = vh.vix_headline(db_query=_db([_quote(21.5, datetime(2026, 1, 12, 16, 50, tzinfo=timezone.utc))]), now=NOW)
+    assert (fresh["vix_state"], fresh["vix_stale"], fresh["vix_age_hours"]) == ("FRESH", False, 0.17)
 
 
 def test_a_carried_print_is_dated_by_the_close_it_carries_not_by_the_row():
@@ -93,7 +97,7 @@ def test_a_future_or_unzoned_clock_is_undated_not_fresh():
 
 def test_the_cio_card_shows_the_headline_vix_not_the_classifier_snapshot_input():
     """Fail-before: regime_for returned the snapshot's vix (99.0) dated by the row's insert time."""
-    db = _db([_quote(21.5, datetime(2026, 1, 12, 8, 45, tzinfo=timezone.utc))])
+    db = _db([_quote(21.5, datetime(2026, 1, 12, 16, 50, tzinfo=timezone.utc))])  # in session, 10 min old
     projection = {"regime": {"regime_label": "risk_off", "vix": 99.0, "snapshot_id": "RS_SYN",
                              "generated_at": "2026-01-12T10:51:00+00:00", "confidence": 0.6}}
     card = cio_truth.regime_for(db_query=db, projection=projection, now=NOW)
