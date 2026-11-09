@@ -96,6 +96,9 @@ class _Conn:
     def cursor(self):
         return self._cur
 
+    def commit(self):          # run() ends the read transaction before the extraction loop
+        return None
+
     def close(self):
         return None
 

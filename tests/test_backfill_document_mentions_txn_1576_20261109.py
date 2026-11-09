@@ -164,7 +164,13 @@ def test_no_transaction_spans_the_extraction_loop(monkeypatch):
 
 
 def test_the_loop_writes_nothing_for_undecidable_documents_and_still_survives(monkeypatch):
-    """The live shape: the loop extracts and writes nothing, then the connection is reused."""
+    """The live shape: the loop extracts and writes nothing, then the session is used again.
+
+    LQ-20261107-1599 review: without the trailing statement this test passed either way. The fake
+    records the kill only when a statement crosses the 121 s boundary, and an all-undecided loop
+    issues none — the pre-fix read transaction stayed open through it in silence. The probe below
+    is the next use of the same connection, which is where a terminated session is discovered.
+    """
     server, conn, written, writer = _wire(monkeypatch)
     monkeypatch.setattr(matcher, "match_mentions", lambda text, names=None, own_symbol=None: (
         server.advance(IDLE_LIMIT_S + 2) or []))
@@ -174,7 +180,8 @@ def test_the_loop_writes_nothing_for_undecidable_documents_and_still_survives(mo
     # No mention -> no write -> the pre-fix transaction would be open and idle for the whole loop.
     assert written == []
     assert stat["no_mention"] == 1
-    assert server.killed == 0
+    conn.cursor().execute("SELECT 1")  # the next statement on the same session: where the kill surfaces
+    assert server.killed == 0, "the read transaction was left idle past the server's 120 s limit"
 
 
 def test_the_harness_enforces_the_server_rule_that_killed_the_live_slots():

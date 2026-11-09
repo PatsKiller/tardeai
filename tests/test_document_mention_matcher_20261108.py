@@ -134,6 +134,9 @@ def test_run_loads_names_from_the_registry_and_writes_jkhy_only():
         def cursor(self):
             return Cur()
 
+        def commit(self):          # run() ends the read transaction before the extraction loop
+            return None
+
         def close(self):
             return None
 
@@ -191,6 +194,9 @@ def test_instrument_description_binds_and_run_uses_that_book():
     class Conn:
         def cursor(self):
             return Cur()
+
+        def commit(self):          # run() ends the read transaction before the extraction loop
+            return None
 
         def close(self):
             return None
