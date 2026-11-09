@@ -577,7 +577,7 @@ def test_a_page_the_hub_cannot_send_is_a_named_outcome_not_a_crash(tmp_path):
                                   "account": "acct1", "symbol": "xlv", "severity": "P0"}})
 
     class BrokenHub:
-        def deliver(self, event, **kw):  # noqa: ARG002 - the signature is the point
+        def deliver(self, event, **kw):  # noqa: ARG002 -- the signature is the point, the arguments are unused
             raise RuntimeError("smtp down")
 
     out = S.run(findings=[row], state_path_=state_path, config_path=_config_file(tmp_path), apply=True, now=NIGHT,
