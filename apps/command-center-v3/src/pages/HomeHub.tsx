@@ -95,6 +95,18 @@ function HomeClassic({ onDrill }: Props) {
   const healthFindings: any[] = (health?.findings ?? []).filter((f: any) => f.severity === 'critical' || f.severity === 'warning').slice(0, 3)
 
   const pv = overview?.portfolio_value
+  // LQ-1391: the accounts table's value and the header Portfolio figure are two different price
+  // bases, and the page said so nowhere. This table reads performance.current_value — broker
+  // position marks rendered into holdings.json at the last sync; the header reads
+  // overview.portfolio_value — Finviz re-marks, and Finviz carries the LAST REGULAR-SESSION close
+  // while the market is shut (scripts/portfolio_repricer.py, overnight branch). Name both.
+  const bookValueTip = [
+    'All accounts · /api/v2/portfolio/performance current_value',
+    `basis: broker position marks from ${perfData?.snapshot_source || 'holdings.json (canonical)'}, at the last sync`,
+    overview?.pricing?.reprice_source
+      ? `The header Portfolio figure is /api/v2/overview portfolio_value on Finviz re-marks (${overview.pricing.reprice_source}, last pass ${overview.pricing.last_repriced ?? '—'}); Finviz carries the last regular-session close while the market is shut. Two price bases, so the totals differ by the move between them, not by an error.`
+      : 'The header Portfolio figure is /api/v2/overview portfolio_value on a different price basis; the totals differ by the move between them, not by an error.',
+  ].join('\n')
   // Same rule as the header TODAY tile: proven economic total, else the reported market-day move.
   const todayChg = deriveTodayPnlState(overview).change
   const journal = overview?.journal ?? {}
@@ -362,7 +374,10 @@ function HomeClassic({ onDrill }: Props) {
                     >
                       All
                     </td>
-                    <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700 }}>{fmt$(perfData?.current_value ?? pv ?? 0, 0)}</td>
+                    <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700, cursor: 'help' }} title={bookValueTip}>
+                      {/* A missing book value renders as unknown, never as $0 (tq-ts-missing-as-zero). */}
+                      {perfData?.current_value != null ? fmt$(perfData.current_value, 0) : pv != null ? fmt$(pv, 0) : '—'}
+                    </td>
                     {PERF_PERIODS.map(p => {
                       const d = perfData?.periods?.[p]
                       // Prefer transfer-adjusted display (YTD) so Home matches Returns; raw NAV misleads on rollovers.
@@ -400,7 +415,11 @@ function HomeClassic({ onDrill }: Props) {
                   {Object.entries(perfData?.accounts || {}).map(([acct, row]: [string, any]) => (
                     <tr key={acct} style={{ borderTop: '1px solid var(--border)' }}>
                       <td style={{ padding: '7px 8px', textAlign: 'left', fontWeight: 700, color: 'var(--text1)' }}>{acctPretty(acct)}</td>
-                      <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700 }}>{fmt$(row?.current_value ?? 0, 0)}</td>
+                      <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700, cursor: 'help' }} title={`${acctPretty(acct)} · /api/v2/portfolio/performance current_value · basis: ${perfData?.snapshot_source || 'holdings.json (canonical)'}, broker position marks at the last sync`}>
+                        {/* Unknown value renders as unknown — this row carried a $ figure the endpoint
+                            never reported (tq-ts-missing-as-zero) and it looked like a real zero. */}
+                        {row?.current_value != null ? fmt$(row.current_value, 0) : '—'}
+                      </td>
                       {PERF_PERIODS.map(p => {
                         const d = row?.periods?.[p]
                         // Prefer display_change (ex-transfers / linked Fidelity); 1D falls back to overview live day.
