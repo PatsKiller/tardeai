@@ -1051,7 +1051,8 @@ class EffectGate:
     """The executor side of scripts/lib/effect_claim.py. Inert for a dry_run and for a lane absent from
     config/n8n_effect_keys.json. A live run of an opted-in lane claims ``fx:<process>:<slot>:<input_version>`` as
     scheduler ``n8n``, with the run's ``requested_at`` as its admission time (the owner-epoch fence); the slot is
-    the server-minted ``d:``/``e:``/``g:`` key's slot. Every failure to decide fails closed (RUN_REFUSED)."""
+    the server-minted ``d:``/``e:``/``g:`` key's slot. Every failure to decide fails closed (RUN_REFUSED); a
+    transient lock on the claim itself is retried a bounded number of times before that refusal (LQ-20261107-1349)."""
 
     def __init__(
         self,
@@ -1060,11 +1061,13 @@ class EffectGate:
         *,
         config_error: str | None = None,
         clock=time.time,
+        sleep=time.sleep,
         config_path: Path | None = None,
         fenced: frozenset[str] | None = None,
         ledger_path: Path | None = None,
     ) -> None:
         self.store, self.config, self.config_error, self.clock = store, dict(config or {}), config_error, clock
+        self.sleep = sleep
         #: DD08: when set, config/n8n_effect_keys.json is re-validated per run (stat-cached), not read once.
         self.config_path = Path(config_path) if config_path is not None else None
         self._sig: tuple[int, int, int] | None = None
@@ -1165,16 +1168,12 @@ class EffectGate:
             block["reason"] = "effect_store_unavailable"
             return block, "effect:effect_store_unavailable"
         try:
-            res = self.store.claim(
-                key,
-                scheduler="n8n",
-                now=self.clock(),
-                run_id=str(row.get("run_id")),
-                admitted_at=_ts(row.get("requested_at")),
-            )
+            res, retries = self._claim(key, row)
         except sqlite3.Error:
             block["reason"] = "effect_store_unavailable"
             return block, "effect:effect_store_unavailable"
+        if retries:
+            block["claim_retries"] = retries
         block.update(
             {
                 "claimed": res.ok,
@@ -1186,6 +1185,38 @@ class EffectGate:
             }
         )
         return block, (None if res.ok else f"effect:{res.reason}")
+
+    #: LQ-20261107-1349: the coordination ledger is shared with the gateway, relay, fan-in and comms writers, so a
+    #: busy database during a :00/:30 burst is contention, not an outage. Each attempt already waits the
+    #: connection's 5 s busy timeout, so the wall bound is ``claim_attempts * 5 s`` plus the backoff — well inside
+    #: the lane timeout, and only lock contention is retried (a real store fault still fails closed at once).
+    claim_attempts = 3
+    claim_backoff_s = (0.25, 0.5)
+
+    def _claim(self, key: str, row: Mapping[str, Any]) -> tuple[Any, int]:
+        """``store.claim`` with a bounded retry for TRANSIENT sqlite contention. Returns ``(result, retries)``.
+
+        2026-11-08 21:30 ET (material-change-detector-stage1): one ``database is locked`` during the claim became
+        ``effect:effect_store_unavailable``, a terminal RUN_REFUSED on attempt 1, and a dead letter for a lane whose
+        21:00 run finished in 13 s. The refusal is kept for every error a retry cannot fix; only ``locked``/``busy``
+        is retried, and a refusal result (e.g. ``already_claimed``) is returned, never retried.
+        """
+        for attempt in range(self.claim_attempts):
+            try:
+                res = self.store.claim(
+                    key,
+                    scheduler="n8n",
+                    now=self.clock(),
+                    run_id=str(row.get("run_id")),
+                    admitted_at=_ts(row.get("requested_at")),
+                )
+                return res, attempt
+            except sqlite3.OperationalError as exc:
+                message = str(exc).lower()
+                if attempt == self.claim_attempts - 1 or ("locked" not in message and "busy" not in message):
+                    raise
+                self.sleep(self.claim_backoff_s[min(attempt, len(self.claim_backoff_s) - 1)])
+        raise AssertionError("the claim loop cannot fall through")  # pragma: no cover
 
     def end(self, block: dict[str, Any], receipt: Mapping[str, Any]) -> None:
         """Finish a claimed key from the attempt's terminal state; the result lands on the receipt's block.
