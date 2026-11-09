@@ -225,8 +225,8 @@ def test_agent_scratch_candidate_and_reference_and_recent_hold(world):
     set_source(doc, "coordination", {"references": [{"historical_progress": str(paths[0] / "body.md")}],
                                      "live_claims": [{"scratch": str(paths[1] / "body.md")}], "live_worklogs": []})
     result = DH.standing_plan(rules, NOW, doc)
-    # The referenced session stays held. Its idle child is its own candidate (LQ-20261107-1456).
-    assert {r["path"] for r in result["items"]} == {str(paths[0]), str(paths[1] / "nested")}
+    # A live claim naming the session holds the session and every child (LQ-20261107-1463).
+    assert {r["path"] for r in result["items"]} == {str(paths[0])}
     assert any("referenced" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(paths[1]))
     assert any("scratch_not_older" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(paths[2]))
 

@@ -1792,6 +1792,15 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: 
             # the 2026-11-09 02:17 ET run could see and could not take (LQ-20261107-1456).
             if not reclaim_children or not item["reasons"] or not path.is_dir() or path.is_symlink():
                 continue
+            # A live claim or a process cwd that names the session holds every child.
+            # The session path is a prefix of that claim/cwd text, so the parent row is
+            # referenced:coordination:live_claims or referenced:processes (LQ-20261107-1463).
+            if any(
+                reason == hold or reason.startswith(hold + ":")
+                for reason in item["reasons"]
+                for hold in ("referenced:coordination:live_claims", "referenced:processes")
+            ):
+                continue
             try:
                 children = sorted(p for p in path.iterdir() if p.is_dir() and not p.is_symlink())
             except OSError:

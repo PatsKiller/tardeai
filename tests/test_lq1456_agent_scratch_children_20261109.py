@@ -129,3 +129,60 @@ def test_idle_child_of_a_live_session_is_a_candidate_and_a_real_env_is_not(world
 
 def row_reasons(row: dict) -> list[str]:
     return list(row.get("reasons") or [])
+
+
+def _set(doc: dict, key: str, data) -> dict:
+    doc["sources"][key].update(data=data, sha256=SR.digest(data))
+    return doc
+
+
+def _idle_session(home: Path, name: str = "cc-live") -> tuple[Path, Path]:
+    session = home / ".cache" / "agent-tmp" / name
+    child = session / "oldtask"
+    child.mkdir(parents=True)
+    note = child / "note.txt"
+    note.write_text("old\n")
+    for path in (session, child, note):
+        _old(path)
+    return session, child
+
+
+def test_live_claim_naming_the_session_holds_every_child(world):
+    home, rules = world
+    session, _child = _idle_session(home, "cc-claimed")
+    doc = _set(
+        _evidence(),
+        "coordination",
+        {"references": [], "live_claims": [{"path": str(session)}], "live_worklogs": []},
+    )
+    result = DH.standing_plan(rules, NOW, doc)
+    assert {Path(row["path"]).name for row in result["items"]} == set()
+    parent = next(row for row in result["excluded"] if row["path"] == str(session))
+    assert "referenced:coordination:live_claims" in row_reasons(parent)
+
+
+def test_process_cwd_equal_to_the_session_holds_every_child(world):
+    home, rules = world
+    session, _child = _idle_session(home, "cc-running")
+    doc = _set(_evidence(), "processes", [{"pid": "9", "cwd": str(session)}])
+    result = DH.standing_plan(rules, NOW, doc)
+    assert {Path(row["path"]).name for row in result["items"]} == set()
+    parent = next(row for row in result["excluded"] if row["path"] == str(session))
+    assert "referenced:processes" in row_reasons(parent)
+
+
+def test_claim_or_cwd_on_the_child_holds_that_child(world):
+    home, rules = world
+    session, child = _idle_session(home, "cc-child")
+    claimed = _evidence()
+    _set(
+        claimed,
+        "coordination",
+        {"references": [], "live_claims": [{"path": str(child)}], "live_worklogs": []},
+    )
+    claimed_items = {Path(row["path"]).name for row in DH.standing_plan(rules, NOW, claimed)["items"]}
+    assert "oldtask" not in claimed_items
+    running = _evidence()
+    _set(running, "processes", [{"pid": "9", "cwd": str(child)}])
+    running_items = {Path(row["path"]).name for row in DH.standing_plan(rules, NOW, running)["items"]}
+    assert "oldtask" not in running_items
