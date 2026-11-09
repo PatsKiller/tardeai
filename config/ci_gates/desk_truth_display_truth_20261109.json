@@ -1,0 +1,23 @@
+{
+  "schema": "CiGate@v1",
+  "name": "desk_truth_display_truth_20261109",
+  "files": [
+    "tests/test_desk_truth_display_truth_20261109.py"
+  ],
+  "comment": [
+    "LQ-20261107-1646 (operator 2026-11-09, display truth): the page showed a book total that did",
+    "not move while its marks did, a stop advice the broker had already satisfied, a header VIX that",
+    "disagreed with the CIO card and a badge tier painted against its own meter. Each is a displayed",
+    "value disagreeing with an independent recomputation, invisible to a check that only asks 'did the",
+    "lane succeed'. Pins: the 4th desk_truth_monitor check (--check display-truth, lane",
+    "display-truth-monitor) recomputes the book from positions_current x the newest Finviz quote and",
+    "compares it to the served overview/since-close/header documents; the 9-code catalog is a closed",
+    "set (a code outside config['display_truth']['catalog'] fails the tests); verdicts",
+    "OK/DEGRADED/BROKEN/UNVERIFIABLE each have a test; a stale positions snapshot or a stale in-session",
+    "quote makes the book NOT_MEASURED (UNVERIFIABLE) and never a mismatch; the stop-advice rule is",
+    "the brief's own reconcile_stop_advice, injected, never a second copy; the heal only re-dispatches",
+    "the owning lane, keyed by catalog code, and never writes a displayed value, a store or a stop;",
+    "one intent route data/display_truth_finding (DIGEST, producer desk_truth_monitor). Synthetic ZQ*",
+    "fixtures, injected clock/DB/documents; nothing here reads a real value, a broker or a credential."
+  ]
+}

@@ -61,6 +61,7 @@ CHECKS = {
     "holdings-drift": {"lane": "holdings-drift-monitor", "domain": "positions", "kind": "holdings_drift_finding"},
     "options-desk-staleness": {"lane": "options-desk-staleness-monitor", "domain": "data", "kind": "options_desk_stale"},
     "held-exit-coverage": {"lane": "held-exit-coverage-monitor", "domain": "stops", "kind": "held_exit_coverage_gap"},
+    "display-truth": {"lane": "display-truth-monitor", "domain": "data", "kind": "display_truth_finding"},
 }
 DEP = "dependency_unavailable"
 
@@ -326,6 +327,467 @@ def held_exit_coverage(current: list[Mapping[str, Any]], snapshot: list[Mapping[
             "in_session": session}
 
 
+# ── display truth (LQ-20261107-1646) ───────────────────────────────────────────────────────────────────────────
+#
+# The operator's question is not "did a lane succeed" but "is what the page shows the thing itself". Every check above
+# compares one store with another; this one recomputes the book from independent inputs and compares it to what the
+# card serves, so a displayed number that stopped moving, a day P&L that was never re-marked, a stop advice the broker
+# already satisfied and an as-of that is really a check time all become findings instead of a human noticing.
+# It reads the snapshots the broker-read lanes write and NEVER calls a broker (AGENTS.md §0 rule 2).
+
+DISPLAY_VERDICTS = ("OK", "DEGRADED", "BROKEN", "UNVERIFIABLE")
+
+
+def _first(doc: Any, *names: str) -> Any:
+    """The first of ``names`` present on a mapping; None when the document is not a mapping or carries none of them."""
+    if not isinstance(doc, Mapping):
+        return None
+    for n in names:
+        v = doc.get(n)
+        if v is not None:
+            return v
+    return None
+
+
+def _dt(v: Any) -> Optional[datetime]:
+    """``_ts`` for display documents: also accepts epoch seconds, which a cache may serialise instead of an ISO string."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        try:
+            return datetime.fromtimestamp(float(v), tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    return _ts(v)
+
+
+def _age_min(now: datetime, t: Optional[datetime]) -> Optional[float]:
+    return round((now - t).total_seconds() / 60.0, 1) if t else None
+
+
+def _age_h(now: datetime, t: Optional[datetime]) -> Optional[float]:
+    return round((now - t).total_seconds() / 3600.0, 2) if t else None
+
+
+def _quotes_by_symbol(quotes: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Newest row per symbol. The caller passes the Finviz feed only; this keeps the newest even so."""
+    out: dict[str, dict[str, Any]] = {}
+    for q in quotes or ():
+        sym = str(q.get("symbol") or "").upper()
+        if not sym:
+            continue
+        t = _dt(q.get("fetched_at"))
+        prev = out.get(sym)
+        if prev is None or (t is not None and (prev["fetched_at"] is None or t > prev["fetched_at"])):
+            out[sym] = {"price": _num(q.get("price")), "prev_close": _num(q.get("prev_close")), "fetched_at": t,
+                        "source": q.get("source")}
+    return out
+
+
+def recompute_book(current: Iterable[Mapping[str, Any]], quotes: Iterable[Mapping[str, Any]],
+                   stops: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any], *, now: datetime, session: bool
+                   ) -> dict[str, Any]:
+    """Pure. The book the card SHOULD show: value = qty x independent price + cash, day P&L = qty x (price - prev_close).
+
+    ``cash`` is included because the card's total is a portfolio total, not a securities sum: a cash row contributes its
+    dollar balance (``broker_market_value``, else ``qty``), never a quote. A symbol with no quote, no price, or (in
+    session) a quote older than ``quote_stale_after_min`` is NOT priced: the total, the account values and the day P&L
+    are then NOT_MEASURED rather than summed over a partial book, because a partial sum differs from the displayed one
+    for the wrong reason. Stop coverage is still measured from ``stop_last_known`` — that is a different question, and
+    a stale stop snapshot only makes it NOT_MEASURED too.
+    """
+    aliases = dict(cfg.get("account_aliases") or {})
+    accounts = list(cfg.get("accounts") or [])
+    exclude = {str(x).lower() for x in cfg.get("exclude_asset_types") or []}
+    include_cash = bool(cfg.get("include_cash", True))
+    quote_age_bound = float(cfg.get("quote_stale_after_min", 20))
+    qmap = _quotes_by_symbol(quotes)
+    newest_pc: Optional[datetime] = None
+    by_account: dict[str, float] = {}
+    day_by_account: dict[str, float] = {}
+    unpriced: list[str] = []
+    stale: list[str] = []
+    no_prev: list[str] = []
+    held: dict[tuple[str, str], float] = {}
+    held_value: dict[tuple[str, str], Optional[float]] = {}
+    cash_total = 0.0
+    for c in current or ():
+        acct = aliases.get(c.get("account_key"), c.get("account_key"))
+        if acct not in accounts:
+            continue
+        t = _dt(c.get("as_of"))
+        if t and (newest_pc is None or t > newest_pc):
+            newest_pc = t
+        if c.get("is_cash") or str(c.get("asset_type") or "").lower() == "cash":
+            # cash is part of the book the card shows: the projected total is a portfolio total, not a securities sum.
+            # A cash row's value is its dollar balance — broker_market_value when the writer stamps it, else qty.
+            if not include_cash:
+                continue
+            v = _num(c.get("broker_market_value"))
+            if v is None:
+                v = _num(c.get("qty"))
+            if v is not None:
+                cash_total += v
+                by_account[str(acct)] = by_account.get(str(acct), 0.0) + v
+            continue
+        if str(c.get("asset_type") or "").lower() in exclude:
+            continue
+        qty = _num(c.get("qty"))
+        if qty is None or qty <= 0:
+            continue
+        sym = str(c.get("symbol") or "").upper()
+        held[(str(acct), sym)] = qty
+        held_value[(str(acct), sym)] = _num(c.get("broker_market_value"))
+        q = qmap.get(sym)
+        price = q["price"] if q else None
+        age = _age_min(now, q["fetched_at"]) if q else None
+        if price is None or price <= 0:
+            unpriced.append(sym)
+            continue
+        if session and (age is None or age > quote_age_bound):
+            stale.append(sym)  # an undated quote cannot be shown to be fresh either
+            continue
+        by_account[str(acct)] = by_account.get(str(acct), 0.0) + qty * price
+        if q["prev_close"] is None:
+            no_prev.append(sym)
+        else:
+            day_by_account[str(acct)] = day_by_account.get(str(acct), 0.0) + qty * (price - q["prev_close"])
+    pc_age = _age_h(now, newest_pc)
+    pc_stale = session and (newest_pc is None or pc_age > float(cfg.get("positions_stale_after_h", 1.0)))
+    working = {str(x).strip().lower() for x in cfg.get("working_stop_statuses") or ["working"]}
+    covered: set[tuple[str, str]] = set()
+    stops_newest: Optional[datetime] = None
+    for s in stops or ():
+        t = _dt(s.get("captured_at"))
+        if t and (stops_newest is None or t > stops_newest):
+            stops_newest = t
+        if str(s.get("status") or "").strip().lower() not in working or (_num(s.get("qty")) or 0) <= 0:
+            continue
+        covered.add((str(aliases.get(s.get("account"), s.get("account"))), str(s.get("symbol") or "").upper()))
+    stops_age = _age_h(now, stops_newest)
+    stops_stale = session and (stops_newest is None or stops_age > float(cfg.get("stops_stale_after_h", 2.0)))
+    reason = None
+    if pc_stale:
+        reason = "positions_snapshot_stale"
+    elif stale:
+        reason = "quotes_stale"
+    elif unpriced:
+        reason = "quotes_missing"
+    measured = reason is None
+    total = round(sum(by_account.values()), 2) if measured else None
+    day_pnl = round(sum(day_by_account.values()), 2) if measured and not no_prev else None
+    # the same value floor as held_exit_coverage: a fractional DRIP remainder is not an unprotected position, and a
+    # missing value is checked rather than excused (a position whose size is unknown is not known to be small)
+    floor = float(cfg.get("min_position_value_usd", 1000.0))
+    uncovered: list[tuple[str, str]] = []
+    below_floor = 0
+    for k in sorted(held):
+        if k in covered:
+            continue
+        v = held_value.get(k)
+        if v is not None and v < floor:
+            below_floor += 1
+            continue
+        uncovered.append(k)
+    return {
+        "status": "MEASURED" if measured else "NOT_MEASURED",
+        "reason": reason,
+        "total": total,
+        "cash": round(cash_total, 2) if include_cash else None,
+        "by_account": {a: round(v, 2) for a, v in sorted(by_account.items())} if measured else None,
+        "day_pnl": day_pnl,
+        "day_pnl_unpriced_prev_close": sorted(set(no_prev)),
+        "unpriced_symbols": sorted(set(unpriced)),
+        "stale_quote_symbols": sorted(set(stale)),
+        "positions": len(held), "positions_as_of": newest_pc.isoformat() if newest_pc else None,
+        "positions_age_h": pc_age, "in_session": session,
+        "quote_age_bound_min": quote_age_bound,
+        "quotes_read": len(qmap),
+        "coverage": {
+            "held": len(held), "covered": len(held) - len(uncovered),
+            "uncovered": [{"account": a, "symbol": s, "held_qty": held[(a, s)], "value_usd": held_value.get((a, s))}
+                          for a, s in uncovered],
+            "below_value_floor": below_floor,
+            "verdict": "NOT_MEASURED" if stops_stale else ("GAPS" if uncovered else "COVERED"),
+            "stops_as_of": stops_newest.isoformat() if stops_newest else None,
+            "stops_age_h": stops_age,
+        },
+    }
+
+
+def displayed_overview(doc: Any) -> dict[str, Any]:
+    """Normalise what the overview route serves (or its projection file). Unknown field names are NOT guessed: a
+    document this cannot read is ``readable: False`` and the comparison is NOT_MEASURED."""
+    if not isinstance(doc, Mapping):
+        return {"readable": False}
+    total = _num(_first(doc, "total_value", "book_value", "portfolio_value", "total"))
+    raw_accounts = _first(doc, "accounts", "by_account", "account_values")
+    by_account: dict[str, float] = {}
+    if isinstance(raw_accounts, Mapping):
+        for k, v in raw_accounts.items():
+            n = _num(_first(v, "market_value", "value", "total_value") if isinstance(v, Mapping) else v)
+            if n is not None:
+                by_account[str(k)] = n
+    elif isinstance(raw_accounts, (list, tuple)):
+        for a in raw_accounts:
+            if not isinstance(a, Mapping):
+                continue
+            key = _first(a, "account_key", "account", "key", "name")
+            n = _num(_first(a, "market_value", "value", "total_value", "broker_market_value"))
+            if key is not None and n is not None:
+                by_account[str(key)] = n
+    raw_day = _first(doc, "day_pnl", "today_pnl", "day_change")
+    day = _num(_first(raw_day, "change", "value", "amount") if isinstance(raw_day, Mapping) else raw_day)
+    as_of = _dt(_first(doc, "as_of", "generated_at", "updated_at", "projected_at"))
+    source_as_of = _dt(_first(doc, "source_as_of", "marks_as_of", "quotes_as_of", "data_as_of"))
+    readable = total is not None or bool(by_account)
+    return {"readable": readable, "total": total, "by_account": by_account, "day_pnl": day,
+            "as_of": as_of.isoformat() if as_of else None, "source_as_of": source_as_of.isoformat() if source_as_of
+            else None}
+
+
+def displayed_since_close(doc: Any) -> dict[str, Any]:
+    """The stop advice the card serves, the stop read it names, and the clocks it was built on."""
+    if not isinstance(doc, Mapping):
+        return {"readable": False}
+    brief = doc.get("cio_brief") if isinstance(doc.get("cio_brief"), Mapping) else {}
+    rows = [r for r in (brief.get("stop_advice") or []) if isinstance(r, Mapping)]
+    read = brief.get("stop_read") if isinstance(brief.get("stop_read"), Mapping) else None
+    return {
+        "readable": bool(rows) or read is not None,
+        "advice_rows": rows,
+        "stop_read": read,
+        "generated_at": _dt(_first(doc, "generated_at", "updated_at")),
+        "stop_advice_as_of": _dt(_first(brief, "as_of")),
+    }
+
+
+def _tolerance(value: Optional[float], usd: float, pct: float) -> float:
+    return max(float(usd), float(pct) * abs(value or 0.0))
+
+
+def display_truth(current: Iterable[Mapping[str, Any]], quotes: Iterable[Mapping[str, Any]],
+                  stops: Iterable[Mapping[str, Any]], displayed: Mapping[str, Any], cfg: Mapping[str, Any], *,
+                  now: datetime, session: bool, previous: Optional[Mapping[str, Any]] = None,
+                  reconcile: Optional[Callable[..., dict[str, Any]]] = None) -> dict[str, Any]:
+    """Pure. Compares what is shown with what an independent recomputation says it should be.
+
+    ``displayed`` = {"overview": doc|None, "since_close": doc|None, "header": doc|None, "card": doc|None,
+    "dom": doc|None}. ``previous`` is the carry block of the last run (same shape as this report's ``carry``).
+    ``reconcile`` is ``since_close_card.reconcile_stop_advice`` injected so this module holds no second copy of the
+    stop-advice rule.
+    """
+    findings: list[dict[str, Any]] = []
+    book = recompute_book(current, quotes, stops, cfg, now=now, session=session)
+    ov = displayed_overview(displayed.get("overview"))
+    sc = displayed_since_close(displayed.get("since_close"))
+    dom = displayed.get("dom") if isinstance(displayed.get("dom"), Mapping) else None
+    measured = book["status"] == "MEASURED"
+    displayed_readable = bool(ov.get("readable") or sc.get("readable") or dom)
+
+    # ---- the book, per total and per account ----------------------------------------------------------------
+    if measured and ov.get("readable") and ov.get("total") is not None:
+        tol = _tolerance(book["total"], cfg.get("total_tolerance_usd", 250.0), cfg.get("total_tolerance_pct", 0.0005))
+        delta = round(ov["total"] - book["total"], 2)
+        if abs(delta) > tol:
+            findings.append(_f("DT_TOTAL_MISMATCH", "total",
+                               f"the card shows ${ov['total']:,.2f}; the independent recomputation ${book['total']:,.2f} "
+                               f"({delta:+,.2f}, bound ${tol:,.2f})", shown=ov["total"], recomputed=book["total"],
+                               delta=delta, tolerance=round(tol, 2)))
+        rec_accts = book.get("by_account") or {}
+        accounts = list(cfg.get("accounts") or []) or sorted(set(rec_accts) | set(ov["by_account"]))
+        for a in accounts:
+            shown, rec = ov["by_account"].get(a), rec_accts.get(a)
+            if shown is None and rec is None:
+                continue
+            atol = _tolerance(rec, cfg.get("account_tolerance_usd", 100.0), cfg.get("account_tolerance_pct", 0.001))
+            if shown is None or rec is None or abs(shown - rec) > atol:
+                findings.append(_f("DT_ACCOUNT_MISMATCH", f"account:{a}",
+                                   f"{a}: the card shows {'nothing' if shown is None else f'${shown:,.2f}'}; the "
+                                   f"recomputation {'nothing' if rec is None else f'${rec:,.2f}'} (bound ${atol:,.2f})",
+                                   account=a, shown=shown, recomputed=rec, tolerance=round(atol, 2)))
+        if ov.get("day_pnl") is not None and book.get("day_pnl") is not None:
+            dtol = _tolerance(book["day_pnl"], cfg.get("day_pnl_tolerance_usd", 100.0),
+                              cfg.get("day_pnl_tolerance_pct", 0.10))
+            ddelta = round(ov["day_pnl"] - book["day_pnl"], 2)
+            if abs(ddelta) > dtol:
+                findings.append(_f("DT_DAY_PNL_MISMATCH", "day_pnl",
+                                   f"the card shows day P&L ${ov['day_pnl']:,.2f}; qty x (price - prev_close) says "
+                                   f"${book['day_pnl']:,.2f} ({ddelta:+,.2f}, bound ${dtol:,.2f})",
+                                   shown=ov["day_pnl"], recomputed=book["day_pnl"], delta=ddelta,
+                                   tolerance=round(dtol, 2)))
+    carry = {"at": now.isoformat(), "displayed_total": ov.get("total"), "recomputed_total": book.get("total"),
+             "alertable": []}
+    # ---- frozen: the card did not move while the marks did ------------------------------------------------------
+    if measured and ov.get("total") is not None and isinstance(previous, Mapping):
+        prev_at = _dt(previous.get("at"))
+        prev_shown, prev_rec = _num(previous.get("displayed_total")), _num(previous.get("recomputed_total"))
+        gap = _age_min(now, prev_at)
+        if prev_at and prev_shown is not None and prev_rec is not None:
+            k = int(cfg.get("frozen_k", 2))
+            moved = abs(book["total"] - prev_rec) > _tolerance(prev_rec, cfg.get("total_tolerance_usd", 250.0),
+                                                               cfg.get("total_tolerance_pct", 0.0005))
+            frozen_shown = abs(ov["total"] - prev_shown) < 0.005
+            if k <= 2 and gap is not None and gap >= float(cfg.get("frozen_min_gap_min", 5)) and frozen_shown and moved:
+                findings.append(_f("DT_FROZEN", "frozen_total",
+                                   f"the card shows ${ov['total']:,.2f} at both runs {gap:g} min apart while the "
+                                   f"recomputation moved ${prev_rec:,.2f} -> ${book['total']:,.2f}",
+                                   shown=ov["total"], prior_shown=prev_shown, prior_recomputed=prev_rec,
+                                   recomputed=book["total"], gap_min=gap))
+    # ---- stop advice: the rule is the brief's own, never a second copy -----------------------------------------
+    newest_stop = None
+    for s in stops or ():
+        t = _dt(s.get("captured_at"))
+        if t and (newest_stop is None or t > newest_stop):
+            newest_stop = t
+    if sc.get("readable") and reconcile is not None and sc.get("advice_rows"):
+        read_block = _stop_read(stops, cfg, now=now)
+        rec = reconcile({"stop_advice": sc["advice_rows"]}, read_block, now=now)
+        for row, out in zip(sc["advice_rows"], rec.get("rows") or []):
+            if out.get("state") == "done" and row.get("state") in (None, "open", "unread"):
+                ev = out.get("stop_evidence") or {}
+                findings.append(_f("DT_STOP_ADVICE_SATISFIED", f"advice:{row.get('account')}:{row.get('symbol')}",
+                                   f"{row.get('account')} {row.get('symbol')}: the card still asks {row.get('answer')} "
+                                   f"at {row.get('suggested_stop')}, but the broker holds a WORKING stop at "
+                                   f"{ev.get('best_stop')} covering {ev.get('covered_qty')}",
+                                   account=row.get("account"), symbol=row.get("symbol"), answer=row.get("answer"),
+                                   suggested_stop=row.get("suggested_stop"), best_stop=ev.get("best_stop")))
+        sr = sc.get("stop_read")
+        if isinstance(sr, Mapping) and sr.get("status") == "read" and sr.get("as_of"):
+            shown_as_of = _dt(sr.get("as_of"))
+            slack = timedelta(seconds=float(cfg.get("asof_slack_s", 60)))
+            checked = _dt(sr.get("checked_at"))
+            newer_than_book = shown_as_of and (newest_stop is None or shown_as_of > newest_stop + slack)
+            check_time = shown_as_of and checked and abs((shown_as_of - checked).total_seconds()) <= slack.total_seconds()
+            if newer_than_book or check_time:
+                findings.append(_f("DT_ASOF_MISLABEL", "asof:stops",
+                                   f"the card labels its stops {sr.get('as_of_text') or sr.get('as_of')}; the newest "
+                                   f"broker stop capture is {newest_stop.isoformat() if newest_stop else 'none'}"
+                                   + (" (the check time, not a stop time)" if check_time else ""),
+                                   shown_as_of=sr.get("as_of"),
+                                   newest_capture=newest_stop.isoformat() if newest_stop else None,
+                                   checked_at=sr.get("checked_at")))
+    # ---- stop coverage: a warn, the same question held_exit_coverage asks of the snapshot ----------------------
+    if book["coverage"]["verdict"] != "NOT_MEASURED":
+        for gap in book["coverage"]["uncovered"]:
+            findings.append(_f("DT_STOP_UNCOVERED", f"uncovered:{gap['account']}:{gap['symbol']}",
+                               f"{gap['account']} {gap['symbol']}: held {gap['held_qty']:g}, no WORKING stop",
+                               alert=False, account=gap["account"], symbol=gap["symbol"], held_qty=gap["held_qty"]))
+    # ---- the other two families reuse their own monitors' verdicts ----------------------------------------------
+    # The header/card VIX split is judged by header_market_freshness_health (LQ-1610), which reads the served header,
+    # the card and the one headline together. This check reads that lane's receipt rather than recomputing the split:
+    # a second implementation of the same rule would disagree with the first one day, and the receipt already names the
+    # reason. Its BROKEN vix contract is "the header or the card serves another source, or they disagree on value or
+    # observation time" - exactly the operator-reported split. DEGRADED (stale/undated) stays that lane's finding.
+    hh = displayed.get("header_health") if isinstance(displayed.get("header_health"), Mapping) else None
+    hh_state = "missing"
+    if hh is not None:
+        contracts = hh.get("contracts") if isinstance(hh.get("contracts"), Mapping) else {}
+        reasons = hh.get("reasons") if isinstance(hh.get("reasons"), Mapping) else {}
+        vix_state = str((contracts or {}).get("vix") or "").upper()
+        hh_state = vix_state or "unknown"
+        if vix_state == "BROKEN":
+            findings.append(_f("DT_HEADER_CARD_SPLIT", "header:vix",
+                               "header-market-freshness-health grades the header/card VIX contract BROKEN: "
+                               f"{reasons.get('vix') or 'no reason recorded'}",
+                               contract="vix", verdict=vix_state, reason=reasons.get("vix")))
+    if dom:
+        allowed = {str(k).lower(): {str(x).lower() for x in v or ()}
+                   for k, v in (cfg.get("tier_segment_states") or {}).items()}
+        for item in dom.get("drivers") or ():
+            if not isinstance(item, Mapping):
+                continue
+            tier = str(item.get("tier") or "").strip().lower()
+            state = str(item.get("segment_state") or item.get("state") or "").strip().lower()
+            if not tier or not state or tier not in allowed:
+                continue
+            if state not in allowed[tier]:
+                findings.append(_f("DT_TIER_COLOR_CONTRADICTION", f"tier:{item.get('driver') or tier}",
+                                   f"{item.get('driver') or tier}: the badge says '{tier}' while its meter segment "
+                                   f"reads '{state}'", driver=item.get("driver"), tier=tier, segment_state=state))
+    # ---- the verdict -----------------------------------------------------------------------------------------
+    alertable = sorted(f["key"] for f in findings if f.get("alert"))
+    alert_codes = sorted({f["code"] for f in findings if f.get("alert")})
+    prev_keys = set(previous.get("alertable") or []) if isinstance(previous, Mapping) else set()
+    survived = sorted(set(alertable) & prev_keys)
+    warns = [f for f in findings if not f.get("alert")]
+    render = displayed.get("render") if isinstance(displayed.get("render"), Mapping) else None
+    render_state = str((render or {}).get("state") or ("SKIPPED" if not cfg.get("render", {}).get("enabled") else
+                                                       "MISSING"))
+    if not measured or not displayed_readable:
+        verdict = "UNVERIFIABLE"
+        why = (book.get("reason") or "nothing displayed was readable")
+    elif survived:
+        verdict = "BROKEN"
+        why = f"{len(survived)} alert finding(s) survived a cadence after a heal"
+    elif alertable:
+        verdict = "DEGRADED"
+        why = f"{len(alertable)} new alert finding(s)"
+    elif warns:
+        verdict = "DEGRADED"
+        why = f"{len(warns)} warn finding(s)"
+    elif render_state != "OK":
+        verdict = "DEGRADED"
+        why = f"data checks passed; the render leg is {render_state}"
+    else:
+        verdict = "OK"
+        why = "the card agrees with the independent recomputation"
+    carry["alertable"] = alertable
+    return {"findings": findings, "verdict": verdict, "verdict_reason": why,
+            "recomputed": book, "displayed": {"overview": ov, "since_close": sc,
+                                             "render_state": render_state, "header_health_state": hh_state},
+            "survived_after_heal": survived, "carry": carry,
+            "heal": plan_display_heal(alert_codes, cfg)}
+
+
+def _stop_read(stops: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any], *, now: datetime) -> dict[str, Any]:
+    """The stop rows as ``since_close_card.reconcile_stop_advice`` wants them: the same working-status set, the same
+    newest-capture clock. A set that drifts from the brief's would grade a cancelled stop as coverage."""
+    working = {str(x).strip().lower() for x in cfg.get("working_stop_statuses") or ["working"]}
+    per: dict[str, list[dict[str, Any]]] = {}
+    newest: Optional[datetime] = None
+    n = 0
+    for r in stops or ():
+        n += 1
+        t = _dt(r.get("captured_at"))
+        if t and (newest is None or t > newest):
+            newest = t
+        status = str(r.get("status") or "").strip().lower()
+        price, qty = _num(r.get("stop_price")), _num(r.get("qty"))
+        if status not in working or price is None or qty is None or qty <= 0:
+            continue
+        per.setdefault(str(r.get("symbol") or "").upper(), []).append(
+            {"account": str(r.get("account") or ""), "order_id": r.get("order_id"), "stop": price, "qty": qty,
+             "status": status, "captured_at": t})
+    return {"status": "read", "stops": per, "as_of": newest, "rows": n, "error": None}
+
+
+#: which owning lane a display finding asks to re-run. The heal NEVER writes a displayed value, a store, a stop or a
+#: broker: it re-dispatches the lane that produces the shown number and then re-checks (design SELF-HEALING).
+DISPLAY_HEAL_LANES = {
+    "DT_TOTAL_MISMATCH": "overview-projection",
+    "DT_ACCOUNT_MISMATCH": "overview-projection",
+    "DT_DAY_PNL_MISMATCH": "day-change-writer",
+    "DT_FROZEN": "overview-projection",
+    "DT_STOP_ADVICE_SATISFIED": "since-close-snapshot",
+    "DT_ASOF_MISLABEL": "since-close-snapshot",
+    "DT_HEADER_CARD_SPLIT": "header-warm",
+}
+
+
+def plan_display_heal(alertable_codes: Iterable[str], cfg: Mapping[str, Any]) -> dict[str, Any]:
+    """Pure. Which owning lane each alert CODE asks to re-run, and which codes have no automatic remedy.
+
+    Takes the catalog codes themselves (``DT_TOTAL_MISMATCH``), never a finding key: a key is subject-specific
+    (``account:schwab_taxable``) and its prefix is not the code, so keying the map on it would silently heal nothing.
+    """
+    codes = {}
+    for code in alertable_codes:
+        lane = DISPLAY_HEAL_LANES.get(code)
+        if lane:
+            codes.setdefault(code, lane)
+    return {"lanes": dict(sorted(codes.items())), "dispatch_lanes": sorted(set(codes.values())),
+            "unhealable": sorted(c for c in set(alertable_codes) if c not in DISPLAY_HEAL_LANES)}
+
+
 # ── sources (read-only) ─────────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -349,6 +811,15 @@ def _select(conn, sql: str) -> list[dict[str, Any]]:
 POSITIONS_SQL = ("SELECT account_key, symbol, qty, is_cash, asset_type, broker_market_value, as_of "
                  "FROM positions_current")
 LIFECYCLE_SQL = "SELECT account, symbol, broker, lifecycle, coverage, snapshot_at FROM stop_lifecycle"
+#: the broker-read lane's stop snapshot (never a broker call: this SELECT reads the table that lane writes)
+STOP_LAST_KNOWN_SQL = "SELECT symbol, account, order_id, stop_price, qty, status, captured_at FROM stop_last_known"
+
+
+def quotes_sql(sources: Iterable[str]) -> str:
+    """Newest row per symbol from the named feeds only (never yfinance, design LQ-1646 step 2)."""
+    return ("SELECT DISTINCT ON (symbol) symbol, source, price, prev_close, fetched_at FROM market_quotes "
+            f"WHERE source = ANY(ARRAY[{', '.join(repr(str(s)) for s in sources)}]) "
+            "ORDER BY symbol, fetched_at DESC")
 
 
 def load_store() -> dict[str, Any]:
@@ -399,7 +870,7 @@ def run_check(check: str, *, now: datetime, cfg: Mapping[str, Any], sources: Map
 
         label = market_session(now) if trading_day(now) else "CLOSED"
         rep.update(options_desk_staleness(doc or {}, cfg["options_desk_staleness"], now=now, session_label=label))
-    else:
+    elif check == "held-exit-coverage":
         c = cfg["held_exit_coverage"]
         rows = get("positions_current")
         snap = get("stop_lifecycle") if rows is not None else None
@@ -409,6 +880,26 @@ def run_check(check: str, *, now: datetime, cfg: Mapping[str, Any], sources: Map
         rep.update(held_exit_coverage(list(rows or []), list(snap or []), c, now=now,
                                       session=in_session(now, hd["session_start_et"], hd["session_end_et"],
                                                          trading_day=trading_day)))
+    else:  # display-truth
+        c = cfg["display_truth"]
+        rows = get("positions_current")
+        stops_rows = get("stop_last_known") if rows is not None else None
+        quotes = get("market_quotes") if rows is not None else None
+        shown = get("displayed") if rows is not None else None
+        if rep.get("error"):
+            return rep
+        if rows is None:
+            rep["error"] = "positions_current_unreadable: no rows"
+            return rep
+        try:  # the stop-advice rule lives in one place: the brief's module, never a second copy here
+            from scripts.lib.since_close_card import reconcile_stop_advice as _reconcile
+        except ImportError:  # pragma: no cover - scripts/ on sys.path
+            from lib.since_close_card import reconcile_stop_advice as _reconcile  # type: ignore[no-redef]
+        prev = get("previous_display")
+        rep.update(display_truth(list(rows), list(quotes or []), list(stops_rows or []), shown or {}, c, now=now,
+                                 session=in_session(now, c["session_start_et"], c["session_end_et"],
+                                                    trading_day=trading_day),
+                                 previous=prev if isinstance(prev, Mapping) else None, reconcile=_reconcile))
     alertable = sorted(f["key"] for f in rep.get("findings") or [] if f.get("alert"))
     rep.update(finding_count=len(rep.get("findings") or []), alertable=alertable,
                by_code=_count(f["code"] for f in rep.get("findings") or []), fingerprint=fingerprint(alertable))
@@ -422,7 +913,21 @@ def _count(codes: Iterable[str]) -> dict[str, int]:
     return dict(sorted(out.items()))
 
 
-def host_sources(check: str, proposals: Path) -> dict[str, Callable[[], Any]]:  # pragma: no cover - host only
+def _read_json(path: Optional[Path]) -> Any:  # pragma: no cover - host only
+    if path is None or not Path(path).is_file():
+        return None
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def state_dir() -> Path:  # pragma: no cover - host only
+    return Path(os.environ.get("TRADEAI_STATE_DIR") or ROOT / "data" / "portfolios" / "state")
+
+
+def host_sources(check: str, proposals: Path, *, cfg: Optional[Mapping[str, Any]] = None
+                 ) -> dict[str, Callable[[], Any]]:  # pragma: no cover - host only
     holder: dict[str, Any] = {}
 
     def conn():
@@ -430,12 +935,48 @@ def host_sources(check: str, proposals: Path) -> dict[str, Callable[[], Any]]:  
             holder["c"] = pg_connect()
         return holder["c"]
 
-    return {
+    sources: dict[str, Callable[[], Any]] = {
         "holdings": load_store,
         "positions_current": lambda: _select(conn(), POSITIONS_SQL),
         "stop_lifecycle": lambda: _select(conn(), LIFECYCLE_SQL),
         "options_desk": lambda: json.loads(proposals.read_text(encoding="utf-8")),
     }
+    if check == "display-truth":
+        c = (cfg or {}).get("display_truth") or {}
+        feeds = list(c.get("quote_sources") or ["finviz"])
+        runtime = ROOT / "data" / "runtime"
+        since_close = state_dir() / "since_close_latest.json"
+        overview = Path(os.environ.get("TRADEAI_OVERVIEW_PROJECTION") or runtime / "overview_projection.json")
+        from scripts.lib import lane_last_receipt as R
+
+        lane = CHECKS["display-truth"]["lane"]
+        state_path = alert_state_path(lane, os.environ.get("TRADEAI_STATE_ROOT"))
+
+        def _displayed() -> dict[str, Any]:
+            # disk first: when a projection file is fresh it is byte-for-byte what its route serves, so reading it
+            # cannot drift from the page and costs the server nothing. The live GET is the operator's leg, not this.
+            return {"since_close": _read_json(since_close), "overview": _read_json(overview), "dom": None,
+                    "header_health": _header_health_receipt(),
+                    "render": {"state": "SKIPPED" if not c.get("render", {}).get("enabled") else "MISSING"}}
+
+        def _header_health_receipt() -> Optional[dict[str, Any]]:
+            # the header lane's own verdict, read from its LaneRunReceipt summary; never a second VIX comparison here
+            doc = _read_json(R.receipt_path("header-market-freshness-health",
+                                            os.environ.get("TRADEAI_STATE_ROOT")))
+            return doc.get("summary") if isinstance(doc, Mapping) and isinstance(doc.get("summary"), Mapping) else None
+
+        def _previous() -> Optional[dict[str, Any]]:
+            doc = _read_json(state_path)
+            carry = doc.get("carry") if isinstance(doc, Mapping) else None
+            return carry if isinstance(carry, Mapping) else None
+
+        sources.update({
+            "stop_last_known": lambda: _select(conn(), STOP_LAST_KNOWN_SQL),
+            "market_quotes": lambda: _select(conn(), quotes_sql(feeds)),
+            "displayed": _displayed,
+            "previous_display": _previous,
+        })
+    return sources
 
 
 # ── alerting (host comms intent, never a send) ──────────────────────────────────────────────────────────────────
@@ -489,8 +1030,11 @@ def emit_alert(report: Mapping[str, Any], *, state_root: Optional[str], ledger_p
             result["reason"] = f"intent_{exc.reason}"
             return result  # keep the old state so the next run retries the gained finding
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"keys": plan["keys"], "fingerprint": report.get("fingerprint"),
-                                "at": report.get("as_of")}, indent=1), encoding="utf-8")
+    state: dict[str, Any] = {"keys": plan["keys"], "fingerprint": report.get("fingerprint"),
+                             "at": report.get("as_of")}
+    if report.get("carry"):  # display-truth carries its two totals forward so a frozen card is visible next run
+        state["carry"] = report["carry"]
+    path.write_text(json.dumps(state, indent=1), encoding="utf-8")
     return result
 
 
@@ -508,7 +1052,8 @@ def render(rep: Mapping[str, Any]) -> str:
         return "\n".join(lines + [f"CANNOT RUN: {rep['error']}"])
     for k in ("holdings_as_of", "holdings_basis", "holdings_age_h", "positions_current_age_h", "generated_at",
               "freshness_basis", "age_min", "market_session", "held", "covered", "uncovered", "coverage_verdict",
-              "snapshot_age_h", "paper_stop_rows", "in_session"):
+              "snapshot_age_h", "paper_stop_rows", "in_session", "verdict", "verdict_reason",
+              "survived_after_heal", "heal"):
         if k in rep:
             lines.append(f"  {k}: {rep[k]}")
     lines.append(f"findings: {rep.get('finding_count')}  alertable {len(rep.get('alertable') or [])}  "
@@ -538,7 +1083,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     cfg = load_config()
     lane = CHECKS[a.check]["lane"]
     rep = run_check(a.check, now=now, cfg=cfg,
-                    sources=host_sources(a.check, Path(a.proposals) if a.proposals else proposals_path()))
+                    sources=host_sources(a.check, Path(a.proposals) if a.proposals else proposals_path(), cfg=cfg))
     ok = not rep.get("error")
     from scripts.lib import lane_last_receipt as R
 

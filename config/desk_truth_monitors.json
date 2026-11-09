@@ -23,12 +23,59 @@
     "sessions": ["REGULAR"],
     "_note": "Desk freshness = the newer of options_proposals.json generated_at (full build, */10 12:00-15:59 ET) and quote_refresh.at (scripts/options_desk_quote_refresh.py, 09:35-11:50 ET). Until the quote-refresh lane runs, the 09:30-12:00 gap is a real finding every trading morning."
   },
+  "display_truth": {
+    "session_start_et": "09:25",
+    "session_end_et": "16:20",
+    "positions_stale_after_h": 1.0,
+    "stops_stale_after_h": 2.0,
+    "quote_stale_after_min": 20,
+    "quote_sources": ["finviz"],
+    "total_tolerance_usd": 250.0,
+    "total_tolerance_pct": 0.0005,
+    "account_tolerance_usd": 100.0,
+    "account_tolerance_pct": 0.001,
+    "day_pnl_tolerance_usd": 100.0,
+    "day_pnl_tolerance_pct": 0.10,
+    "frozen_k": 2,
+    "frozen_min_gap_min": 5,
+    "asof_slack_s": 60,
+    "accounts": ["schwab_taxable", "schwab_roth_ira", "schwab_rollover_ira"],
+    "account_aliases": {"schwab_roth": "schwab_roth_ira"},
+    "include_cash": true,
+    "exclude_asset_types": ["option"],
+    "min_position_value_usd": 1000.0,
+    "working_stop_statuses": ["pending_activation", "active", "working", "open", "placed", "accepted", "new", "queued"],
+    "tier_segment_states": {
+      "low": ["low", "calm", "green", "ok"],
+      "moderate": ["moderate", "amber", "elevated", "warn"],
+      "high": ["high", "red", "danger", "blocked"],
+      "severe": ["severe", "critical", "red", "danger", "blocked"]
+    },
+    "render": {
+      "enabled": false,
+      "_note": "Playwright Home @412 px (design build order 3). Until it lands the render leg reports SKIPPED, which is DEGRADED, never OK: a card that cannot be looked at is not a verified card."
+    },
+    "catalog": {
+      "DT_TOTAL_MISMATCH": {"alert": true, "replay": "1645"},
+      "DT_ACCOUNT_MISMATCH": {"alert": true, "replay": null},
+      "DT_DAY_PNL_MISMATCH": {"alert": true, "replay": "1645"},
+      "DT_FROZEN": {"alert": true, "replay": "1645"},
+      "DT_STOP_ADVICE_SATISFIED": {"alert": true, "replay": "1644"},
+      "DT_ASOF_MISLABEL": {"alert": true, "replay": "1644"},
+      "DT_HEADER_CARD_SPLIT": {"alert": true, "replay": "1610"},
+      "DT_TIER_COLOR_CONTRADICTION": {"alert": true, "replay": "1642"},
+      "DT_STOP_UNCOVERED": {"alert": false, "replay": null}
+    },
+    "_note": "LQ-20261107-1646 per DESIGN-LQ-20261107-1646-cc-opus-1.md. Truth side: positions_current + stop_last_known (the broker-read lanes write these; this check never calls a broker). A cash row contributes its dollar balance to the book (the card's total is a portfolio total, not a securities sum); include_cash false drops it. Independent mark: the newest Finviz row per held symbol in market_quotes, never yfinance. Displayed side: the since-close snapshot, the overview projection file, and header_market_freshness_health's own receipt for the header/card VIX contract (this check never re-judges that split). A quote older than quote_stale_after_min in session, or a positions snapshot older than positions_stale_after_h, makes the affected comparison NOT_MEASURED: a partial book compared to a full total would differ for the wrong reason. catalog is the closed set of codes this check may emit; a code not listed here fails the tests."
+  },
   "held_exit_coverage": {
     "working_lifecycles": ["working", "near_trigger"],
     "snapshot_stale_after_h": 2.0,
     "paper_accounts": ["tradeai_automated", "alpaca_paper"],
     "exempt": [],
-    "exclude_asset_types": ["option", "cash"],
+    "include_cash": true,
+    "exclude_asset_types": ["option"],
+    "min_position_value_usd": 1000.0,
     "min_position_value_usd": 1000.0,
     "account_aliases": {"schwab_roth": "schwab_roth_ira"},
     "_note": "Held = positions_current non-cash rows with qty > 0 (live accounts). A position is covered when stop_lifecycle (the stop_lifecycle_monitor snapshot) has a row for the same account and symbol whose lifecycle is in working_lifecycles. A position whose positions_current broker_market_value is below min_position_value_usd (fractional DRIP remainders, measured 2026-10-22: 14 of 27 held rows under $1,000) is counted as below_value_floor, not checked; a missing value is checked. Paper-account stop rows are counted and tagged PAPER; paper positions are not read (no broker read here). exempt: [{\"account\": \"...\", \"symbol\": \"...\", \"reason\": \"...\"}], each a reviewed operator decision."

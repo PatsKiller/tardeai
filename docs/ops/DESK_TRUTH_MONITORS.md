@@ -27,13 +27,14 @@ every authority. No crontab line is added or re-enabled by these PRs. The holdin
 resumed separately by the operator's cron resume packet, because broker read-only lanes on n8n wait for
 AGENTS.md 19.0.0 (§5).
 
-## 1. The three monitors — `scripts/desk_truth_monitor.py`
+## 1. The four monitors — `scripts/desk_truth_monitor.py`
 
 | check | lane | reads (read-only) | finding codes | intent route (DIGEST → P2) |
 |---|---|---|---|---|
 | `holdings-drift` | `holdings-drift-monitor` | holdings.json via `lib.portfolio_positions.load_store`; `positions_current` | `MISSING_IN_HOLDINGS`, `PHANTOM_IN_HOLDINGS`, `QTY_DRIFT`, `CASH_DRIFT`, `HOLDINGS_STALE`, `POSITIONS_CURRENT_STALE` | `positions/holdings_drift_finding` |
 | `options-desk-staleness` | `options-desk-staleness-monitor` | options_proposals.json | `DESK_STALE` | `data/options_desk_stale` |
 | `held-exit-coverage` | `held-exit-coverage-monitor` | `positions_current`; `stop_lifecycle` (the snapshot `scripts/stop_lifecycle_monitor.py` writes) | `UNCOVERED`, `SNAPSHOT_STALE` | `stops/held_exit_coverage_gap` |
+| `display-truth` | `display-truth-monitor` | `positions_current`, `stop_last_known`, `market_quotes` (Finviz only); the served since-close snapshot, the overview projection file, the header lane's receipt | `DT_TOTAL_MISMATCH`, `DT_ACCOUNT_MISMATCH`, `DT_DAY_PNL_MISMATCH`, `DT_FROZEN`, `DT_STOP_ADVICE_SATISFIED`, `DT_ASOF_MISLABEL`, `DT_HEADER_CARD_SPLIT`, `DT_TIER_COLOR_CONTRADICTION`, `DT_STOP_UNCOVERED` (warn) | `data/display_truth_finding` |
 
 ```bash
 python3 scripts/desk_truth_monitor.py --check holdings-drift            # dry run: print, write nothing
@@ -68,6 +69,50 @@ First read-only runs against the host, 2026-10-22 ~11:27 ET (dry run):
 - `held-exit-coverage`: 27 held, 4 covered, 23 without a WORKING stop. With the $1,000 value floor now in the
   config, 14 of them are fractional remainders below the floor. SCHD 6,000, SCHG 4,000, SPCX 600 + 200, XAR 100 and
   AMANX remain.
+
+### 1a. Display truth — is what the page shows the thing itself? (LQ-20261107-1646)
+
+The three checks above compare one store with another. The operator's 2026-11-09 defects were all different: a book
+total that did not move while its marks did (LQ-1645), a stop advice the broker had already satisfied (LQ-1644), a
+header VIX that disagreed with the CIO card (LQ-1610) and a badge tier painted against its own meter (LQ-1642). Each
+is a displayed value disagreeing with an independent recomputation, which no "did the lane succeed" check can see.
+
+`--check display-truth` recomputes and compares:
+
+- **truth** — `positions_current` (equities/ETFs priced at qty × the newest Finviz row; cash at its dollar balance) and
+  `stop_last_known`. It never calls a broker: those tables are written by the broker-read lanes.
+- **displayed** — the since-close snapshot, the overview projection file, the header lane's own receipt, and (when it
+  lands) a Home render. The live GET of the two routes and the Playwright render are the operator legs of the design;
+  the disk path is byte-for-byte what the route serves when the projection is fresh, so the check adds no server load.
+- **verdict** — `OK` (everything agrees), `DEGRADED` (warn-level finding only, or the render leg was skipped/failed
+  while the data checks passed), `BROKEN` (an alert finding survived a cadence after a heal), `UNVERIFIABLE` (the
+  positions snapshot is stale/unreadable, or nothing displayed was readable).
+- **never a mismatch from a partial book.** A symbol with no Finviz row, an unpriced option, or an in-session quote
+  older than `quote_stale_after_min` makes the book `NOT_MEASURED` with the reason (`positions_snapshot_stale`,
+  `quotes_stale`, `quotes_missing`) and the offending symbols — the card is then UNVERIFIABLE, not wrong. On
+  2026-11-09 this is the live state: no Finviz row is newer than 2026-09-14, and CUSIP-shaped symbols have none at
+  all, so the book comparison cannot run until the quote feed is restored. The stop-advice, stop-coverage, as-of and
+  header findings still fire: they do not depend on the book.
+- **the stop-advice rule is the brief's own.** `since_close_card.reconcile_stop_advice` is injected, never copied: a
+  displayed row still asking RAISE while the broker holds a WORKING stop at/above the suggestion in the same account
+  is `DT_STOP_ADVICE_SATISFIED`, and that is exactly the LQ-1644 defect seen again as a display finding.
+- **one rule, one implementation.** The header/card VIX split is read from `header_market_freshness_health`'s receipt
+  (its BROKEN vix contract), never re-judged here; its DEGRADED (stale/undated headline) stays its own finding.
+- **the heal** (`plan_display_heal`) only re-dispatches the owning lane — `overview-projection`, `day-change-writer`,
+  `since-close-snapshot`, `header-warm`. It writes no displayed value, store, stop or broker call, never restarts the
+  server and never POSTs. A code with no owning lane (a UI/CSS contradiction) is `unhealable` and escalates instead.
+- **catalog is closed.** `config/desk_truth_monitors.json` `display_truth.catalog` lists every code this check may
+  emit; the tests fail if code and catalog drift apart.
+
+```bash
+python3 scripts/desk_truth_monitor.py --check display-truth            # dry run: print, write nothing
+python3 scripts/desk_truth_monitor.py --check display-truth --apply    # receipt + alert state + ≤1 intent
+```
+
+Still to land (owning PRs, not in this one): the n8n registry row and cadence (design: every 5 min 09:25–16:20 ET on
+trading days plus 08:00 and 16:35, shadow `dry_run` first), the `self_healing_mechanisms.json` entry that runs the
+planner through `self_heal_fixer`, the Playwright Home @412 px render leg, and the GET of the two routes. Until each
+lands, the render leg reports `SKIPPED`, which is DEGRADED — a card nobody looked at is not a verified card.
 
 ## 2. Registry truth — `scripts/check_registry_runtime_truth.py` (existing lane `registry-runtime-truth`)
 
