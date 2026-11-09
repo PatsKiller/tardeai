@@ -150,11 +150,25 @@ class HouseSources:
 
     # -- universe
     def holdings(self) -> dict[str, dict]:
-        """{SYM: positions_context row} across all accounts (non-cash, shares > 0)."""
+        """{SYM: positions_context row} across all accounts (non-cash, shares > 0).
+
+        Dead CUSIP holdings (``security_identity.is_dead_cusip_holding``) are left
+        out so prospectus-build does not plan or enqueue them (LQ-20261107-1448).
+        The broker store is not written.
+        """
         pp = _plib("portfolio_positions")
+        try:
+            from scripts.lib.security_identity import is_dead_cusip_holding
+        except ImportError:  # scripts/ on sys.path
+            from lib.security_identity import is_dead_cusip_holding
         doc = pp.load_store()
-        syms = sorted({str(r.get("symbol") or "").upper() for r in doc.get("holdings") or []
-                       if not pp.is_cash(r) and (_f(r.get("shares", r.get("quantity"))) or 0) > 0})
+        syms = sorted({
+            str(r.get("symbol") or "").upper()
+            for r in doc.get("holdings") or []
+            if not pp.is_cash(r)
+            and (_f(r.get("shares", r.get("quantity"))) or 0) > 0
+            and not is_dead_cusip_holding(r)
+        })
         return self._lib("positions_context").get_positions_context(self.db(), syms) if syms else {}
 
     def watch_symbols(self) -> list[str]:

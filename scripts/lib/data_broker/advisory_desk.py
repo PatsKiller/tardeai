@@ -246,9 +246,18 @@ def _load_holdings() -> dict[str, Any]:
         )
         cash_weight_pct = round(cash_mv / portfolio_total_value * 100, 2) if portfolio_total_value > 0 else 0
 
+    try:
+        from scripts.lib.security_identity import is_dead_cusip_holding as _is_dead_cusip_holding
+    except ImportError:  # scripts/ on sys.path
+        from lib.security_identity import is_dead_cusip_holding as _is_dead_cusip_holding
+
     for h in raw.get("holdings", []):
         symbol = _norm_symbol(h.get("symbol", ""))
         if not symbol or symbol == "CASH":
+            continue
+        # LQ-20261107-1448: ignore dead CUSIP holdings (same predicate as LQ-1417).
+        # A priced CUSIP stays. The broker row is not removed from the store.
+        if _is_dead_cusip_holding(h if isinstance(h, dict) else None):
             continue
         mv = _f(h.get("market_value")) or 0
         # FIX-6: Consume the canonical gain_loss_pct from holdings.json

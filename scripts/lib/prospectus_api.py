@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 import re
 import sys as _sys
@@ -26,6 +27,11 @@ if _ROOT not in _sys.path:
 
 from scripts.lib.prospectus import load_config, store  # noqa: E402
 from scripts.lib.prospectus import presentation  # noqa: E402
+
+try:
+    from scripts.lib.security_identity import is_dead_cusip_holding  # noqa: E402
+except ImportError:  # scripts/ on sys.path
+    from lib.security_identity import is_dead_cusip_holding  # type: ignore  # noqa: E402
 
 PREFIX = "/api/v2/prospectus"
 SERVE_PROXY = "serve_proxy"
@@ -121,6 +127,49 @@ def budget(root: Path) -> dict:
 QUEUE_STATUS = {"running": "running", "failed": "failed", "blocked_data": "blocked_data"}
 
 
+def holdings_rows_for_dead_filter(root: Path) -> list[dict[str, Any]]:
+    """Raw holdings rows under ``root`` for the dead-CUSIP ignore rule.
+
+    Missing or unreadable store → empty list (no symbols dropped). The broker
+    file is not written. LQ-20261107-1448.
+    """
+    path = Path(root) / "data" / "portfolios" / "state" / "holdings.json"
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return []
+    rows = doc.get("holdings") if isinstance(doc, dict) else None
+    return [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
+
+
+def dead_cusip_symbols(holdings_rows: list[Any] | None) -> set[str]:
+    """Symbols ``is_dead_cusip_holding`` accepts from a holdings list."""
+    out: set[str] = set()
+    for row in holdings_rows or []:
+        if isinstance(row, dict) and is_dead_cusip_holding(row):
+            sym = str(row.get("symbol") or "").strip().upper()
+            if sym:
+                out.add(sym)
+    return out
+
+
+def without_dead_cusip_index_items(
+    items: list[Any] | None,
+    holdings_rows: list[Any] | None,
+) -> list[dict[str, Any]]:
+    """Drop prospectus index items whose symbol is a dead CUSIP holding.
+
+    A priced CUSIP stays. Non-CUSIP tickers stay. The store is not written.
+    """
+    dead = dead_cusip_symbols(holdings_rows)
+    if not dead:
+        return [i for i in (items or []) if isinstance(i, dict)]
+    return [
+        i for i in (items or [])
+        if isinstance(i, dict) and str(i.get("symbol") or "").strip().upper() not in dead
+    ]
+
+
 def index_payload(root: Path, *, now: datetime | None = None, operator: bool = False) -> dict:
     now = now or datetime.now(timezone.utc)
     cfg = load_config()
@@ -152,6 +201,9 @@ def index_payload(root: Path, *, now: datetime | None = None, operator: bool = F
                       # data-quality gate (scripts/lib/prospectus/quality_gate.py): pass / soft_fail / hard_fail + why
                       "gate_status": e.get("gate_status"), "gate_reasons": e.get("gate_reasons") or [],
                       "gate_checked_at": e.get("gate_checked_at")})
+    # LQ-20261107-1448: ignore dead CUSIP holdings (same predicate as LQ-1417/1418).
+    # Stale universe/index entries for those symbols must not reach /api/v2/prospectus/index.
+    items = without_dead_cusip_index_items(items, holdings_rows_for_dead_filter(root))
     totals = {k: sum(1 for i in items if i["status"] == k) for k in ("ready", "partial", "queued", "running", "missing", "failed", "blocked_data")}
     return {"items": items, "totals": totals, "budget": budget(root), "viewer": {"operator": bool(operator)}}
 

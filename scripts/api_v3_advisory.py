@@ -35,6 +35,35 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _is_dead_cusip_holding(row: Any) -> bool:
+    """Proxy for ``security_identity.is_dead_cusip_holding`` (LQ-20261107-1448)."""
+    try:
+        from scripts.lib.security_identity import is_dead_cusip_holding
+    except ImportError:  # scripts/ on sys.path
+        from lib.security_identity import is_dead_cusip_holding
+    if not isinstance(row, dict):
+        return False
+    # Desk rows may only carry ``price``; the predicate reads ``current_price``.
+    probe = row
+    if row.get("current_price") is None and row.get("price") is not None:
+        probe = dict(row)
+        probe["current_price"] = row.get("price")
+    return bool(is_dead_cusip_holding(probe))
+
+
+def without_dead_cusip_advisory_rows(rows: list[Any] | None) -> list[dict[str, Any]]:
+    """Drop advisory desk rows that are dead CUSIP holdings.
+
+    Used by GET /api/v3/advisory so a cached desk that still lists them does not
+    surface them (LQ-20261107-1448). A priced CUSIP stays.
+    """
+    out: list[dict[str, Any]] = []
+    for row in rows or []:
+        if isinstance(row, dict) and not _is_dead_cusip_holding(row):
+            out.append(row)
+    return out
+
+
 def _watch_hub_counts() -> dict[str, Any]:
     """Lazy Watch Hub counts for the chip labels. Never raises.
 
@@ -901,7 +930,7 @@ def _get_advisory_desk_uncached(*, force: bool = False, row_class: str | None = 
         pass
     data = desk.get("data") or {}
     meta = data.get("metadata") or {}
-    rows_raw = data.get("rows") or []
+    rows_raw = without_dead_cusip_advisory_rows(data.get("rows") or [])
     opinion_rows = opinions.get("rows") if isinstance(opinions, dict) else None
 
     rows = [_row_view(r, opinion_rows if isinstance(opinion_rows, dict) else opinions) for r in rows_raw]
