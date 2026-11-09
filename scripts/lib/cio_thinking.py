@@ -310,16 +310,29 @@ def annotate_staleness(facts: Iterable[Mapping[str, Any]], *, as_of: Any) -> Non
     for f in facts:
         detail = freshness_problem(f, as_of=as_of)
         if detail:
-            f["stale"] = True          # type: ignore[index]
-            f["stale_detail"] = detail  # type: ignore[index]
+            # facts_of returns copies of the packet's own dicts, so these keys annotate the copy
+            # the caller is about to store; the declared Mapping type is what mypy sees.
+            f["stale"] = True  # type: ignore[index] -- see above
+            f["stale_detail"] = detail  # type: ignore[index] -- see above
 
 
 def _materiality(block: Mapping[str, Any]) -> float:
-    """How much this name deserves the model's attention: dollars at risk × the move."""
-    mv = (block.get("market_value") or {}).get("value") or 0.0
-    move = abs((block.get("move_pct") or {}).get("value") or 0.0)
+    """How much this name deserves the model's attention: dollars at risk × the move.
+
+    A ranking weight only — it never reaches the operator and never stands in for a value. A name
+    with neither dollars nor a move ranks by whether it has an event; 0 here is "nothing to weigh",
+    not "the position is worth nothing".
+    """
+    mv_fact = block.get("market_value") or {}
+    move_fact = block.get("move_pct") or {}
+    mv = float(mv_fact["value"]) if mv_fact.get("value") is not None else None
+    move = abs(float(move_fact["value"])) if move_fact.get("value") is not None else None
     has_event = 1.0 if block.get("events") else 0.0
-    return round((float(mv) / 1000.0) * (1.0 + move / 10.0) + has_event, 3)
+    if mv is None and move is None:
+        return has_event
+    dollars = 0.0 if mv is None else mv / 1000.0
+    momentum = 0.0 if move is None else move / 10.0
+    return round(dollars * (1.0 + momentum) + has_event, 3)
 
 
 #: Derived keys. Walking them again would duplicate every fact and rewrite its path.
@@ -802,10 +815,13 @@ def remember(symbol: str, record: Mapping[str, Any], *, root: Optional[Path] = N
     summary = "CIOThinking@v1 " + json.dumps(body, sort_keys=True, default=str)[:700]
     try:
         from scripts.lib.cross_asset.security_research_spine import upsert_research_memory
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 -- the spine imports under two roots; a missing memory is
+        # reported as a reason, never raised into the brief
         try:
-            from lib.cross_asset.security_research_spine import upsert_research_memory  # type: ignore
-        except Exception:  # noqa: BLE001
+            from lib.cross_asset.security_research_spine import (  # type: ignore -- fallback root
+                upsert_research_memory,
+            )
+        except Exception:  # noqa: BLE001 -- both roots missing: report, do not raise
             return {"stored": False, "reason": "spine_module_unavailable"}
     try:
         res = upsert_research_memory(
@@ -824,20 +840,31 @@ def remember(symbol: str, record: Mapping[str, Any], *, root: Optional[Path] = N
 
 
 def recall(symbol: str, *, root: Optional[Path] = None, path: Optional[Path] = None,
-           limit: int = 5) -> list[dict[str, Any]]:
-    """The thinking records already filed for the symbol, newest first. Never raises."""
+           limit: int = 5) -> dict[str, Any]:
+    """The thinking records already filed for the symbol, newest first. Never raises.
+
+    Returns ``{"records", "ok", "error"}``. An unreadable memory is ``ok: False``, not an empty
+    list: "the CIO has no prior plan" and "the CIO's memory could not be read" are different
+    claims, and only the first may present itself as memory.
+    """
     sym = str(symbol or "").upper().strip()
+    if not sym:
+        return {"records": [], "ok": False, "error": "symbol_required"}
     try:
         from scripts.lib.cross_asset.security_research_spine import load_latest
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 -- the spine imports under two roots; report the absence
         try:
-            from lib.cross_asset.security_research_spine import load_latest  # type: ignore
-        except Exception:  # noqa: BLE001
-            return []
+            from lib.cross_asset.security_research_spine import (  # type: ignore -- fallback root
+                load_latest,
+            )
+        except Exception:  # noqa: BLE001 -- both roots missing: an unknown, not an empty memory
+            return {"records": [], "ok": False, "error": "spine_module_unavailable"}
     try:
-        spine = load_latest(sym, path=path, root=root) or {}
-    except Exception:  # noqa: BLE001
-        return []
+        spine = load_latest(sym, path=path, root=root)
+    except Exception as exc:  # noqa: BLE001 -- a read failure is reported, never shown as "no plan"
+        return {"records": [], "ok": False, "error": type(exc).__name__}
+    if not spine:
+        return {"records": [], "ok": True, "error": None}
     out = []
     for c in spine.get("contributions") or []:
         if str(c.get("kind") or "") != "cio_thinking":
@@ -849,7 +876,7 @@ def recall(symbol: str, *, root: Optional[Path] = None, path: Optional[Path] = N
             out.append(json.loads(text[len("CIOThinking@v1 "):]))
         except ValueError:
             continue
-    return out[:limit]
+    return {"records": out[:limit], "ok": True, "error": None}
 
 
 # ── request and dry run ────────────────────────────────────────────────────────────────────

@@ -223,7 +223,7 @@ def test_t0_plan_is_read_back_from_memory_and_replayed_against_t1(tmp_path):
     }}}
     stored = T.remember("ZZANET", t0_thinking, path=spine, subject_guid=TEST_GUID)
     assert stored["stored"] is True
-    recalled = T.recall("ZZANET", path=spine)
+    recalled = T.recall("ZZANET", path=spine)["records"]
     assert recalled and recalled[0]["names"]["ZZANET"]["protect"]["level"] == 164.27
 
     # T1: the price has fallen through the stop.
@@ -249,7 +249,7 @@ def test_a_reentry_level_reached_is_reported_not_silently_replanned(tmp_path):
         "reentry": plan(level=175.0, source=STOP_SOURCE, condition="reclaim after CPI"),
     }}}, path=spine, subject_guid=TEST_GUID)
     t1 = T.build_packet([item("ZZANET", price=176.0)], as_of="2026-11-09T15:35:00-05:00",
-                        prior_packet=t0, prior_thinking=T.recall("ZZANET", path=spine)[0])
+                        prior_packet=t0, prior_thinking=T.recall("ZZANET", path=spine)["records"][0])
     assert t1["delta"]["plans"]["ZZANET"]["state"] == "reentry_reached"
 
 
@@ -262,9 +262,20 @@ def test_thinking_is_persisted_per_symbol_and_read_back(tmp_path):
     out = T.remember("ZZANET", rec, path=spine, subject_guid=TEST_GUID)
     assert out["stored"] is True and out["record_id"].startswith("think:")
     got = T.recall("ZZANET", path=spine)
-    assert len(got) == 1
-    assert got[0]["symbol"] == "ZZANET"
-    assert got[0]["record_id"] == out["record_id"]
+    assert got["ok"] is True and len(got["records"]) == 1
+    assert got["records"][0]["symbol"] == "ZZANET"
+    assert got["records"][0]["record_id"] == out["record_id"]
+
+
+def test_recall_reports_an_unreadable_memory_instead_of_an_empty_one(tmp_path, monkeypatch):
+    import scripts.lib.cross_asset.security_research_spine as spine
+
+    def boom(*a, **k):
+        raise OSError("unreadable")
+
+    monkeypatch.setattr(spine, "load_latest", boom)
+    out = T.recall("ZZANET", path=tmp_path / "spine.jsonl")
+    assert out == {"records": [], "ok": False, "error": "OSError"}
 
 
 def test_memory_never_raises_when_the_spine_is_unwritable(tmp_path):
