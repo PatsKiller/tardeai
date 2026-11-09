@@ -1,0 +1,31 @@
+{
+  "schema": "NewsToCatalystGuards@v1",
+  "call_recap_headline_patterns": [
+    "earnings call"
+  ],
+  "headline_only_types_on_call_recap": [
+    "earnings_beat",
+    "earnings_miss",
+    "guidance_raise",
+    "guidance_lower",
+    "analyst_upgrade",
+    "geopolitical",
+    "merger_acquisition",
+    "buyback",
+    "contract_win",
+    "dividend_increase",
+    "dividend_cut"
+  ],
+  "call_recap_fallback_type": "earnings_call",
+  "call_recap_fallback_weight": 0.45,
+  "retired_patterns": [
+    "record (revenue|earnings|profit)"
+  ],
+  "acronym_instruments": [
+    {
+      "symbol": "ACA",
+      "issuer_names": ["arcosa"]
+    }
+  ],
+  "_why": "Last 7 days ending 2026-11-09: 65 of 403 earnings_beat rows were earnings-call headlines with no beat phrase (ids 250510 through 262145). record-revenue was typing call highlights as a beat. ACA rows 261429 and 256738 are the Affordable Care Act, not Arcosa; 252343 and 252344 name Arcosa and stay."
+}

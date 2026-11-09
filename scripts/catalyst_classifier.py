@@ -105,8 +105,43 @@ def _refine_direction(text, base_dir):
     return "bullish" if b > r else "bearish" if r > b else "neutral"
 
 
-def _deterministic(title, summary):
-    text = f"{title or ''} {summary or ''}".lower()
+_GUARDS_CACHE: dict | None = None
+_GUARDS_PATH = ROOT / "config" / "news_to_catalyst_guards.json"
+
+
+def load_guards(path: Path | None = None) -> dict:
+    """Call-recap and acronym rules. The lists live in the config file. A missing file leaves the old matcher."""
+    global _GUARDS_CACHE
+    if path is None and _GUARDS_CACHE is not None:
+        return _GUARDS_CACHE
+    p = path if path is not None else _GUARDS_PATH
+    try:
+        doc = json.loads(Path(p).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        doc = {}
+    if not isinstance(doc, dict):
+        doc = {}
+    if path is None:
+        _GUARDS_CACHE = doc
+    return doc
+
+
+def _call_recap(title: str, guards: dict) -> bool:
+    text = (title or "").lower()
+    for pat in guards.get("call_recap_headline_patterns") or []:
+        try:
+            if re.search(str(pat), text, re.I):
+                return True
+        except re.error:
+            continue
+    return False
+
+
+def _deterministic(title, summary, guards: dict | None = None):
+    if guards is None:
+        guards = load_guards()
+    title_l = (title or "").lower()
+    text = f"{title_l} {(summary or '').lower()}"
     # 1) Hermes bare-category prefix
     if title and ":" in title:
         pfx = title.split(":", 1)[0].strip().lower().replace(" ", "_")
@@ -114,15 +149,52 @@ def _deterministic(title, summary):
             w = HERMES_PREFIX_WEIGHTS[pfx]
             return {"catalyst_type": pfx, "direction": _refine_direction(text, "neutral"),
                     "base_weight": w, "confidence": 0.6 if pfx != "other" else 0.25, "method": "prefix"}
-    # 2) directional regex taxonomy
+    # 2) directional regex taxonomy. A call recap may use a directional type only from its headline.
+    #    Patterns named in the config are retired (record revenue is not a beat).
+    recap = _call_recap(title_l, guards)
+    headline_only = {str(t) for t in (guards.get("headline_only_types_on_call_recap") or [])}
+    retired = {str(p) for p in (guards.get("retired_patterns") or [])}
     for ctype, w, direction, pats in TYPE_PATTERNS:
+        hay = title_l if recap and ctype in headline_only else text
         for p in pats:
-            if re.search(p, text):
+            if p in retired:
+                continue
+            if re.search(p, hay):
                 return {"catalyst_type": ctype, "direction": _refine_direction(text, direction),
                         "base_weight": w, "confidence": 0.8, "method": "regex"}
+    if recap:
+        fallback = str(guards.get("call_recap_fallback_type") or "earnings_call")
+        try:
+            weight = float(guards.get("call_recap_fallback_weight") or 0.45)
+        except (TypeError, ValueError):
+            weight = 0.45
+        return {"catalyst_type": fallback, "direction": "neutral",
+                "base_weight": weight, "confidence": 0.6, "method": "call_recap"}
     # 3) fallback
     return {"catalyst_type": "other", "direction": _refine_direction(text, "neutral"),
             "base_weight": 0.30, "confidence": 0.2, "method": "fallback"}
+
+
+def acronym_symbol_conflict(symbol, title, guards: dict | None = None) -> str | None:
+    """A configured acronym is the issuer only when the headline names the company or writes ``(SYM)``."""
+    if guards is None:
+        guards = load_guards()
+    sym = str(symbol or "").strip().upper()
+    if not sym:
+        return None
+    low = str(title or "").lower()
+    for row in guards.get("acronym_instruments") or []:
+        if not isinstance(row, dict) or str(row.get("symbol") or "").strip().upper() != sym:
+            continue
+        if re.search(r"\(\s*" + re.escape(sym) + r"\s*\)", str(title or ""), re.I):
+            return None
+        if re.search(r"\$" + re.escape(sym) + r"\b", str(title or ""), re.I):
+            return None
+        names = [str(n).strip().lower() for n in (row.get("issuer_names") or []) if str(n).strip()]
+        if any(name in low for name in names):
+            return None
+        return "acronym_not_issuer"
+    return None
 
 
 _LLM_PROMPT = """Classify this stock-market catalyst headline. Be precise and conservative.
@@ -155,10 +227,11 @@ def _llm(title, summary, model="gemma3:4b", timeout=25):
         return None
 
 
-def classify(title, summary="", symbol=None, source=None, allow_llm=True, llm_threshold=0.55, model="gemma3:4b"):
+def classify(title, summary="", symbol=None, source=None, allow_llm=True, llm_threshold=0.55, model="gemma3:4b",
+             guards: dict | None = None):
     """Hybrid classify. Returns dict with catalyst_type, direction, impact_score (0-10, calibrated),
     confidence (source-maturity-adjusted), severity, method, rationale, source_tier."""
-    r = _deterministic(title, summary)
+    r = _deterministic(title, summary, guards)
     if allow_llm and r["confidence"] < llm_threshold and r["method"] != "regex":
         llm = _llm(title, summary, model=model)
         if llm and llm["confidence"] >= r["confidence"]:

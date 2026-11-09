@@ -122,6 +122,15 @@ def _prefix_type(title: str):
     return None, None
 
 
+def _acronym_block(symbol, title) -> str | None:
+    """Configured acronym tickers are not the issuer unless the headline names the company. Config, not a code list."""
+    try:
+        from catalyst_classifier import acronym_symbol_conflict
+    except Exception:
+        return None
+    return acronym_symbol_conflict(symbol, title)
+
+
 def _severity_from_weight(weight: float) -> str:
     if weight >= 0.85:
         return "high"
@@ -209,7 +218,7 @@ def run(as_json: bool = False, *, single_symbol: str | None = None, dry_run: boo
     # lane did not choose to skip it — a research-directive slug is not a symbol), while ``skipped`` is a candidate
     # the lane considered and did not write. Counting them together made a full run that created 80 rows grade
     # "skipped 420 items, more than it produced (80)" (WORK-QUEUE item 26).
-    excluded = {"research_directive_slug": 0, "not_in_ticker_universe": 0}
+    excluded = {"research_directive_slug": 0, "not_in_ticker_universe": 0, "acronym_not_issuer": 0}
     skipped = {"already_present": 0}
     attempted = 0
     for nid, symbol, strategy_type, title, summary, source, source_url, published_at in rows:
@@ -222,6 +231,9 @@ def run(as_json: bool = False, *, single_symbol: str | None = None, dry_run: boo
             if not ok:
                 excluded["not_in_ticker_universe"] += 1
                 continue
+        if _acronym_block(symbol, title):
+            excluded["acronym_not_issuer"] += 1
+            continue
         attempted += 1
 
         if _cc:
@@ -296,7 +308,8 @@ def run(as_json: bool = False, *, single_symbol: str | None = None, dry_run: boo
         print(f"[news_to_catalyst] {verb} {len(created)} catalyst events from unprocessed news.")
         print(f"[news_to_catalyst] Skipped already_present={skipped['already_present']}")
         print(f"[news_to_catalyst] Excluded (never eligible) research_directive_slug="
-              f"{excluded['research_directive_slug']} not_in_ticker_universe={excluded['not_in_ticker_universe']}")
+              f"{excluded['research_directive_slug']} not_in_ticker_universe={excluded['not_in_ticker_universe']} "
+              f"acronym_not_issuer={excluded['acronym_not_issuer']}")
         for c in created[:20]:
             print(f"  {c['symbol']:>8} | {c['catalyst_type']:<20} | sev={c['severity']:<6} | score={c['impact_score']}")
         if len(created) > 20:

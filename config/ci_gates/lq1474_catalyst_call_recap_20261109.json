@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1474_catalyst_call_recap_20261109",
+  "files": [
+    "tests/test_lq1474_catalyst_call_recap_20261109.py"
+  ],
+  "anchor": "LQ1474_CATALYST_CALL_RECAP_20261109",
+  "comment": [
+    "ANCHOR: LQ1474_CATALYST_CALL_RECAP_20261109 — an earnings-call recap is not an earnings beat from body text.",
+    "Retired patterns and the ACA issuer check live in config/news_to_catalyst_guards.json. Synthetic text only."
+  ]
+}
