@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "jobs_health_offpeak_skip_lq1408_20261109",
+  "files": [
+    "tests/test_jobs_health_offpeak_skip_lq1408_20261109.py"
+  ],
+  "anchor": "JOBS_HEALTH_OFFPEAK_SKIP_LQ1408_20261109",
+  "comment": [
+    "ANCHOR: JOBS_HEALTH_OFFPEAK_SKIP_LQ1408_20261109 — LQ-20261107-1408: /v3/ops/jobs labels deliberate offpeak_skip as Skipped, never Missed."
+  ]
+}

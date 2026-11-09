@@ -9,7 +9,7 @@ import CountTile from './CountTile'
 import DetailHeader from './DetailHeader'
 import { jobsCount, jobsMissed, jobsNotMeasured, jobsNotMeasuredBreakdown, type JobsSummary } from '../lib/measuredCount'
 
-export type JobResult = 'succeeded' | 'failed' | 'missed' | 'paused' | 'retired' | 'unknown' | 'due' | 'outside_window'
+export type JobResult = 'succeeded' | 'failed' | 'missed' | 'skipped' | 'paused' | 'retired' | 'unknown' | 'due' | 'outside_window'
 export interface JobHealthRow {
   lane_id: string; job: string; scheduler: string; state: string; result: JobResult
   last_run_at: string | null; last_success_at: string | null; next_due_at: string | null
@@ -29,7 +29,7 @@ const watcherLabel: Record<WatcherStatus, string> = { ok: 'Watching', degraded: 
 const filters = [['attention', 'Needs attention'], ['all', 'All jobs'], ['market', 'Market hours only'], ['n8n', 'n8n'], ['cron', 'Host cron (moving to n8n)']] as const
 const panel: CSSProperties = { padding: 14, border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, background: TOKENS.bg[1], minWidth: 0 }
 const tone = (result: JobResult): Tone => result === 'failed' ? 'danger' : result === 'missed' || result === 'unknown' ? 'warning' : result === 'succeeded' ? 'success' : 'neutral'
-const resultLabel: Record<JobResult, string> = { succeeded: 'Succeeded', failed: 'Failed', missed: 'Missed', paused: 'Paused', retired: 'Retired', unknown: 'Not measured', due: 'Due', outside_window: 'Outside window' }
+const resultLabel: Record<JobResult, string> = { succeeded: 'Succeeded', failed: 'Failed', missed: 'Missed', skipped: 'Skipped (off-peak)', paused: 'Paused', retired: 'Retired', unknown: 'Not measured', due: 'Due', outside_window: 'Outside window' }
 const at = (value: string | null) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET' : 'Not measured'
 
 export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {

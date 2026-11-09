@@ -303,7 +303,7 @@ def _watchers(registry: dict, rows: list[dict], monitor: dict, monitor_ok: bool)
             status, cause = "degraded", f"{label} is never scheduled: its unit is not installed"
         elif state == "RETIRED":
             status, cause = "absent", f"{label} is retired"
-        elif result in {"succeeded", "due"}:
+        elif result in {"succeeded", "due", "skipped", "outside_window"}:
             status, cause = "ok", None
         else:
             status, cause = "degraded", row["cause"] or f"{label} is not proven running"
@@ -382,6 +382,17 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
             upcoming = None
         elif failure_at and (success is None or failure_at > success):
             outcome, reason = "failed", diagnostic
+        elif check.get("status") == "SKIPPED_BY_POLICY":
+            # Deliberate off-peak / policy skip (receipt reason offpeak_skip): the lane fired and the
+            # dispatcher refused the child by design. That is not a missed run (LQ-20261107-1408 /
+            # page defect 144 — Hermes usefulness backfill labelled Missed on /v3/ops/jobs).
+            gate = check.get("offpeak_gate") or "policy"
+            n = len(check.get("policy_skipped_fires") or [])
+            fires = f"{n} scheduled fire{'s' if n != 1 else ''}" if n else "scheduled fires"
+            outcome, reason = (
+                "skipped",
+                f"Off-peak gate ({gate}) skipped {fires}; RUN_DONE offpeak_skip is deliberate, not a miss",
+            )
         elif check.get("status") == "MISSED_RUNS":
             outcome, reason = "missed", "Two scheduled opportunities elapsed without a successful execution"
         elif success and due and success >= due[-1] and now - success <= timedelta(hours=24):
@@ -437,7 +448,9 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
     gaps = Counter(row["evidence_gap"] for row in rows if row["result"] == "unknown" and row.get("evidence_gap"))
     return {"schema": SCHEMA, "as_of": W.iso(now), "authority": "READ_ONLY_ADVISORY", "rows": rows,
         "summary": {"due_today": sum(r["due_today"] and r["state"] == "ACTIVE" for r in rows),
-                    **{key: counts[key] for key in ("succeeded", "failed", "missed", "paused", "retired", "unknown", "due", "outside_window")},
+                    **{key: counts[key] for key in (
+                        "succeeded", "failed", "missed", "skipped", "paused", "retired", "unknown", "due", "outside_window",
+                    )},
                     **_measurement(counts["unknown"], captured.get("collection_gaps") or [],
                                    {key: gaps[key] for key, _ in NOT_MEASURED_GROUPS})},
         "monitor": monitor, "watchers": _watchers(registry, rows, monitor, monitor_ok),
@@ -451,7 +464,9 @@ def _load(root: Path, registry_path: Path, now: datetime):
     from scripts.lib.scheduler_operations import read_run_ledger
     from scripts.market_session import is_trading_day
     registry = _json(registry_path)
-    registry = bind_components(registry, _json(ROOT / "config/cron_outage_watchdog.json"))
+    cfg = _json(ROOT / "config/cron_outage_watchdog.json")
+    allowlist = _json(ROOT / "config/n8n_run_allowlist.json") or None
+    registry = bind_components(registry, cfg, allowlist)
     snapshot = collect(registry, root)
     log_paths = Counter(str((lane.get("output_signal") or {}).get("path")) for lane in registry.get("lanes") or []
                         if (lane.get("output_signal") or {}).get("kind") == "file_mtime")
