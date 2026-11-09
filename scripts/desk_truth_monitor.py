@@ -382,6 +382,11 @@ def _quotes_by_symbol(quotes: Iterable[Mapping[str, Any]]) -> dict[str, dict[str
     return out
 
 
+def _acc(d: dict[str, float], key: str, amount: float) -> None:
+    """Add to a per-account sum. A missing key is "no contribution yet", never an assumed zero mark."""
+    d[key] = d[key] + amount if key in d else amount
+
+
 def recompute_book(current: Iterable[Mapping[str, Any]], quotes: Iterable[Mapping[str, Any]],
                    stops: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any], *, now: datetime, session: bool
                    ) -> dict[str, Any]:
@@ -426,7 +431,7 @@ def recompute_book(current: Iterable[Mapping[str, Any]], quotes: Iterable[Mappin
                 v = _num(c.get("qty"))
             if v is not None:
                 cash_total += v
-                by_account[str(acct)] = by_account.get(str(acct), 0.0) + v
+                _acc(by_account, str(acct), v)
             continue
         if str(c.get("asset_type") or "").lower() in exclude:
             continue
@@ -445,11 +450,11 @@ def recompute_book(current: Iterable[Mapping[str, Any]], quotes: Iterable[Mappin
         if session and (age is None or age > quote_age_bound):
             stale.append(sym)  # an undated quote cannot be shown to be fresh either
             continue
-        by_account[str(acct)] = by_account.get(str(acct), 0.0) + qty * price
+        _acc(by_account, str(acct), qty * price)
         if q["prev_close"] is None:
             no_prev.append(sym)
         else:
-            day_by_account[str(acct)] = day_by_account.get(str(acct), 0.0) + qty * (price - q["prev_close"])
+            _acc(day_by_account, str(acct), qty * (price - q["prev_close"]))
     pc_age = _age_h(now, newest_pc)
     pc_stale = session and (newest_pc is None or pc_age > float(cfg.get("positions_stale_after_h", 1.0)))
     working = {str(x).strip().lower() for x in cfg.get("working_stop_statuses") or ["working"]}
@@ -459,8 +464,9 @@ def recompute_book(current: Iterable[Mapping[str, Any]], quotes: Iterable[Mappin
         t = _dt(s.get("captured_at"))
         if t and (stops_newest is None or t > stops_newest):
             stops_newest = t
-        if str(s.get("status") or "").strip().lower() not in working or (_num(s.get("qty")) or 0) <= 0:
-            continue
+        stop_qty = _num(s.get("qty"))
+        if str(s.get("status") or "").strip().lower() not in working or stop_qty is None or stop_qty <= 0:
+            continue  # a row with no readable qty covers nothing; it is not a zero-qty stop
         covered.add((str(aliases.get(s.get("account"), s.get("account"))), str(s.get("symbol") or "").upper()))
     stops_age = _age_h(now, stops_newest)
     stops_stale = session and (stops_newest is None or stops_age > float(cfg.get("stops_stale_after_h", 2.0)))
@@ -561,7 +567,8 @@ def displayed_since_close(doc: Any) -> dict[str, Any]:
 
 
 def _tolerance(value: Optional[float], usd: float, pct: float) -> float:
-    return max(float(usd), float(pct) * abs(value or 0.0))
+    base = 0.0 if value is None else abs(float(value))
+    return max(float(usd), float(pct) * base)
 
 
 def display_truth(current: Iterable[Mapping[str, Any]], quotes: Iterable[Mapping[str, Any]],
@@ -894,7 +901,7 @@ def run_check(check: str, *, now: datetime, cfg: Mapping[str, Any], sources: Map
         try:  # the stop-advice rule lives in one place: the brief's module, never a second copy here
             from scripts.lib.since_close_card import reconcile_stop_advice as _reconcile
         except ImportError:  # pragma: no cover - scripts/ on sys.path
-            from lib.since_close_card import reconcile_stop_advice as _reconcile  # type: ignore[no-redef]
+            from lib.since_close_card import reconcile_stop_advice as _reconcile  # type: ignore[no-redef] -- one module, two sys.path roots
         prev = get("previous_display")
         rep.update(display_truth(list(rows), list(quotes or []), list(stops_rows or []), shown or {}, c, now=now,
                                  session=in_session(now, c["session_start_et"], c["session_end_et"],
