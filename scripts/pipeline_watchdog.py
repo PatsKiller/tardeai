@@ -6,7 +6,7 @@ pipeline_watchdog.py — The nervous system. Runs every 5 min weekdays.
 4. Daily summary at 8:30 AM
 """
 
-import json, logging, os, signal, subprocess, sys, time
+import json, logging, os, re, signal, subprocess, sys, time
 import os
 from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
@@ -272,6 +272,158 @@ def _runs_today(run_days, now) -> bool:
     return False
 
 
+# ── live-lane guard: the n8n dispatcher owns these jobs, not the watchdog ──
+#
+# LQ-20261107-1722. `pipeline_schedule` still carries rows written before the n8n
+# cutover. A row whose lane the dispatcher runs with `dispatch.mode: live` gets a
+# SECOND scheduler here: the watchdog starts the script again, outside the
+# coordination ledger, without the lane's lock, from the dev checkout. That is how
+# incubator-llm-screener ran twice on 2026-11-09 (DONE-LQ-20261107-1714 §5).
+#
+# The guard fails CLOSED: if no registry copy can be read, nothing is checked or
+# retried this cycle. "I could not tell which lanes are live" must never become
+# "retry everything".
+#
+# Arguments matter: `scripts/news_ingestion.py --tail-rotate` is a live lane, while
+# the schedule row runs the un-flagged `scripts/news_ingestion.py` (the priority
+# ingestion, whose lane is not live). Matching on the script alone would silence a
+# job the dispatcher does not own, so every flag in the lane's match must also
+# appear in the row's command.
+
+LANE_REGISTRY_ENV = "TRADEAI_LANE_REGISTRY"
+_SCRIPT_NAME_RE = re.compile(r"(?:^|/)([\w.+-]+\.(?:py|sh))$")
+_FLAG_RE = re.compile(r"^--")
+_REDIRECT_RE = re.compile(r"\d?>>?\s*[^\s;|&]+")
+
+
+def _command_tokens(text) -> list:
+    """Shell words with redirections removed (`>> logs/x.log`, `2>&1`)."""
+    stripped = _REDIRECT_RE.sub(" ", str(text or ""))
+    return [t for t in stripped.split() if ">&" not in t]
+
+
+def _flags(tokens) -> frozenset:
+    return frozenset(t.split("=", 1)[0] for t in tokens if _FLAG_RE.match(t))
+
+
+def _script_basenames(tokens) -> set:
+    names = set()
+    for tok in tokens:
+        m = _SCRIPT_NAME_RE.search(tok.strip(";,'\""))
+        if m:
+            names.add(m.group(1))
+    return names
+
+
+def _lane_registry_paths():
+    """Registry copies to trust: the served release first (what the executor reads), then this tree.
+
+    Three fallbacks, because "no copy" means fail closed: the dev root, then the tree this module was
+    loaded from (the hermetic test bootstrap points TRADEAI_DEV_ROOT at an absent path, so the dev-root
+    candidate alone would make every test look like an unreadable registry).
+    """
+    override = os.environ.get(LANE_REGISTRY_ENV)
+    if override:
+        return [Path(override)]
+    paths = []
+    try:
+        from lib.live_project_root import get_live_project_root
+
+        paths.append(Path(get_live_project_root()) / "config" / "lane_registry.json")
+    except Exception:
+        pass
+    paths.append(Path(PROJECT_ROOT) / "config" / "lane_registry.json")
+    paths.append(Path(__file__).resolve().parents[1] / "config" / "lane_registry.json")
+    return list(dict.fromkeys(paths))
+
+
+def _live_lane_index(paths=None):
+    """basename -> [(lane_id, flags, state)] for the lanes the dispatcher runs live.
+
+    None means no registry copy could be read at all: callers must skip every job.
+    A row with no well-formed dispatch block is not live (`dispatch_mode` fails
+    closed to "off"), so a malformed row can never hide a live lane behind an
+    exception, and can never be silently skipped either.
+    """
+    try:
+        from lib.lane_dispatch import dispatch_mode
+    except ImportError:  # imported as scripts.pipeline_watchdog
+        from scripts.lib.lane_dispatch import dispatch_mode
+
+    index = {}
+    readable = 0
+    for path in paths if paths is not None else _lane_registry_paths():
+        try:
+            doc = json.loads(Path(path).read_text(encoding="utf-8"))
+        except OSError as exc:
+            log.warning("[watchdog] lane registry not read at %s (%s): relying on other copies",
+                        path, type(exc).__name__)
+            continue
+        except ValueError as exc:
+            log.error("[watchdog] lane registry unreadable at %s (%s): live lanes unknown",
+                      path, type(exc).__name__)
+            continue
+        rows = doc.get("lanes") if isinstance(doc, dict) else None
+        if not isinstance(rows, list):
+            log.error("[watchdog] lane registry at %s has no lanes list: live lanes unknown", path)
+            continue
+        readable += 1
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            try:
+                if dispatch_mode(row) != "live":
+                    continue
+            except Exception:
+                continue
+            sched = row.get("scheduler") or {}
+            match = sched.get("match")
+            if isinstance(match, (list, tuple)):
+                match = " ".join(str(m) for m in match)
+            tokens = _command_tokens(f"{match or ''} {row.get('entrypoint') or ''}")
+            flags = _flags(tokens)
+            for name in _script_basenames(tokens):
+                entry = (str(row.get("lane_id") or ""), flags, str(row.get("state") or "").upper())
+                bucket = index.setdefault(name, [])
+                if entry not in bucket:
+                    bucket.append(entry)
+    return index if readable else None
+
+
+def _job_script_basenames(script_name, command) -> set:
+    names = _script_basenames(_command_tokens(command)) | _script_basenames(_command_tokens(script_name))
+    bare = str(script_name or "").strip()
+    if bare and "." not in bare:
+        names.add(bare + ".py")  # script_name without the extension ("agent_outcome_scorer")
+    return names
+
+
+def live_lane_for_job(script_name, command, index):
+    """(lane_id, state) when a live-dispatched lane owns this schedule row, else None."""
+    if not index:
+        return None
+    flags = _flags(_command_tokens(command))
+    for name in sorted(_job_script_basenames(script_name, command)):
+        for lane_id, lane_flags, state in index.get(name) or ():
+            if lane_flags <= flags:
+                return lane_id, state
+    return None
+
+
+def _skip_live_job(script, command, index) -> bool:
+    """True when the row must not be checked/retried because its lane runs live."""
+    owner = live_lane_for_job(script, command, index)
+    if not owner:
+        return False
+    lane_id, state = owner
+    if state == "ACTIVE":
+        log.info("[watchdog] skipping %s: lane %s is dispatch.mode live", script, lane_id)
+    else:
+        log.warning("[watchdog] skipping %s: lane %s is dispatch.mode live but state %s; "
+                    "the row is inert until the lane is ACTIVE", script, lane_id, state or "unknown")
+    return True
+
+
 # ── FUNCTION 1: Pipeline Execution Monitor ──
 
 
@@ -279,6 +431,10 @@ def check_pipeline_execution(conn):
     issues = []
     now = datetime.now()
     cur = conn.cursor()
+    live_lanes = _live_lane_index()
+    if live_lanes is None:
+        log.error("[watchdog] no readable lane registry: skipping every schedule job this cycle (fail closed)")
+        return issues
     # run_days exists in the schema but was never read: the check simply skipped
     # Sat/Sun and treated every entry as weekday-daily. Sunday-only jobs
     # (agent_outcome_scorer, strategy_weekly_review) were therefore expected on
@@ -289,6 +445,8 @@ def check_pipeline_execution(conn):
         FROM pipeline_schedule WHERE active=true""")
     for script, display, exp_h, exp_m, latency, min_rows, critical, command, run_days in cur.fetchall():
         if exp_h is None:
+            continue
+        if _skip_live_job(script, command, live_lanes):
             continue
         if not _runs_today(run_days, now):
             continue
@@ -318,9 +476,17 @@ def check_pipeline_execution(conn):
 
 
 def handle_pipeline_issues(conn, issues, no_telegram=False):
+    # Second gate for the live-lane guard: `check_pipeline_execution` already drops these, but a caller
+    # that builds its own issue list must not be able to re-fire a lane the dispatcher owns.
+    live_lanes = _live_lane_index()
+    if live_lanes is None and issues:
+        log.error("[watchdog] no readable lane registry: no schedule retry this cycle (fail closed)")
+        return
     for issue in issues:
         script = issue["script"]
         if not issue.get("critical"):
+            continue
+        if _skip_live_job(script, issue.get("command"), live_lanes):
             continue
 
         cur = conn.cursor()
