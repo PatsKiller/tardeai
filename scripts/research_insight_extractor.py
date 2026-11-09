@@ -656,6 +656,168 @@ def lane_output(results: list, *, failed: int, skips: dict, dry_run: bool) -> di
             "empty_reason": empty_reason}
 
 
+_ARCHIVE_REL = Path("data/cio/research_insight_acronym_archive.jsonl")
+
+
+def default_repair_symbols(argv: list[str] | None = None, path: Path | None = None) -> list[str]:
+    """Symbols for the archive repair.
+
+    ``--symbols`` overrides. Otherwise the list is the acronym stoplist config,
+    the same file the extractor reads. This function carries no symbol list.
+    """
+    argv = list(argv or [])
+    if "--symbols" in argv:
+        raw = argv[argv.index("--symbols") + 1]
+        return [part.strip().upper() for part in raw.split(",") if part.strip()]
+    return sorted(load_acronym_stoplist(path))
+
+
+def _insight_text(row: dict) -> str:
+    parts = [row.get("headline"), row.get("raw_text")]
+    thesis = row.get("structured_thesis")
+    if isinstance(thesis, str):
+        parts.append(thesis)
+    return "\n".join(str(part) for part in parts if part)
+
+
+def false_acronym_insight(row: dict, session: dict, symbols: set[str]) -> bool:
+    """A stoplist symbol with neither a cashtag nor the issuer's full name.
+
+    That is the row the current extractor would refuse. A real mention stays active.
+    """
+    symbol = str(row.get("symbol") or "").strip().upper()
+    if symbol not in symbols or symbol not in _acronym_stoplist(session):
+        return False
+    _scripts_on_path()
+    from lib.symbol_match import evidence
+
+    ev = evidence(
+        _insight_text(row), symbol,
+        company_names=_names_for(session, symbol), corroborated=True)
+    return not (ev.get("matched") and ev.get("how") in {"cashtag", "company"})
+
+
+def _archive_destination(path: Path | None) -> Path:
+    if path is not None:
+        return Path(path)
+    _scripts_on_path()
+    from lib.persistent_state_root import good_persistent_root
+
+    return good_persistent_root() / _ARCHIVE_REL
+
+
+def _account_persistent_root() -> Path:
+    """The account's persistent-state, ignoring a test that redirects HOME."""
+    import pwd
+
+    return Path(pwd.getpwuid(os.getuid()).pw_dir) / "trade-ai-releases" / "persistent-state"
+
+
+def _refuse_live_archive_under_ci(path: Path) -> None:
+    """A test must not open the served archive. HOME is not the account home."""
+    if os.environ.get("TRADE_AI_CI") != "1":
+        return
+    try:
+        live = _account_persistent_root().resolve()
+        resolved = Path(path).resolve()
+    except (OSError, KeyError):
+        raise RuntimeError("TRADE_AI_CI refuses the live research-insight acronym archive") from None
+    try:
+        resolved.relative_to(live)
+    except ValueError:
+        return
+    raise RuntimeError("TRADE_AI_CI refuses the live research-insight acronym archive")
+
+
+def supersede_false_acronyms(cur, *, symbols, session, apply: bool, archive_path: Path | None = None) -> dict:
+    """Count active bare-acronym rows. ``apply`` archives each one, then sets ``active`` false.
+
+    There is no DELETE. A cashtag or the issuer's full name is kept. The archive line records
+    the id and the prior active flag and does not copy the article text.
+    """
+    wanted = {str(item).strip().upper() for item in symbols if str(item or "").strip()}
+    cur.execute(
+        """
+        SELECT id, symbol, active, headline, raw_text, structured_thesis, source_reference, created_at
+        FROM research_insights
+        WHERE active IS TRUE AND symbol = ANY(%s)
+        ORDER BY id
+        """,
+        [sorted(wanted)],
+    )
+    rows = [dict(r) for r in cur.fetchall()]
+    chosen = [row for row in rows if false_acronym_insight(row, session, wanted)]
+    dest = _archive_destination(archive_path)
+    wrote = None
+    if apply and chosen:
+        _refuse_live_archive_under_ci(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with dest.open("a", encoding="utf-8") as handle:
+            for row in chosen:
+                created = row.get("created_at")
+                handle.write(json.dumps({
+                    "schema": "ResearchInsightAcronymArchive@v1",
+                    "id": row.get("id"),
+                    "symbol": str(row.get("symbol") or "").upper(),
+                    "prior_active": True,
+                    "source_reference": row.get("source_reference"),
+                    "created_at": created.isoformat() if hasattr(created, "isoformat") else created,
+                    "reason": "bare_acronym_stoplist",
+                }, default=str) + "\n")
+        wrote = str(dest)
+        cur.execute(
+            """
+            UPDATE research_insights
+            SET active = FALSE
+            WHERE active IS TRUE AND id = ANY(%s)
+            """,
+            [[row["id"] for row in chosen]],
+        )
+    return {
+        "examined": len(rows),
+        "selected": len(chosen),
+        "kept": len(rows) - len(chosen),
+        "apply": bool(apply),
+        "archive": wrote,
+        "ids": [row["id"] for row in chosen],
+    }
+
+
+def run_supersede_acronyms(argv: list[str]) -> int:
+    """The extractor's own repair. ``--dry-run`` selects. ``--apply`` archives and deactivates."""
+    apply = "--apply" in argv
+    dry = "--dry-run" in argv
+    if apply == dry:
+        print("supersede-acronyms needs exactly one of --dry-run or --apply", file=sys.stderr)
+        return 2
+    symbols = default_repair_symbols(argv)
+    import psycopg2.extras
+
+    # A worktree has no .env. The rendered env supplies DB_* and nothing else is read.
+    _scripts_on_path()
+    from lib.env_bootstrap import load_env
+    load_env(names=("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"))
+
+    conn = _get_conn(dry_run=dry)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        report = supersede_false_acronyms(cur, symbols=symbols, session={"conn": conn, "cur": cur}, apply=apply)
+        if apply:
+            conn.commit()
+        else:
+            conn.rollback()
+    finally:
+        conn.close()
+    label = "APPLY" if apply else "DRY-RUN"
+    joined = ",".join(str(item).strip().upper() for item in symbols if str(item).strip())
+    print(
+        f"{label} research-insight-extractor supersede-acronyms symbols={joined} "
+        f"examined={report['examined']} selected={report['selected']} kept={report['kept']} "
+        f"ids={report['ids']} archive={report['archive']}"
+    )
+    return 0
+
+
 def _receipt(**kw):
     """Real-run receipt (data/runtime/research-insight-extractor_last.json, ok_at on success only)."""
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -680,6 +842,8 @@ if __name__ == "__main__":
     elif "--from-catalysts" in sys.argv:
         results = extract_from_catalysts()
         print(f"[research] Extracted {len(results)} insights from catalysts")
+    elif "--supersede-acronyms" in sys.argv:
+        sys.exit(run_supersede_acronyms(sys.argv))
     else:
         # Default (the cron form): extract from both
         sys.exit(run_default(dry_run="--dry-run" in sys.argv, as_json="--json" in sys.argv))

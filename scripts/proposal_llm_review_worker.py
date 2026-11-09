@@ -15,7 +15,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -30,6 +30,10 @@ def _load_env():
 
 log = logging.getLogger("llm_review_worker")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
+
+# A review that dies after the PROCESSING update never returns to PENDING. One hour is longer
+# than a single review and shorter than the rows stuck since 2026-11-02. No DELETE.
+DEFAULT_LEASE_S = 3600
 
 
 def get_db():
@@ -61,6 +65,38 @@ def fetch_queue(conn, limit=2, proposal_id=None):
     # touching the DB again, and PG kills idle-in-transaction at 120s (took the whole run down:
     # the first status UPDATE died with "SSL connection has been closed unexpectedly").
     conn.commit()
+    return rows
+
+
+def requeue_expired_processing(cur, *, now, lease_s: int, apply: bool) -> list[dict]:
+    """Return PROCESSING rows older than ``lease_s``. ``apply`` sets them back to PENDING.
+
+    The row stays. ``attempts`` is left as it was. A NULL ``started_at`` is expired: the claim
+    never recorded a start. This function has no DELETE.
+    """
+    if lease_s < 0:
+        raise ValueError("lease_s must be >= 0")
+    cutoff = now - timedelta(seconds=lease_s)
+    cur.execute(
+        """
+        SELECT id, proposal_id, started_at, attempts
+        FROM proposal_llm_review_queue
+        WHERE queue_status = 'PROCESSING'
+          AND (started_at IS NULL OR started_at < %s)
+        ORDER BY started_at ASC NULLS FIRST
+        """,
+        [cutoff],
+    )
+    rows = [dict(r) for r in cur.fetchall()]
+    if apply and rows:
+        cur.execute(
+            """
+            UPDATE proposal_llm_review_queue
+            SET queue_status = 'PENDING', last_error = 'lease_expired', started_at = NULL
+            WHERE queue_status = 'PROCESSING' AND id = ANY(%s)
+            """,
+            [[r["id"] for r in rows]],
+        )
     return rows
 
 
@@ -136,6 +172,36 @@ def process_one(conn, queue_row, dry_run=False):
         return {'proposal_id': pid, 'symbol': symbol, 'status': 'error', 'error': str(e)}
 
 
+def _requeue_cli(args) -> int:
+    """Read the expired PROCESSING rows. ``--apply`` writes PENDING. ``--dry-run`` cannot write."""
+    import psycopg2.extras
+    from lib.lane_last_receipt import enforce_readonly
+
+    _load_env()
+    conn = get_db()
+    try:
+        if args.dry_run:
+            enforce_readonly(conn)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        rows = requeue_expired_processing(
+            cur, now=datetime.now(timezone.utc), lease_s=args.lease_s, apply=bool(args.apply))
+        if args.apply:
+            conn.commit()
+        else:
+            conn.rollback()
+    finally:
+        conn.close()
+    started = [r["started_at"] for r in rows if r.get("started_at") is not None]
+    oldest = min(started).isoformat() if started else None
+    newest = max(started).isoformat() if started else None
+    label = "APPLY" if args.apply else "DRY-RUN"
+    print(
+        f"{label} proposal-llm-review-worker requeue-expired lease_s={args.lease_s} "
+        f"rows={len(rows)} oldest={oldest} newest={newest} ids={[r['id'] for r in rows]}"
+    )
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Proposal LLM review worker", allow_abbrev=False)
     parser.add_argument("--dry-run", action="store_true", help="offline plan; overrides --run")
@@ -144,7 +210,18 @@ def main(argv=None):
     parser.add_argument("--proposal-id", type=int)
     parser.add_argument("--throttle", type=int, default=10,
                         help="Seconds to wait between reviews (default 10)")
+    parser.add_argument("--requeue-expired", action="store_true",
+                        help="Requeue PROCESSING rows older than --lease-s. Does not review.")
+    parser.add_argument("--apply", action="store_true",
+                        help="With --requeue-expired, write the PENDING update")
+    parser.add_argument("--lease-s", type=int, default=DEFAULT_LEASE_S)
     args = parser.parse_args(argv)
+    if args.requeue_expired:
+        if args.run:
+            parser.error("--requeue-expired does not run reviews")
+        if args.dry_run == args.apply:
+            parser.error("--requeue-expired needs exactly one of --dry-run or --apply")
+        return _requeue_cli(args)
     if not (args.run or args.dry_run):
         parser.error("one of --dry-run or --run is required")
     if args.dry_run:
@@ -158,6 +235,12 @@ def main(argv=None):
         _load_env()
         conn = get_db()
         with PipelineRun('proposal_llm_review_worker', triggered_by='cli') as pipe:
+            import psycopg2.extras
+            expired = requeue_expired_processing(
+                conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor),
+                now=datetime.now(timezone.utc), lease_s=args.lease_s, apply=True)
+            conn.commit()
+            log.info("Requeued %s expired PROCESSING row(s)", len(expired))
             queue = fetch_queue(conn, limit=args.limit, proposal_id=args.proposal_id)
             log.info(f"Found {len(queue)} queued LLM reviews")
 

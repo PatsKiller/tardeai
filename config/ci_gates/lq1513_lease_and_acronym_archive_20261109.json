@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1513_lease_and_acronym_archive_20261109",
+  "files": [
+    "tests/test_lq1513_lease_and_acronym_archive_20261109.py"
+  ],
+  "anchor": "LQ1513_LEASE_AND_ACRONYM_ARCHIVE_20261109",
+  "comment": [
+    "ANCHOR: LQ1513_LEASE_AND_ACRONYM_ARCHIVE_20261109 — expired proposal-review PROCESSING rows return to PENDING, and bare COLA/RMD insights are archived then deactivated. No DELETE. Synthetic rows only."
+  ]
+}
