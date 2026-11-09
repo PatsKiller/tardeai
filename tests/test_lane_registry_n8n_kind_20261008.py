@@ -328,9 +328,11 @@ def test_the_gate_fails_on_a_double_scheduler_and_passes_once_the_line_is_retire
 
 
 def test_native_monitor_rows_do_not_flip_a_host_scheduler():
-    """Only existing native monitors and cut-over N1 lanes are kind n8n. The four OpenClaw reminders were
-    kind n8n NEVER_SCHEDULED until 2026-10-09; N6 is retained by policy (AGENTS.md §23.3), so they are
-    kind event (fired by the OpenClaw scheduler, no host entry to go missing) and ACTIVE."""
+    """Only existing native monitors and cut-over N1 lanes are kind n8n, plus the later rows named below.
+    The four OpenClaw reminders were kind n8n NEVER_SCHEDULED until 2026-10-09; N6 is retained by policy
+    (AGENTS.md §23.3), so they are kind event (fired by the OpenClaw scheduler, no host entry to go missing)
+    and ACTIVE. A kind-n8n row is added here only when the registry change was a deliberate cutover or a
+    lane that never had a host line."""
     reg = lr.load_registry()
     assert lr.validate_registry(reg) == []
     native = {r["lane_id"]: r for r in reg["lanes"] if (r.get("scheduler") or {}).get("kind") == "n8n"}
@@ -357,6 +359,21 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # belong here and not with the n8n-native lanes, none of which ever had a host line.
         "finviz-sector-research",
         "hermes-watchlist-scorer",
+        # 2026-11-07 LQ-20261107-318 (lead fold f997037a6): these host cron lanes are kind n8n,
+        # expression dispatcher, stage canary. Their crontab lines are `# RETIRED 2026-11-07 n8n-cutover`,
+        # and command_text keeps that retired cron text. They do not flip a live host scheduler.
+        "job-coverage-monitor",
+        "due-diligence-questions",
+        "hermes-usefulness-backfill",
+        "goal-gate-bridge",
+        "data-gap-resolver-at-0-10-16",
+        "classify-instruments",
+        "finviz-enrichment",
+        "hermes-research-worker-pool",
+        "directive-keyword-enhancer",
+        "build-hermes-canonical-status",
+        "enrich-proposal-technicals",
+        "hermes-discovery-ingestors",
     } | set(_CW_CUT_OVER)  # 2026-10-15 n8n cutover waves (scripts/n8n_cutover_wave.py cutover; cron lines `# RETIRED`)
     # 2026-10-11: heartbeat-watch is n8n-native (no host line ever existed): a dispatcher row (shadow then canary),
     # fired by tradeai-heartbeat-watcher and tradeai-dispatcher; it flips no host scheduler (match names its script only).
@@ -440,6 +457,21 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # 2026-10-28 conflict-resolver: n8n-native learn dispatcher row (W8; no host line). 2026-10-29 live flip:
         # shadow -> canary, dispatch live, live_arg --shadow --state-root $STATE_ROOT (ledger-writing, no notification).
         "conflict-resolver",
+        # 2026-11-07 LQ-20261107-266: n8n-native shadow row, no host line.
+        "warm-read-endpoints",
+        # 2026-11-07 LQ-20261107-364: n8n-native shadow dry_run, no host line.
+        "market-event-data-refresh",
+        # 2026-11-07 LQ-20261107-479: both go live on the dispatcher. No host line.
+        "market-event-outcomes",
+        "market-reference-bars",
+        # 2026-11-08 LQ-20261107-1122: n8n-native canary, Sun 20:00 and Mon 07:00 ET. No host line.
+        "market-outlook-weekly",
+        # 2026-11-08 LQ-20261107-1261 registered the snapshot; LQ-20261107-1279 made both lanes live canary.
+        # Neither ever had a host line.
+        "since-close-snapshot",
+        "since-close-check",
+        # 2026-11-08 LQ-20261107-1286: n8n-native canary. No host line.
+        "cio-overnight-brief",
         # 2026-11-04 site-audit: n8n-native capture lane, NEVER_SCHEDULED, no n8n workflow installed yet and no
         # host line ever existed (SPEC_SITE_AUDIT_AUTOREMEDIATE_LOOP_20261104 §2.1; tests/test_site_audit_lane_20261104.py).
         # Its scheduler expression is the workflow name, not the dispatcher, so it is asserted separately below.
