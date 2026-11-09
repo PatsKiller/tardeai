@@ -58,6 +58,13 @@ if str(ROOT) not in sys.path:
 from scripts import disk_hygiene as DH  # noqa: E402
 from scripts.lib import lane_last_receipt as R  # noqa: E402
 
+# A locked coordination ledger is transient. Exit 75 matches flock -E 75 so transient-2
+# retries the lane instead of dead-lettering a breach that was never queued.
+EX_TEMPFAIL = 75
+_BUSY_ATTEMPTS = 4
+_BUSY_BACKOFF_S = (0.05, 0.1, 0.2)
+_LEDGER_BUSY_REASONS = frozenset({"intent_store_unavailable"})
+
 NO_CONSUMER_REASON = (
     "self-contained monitor: DiskUsageMonitorState@v1 is read back only by this script (band dedupe); results reach "
     "consumers via the LaneRunReceipt@v2 receipt and the host comms intent"
@@ -67,10 +74,6 @@ SCRIPT = "scripts/disk_usage_monitor.py"
 STATE_SCHEMA = "DiskUsageMonitorState@v1"
 BANDS = ("ok", "warn", "critical")
 SKIP_DEPENDENCY = "dependency_unavailable"
-# LQ-20261107-1409: intent enqueue that hits a locked coordination ledger must not exit 1
-# (terminal under transient-2). Same EX_TEMPFAIL as flock -E 75 so coordination/due retries.
-EX_TEMPFAIL = 75
-_LEDGER_BUSY_REASONS = frozenset({"intent_store_unavailable"})
 # Diagnostic work fits inside the existing 180s lane cap; these never widen it.
 CONSUMER_REFRESH_SECONDS = 3600
 CONSUMER_SCAN_BUDGET_SECONDS = 30
@@ -593,19 +596,26 @@ def queue_host_intent(
         "execution_id": str(execution_id)[:40],
         "node": clean(node, 64),
     }
-    try:
-        ledger = _LedgerConn(path)
-    except (sqlite3.Error, OSError) as exc:
-        raise HostIntentError("intent_store_unavailable") from exc
-    try:
-        store = CommsIntentStore(ledger, routes=routes)
-        return dict(store.accept(request, caller_id=f"host:{producer}", now=time.time() if now is None else now))
-    except FabricStoreError as exc:
-        raise HostIntentError(getattr(exc, "reason", "intent_store_unavailable")) from exc
-    except sqlite3.Error as exc:
-        raise HostIntentError("intent_store_unavailable") from exc
-    finally:
-        ledger.close()
+    stamp = time.time() if now is None else now
+    last: BaseException | None = None
+    for attempt in range(_BUSY_ATTEMPTS):
+        if attempt:
+            time.sleep(_BUSY_BACKOFF_S[min(attempt - 1, len(_BUSY_BACKOFF_S) - 1)])
+        ledger = None
+        try:
+            ledger = _LedgerConn(path)
+            store = CommsIntentStore(ledger, routes=routes)
+            return dict(store.accept(request, caller_id=f"host:{producer}", now=stamp))
+        except FabricStoreError as exc:
+            raise HostIntentError(getattr(exc, "reason", "intent_store_unavailable")) from exc
+        except (sqlite3.Error, OSError) as exc:
+            last = exc
+            if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
+                raise HostIntentError("intent_store_unavailable") from exc
+        finally:
+            if ledger is not None:
+                ledger.close()
+    raise HostIntentError("intent_store_unavailable") from last
 
 
 def standing_hygiene_status(rules: Mapping, state_root: Optional[Path], previous: Mapping, now: datetime,
@@ -864,13 +874,13 @@ def _run_locked(
     summary = {"mounts": results, "inodes": inode_results, "manifest": manifest, "standing_hygiene": standing,
                "standing_pressure": pressure, "consumer_snapshot": consumer_snapshot,
                "consumer_snapshot_refreshed": refreshed, "failures": failures}
+    if failures and failures == ledger_busy_failures:
+        busy_rc = EX_TEMPFAIL
+    else:
+        busy_rc = 1
     if not apply:
         R.dry_run_report(LANE_ID, summary, would_write=[str(state_path)], receipt=R.receipt_path(LANE_ID, state_root))
-        if not failures:
-            return 0
-        if failures == ledger_busy_failures:
-            return EX_TEMPFAIL
-        return 1
+        return 0 if not failures else busy_rc
     measured = sum(1 for r in results if "band" in r)
     ok = failures == 0
     try:
@@ -925,7 +935,7 @@ def _run_locked(
             }
         )
     )
-    if not written:
+    if ok and not written:
         return 1
     return rc
 

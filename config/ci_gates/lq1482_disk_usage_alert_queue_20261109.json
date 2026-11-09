@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1482_disk_usage_alert_queue_20261109",
+  "files": [
+    "tests/test_lq1482_disk_usage_alert_queue_20261109.py"
+  ],
+  "anchor": "LQ1482_DISK_USAGE_ALERT_QUEUE_20261109",
+  "comment": [
+    "ANCHOR: LQ1482_DISK_USAGE_ALERT_QUEUE_20261109 — a disk breach queues one host intent and a quiet mount queues none.",
+    "A busy coordination ledger is retried. A ledger that stays busy exits 75. Synthetic measurements only."
+  ]
+}
