@@ -208,7 +208,10 @@ def record_failure(reason: str, *, state_path: str | Path | None = None,
         streak = 0
         opened = _stamp((prior or {}).get("opened_at"))
         if (prior or {}).get("state") == "transient" and opened is not None and moment - opened <= FAILURE_MEMORY:
-            streak = int(prior.get("failures") or 0)
+            try:
+                streak = int(prior["failures"])  # an unreadable count restarts the streak, never widens it
+            except (KeyError, TypeError, ValueError):
+                streak = 0
         failures = streak + 1
         code = token.split()[0] if token.split() else token
         if code in DAY_PACED_REFUSALS:

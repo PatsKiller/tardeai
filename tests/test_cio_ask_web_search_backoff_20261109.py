@@ -168,6 +168,7 @@ def test_a_success_closes_the_window_and_a_later_call_posts_again(state):
 
 
 def test_a_corrupt_state_file_never_blocks_the_call(state):
+    # nosemgrep: tq-py-nonatomic-store-write -- a deliberately corrupt file under pytest tmp_path, read back at once, never a store
     state.write_text("{not json")
     assert ws.open_cooldown(state_path=state, now=NOW) is None
     good = ws.search("q", transport=_answering(), state_path=state, now=NOW)
