@@ -275,11 +275,11 @@ def _ensure_txn_usable(conn) -> bool:
 
 
 #: db_adapter sets the trade_ai role's session lock_timeout to 3 s -- its interactive anti-cascade guard, so an
-#: interactive query never queues behind a stuck writer. This lane is a batch writer inside the 10:00 ET dispatch
-#: burst: on 2026-11-09 its first weekday run waited on an uncommitted watchlist_items writer for more than 36 s,
-#: so both INSERTs it reached (WMT at 10:02:35, CORO at 10:03:08) were cancelled and each lost its screener
-#: (LQ-20261107-1577). A batch write gets its own, longer lock wait and a bounded retry; a lock that outlives
-#: that is still reported and still fails the screener (rule 8: a failure is never reported as success).
+#: interactive query never queues behind a stuck writer. This lane is a batch writer dispatched in the same
+#: weekday-morning burst as the watchlist writers: a run that meets an uncommitted watchlist_items writer for
+#: longer than the session timeout has each INSERT it reaches cancelled, and each cancellation loses that
+#: screener (LQ-20261107-1577). A batch write gets its own, longer lock wait and a bounded retry; a lock that
+#: outlives that is still reported and still fails the screener (rule 8: a failure is never reported as success).
 WRITE_LOCK_TIMEOUT = "10s"
 LOCK_RETRY_ATTEMPTS = 3
 LOCK_RETRY_SLEEP_S = 2.0
@@ -752,10 +752,10 @@ def _run_tracked(args, started, _run_id) -> int:
         produced = int(output["produced_count"])   # lane_output always returns it; absent would be a defect, not 0
         # LQ-20261107-1577: the contract grades what this lane PRODUCED (finviz-screener-runner,
         # N8nExpectedOutput@v1, min_produced=1); db_write_failed and no_tickers are non-fatal skips the
-        # receipt carries explicitly. On 2026-11-09 the run wrote 42 of 45 screeners and still recorded
-        # status=failed for 2 write failures, which the executor graded empty_output
+        # receipt carries explicitly. A run that refreshed most of its screeners and hit a couple of write
+        # failures used to record status=failed, which the executor graded empty_output
         # (why=receipt_status_failed) and dead-lettered as terminal and non-retryable: a run that produced
-        # 1853 tickers was reported as an empty one. A run that produced nothing still fails.
+        # hundreds of tickers was reported as an empty one. A run that produced nothing still fails.
         complete = produced > 0
         if deadline is not None and not result.get("results"):
             complete = False  # inactive/missing screener is not a completed refresh

@@ -1,20 +1,14 @@
 """LQ-20261107-1577 — a transient watchlist_items lock must not lose a screener, and a run that produced
 must not be graded empty_output.
 
-Live evidence, 2026-11-09 (read-only pg log, /var/log/postgresql/postgresql-17-main.log):
+Scenario, synthetic but the shape of a real weekday-morning dispatch burst:
 
-  10:02:35.052 [2960951] finviz_screener_runner.py ERROR: canceling statement due to lock timeout
-                 CONTEXT: while inserting index tuple (160,3) in relation "watchlist_items"
-                 STATEMENT: INSERT INTO watchlist_items (symbol, source, status, origin_system, updated_at)
-                            VALUES ('WMT', 'ai_discovered', 'active', 'finviz_screener', now())
-                            ON CONFLICT DO NOTHING
-  10:03:08.084 [2960951] same statement for 'CORO' — the holder outlived the 3 s role lock_timeout
-  10:02:45.943 [2961057] watch_decision_refresh.py UPDATE ... WHERE symbol='FPS' — same contention
-
-The run receipt: status failed, exit 0, 45 attempted / 42 produced, skipped {db_write_failed: 2,
-no_tickers: 1}, 1853 new tickers. The executor graded it ``empty_violation`` / ``why=receipt_status_failed``
-and dead-lettered the slot as terminal and non-retryable: a run that produced 42 of 45 screeners was
-reported as an empty one.
+  a sibling writer holds an uncommitted watchlist_items row while this lane inserts its own, so one
+  screener's INSERT is cancelled by the session's lock_timeout (SQLSTATE 55P03) while the screeners around
+  it commit. The run therefore wrote most of its screeners and failed a couple of writes. The receipt
+  recorded status=failed for those write failures, and the executor graded it ``empty_violation`` /
+  ``why=receipt_status_failed`` and dead-lettered the slot as terminal and non-retryable: a run that
+  produced a large set of tickers was reported as an empty one.
 
 The contract these tests pin:
 
@@ -254,33 +248,33 @@ def _tracked(monkeypatch, result, *, deadline=None):
     monkeypatch.setitem(sys.modules, "pipeline_registry", mod)
     monkeypatch.setattr(runner, "run_screener", lambda **kw: result)
     args = types.SimpleNamespace(screener=None, json=True, deadline_monotonic=deadline)
-    rc = runner._run_tracked(args, "2026-11-09T15:01:01+00:00", "d:finviz-screener-runner:live:20261109T1000")
+    rc = runner._run_tracked(args, "2026-01-05T15:00:00+00:00", "d:finviz-screener-runner:test:t0001")
     return rc, receipts, pipeline
 
 
 def _partial_result():
-    ok = {"total_found": 5, "new_tickers": 1, "membership_updated": 1, "db_ok": True}
-    bad = {"total_found": 5, "new_tickers": 1, "db_ok": False, "db_error": "lock timeout"}
+    ok = {"total_found": 5, "new_tickers": 2, "membership_updated": 1, "db_ok": True}
+    bad = {"total_found": 5, "new_tickers": 2, "db_ok": False, "db_error": "lock timeout"}
     empty = {"total_found": 0, "new_tickers": 0}
-    results = [{**ok, "screener_id": f"s{i}"} for i in range(42)]
-    results += [{**bad, "screener_id": "b1"}, {**bad, "screener_id": "b2"}, {**empty, "screener_id": "e1"}]
-    return {"mode": "live", "screeners_run": 45, "total_new_tickers": 1853,
-            "membership_failures": 0, "db_write_failures": 2, "results": results}
+    results = [{**ok, "screener_id": f"s{i}"} for i in range(3)]
+    results += [{**bad, "screener_id": "b1"}, {**empty, "screener_id": "e1"}]
+    return {"mode": "live", "screeners_run": 5, "total_new_tickers": 6,
+            "membership_failures": 0, "db_write_failures": 1, "results": results}
 
 
 def test_partial_success_reports_ok_with_the_skips_recorded(monkeypatch):
-    """42 of 45 produced, 2 write failures: the contract's min_produced is satisfied, so the receipt is ok
-    and the failures stay visible in skipped_reasons — not a failed status the executor reads as empty."""
+    """3 of 5 produced, 1 write failure: the contract's min_produced is satisfied, so the receipt is ok
+    and the failure stays visible in skipped_reasons — not a failed status the executor reads as empty."""
     rc, receipts, pipeline = _tracked(monkeypatch, _partial_result())
 
     assert rc == 0
     assert len(receipts) == 1, receipts
     r = receipts[0]
     assert r["ok"] is True, r
-    assert r["output"]["produced_count"] == 42
-    assert r["output"]["attempted_count"] == 45
-    assert r["output"]["skipped_reasons"] == {"no_tickers": 1, "membership_failed": 0, "db_write_failed": 2}
-    assert r["summary"]["db_write_failures"] == 2, r["summary"]
+    assert r["output"]["produced_count"] == 3
+    assert r["output"]["attempted_count"] == 5
+    assert r["output"]["skipped_reasons"] == {"no_tickers": 1, "membership_failed": 0, "db_write_failed": 1}
+    assert r["summary"]["db_write_failures"] == 1, r["summary"]
     assert pipeline.done and not pipeline.failed, pipeline
 
 
@@ -291,13 +285,13 @@ def test_a_run_that_produced_nothing_still_fails(monkeypatch):
     for r in result["results"]:
         r["db_ok"] = False
         r.pop("membership_updated", None)
-    result["db_write_failures"] = 45
+    result["db_write_failures"] = 5
     rc, receipts, pipeline = _tracked(monkeypatch, result)
 
     assert rc == 0                                 # no caller deadline: the dispatcher owns the exit code
     assert receipts[0]["ok"] is False, receipts[0]  # the contract signal the executor grades
     assert receipts[0]["output"]["produced_count"] == 0
-    assert receipts[0]["output"]["skipped_reasons"]["db_write_failed"] == 45, receipts[0]["output"]
+    assert receipts[0]["output"]["skipped_reasons"]["db_write_failed"] == 5, receipts[0]["output"]
 
 
 def test_retry_is_skipped_when_the_caller_budget_cannot_fit_it(env, monkeypatch):
