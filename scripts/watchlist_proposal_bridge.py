@@ -90,10 +90,10 @@ def _is_statement_timeout(exc: BaseException) -> bool:
     """
     try:
         import psycopg2.errors as pg_errors
-        if isinstance(exc, pg_errors.QueryCanceled):
-            return True
-    except Exception:
-        pass
+    except ImportError:  # a build without psycopg2 still classifies by message
+        pg_errors = None
+    if pg_errors is not None and isinstance(exc, pg_errors.QueryCanceled):
+        return True
     msg = str(exc).lower()
     return "statement timeout" in msg or "querycanceled" in msg
 
@@ -273,8 +273,8 @@ def _fetch_buy_candidates(cur, *, statement_budget_s: int | None = None) -> dict
             )
             try:
                 cur.connection.rollback()
-            except Exception:
-                pass
+            except Exception as rb_exc:  # noqa: BLE001 -- a failed rollback must not hide the timeout it follows
+                log.warning("rollback after the candidate timeout failed: %s", type(rb_exc).__name__)
             cur.execute(_candidate_sql(with_analyst=False))
             degraded = DEGRADED_ANALYST_HISTORY
         cols = [d[0] for d in cur.description]
@@ -283,8 +283,9 @@ def _fetch_buy_candidates(cur, *, statement_budget_s: int | None = None) -> dict
         if prior_budget:
             try:
                 cur.execute("SELECT set_config('statement_timeout', %s, false)", (prior_budget,))
-            except Exception:
-                pass
+            except Exception as restore_exc:  # noqa: BLE001 -- the connection is closing; say so, do not raise
+                log.warning("could not restore statement_timeout to %s: %s",
+                            prior_budget, type(restore_exc).__name__)
     out = []
     for row in rows:
         d = dict(zip(cols, row))
