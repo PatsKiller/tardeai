@@ -1,0 +1,62 @@
+{
+  "schema": "NumbersTruthHeal@v1",
+  "_comment": [
+    "Self-fix allowlist for the numbers-truth audit (DSN-20261109 REV 2 section D, REV 3 section G). Changed only by reviewed PR.",
+    "A heal is ONE run request of the PRODUCER lane through the sanctioned host path (scripts/lib/n8n_cc_wave_c.enqueue_host_run -> n8n_coordination_gateway.host_run_request), rate-limited to one per lane per hour, recorded in the audit receipt.",
+    "It is never a broker write, an order, a DB write, a code edit, a cron edit or a systemd edit. Authority findings (REV 3 G) never heal: a source change is operator-only (AGENTS.md section 17), so they ticket at strike 3.",
+    "Only ACTIVE n8n lanes are healable (REV 2 D). The KEEP_ON_CRON producers are not: strike 3 for their figures tickets directly."
+  ],
+  "rate_limit": {
+    "per_lane_per_hour": 1
+  },
+  "healable": {
+    "vix-index-quotes-schwab": {
+      "mode": "dry_run",
+      "why": "re-reads the VIX/index quotes and reports the tiles' source; ACTIVE n8n lane with a dry_run arg only"
+    },
+    "cio-overnight-brief": {
+      "mode": "live",
+      "why": "rebuilds the brief the CIO 'now' prices and session-day prose come from; ACTIVE n8n lane"
+    },
+    "holdings-drift-monitor": {
+      "mode": "dry_run",
+      "why": "re-measures holdings vs positions_current and writes its own receipt; ACTIVE n8n lane, read-only against the stores"
+    },
+    "held-exit-coverage-monitor": {
+      "mode": "dry_run",
+      "why": "re-measures held-position stop coverage; ACTIVE n8n lane, read-only against the stores"
+    }
+  },
+  "not_healable": {
+    "positions-sync": "KEEP_ON_CRON producer; a heal here would be a data write outside the operator's schedule",
+    "schwab-position-sync": "KEEP_ON_CRON producer; broker-adjacent, never run off-slot",
+    "stop-health-check": "KEEP_ON_CRON producer; stop reads on its own schedule",
+    "market-quotes-*": "KEEP_ON_CRON producers (one per provider); never run off-slot",
+    "portfolio-repricer": "KEEP_ON_CRON producer; writes priced marks"
+  },
+  "by_figure_id": {
+    "vix_tile": "vix-index-quotes-schwab",
+    "index_tile": "vix-index-quotes-schwab",
+    "now_price": "cio-overnight-brief",
+    "session_day_label": "cio-overnight-brief",
+    "unprotected": "held-exit-coverage-monitor",
+    "stop_state": "held-exit-coverage-monitor",
+    "qty": "positions-sync",
+    "market_value": "portfolio-repricer",
+    "price": "portfolio-repricer",
+    "total": "positions-sync",
+    "day_pnl": "market-quotes-*"
+  },
+  "by_page": {
+    "risk": "vix-index-quotes-schwab",
+    "cio": "cio-overnight-brief",
+    "portfolio": "positions-sync"
+  },
+  "default_lane": null,
+  "escalation": {
+    "domain": "data",
+    "kind_ticket": "numbers_truth_ticket",
+    "kind_cleared": "numbers_truth_cleared",
+    "channels_note": "email + Telegram + Google Fi email-to-text are the incident notifier's D34 delivery (REV 3 H); this module queues intents and never sends"
+  }
+}

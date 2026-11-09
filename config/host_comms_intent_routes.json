@@ -155,6 +155,20 @@
       "tier": "DIGEST",
       "runbook_id": "desk-truth-monitors",
       "producer": "desk_truth_monitor"
+    },
+    {
+      "domain": "data",
+      "kind": "numbers_truth_ticket",
+      "tier": "DIGEST",
+      "runbook_id": "numbers-truth-audit",
+      "producer": "numbers_truth_strikes"
+    },
+    {
+      "domain": "data",
+      "kind": "numbers_truth_cleared",
+      "tier": "DIGEST",
+      "runbook_id": "numbers-truth-audit",
+      "producer": "numbers_truth_strikes"
     }
   ],
   "_comment_20261109_display_truth": "2026-11-09 (LQ-20261107-1646, operator-reported display truth): the fourth desk_truth_monitor check, lane display-truth-monitor, compares what Home shows with an independent recomputation; a gained alert finding queues ONE data/display_truth_finding (DIGEST -> P2) like its three siblings, and the heal re-dispatches the owning lane only — it never writes a displayed value, a store or a stop.",
