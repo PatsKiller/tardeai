@@ -159,6 +159,24 @@
                     "futures_ok_states": ["CALM", "WARN"]},
     "name_gate": {"no_new_low_sessions": 3, "rsi_period": 14, "rsi_low": 35, "cmf_period": 20,
                   "obv_slope_sessions": 5, "sma_period": 20, "invalidation_buffer_pct": 1.0,
-                  "min_bars": 30}
+                  "min_bars": 30},
+
+    "lifecycle": {
+      "_why": "LQ-20261107-1656/1674 (DESIGN-LQ-20261107-1656-cc-opus-1): the stages after ENTERED. Operator decisions 2026-11-09 14:50 ET: ENTERED_OBSERVED may be set from positions_current; trim 25 %, rs_loss 5 %, 3 sessions; and 'YELLOW+' means YELLOW or BETTER (tier rank <= YELLOW), so the third tranche is an add after the stabilisation, never a buy-the-dip. Read by scripts/lib/market_event_plan.py::evaluate_position. Advisory only: nothing here sizes, orders or touches a broker.",
+      "enabled": true,
+      "positions_max_age_minutes": 30,
+      "snapshot_max_age_minutes": 60,
+      "tranche_held_fraction": 0.8,
+      "trim_gain_pct": 25.0,
+      "trim_rsi": 75.0,
+      "rs_loss_pct": 5.0,
+      "rs_loss_sessions": 3,
+      "t3_max_tier": "YELLOW",
+      "exit_min_tier": "RED",
+      "gain_guardian_states": ["GIVEBACK_BREACH"],
+      "settle_min": 15,
+      "event_kinds": ["CPI", "FOMC", "NFP", "PCE"],
+      "tier_order": ["GREEN", "NONE", "BLUE", "YELLOW", "ORANGE", "RED"]
+    }
   }
 }

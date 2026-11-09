@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import math
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
@@ -74,6 +75,24 @@ DEFAULT_POLICY: dict[str, Any] = {
         "invalidation_buffer_pct": 1.0,
         "low_lookback_sessions": 20,
         "min_bars": 30,
+    },
+    #: LQ-20261107-1656/1674 — the stages after ENTERED. Operator-approved defaults (2026-11-09 14:50 ET):
+    #: trim 25 %, rs_loss 5 %, 3 sessions, and "YELLOW+" means YELLOW **or better** (tier rank <= YELLOW).
+    "lifecycle": {
+        "enabled": True,
+        "positions_max_age_minutes": 30,
+        "snapshot_max_age_minutes": 60,
+        "tranche_held_fraction": 0.8,
+        "trim_gain_pct": 25.0,
+        "trim_rsi": 75.0,
+        "rs_loss_pct": 5.0,
+        "rs_loss_sessions": 3,
+        "t3_max_tier": "YELLOW",
+        "exit_min_tier": "RED",
+        "gain_guardian_states": ["GIVEBACK_BREACH"],  # holdings_gain_guardian.py:337 (the vocabulary its classifier emits)
+        "settle_min": 15,
+        "event_kinds": ["CPI", "FOMC", "NFP", "PCE"],
+        "tier_order": ["GREEN", "NONE", "BLUE", "YELLOW", "ORANGE", "RED"],
     },
 }
 
@@ -595,3 +614,333 @@ def build(*, episode: Optional[Mapping[str, Any]], candidates: Sequence[Mapping[
         "policy": {"source": policy.get("policy_source"), "version": policy.get("policy_version"),
                    "cash_reserve_pct": policy.get("cash_reserve_pct"), "tranche_pcts": policy.get("tranche_pcts")},
     }
+
+
+# --------------------------------------------------------------------------- lifecycle (LQ-20261107-1656/1674)
+#
+# The WP3 state machine stops at ENTERED: ``evaluate_candidate`` carries a stored ENTERED and never moves it, so once
+# a name is bought the engine goes silent. ``evaluate_position`` is the other half — it runs for a row that is already
+# entered and answers "what does the operator do next about the position that exists".
+#
+# Operator decision 2026-11-09 14:50 ET: ENTERED_OBSERVED may be set from ``positions_current`` (qty > 0 in the
+# episode) and is labelled with the source, so it is never confused with an operator-confirmed ENTERED. This module
+# stays pure: the caller supplies the position, the snapshot and the calendar events; nothing here reads a broker,
+# a credential, a DB or a quote provider. Rail: MBI_BEHAVIOR = 0 (AGENTS.md §0 rule 1, §2).
+
+POSITION_STAGES = (
+    "ENTERED_OBSERVED",  # qty > 0 but not yet at the first tranche's planned size
+    "ENTERED_T1",
+    "ADD_T2_READY",
+    "HELD_T2",
+    "ADD_T3_READY",
+    "FULL",
+    "TRIM_READY",
+    "EXIT_READY",
+    "INVALIDATED",
+    "STOPPED_OUT",
+)
+TERMINAL_STAGES = ("INVALIDATED", "STOPPED_OUT")
+#: stages that always alert (Fi text); the others go to the brief/digest only (design step 6)
+FI_TEXT_STAGES = ("ADD_T2_READY", "ADD_T3_READY", "EXIT_READY", "STOPPED_OUT")
+
+
+def _parse_at(v: Any) -> Optional[datetime]:
+    """An ISO timestamp or datetime as tz-aware UTC, or None. Naive input is taken as UTC (ISO compare memory)."""
+    if isinstance(v, datetime):
+        dt = v
+    elif isinstance(v, str) and v.strip():
+        try:
+            dt = datetime.fromisoformat(v.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
+        return None
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+
+
+def _minutes_since(v: Any, now: datetime) -> Optional[float]:
+    dt = _parse_at(v)
+    return None if dt is None else (now - dt).total_seconds() / 60.0
+
+
+def _tier_index(tier: Any, order: Sequence[str]) -> Optional[int]:
+    """Rank in the MRE tier order (GREEN, NONE, BLUE, YELLOW, ORANGE, RED): larger is worse."""
+    t = str(tier or "").upper()
+    try:
+        return list(order).index(t)
+    except ValueError:
+        return None
+
+
+def _tranches_held(qty: Optional[float], plan: Mapping[str, Any], frac: float) -> tuple[Optional[int], str]:
+    """How many planned tranches the observed size covers, and why when it cannot be measured.
+
+    ``plan["tranche_qty"]`` (per-tranche share counts) is the direct form; ``plan["planned_shares"]`` with
+    ``tranche_pcts`` is the derived one. A tranche counts as held when qty >= its cumulative planned qty x frac —
+    a partial fill below that is ENTERED_OBSERVED, not a held tranche.
+    """
+    if qty is None:
+        return None, "holding_qty_unknown"
+    base = plan.get("tranche_qty")
+    if not isinstance(base, (list, tuple)) or not base:
+        shares = _f(plan.get("planned_shares"))
+        pcts = plan.get("tranche_pcts")
+        if shares is None or not isinstance(pcts, (list, tuple)) or not pcts:
+            return None, "tranche_plan_qty_unknown"
+        total = float(sum(float(x) for x in pcts)) or 100.0
+        base = [shares * float(p) / total for p in pcts]
+    held, cum = 0, 0.0
+    for n in base:
+        cum += float(n)
+        if qty >= cum * frac:
+            held += 1
+        else:
+            break
+    return held, ""
+
+
+def evaluate_position(candidate: Mapping[str, Any], holding: Mapping[str, Any],
+                      events: Sequence[Mapping[str, Any]], snapshot: Mapping[str, Any],
+                      policy: Mapping[str, Any], *, now: Optional[datetime] = None) -> dict[str, Any]:
+    """The stage of an entered position, with every gate re-evaluated on every call.
+
+    ``candidate``: the market_event_candidates row — ``episode_id``, ``symbol``, ``sector``, ``state``, ``plan``
+    (``tranche_percents``/``tranche_qty``, ``invalidation``, ``entry_price``), ``entry_tier``, ``fell_for_reason`` and
+    ``reason_evidence``. ``holding``: ``qty``, ``avg_cost`` (may be None — ``positions_current`` has no cost column,
+    see the note below), ``stop_price``/``stop_state``, ``price``, ``sleeve_pct``. ``events``: the calendar rows this
+    episode cares about, ``{"kind", "at", "released_at"}``. ``snapshot``: ``as_of``, ``tier``, ``last_close``,
+    ``low``, ``sma20``, ``rsi14``, ``rs5_loss_sessions``, ``gain_guardian_state``, ``sleeve`` (``pct``, ``target``).
+
+    A missing input is UNAVAILABLE and never PASS — the ``reentry_rotation_alerts`` rule. A stale positions or
+    snapshot input makes the row UNVERIFIABLE and **no stage advances**.
+    """
+    lc = policy.get("lifecycle") if isinstance(policy.get("lifecycle"), Mapping) else {}
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    sym = str(candidate.get("symbol") or "").upper()
+    label = str(holding.get("account_label") or candidate.get("account_label") or "unlabelled")
+    prev = str(candidate.get("stage") or candidate.get("state") or "ENTERED").upper()
+    plan = candidate.get("plan") if isinstance(candidate.get("plan"), Mapping) else {}
+    reasons: list[str] = []
+    gates: dict[str, Any] = {}
+
+    res: dict[str, Any] = {
+        "schema": "MarketEventPosition@v1",
+        "episode_id": candidate.get("episode_id"),
+        "symbol": sym,
+        "account_label": label,
+        "previous_stage": prev,
+        "stage": prev,
+        "verdict": "OK",
+        "gates": gates,
+        "reasons": reasons,
+        "alert": None,
+        "handoff": None,
+        "advisory_only": True,
+        "note": ADVISORY_NOTE,
+    }
+
+    # --- freshness. The positions snapshot is the thing this lane must not move without.
+    pos_age = _minutes_since(holding.get("as_of"), now)
+    snap_age = _minutes_since(snapshot.get("as_of"), now)
+    max_pos = float(lc.get("positions_max_age_minutes", 30.0))
+    max_snap = float(lc.get("snapshot_max_age_minutes", 60.0))
+    stale: list[str] = []
+    if pos_age is None:
+        stale.append(f"positions_as_of {holding.get('as_of')!r} unreadable")
+    elif pos_age > max_pos:
+        stale.append(f"positions {pos_age:.0f} min old (limit {max_pos:g})")
+    if snap_age is None:
+        stale.append(f"snapshot_as_of {snapshot.get('as_of')!r} unreadable")
+    elif snap_age > max_snap:
+        stale.append(f"snapshot {snap_age:.0f} min old (limit {max_snap:g})")
+    if stale:
+        res["verdict"] = "UNVERIFIABLE"
+        reasons.extend(stale)
+        reasons.append("no stage advances on a stale input")
+        gates["fresh"] = {"ok": False, "reasons": stale}
+        return res
+    gates["fresh"] = {"ok": True}
+
+    if prev in TERMINAL_STAGES:
+        # INVALIDATED / STOPPED_OUT are terminal for the episode (design PROCESS 2). Recovery owns any re-entry.
+        res["verdict"] = "OK"
+        reasons.append(f"{prev} is terminal for this episode: no stage advances, recovery owns re-entry")
+        gates["terminal"] = {"ok": True, "stage": prev}
+        return res
+
+    qty = _f(holding.get("qty"))
+    price = _f(snapshot.get("last_close")) or _f(holding.get("price"))
+    entry = _f(plan.get("entry_price")) or _f(candidate.get("entry_price"))
+    inval = _f(plan.get("invalidation"))
+    tier_order = lc.get("tier_order") or ["GREEN", "NONE", "BLUE", "YELLOW", "ORANGE", "RED"]
+    tier = str(snapshot.get("tier") or "").upper() or None
+    tier_rank = _tier_index(tier, tier_order)
+    entry_rank = _tier_index(candidate.get("entry_tier"), tier_order)
+    low = _f(snapshot.get("low"))
+    stop_state = str(holding.get("stop_state") or "").upper()
+
+    # --- terminal: stopped out hands the name to recovery_state; this lane never re-enters it.
+    if stop_state == "FILLED" or (qty is not None and qty == 0 and holding.get("had_working_stop") is True):
+        res.update(stage="STOPPED_OUT", verdict="OK",
+                   handoff={"to": "recovery_state", "kind": "stop_out", "episode_id": candidate.get("episode_id"),
+                            "symbol": sym, "account_label": label, "stop_state": stop_state or "missing"})
+        reasons.append("stop filled or the position went to zero with a working stop gone: recovery owns re-entry")
+        gates["stopped_out"] = {"ok": True}
+        return _with_alert(res, candidate, lc)
+
+    # --- exit gates. Any one is enough; each records its own verdict so the alert can say which.
+    # The close-below-invalidation leg is not repeated here: it is INVALIDATED, decided below, because the design's
+    # proof 5 makes it terminal for the episode rather than a recoverable EXIT_READY.
+    exits: list[str] = []
+    rs_loss = snapshot.get("rs5_loss_sessions")
+    rs_need = int(lc.get("rs_loss_sessions", 3))
+    if isinstance(rs_loss, (int, float)):
+        if float(rs_loss) >= rs_need:
+            exits.append(f"rs5 at or below -{float(lc.get('rs_loss_pct', 5.0)):g}% for "
+                         f"{int(rs_loss)} sessions (need {rs_need})")
+    else:
+        reasons.append("rs5_loss_sessions not measured: the RS-loss exit cannot be evaluated")
+    exit_rank = _tier_index(lc.get("exit_min_tier", "RED"), tier_order)
+    if (tier_rank is not None and exit_rank is not None and entry_rank is not None
+            and tier_rank >= exit_rank and price is not None and entry is not None and price < entry):
+        exits.append(f"tier escalated to {tier} after entry with the close {price:g} under the entry basis {entry:g}")
+    ev = candidate.get("reason_evidence") if isinstance(candidate.get("reason_evidence"), Mapping) else {}
+    neg = ev.get("negative_catalyst_types") or []
+    if candidate.get("fell_for_reason") and neg:
+        exits.append("thesis-invalidating catalyst: " + ", ".join(str(x) for x in neg))
+    gates["exit"] = {"ok": not exits, "reasons": exits}
+
+    # --- trim gates
+    trims: list[str] = []
+    sleeve = snapshot.get("sleeve") if isinstance(snapshot.get("sleeve"), Mapping) else {}
+    sp = _f(sleeve.get("pct"))
+    st = _f(sleeve.get("target"))
+    if sp is not None and st is not None and sp > st:
+        lo = _f(sleeve.get("band_low_frac"))
+        hi = _f(sleeve.get("band_high_frac"))
+        band = "" if lo is None or hi is None else f"; suggested trim {lo * 100:.0f}-{hi * 100:.0f}% of the position"
+        trims.append(f"sleeve {sp:g}% is over its {st:g}% target{band}")
+    gain = _f(holding.get("avg_cost"))
+    gain_pct = (price / gain - 1.0) * 100.0 if price is not None and gain else None
+    rsi14 = _f(snapshot.get("rsi14"))
+    trim_gain = float(lc.get("trim_gain_pct", 25.0))
+    trim_rsi = float(lc.get("trim_rsi", 75.0))
+    if gain_pct is None:
+        reasons.append("no cost basis: the gain leg of the trim gate is unmeasured")
+    elif gain_pct >= trim_gain and rsi14 is not None and rsi14 >= trim_rsi:
+        trims.append(f"gain {gain_pct:.1f}% with RSI {rsi14:.1f} >= {trim_rsi:g}")
+    gg = str(snapshot.get("gain_guardian_state") or "").upper()
+    gg_states = [str(x).upper() for x in (lc.get("gain_guardian_states") or [])]
+    if gg and gg in gg_states:
+        trims.append(f"gain guardian giveback state {gg}")
+    gates["trim"] = {"ok": not trims, "reasons": trims,
+                     "unmeasured": ["gain_pct"] if gain_pct is None else []}
+
+    # --- progression gates
+    frac = float(lc.get("tranche_held_fraction", 0.8))
+    held, held_why = _tranches_held(qty, plan, frac)
+    if held is None:
+        reasons.append(held_why)
+    gates["held"] = {"ok": held is not None, "tranches": held, "reason": held_why or None, "qty": qty}
+    n_tr = max(1, len(plan.get("tranche_percents") or plan.get("tranche_pcts") or [30, 30, 40]))
+
+    # t2: the calendar gate. Explicit policy entry wins; otherwise the first configured event at/after entry.
+    t2_reasons: list[str] = []
+    gate = lc.get("event_gate") if isinstance(lc.get("event_gate"), Mapping) else {}
+    gkind = str(gate.get("kind") or "").upper()
+    settle = int(gate.get("settle_min") or lc.get("settle_min", 15))
+    released = None
+    for e in events or []:
+        if not isinstance(e, Mapping):
+            continue
+        if gkind and str(e.get("kind") or "").upper() != gkind:
+            continue
+        if not gkind and str(e.get("kind") or "").upper() not in [str(k).upper() for k in lc.get("event_kinds") or []]:
+            continue
+        released = e
+        break
+    t2_open = False
+    if released is None:
+        t2_reasons.append("event_gate: no calendar event in scope" if not gkind else f"event_gate:{gkind} not scheduled")
+    else:
+        kind = str(released.get("kind") or gkind or "event").upper()
+        rel_at = _parse_at(released.get("released_at"))
+        if rel_at is None:
+            t2_reasons.append(f"event_gate:{kind} not released")
+        elif (now - rel_at).total_seconds() / 60.0 < settle:
+            t2_reasons.append(f"event_gate:{kind} settling (<{settle} min)")
+        elif tier_rank is not None and entry_rank is not None and tier_rank > entry_rank:
+            t2_reasons.append(f"event_gate:{kind} withheld: tier {tier} worse than at entry "
+                              f"{candidate.get('entry_tier')}")
+        elif low is not None and inval is not None and low < inval:
+            t2_reasons.append(f"event_gate:{kind} withheld: low {low:g} under invalidation {inval:g}")
+        else:
+            t2_open = True
+    gates["t2"] = {"ok": t2_open, "reasons": t2_reasons}
+
+    # t3: tier YELLOW or better AND the SMA20 reclaim (the existing name_gate rule).
+    t3_reasons: list[str] = []
+    t3_max = _tier_index(lc.get("t3_max_tier", "YELLOW"), tier_order)
+    sma = _f(snapshot.get("sma20"))
+    reclaim = price is not None and sma is not None and price > sma
+    if tier_rank is None:
+        t3_reasons.append("tier not measured")
+    elif t3_max is not None and tier_rank > t3_max:
+        t3_reasons.append(f"tier {tier} is worse than {lc.get('t3_max_tier', 'YELLOW')}")
+    if sma is None or price is None:
+        t3_reasons.append("SMA20 reclaim not measured")
+    elif not reclaim:
+        t3_reasons.append(f"close {price:g} below SMA20 {sma:g}")
+    gates["t3"] = {"ok": not t3_reasons, "reasons": t3_reasons}
+
+    # --- stage: terminal/override first, then progression from how many tranches are actually held.
+    if exits:
+        stage = "EXIT_READY"
+        reasons.extend(exits)
+    elif trims:
+        stage = "TRIM_READY"
+        reasons.extend(trims)
+    elif held is None:
+        stage = prev if prev in POSITION_STAGES else "ENTERED_OBSERVED"
+    elif held >= n_tr:
+        stage = "FULL"
+    elif held >= 2:
+        stage = "ADD_T3_READY" if gates["t3"]["ok"] else "HELD_T2"
+        reasons.extend(gates["t3"]["reasons"] if not gates["t3"]["ok"] else [])
+    elif held >= 1:
+        stage = "ADD_T2_READY" if t2_open else "ENTERED_T1"
+        if not t2_open:
+            reasons.extend(t2_reasons)
+    else:
+        stage = "ENTERED_OBSERVED"
+        reasons.append(f"observed size is below the first tranche's plan x {frac:g}")
+
+    # The one irreversible-looking one: an entered position whose close broke the recorded invalidation.
+    if inval is not None and price is not None and price < inval:
+        stage = "INVALIDATED"
+        reasons.insert(0, f"close {price:g} broke the recorded invalidation {inval:g}")
+        gates["invalidated"] = {"ok": False, "reason": reasons[0]}
+
+    res["stage"] = stage
+    if gain_pct is None or snapshot.get("rs5_loss_sessions") is None or sma is None:
+        res["verdict"] = "DEGRADED"
+    res["gates"] = gates
+    return _with_alert(res, candidate, lc)
+
+
+def _with_alert(res: dict[str, Any], candidate: Mapping[str, Any], lc: Mapping[str, Any]) -> dict[str, Any]:
+    """Attach the alert identity, once per (episode, symbol, label, to_stage). An unchanged stage gets none."""
+    if res["stage"] == res["previous_stage"]:
+        return res
+    eid = f"{candidate.get('episode_id')}:{res['symbol']}:{res['account_label']}:{res['stage']}"
+    res["alert"] = {
+        "event_id": eid,
+        "stage": res["stage"],
+        "from_stage": res["previous_stage"],
+        "symbol": res["symbol"],
+        "account_label": res["account_label"],
+        "class": "fi_text" if res["stage"] in FI_TEXT_STAGES else "digest",
+    }
+    return res
