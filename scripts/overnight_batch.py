@@ -792,19 +792,53 @@ def run_tax_sweep():
     return jobs_queued
 
 
-if __name__ == "__main__":
-    tg = "--telegram" in sys.argv
+def _rows_from_result(result, key):
+    """rows_produced from a producer result, or None when that branch did not measure it.
+
+    LQ-20261107-1539. `pipeline_zero_rows` counts only rows where
+    ``(summary->>'rows_produced')::bigint = 0`` (scripts/alert_dispatcher_unified.py), and
+    pipeline_registry.run_complete writes None as JSON null — "nobody told me" — distinct from
+    0, "I produced nothing". Three branches here hardcoded 0 without measuring, so a healthy
+    pipeline claimed it had produced nothing and the alarm reported a CRITICAL for it:
+    --tax-sweep was queueing 4 tax_agent jobs on the 06:35 sweep while reporting 0 (this row's
+    operator email), and --outcomes read a key ("scored") its producer never returns. A branch
+    that cannot measure passes None; it must never pass 0.
+    """
+    if not isinstance(result, dict):
+        return None
+    value = result.get(key)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _rows_from_batch(result):
+    """The default run() measures what it queues, per tier; any tier unmeasured means None."""
+    if not isinstance(result, dict):
+        return None
+    total = 0
+    for tier in ("tier1", "tier2"):
+        block = result.get(tier)
+        queued = block.get("jobs_queued") if isinstance(block, dict) else None
+        if not isinstance(queued, int) or isinstance(queued, bool):
+            return None
+        total += queued
+    return total
+
+
+def main(argv=None):
+    """Run one mode. `argv` defaults to sys.argv[1:] so a test can drive every branch."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    tg = "--telegram" in argv
 
     # Determine mode for pipeline registry
-    if "--outcomes" in sys.argv:
+    if "--outcomes" in argv:
         _mode = 'overnight_batch_outcomes'
-    elif "--proactive" in sys.argv:
+    elif "--proactive" in argv:
         _mode = 'overnight_batch_proactive'
-    elif "--research" in sys.argv:
+    elif "--research" in argv:
         _mode = 'overnight_batch_research'
-    elif "--index-embeddings" in sys.argv:
+    elif "--index-embeddings" in argv:
         _mode = 'overnight_batch_embeddings'
-    elif "--tax-sweep" in sys.argv:
+    elif "--tax-sweep" in argv:
         _mode = 'overnight_batch_tax'
     else:
         _mode = 'overnight_batch'
@@ -817,26 +851,21 @@ if __name__ == "__main__":
         pass
 
     try:
-        if "--outcomes" in sys.argv:
-            _result = evaluate_past_decisions()
-            _count = _result.get('scored', 0) if isinstance(_result, dict) else 0
-        elif "--proactive" in sys.argv:
-            _result = proactive_intel_scan()
-            _count = _result.get('queued', 0) if isinstance(_result, dict) else 0
-        elif "--research" in sys.argv:
-            _result = refresh_research_topics()
-            _count = _result.get('refreshed', 0) if isinstance(_result, dict) else 0
-        elif "--index-embeddings" in sys.argv:
+        if "--outcomes" in argv:
+            # evaluate_past_decisions returns {"updated", "lessons"}: "updated" is the count.
+            _count = _rows_from_result(evaluate_past_decisions(), "updated")
+        elif "--proactive" in argv:
+            _count = _rows_from_result(proactive_intel_scan(), "queued")
+        elif "--research" in argv:
+            _count = _rows_from_result(refresh_research_topics(), "refreshed")
+        elif "--index-embeddings" in argv:
             sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
             from content_scoring import batch_index_all
-            batch_index_all(batch_size=100)
-            _count = 0
-        elif "--tax-sweep" in sys.argv:
-            run_tax_sweep()
-            _count = 0
+            _count = _rows_from_result(batch_index_all(batch_size=100), "indexed")
+        elif "--tax-sweep" in argv:
+            _count = run_tax_sweep()  # returns jobs_queued; the count this branch used to discard
         else:
-            run(send_telegram=tg)
-            _count = 0
+            _count = _rows_from_batch(run(send_telegram=tg))
 
         try:
             if _run_id: run_complete(_run_id, rows_processed=_count)
@@ -848,3 +877,7 @@ if __name__ == "__main__":
         except Exception:
             pass
         raise
+
+
+if __name__ == "__main__":
+    main()
