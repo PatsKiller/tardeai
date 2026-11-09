@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "home_cio_cio_verdict_lq1389_20261109",
+  "files": [
+    "tests/test_home_cio_cio_verdict_lq1389_20261109.py"
+  ],
+  "anchor": "HOME_CIO_CIO_VERDICT_LQ1389_20261109",
+  "comment": [
+    "ANCHOR: HOME_CIO_CIO_VERDICT_LQ1389_20261109 — LQ-20261107-1389, operator 2026-11-08: Home showed two verdicts. (a) The rotation column proposed a tranche-1 buy ($26,224 of XLV/XLP) while the CIO's own line read 'Buys NONE until CPI Tue'; a no-buys gate now withholds the tranche money and carries the gate, so the column reads 'after CPI Tue'. (b) The stressed table labelled names 'exit review' while the CIO's actions on the same page said raise the stop (SPCX) or hold (ANET); a name the CIO answers now carries that answer ('CIO: raise stop', 'CIO: hold') with the projection's label kept beside it as stance_engine. The SPA half (MarketRiskPanelV5's row amount, the gated pill and the plan block) reads the same two fields and is pinned by three cases added to the existing view test apps/command-center-v3/src/components/home/MarketRiskPanelV5.stocks.view.test.mjs (a new SPA test file would be refused by repo_preflight's ui_build_command registration check, documented on LQ-20261107-1388; an existing one is not)."
+  ]
+}

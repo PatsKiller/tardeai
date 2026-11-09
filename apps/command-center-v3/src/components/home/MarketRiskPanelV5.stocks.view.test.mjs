@@ -178,6 +178,64 @@ check('the sub-list is one column and cannot push a phone sideways', () => {
   assert.match(css, /\.mr5 \.rc \.sk \.sc \{[^}]*overflow-wrap: anywhere/, 'the comparison line does not wrap')
 })
 
+// ── LQ-20261107-1389: under a no-buys verdict the column proposes nothing and says what it is waiting for ───────
+//
+// The projection withholds the tranche (tranche1_usd/shares null, tranches [], no plan) and carries the gate facts.
+// Red-first: at the parent revision `gated` is not in the type and not read, so the amount cell printed "watch" and
+// no pill was rendered at all. The server half is tests/test_home_cio_cio_verdict_lq1389_20261109.py; this is the
+// same two fields as the operator actually sees them.
+const GATED = (c) => {
+  const x = { ...c }
+  if (x.proposed) x.proposed = { ...x.proposed, tranche1_usd: null, shares: null, tranches: [] }
+  if (x.stocks) {
+    x.stocks = x.stocks.map(s => {
+      const y = { ...s }
+      delete y.tranche1_usd; delete y.tranche1_shares; delete y.proposed  // the server omits them, it does not zero them
+      return y
+    })
+  }
+  return x
+}
+const GATED_PANEL = {
+  ...PANEL,
+  rotate: {
+    ...PANEL.rotate,
+    plan: null,
+    gated: { gate: fact('NONE'), until: fact('CPI Tue 03-11 08:30 ET'), until_short: fact('CPI Tue'),
+             line: fact('No new buys before CPI Tue 03-11 08:30 ET; protect gains with stops') },
+    candidates: PANEL.rotate.candidates.map(GATED),
+  },
+}
+const gatedHtml = renderToStaticMarkup(React.createElement(MemoryRouter, { initialEntries: ['/v3/home'] },
+  React.createElement(Panel, { panel: GATED_PANEL, notes: [], mr: null })))
+const gatedText = (s) => text(s)
+
+check('a no-buys verdict shows the gate where the plan would be, naming the release', () => {
+  const pill = gatedHtml.match(/data-testid="mr5-gated"[^>]*>([^<]*)</)
+  assert.ok(pill, 'no gate pill was rendered')
+  assert.equal(pill[1].trim(), 'TRANCHE 1 AFTER CPI TUE')
+  assert.match(gatedText(gatedHtml), /No tranche is proposed while the CIO's buys line reads NONE\./)
+  // the CIO's own line travels with it, so the operator can trace the verdict
+  assert.match(gatedText(gatedHtml), /No new buys before CPI Tue 03-11 08:30 ET; protect gains with stops\./)
+})
+
+check('a gated row says when, and never shows a dollar amount the verdict forbids', () => {
+  const xlv = gatedHtml.split('data-testid="mr5-rotate-row"').find(r => r.includes('<b>XLV</b>')) ?? ''
+  assert.match(gatedText(xlv), /after CPI Tue/)
+  assert.ok(!/watch/.test(gatedText(xlv).split('RESILIENT')[0] || ''), 'a waiting tranche still reads "watch"')
+  for (const money of [/\$1,200/, /\$900/, /\$2,100/, /tranche 1<\/span>|· tranche 1/]) {
+    assert.ok(!money.test(gatedText(gatedHtml)), `a gated column still states ${money}`)
+  }
+})
+
+check('the names under a gated ETF keep their readings and lose their share count', () => {
+  const xlv = gatedHtml.split('data-testid="mr5-rotate-row"').find(r => r.includes('<b>XLV</b>')) ?? ''
+  assert.ok(xlv.includes('data-testid="mr5-rotate-stocks"'), 'the stock block disappeared with the tranche')
+  assert.match(gatedText(xlv), /Close 30\.00/)
+  assert.ok(!/≈\d+ sh/.test(gatedText(xlv)), 'a gated stock row still sizes a tranche')
+  assert.equal((gatedHtml.match(/data-testid="mr5-stock-row"/g) || []).length, 3, 'a name row was dropped, not just ungated')
+})
+
 
 const results = []
 for (const c of cases) {

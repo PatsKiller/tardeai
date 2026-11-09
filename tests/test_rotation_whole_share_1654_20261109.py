@@ -37,8 +37,13 @@ Q_XLP = {"price": 85.40, "as_of": "2031-03-10T15:10:00+00:00", "source": "finviz
 
 
 def _rot(**kw):
+    # LQ-20261107-1389: this file is about the whole-share SIZING rule, and the shared fixture's buys verdict
+    # withholds a tranche (which is the point of 1389). It is read here under a buys line that allows one; the
+    # withholding has its own tests in test_home_cio_cio_verdict_lq1389_20261109.py.
+    sc = copy.deepcopy(kw.pop("sc", SC))
+    sc["cio_brief"]["synopsis"]["buys"] = {"line": "Buys open, slowly", "gate": "OPEN"}
     kw.setdefault("quotes", {"XLV": copy.deepcopy(Q_XLV), "XLP": copy.deepcopy(Q_XLP)})
-    return _build(**kw)["panel"]["rotate"]
+    return _build(sc=sc, **kw)["panel"]["rotate"]
 
 
 def _by(rot):

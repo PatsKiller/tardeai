@@ -49,9 +49,19 @@ function StockRows({ c }: { c: RotateCandidate }) {
   )
 }
 
-function Rotate({ r, stressed }: { r: NonNullable<CioPanel['rotate']>; stressed: string[] }) {
+/** LQ-20261107-1389: the CIO's buys gate rides on the rotate item as its own facts (value + source + as_of).
+ *  Read from the projection rather than the card so this column can state the gate without a second read. */
+type GateFact = { value?: string; source_id?: string; as_of?: string }
+export type GatedRotate = NonNullable<CioPanel['rotate']> & {
+  gated?: { gate?: GateFact; until?: GateFact; until_short?: GateFact; line?: GateFact } | null
+}
+
+function Rotate({ r, stressed }: { r: GatedRotate; stressed: string[] }) {
   const cands = r.candidates ?? []
   const plan = r.plan
+  const gated = r.gated
+  // "CPI Tue" when the gate lifts on a named release, else the long form; undefined when the gate names no event.
+  const gatedWhen = gated?.until_short?.value || gated?.until?.value || undefined
   const closeAsOf = cands.find(c => c.close)?.close?.as_of
   return (
     <div className="col" data-testid="mr5-rotate">
@@ -71,6 +81,10 @@ function Rotate({ r, stressed }: { r: NonNullable<CioPanel['rotate']>; stressed:
               <div className="h"><b>{c.symbol}</b><span className="nm">{c.label}</span>{stateBadge(c)}
                 <span className="amt" data-testid="mr5-amt">{filled
                   ? `FILLED · ${held?.shares} sh @ ${px(held?.avg_cost)}`
+                  // LQ-20261107-1389: a qualifying group under a no-buys gate is not "watch" and is not a buy —
+                  // it is a tranche waiting on the named release the CIO's verdict is waiting on. Read before the
+                  // dollars so a tranche left in a stale payload can never outrank the verdict on screen.
+                  : c.qualifies && gated ? `after ${gatedWhen ?? 'the gate'}`
                   : c.qualifies && p?.tranche1_usd ? `${usd(p.tranche1_usd)} tranche 1` : 'watch'}</span></div>
               <div className="sub">{c.rs20 != null ? `RS vs SPY ${c.rs20 > 0 ? '+' : ''}${c.rs20.toFixed(1)} pts over 20 sessions` : ''}{c.dd20 != null ? ` · ${pct(Math.abs(c.dd20))} off its 20-day high` : ''}{c.qualifies ? '' : ' · starts when it turns RESILIENT'}</div>
               {/* LQ-20261107-1654: the price the share counts rest on is the CURRENT quote, never the last daily close
@@ -113,6 +127,18 @@ function Rotate({ r, stressed }: { r: NonNullable<CioPanel['rotate']>; stressed:
             {plan.cash_after_pct != null && <><span>Cash after tranche 1</span><span>{pct(plan.cash_after_pct)}</span></>}
           </div>
           {plan.rule && <div className="sub">Proposed rule: {plan.rule}.</div>}
+        </>
+      )}
+      {/* LQ-20261107-1389: a no-buys verdict above a live "$26,224 · tranche 1" proposal is two answers on one
+          screen. The sizing is withheld at the projection and the column says what it is waiting for — never a
+          silent disappearance, and never a dollar amount the CIO's own line forbids acting on. */}
+      {!plan && gated && (
+        <>
+          <div><span className="pill prop" data-testid="mr5-gated">{gatedWhen
+            ? `TRANCHE 1 AFTER ${gatedWhen.toUpperCase()}` : 'BUYS GATED'}</span></div>
+          <div className="sub" data-testid="mr5-gated-line">
+            {gated.line?.value ? `${gated.line.value}. ` : ''}No tranche is proposed while the CIO's buys line reads {gated.gate?.value ?? 'no buys'}.
+          </div>
         </>
       )}
       {/* LQ-20261107-1654: "Prices as of <ET time>" is the quote the share counts rest on. No quote → say so rather

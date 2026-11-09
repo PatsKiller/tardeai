@@ -47,6 +47,9 @@ FILLED_FRACTION = 0.90
 #: Hedge candidates by what is stressed: tech-led stress → Nasdaq-100 inverse.
 TECH_KEYS = {"tech", "semis", "ai_basket"}
 ACTIONABLE = ("RAISE", "ADD_STOP", "LOWER", "TIGHTEN")
+#: How the CIO's stop-advice answer reads in a table's Stance column (LQ-20261107-1389): the answer alone ("RAISE")
+#: does not say WHAT is raised, and it must be visibly the CIO's verdict, not a second engine's label.
+_STANCE = {"RAISE": "CIO: raise stop", "ADD_STOP": "CIO: add stop", "FIX_QTY": "CIO: fix stop size", "HOLD": "CIO: hold"}
 _HELD_RE = re.compile(r"held by the completed-session rule:\s*(\d+)\s+of\s+(\d+)\s+completed trading sessions below this tier recorded;\s*current readings support\s+([A-Z]+)", re.I)
 TIERS = ("GREEN", "YELLOW", "ORANGE", "RED")
 
@@ -492,10 +495,56 @@ def _stock_line(one: Mapping, cand: Mapping, rs: Mapping | None) -> str | None:
     return "; ".join(parts)
 
 
+def _buy_hold(buys: Mapping | None) -> dict | None:
+    """Why a NEW tranche may not be proposed now, or None when the CIO's buys line allows one (LQ-20261107-1389).
+
+    The buys line is the CIO's verdict, and the rotate column must not contradict it. With ``gate`` NONE the
+    verdict is "no new buys"; with SMALL_ONLY and a pending event it is "nothing new before <event>". A card that
+    prints "Buys NONE until CPI Tue" above a live "$26,224 · tranche 1" proposal shows the operator two answers
+    and leaves him to pick — the same defect as two as-of dates. The sizing is WITHHELD (not zero) and the gate
+    travels with it, so the column can say when a tranche would be allowed instead of dropping it silently.
+
+    The gate is read from the synopsis, never re-derived from the market-risk tier here: the card reports the
+    verdict the operator is being shown, and recomputing it would be this module computing a view of its own."""
+    buys = buys or {}
+    gate = str(((buys.get("gate") or {}).get("value")) or "").strip().upper()
+    until = (buys.get("until") or {}).get("value")
+    if not (gate == "NONE" or (gate == "SMALL_ONLY" and until)):
+        return None
+    return {k: buys.get(k) for k in ("gate", "until", "until_short", "line") if buys.get(k)}
+
+
+def _cio_verdicts(sc: Mapping | None) -> dict[str, str]:
+    """{SYMBOL: the CIO's own answer} from the brief's stop advice (LQ-20261107-1389).
+
+    The stressed table printed the market-risk projection's stance — "exit review", its label for a holding in a
+    stressed group near or past its stop — while the CIO's actions on the same page said raise the stop (SPCX) or
+    hold (ANET). Two verdicts on one screen, and the operator left to reconcile them. The CIO's line is the single
+    verdict these surfaces render, so a name the CIO answers is labelled with that answer and nothing else.
+
+    An ask the broker already satisfies (``state`` done, LQ-1672) is not a verdict about the name and does not
+    override. Across accounts one actionable answer outranks a hold: "raise the stop in the IRA, hold it in the
+    taxable" is still a name whose stop is being raised."""
+    brief = (sc or {}).get("cio_brief") or {}
+    best: dict[str, str] = {}
+    for a in brief.get("stop_advice") or []:
+        if not isinstance(a, Mapping) or not a.get("symbol"):
+            continue
+        ans = str(a.get("answer") or "").strip().upper()
+        if not ans or ans == "NO_ACTION" or str(a.get("state") or "").lower() == "done":
+            continue
+        sym = str(a["symbol"]).upper()
+        prev = best.get(sym)
+        if prev is None or (ans in ACTIONABLE and prev not in ACTIONABLE):
+            best[sym] = ans
+    return {sym: _STANCE.get(ans, f"CIO: {ans.lower()}") for sym, ans in best.items()}
+
+
 def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dict | None,
             quotes: Mapping[str, Mapping] | None = None,
             held: Mapping[str, Mapping] | None = None,
-            stocks: Mapping | None = None) -> dict | None:
+            stocks: Mapping | None = None,
+            buys: Mapping | None = None) -> dict | None:
     """``quotes``: {SYMBOL: {price, as_of, source}} from the intraday quote tier (Finviz ≤30 min, else a fresh
     broker row — api_v2._fresh_price_batch). The daily bars still supply the 20-session average and the last close as
     context; they are never a sizing price (operator 2026-11-09: the card sized off the prior close).
@@ -508,7 +557,12 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
     ``stocks``: {group key: {"rows": [...], "as_of": ..., "gap": ...}} from ``lib/rotation_stocks.read``
     (LQ-20261107-1655), listing the individual names under each group's ETF. Not supplied means the column simply
     does not carry them, exactly as before; supplied-but-empty is said on the candidate (``stocks_gap``) rather than
-    shown as "none exist"."""
+    shown as "none exist".
+
+    ``buys``: the CIO's buys line ({gate, until, until_short, line}), taken from the synopsis the card already
+    renders (LQ-20261107-1389). Under a no-buys gate every candidate keeps its target and loses its tranche: no
+    dollars, no share count, no plan, and the gate rides out on the column (``gated``) so the row can say which
+    release the tranche is waiting for. The gate is read, never re-derived from the market-risk tier."""
     heat = {h.get("key"): h for h in mr.get("heatmap") or [] if isinstance(h, Mapping)}
     groups = {g.get("key"): g for g in (mr.get("sectors") or {}).get("groups") or [] if isinstance(g, Mapping)}
     lead = ((mr.get("leadership") or {}).get("groups") or {})
@@ -516,6 +570,9 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
     total, cash = _num(be.get("total_usd")), _num(be.get("cash_usd"))
     sat = (mr.get("sectors") or {}).get("as_of") or mr.get("as_of")
     stats = _bar_stats(bars)
+    # LQ-20261107-1389: the CIO's buys line, applied to every candidate. A gated column shows the target a group
+    # would reach and when a tranche would be allowed — never a dollar amount it may not act on.
+    hold = _buy_hold(buys)
     cands = []
     for k in DEFENSIVE_KEYS:
         g, h = groups.get(k) or {}, heat.get(k) or {}
@@ -552,13 +609,15 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
         tr = tranche_rows(target_usd, price)
         t1 = None
         if advice_ok and target_pct:
-            t1 = tr[0]["usd"] if (tr and qualifies) else None
+            # Under a no-buys gate there is no tranche to size yet: the target stays (it is where the group would
+            # go), the money and the share count are withheld, and the gate rides out on the rotate item.
+            t1 = tr[0]["usd"] if (tr and qualifies and not hold) else None
             c["proposed"] = {
                 "target_pct": target_pct, "target_usd": target_usd, "tranche1_usd": t1,
                 # The headline count is tranche 1's, at the CURRENT price; None (not a daily-close count) when the
                 # quote is absent or stale-past-30-min, so the card cannot print a stale share count.
                 "shares": tr[0]["shares"] if t1 else None,
-                "tranches": tr,
+                "tranches": tr if not hold else [],
                 "priced": price is not None,
                 "proposed": True,
             }
@@ -643,11 +702,14 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
     out = item(f"market_risk:sectors:{sat}", sat, candidates=cands, plan=plan, cash_usd=cash,
                prices_as_of=prices_as_of,
                prices_sources=sorted({str(p["source_id"]) for p in quoted}) or None,
-               prices_missing=missing or None)
+               prices_missing=missing or None, gated=hold)
     return out
 
 
-def _positions(mr: Mapping) -> dict | None:
+def _positions(mr: Mapping, verdicts: Mapping[str, str] | None = None) -> dict | None:
+    """The stressed holdings table. ``verdicts``: {SYMBOL: the CIO's answer} — when the CIO names a held name, the
+    Stance column carries the CIO's verdict and the market-risk projection's own label is kept beside it
+    (``stance_engine``) so the override is traceable rather than a lost reading (LQ-20261107-1389)."""
     be = mr.get("book_exposure") or {}
     if not be.get("rows"):
         return None
@@ -656,11 +718,15 @@ def _positions(mr: Mapping) -> dict | None:
     for r in be.get("rows") or []:
         if not isinstance(r, Mapping) or not _num(r.get("stressed_share")):
             continue
-        rows.append({"symbol": r.get("symbol"), "account_label": r.get("account_label"),
-                     "value_usd": _num(r.get("value_usd")), "pct_account": _num(r.get("pct_account")),
-                     "stressed_share": _num(r.get("stressed_share")), "usd_exposed": _num(r.get("usd_exposed")),
-                     "stop_distance_pct": _num(r.get("stop_distance_pct")), "stance": r.get("stance"),
-                     "stops_known": bool(be.get("stops_known"))})
+        row = {"symbol": r.get("symbol"), "account_label": r.get("account_label"),
+               "value_usd": _num(r.get("value_usd")), "pct_account": _num(r.get("pct_account")),
+               "stressed_share": _num(r.get("stressed_share")), "usd_exposed": _num(r.get("usd_exposed")),
+               "stop_distance_pct": _num(r.get("stop_distance_pct")), "stance": r.get("stance"),
+               "stops_known": bool(be.get("stops_known"))}
+        cio = (verdicts or {}).get(str(r.get("symbol") or "").upper())
+        if cio:
+            row["stance_engine"], row["stance"] = row["stance"], cio
+        rows.append(row)
     rows.sort(key=lambda r: -(r["usd_exposed"] or 0))
     more = be.get("more") or {}
     return item(sid, at, rows=rows[:5], extra_rows=max(0, len(rows) - 5), more_count=_num(more.get("count")),
@@ -702,7 +768,9 @@ def _stopped_out(mr: Mapping) -> list:
 def build_panel(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, actions: list, catalyst: dict | None,
                 quotes: Mapping[str, Mapping] | None = None,
                 holdings: Iterable[Mapping] | None = None,
-                stocks: Mapping | None = None) -> dict:
+                stocks: Mapping | None = None,
+                buys: Mapping | None = None,
+                verdicts: Mapping[str, str] | None = None) -> dict:
     sid, at = f"market_risk:{mr.get('as_of')}", mr.get("as_of")
     be = mr.get("book_exposure") or {}
     bsid, bat = f"book_exposure:{be.get('as_of')}", be.get("as_of") or at
@@ -729,8 +797,8 @@ def build_panel(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, actions: 
         },
         "protect": _protect(mr, actions) if advice_ok else [],
         "hedge": _hedge(mr, advice_ok),
-        "rotate": _rotate(mr, bars, advice_ok, catalyst, quotes, _held_by_symbol(holdings), stocks),
-        "positions": _positions(mr),
+        "rotate": _rotate(mr, bars, advice_ok, catalyst, quotes, _held_by_symbol(holdings), stocks, buys),
+        "positions": _positions(mr, verdicts),
         "stopped_out": _stopped_out(mr),
     }
 
@@ -831,7 +899,12 @@ def build(mr: Mapping | None, since_close: Mapping | None, *, defense: Mapping |
         return out
     card = build_card(mr, since_close, now, ok)
     out["card"] = card
-    out["panel"] = build_panel(mr, bars, ok, card["actions"], card.get("catalyst"), quotes, holdings, stocks)
+    # LQ-20261107-1389: the CIO's buys line and its per-name stop answers reach the panel from the card's own
+    # facts, so the two halves of the page cannot disagree. Both are advice, so a stale synopsis (ok False) turns
+    # them off exactly as it turns the actions off — a stale verdict is not a verdict.
+    buys = ({k: card.get(f"buys_{k}") for k in ("gate", "until", "until_short", "line")} if ok else None)
+    out["panel"] = build_panel(mr, bars, ok, card["actions"], card.get("catalyst"), quotes, holdings, stocks,
+                               buys=buys, verdicts=_cio_verdicts(since_close) if ok else None)
     out["notes"] = build_notes(mr, defense, momentum, bars)
     return out
 
