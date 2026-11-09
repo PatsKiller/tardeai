@@ -151,6 +151,32 @@ def test_python_falls_back_to_a_real_interpreter(monkeypatch, tmp_path):
     assert Path(csh._python()).is_file()
 
 
+def test_n8n_cutover_tag_is_scheduled_elsewhere_and_not_re_added(heal_env, monkeypatch):
+    """comment-cron leaves `# RETIRED <date> n8n-cutover <lane> <line>`. That is n8n's
+    schedule, not a missing cron line. A fresh lane is not re-added. A stale one may
+    be re-run, and the crontab is still not touched."""
+    shell, _n, _reg, _root = heal_env
+    shell.crontab = (
+        "# RETIRED 2026-11-09 n8n-cutover demo-lane "
+        "0 7 * * 1-5 cd $PROJ && $PY scripts/demo_lane.py --apply >> logs/demo_lane.log 2>&1\n"
+        "# old note about demo_lane.py, not a cutover\n"
+    )
+    _status(monkeypatch, scheduled=False, age_h=1.0)
+    assert csh.heal(dry=False)["acted"] == []
+    assert shell.installed == []
+    _status(monkeypatch, scheduled=False, age_h=200.0)
+    assert csh.heal(dry=False)["acted"] == ["demo_lane:re-ran remediate"]
+    assert shell.installed == []
+
+
+def test_a_plain_comment_that_names_the_script_is_still_re_added(heal_env, monkeypatch):
+    shell, _n, _reg, _root = heal_env
+    shell.crontab = "# paused demo_lane.py until the operator says otherwise\n"
+    _status(monkeypatch, scheduled=False, age_h=1.0)
+    assert csh.heal(dry=False)["acted"] == ["demo_lane:re-added to crontab"]
+    assert shell.installed
+
+
 def test_dry_run_reports_without_side_effects(heal_env, monkeypatch):
     shell, notified, _reg, root = heal_env
     _status(monkeypatch, scheduled=True, age_h=200.0)

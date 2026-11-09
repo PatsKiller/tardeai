@@ -12,6 +12,10 @@ Actions (all throttled + logged + Telegram-notified):
   STALE          -> re-run the job's remediate command (bounded attempts).
   NO_SIGNAL      -> notify only (first run before any heartbeat exists).
 
+A `# RETIRED <date> n8n-cutover <lane>` line (scripts/n8n_cutover_wave.py comment-cron)
+is n8n's schedule. The script name on that comment is not a dropped cron line, and
+self-heal does not append it again (LQ-20261107-1506).
+
 Not cron-only any more (2026-10-09, n8n maturity B3.1):
   - `$PY` expands to the interpreter that actually exists (PY / TRADEAI_PY from
     the environment the crontab header and the health-tick unit both set, else
@@ -49,6 +53,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -171,6 +176,35 @@ def _registry_scheduler(match: str, registry_path: Path | None = None) -> tuple[
     return None
 
 
+# comment-cron writes `# RETIRED <date> n8n-cutover <lane> <original line>`.
+_N8N_CUTOVER_TAG = re.compile(r"^#\s*RETIRED\s+\d{4}-\d{2}-\d{2}\s+n8n-cutover\s+\S+\s")
+
+
+def _crontab_raw() -> str:
+    """Full crontab, including comments. Empty when `crontab -l` cannot be read."""
+    try:
+        cp = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return cp.stdout or ""
+
+
+def _handed_to_n8n(crontab_text: str, schedule_match: str) -> bool:
+    """True when comment-cron retired this script and n8n holds the schedule.
+
+    The lane registry row often stays ACTIVE with kind=cron. Uncommented-line checks
+    then report NOT_SCHEDULED and self-heal appends a twin. The tag is the record
+    that the cron copy was retired on purpose.
+    """
+    if not schedule_match:
+        return False
+    for ln in crontab_text.splitlines():
+        s = ln.strip()
+        if schedule_match in s and _N8N_CUTOVER_TAG.match(s):
+            return True
+    return False
+
+
 def _re_add(cron_line: str) -> bool:
     """Append cron_line to the live crontab if it is not already scheduled."""
     expanded = _expand(cron_line)
@@ -182,6 +216,9 @@ def _re_add(cron_line: str) -> bool:
         current = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
     except Exception as e:
         _log(f"crontab -l failed: {e}")
+        return False
+    if _handed_to_n8n(current or "", script):
+        _log(f"re-add skipped: n8n-cutover owns {script}")
         return False
     lines = [ln for ln in current.splitlines() if ln.strip() and not ln.strip().startswith("#")]
     if any(script in ln for ln in lines):
@@ -219,6 +256,9 @@ def _rerun(remediate_cmd: str) -> bool:
 
 def _job_status(job: dict) -> tuple[str, float | None]:
     scheduled = _is_scheduled(job["schedule_match"], _crontab_lines())
+    if not scheduled and _handed_to_n8n(_crontab_raw(), job["schedule_match"]):
+        # n8n owns it. Freshness still applies; the cron line is not re-added.
+        scheduled = True
     kind, arg = job["signal"]
     age = _log_age_h(arg) if kind == "log" else _db_age_h(arg)
     if not scheduled:
