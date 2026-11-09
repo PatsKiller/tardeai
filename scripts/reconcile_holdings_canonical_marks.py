@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from scripts.lib.cio_canonical_quote import apply_canonical_quote_fields  # noqa: E402
+from scripts.lib.dead_cusip_holdings import is_dead_cusip_holding  # noqa: E402
 
 DEFAULT = Path(
     "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/portfolios/state/holdings.json"
@@ -42,6 +43,10 @@ def reconcile(doc: dict, now: datetime) -> dict:
     new_rows = []
     for h in holdings:
         if not isinstance(h, dict):
+            continue
+        # Keep the broker row. Do not chase a quote for a CUSIP-only delisted holding.
+        if is_dead_cusip_holding(h):
+            new_rows.append(h)
             continue
         row = apply_canonical_quote_fields(h)
         if row.get("is_cash") or row.get("is_loan"):

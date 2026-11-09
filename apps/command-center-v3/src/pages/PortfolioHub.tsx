@@ -22,6 +22,7 @@ import ShareReconciliationModal, { type ShareDriftItem } from '../components/Sha
 import type { HoldingsDetailContext } from '../components/HoldingsDetailPanel'
 import type { HoldingsCvdMode } from '../lib/holdingsTerminalTokens'
 import { accountFullName, buildHoldingsRowModel, isCashHolding } from '../lib/holdingsRowModel'
+import { isDeadCusipHolding } from '../lib/deadCusipHolding'
 import { portfolioDayFigure } from '../lib/portfolioDayFigure'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
@@ -275,8 +276,12 @@ export default function PortfolioHub({ onDrill }: Props) {
   // Cards + Finviz strips only for the symbols this desk shows (perf 2026-10-25): the universe maps are ~3.3 MB +
   // 1.7 MB (~1.3 MB gzipped) and the desk reads cardMap[SYM] / fvMap[SYM] for holdings rows only. Both endpoints
   // filter server-side on ?symbols=; the request waits for holdings so the list is known.
-  const holdingSymbols = useMemo(() => [...new Set(((holdings?.holdings ?? []) as any[])
-    .map(h => String(h?.symbol || '').toUpperCase()).filter(Boolean))].sort().join(','), [holdings])
+  const visibleHoldings = useMemo(
+    () => ((holdings?.holdings ?? []) as any[]).filter((h) => !isDeadCusipHolding(h)),
+    [holdings],
+  )
+  const holdingSymbols = useMemo(() => [...new Set(visibleHoldings
+    .map(h => String(h?.symbol || '').toUpperCase()).filter(Boolean))].sort().join(','), [visibleHoldings])
   const symbolsQs = `symbols=${encodeURIComponent(holdingSymbols)}`
   const { data: scards } = useApi<any>(`/api/v2/symbol-cards?${symbolsQs}`, 300_000, { enabled: needHoldingsDesk && !!holdingSymbols })
   // Closed-session resistance, same cache the Re-Entry desk reads, so the level shown
@@ -297,7 +302,7 @@ export default function PortfolioHub({ onDrill }: Props) {
   // Allocation follows the account filter: per-account look-through when an account is selected, else global.
   const sectorsByAccount = overview?.sectors_by_account ?? {}
   const sectors = (acctFilter && sectorsByAccount[acctFilter]) ? sectorsByAccount[acctFilter] : (overview?.sectors ?? [])
-  const allHoldings = holdings?.holdings ?? []
+  const allHoldings = visibleHoldings
   const holdingsPending = !holdings && holdingsLoading
   const holdingsUnavailable = !holdings && !!holdingsError
 

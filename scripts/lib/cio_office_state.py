@@ -118,6 +118,9 @@ def load_holdings_document(path: Optional[Path] = None) -> dict[str, Any]:
         return {"ok": False, "error": f"holdings_unreadable:{exc}", "holdings": []}
     if not isinstance(doc, dict):
         return {"ok": False, "error": "holdings_not_object", "holdings": []}
+    from lib.dead_cusip_holdings import without_dead_cusip_holdings
+
+    doc = without_dead_cusip_holdings(doc)
     doc.setdefault("ok", True)
     doc["source_path"] = str(p)
     return doc
@@ -125,10 +128,12 @@ def load_holdings_document(path: Optional[Path] = None) -> dict[str, Any]:
 
 def compact_holdings_rows(doc: dict[str, Any]) -> list[dict[str, Any]]:
     rows = []
+    from lib.dead_cusip_holdings import is_dead_cusip_holding
+
     for row in doc.get("holdings") or []:
         if not isinstance(row, dict):
             continue
-        if row.get("is_cash"):
+        if row.get("is_cash") or is_dead_cusip_holding(row):
             continue
         sym = str(row.get("symbol") or row.get("ticker") or "").strip().upper()
         if not sym or sym in {"CASH", "USD"}:

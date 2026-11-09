@@ -40,12 +40,30 @@ def _asset_class(row: dict[str, Any]) -> str:
     return "OTHER"
 
 
+def _dead_cusip(row: dict[str, Any]) -> bool:
+    try:
+        from scripts.lib.dead_cusip_holdings import is_dead_cusip_holding
+    except ImportError:
+        from lib.dead_cusip_holdings import is_dead_cusip_holding
+    return bool(is_dead_cusip_holding(row))
+
+
+def _without_dead(doc: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from scripts.lib.dead_cusip_holdings import without_dead_cusip_holdings
+    except ImportError:
+        from lib.dead_cusip_holdings import without_dead_cusip_holdings
+    return without_dead_cusip_holdings(doc)
+
+
 def load_holdings_document(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return {"ok": False, "error": f"holdings_unavailable:{type(exc).__name__}", "holdings": []}
-    return value if isinstance(value, dict) else {"ok": False, "error": "holdings_not_object", "holdings": []}
+    if not isinstance(value, dict):
+        return {"ok": False, "error": "holdings_not_object", "holdings": []}
+    return _without_dead(value)
 
 
 def build_portfolio_state(
@@ -54,7 +72,10 @@ def build_portfolio_state(
     broker_cash_evidence: dict[str, dict[str, Any]] | None = None,
     source_path: str | None = None,
 ) -> dict[str, Any]:
-    rows = [row for row in holdings_document.get("holdings", []) if isinstance(row, dict)]
+    rows = [
+        row for row in holdings_document.get("holdings", [])
+        if isinstance(row, dict) and not _dead_cusip(row)
+    ]
     evidence = broker_cash_evidence or {}
     positions: list[dict[str, Any]] = []
     cash_accounts: dict[str, dict[str, Any]] = {}

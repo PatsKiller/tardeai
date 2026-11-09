@@ -30,7 +30,7 @@ def test_filters():
     assert is_held_equity_ticker("SCHD")
     assert is_held_equity_ticker("BRK.B")
     assert not is_held_equity_ticker("CASH")
-    assert not is_held_equity_ticker("12507E201")
+    assert not is_held_equity_ticker("000000AA0")
     assert not is_held_equity_ticker("")
     assert not _is_symbol("CASH")
     assert not _is_symbol("SPAXX")
@@ -43,12 +43,13 @@ def test_snapshot_collapses_accounts_and_drops_cash_cusip(tmp_path: Path):
         {"symbol": "SCHD", "account": "ira", "is_cash": False, "market_value": 1},
         {"symbol": "SCHD", "account": "taxable", "is_cash": False, "market_value": 2},
         {"symbol": "CASH", "account": "ira", "is_cash": True, "asset_type": "cash", "market_value": 9},
-        {"symbol": "12507E201", "account": "ira", "is_cash": False, "market_value": 0},
+        {"symbol": "000000AA0", "account": "ira", "is_cash": False, "current_price": 12.0, "market_value": 100},
+        {"symbol": "000000BB0", "account": "ira", "is_cash": False, "current_price": 0, "market_value": 0},
         {"symbol": "JEPI", "account": "ira", "is_cash": False, "market_value": 3},
     ])
     assert held_equity_tickers(root=tmp_path) == ["JEPI", "SCHD"]
     assert len(held_cash_rows(root=tmp_path)) == 1
-    assert held_unresolved_cusips(root=tmp_path) == ["12507E201"]
+    assert held_unresolved_cusips(root=tmp_path) == ["000000AA0"]
     snap = snapshot(root=tmp_path)
     assert snap["held_equity_ticker_n"] == 2
     assert snap["cash_rows"] == 1

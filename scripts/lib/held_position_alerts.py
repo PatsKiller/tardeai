@@ -104,12 +104,29 @@ def _pp():
     return pp
 
 
+def _visible_holdings(doc: Any) -> dict:
+    """Read-side copy. The cached store object stays intact so a writer is not handed a deleted row."""
+    try:
+        from scripts.lib.dead_cusip_holdings import without_dead_cusip_holdings
+    except ImportError:
+        from lib.dead_cusip_holdings import without_dead_cusip_holdings
+    return without_dead_cusip_holdings(doc if isinstance(doc, dict) else {})
+
+
+def _row_is_dead(row: Mapping[str, Any]) -> bool:
+    try:
+        from scripts.lib.dead_cusip_holdings import is_dead_cusip_holding
+    except ImportError:
+        from lib.dead_cusip_holdings import is_dead_cusip_holding
+    return bool(is_dead_cusip_holding(row))
+
+
 def load_holdings(path: Optional[Path] = None) -> dict:
     """The position store through portfolio_positions (the one accessor), cached on mtime.
-    Missing or unreadable → {} (no tag, never a guess)."""
+    Missing or unreadable → {} (no tag, never a guess). Dead CUSIP rows are omitted from the copy."""
     pp = _pp()
     if path is not None:
-        return pp.load_store(Path(path))
+        return _visible_holdings(pp.load_store(Path(path)))
     try:
         p = pp.store_path()
         mt = p.stat().st_mtime
@@ -117,7 +134,7 @@ def load_holdings(path: Optional[Path] = None) -> dict:
         return {}
     if _HOLDINGS_CACHE["mtime"] != mt:
         _HOLDINGS_CACHE.update(mtime=mt, doc=pp.load_store(p))
-    return _HOLDINGS_CACHE["doc"] or {}
+    return _visible_holdings(_HOLDINGS_CACHE["doc"] or {})
 
 
 def _num(v: Any) -> Optional[float]:
@@ -181,6 +198,8 @@ def positions_for(symbol: str, holdings: Optional[Mapping[str, Any]] = None,
     out: list[dict] = []
     for h in (doc.get("holdings") or []):
         if not isinstance(h, Mapping) or h.get("is_cash") or str(h.get("symbol") or "").upper() != sym:
+            continue
+        if _row_is_dead(h):
             continue
         shares = _num(h.get("shares")) or 0.0
         if shares <= 0:

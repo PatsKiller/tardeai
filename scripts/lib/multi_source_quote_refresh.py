@@ -1,6 +1,7 @@
 """
-Multi-Source Quote Refresh — when finviz is stale, pull quotes from
-Schwab API first, then yfinance fallback. Never serve stale prices.
+Multi-Source Quote Refresh — when the local Finviz cache is stale, ask the
+Schwab quote route, then fill gaps from that same Finviz cache. CUSIP-like
+symbols are not quoted. No other network quote library (LQ-20261107-1418).
 """
 try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
     from lib.cc_client import cc_urlopen as _cc_urlopen
@@ -14,8 +15,17 @@ import json, os, sys, time
 
 TRADEAI_ROOT = "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
 
+def _is_cusip_like(sym):
+    try:
+        from lib.dead_cusip_holdings import is_cusip_like
+    except ImportError:
+        sys.path.insert(0, os.path.join(TRADEAI_ROOT, 'scripts'))
+        from lib.dead_cusip_holdings import is_cusip_like
+    return bool(is_cusip_like(str(sym or '')))
+
+
 class MultiSourceRefresh:
-    SOURCE_PRIORITY = ['schwab', 'yfinance']
+    SOURCE_PRIORITY = ['schwab', 'finviz']
 
     def __init__(self, live_dir):
         self.live_dir = live_dir
@@ -47,13 +57,16 @@ class MultiSourceRefresh:
                 cur.execute("SELECT DISTINCT symbol FROM trade_closed WHERE close_date > CURRENT_DATE - 90 UNION SELECT DISTINCT symbol FROM candidate_setup_advisory LIMIT 100")
                 symbols = [r[0] for r in cur.fetchall()]
                 conn.close()
-            except:
+            except Exception:
                 return {'status': 'no_symbols'}
 
-        refreshed = {}
-        import urllib.request
+        symbols = [s for s in symbols if s and not _is_cusip_like(s)]
+        if not symbols:
+            return {'status': 'no_symbols'}
 
-        # Schwab first
+        refreshed = {}
+
+        # Schwab first. CUSIP-like symbols are already gone.
         for sym in symbols[:20]:
             try:
                 r = _cc_urlopen(f'http://localhost:7777/api/v2/brokers/schwab/quote/{sym}', timeout=5)
@@ -62,27 +75,27 @@ class MultiSourceRefresh:
                     px = d.get('lastPrice') or d.get('mark')
                     if px:
                         refreshed[sym] = float(px)
-            except:
+            except Exception:
                 pass
 
-        # yfinance fallback for symbols not covered by Schwab
-        if len(refreshed) < len(symbols) * 0.8:
+        # Local Finviz cache for symbols Schwab did not price. No network.
+        try:
+            from pathlib import Path
             try:
-                import yfinance as yf
-                for i in range(0, len(symbols), 20):
-                    batch = symbols[i:i+20]
-                    tickers = yf.Tickers(' '.join(batch))
-                    for sym in batch:
-                        if sym in refreshed:
-                            continue
-                        try:
-                            px = tickers.tickers[sym].info.get('regularMarketPrice') or tickers.tickers[sym].info.get('currentPrice')
-                            if px:
-                                refreshed[sym] = float(px)
-                        except:
-                            pass
-            except:
-                pass
+                from lib.portfolio_positions import finviz_cache
+            except ImportError:
+                sys.path.insert(0, os.path.join(self.live_dir or TRADEAI_ROOT, 'scripts'))
+                from lib.portfolio_positions import finviz_cache
+            cached = finviz_cache(Path(self.cache_path))
+            for sym in symbols:
+                if sym in refreshed:
+                    continue
+                row = cached.get(str(sym).upper()) if isinstance(cached, dict) else None
+                px = row.get('price') if isinstance(row, dict) else None
+                if px:
+                    refreshed[sym] = float(px)
+        except Exception:
+            pass
 
         if refreshed:
             existing = {}

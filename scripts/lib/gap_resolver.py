@@ -585,41 +585,54 @@ def _v_refresh_producer(gap: DataGap, entry: dict[str, Any], ctx: Context) -> Ve
 BACKUP_FETCHERS: dict[tuple[str, str], Callable[[DataGap, Context], VectorResult]] = {}
 
 
-def _yf_analyst(gap: DataGap, ctx: Context) -> VectorResult:
-    import yfinance as yf  # declared provider; lazy so the module imports without it
+def _gap_symbol(gap: DataGap) -> str:
+    raw = gap.symbols[0] if gap.symbols else gap.subject
+    return str(raw or "").strip().upper()
 
-    sym = gap.symbols[0] if gap.symbols else gap.subject
-    info = yf.Ticker(sym).info or {}
-    mean = info.get("recommendationMean")
-    if mean is not None and not (1 <= float(mean) <= 5):
-        mean = None  # the same 1-5 rail the analyst domain enforces
-    if mean is None and info.get("targetMeanPrice") is None:
-        return VectorResult("no_answer", provider="yfinance_on_demand", detail=f"yfinance has no analyst view for {sym}")
-    answer = {
-        "symbol": sym,
-        "rating": info.get("recommendationKey"),
-        "rating_mean": float(mean) if mean is not None else None,
-        "target_low": info.get("targetLowPrice"),
-        "target_mean": info.get("targetMeanPrice"),
-        "target_high": info.get("targetHighPrice"),
-        "analysts": info.get("numberOfAnalystOpinions"),
-        "as_of": _iso(ctx.now()),
-        "source": "yfinance_on_demand",
-    }
-    return VectorResult("answered", answer=answer, as_of=answer["as_of"], provider="yfinance_on_demand")
+
+def _yf_analyst(gap: DataGap, ctx: Context) -> VectorResult:
+    """Registry slot ``yfinance_on_demand``. No network fetch (LQ-20261107-1418).
+
+    No local Finviz analyst reader exists. The backup key stays so the chain
+    records no answer instead of a missing adapter.
+    """
+    sym = _gap_symbol(gap)
+    return VectorResult(
+        "no_answer",
+        as_of=_iso(ctx.now()),
+        provider="yfinance_on_demand",
+        detail=f"no local analyst view for {sym}",
+    )
 
 
 def _yf_quote(gap: DataGap, ctx: Context) -> VectorResult:
-    import yfinance as yf
+    """Registry slot ``yfinance``. Local Finviz quote cache, or no answer.
 
-    sym = gap.symbols[0] if gap.symbols else gap.subject
-    fi = yf.Ticker(sym).fast_info
-    price = getattr(fi, "last_price", None)
-    if price is None:
-        return VectorResult("no_answer", provider="yfinance", detail=f"yfinance has no last price for {sym}")
-    as_of = _iso(ctx.now())
-    return VectorResult("answered", answer={"symbol": sym, "price": float(price), "as_of": as_of, "provider": "yfinance"},
-                        as_of=as_of, provider="yfinance")
+    A CUSIP-like subject is ignored and does not read the cache. No network.
+    """
+    sym = _gap_symbol(gap)
+    try:
+        from scripts.lib.dead_cusip_holdings import is_cusip_like
+    except ImportError:
+        from lib.dead_cusip_holdings import is_cusip_like
+    if is_cusip_like(sym):
+        return VectorResult("no_answer", provider="finviz", detail=f"cusip ignored: {sym}")
+    try:
+        from scripts.lib.portfolio_positions import finviz_cache
+    except ImportError:
+        from lib.portfolio_positions import finviz_cache
+    cached = finviz_cache()
+    row = cached.get(sym) if isinstance(cached, dict) else None
+    price = row.get("price") if isinstance(row, dict) else None
+    if not price:
+        return VectorResult("no_answer", provider="finviz", detail=f"finviz cache has no price for {sym}")
+    as_of = row.get("as_of") or _iso(ctx.now())
+    return VectorResult(
+        "answered",
+        answer={"symbol": sym, "price": float(price), "as_of": as_of, "provider": "finviz"},
+        as_of=as_of,
+        provider="finviz",
+    )
 
 
 BACKUP_FETCHERS[("analyst_opinion", "yfinance_on_demand")] = _yf_analyst

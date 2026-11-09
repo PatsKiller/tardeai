@@ -135,7 +135,14 @@ def _file_document(store: Path, reason: Optional[str], *, source: str = DOCUMENT
     out["document_source"] = source
     out["document_fallback_reason"] = reason
     out["document_store_state"] = state
-    return out
+    return _served(out)
+
+
+def _served(doc: dict[str, Any]) -> dict[str, Any]:
+    """Read-side copy. Dead CUSIP rows are ignored. The store file is not written."""
+    from lib.dead_cusip_holdings import without_dead_cusip_holdings
+
+    return without_dead_cusip_holdings(doc)
 
 
 def load_document(store: Path | str | None = None, *, db_query: Optional[Callable[..., Any]] = None,
@@ -185,7 +192,7 @@ def _render(store: Path, db_query: Callable[..., Any], *, now: Optional[datetime
         return _file_document(store, f"render failed: {type(exc).__name__}")
     document["document_source"] = DOCUMENT_SOURCE_DB
     document["document_fallback_reason"] = None
-    return document
+    return _served(document)
 
 
 def _query_identity(db_query: Callable[..., Any]) -> Any:

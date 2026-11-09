@@ -12,6 +12,7 @@ import { RecoveryListView } from './recovery/RecoveryViews'
 import { useCaseGates } from './recovery/RecoveryCaseCard'
 import { byImpact, recoveryProjection } from '../lib/recoveryCases'
 import { plainEngineReason, shadowMarker, bannerVisible, budgetLabel, episodeLine, fmtPct, pointsSum, pointsToScore, shortTime, tierTone, unwrapMarketRisk, type MarketRisk } from '../lib/marketRisk'
+import { isDeadCusipHolding } from '../lib/deadCusipHolding'
 
 const stateLabel: Record<string, string> = { active: 'Active', pending_activation: 'Pending activation', pending: 'Pending activation', filled: 'Filled', none: 'None' }
 const sourceLabel: Record<string, string> = { broker: 'Broker resting', broker_resting: 'Broker resting', planned: 'Planned', none: 'None', confirmed: 'Operator confirmed' }
@@ -29,7 +30,11 @@ const price = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? `$${
 /** Board 15: KPI row + one positions table with the stop source per position (CIO record only). */
 export function W7RiskExposure({ data, onDrill: _onDrill }: { data: any, onDrill: (ctx: DrillContext) => void }) {
   const positions = data.positions || {}, stops = data.stops || {}, summary = positions
-  const allRows: any[] = positions.rows || []
+  const allRows: any[] = (positions.rows || []).filter((p: any) => !isDeadCusipHolding({
+    symbol: p?.symbol,
+    current_price: p?.current_price ?? p?.price,
+    market_value: p?.market_value,
+  }))
   const hasCounted = allRows.some(p => typeof p.counted === 'boolean')
   const counted = hasCounted ? allRows.filter(p => p.counted) : allRows
   const notCounted = hasCounted ? allRows.filter(p => !p.counted) : []

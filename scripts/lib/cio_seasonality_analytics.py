@@ -76,48 +76,12 @@ def _cycle_label(year: int) -> str:
 
 
 def _try_public_monthly_returns() -> list[dict[str, Any]]:
-    """Best-effort public monthly % from yfinance (^GSPC). Never required."""
-    try:
-        import yfinance as yf  # type: ignore
-    except Exception:
-        return []
-    try:
-        hist = yf.download(
-            "^GSPC",
-            start="1950-01-01",
-            interval="1mo",
-            progress=False,
-            auto_adjust=True,
-            threads=False,
-        )
-    except Exception:
-        return []
-    if hist is None or getattr(hist, "empty", True):
-        return []
-    close = hist["Close"] if "Close" in hist.columns else hist.iloc[:, 0]
-    try:
-        pct = close.pct_change() * 100.0
-    except Exception:
-        return []
-    rows: list[dict[str, Any]] = []
-    for idx, val in pct.dropna().items():
-        try:
-            dt = idx.date() if hasattr(idx, "date") else idx
-            year = int(dt.year)
-            month = int(dt.month)
-            rows.append(
-                {
-                    "date": f"{year}-{month:02d}-01",
-                    "year": year,
-                    "month": month,
-                    "return_pct": float(val),
-                    "cycle_label": _cycle_label(year),
-                    "source": "yfinance_GSPC",
-                }
-            )
-        except Exception:
-            continue
-    return rows
+    """Index history is the CSV fixture. No network download (LQ-20261107-1418).
+
+    An empty list makes ``load_monthly_returns`` keep the fixture when
+    ``allow_network`` is set. There is no local Finviz monthly index series.
+    """
+    return []
 
 
 def _load_csv(path: Path) -> list[dict[str, Any]]:

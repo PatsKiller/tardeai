@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "dead_cusip_ignored_lq1418_20261109",
+  "files": [
+    "tests/test_dead_cusip_ignored_lq1418_20261109.py"
+  ],
+  "anchor": "DEAD_CUSIP_IGNORED_LQ1418_20261109",
+  "comment": [
+    "ANCHOR: DEAD_CUSIP_IGNORED_LQ1418_20261109 — read-side ignore of CUSIP-only delisted holdings."
+  ]
+}

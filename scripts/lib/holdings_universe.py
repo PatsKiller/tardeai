@@ -83,10 +83,18 @@ def load_holdings_doc(*, root: Path | None = None) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _is_dead_cusip(row: dict[str, Any]) -> bool:
+    try:
+        from scripts.lib.dead_cusip_holdings import is_dead_cusip_holding
+    except ImportError:
+        from lib.dead_cusip_holdings import is_dead_cusip_holding
+    return bool(is_dead_cusip_holding(row))
+
+
 def held_position_rows(*, root: Path | None = None) -> list[dict[str, Any]]:
     data = load_holdings_doc(root=root)
     rows = data.get("holdings") or data.get("positions") or []
-    return [r for r in rows if isinstance(r, dict)]
+    return [r for r in rows if isinstance(r, dict) and not _is_dead_cusip(r)]
 
 
 def is_cash_row(row: dict[str, Any]) -> bool:
