@@ -92,6 +92,11 @@ def judged_ids(root: Path) -> set[str]:
     return {r.get("candidate_id") for r in read_jsonl(verdicts_path(root)) if r.get("candidate_id")}
 
 
+def _same_symbol(c: dict) -> bool:
+    ls, rs = str(c.get("left_symbol") or "").strip().upper(), str(c.get("right_symbol") or "").strip().upper()
+    return bool(ls) and ls == rs
+
+
 def select_pairs(candidates: list[dict], *, already: set[str], max_pairs: int, now: _dt.datetime | None = None,
                  subjects_top_n: int = 20) -> list[dict]:
     """Pure: newest subjects first (consumer digest), then unjudged pairs in digest order, capped."""
@@ -110,6 +115,9 @@ def select_pairs(candidates: list[dict], *, already: set[str], max_pairs: int, n
         ranked = []
     if not ranked:
         ranked = list(reversed(candidates))  # newest appended last
+    # A thesis contradiction is about ONE symbol; a cross-symbol pair (shared sector) cannot be one, and these are
+    # most of the candidate file (LQ-20261107-1614). Same-symbol pairs first, stable within each group.
+    ranked = [c for c in ranked if _same_symbol(c)] + [c for c in ranked if not _same_symbol(c)]
     out: list[dict] = []
     seen: set[str] = set()
     for c in ranked:
@@ -123,20 +131,88 @@ def select_pairs(candidates: list[dict], *, already: set[str], max_pairs: int, n
     return out
 
 
+ARTIFACT_STORES = ("hermes_research_results.jsonl", "research_thesis_deltas.jsonl")
+#: exact ids first; ``research_id`` is shared by a research result and every delta drawn from it, so it is only a
+#: fallback key and never shadows an exact id (LQ-20261107-1614: deltas keyed by research_id never resolved)
+EXACT_ID_KEYS = ("result_id", "delta_id", "artifact_id")
+BODY_KEYS = ("summary", "recommendation", "classification", "reason_summary", "confidence", "evidence_as_of",
+             "what_changed", "what_did_not_change", "research_gaps_remaining", "evidence")
+
+
+def _body(r: dict) -> str:
+    body = r.get("result") if isinstance(r.get("result"), dict) else r
+    return json.dumps({k: body.get(k) for k in BODY_KEYS if body.get(k) is not None}, default=str)[:MAX_ARTIFACT_CHARS]
+
+
+def build_artifact_index(root: Path, limit: int = 200_000) -> dict[str, str]:
+    """id -> judge-facing body, built once per run from both research stores."""
+    exact: dict[str, str] = {}
+    fallback: dict[str, str] = {}
+    for fname in ARTIFACT_STORES:
+        for r in read_jsonl(root / "data" / "cio" / fname, limit=limit):
+            for k in EXACT_ID_KEYS:
+                if r.get(k):
+                    exact[str(r[k])] = _body(r)
+            if r.get("research_id"):
+                fallback.setdefault(str(r["research_id"]), _body(r))
+    return {**fallback, **exact}
+
+
 def artifact_text(ref: str, root: Path, loaders) -> str:
-    """Best-effort: the artifact's summary/recommendation from the research stores; the ref alone otherwise."""
+    """The artifact's judge-facing fields; a named 'body not on file' marker otherwise.
+
+    ``loaders`` is the index from :func:`build_artifact_index` (built here when None)."""
     if not ref:
         return ""
     try:
-        for fname in ("hermes_research_results.jsonl", "research_thesis_deltas.jsonl"):
-            for r in read_jsonl(root / "data" / "cio" / fname, limit=200_000):
-                rid = str(r.get("result_id") or r.get("research_id") or r.get("delta_id") or r.get("artifact_id") or "")
-                if rid and rid == str(ref):
-                    body = r.get("result") if isinstance(r.get("result"), dict) else r
-                    return json.dumps({k: body.get(k) for k in ("summary", "recommendation", "classification", "evidence_as_of", "what_changed", "evidence") if body.get(k) is not None}, default=str)[:MAX_ARTIFACT_CHARS]
+        index = loaders if isinstance(loaders, dict) else build_artifact_index(root)
+        if str(ref) in index:
+            return index[str(ref)]
     except Exception:  # noqa: BLE001
         pass
     return f"[artifact {ref}: body not on file]"
+
+
+CONFIRMED = ("LEFT", "RIGHT", "BOTH_STALE")
+HEALTH_MIN_VERDICTS = 20
+HEALTH_BODY_MISSING_MAX = 0.10
+
+
+def health(verdicts: list[dict], candidates: list[dict]) -> dict:
+    """Contract (LQ-20261107-1614): the adjudicator can reach a confirmed contradiction (LEFT/RIGHT/BOTH_STALE).
+
+    UNVERIFIABLE  fewer than HEALTH_MIN_VERDICTS verdicts
+    BROKEN        no confirmed verdict AND (bodies missing on > half the verdicts, or no same-symbol pair judged
+                  while same-symbol candidates exist): the judge cannot see or is never shown a real contradiction
+    DEGRADED      bodies missing on > HEALTH_BODY_MISSING_MAX of verdicts, or same-symbol candidates are waiting
+                  while cross-symbol pairs were judged
+    OK            otherwise (zero confirmed with good inputs is a finding, not a fault)
+    Pure. Counts only; no verdict text leaves this function."""
+    n = len(verdicts)
+    by: dict[str, int] = {}
+    for r in verdicts:
+        by[str(r.get("verdict"))] = by.get(str(r.get("verdict")), 0) + 1
+    confirmed = sum(by.get(v, 0) for v in CONFIRMED)
+    missing = sum(1 for r in verdicts if "not on file" in str(r.get("rationale") or ""))
+    judged_same = sum(1 for r in verdicts if _same_symbol(r))
+    judged = {r.get("candidate_id") for r in verdicts}
+    waiting_same = sum(1 for c in candidates if _same_symbol(c) and c.get("candidate_id") not in judged
+                       and str(c.get("status") or "CANDIDATE") == "CANDIDATE")
+    out = {"verdicts": n, "by_verdict": by, "confirmed": confirmed, "body_missing": missing,
+           "judged_same_symbol": judged_same, "same_symbol_waiting": waiting_same}
+    if n < HEALTH_MIN_VERDICTS:
+        return {**out, "verdict": "UNVERIFIABLE", "reason": "insufficient_verdicts"}
+    miss_rate = missing / n
+    reasons = []
+    if miss_rate > HEALTH_BODY_MISSING_MAX:
+        reasons.append("artifact_bodies_missing")
+    if waiting_same and judged_same < n - judged_same:
+        reasons.append("cross_symbol_judged_before_same_symbol")
+    if confirmed == 0 and (miss_rate > 0.5 or (judged_same == 0 and waiting_same)):
+        return {**out, "verdict": "BROKEN", "reason": ",".join(reasons) or "no_confirmed_reachable"}
+    if reasons:
+        return {**out, "verdict": "DEGRADED", "reason": ",".join(reasons)}
+    return {**out, "verdict": "OK", "reason": "confirmed_reachable" if confirmed else "inputs_sound_none_confirmed"}
 
 
 def build_request(c: dict, left: str, right: str) -> dict:
@@ -281,7 +357,14 @@ def main(argv=None) -> int:
     ap.add_argument("--max-pairs", type=int, default=20)
     ap.add_argument("--root")
     ap.add_argument("--scan-max-lines", type=int, default=400_000)
+    ap.add_argument("--health", action="store_true", help="read-only contract verdict over verdicts + candidates")
     a = ap.parse_args(argv)
+    if a.health:
+        root = Path(a.root) if a.root else state_root(dict(os.environ))
+        cands = read_jsonl(root / "data" / "cio" / "research_contradiction_candidates.jsonl", limit=a.scan_max_lines)
+        h = health(read_jsonl(verdicts_path(root)), cands)
+        print(json.dumps(h, indent=1, sort_keys=True))
+        return 0 if h["verdict"] in ("OK", "DEGRADED") else 1
     if a.dry_run:
         print(f"DRY-RUN {LANE}: would adjudicate up to {a.max_pairs} pairs; no state reads, judge, heartbeat or writes")
         return 0
@@ -303,7 +386,7 @@ def main(argv=None) -> int:
     if gate:
         print(f"paid judge NOT consulted: {gate}")
         return 0
-    loaders = None
+    loaders = build_artifact_index(root)
     out_p = verdicts_path(root)
     out_p.parent.mkdir(parents=True, exist_ok=True)
     written = failed = 0
