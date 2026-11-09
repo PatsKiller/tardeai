@@ -124,17 +124,31 @@ def fix_hint(row: dict) -> str:
             ":32 and its comment at :31 are both stale."
         )
     if lane == "overnight-deep":
+        verdict = row.get("provider_verdict") or {}
+        if verdict:
+            return (
+                f"The provider lane is the failure, not the scheduler or target selection: "
+                f"the {verdict.get('lane')} OAuth lane reports "
+                f"{verdict.get('kind') or 'unavailable'} — {verdict.get('detail') or 'no detail'} "
+                f"(consecutive failures {verdict.get('consec_fail')}, "
+                f"quota_exhausted={verdict.get('quota_exhausted')}). A quota/rate wall is not an "
+                "auth loss and no re-run clears it; retrying sooner only adds journal noise. "
+                "Check the lane verdict: data/runtime/oauth_lane_status.json, "
+                "GET :8646/health."
+            )
         return (
-            "Overnight: OnCalendar 22–05:35 ET, ExecStart --model chatgpt (ChatGPT OAuth) --apply "
-            "since 2026-08-22 13:20. First US window 22:35 ET 2026-08-22. "
-            "Last deep_research_local row 2026-08-20 Flash (two days, not three months). "
-            "If 22:35 writes zero non-error rows or still gemma, retarget failed."
+            "Overnight: OnCalendar 22–05:35 ET, ExecStart --model chatgpt (ChatGPT OAuth) from "
+            "CURRENT. A failed target writes NO research row, and pick_targets excludes only "
+            "symbols researched in the last 7d — so during any provider outage the same targets "
+            "are retried every hour and the RAW store stays silent. Read the unit's journal "
+            "(journalctl --user -u hermes-deep-research-local) for the per-target reason."
         )
     if lane == "drive-sync":
         return (
-            "Drive: hourly CURRENT sweep. DEGRADED_STALE_SOURCE when SOURCE_COMMIT "
-            "!= origin/main (pin behind #455+). Targeted gog --replace until D4 8/27. "
-            "zero_uploaded_with_failures = 404 dead parents. Canonical docs 1BMxbxU9… / ops 1a7vr2gn…"
+            "Drive: hourly CURRENT sweep. DEGRADED_STALE_SOURCE now means the synced pin does NOT "
+            "contain origin/main (the live release is normally AHEAD of main between promotes, so "
+            "equality was never staleness). zero_uploaded_with_failures = 404 dead parents. "
+            "Canonical docs 1BMxbxU9… / ops 1a7vr2gn…"
         )
     if lane == "identity-spine":
         # The custodian already COMPUTES the precise remediation for each of its
@@ -204,10 +218,20 @@ def fix_hint(row: dict) -> str:
             "Restart after exact-main promote. Do not serve a 2-day in-memory overlay as now."
         )
     if lane == "coverage-stall":
+        held = row.get("held_by")
+        if held:
+            return (
+                f"Not charged to thesis minting while the research leg is down: {held}. The "
+                "deepseek lane carries that alarm; a flat thesis count is the ABSENCE of research, "
+                "not evidence that the mint broke. Re-read the SLA once it recovers: "
+                "scripts/lib/cio_held_thesis_coverage.py (substantive_pct target 70%)."
+            )
         return (
-            "Coverage stall: research flowed, PASS-grade (CURRENT) thesis did not. "
-            "THIN rows count toward coverage_pct, not this alarm. Dry-run: "
-            "scripts/thesis_mint_from_research.py. Apply after 8/27."
+            "Coverage stall: research flowed, PASS-grade (CURRENT) thesis did not. THIN rows count "
+            "toward coverage_pct, not this alarm. The producer is the governed symbol-thesis "
+            "acquisition lane (run_governed_symbol_thesis_acquisition.sh, cron 17 17 * * 1-5) — "
+            "read its receipt/log before changing any threshold. scripts/thesis_mint_from_research.py "
+            "is NOT scheduled by anything."
         )
     # NEVER return `firing` here. That is what this function did, so every lane
     # without a branch above printed its own trigger under a heading that
@@ -221,7 +245,11 @@ def fix_hint(row: dict) -> str:
     return "see research_lane_health.py JSON"
 
 
-_MEASURED_KEYS = ("non_error_24h", "attempts_24h", "error_rate_24h", "error_streak")
+_MEASURED_KEYS = ("non_error_24h", "attempts_24h", "error_rate_24h", "error_streak",
+                  # Why an ok row is quiet, and the cause behind a firing one (LQ-20261107-1659).
+                  # Without these the lane map showed "ok" where the truth was "held: research
+                  # leg down" or a bare silence where the provider's own verdict was known.
+                  "held_by", "provider_verdict")
 
 
 def reconcile_recovered(state: dict, report: dict) -> dict:
@@ -349,6 +377,12 @@ def _alert(report: dict) -> int:
         if lane == "drive-sync":
             extra = (f"  uploaded={row.get('uploaded')} failed={row.get('failed')} "
                      f"exit={row.get('exit_code')}")
+        if lane == "overnight-deep":
+            verdict = row.get("provider_verdict") or {}
+            if verdict:
+                extra = (f"  provider={verdict.get('lane')} {verdict.get('kind')}"
+                         f" consec_fail={verdict.get('consec_fail')}"
+                         f" quota_exhausted={verdict.get('quota_exhausted')}")
         extra2 = ""
         if lane == "lane-registry":
             # Observability gaps PR (2026-10-08): the alert named the verdicts (ORPHANED,SILENT) but never the

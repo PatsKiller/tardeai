@@ -29,6 +29,11 @@ if [[ ! -d "$SRC/docs" ]]; then
   echo "docs SRC missing: $SRC/docs" >&2
   exit 1
 fi
+# The checkout whose `origin/main` and drive_sync_health lib this script consults
+# (LQ-20261107-1659). The serving lane runs this file from a release tree that is not a git
+# checkout, so the default is the canonical rebuild checkout; tests and worktrees override it.
+TRADEAI_REPO_ROOT="${TRADEAI_REPO_ROOT:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}"
+export TRADEAI_REPO_ROOT
 LOG="/home/johnclaw/logs/drive-sync.log"
 MANIFEST="/home/johnclaw/.local/state/drive-sync-manifest.txt"
 FOLDER_CACHE="/home/johnclaw/.local/state/drive-folder-cache.txt"
@@ -59,19 +64,32 @@ try:
         pin = open(p, encoding="utf-8").read().strip().split()[0]
 except Exception:
     pin = None
+REPO = os.environ.get("TRADEAI_REPO_ROOT") or ""
 main_sha = None
 try:
     import subprocess
     main_sha = subprocess.check_output(
-        ["git", "-C", "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
-         "rev-parse", "origin/main"],
+        ["git", "-C", REPO, "rev-parse", "origin/main"],
         text=True, timeout=15,
     ).strip()
 except Exception:
     main_sha = None
 source_status = "ok"
-if pin and main_sha and pin != main_sha:
-    source_status = "DEGRADED_STALE_SOURCE"
+# LQ-20261107-1659: `pin != main_sha` was not staleness. The host promotes an approved
+# integration fold, so the live SOURCE_COMMIT is normally AHEAD of origin/main until main
+# catches up — equality fired on every promote cycle and the alarm became wallpaper. Ask
+# containment instead: does the synced pin contain origin/main? One implementation, in the
+# lib the health reader already uses, so the writer and the alert cannot drift apart.
+if pin and main_sha and REPO:
+    try:
+        if REPO not in sys.path:
+            sys.path.insert(0, REPO)
+        from scripts.lib.drive_sync_health import source_status_for
+        source_status = source_status_for(pin, main_sha, repo=REPO)
+    except Exception as exc:  # an unrunnable check is not evidence the mirror is stale
+        print(f"drive docs sync: source-status check unavailable ({type(exc).__name__})",
+              file=sys.stderr)
+        source_status = "ok"
 rec = {
     "status": status,
     "started_utc": prev.get("started_utc") if status != "running" else now,

@@ -1,0 +1,24 @@
+{
+  "schema": "CiGate@v1",
+  "name": "research_lane_triage_lq1659_20261109",
+  "files": [
+    "tests/test_research_lane_triage_lq1659_20261109.py"
+  ],
+  "comment": [
+    "ANCHOR: LQ-20261107-1659 — three alarms on /v3/health were triaged, and each test pins one verdict.",
+    "drive-sync: DEGRADED_STALE_SOURCE now means the synced pin does not CONTAIN origin/main (git",
+    "merge-base --is-ancestor); the host promotes an integration fold, so the live pin is normally AHEAD",
+    "of main and the old equality test fired on every normal deploy. Only git's 1 ('not an ancestor')",
+    "is a verdict; an unreadable repository is not evidence. The decision has one implementation",
+    "(drive_sync_health.source_status_for) that both the writer and the health reader use.",
+    "overnight-deep: the lane writes no row when its provider refuses, so the alarm now carries the",
+    "provider prober's own verdict (kind/detail/consec_fail/quota_exhausted) and its hint names the",
+    "provider rather than the 2026-08 retarget; without a verdict it says what actually happens (no row",
+    "written, so the same targets repeat hourly) and points at the unit journal.",
+    "coverage-stall: a flat thesis count is not charged to thesis minting while the deepseek research",
+    "leg is measurably down (error_rate_24h over the shared threshold with enough attempts); the row is",
+    "held ok and held_by says why, because deepseek's own lane carries that alarm. A healthy leg with a",
+    "flat thesis still fires, and a caller that passes no research row keeps the previous behaviour.",
+    "Fixtures are synthetic (temp git repos, loopback URLs, no live symbols or addresses)."
+  ]
+}

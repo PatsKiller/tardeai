@@ -32,7 +32,10 @@ def test_fix_hint_is_not_stale_import():
     assert "lib.llm_lane" not in h or "already" in h.lower()
     assert "COST_CONFIGURATION_INVALID" in h
     o = hl.fix_hint({"lane": "overnight-deep", "firing": ["zero_non_error_24h"]})
-    assert "ChatGPT" in o and "gemma" in o
+    # LQ-20261107-1659: "still gemma" was the 2026-08 retarget note; the lane has run chatgpt
+    # since, so pinning that word kept a stale cause looking current. The hint now says what
+    # actually happens: a refused target writes no row, so the same targets repeat hourly.
+    assert "ChatGPT" in o and "gemma" not in o and "journal" in o
     d = hl.fix_hint({"lane": "drive-sync", "firing": ["exit_code:1", "zero_uploaded_with_failures:1230"]})
     assert "404" in d
 

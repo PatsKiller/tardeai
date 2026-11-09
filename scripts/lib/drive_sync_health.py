@@ -108,6 +108,44 @@ def evaluate_drive_sync(
     }
 
 
+def source_status_for(pin: Any, main_sha: Any, *, repo: Any, run: Any = None) -> str:
+    """``DEGRADED_STALE_SOURCE`` only when the promoted pin does not CONTAIN ``origin/main``.
+
+    LQ-20261107-1659. The writer used to compare for equality (``pin != main_sha``), which is
+    true in the NORMAL deployment topology: the host promotes an approved integration fold, so
+    the live ``SOURCE_COMMIT`` is ahead of ``origin/main`` until main catches up. The hourly
+    sweep therefore reported a stale source on every promote cycle while it was in fact
+    uploading the newest docs, and the alert fired long enough to become wallpaper.
+
+    Containment is the question that matches the risk the alarm describes ("sweep green while
+    shipping stale docs"): does the pin that was synced contain everything main has? If main is
+    an ancestor of the pin, it does — the mirror may legitimately carry docs main has not taken
+    yet. If it is not an ancestor (pin behind, or diverged), docs main published are missing
+    from the mirror, and that is the degradation worth a word.
+
+    ``run(cmd) -> int`` is injectable for tests; the default shells out to git. Any outcome other
+    than git's 1 ("not an ancestor") reads as ok: an unreadable repository is not evidence that
+    the mirror is stale, and a false alarm here is what made the real one invisible.
+    """
+    pin_s = str(pin or "").strip()
+    main_s = str(main_sha or "").strip()
+    if not pin_s or not main_s or pin_s == main_s:
+        return "ok"
+    if run is None:
+        import subprocess
+
+        def run(cmd):  # noqa: ANN001, ANN202 - the injectable runner
+            try:
+                return subprocess.run(cmd, capture_output=True, timeout=15).returncode
+            except (OSError, ValueError, subprocess.SubprocessError):
+                return -1
+    try:
+        rc = int(run(["git", "-C", str(repo), "merge-base", "--is-ancestor", main_s, pin_s]))
+    except Exception:  # noqa: BLE001 - an unrunnable check must not invent an alarm
+        rc = -1
+    return "DEGRADED_STALE_SOURCE" if rc == 1 else "ok"
+
+
 def load_raw(path: Optional[Path] = None) -> Optional[dict[str, Any]]:
     p = path or Path(os.getenv("DRIVE_SYNC_RESULT", str(DEFAULT_RESULT)))
     if not p.is_file():

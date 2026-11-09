@@ -13,6 +13,7 @@ Does not grant financial_action. Does not call LLMs.
 """
 from __future__ import annotations
 
+import json
 import re
 import os
 from datetime import datetime, timedelta, timezone
@@ -34,6 +35,10 @@ EXTERNAL_AUTO_LANES = ("deepseek", "grok", "chatgpt")
 EXTERNAL_MANUAL_LANES = ("claude",)
 OVERNIGHT_LANE = "overnight-deep"
 COVERAGE_STALL_LANE = "coverage-stall"
+#: The provider the overnight deep-research lane calls. Its own prober writes a verdict; the
+#: overnight alarm must read it rather than report a bare silence (LQ-20261107-1659).
+OVERNIGHT_PROVIDER_LANE = "chatgpt"
+OAUTH_LANE_STATUS_REL = ("data", "runtime", "oauth_lane_status.json")
 
 DEFAULT_STREAK = 5
 DEFAULT_SILENCE_HOURS = 24
@@ -241,6 +246,26 @@ def _project_root():
     return Path(__file__).resolve().parents[2]
 
 
+def oauth_lane_verdict(lane: str = OVERNIGHT_PROVIDER_LANE, *, path: Any = None) -> Optional[dict[str, Any]]:
+    """The provider prober's own last verdict for ``lane`` (``data/runtime/oauth_lane_status.json``).
+
+    LQ-20261107-1659. The overnight lane writes NO row when its provider refuses a target, so the
+    RAW store can only say "zero non-error in 24h" — while the reason was already on disk in the
+    prober's verdict (a 429 quota wall, not a broken scheduler or a target-selection bug). Reading
+    it here is what lets the alert carry the cause instead of making the operator guess. Never
+    raises; an absent/unreadable verdict is None, which reads as "no additional cause known".
+    """
+    from pathlib import Path
+
+    p = Path(path) if path is not None else _project_root().joinpath(*OAUTH_LANE_STATUS_REL)
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    row = doc.get(lane) if isinstance(doc, dict) else None
+    return row if isinstance(row, dict) else None
+
+
 def _db_rows(sql: str, params: tuple = ()) -> list[dict[str, Any]]:
     try:
         from db_adapter import _execute
@@ -299,6 +324,13 @@ def _deepseek_ok(lanes: list[dict[str, Any]]) -> int:
     return 0
 
 
+def _lane_row(lanes: list[dict[str, Any]], lane: str) -> Optional[dict[str, Any]]:
+    for r in lanes:
+        if r.get("lane") == lane:
+            return r
+    return None
+
+
 # Stall tracks PASS/CURRENT-quality, not mere presence. A THIN mint must not
 # quiet this alarm. Threshold matches substantive_pct target (70%).
 COVERAGE_STALL_SUBSTANTIVE_PCT = 0.70
@@ -312,6 +344,7 @@ def collect_coverage_stall(
     thesis_held: Optional[int] = None,
     thesis_substantive: Optional[int] = None,
     thesis_coverage: Optional[int] = None,
+    research_leg: Optional[dict[str, Any]] = None,
     snap_path: Optional[Any] = None,
     persist: bool = True,
 ) -> dict[str, Any]:
@@ -319,10 +352,30 @@ def collect_coverage_stall(
 
     thesis_current is the PASS/CURRENT count (not row-exists). A 22/22 THIN
     mint with 5 PASS still fires. Target: substantive_pct >= 70.
+
+    ``research_leg`` is the deepseek lane's row from this same report. LQ-20261107-1659: the
+    alarm's premise is "research flowed, the brain did not learn", and ``deepseek_ok_24h >= 20``
+    is a count of successes, not evidence that the leg is working — 33 successes beside 150
+    failures is a lane that is 84% down, and then a flat thesis count is the *absence* of
+    research, not a thesis-pipeline stall. When the leg is measurably broken the row is held
+    (ok, no firing) and ``held_by`` names why; the deepseek lane carries that alarm on its own.
     """
     now = now or datetime.now(timezone.utc)
     from pathlib import Path
     root = _project_root()
+    held_by: Optional[str] = None
+    research_error_rate = None
+    if research_leg is not None:
+        try:
+            attempts = int(research_leg.get("attempts_24h") or 0)
+            rate = float(research_leg.get("error_rate_24h") or 0.0)
+        except (AttributeError, TypeError, ValueError):
+            attempts, rate = 0, 0.0
+        research_error_rate = rate
+        thr = error_rate_threshold_pct()
+        if attempts >= error_rate_min_n() and rate >= thr:
+            held_by = (f"research_lane_unhealthy:deepseek error_rate_24h={rate:g}>={thr:g} "
+                       f"over {attempts} attempts")
     if snap_path is None:
         snap_path = root / "data" / "runtime" / "coverage_stall_snapshot.json"
     snap_path = Path(snap_path)
@@ -380,7 +433,8 @@ def collect_coverage_stall(
     firing: list[str] = []
     threshold = max(1, int(COVERAGE_STALL_SUBSTANTIVE_PCT * (thesis_held or 0))) if thesis_held else 1
     if (
-        deepseek_ok_24h >= 20
+        held_by is None
+        and deepseek_ok_24h >= 20
         and thesis_substantive is not None
         and thesis_held
         and thesis_substantive < threshold
@@ -396,6 +450,10 @@ def collect_coverage_stall(
         "lane": COVERAGE_STALL_LANE,
         "ok": not firing,
         "firing": firing,
+        # Why a stall this metric plainly shows is NOT being charged to the thesis pipeline.
+        # Carried on the row (and into the lane map) so /v3/health can say it, not just be quiet.
+        "held_by": held_by,
+        "research_error_rate_24h": research_error_rate,
         "error_streak": 0,
         "non_error_24h": deepseek_ok_24h,
         "attempts_24h": deepseek_ok_24h,
@@ -438,15 +496,27 @@ def collect_report(*, now: Optional[datetime] = None, cio_ask_health_reader=None
         lanes.append(evaluate_lane(lane, newest_first=newest, last_24h=last_24h, silence=False, now=now))
     if os.getenv("RESEARCH_LANE_HEALTH_OVERNIGHT", "1").strip().lower() not in {"0", "false", "off", "no"}:
         newest, last_24h = load_overnight_rows(since=since)
-        lanes.append(
-            evaluate_lane(
-                OVERNIGHT_LANE,
-                newest_first=newest,
-                last_24h=last_24h,
-                silence=True,
-                now=now,
-            )
+        row = evaluate_lane(
+            OVERNIGHT_LANE,
+            newest_first=newest,
+            last_24h=last_24h,
+            silence=True,
+            now=now,
         )
+        # LQ-20261107-1659: this lane writes no row when its provider refuses a target, so the RAW
+        # store alone can only say "silence". The prober's verdict says WHY (a quota/rate wall is
+        # not a broken scheduler and no re-run clears it). Attach it to the row the alert renders.
+        verdict = oauth_lane_verdict()
+        if verdict and verdict.get("ok") is False:
+            row["provider_verdict"] = {
+                "lane": verdict.get("lane") or OVERNIGHT_PROVIDER_LANE,
+                "kind": verdict.get("kind"),
+                "detail": verdict.get("detail"),
+                "consec_fail": verdict.get("consec_fail"),
+                "last_ok": verdict.get("last_ok"),
+                "quota_exhausted": verdict.get("quota_exhausted"),
+            }
+        lanes.append(row)
     if os.getenv("RESEARCH_LANE_HEALTH_PIN", "1").strip().lower() not in {"0", "false", "off", "no"}:
         try:
             from scripts.lib.current_pin_integrity import collect_pin_report, collect_process_freshness
@@ -463,7 +533,11 @@ def collect_report(*, now: Optional[datetime] = None, cio_ask_health_reader=None
     if os.getenv("RESEARCH_LANE_HEALTH_COVERAGE_STALL", "1").strip().lower() not in {
         "0", "false", "off", "no"
     }:
-        lanes.append(collect_coverage_stall(now=now, deepseek_ok_24h=_deepseek_ok(lanes)))
+        lanes.append(collect_coverage_stall(
+            now=now,
+            deepseek_ok_24h=_deepseek_ok(lanes),
+            research_leg=_lane_row(lanes, "deepseek"),
+        ))
     # Lane registry. This monitor learns its own lanes from the hardcoded tuples
     # above, so it can see a lane producing poorly but not a lane that produces
     # nothing because nobody told it the lane existed. That is how a lane
