@@ -583,11 +583,15 @@ class ClaimBoard:
         docs: list[dict[str, Any]] = []
         bad: list[str] = []
         # The policy broadcaster owns this documented sibling, not an AgentClaim record.
-        files = (p for p in sorted(self.dir.glob("*.json")) if p.name != "policy_broadcast_state.json")
-        for i, p in enumerate(files):
-            if i >= MAX_CLAIM_FILES_READ:
-                bad.append(f"truncated_after_{MAX_CLAIM_FILES_READ}")
-                break
+        files = [p for p in sorted(self.dir.glob("*.json")) if p.name != "policy_broadcast_state.json"]
+        if len(files) > MAX_CLAIM_FILES_READ:
+            # Claim ids begin with their creation time, so a name sort is chronological: keep the NEWEST and drop
+            # the oldest. Dropping the newest is what made the pre-commit gate refuse fresh claims (LQ-20261107-1645,
+            # reported by cc-deepseek-7 as FINDING-claim-board-truncation): a coordination store must never hide the
+            # records that were just written.
+            bad.append(f"truncated_after_{MAX_CLAIM_FILES_READ}")
+            files = files[-MAX_CLAIM_FILES_READ:]
+        for p in files:
             try:
                 d = json.loads(p.read_text(encoding="utf-8"))
                 schema = d.get("schema") if isinstance(d, dict) else None
