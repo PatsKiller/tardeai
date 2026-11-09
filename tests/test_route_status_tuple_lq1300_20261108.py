@@ -169,6 +169,16 @@ def test_the_proxy_uses_the_public_chart_host_and_sends_no_cookie(api, monkeypat
     assert "synthetic-cookie-value" not in str(req.header_items())
 
 
+@pytest.mark.parametrize("period,expected", [("d", "d"), ("w", "w"), ("m", "m"), ("i5", "i5"), ("", "d")])
+def test_each_supported_timeframe_reaches_the_url(api, monkeypatch, period, expected):
+    """`p=i5` is the same-day intraday fallback ohlc_charts asks for; the host serves it as `tf=i5`."""
+    seen = []
+    _urlopen(monkeypatch, payload=b"\x89PNG\r\n\x1a\n" + b"\x00" * 16, seen=seen)
+    api._finviz_chart({"symbol": [SYMBOL], "p": [period]})
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(seen[0].full_url).query)
+    assert query["tf"] == [expected]
+
+
 def test_an_unknown_timeframe_falls_back_to_daily_instead_of_reaching_the_url(api, monkeypatch):
     seen = []
     _urlopen(monkeypatch, payload=b"\x89PNG\r\n\x1a\n" + b"\x00" * 16, seen=seen)

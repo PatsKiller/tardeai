@@ -39832,7 +39832,9 @@ def _finviz_chart(query=None):
     20:05 ET, no cookie). The image host in use elsewhere in this repo is the `charts2-node` form, which
     `lib.telegram_rich.chart_image_url` documents as HTTP 200 image/png (measured 2026-09-14 and again
     2026-10-23) with NO session cookie — Telegram's servers fetch it themselves. So no cookie is sent
-    here: shipping FINVIZ_COOKIE to a host that does not need it is exposure for nothing."""
+    here: shipping FINVIZ_COOKIE to a host that does not need it is exposure for nothing.
+    `p=i5` (the same-day intraday fallback ohlc_charts asks for) is accepted as `tf=i5`: 2026-11-08
+    20:12 ET answered a different 900x340 PNG (6,893 bytes) than the daily one (29,441)."""
     import os as _os, urllib.error, urllib.parse, urllib.request
 
     q = query or {}
@@ -39841,7 +39843,7 @@ def _finviz_chart(query=None):
     p = g("p") or "d"
     if not sym.isalnum():
         return 400, {"ok": False, "error": "bad symbol"}
-    if p not in ("d", "w", "m"):
+    if p not in ("d", "w", "m", "i5"):  # `p` comes from the caller and lands in the URL; never raw
         p = "d"
     import base64 as _b64
 

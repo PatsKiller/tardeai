@@ -650,8 +650,9 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
         if pc:
             bars, err, source, timeframe = pc, None, "price_cache", "1Day"
     if err or not bars:
-        # TIER 4 FALLBACK: static Finviz Elite chart image
-        # (served via the /api/v2/finviz-chart proxy which attaches the Elite cookie).
+        # TIER 4 FALLBACK: static Finviz chart image
+        # (served via the /api/v2/finviz-chart proxy; the public charts2-node host needs no cookie —
+        #  LQ-20261107-1310 moved the proxy there, so this works whether or not FINVIZ_COOKIE is alive).
         return {"symbol": symbol, "timeframe": timeframe, "bars": [], "fallback": "finviz",
                 "fallback_image": f"/api/v2/finviz-chart?symbol={symbol}&p={_finviz_period(timeframe, same_day)}",
                 "reason": err or "no Alpaca bars for this symbol/window"}
