@@ -26,6 +26,10 @@ the browser: ``rank_feed`` scores every item from the book ($ exposed x |move si
 per-name action, the at-risk names, the market-event group, and sinks appraisal/13F boilerplate. The score and a
 one-line reason travel with the item so the card can print ``#1 · $8.5k at risk in SPCX``.
 
+LQ-20261107-1283 mockup v3 — ``urgency_for`` paints the heat map on the same items (red = act now, amber = watch,
+green = good news for the book, none = read later) and its thresholds are stored with the snapshot as
+``feed_rule.urgency`` so the glow is explainable long after the run.
+
 
 Pure functions take ``now`` and the data; nothing here reads the clock, the DB or the network on its own.
 """
@@ -310,6 +314,33 @@ def load_labels(path: Path | None = None) -> dict[str, str]:
     return labels
 
 
+#: Overseas cash indices have no provider on this host. Rather than invent a level, the row says when each one opens,
+#: in ET. (label, exchange timezone, local open hour, minute)
+OVERSEAS_OPEN = (
+    ("Nikkei 225", "Asia/Tokyo", 9, 0),
+    ("Hang Seng", "Asia/Hong_Kong", 9, 30),
+    ("DAX", "Europe/Berlin", 9, 0),
+    ("FTSE 100", "Europe/London", 8, 0),
+)
+
+
+def _next_open_et(now: datetime, zone: str, hour: int, minute: int) -> datetime | None:
+    """The next weekday cash open of an overseas exchange, converted to ET. None when the tz database has no zone."""
+    try:
+        z = ZoneInfo(zone)
+    except Exception:  # noqa: BLE001 -- a missing zone costs a label, not the card
+        return None
+    start = now.astimezone(z).date()
+    for d in range(8):
+        day = start + timedelta(days=d)
+        if day.weekday() >= 5:
+            continue
+        opened = datetime.combine(day, time(hour, minute), tzinfo=z)
+        if opened > now:
+            return opened.astimezone(ET)
+    return None
+
+
 def build_market_now(
     rows: Iterable[Mapping[str, Any]], *, close_date: str, close_at: datetime, now: datetime,
     labels: Mapping[str, str] | None = None,
@@ -352,6 +383,15 @@ def build_market_now(
     as_of = max((x["printed_at"] for x in futures + indices if x["printed_at"]), default=None)
     present = {x["symbol"] for x in futures + indices}
     missing = [s for s in FUTURES_ORDER + INDEX_ORDER if s not in present]
+    overseas_rows = []
+    for label, zone, hh, mm in OVERSEAS_OPEN:
+        opens = _next_open_et(now, zone, hh, mm)
+        if opens is None:
+            continue
+        overseas_rows.append({
+            "label": label, "status": "no_feed", "opens_at": opens.isoformat(),
+            "opens_text": f"opens {opens.strftime('%a %-I:%M %p')} ET",
+        })
     return {
         "status": "available" if (futures or indices) else "pending",
         "as_of": as_of,
@@ -362,7 +402,7 @@ def build_market_now(
         "overseas": {
             "status": "no_feed",
             "label": "Overseas cash indices: no direct feed on this host — Asia/Europe moves appear as headlines below.",
-            "rows": [],
+            "rows": overseas_rows,
         },
     }
 
@@ -641,9 +681,71 @@ def rank_feed(
     return [{**it, "rank": n} for n, it in enumerate(scored, start=1)]
 
 
+#: Stored in the snapshot as ``feed_rule.score``: the one-line form of what ``rank_feed`` does, so the order the
+#: operator sees is explainable without reading this file.
+RANK_RULE = (
+    "min(60, $ moved on held names since the close) + 30 CIO brief action + 15 at-risk name + 10 market-wide "
+    "semis/tech + 5 market-wide + 8 watchlist move >= 3% - 40 appraisal/13F boilerplate; ties newest story first"
+)
+
+
 def _pct_short(v: Any) -> str:
     n = _num(v)
     return "—" if n is None else f"{n:+.1f}%"
+
+
+# ---------------------------------------------------------------------------- the heat-map glow (mockup v3)
+#: The glow is a TRIAGE aid, computed here and stored with the item; the browser only paints what it is told.
+#: Thresholds, not vibes: a held name 3% down since the close is urgent; 1% down is not.
+URGENCY_DOWN_PCT = -3.0         # red: a held name this far down since the close
+URGENCY_WATCH_DROP_PCT = -10.0  # red: a watchlist name this far down, position or not
+URGENCY_UP_PCT = 3.0            # green: a held name this far up since the close
+WEAK_WEEK_PCT = -5.0            # amber: a held name this far down on the week
+
+#: Stored verbatim in the snapshot (``feed_rule.urgency``) so a reader a month later can see what a glow meant.
+URGENCY_RULE = {
+    "red": f"a held name {abs(URGENCY_DOWN_PCT):.0f}% or more down since the close, a watchlist name "
+           f"{abs(URGENCY_WATCH_DROP_PCT):.0f}% or more down, or a downgrade/cut in the headline",
+    "amber": f"an insider sale, or a held name {abs(WEAK_WEEK_PCT):.0f}% or more down on the week",
+    "green": f"a held name {URGENCY_UP_PCT:.0f}% or more up since the close",
+    "none": "no glow: read when you have time. 13F / fair-value / price-target boilerplate never glows.",
+}
+INSIDER_RE = re.compile(r"(\binsider\b|\bform 4\b|plans to sell|intends to sell|to sell \d|sold .{1,40}shares)", re.I)
+DOWNGRADE_RE = re.compile(r"(downgrad\w*|\bcut\b.{0,24}\b(rating|to)\b|slashed)", re.I)
+
+
+def _pos_move(h: Mapping[str, Any]) -> float | None:
+    """The move to show for a name: its newest print since the close when one exists, else the close's."""
+    return _num(h.get("move_now_pct")) if h.get("move_now_pct") is not None else _num(h.get("change_pct"))
+
+
+def urgency_for(item: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    """(level, why) for one feed item. Levels are exclusive, red > amber > green, and boilerplate never glows."""
+    title = str(item.get("title") or "")
+    if LOW_VALUE_RE.search(title):
+        return None, None
+    held = [h for h in item.get("holdings", []) if h.get("held")]
+    watch = [h for h in item.get("holdings", []) if not h.get("held")]
+    moved = [(_pos_move(h), h) for h in held]
+    down = min(((p, h) for p, h in moved if p is not None), key=lambda x: x[0], default=None)
+    up = max(((p, h) for p, h in moved if p is not None), key=lambda x: x[0], default=None)
+    if down and down[0] <= URGENCY_DOWN_PCT:
+        return "red", f"held {down[1]['symbol']} {_pct_short(down[0])} since the close"
+    if DOWNGRADE_RE.search(title):
+        return "red", "downgrade / cut"
+    dropped = [(_num(h.get("change_pct")), h) for h in watch if _num(h.get("change_pct")) is not None]
+    worst_watch = min(dropped, key=lambda x: x[0], default=None)
+    if worst_watch and worst_watch[0] <= URGENCY_WATCH_DROP_PCT:
+        return "red", f"watchlist {worst_watch[1]['symbol']} {_pct_short(worst_watch[0])}"
+    if INSIDER_RE.search(title):
+        return "amber", "insider sale"
+    week = [(_num(h.get("week_pct")), h) for h in held if _num(h.get("week_pct")) is not None]
+    worst_week = min(week, key=lambda x: x[0], default=None)
+    if worst_week and worst_week[0] <= WEAK_WEEK_PCT:
+        return "amber", f"held {worst_week[1]['symbol']} {_pct_short(worst_week[0])} on the week"
+    if up and up[0] >= URGENCY_UP_PCT:
+        return "green", f"held {up[1]['symbol']} {_pct_short(up[0])} since the close"
+    return None, None
 
 
 def build_feed(
@@ -666,7 +768,7 @@ def build_feed(
                 it["sources"].append(src)
             it["holdings"].append(
                 {"symbol": m["symbol"], "held": m["held"], "market_value": m["market_value"], "change_pct": m["change_pct"],
-                 "dollar_impact": m["dollar_impact"], "close_tag": m["close_tag"],
+                 "week_pct": m.get("week_pct"), "dollar_impact": m["dollar_impact"], "close_tag": m["close_tag"],
                  "move_now_pct": m.get("move_now_pct"), "dollar_impact_now": m.get("dollar_impact_now"),
                  "extended_label": (m.get("extended") or {}).get("session_label") if m.get("extended") else None}
             )
@@ -688,7 +790,8 @@ def build_feed(
             so = f"Watchlist only, no position; {w['symbol']} is {_pct_short(w['change_pct'])} since {w['close_tag']}."
         else:
             so = f"Market backdrop for the whole book (${total_mv:,.0f} held)."
-        items.append({**it, "exposure": exposure, "so_what": so})
+        level, why_glow = urgency_for(it)
+        items.append({**it, "exposure": exposure, "so_what": so, "urgency": level, "urgency_why": why_glow})
     ranked = rank_feed(items, cio_actions=cio_actions, at_risk=at_risk)
     return ranked[:limit]
 
@@ -940,6 +1043,7 @@ def build_snapshot(
         "cio_brief": cio_blk,
         "stamp": since_close_stamp.build_stamp(now=now, window=win, clocks={**(source_clocks or {}), "cio_brief": since_close_stamp.cio_clock(cio_brief)}),
         "feed": feed,
+        "feed_rule": {"score": RANK_RULE, "urgency": URGENCY_RULE},
         "week_ahead": build_week_ahead(
             now=now, macro_calendar=macro_calendar, earnings=earnings, ex_divs=ex_divs,
             held=[m["symbol"] for m in moves if m["held"]], watch=[m["symbol"] for m in moves if not m["held"]],

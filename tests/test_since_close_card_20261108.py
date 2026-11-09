@@ -313,7 +313,11 @@ def test_market_now_reads_futures_and_indices_and_names_what_it_cannot_see():
     assert [r["symbol"] for r in blk["indices"]] == ["$VIX"]
     assert "/NQ" in blk["missing"] and "$SPX" in blk["missing"]
     assert blk["as_of_text"] == "Mon 6:45 PM ET"
-    assert blk["overseas"]["status"] == "no_feed" and blk["overseas"]["rows"] == []
+    # no overseas level is invented; the row says when each exchange opens, in ET (Tokyo 09:00 JST = Tue 19:00 ET here)
+    assert blk["overseas"]["status"] == "no_feed"
+    assert [r["label"] for r in blk["overseas"]["rows"]] == ["Nikkei 225", "Hang Seng", "DAX", "FTSE 100"]
+    assert blk["overseas"]["rows"][0]["opens_text"] == "opens Tue 7:00 PM ET"
+    assert all("level" not in r for r in blk["overseas"]["rows"]), "never a level the host cannot see"
 
 
 def test_the_futures_block_stops_saying_pending_once_a_print_exists():
@@ -403,3 +407,63 @@ def test_one_story_from_two_feeds_is_one_item_listing_both_sources():
 def _feed_parts(arts):
     """(moves, macro) for build_feed straight, without building a whole snapshot."""
     return c.attach_news(c.build_moves(TICKERS, close_tag="Mon close"), arts), c.build_macro(arts, None)
+
+
+# ---------------------------------------------------------------- mockup v3: the heat-map glow, computed here
+def _glow(arts, tickers=None):
+    moves = c.attach_news(c.build_moves(tickers or TICKERS, close_tag="Mon close"), arts)
+    feed = c.build_feed(moves, c.build_macro(arts, None))
+    return {i["title"]: (i["urgency"], i["urgency_why"]) for i in feed}
+
+
+def _art(sym, title, at=20):
+    return {"symbol": sym, "title": title, "source": "s", "published_at": datetime(2026, 11, 9, at, 0, tzinfo=ET)}
+
+
+def test_glow_red_for_a_held_name_three_percent_down_since_the_close():
+    g = _glow([_art("BBB", "BBB shares slide")])
+    assert g["BBB shares slide"][0] == "red"
+    assert "held BBB -4.4% since the close" == g["BBB shares slide"][1]
+    # 1-2% down is noise, not urgency: no glow, so the operator's eye is not pulled to every small loss
+    assert c.urgency_for({"title": "t", "holdings": [{"symbol": "T", "held": True, "change_pct": -1.6}]}) == (None, None)
+
+
+def test_glow_red_for_a_downgrade_headline_even_when_the_hold_is_flat():
+    g = _glow([_art("CCC", "Craig Hallum downgrades CCC to Hold")])
+    assert g["Craig Hallum downgrades CCC to Hold"] == ("red", "downgrade / cut")
+
+
+def test_glow_red_for_a_watchlist_name_ten_percent_down():
+    g = _glow([_art("WWW", "WWW plunges on guidance")])
+    assert g["WWW plunges on guidance"][0] == "red" and "watchlist WWW -18.2%" == g["WWW plunges on guidance"][1]
+
+
+def test_glow_amber_for_an_insider_sale_ahead_of_a_big_gain():
+    g = _glow([_art("AAA", "AAA founder plans to sell 250,000 shares")])
+    assert g["AAA founder plans to sell 250,000 shares"] == ("amber", "insider sale"), "an insider sale outranks the +8.6%"
+
+
+def test_glow_amber_for_a_held_name_weak_on_the_week():
+    tickers = {"tickers": {**TICKERS["tickers"], "CCC": _t(0.0, 5000.0, wk=-8.8, sh=9)}}
+    g = _glow([_art("CCC", "CCC holds steady into the weekend")], tickers=tickers)
+    assert g["CCC holds steady into the weekend"] == ("amber", "held CCC -8.8% on the week")
+
+
+def test_glow_green_for_a_big_gain_on_a_holding():
+    g = _glow([_art("AAA", "AAA wins a defence contract")])
+    assert g["AAA wins a defence contract"] == ("green", "held AAA +8.6% since the close")
+
+
+def test_boilerplate_never_glows_and_a_quiet_story_stays_dark():
+    g = _glow([_art("AAA", "AAA sees a modest fair value lift"), _art("XXX", "XXX names a new director", at=21)])
+    assert g["AAA sees a modest fair value lift"] == (None, None), "13F/fair-value boilerplate never glows"
+    assert g["XXX names a new director"] == (None, None)
+
+
+def test_the_urgency_rule_travels_in_the_snapshot():
+    rule = _snap()["feed_rule"]
+    assert set(rule["urgency"]) == {"red", "amber", "green", "none"}
+    assert "3% or more down" in rule["urgency"]["red"]
+    assert "insider sale" in rule["urgency"]["amber"]
+    assert "3% or more up" in rule["urgency"]["green"]
+    assert "score" in rule and "CIO brief action" in rule["score"]
