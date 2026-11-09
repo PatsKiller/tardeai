@@ -35,7 +35,7 @@ MEASURED_STATE = "FRESH"
 try:
     from lib import vix_headline as _headline
 except ImportError:  # imported as scripts.lib.vix_quote
-    from scripts.lib import vix_headline as _headline  # type: ignore[no-redef]
+    from scripts.lib import vix_headline as _headline  # type: ignore[no-redef] -- same module under a second name
 
 
 @dataclass(frozen=True)

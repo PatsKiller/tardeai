@@ -81,7 +81,7 @@ def _vix_field(headline: dict[str, Any] | None, *, evaluated_at: datetime) -> di
     try:
         from .vix_quote import from_headline
     except ImportError:  # pragma: no cover - imported as scripts.lib.cio_market_context_state
-        from scripts.lib.vix_quote import from_headline  # type: ignore[no-redef]
+        from scripts.lib.vix_quote import from_headline  # type: ignore[no-redef] -- same module under a second name
     q = from_headline(headline, now=evaluated_at)
     source = q.source or "vix_quote"
     if q.value is None:
@@ -343,7 +343,7 @@ def load_vix_headline(conn) -> dict[str, Any]:
         from .vix_headline import vix_headline
 
         return vix_headline(conn=conn)
-    except Exception as exc:  # noqa: BLE001 - named, never another source
+    except Exception as exc:  # noqa: BLE001 -- named, never another source
         return {
             "vix": None,
             "vix_source": None,

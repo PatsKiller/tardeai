@@ -272,7 +272,7 @@ class PgReader:
         try:
             from scripts.lib import vix_quote as _accessor
         except ImportError:  # pragma: no cover - imported as lib.market_risk.reader
-            from lib import vix_quote as _accessor  # type: ignore[no-redef]
+            from lib import vix_quote as _accessor  # type: ignore[no-redef] -- same module under a second name
 
         return _accessor.read(query=self._rows, now=_aware(end))
 

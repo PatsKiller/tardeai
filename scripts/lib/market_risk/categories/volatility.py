@@ -37,8 +37,20 @@ def _newest_quote(ctx: EvalContext):
         return None
     try:
         return getter(end=ctx.now)
-    except Exception:  # noqa: BLE001 — an unreadable accessor is "not measured", never a crash of the engine
-        return None
+    except Exception as exc:  # noqa: BLE001 -- an unreadable accessor is "not measured", never a daily-close fallback
+        try:
+            from scripts.lib import vix_quote as _accessor
+        except ImportError:  # pragma: no cover - imported as lib.market_risk.categories.volatility
+            from lib import vix_quote as _accessor  # type: ignore[no-redef] -- same module under a second name
+        return _accessor.VixQuote(
+            value=None,
+            as_of=None,
+            source=None,
+            state="UNAVAILABLE",
+            age_hours=None,
+            measured=False,
+            reason=f"not measured: VIX accessor failed ({type(exc).__name__}: {exc})",
+        )
 
 
 def evaluate(ctx: EvalContext) -> CategoryObservation:

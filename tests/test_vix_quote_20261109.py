@@ -218,3 +218,26 @@ def test_replay_a_stale_quote_is_unknown_never_calm():
         assert "not measured" in o.headline, o.headline
         assert "calm" not in o.headline.lower()
 
+
+class _BrokenAccessorReader(_ReplayReader):
+    """A production reader whose accessor raises: the answer is not measured, never the daily close."""
+
+    def vix_quote(self, *, end):
+        raise RuntimeError("ledger unavailable")
+
+
+def test_replay_an_unreadable_accessor_is_unknown_not_a_daily_close():
+    from scripts.lib.market_risk.categories import volatility
+    from scripts.lib.market_risk.contract import EvalContext
+    from scripts.lib.market_risk.policy import load_policy
+
+    reader = _BrokenAccessorReader(_FRESH_QUOTE)
+    o = volatility.evaluate(EvalContext(now=NOW, reader=reader, policy=load_policy()))
+    assert o.state == "UNKNOWN", o.headline
+    assert "RuntimeError" in o.headline, o.headline
+    # The same failure makes the base-rate conditions drop VIX instead of bucketing a stale close.
+    from scripts.lib.market_risk import deep_brief_facts as d
+
+    q = d._vix_quote(reader, NOW)
+    assert q is not None and q.measured is False and "RuntimeError" in q.reason
+

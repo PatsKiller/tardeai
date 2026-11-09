@@ -237,8 +237,20 @@ def _vix_quote(reader: Any, now: datetime):
         return None
     try:
         return getter(end=now)
-    except Exception:  # noqa: BLE001 — an unreadable accessor is "not measured", never a crash of the brief
-        return None
+    except Exception as exc:  # noqa: BLE001 -- an unreadable accessor is "not measured", never a stale-close bucket
+        try:
+            from scripts.lib import vix_quote as _accessor
+        except ImportError:  # pragma: no cover - imported as lib.market_risk.deep_brief_facts
+            from lib import vix_quote as _accessor  # type: ignore[no-redef] -- same module under a second name
+        return _accessor.VixQuote(
+            value=None,
+            as_of=None,
+            source=None,
+            state="UNAVAILABLE",
+            age_hours=None,
+            measured=False,
+            reason=f"not measured: VIX accessor failed ({type(exc).__name__}: {exc})",
+        )
 
 
 def _next(p: Pack, bars: dict[str, list[dict]], snap: dict, cfg: dict, quote: Any = None) -> dict[str, Any]:
