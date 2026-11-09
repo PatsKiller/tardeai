@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "riq_empty_contract_lq1425_20261109",
+  "files": [
+    "tests/test_riq_empty_contract_lq1425_20261109.py"
+  ],
+  "anchor": "RIQ_EMPTY_CONTRACT_LQ1425",
+  "comment": [
+    "ANCHOR: RIQ_EMPTY_CONTRACT_LQ1425 — LQ-20261107-1425, prereq for the LQ-1409 batch3 fold. research-intelligence-queue expected_output allows no_new_input and dry_run. nothing_due and a missing empty_reason stay violations. output_receipt v2 is not armed on the allowlist in this commit."
+  ]
+}

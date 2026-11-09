@@ -40769,6 +40769,33 @@
         "reviewed_on": "2026-10-15",
         "prepared_by": "build_n8n_health_contracts.py DRAFT"
       },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "queued topic drained",
+        "rule": "empty_allowed",
+        "min_produced": null,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input",
+          "dry_run"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/research-intelligence-queue_last.json produced_count / empty_reason"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
       "state_note": "CW0 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
     }
   ,
