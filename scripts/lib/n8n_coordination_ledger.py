@@ -264,6 +264,14 @@ class CoordinationLedger:
             """
             CREATE INDEX IF NOT EXISTS runs_slot_key ON runs (slot_key);
             CREATE INDEX IF NOT EXISTS runs_lane_state ON runs (lane_id, state);
+            -- 2026-11-09 (LQ-20261107-1555): ``read_ledger_today`` (the releases-schedules n8n_today probe)
+            -- groups runs by mode/state and by lane for "today", i.e. it filters ``requested_at`` with no
+            -- state predicate. The only requested_at index is (state, requested_at), so the first grouping
+            -- was a ``SCAN runs`` over the whole 637 MB / 88k-row table: 4545 ms cold, past the route's 4 s
+            -- probe deadline, and the Releases page showed "Scheduled job health cannot be read". A covering
+            -- index (requested_at, lane_id, mode, state) turns it into a range search over today's rows;
+            -- built once, at the next writable open.
+            CREATE INDEX IF NOT EXISTS runs_requested_at ON runs (requested_at, lane_id, mode, state);
             CREATE TABLE IF NOT EXISTS dead_letters (
                 slot_key TEXT PRIMARY KEY,
                 lane_id TEXT NOT NULL,
