@@ -51,8 +51,9 @@ REFUSAL_OVERFETCH = 4
 
 #: A bridge that is restarting under us: the socket is refused or dropped before any HTTP status exists. This is
 #: not a provider fault and not a governance refusal -- waiting it out is the correct response. 2026-11-09 14:15 ET
-#: the cio-governed-bridge activation restart refused eight ratings in a row, the run exited 1, and with the lane's
-#: single-attempt policy (dispatch.retry_policy "none") the slot dead-lettered for a six-second blip
+#: the cio-governed-bridge was stopped at 14:16:52 and started at 14:16:54 -- a two-second activation restart that
+#: killed an in-flight rating and refused the next seven. The run exited 1 after 5.8 s, and with the lane's
+#: single-attempt policy (dispatch.retry_policy "none") two seconds of downtime dead-lettered the slot
 #: (d:hermes-usefulness-backfill:live:20261109T1415).
 READINESS_MARKERS = ("connection refused", "errno 111", "connection reset", "errno 104", "connection aborted",
                      "connection abort", "broken pipe", "remote disconnected", "remotedisconnected",
@@ -326,7 +327,7 @@ def _run_feedback(args):
             u, rationale, pack = rate(question, rec, dissent, outcome)
         except BridgeNotReady as exc:
             # One typed abort for the whole run: the remaining rows stay unscored and eligible, and nothing is
-            # written. Counting each as FAILED_PROVIDER is what made a six-second restart look like eight faults.
+            # written. Counting each as FAILED_PROVIDER is what made a two-second restart look like eight faults.
             abort_reason = "bridge_not_ready"
             aborted = f"bridge_not_ready: {exc}"
             break

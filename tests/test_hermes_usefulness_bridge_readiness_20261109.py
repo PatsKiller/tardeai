@@ -1,9 +1,10 @@
 """LQ-20261107-1670 — hermes-usefulness-backfill must survive a cio-governed-bridge restart.
 
-Live 2026-11-09: the bridge was restarted by activation under the 14:15 ET slot. Every rating in that run raised
-``URLError: [Errno 111] Connection refused``; the loop counted eight row failures, exited 1, and the lane's
-single-attempt policy dead-lettered the slot for a six-second blip
-(``d:hermes-usefulness-backfill:live:20261109T1415``, reason ``exit_1``).
+Live 2026-11-09: the bridge was restarted by activation under the 14:15 ET slot -- stopped 14:16:52, started
+14:16:54. The first rating in flight died with ``RemoteDisconnected``; the next seven raised
+``URLError: [Errno 111] Connection refused``; the loop counted eight row failures, exited 1 after 5.8 s, and the
+lane's single-attempt policy dead-lettered the slot for two seconds of downtime
+(``d:hermes-usefulness-backfill:live:20261109T1415``, reason ``exit_1``, ``scored_now: 0``).
 
 Fail-before (origin/main 9c21372aa): ``ReadinessWait``, ``BridgeNotReady`` and ``READINESS_MARKERS`` do not exist;
 the run has no notion of a transport refusal, so one restart is one dead letter.
