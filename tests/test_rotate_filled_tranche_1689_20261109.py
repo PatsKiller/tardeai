@@ -190,6 +190,17 @@ def test_a_group_that_does_not_qualify_offers_no_tranche_to_fill():
 
 # ── the replay ──────────────────────────────────────────────────────────────────────────────────────────────────
 
+def test_the_live_shape_of_the_20261109_buy_is_a_fill():
+    """79 shares held against an 80-share tranche 1 (98.75%) is a fill; a share count a fifth short is not.
+
+    The numbers are the live ones only in RATIO — 79 of 80 was the 2026-11-09 position against its plan. The card
+    never sees an absolute quantity from the operator's book here: the rule is a ratio, and this pins its edge.
+    """
+    assert h.tranche1_filled(79, 80) is True
+    assert h.tranche1_filled(71, 80) is False    # 88.75%: nine shares short of the plan is not a rounding
+    assert h.tranche1_filled(72, 80) is True     # exactly 90%
+
+
 def test_replay_of_the_20261109_fill():
     """The operator's 2026-11-09 sequence, in synthetic numbers: tranche 1 bought, card must say so.
 

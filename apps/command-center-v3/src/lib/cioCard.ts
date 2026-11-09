@@ -48,6 +48,9 @@ export interface RotateCandidate extends Prov {
     target_pct?: number; target_usd?: number; tranche1_usd?: number | null; shares?: number | null
     tranches?: TrancheRow[]; priced?: boolean; proposed: true
   }
+  /** What the book already holds (LQ-20261107-1689). `filled` = at least 90% of the planned tranche-1 shares, so
+   *  tranche 1 is a FILL, not an offer. Absent when the group offers no tranche, or the holding cannot be dated. */
+  held?: Prov & { shares?: number; avg_cost?: number; pct_of_tranche1?: number; filled?: boolean }
 }
 export interface PositionRow { symbol: string; account_label?: string; value_usd?: number; pct_account?: number; stressed_share?: number; usd_exposed?: number; stop_distance_pct?: number | null; stance?: string; stops_known?: boolean }
 export interface StoppedOut extends Prov {
@@ -78,7 +81,10 @@ export interface CioPanel {
   }
   rotate?: Prov & {
     candidates?: RotateCandidate[]
-    plan?: { proposed: true; tranche1_usd?: number; tranche1_pct_book?: number; cash_after_pct?: number; tranche2_after?: string; tranche3_when?: string; split?: number[]; rule?: string }
+    plan?: { proposed: true; tranche1_usd?: number; tranche1_pct_book?: number; cash_after_pct?: number; tranche2_after?: string; tranche3_when?: string; split?: number[]; rule?: string
+             /** LQ-20261107-1689: every offering group's tranche 1 is already in the book. cash_after_pct then excludes
+              *  a fill it would otherwise deduct twice. */
+             tranche1_filled?: boolean }
     /** The quote time every share count rests on (oldest quote in the batch). Absent = no current price at all. */
     prices_as_of?: string
     prices_sources?: string[]

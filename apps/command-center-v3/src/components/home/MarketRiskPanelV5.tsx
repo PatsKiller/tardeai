@@ -34,10 +34,14 @@ function Rotate({ r, stressed }: { r: NonNullable<CioPanel['rotate']>; stressed:
           const p = c.proposed
           const close = fv(c.close), avg = fv(c.avg20), live = fv(c.price)
           const trs = p?.tranches ?? []
+          const held = c.held
+          const filled = held?.filled === true
           return (
             <div className={`rc${c.qualifies ? '' : ' off'}`} key={c.symbol} data-testid="mr5-rotate-row" title={c.source_id}>
               <div className="h"><b>{c.symbol}</b><span className="nm">{c.label}</span>{stateBadge(c)}
-                <span className="amt">{c.qualifies && p?.tranche1_usd ? `${usd(p.tranche1_usd)} tranche 1` : 'watch'}</span></div>
+                <span className="amt" data-testid="mr5-amt">{filled
+                  ? `FILLED · ${held?.shares} sh @ ${px(held?.avg_cost)}`
+                  : c.qualifies && p?.tranche1_usd ? `${usd(p.tranche1_usd)} tranche 1` : 'watch'}</span></div>
               <div className="sub">{c.rs20 != null ? `RS vs SPY ${c.rs20 > 0 ? '+' : ''}${c.rs20.toFixed(1)} pts over 20 sessions` : ''}{c.dd20 != null ? ` · ${pct(Math.abs(c.dd20))} off its 20-day high` : ''}{c.qualifies ? '' : ' · starts when it turns RESILIENT'}</div>
               {/* LQ-20261107-1654: the price the share counts rest on is the CURRENT quote, never the last daily close
                   (this card used to size off yesterday's close). With no current quote there is no share count at all. */}
@@ -45,11 +49,19 @@ function Rotate({ r, stressed }: { r: NonNullable<CioPanel['rotate']>; stressed:
                 {avg != null ? ` · 20-day avg ${avg.toFixed(2)}` : ''}
                 {close != null ? ` · last close ${close.toFixed(2)}` : ''}
                 {p?.target_pct != null ? ` · target ${p.target_pct}% of book${p.target_usd != null ? ` (${usdShort(p.target_usd)})` : ''}${c.qualifies ? '' : ' when it qualifies'}` : ''}</div>
-              {/* A group that does not qualify has a target, not a tranche: it shows no shares until it turns RESILIENT. */}
+              {/* A group that does not qualify has a target, not a tranche: it shows no shares until it turns RESILIENT.
+                  LQ-20261107-1689: tranche 1 is a FILL once the book holds ~90% of its shares — the row prints what
+                  was actually bought (shares, average cost, the date it was captured), not the offer again. */}
               {c.qualifies && trs.length > 0 && (
                 <div className="tot" data-testid="mr5-tranches">{trs.flatMap(t => [
                   <span key={`t${t.tranche}`}>Tranche {t.tranche}</span>,
-                  <span key={`v${t.tranche}`}>{usd(t.usd)} · {trancheShares(t)}</span>,
+                  t.tranche === 1 && filled ? (
+                    <span key={`v${t.tranche}`} data-testid="mr5-filled">
+                      FILLED · {held?.shares} sh @ {px(held?.avg_cost)}{held?.as_of ? ` · ${when(held.as_of)}` : ''}
+                    </span>
+                  ) : (
+                    <span key={`v${t.tranche}`}>{usd(t.usd)} · {trancheShares(t)}</span>
+                  ),
                 ])}</div>
               )}
             </div>
@@ -60,7 +72,7 @@ function Rotate({ r, stressed }: { r: NonNullable<CioPanel['rotate']>; stressed:
         <>
           <div><span className="pill prop" data-testid="mr5-proposed">PROPOSED · NEEDS YOUR OK</span></div>
           <div className="tot" data-testid="mr5-plan">
-            {plan.tranche1_usd != null && <><span>Tranche 1 ({Math.round((plan.split?.[0] ?? 0.3) * 100)}%)</span><span>{usd(plan.tranche1_usd)}{plan.tranche1_pct_book != null ? ` · ${pct(plan.tranche1_pct_book)} of book` : ''}</span></>}
+            {plan.tranche1_usd != null && <><span>Tranche 1 ({Math.round((plan.split?.[0] ?? 0.3) * 100)}%)</span><span>{usd(plan.tranche1_usd)}{plan.tranche1_pct_book != null ? ` · ${pct(plan.tranche1_pct_book)} of book` : ''}{plan.tranche1_filled ? ' · FILLED' : ''}</span></>}
             {plan.tranche2_after && <><span>Tranche 2 ({Math.round((plan.split?.[1] ?? 0.3) * 100)}%)</span><span>after {plan.tranche2_after}</span></>}
             {plan.tranche3_when && <><span>Tranche 3 ({Math.round((plan.split?.[2] ?? 0.4) * 100)}%)</span><span>when {plan.tranche3_when}</span></>}
             {plan.cash_after_pct != null && <><span>Cash after tranche 1</span><span>{pct(plan.cash_after_pct)}</span></>}
