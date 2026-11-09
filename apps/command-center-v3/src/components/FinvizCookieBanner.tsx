@@ -1,6 +1,11 @@
 /**
  * Site-wide top banner when Finviz Elite cookie / screener auth is degraded.
  * Links to System → Admin secrets (FINVIZ_COOKIE rotation).
+ *
+ * LQ-20261107-1289 (2026-11-08): a dead cookie with a working Elite API token is AMBER, not hidden.
+ * The server now sets show_banner for that case and names the cookie-only features it costs; the
+ * operator saw "set · 34d ago" and nothing else for three days. Red (both cookie and token dead,
+ * or a failed probe) cannot be dismissed — only the amber rotation reminder can.
  */
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -8,6 +13,12 @@ import { Link } from 'react-router-dom'
 type Health = {
   ok?: boolean
   status?: string
+  // 'ok' | 'amber' (cookie dead, token carrying the screeners) | 'red' (screeners empty)
+  severity?: string
+  // 'ok' | 'expired' | 'missing' | 'unknown'
+  cookie_status?: string
+  degraded_features?: string[]
+  degraded_count?: number
   detail?: string
   last_error?: string | null
   as_of?: string
@@ -21,6 +32,7 @@ function shouldShow(h: Health | null): boolean {
   if (h.show_banner) return true
   if (h.ok === false) return true
   const st = (h.status || '').toLowerCase()
+  if (st === 'token_ok') return true // cookie dead even though the token works (LQ-1289)
   return st === 'expired' || st === 'missing' || st === 'error' || st === 'check_failed' || st === 'invalid'
 }
 
@@ -43,20 +55,29 @@ export default function FinvizCookieBanner() {
     }
     load()
     // Background tabs do not poll (2026-10-22); the server also caches the verdict per 5 min.
+    // The visible 60 s poll is what lets the server alert on a fresh verdict (LQ-1289) without a
+    // second Finviz request from any other process.
     const id = window.setInterval(() => { if (document.visibilityState !== 'hidden') void load() }, 60_000)
     return () => { cancelled = true; window.clearInterval(id) }
   }, [])
 
-  const show = shouldShow(health) && !dismissed
+  const severe = !!(health && (health.severity === 'red' || health.ok === false || health.cookie_status === 'missing'))
+  const show = shouldShow(health) && (severe || !dismissed)
   if (!show || !health) return null
+
+  const tone = severe
+    ? { bg: 'var(--red-dim)', fg: 'var(--red)', border: 'var(--red)' }
+    : { bg: 'var(--amber-dim)', fg: 'var(--amber)', border: 'var(--amber)' }
+  const names = health.degraded_features ?? []
 
   return (
     <div
       role="alert"
+      title={names.length ? `Degraded: ${names.join(', ')}` : undefined}
       style={{
-        background: 'var(--red-dim)',
-        color: 'var(--red)',
-        borderBottom: '1px solid var(--red)',
+        background: tone.bg,
+        color: tone.fg,
+        borderBottom: `1px solid ${tone.border}`,
         fontSize: 11.5,
         fontWeight: 650,
         textAlign: 'center',
@@ -81,18 +102,20 @@ export default function FinvizCookieBanner() {
           whiteSpace: 'nowrap',
         }}
       >
-        Admin secrets →
+        {severe ? 'Admin secrets →' : 'Renew cookie →'}
       </Link>
-      <button
-        type="button"
-        onClick={() => setDismissed(true)}
-        style={{
-          background: 'transparent', border: 'none', color: 'inherit', opacity: 0.75,
-          cursor: 'pointer', fontSize: 11, fontWeight: 600, textDecoration: 'underline', padding: 0,
-        }}
-      >
-        dismiss
-      </button>
+      {!severe && (
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          style={{
+            background: 'transparent', border: 'none', color: 'inherit', opacity: 0.75,
+            cursor: 'pointer', fontSize: 11, fontWeight: 600, textDecoration: 'underline', padding: 0,
+          }}
+        >
+          dismiss
+        </button>
+      )}
     </div>
   )
 }

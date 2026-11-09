@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "FINVIZ_COOKIE_ALERT_LQ1289_20261108",
+  "files": [
+    "tests/test_finviz_cookie_features_lq1289_20261108.py",
+    "tests/test_finviz_cookie_alert_lq1289_20261108.py"
+  ],
+  "anchor": "FINVIZ_COOKIE_ALERT_LQ1289_20261108",
+  "comment": [
+    "ANCHOR: FINVIZ_COOKIE_ALERT_LQ1289_20261108 — LQ-20261107-1289: a dead FINVIZ_COOKIE with a working Elite token is amber (named features, show_banner), and the operator gets one Telegram + Fi text per ET day; the feature registry's evidence pointers cannot drift."
+  ]
+}

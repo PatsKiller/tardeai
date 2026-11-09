@@ -45625,6 +45625,43 @@ _FINVIZ_CRED_HEALTH_LOCK = __import__("threading").Lock()
 _FINVIZ_CRED_HEALTH_CACHE: dict = {"ts": 0.0, "result": None}
 
 
+def _finviz_cookie_feature_labels():
+    """The cookie-only features a dead FINVIZ_COOKIE takes down (config/finviz_cookie_features.json).
+
+    One config source for the banner text and the operator alert (LQ-20261107-1289). An unreadable
+    registry yields []: the verdict still says the cookie is expired, it just cannot name the cost.
+    """
+    try:
+        try:
+            from lib import finviz_cookie_features as _ref
+        except ImportError:
+            from scripts.lib import finviz_cookie_features as _ref
+        return _ref.labels()
+    except Exception:  # noqa: BLE001 — a missing registry must not turn a cookie verdict into check_failed
+        return []
+
+
+def _finviz_cookie_verdict_alert(verdict):
+    """One operator alert per ET day on a cookie-dead verdict (LQ-20261107-1289 item 3).
+
+    `verdict` is the probe result just computed — the alert path performs no Finviz request of its
+    own. It is called outside the probe lock so a slow gateway can never park a polling request,
+    and any failure is logged and swallowed: an alert problem must never break the health route.
+    """
+    try:
+        try:
+            from lib import finviz_cookie_alert as _alert
+        except ImportError:
+            from scripts.lib import finviz_cookie_alert as _alert
+        result = _alert.maybe_alert(verdict)
+        if result.get("alerted") and not result.get("delivered"):
+            log.warning("finviz cookie alert attempted but not delivered: %s", result.get("reason"))
+        return result
+    except Exception as exc:  # noqa: BLE001 — the health route answers even when the alert cannot
+        log.warning("finviz cookie alert failed: %s", type(exc).__name__)
+        return {"alerted": False, "reason": f"alert_error:{type(exc).__name__}"}
+
+
 def _finviz_credential_health(query=None):
     """GET /api/v2/data-sources/finviz/credential-health — cached verdict of the FINVIZ_COOKIE probe.
 
@@ -45652,15 +45689,19 @@ def _finviz_credential_health(query=None):
         if stale is not None:
             return _copy.deepcopy(stale)
         _FINVIZ_CRED_HEALTH_LOCK.acquire()
+    fresh = None
     try:
         hit = _fresh()
         if hit is not None:
             return _copy.deepcopy(hit)
-        result = _finviz_credential_health_live(query)
-        _FINVIZ_CRED_HEALTH_CACHE.update(ts=_time.monotonic(), result=result)
-        return _copy.deepcopy(result)
+        fresh = _finviz_credential_health_live(query)
+        _FINVIZ_CRED_HEALTH_CACHE.update(ts=_time.monotonic(), result=fresh)
     finally:
         _FINVIZ_CRED_HEALTH_LOCK.release()
+    # Only a verdict this call computed can alert: a cached hit was already evaluated when it was
+    # produced, and re-evaluating it would let every poll re-enter the send path.
+    _finviz_cookie_verdict_alert(fresh)
+    return _copy.deepcopy(fresh)
 
 
 def _finviz_credential_health_live(query=None):
@@ -45709,33 +45750,57 @@ def _finviz_credential_health_live(query=None):
             # working token is a rotation reminder, not an empty screener.
             token_ok, token_detail = _sv._finviz_token(token)
             if token_ok:
+                # LQ-20261107-1289: a dead session cookie is DEGRADED (amber), not healthy — the
+                # Elite API token keeps every screener running, but the cookie-only features are
+                # down and the operator must still renew it. 2026-11-08: this returned
+                # show_banner=False, so the operator was never told the cookie had expired.
+                _names = _finviz_cookie_feature_labels()
+                _count = len(_names)
                 return {
                     "ok": True,
                     "status": "token_ok",
+                    "cookie_status": "expired",
+                    "severity": "amber",
+                    "degraded_features": _names,
+                    "degraded_count": _count,
                     "detail": f"cookie: {detail}; token: {token_detail}",
                     "last_error": last_error,
                     "as_of": as_of,
-                    "show_banner": False,
-                    "message": "Finviz cookie expired — Elite API token OK; screeners use the token",
+                    "show_banner": True,
+                    "message": (
+                        f"Finviz cookie expired — {_count} features degraded ({', '.join(_names)}) — renew"
+                        if _count else "Finviz cookie expired — some features degraded — renew"
+                    ),
                     "admin_secrets_path": "/v3/system?tab=Admin",
                 }
             detail = f"cookie: {detail}; token: {token_detail}"
         if healthy:
             status = "ok"
+            cookie_status = "ok"
+            severity = "ok"
             message = detail
         elif not cookie and not token:
             status = "missing"
+            cookie_status = "missing"
+            severity = "red"
             message = "Finviz Elite cookie expired — screener and social scalp empty"
         else:
             status = "expired" if (not ok or err_signal) else "error"
+            cookie_status = "expired"
+            severity = "red"
             message = (
                 "Finviz Elite cookie and API token both failing — screener and social scalp empty"
                 if token
                 else "Finviz Elite cookie expired — screener and social scalp empty"
             )
+        _names = [] if healthy else _finviz_cookie_feature_labels()
         return {
             "ok": healthy,
             "status": status,
+            "cookie_status": cookie_status,
+            "severity": severity,
+            "degraded_features": _names,
+            "degraded_count": len(_names),
             "detail": detail,
             "last_error": last_error,
             "as_of": as_of,
@@ -45749,6 +45814,10 @@ def _finviz_credential_health_live(query=None):
         return {
             "ok": False,
             "status": "check_failed",
+            "cookie_status": "unknown",
+            "severity": "red",
+            "degraded_features": [],
+            "degraded_count": 0,
             "detail": _re.sub(r"(auth=)[^&\s'\"]+", r"\1<redacted>", str(e))[:160],
             "last_error": last_error,
             "as_of": as_of,

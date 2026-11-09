@@ -176,7 +176,13 @@ def test_filter_validator_uses_one_credential_for_baseline_and_tokens(monkeypatc
     assert seen == [False, True, True], "baseline and token row counts must share the token credential"
 
 
-def test_banner_cookie_dead_token_ok_is_informational(monkeypatch):
+def test_banner_cookie_dead_token_ok_is_amber_not_hidden(monkeypatch):
+    """LQ-20261107-1289 (2026-11-08): a dead cookie with a working Elite token is AMBER, not hidden.
+
+    Until today this verdict returned show_banner=False and a "token OK" note, so the operator saw
+    nothing at all for a dead FINVIZ_COOKIE. The token still keeps every screener running, so the
+    banner is an amber rotation reminder that names the cookie-only features, not a red alarm.
+    """
     import api_v2
     import secret_validators as sv
 
@@ -185,10 +191,15 @@ def test_banner_cookie_dead_token_ok_is_informational(monkeypatch):
     monkeypatch.setattr(sv, "_key", lambda name: values.get(name))
     monkeypatch.setattr(sv, "_finviz_cookie", lambda k: (False, "login page or empty export — cookie expired"))
     monkeypatch.setattr(sv, "_finviz_token", lambda k: (True, "37 screener rows"))
+    monkeypatch.setenv("TRADEAI_FINVIZ_COOKIE_ALERT", "0")  # a unit test never alerts the operator
     api_v2._FINVIZ_CRED_HEALTH_CACHE.update(ts=0.0, result=None)
     out = api_v2._finviz_credential_health()
-    assert out["ok"] is True and out["status"] == "token_ok" and out["show_banner"] is False
-    assert "token OK" in out["message"] and "empty" not in out["message"]
+    assert out["ok"] is True and out["status"] == "token_ok"
+    assert out["show_banner"] is True and out["severity"] == "amber"
+    assert out["cookie_status"] == "expired" and out["degraded_count"] == 3
+    assert out["message"].startswith("Finviz cookie expired — 3 features degraded (")
+    assert out["message"].endswith("— renew")
+    assert "RSI/SMA/ATR for held positions" in out["message"]
     _no_secret(out)
 
     monkeypatch.setattr(sv, "_finviz_token", lambda k: (False, "token rejected or empty export"))
