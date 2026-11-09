@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_capital_plan_get_readonly_20261109",
+  "files": [
+    "tests/test_cio_capital_plan_get_is_readonly_20261109.py"
+  ],
+  "anchor": "CIO_CAPITAL_PLAN_GET_READONLY_20261109",
+  "comment": [
+    "ANCHOR: CIO_CAPITAL_PLAN_GET_READONLY_20261109 — LQ-20261107-1608: GET /api/v2/cio/capital-plan",
+    "builds with record=False; the decision journal has one scheduled writer",
+    "(scripts/cio_capital_plan_record.py) instead of the request path."
+  ]
+}

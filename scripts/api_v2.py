@@ -37430,10 +37430,19 @@ def _ratified_investment_policy() -> Optional[dict]:
 
 
 def _cio_capital_plan(query=None):
-    """GET /api/v2/cio/capital-plan (per-request memo; see ``_request_memoized``)."""
+    """GET /api/v2/cio/capital-plan (per-request memo; see ``_request_memoized``).
+
+    LQ-20261107-1608: a read does not record. Both branches used to take
+    ``_cio_capital_plan_build``'s ``record=True`` default, so any page view of the plan — and every
+    v3 call into ``_v2._cio_capital_plan()`` — could append to
+    ``data/cio/cio_capital_plan_decisions.jsonl``. That is the forbidden side-effecting GET of
+    AGENTS.md §28.9/§28.11 that ``_cio_capital_plan_probe`` already avoids for the Home Do-now
+    queue. Recording now has one owner, ``scripts/cio_capital_plan_record.py``, a scheduled job that
+    stamps its own LaneOutput receipt; this route only ever reads.
+    """
     if query is None:
-        return _request_memoized("cio_capital_plan", lambda: _cio_capital_plan_build())
-    return _cio_capital_plan_build(query)
+        return _request_memoized("cio_capital_plan", lambda: _cio_capital_plan_build(record=False))
+    return _cio_capital_plan_build(query, record=False)
 
 
 def _cio_capital_plan_probe():
