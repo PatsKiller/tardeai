@@ -1260,6 +1260,254 @@ def _diagnosis_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
     return found
 
 
+# Absence findings. A RUN_FAILED / RUN_TIMEOUT / RUN_REFUSED is a real execution and is not cleared
+# just because the next slot has not arrived (LQ-20261107-1447).
+_ABSENCE_EVENTS = frozenset({"NO_OUTPUT", "SILENT", "STALE_OUTPUT", "STALE_2X"})
+_DRY_N8N_DISPATCH = frozenset({"dry_run", "shadow", "off"})
+
+
+def _is_diagnosis_p2(finding: dict) -> bool:
+    return (
+        finding.get("source") == DIAGNOSIS_SOURCE
+        and finding.get("severity") == "P2"
+        and str(finding.get("item") or "").startswith("escalate:")
+    )
+
+
+def _instant(value: Any) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _shadow_or_unscheduled(lane: dict | None) -> bool:
+    """Shadow, unscheduled, retired, or an n8n lane whose only dispatch is dry."""
+    if not isinstance(lane, dict):
+        return False
+    if str(lane.get("state") or "ACTIVE") != "ACTIVE":
+        return True
+    sched = lane.get("scheduler") if isinstance(lane.get("scheduler"), dict) else {}
+    kind = str(sched.get("kind") or "").strip().lower()
+    stage = str(sched.get("stage") or "").strip().lower()
+    if kind in ("", "none") or stage == "shadow":
+        return True
+    if kind != "n8n":
+        return False
+    dispatch = lane.get("dispatch") if isinstance(lane.get("dispatch"), dict) else {}
+    return str(dispatch.get("mode") or "").strip().lower() in _DRY_N8N_DISPATCH
+
+
+def _due_expr(lane: dict) -> str:
+    """The lane's own clock: cron expression, or the dispatcher cadence when that is cron text."""
+    sched = lane.get("scheduler") if isinstance(lane.get("scheduler"), dict) else {}
+    kind = str(sched.get("kind") or "").strip().lower()
+    if kind == "cron":
+        due = sched.get("due_schedules")
+        if isinstance(due, list) and due and all(isinstance(item, str) and item.strip() for item in due):
+            return " + ".join(item.strip() for item in due)
+        return str(sched.get("expression") or "").strip()
+    return str(sched.get("cadence") or "").strip()
+
+
+def _cron_fields_of(expr: str) -> list[str]:
+    if not expr:
+        return []
+    try:
+        from scripts.lib.cron_schedule import cron_schedules
+    except ImportError:
+        from cron_schedule import cron_schedules
+    try:
+        return [fields for fields in cron_schedules(expr) if fields and fields != "@reboot"]
+    except (TypeError, ValueError):
+        return []
+
+
+def _latest_fire(fields: list[str], now: datetime) -> datetime | None:
+    try:
+        from scripts.lib.cron_schedule import last_fire_at_or_before
+    except ImportError:
+        from cron_schedule import last_fire_at_or_before
+    fires: list[datetime] = []
+    for spec in fields:
+        try:
+            fire = last_fire_at_or_before(spec, now)
+        except (TypeError, ValueError):
+            continue
+        if fire is not None:
+            fires.append(fire.at.astimezone(timezone.utc))
+    return max(fires) if fires else None
+
+
+def _live_done_times(runs: list | None) -> list[datetime]:
+    out: list[datetime] = []
+    for row in runs or []:
+        if not isinstance(row, dict) or str(row.get("state") or "") != "RUN_DONE":
+            continue
+        if str(row.get("mode") or "live") != "live":
+            continue
+        finished = _instant(row.get("finished_at"))
+        if finished is not None:
+            out.append(finished)
+    return out
+
+
+def _absence_not_due(lane: dict | None, now: datetime, dones: list[datetime]) -> bool:
+    """True when this absence is between slots the lane's own schedule already satisfied."""
+    if not isinstance(lane, dict):
+        return False
+    fields = _cron_fields_of(_due_expr(lane))
+    if fields:
+        last = _latest_fire(fields, now)
+        if last is None:
+            return False
+        return any(finished >= last for finished in dones)
+    days = lane.get("active_days")
+    if not isinstance(days, (list, tuple)) or not days:
+        return False
+    from zoneinfo import ZoneInfo
+
+    try:
+        active = {int(day) for day in days}
+    except (TypeError, ValueError):
+        return False
+    return now.astimezone(ZoneInfo("America/New_York")).weekday() not in active
+
+
+def diagnosis_p2_skip_reason(
+    finding: dict, *, lane: dict | None, runs: list | None, now: datetime
+) -> str | None:
+    """Why this digest P2 is not a person incident, or None when it should be promoted.
+
+    A later live RUN_DONE means the lane recovered after the diagnosis. An absence is not due
+    when the lane's own schedule already has a live RUN_DONE for its latest fire. Shadow,
+    unscheduled, and retired lanes are not incidents. No fixed grace.
+    """
+    if _shadow_or_unscheduled(lane):
+        return "shadow_or_unscheduled"
+    dones = _live_done_times(runs)
+    newest = max(dones) if dones else None
+    diagnosed = _instant(finding.get("detected_at"))
+    if newest is not None and diagnosed is not None and newest > diagnosed:
+        return "later_run_done"
+    event = str(finding.get("event_type") or "")
+    if event in _ABSENCE_EVENTS and _absence_not_due(lane, now, dones):
+        return "not_due"
+    return None
+
+
+def partition_diagnosis_p2(
+    findings: list[dict[str, Any]],
+    *,
+    now: datetime,
+    lanes: dict[str, dict | None],
+    runs_by_lane: dict[str, list],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """(promoted findings, digest P2s to resolve). Other sources pass through."""
+    promoted: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    lane_rows = lanes or {}
+    runs = runs_by_lane or {}
+    for finding in findings:
+        if not isinstance(finding, dict) or not _is_diagnosis_p2(finding):
+            promoted.append(finding)
+            continue
+        lane_id = str(finding.get("lane") or "")
+        reason = diagnosis_p2_skip_reason(
+            finding, lane=lane_rows.get(lane_id), runs=runs.get(lane_id), now=now
+        )
+        if reason:
+            skipped.append({**finding, "skip_reason": reason})
+        else:
+            promoted.append(finding)
+    return promoted, skipped
+
+
+def _runs_from_ledger(ledger: Path, lane_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+    """Newest live RUN_DONE finish per lane. Read-only. Empty when the file or table is absent."""
+    if not lane_ids or not ledger.exists():
+        return {}
+    try:
+        conn = sqlite3.connect(f"{ledger.resolve().as_uri()}?mode=ro", uri=True, timeout=3)
+    except sqlite3.Error:
+        return {}
+    out: dict[str, list[dict[str, Any]]] = {}
+    try:
+        step = 200
+        for start in range(0, len(lane_ids), step):
+            part = lane_ids[start : start + step]
+            sql = (
+                "SELECT lane_id, MAX(finished_at) AS finished_at FROM runs "
+                "WHERE mode = 'live' AND state = 'RUN_DONE' AND lane_id IN ("
+                + ",".join("?" for _ in part)
+                + ") GROUP BY lane_id"
+            )
+            for lane_id, finished_at in conn.execute(sql, tuple(part)):
+                if finished_at:
+                    out[str(lane_id)] = [
+                        {"state": "RUN_DONE", "mode": "live", "finished_at": finished_at}
+                    ]
+    except sqlite3.Error:
+        return {}
+    finally:
+        conn.close()
+    return out
+
+
+def diagnosis_p2_context(
+    findings: list[dict[str, Any]], root: Path
+) -> tuple[dict[str, dict | None], dict[str, list]]:
+    """Registry row and latest live RUN_DONE for each diagnosis P2 lane. Missing data is not a skip."""
+    ids: list[str] = []
+    seen: set[str] = set()
+    for finding in findings:
+        if not isinstance(finding, dict) or not _is_diagnosis_p2(finding):
+            continue
+        lane_id = str(finding.get("lane") or "")
+        if lane_id and lane_id not in seen:
+            seen.add(lane_id)
+            ids.append(lane_id)
+    lanes: dict[str, dict | None] = {}
+    for lane_id in ids:
+        try:
+            lanes[lane_id] = _governance_lane(lane_id)
+        except Exception as exc:  # noqa: BLE001 — a registry miss must not drop every P2
+            lanes[lane_id] = None
+            NOTES["diagnosis_p2_registry"] = f"error:{type(exc).__name__}"
+    return lanes, _runs_from_ledger(_ledger_path(root), ids)
+
+
+def close_cleared_diagnosis_p2(skipped: list[dict[str, Any]], *, apply: bool) -> int:
+    """Resolve an open diagnosis P2 the skip rule now clears. The open event stays on the ledger."""
+    if not apply or not skipped:
+        return 0
+    try:
+        from scripts.lib import incidents as inc
+    except ImportError:
+        from lib import incidents as inc
+    directory = inc.incidents_dir()
+    closed = 0
+    for finding in skipped:
+        if not isinstance(finding, dict):
+            continue
+        lane_id = str(finding.get("lane") or "")
+        fingerprint = inc.fingerprint_of("n8n_failure_diagnosis", lane_id, str(finding.get("item") or ""))
+        current = inc.find_unresolved_by_fingerprint(inc.load_records(directory), fingerprint)
+        if not current:
+            continue
+        reason = str(finding.get("skip_reason") or "cleared")
+        note = f"cleared: {reason}. The digest P2 is not a person incident (LQ-20261107-1447)."
+        try:
+            inc.resolve(current["id"], actor="n8n-incident-fanin", note=note, d=directory)
+        except Exception as exc:  # noqa: BLE001 — the fan-in receipt still publishes
+            NOTES["diagnosis_p2_closed"] = f"error:{type(exc).__name__}"
+            return closed
+        closed += 1
+    NOTES["diagnosis_p2_closed"] = f"ok:closed={closed}"
+    return closed
+
+
 def publish_diagnosis_p2(findings: list[dict[str, Any]], *, apply: bool) -> int:
     """Open one IncidentRecord per diagnosis P2 finding. Dry-run opens nothing.
 
@@ -1807,6 +2055,18 @@ def main(argv: list[str] | None = None) -> int:
     global PREV_RECEIPT
     PREV_RECEIPT = prev
     findings = collect(root, now)
+    try:
+        p2_lanes, p2_runs = diagnosis_p2_context(findings, root)
+        findings, skipped_p2 = partition_diagnosis_p2(
+            findings, now=now, lanes=p2_lanes, runs_by_lane=p2_runs
+        )
+    except Exception as exc:  # noqa: BLE001 — a broken filter must not hide the rest of the fan-in
+        NOTES["diagnosis_p2_skip"] = f"error:{type(exc).__name__}"
+        skipped_p2 = []
+    else:
+        promoted_p2 = sum(1 for row in findings if isinstance(row, dict) and _is_diagnosis_p2(row))
+        NOTES["diagnosis_p2_skip"] = f"promoted={promoted_p2}:skipped={len(skipped_p2)}"
+    close_cleared_diagnosis_p2(skipped_p2, apply=bool(args.apply))
     flood = _flood_policy(root, findings)
     if flood.get("applied"):
         findings = flood.pop("_findings")
