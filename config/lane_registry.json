@@ -19522,6 +19522,35 @@
       }
     },
     {
+      "lane_id": "vix-index-quotes-schwab",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/vix_index_quotes_schwab.py",
+        "cadence": "*/15 18-23 * * 0 + */15 * * * 1-4 + */15 0-19 * * 5",
+        "stage": "shadow",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "ACTIVE",
+      "state_since": "2026-11-09",
+      "state_reason": "LQ-20261107-1684 option B (operator GO 2026-11-09 15:45 ET, relayed by claude-lead): the 15-minute VIX on the n8n dispatcher under AGENTS.md 32.0.0 §23.20a (PROPOSED). Until the operator ratifies 32.0.0 (APPROVE_AGENTS_POLICY_32_0_0) lane_dispatch refuses this row on forbidden_token:schwab, so nothing fires. Stage SHADOW: the dry run is --dry-run --live-read (reads Schwab $VIX/$VIX9D/$VIX3M quotes and the store, writes nothing) and the allowlist has no live_arg, so a live fire is refused. The row has NO dispatch block until 32.0.0 is ratified (an R1 ingest block on a lane that is still forbidden fails check_lane_registry): the ratifying commit flips lane_dispatch.SCHWAB_QUOTE_READ_STATUS to ACTIVE and adds the block {mode dry_run, class ingest, cron Sun 18-23 / Mon-Thu all day / Fri 00-19 every 15 min, W4, retry none} in one change. config/vix_index_quotes.yaml enabled:false also makes every fire report `disabled` without a Schwab call until the data_source_authority grant is recorded.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/vix-index-quotes-schwab_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/vix_index_quotes_schwab.py writes LaneRunReceipt@v2 on --apply only (produced_count = market_quotes rows inserted; typed empties outside_window, unchanged, cboe_not_calculating); tests/test_vix_index_quotes_schwab_20261109.py. No n8n fire yet: runtime NOT_MEASURED."
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_agents_policy_32_0_0_schwab_quote_read.py (the §23.20a gate: refused while PROPOSED, the pinned shape only once ACTIVE, the import graph reaches schwab_token_manager only); tests/test_vix_index_quotes_schwab_20261109.py (the lane).",
+      "review_by": "2026-11-23",
+      "note": "Read-only market data (MBI_BEHAVIOR = 0): GET /marketdata/v1/quotes for three CBOE indices, written through the single market_quotes writer. No order, account, position, stop or send. No broker credential in n8n or env_names: the child loads its token on the host via schwab_token_manager, as the host cron lane market-quotes-offhours-schwab does. Window Sun 18:00 to Fri 20:00 ET; the script decides outside_window itself.",
+      "severity": "Medium"
+    },
+    {
       "lane_id": "main-red-autoheal",
       "owner": "platform",
       "scheduler": {

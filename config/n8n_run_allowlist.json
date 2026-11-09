@@ -5870,6 +5870,29 @@
       "source": "LQ-20261107-479 (operator approved the market-event lanes live; this is their reference-bar feed). n8n-native dispatcher lane: no cron line, no systemd unit. --dry-run is the script default (fetches, prints, writes nothing); --apply upserts market_ohlcv_bars and writes the v2 receipt. Exit 1 names any symbol the provider returned nothing for."
     },
     {
+      "lane_id": "vix-index-quotes-schwab",
+      "command": [
+        "$PY",
+        "scripts/vix_index_quotes_schwab.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run",
+        "--live-read"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_vix_index_quotes_schwab.lock",
+      "lock_kind": "flock",
+      "timeout_s": 120,
+      "cwd": "$CODE_ROOT",
+      "market_gate": false,
+      "output_signal": "data/runtime/vix-index-quotes-schwab_last.json",
+      "output_receipt": "v2",
+      "env_names": [],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "New lane: inventory env NAMES from the first dry-run receipt before enforce (DB_* for the market_quotes read/write, the state root). Never a broker credential name: §23.20a and lane_dispatch.schwab_quote_read_shape_problem refuse one.",
+      "source": "LQ-20261107-1684 option B (operator GO 2026-11-09 15:45 ET, relayed by claude-lead): the 15-minute VIX on the n8n dispatcher under AGENTS.md 32.0.0 §23.20a (PROPOSED). Until the operator ratifies 32.0.0 (APPROVE_AGENTS_POLICY_32_0_0) lane_dispatch refuses this row on forbidden_token:schwab, so nothing fires. SHADOW: live_arg null. Promotion to [\"--apply\"] is the lead's after ratification, the grant record and a clean shadow fire."
+    },
+    {
       "lane_id": "market-event-data-refresh",
       "env_names": [
         "DB_CONN_TRACE",
