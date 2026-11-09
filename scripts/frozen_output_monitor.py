@@ -20,7 +20,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
 
@@ -51,12 +51,47 @@ def _sql_mod():
     return sql
 
 
-def load_history(conn, contract: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """The newest k rows of the lane's output table, oldest first, as ``{"at", "output_fp", "input_fp"}``.
+def load_jsonl_history(contract: Mapping[str, Any], *, now: datetime | None = None) -> list[dict[str, Any]]:
+    """The newest k records of a ``jsonl_history`` source, oldest first.
 
-    Identifiers come from the reviewed contract, are validated against a lower-case identifier pattern by
+    LQ-20261107-1645: a lane whose output is a file appends one bounded record per run (the day-change ring
+    under the portfolio state root). The path is relative to the repo and validated by
+    :func:`lib.frozen_output.validate_contract`; a missing or unreadable file is that contract's verdict —
+    never a crash, and never an empty-but-OK window.
+    """
+    src = contract["source"]
+    k = int(contract["k"])
+    cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=int(src.get("window_days", 14)))
+    tc = src["time_column"]
+    rows: list[dict[str, Any]] = []
+    for line in (ROOT / src["path"]).read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+            if not isinstance(record, dict):
+                continue
+            stamp = datetime.fromisoformat(str(record.get(tc)).replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            continue          # a torn append is skipped, not fatal: the ring is a diagnostic, not a store
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        if stamp >= cutoff:
+            rows.append(record)
+    return [{"at": r.get(tc),
+             "output_fp": fo.fingerprint(r, contract["output_fields"]),
+             "input_fp": fo.fingerprint(r, contract["input_fields"], contract.get("input_exclude", ()))}
+            for r in rows[-k:]]
+
+
+def load_history(conn, contract: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The newest k records/rows of the lane's output, oldest first, as ``{"at", "output_fp", "input_fp"}``.
+
+    Table identifiers come from the reviewed contract, are validated against a lower-case identifier pattern by
     :func:`lib.frozen_output.validate_contract`, and are quoted with psycopg2.sql.Identifier.
     """
+    if contract["source"].get("kind") == "jsonl_history":
+        return load_jsonl_history(contract)
     sql = _sql_mod()
     src = contract["source"]
     k = int(contract["k"])
@@ -136,19 +171,25 @@ def run(*, apply: bool, contracts: list[dict[str, Any]], conn=None,
     started = datetime.now(timezone.utc).isoformat()
     own = conn is None
     lanes: list[dict[str, Any]] = []
+    # A file-backed contract (jsonl_history) needs no session to be judged; the DB is still required to read a
+    # table contract and to escalate, so its absence is only fatal for those.
+    needs_db = any((c.get("source") or {}).get("kind") == "pg_rows" for c in contracts)
     try:
         if own:
             conn = _connect(read_only=not apply)
     except Exception as exc:  # noqa: BLE001 -- no DB is a verdict, not a crash
-        return {"lane_id": LANE_ID, "mode": "apply" if apply else "dry_run", "started_at": started,
-                "verdict": "UNVERIFIABLE", "error": type(exc).__name__, "lanes": [], "frozen": 0,
-                "escalated": [], "proposals": []}
+        if needs_db or apply:
+            return {"lane_id": LANE_ID, "mode": "apply" if apply else "dry_run", "started_at": started,
+                    "verdict": "UNVERIFIABLE", "error": type(exc).__name__, "lanes": [], "frozen": 0,
+                    "escalated": [], "proposals": []}
+        conn = None
     try:
         for c in contracts:
             try:
                 ev = fo.evaluate(load_history(conn, c), int(c["k"]))
             except Exception as exc:  # noqa: BLE001 -- one unreadable contract is that lane's verdict
-                conn.rollback()
+                if conn is not None:
+                    conn.rollback()
                 ev = {"k": c["k"], "runs": 0, "verdict": "UNVERIFIABLE", "reason": f"read_error:{type(exc).__name__}"}
             lanes.append({"lane_id": c["lane_id"], "health": fo.HEALTH[ev["verdict"]], **ev})
         frozen = [ln for ln in lanes if ln["verdict"] == "FROZEN"]
@@ -158,13 +199,14 @@ def run(*, apply: bool, contracts: list[dict[str, Any]], conn=None,
         suppressed: list[str] = []
         if apply:
             for ln in frozen:
-                if _recently_escalated(conn, ln["lane_id"]):
+                if conn is not None and _recently_escalated(conn, ln["lane_id"]):
                     suppressed.append(ln["lane_id"])
                 elif escalate(ln):
                     escalated.append(ln["lane_id"])
-            conn.commit()
+            if conn is not None:
+                conn.commit()
     finally:
-        if own:
+        if own and conn is not None:
             conn.close()
     if frozen:
         verdict = "DEGRADED"

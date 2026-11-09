@@ -95,7 +95,12 @@ ENV_OVERRIDE = "TRADEAI_CLAIM_OVERRIDE"
 ENFORCE_POLICY_VERSION = (20, 0, 0)
 STATUSES = ("active", "done", "abandoned")
 VENDORS_KNOWN = ("claude", "codex", "cursor")  # display hint only; any vendor string is accepted
-MAX_CLAIM_FILES_READ = 2000
+#: Safety cap on how many claim files one read parses. It must stay far above the number of files the board
+#: actually holds: the pre-commit gate answers "does this session's claim cover this file?" from this read, and
+#: claim ids begin with their creation time, so a cap that bites drops the NEWEST claims — every commit made
+#: under them is then refused as "no claim of this session covers". LQ-20261107-1645 hit it on 2026-11-09 with
+#: 2 003 files, my own active claim among the 5 that were never read; the truncation is still reported in ``bad``.
+MAX_CLAIM_FILES_READ = 50_000
 MAX_NOTE = 500
 MAX_TEXT = 300
 MAX_PATHS = 200

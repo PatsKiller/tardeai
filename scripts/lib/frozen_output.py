@@ -9,6 +9,9 @@ Contract (config/frozen_output_contracts.json, ``FrozenOutputContracts@v1``), on
 
     {"lane_id": ..., "k": 4, "source": {...}, "output_fields": [...], "input_fields": [...]}
 
+``source.kind`` is ``pg_rows`` (a lane's output table) or ``jsonl_history`` (a bounded per-run record the lane's
+writer appends, for an output written to a file rather than a table — LQ-20261107-1645's day-change ring).
+
 Verdicts, over the newest ``k`` runs (oldest first in ``history``):
 
 ==================  ==========================================================================================
@@ -35,7 +38,9 @@ HEALTH = {"OK": "OK", "STABLE_INPUTS": "OK", "FROZEN": "DEGRADED", "UNVERIFIABLE
 K_MIN, K_MAX = 3, 48
 _IDENT = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
 _PATH = re.compile(r"^[a-z_][a-z0-9_]{0,62}(\.[A-Za-z_][A-Za-z0-9_]{0,62}){0,3}$")
-SOURCE_KINDS = ("pg_rows",)
+#: `pg_rows`: a lane's output table. `jsonl_history`: a bounded per-run record its writer appends (LQ-20261107-1645
+#: — a file-written output whose runs leave no table row).
+SOURCE_KINDS = ("pg_rows", "jsonl_history")
 
 
 def dig(doc: Any, path: str) -> Any:
@@ -128,6 +133,18 @@ def validate_contract(c: Any) -> list[str]:
     src = c.get("source")
     if not isinstance(src, Mapping) or src.get("kind") not in SOURCE_KINDS:
         errs.append(f"{tag}: source.kind must be one of {SOURCE_KINDS}")
+    elif src["kind"] == "jsonl_history":
+        path = src.get("path")
+        if (not isinstance(path, str) or not path or path.startswith("/") or ".." in path.split("/")
+                or "\\" in path):
+            errs.append(f"{tag}: source.path must be a relative repo path with no '..'")
+        if not isinstance(src.get("time_column"), str) or not _IDENT.match(str(src["time_column"])):
+            errs.append(f"{tag}: source.time_column must be a lower-case record key")
+        if src.get("input_join") is not None:
+            errs.append(f"{tag}: source.input_join is only supported for pg_rows")
+        days = src.get("window_days", 14)
+        if not (isinstance(days, int) and not isinstance(days, bool) and 1 <= days <= 60):
+            errs.append(f"{tag}: source.window_days must be an int in [1, 60]")
     else:
         for key in ("table", "time_column"):
             if not isinstance(src.get(key), str) or not _IDENT.match(src[key]):

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "DAY_CHANGE_REFRESH_20261109",
+  "files": [
+    "tests/test_day_change_refresh_20261109.py"
+  ],
+  "anchor": "DAY_CHANGE_REFRESH_20261109",
+  "comment": [
+    "ANCHOR: DAY_CHANGE_REFRESH_20261109 — LQ-20261107-1645: the Today P&L read the same value at two marks minutes apart while the positions sync re-marked between them. holdings[].day_change was written only by the 15-minute repricer and the per-sync export carried it, so the total followed one lane's cadence. The export now re-prices each row from the mark it publishes (carrying every row it may not re-price, counted by reason), stamps the totals with the oldest contributing mark, flags a total that did not follow moved marks, and appends a bounded per-export ring that the frozen-output contract judges."
+  ]
+}

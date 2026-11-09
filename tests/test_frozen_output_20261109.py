@@ -34,6 +34,12 @@ def _runs(outputs, inputs):
     return [{"at": f"t{i}", "output_fp": o, "input_fp": n} for i, (o, n) in enumerate(zip(outputs, inputs))]
 
 
+def _pg_contracts():
+    """The table-backed contracts these cases judge. A file-backed contract added later (LQ-20261107-1645's
+    day-change ring) must not change what this suite's database cases read or how many lanes they count."""
+    return [c for c in mon.load_contracts() if c["source"].get("kind") == "pg_rows"]
+
+
 # ---------------------------------------------------------------- pure evaluator
 
 def test_verdicts_over_the_newest_k_runs():
@@ -69,7 +75,7 @@ def test_every_frozen_run_is_a_successful_count_and_still_frozen():
 
 
 def test_contract_validation_refuses_bad_contracts():
-    good = json.loads(CONTRACTS.read_text())["contracts"][0]
+    good = _pg_contracts()[0]
     assert fo.validate_contract(good) == []
     for mutate, needle in (
         (lambda c: c.update(k=2), "k must be"),
@@ -119,7 +125,7 @@ class _Conn:
 def test_dry_run_proposes_but_never_escalates_or_commits(monkeypatch):
     monkeypatch.setattr(mon, "load_history", lambda conn, c: _runs("aaaa", "abcd"))
     conn = _Conn()
-    out = mon.run(apply=False, contracts=mon.load_contracts(), conn=conn,
+    out = mon.run(apply=False, contracts=_pg_contracts(), conn=conn,
                   escalate=lambda ln: pytest.fail("dry run must not escalate"))
     assert out["verdict"] == "DEGRADED" and out["frozen"] == 1 and out["sends"] == 0
     assert out["proposals"] == [{"action": "rerun_with_fresh_inputs", "lane_id": "market-regime-classifier",
@@ -133,7 +139,7 @@ def test_one_unreadable_contract_is_that_lanes_verdict(monkeypatch):
             raise LookupError("relation missing")
         return _runs("abab", "abcd")
     monkeypatch.setattr(mon, "load_history", hist)
-    contracts = mon.load_contracts()
+    contracts = _pg_contracts()
     contracts = contracts + [{**contracts[0], "lane_id": "broken"}]
     conn = _Conn()
     out = mon.run(apply=False, contracts=contracts, conn=conn)
@@ -196,7 +202,7 @@ def _record(conn):
 
 
 def test_emulated_slot_frozen_rows_dry_run_then_apply_escalates_once(pg):
-    contracts = mon.load_contracts()
+    contracts = _pg_contracts()
     # same label and confidence across 4 runs; the joined indicator values move, the inputs blob does not
     _seed(pg, ["high_volatility"] * 4, [21.0, 22.5, 24.0, 23.1])
     dry = mon.run(apply=False, contracts=contracts, conn=pg, escalate=lambda ln: pytest.fail("dry run escalated"))
@@ -214,7 +220,7 @@ def test_emulated_slot_frozen_rows_dry_run_then_apply_escalates_once(pg):
 
 
 def test_emulated_slot_moving_output_and_stable_inputs_are_ok(pg):
-    contracts = mon.load_contracts()
+    contracts = _pg_contracts()
     _seed(pg, ["high_volatility", "risk_off", "high_volatility", "risk_off"], [21.0, 22.5, 24.0, 23.1])
     assert mon.run(apply=False, contracts=contracts, conn=pg)["lanes"][0]["verdict"] == "OK"
     with pg.cursor() as cur:

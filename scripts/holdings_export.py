@@ -24,6 +24,7 @@ runs it is a proposal in ops/systemd/ and is operator-installed (§17).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import contextlib
@@ -31,7 +32,7 @@ import os
 import re
 import secrets
 import sys
-from datetime import datetime, time as dtime, timezone
+from datetime import datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional
 from zoneinfo import ZoneInfo
@@ -297,6 +298,9 @@ DB_ENRICHMENT_ROW_FIELDS = (
 #:                 day_change_pct, gain_loss, gain_loss_pct, portfolio_pct, canonical_mark*, official_close*,
 #:                 analytical_*, mv_basis, implied_price_from_mv, price_source, price_field_role,
 #:                 current_price_is_alias_of, day_change_broker_check, updated_at
+#:                 EXCEPTION (LQ-20261107-1645): `day_change`/`day_change_pct` are recomputed by THIS writer
+#:                 from the mark each positions sync publishes, whenever that mark is newer than the one the
+#:                 carried value was computed from. See `_refresh_day_change`.
 #:   broker day P/L (schwab_position_sync): broker_day_pl, broker_day_pl_price, broker_day_pl_at
 #:   basis         (basis shield / tax-lot rebuild): cost_basis, cost_basis_source, basis_status, basis_partial,
 #:                 lots_shares, conflicted, conflict_reason, _rebuild_source, _basis_rebased_from
@@ -314,6 +318,20 @@ EXPORT_TOP_KEYS = (
     "portfolio_totals", "account_summaries", "sync_run_id", "data_as_of", "data_as_of_account",
     "positions_built_at", "positions_fingerprint", "export_provenance", "sync_run_finished_at",
 )
+#: Day-change bases this writer may recompute from its own marks (LQ-20261107-1645). The repricer writes
+#: `intraday_fills` on a row whose share count changed today (each lot earns from its own basis, not the prior
+#: close); any other basis owns its number. Those rows are CARRIED untouched and counted, never overwritten.
+RECOMPUTABLE_DAY_CHANGE_BASES = (None, "", "prev_close")
+#: Marks this writer produced itself. A value from another writer is first checked against the prev-close basis
+#: (`_refresh_day_change`), so a legacy intraday-fills row cannot be silently rebased.
+DAY_CHANGE_SOURCES = ("positions_sync_mark", "positions_sync_quote")
+#: A prior close older than this cannot describe today's move: one quote miss must not turn a day into a week.
+MAX_PRIOR_CLOSE_AGE_DAYS = 4
+#: The per-export day-change record the frozen-output contract reads. A bounded DIAGNOSTIC ring, not a store:
+#: the writer owns it, it is never read back into a document, and it is truncated to the last N lines by size.
+DAY_CHANGE_HISTORY = "day_change_history.jsonl"
+DAY_CHANGE_HISTORY_MAX_LINES = 2000
+DAY_CHANGE_HISTORY_MAX_BYTES = 2_500_000
 
 
 def _stamp(value: Any) -> datetime | None:
@@ -354,6 +372,88 @@ def prior_index(prior: Mapping[str, Any] | None) -> dict[tuple[str, str], dict[s
     return index
 
 
+def _carried_day_change_clock(row: Mapping[str, Any]) -> datetime | None:
+    """The newest clock that can describe the row's CARRIED day change.
+
+    `day_change_as_of` is this writer's own stamp; without one (a value from an older export or from the
+    repricer) the mark's ingest time is the clock the value was computed from. `updated_at` is NOT used: it is
+    stamped with the write time, not the value's, and would make any stale number look current.
+    """
+    stamps = [s for s in (_stamp(row.get(k)) for k in ("day_change_as_of", "canonical_mark_ingested_at"))
+              if s is not None]
+    return max(stamps) if stamps else None
+
+
+def _refresh_day_change(out: dict[str, Any], *, mark_price: float | None, mark_as_of: datetime | None,
+                        now: datetime) -> str:
+    """Recompute the row's day change from the mark this sync just published; return the outcome.
+
+    LQ-20261107-1645: the operator's Today total read the SAME value at two marks minutes apart, because the
+    15-minute repricer is the only writer of `holdings[].day_change` and this export CARRIED it while
+    `positions_current` re-marked. A day P&L must follow the marks, not a writer's cadence, so the writer that
+    publishes a mark also refreshes the number computed from it.
+
+    Every rule below REFUSES rather than guesses, and the refusal is counted by reason on
+    `export_provenance.day_change_rows` — an unmeasured row stays unmeasured, never a zero.
+    """
+    if out.get("is_cash"):
+        return "cash"
+    if out.get("day_change_basis") not in RECOMPUTABLE_DAY_CHANGE_BASES:
+        # `intraday_fills`: shares bought today earn from their fill, so the prior close is the wrong basis.
+        return "carried_other_basis"
+    shares = _number(out.get("shares"))
+    close = _number(out.get("prior_close"))
+    if not shares or shares <= 0 or close is None or close <= 0:
+        return "carried_no_prior_close"
+    quote_stamp = _stamp(out.get("quote_inserted_at")) or _stamp(out.get("price_bar_end"))
+    if quote_stamp is None or quote_stamp < now - timedelta(days=MAX_PRIOR_CLOSE_AGE_DAYS):
+        return "carried_stale_prior_close"
+    if mark_price is None or mark_price <= 0 or mark_as_of is None:
+        return "carried_no_mark"
+    carried_clock = _carried_day_change_clock(out)
+    if carried_clock is not None and mark_as_of <= carried_clock:
+        # The mark we hold is not newer than the one the value came from: the fresher writer keeps the number.
+        return "carried_older_mark"
+    stored = _number(out.get("day_change"))
+    current = _number(out.get("current_price"))
+    if stored is not None and out.get("day_change_source") not in DAY_CHANGE_SOURCES and current is not None:
+        # A value this writer did not produce: replace it only if it still describes a prev-close basis. An
+        # intraday-fills row from before the basis field existed must not be silently rebased.
+        if abs(stored - shares * (current - close)) > max(0.05, 0.002 * abs(stored)):
+            return "carried_other_basis"
+    value = round(shares * (mark_price - close), 2)
+    out.update({
+        "day_change": value,
+        "day_change_pct": round((mark_price - close) / close * 100.0, 4),
+        "day_change_source": "positions_sync_mark",
+        "day_change_as_of": _iso(mark_as_of),
+        "day_change_mark_price": round(mark_price, 6),
+        "day_change_prior_close": round(close, 4),
+        "day_change_prior_close_basis": out.get("reference_basis"),
+    })
+    # The repricer's broker check described the mark this value REPLACED; a stale "ok" beside a new number is a
+    # contradiction, so it goes and the broker's own dollar figure is compared instead.
+    out.pop("day_change_broker_check", None)
+    broker_pl = _number(out.get("broker_day_pl"))
+    if broker_pl is not None:
+        out["day_change_broker_pl_diff"] = round(value - broker_pl, 2)
+    else:
+        out.pop("day_change_broker_pl_diff", None)
+    return "recomputed"
+
+
+def _marks_fingerprint(holdings: list[dict[str, Any]]) -> str:
+    """Identity of the MARKS the day total was computed from — the prices, never their timestamps.
+
+    A timestamp would change on every sync and make a genuinely quiet book look like moving inputs; the
+    frozen-output contract asks whether the day total moved while the prices it is priced from did.
+    """
+    picked = [[h.get("account"), h.get("symbol"), h.get("is_cash"), _number(h.get("broker_position_price"))]
+              for h in holdings]
+    blob = json.dumps(picked, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
 def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime,
                     quotes: Mapping[str, Mapping[str, Any]] | None = None,
                     profiles: Mapping[str, Mapping[str, Any]] | None = None,
@@ -383,6 +483,7 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
     day_change_known = False
     newest: datetime | None = None
     carried_rows = 0
+    dc_outcomes: dict[str, int] = {}
     db_accounts: set[str] = set()
     for row in rows:
         # A partial book is worse than a refusal: a non-cash row with an unusable quantity or no market
@@ -483,13 +584,27 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
                                 if (not is_cash and market_value is not None and basis is not None) else None)
             out["gain_loss_pct"] = (round((market_value - basis) / basis * 100.0, 4)
                                     if (not is_cash and market_value is not None and basis) else None)
+        floored_day_change = False
         if "day_change" not in out:
             # Unknown is null, never a fabricated zero; cash cannot move.
             out["day_change"] = (0.0 if is_cash else
                                  (round(shares * (quote_price - prior_close), 2)
                                   if quote_price is not None and prior_close is not None else None))
             out["day_change_pct"] = 0.0 if is_cash else _number(quote.get("change_pct"))
+            if out["day_change"] is not None:
+                # The floor is this writer's own quote pair, so it is coherent with the sync that publishes it;
+                # the next sync re-prices it from the broker mark like any other row.
+                out["day_change_source"] = "positions_sync_quote"
+                floor_stamp = _stamp(out.get("quote_inserted_at")) or _stamp(out.get("price_bar_end"))
+                out["day_change_as_of"] = _iso(floor_stamp) if floor_stamp is not None else None
+                floored_day_change = True
         out.setdefault("updated_at", _iso(generated_at))
+        # The day change follows the marks (LQ-20261107-1645): the writer that publishes a mark re-prices the
+        # number computed from it, so the total can never lag the book by another lane's cadence.
+        outcome = ("floored" if floored_day_change else
+                   _refresh_day_change(out, mark_price=_number(out.get("broker_position_price")),
+                                       mark_as_of=stamp, now=generated_at))
+        dc_outcomes[outcome] = dc_outcomes.get(outcome, 0) + 1
         holdings.append(out)
         if market_value is not None:
             total_value += market_value
@@ -571,6 +686,10 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
             "carried_rows": carried_rows,
             "carried_top_keys": sorted(k for k in (prior or {}) if k not in EXPORT_TOP_KEYS),
             "prior_used": prior is not None,
+            # LQ-20261107-1645: how each row's day change was arrived at this pass, by outcome, and the identity
+            # of the marks it was priced from (the frozen-output contract's input fingerprint).
+            "day_change_rows": dict(sorted(dc_outcomes.items())),
+            "day_change_marks_fp": _marks_fingerprint(holdings),
         },
     })
     return document
@@ -603,6 +722,38 @@ def recalc_totals(document: dict[str, Any]) -> None:
         raise ExportError(f"totals refused: {exc.reason}") from exc
 
 
+def _stamp_day_change(document: dict[str, Any], prior: Mapping[str, Any] | None) -> None:
+    """Publish the day total's own clock, and the frozen guard that says when it stopped following its marks.
+
+    LQ-20261107-1645: `portfolio_totals.day_change_as_of` is the OLDEST mark behind the total — the total is
+    never fresher than its stalest contributor, so a conservative floor is the only honest reading. The guard
+    compares this pass's marks fingerprint and total with the previous document's: marks moved and the total
+    did not is the operator's incident, and it is named in `gaps` at the moment it happens instead of waiting
+    for a surface to notice.
+    """
+    holdings = document.get("holdings") or []
+    totals = document.setdefault("portfolio_totals", {})
+    stamps = [s for s in (_stamp(h.get("day_change_as_of")) for h in holdings
+                          if not h.get("is_cash") and h.get("day_change") is not None) if s is not None]
+    totals["day_change_as_of"] = _iso(min(stamps)) if stamps else None
+    prov = document.setdefault("export_provenance", {})
+    prior_doc = prior if isinstance(prior, Mapping) else {}
+    prior_prov = prior_doc.get("export_provenance")
+    prior_fp = (prior_prov or {}).get("day_change_marks_fp") if isinstance(prior_prov, Mapping) else None
+    fp = prov.get("day_change_marks_fp")
+    value = _number(totals.get("day_change"))
+    prior_totals = prior_doc.get("portfolio_totals")
+    prior_value = _number((prior_totals or {}).get("day_change")) if isinstance(prior_totals, Mapping) else None
+    frozen = bool(isinstance(prior_fp, str) and isinstance(fp, str) and prior_fp != fp
+                  and value is not None and prior_value is not None
+                  and round(value, 2) == round(prior_value, 2))
+    totals["day_change_frozen"] = frozen
+    if frozen:
+        document.setdefault("gaps", []).append(
+            f"day_change_frozen: the sync marks moved ({prior_fp} -> {fp}) and the day total did not "
+            f"(${value:,.2f}); the total is not following the marks it is priced from")
+
+
 def build_document(conn, *, prior: Mapping[str, Any] | None, now: datetime) -> tuple[dict[str, Any], dict[str, Any]]:
     """Every DB read, the carry and the totals — the render the export writes and the DB-first reader serves.
 
@@ -630,6 +781,7 @@ def build_document(conn, *, prior: Mapping[str, Any] | None, now: datetime) -> t
     document["sync_run_id"] = binding["run_id"]
     document["sync_run_finished_at"] = _iso(finished) if isinstance(finished, datetime) else finished
     recalc_totals(document)
+    _stamp_day_change(document, prior)
     return document, binding
 
 
@@ -818,6 +970,43 @@ def read_prior(store: Path | str) -> tuple[dict[str, Any] | None, str]:
     return doc, state
 
 
+def _append_day_change_history(path: Path, document: Mapping[str, Any], *, root: Path | str) -> dict[str, Any]:
+    """One record per export for the frozen-output contract (`frozen_output_contracts.json`, jsonl_history).
+
+    Never raises and never undoes the store write that just succeeded: a failed history append is reported in
+    the receipt, because the document is already the truth and the detector is the thing that is missing.
+    Bounded by construction — appended while under the byte cap, truncated to the last N lines when it is not.
+    """
+    totals = document.get("portfolio_totals") if isinstance(document.get("portfolio_totals"), Mapping) else {}
+    prov = document.get("export_provenance") if isinstance(document.get("export_provenance"), Mapping) else {}
+    entry = {
+        "at": totals.get("day_change_as_of") or document.get("generated_at"),
+        "exported_at": document.get("generated_at"),
+        "sync_run_id": document.get("sync_run_id"),
+        "day_change": totals.get("day_change"),
+        "day_change_pct": totals.get("day_change_pct"),
+        "marks_fp": prov.get("day_change_marks_fp"),
+        "measured_rows": totals.get("day_change_measured_rows"),
+        "frozen": totals.get("day_change_frozen"),
+    }
+    try:
+        resolved, resolved_root = Path(os.path.realpath(path)), Path(os.path.realpath(root))
+        if not resolved.is_relative_to(resolved_root):
+            return {"ok": False, "error": "history path escapes the state root"}
+        line = json.dumps(entry, sort_keys=True, default=str) + "\n"
+        fd = os.open(resolved, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, FILE_MODE)
+        try:
+            os.write(fd, line.encode("utf-8"))
+        finally:
+            os.close(fd)
+        if resolved.stat().st_size > DAY_CHANGE_HISTORY_MAX_BYTES:
+            tail = resolved.read_text(encoding="utf-8").splitlines()[-DAY_CHANGE_HISTORY_MAX_LINES:]
+            atomic_write(resolved, "\n".join(tail) + "\n", root=resolved_root)
+        return {"ok": True, "path": str(resolved), **entry}
+    except OSError as exc:  # a missing detector must never fail a store write that already succeeded
+        return {"ok": False, "error": type(exc).__name__}
+
+
 def export(*, conn, store: Path | str | None = None, backups: Path | str | None = None,
            state_root: Path | str | None = None, now: datetime | None = None,
            hourly_keep: int = DEFAULT_HOURLY_KEEP, daily_keep: int = DEFAULT_DAILY_KEEP,
@@ -851,17 +1040,23 @@ def export(*, conn, store: Path | str | None = None, backups: Path | str | None 
             return {"ok": True, "dry_run": True, "store": str(store), "bytes": len(text),
                     "holdings": len(document["holdings"]), "generated_at": document["generated_at"],
                     "sync_run_id": binding["run_id"], "prior_state": prior_state,
-                    "carried_rows": document["export_provenance"]["carried_rows"]}
+                    "carried_rows": document["export_provenance"]["carried_rows"],
+                    "day_change_rows": document["export_provenance"].get("day_change_rows"),
+                    "day_change_frozen": document["portfolio_totals"].get("day_change_frozen")}
         # Backup first: if the backup cannot be written or read back, the current file is never replaced.
         retention = write_backups(text, backups, now=now, root=root_hint, hourly_keep=hourly_keep,
                                   daily_keep=daily_keep, size_cap_bytes=size_cap_bytes)
         if not Path(retention["hourly"]).exists() or Path(retention["hourly"]).stat().st_size == 0:
             raise ExportError("backup was not durably written; the current store was left untouched")
         atomic_write(store, text, root=root_hint)
+        history = _append_day_change_history(Path(store).parent / DAY_CHANGE_HISTORY, document, root=root_hint)
     return {"ok": True, "store": str(store), "bytes": len(text),
             "holdings": len(document["holdings"]), "generated_at": document["generated_at"],
             "sync_run_id": binding["run_id"], "prior_state": prior_state,
             "carried_rows": document["export_provenance"]["carried_rows"],
+            "day_change_rows": document["export_provenance"].get("day_change_rows"),
+            "day_change_frozen": document["portfolio_totals"].get("day_change_frozen"),
+            "day_change_history": history,
             "retention": retention}
 
 

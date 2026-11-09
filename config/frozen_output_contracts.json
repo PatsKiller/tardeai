@@ -1,7 +1,24 @@
 {
   "schema": "FrozenOutputContracts@v1",
-  "description": "LQ-20261107-1613: per-lane frozen-output contracts judged by scripts/frozen_output_monitor.py (lane frozen-output-monitor). A lane is FROZEN (health DEGRADED) when its output fingerprint is identical across its newest k runs while its input fingerprint took two or more values. Validation: scripts/lib/frozen_output.py validate_document.",
+  "description": "LQ-20261107-1613: per-lane frozen-output contracts judged by scripts/frozen_output_monitor.py (lane frozen-output-monitor). A lane is FROZEN (health DEGRADED) when its output fingerprint is identical across its newest k runs while its input fingerprint took two or more values. Validation: scripts/lib/frozen_output.py validate_document. LQ-20261107-1645 adds source.kind jsonl_history: a lane whose output is a file appends one bounded record per run (scripts/holdings_export.py writes the day-change ring under the portfolio state root).",
   "contracts": [
+    {
+      "lane_id": "positions-sync",
+      "k": 3,
+      "source": {
+        "kind": "jsonl_history",
+        "path": "data/portfolios/state/day_change_history.jsonl",
+        "time_column": "at",
+        "window_days": 14
+      },
+      "output_fields": [
+        "day_change"
+      ],
+      "input_fields": [
+        "marks_fp"
+      ],
+      "why": "LQ-20261107-1645: the operator's Today P&L read the same value at two marks minutes apart while positions_current re-marked between them. holdings[].day_change was written by the 15-minute repricer and the per-sync export carried it, so the total was a function of one lane's cadence rather than of the marks. Three consecutive syncs whose price fingerprint moved while the total did not is the same fault returning: the export now recomputes the total from its own marks, so a FROZEN verdict here means that recompute stopped following them again and the surfaces would be labelling a stale figure as current."
+    },
     {
       "lane_id": "market-regime-classifier",
       "k": 4,

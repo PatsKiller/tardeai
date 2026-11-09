@@ -892,6 +892,7 @@ def _apply_to_holdings(
                 else:
                     h["day_change"] = None
                     h["day_change_pct"] = None
+                _clear_day_change_provenance(h)
                 _sync_legacy_price_alias(h, new_price)
                 updated += 1
         elif sym in live_prices and shares > 0:
@@ -929,11 +930,24 @@ def _apply_to_holdings(
             else:
                 h.pop("day_change_broker_check", None)
             h["day_change_pct"] = round(chg_pct, 4)
+            _clear_day_change_provenance(h)
             h["price_source"]   = src
             _sync_legacy_price_alias(h, new_price)
             updated += 1
     _annotate_canonical_quotes(holdings)
     return updated
+
+
+def _clear_day_change_provenance(h: Dict) -> None:
+    """This pass is now the writer of the row's day change, so the sync's stamp no longer describes it.
+
+    LQ-20261107-1645: holdings_export re-prices `day_change` from the mark each positions sync publishes and
+    stamps `day_change_as_of`/`day_change_source`. Once the repricer recomputes the value from its own mark,
+    keeping that stamp would date the number by a mark it no longer came from.
+    """
+    for key in ("day_change_as_of", "day_change_source", "day_change_mark_price", "day_change_prior_close",
+                "day_change_prior_close_basis"):
+        h.pop(key, None)
 
 
 def _sync_legacy_price_alias(h: Dict, new_price: float) -> None:
