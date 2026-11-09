@@ -134,14 +134,14 @@ def source_status_for(pin: Any, main_sha: Any, *, repo: Any, run: Any = None) ->
     if run is None:
         import subprocess
 
-        def run(cmd):  # noqa: ANN001, ANN202 - the injectable runner
+        def run(cmd):  # noqa: ANN001, ANN202 -- the injectable test runner has no annotation
             try:
                 return subprocess.run(cmd, capture_output=True, timeout=15).returncode
             except (OSError, ValueError, subprocess.SubprocessError):
                 return -1
     try:
         rc = int(run(["git", "-C", str(repo), "merge-base", "--is-ancestor", main_s, pin_s]))
-    except Exception:  # noqa: BLE001 - an unrunnable check must not invent an alarm
+    except Exception:  # noqa: BLE001 -- an unrunnable check must not invent an alarm
         rc = -1
     return "DEGRADED_STALE_SOURCE" if rc == 1 else "ok"
 

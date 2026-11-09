@@ -367,8 +367,8 @@ def collect_coverage_stall(
     research_error_rate = None
     if research_leg is not None:
         try:
-            attempts = int(research_leg.get("attempts_24h") or 0)
-            rate = float(research_leg.get("error_rate_24h") or 0.0)
+            attempts = int(research_leg.get("attempts_24h") or 0)  # nosemgrep: tq-py-missing-as-zero -- a missing count must not hold the alarm
+            rate = float(research_leg.get("error_rate_24h") or 0.0)  # nosemgrep: tq-py-missing-as-zero -- same: unknown reads as healthy, so the stall still fires
         except (AttributeError, TypeError, ValueError):
             attempts, rate = 0, 0.0
         research_error_rate = rate
