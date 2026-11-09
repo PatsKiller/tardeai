@@ -29,6 +29,8 @@ def _f(v):
 
 
 LANE_ID = "market-regime-classifier"
+CONFIDENCE_FLOOR = 6
+VIX_TO_VOL_STATE = {"extreme": "high_vol", "high": "high_vol", "normal": "neutral", "low": "low_vol"}
 
 
 def _uid(p="RS_"):
@@ -84,25 +86,16 @@ def classify(conn, snapshot_id=None):
     # longer scores and breadth_state says so (P0-T1). Real breadth arrives with the Market Risk Engine.
     breadth = indicators.get("scan_breadth_24h", {})
 
-    # Score momentum
-    score_avg = indicators.get("scan_score_avg", {})
-    if score_avg.get("signal") == "bullish":
-        scores["risk_on_trend"] += 2
-        scores["broad_momentum"] += 1
-    elif score_avg.get("signal") == "bearish":
-        scores["risk_off"] += 2
+    # Scanner-population proxies are CONTEXT, not score (LQ-20261107-1613). `scan_score_avg` and
+    # `gap_volatility_proxy` average `trade_ai_scans`: the symbols the scanner selected (gappers), not the
+    # market. Once the broad scan runs stopped (after 2026-10-29) avg |gap| sat above 3.0 and avg score below 40
+    # on every run by construction, adding +3 high_volatility and +2 risk_off every time, so the regime became a
+    # two-state function of the VIX bucket. They stay in `inputs` for the record and no longer score.
 
-    # Volatility
-    gap_vol = indicators.get("gap_volatility_proxy", {})
-    if gap_vol.get("signal") == "high_vol":
-        scores["high_volatility"] += 3
-    elif gap_vol.get("signal") == "low_vol":
-        scores["low_volatility_grind"] += 2
-
-    # VIX
+    # VIX level: the canonical market volatility gauge.
     vix = indicators.get("vix_close", {})
     if vix.get("signal") == "extreme":
-        scores["high_volatility"] += 3
+        scores["high_volatility"] += 4
         scores["risk_off"] += 2
     elif vix.get("signal") == "high":
         scores["high_volatility"] += 2
@@ -115,9 +108,22 @@ def classify(conn, snapshot_id=None):
     elif not vix:
         missing.append("no_vix_data")
 
-    # VIX coherence guard: VIX is the canonical volatility gauge. Don't declare a "high_volatility"
-    # regime off a gap proxy alone while the fear gauge is calm (low/normal) — that reads as a
-    # contradiction to the operator (e.g. "high volatility" with VIX ~16). Dampen the gap-only signal.
+    # VIX term structure (collected since LQ-969, unscored until LQ-1613). Contango is the resting state and
+    # does not score; an inversion is stress: VIX/VIX3M > 1 (backwardation) is risk-off, VIX9D/VIX > 1 is a
+    # short-dated volatility spike.
+    vix3m_ratio = indicators.get("vix_vix3m_ratio", {})
+    vix9d_ratio = indicators.get("vix9d_vix_ratio", {})
+    if vix3m_ratio.get("signal") == "inverted":
+        scores["risk_off"] += 2
+        scores["high_volatility"] += 1
+    if vix9d_ratio.get("signal") == "inverted":
+        scores["high_volatility"] += 2
+    partial = []
+    if not vix3m_ratio and not vix9d_ratio:
+        partial.append("no_term_structure")
+
+    # VIX coherence guard: don't declare "high_volatility" off a term-structure kink alone while the fear gauge
+    # itself is calm (low/normal) — that reads as a contradiction to the operator.
     if vix.get("signal") in ("low", "normal") and scores["high_volatility"] > 0:
         scores["high_volatility"] = max(0, scores["high_volatility"] - 3)
         if vix.get("signal") == "low":
@@ -141,13 +147,18 @@ def classify(conn, snapshot_id=None):
 
     # Pick regime
     regime = max(scores, key=scores.get)
-    total = sum(scores.values()) or 1
-    confidence = round(scores[regime] / total, 2) if total > 0 else 0
+    ranked = sorted(scores.values(), reverse=True)
+    # Confidence is the margin over the runner-up, over at least CONFIDENCE_FLOOR points of evidence: a near-tie
+    # between two regimes is low confidence, and a single small score is not certainty (top/total read 0.62 for
+    # a 5-vs-3 split and 1.0 for one point).
+    confidence = round((ranked[0] - ranked[1]) / max(sum(ranked), CONFIDENCE_FLOOR), 2)
     stale = len(missing) > 2 or "insufficient_indicators" in missing
+    missing.extend(partial)  # named, but a missing context leg does not make the snapshot stale
 
-    # States
-    vol_state = gap_vol.get("signal", "unknown")
-    trend_state = score_avg.get("signal", "unknown")
+    # States. Volatility follows the VIX bucket; trend and breadth have no market-wide source yet and say so
+    # instead of echoing the scanner's own population (LQ-1613).
+    vol_state = VIX_TO_VOL_STATE.get(vix.get("signal"), "unknown")
+    trend_state = "not_measured"
     breadth_state = "not_measured"  # scan activity is not breadth; see above
 
     summary = f"Regime: {regime} (conf={confidence:.0%})"
