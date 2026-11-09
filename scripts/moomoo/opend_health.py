@@ -256,7 +256,11 @@ def main() -> int:
 
     out = probe()
     ok = bool(out.get("ok"))
-    streak = int(out.get("fail_streak") or 0)
+    raw_streak = out.get("fail_streak")
+    try:
+        streak = int(raw_streak) if raw_streak is not None else None
+    except (TypeError, ValueError):
+        streak = None
     STATE.parent.mkdir(parents=True, exist_ok=True)
     STATE.write_text(json.dumps(out, indent=2))
     print(json.dumps(out, indent=2))
