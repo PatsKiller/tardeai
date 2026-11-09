@@ -1,6 +1,6 @@
 {
   "schema": "CiGate@v1",
-  "name": "executor_effect_claim_retry_lq1349_20261109",
+  "name": "EXECUTOR_EFFECT_CLAIM_RETRY_LQ1349_20261109",
   "files": [
     "tests/test_executor_effect_claim_retry_lq1349_20261109.py"
   ],
