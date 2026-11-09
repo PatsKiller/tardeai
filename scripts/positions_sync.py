@@ -273,13 +273,32 @@ def fill_missing_asset_type(plan: dict, classes: dict) -> int:
     return n
 
 
+#: LQ-20261107-1689: `asset_intelligence_history` missed XLV entirely (81-symbol universe, no XLV), so a real ETF
+#: the operator had just bought sat NULL on every sync run — and its own classifier, which never reads `industry`,
+#: would have written "stock" for XLV. yfinance's quoteType is the instrument-type source of truth the repo already
+#: trusts (scripts/classify_instruments.py:157-165) and is cached in symbol_profiles.quote_type, so read that first
+#: and keep the history as the fallback for symbols it does not cover. An unmapped quote type (INDEX, CURRENCY,
+#: NULL) yields no entry, so the position stays NULL (unknown) — never a guess.
+_QUOTE_TYPE_TO_CLASS = {"EQUITY": "stock", "ETF": "etf", "MUTUALFUND": "mutual_fund"}
+
+
 def load_asset_classes(cur, symbols) -> dict:
     syms = sorted({str(s).upper() for s in symbols if s})
     if not syms:
         return {}
-    cur.execute("SELECT DISTINCT ON (upper(symbol)) upper(symbol), asset_type FROM asset_intelligence_history "
-                "WHERE upper(symbol) = ANY(%s) ORDER BY upper(symbol), as_of DESC", (syms,))
-    return {r[0]: r[1] for r in cur.fetchall()}
+    out: dict = {}
+    cur.execute("SELECT DISTINCT ON (upper(symbol)) upper(symbol), quote_type FROM symbol_profiles "
+                "WHERE upper(symbol) = ANY(%s) ORDER BY upper(symbol), updated_at DESC NULLS LAST", (syms,))
+    for sym, qt in cur.fetchall():
+        cls = _QUOTE_TYPE_TO_CLASS.get(str(qt or "").upper())
+        if cls:
+            out[sym] = cls
+    rest = [s for s in syms if s not in out]
+    if rest:
+        cur.execute("SELECT DISTINCT ON (upper(symbol)) upper(symbol), asset_type FROM asset_intelligence_history "
+                    "WHERE upper(symbol) = ANY(%s) ORDER BY upper(symbol), as_of DESC", (rest,))
+        out.update({r[0]: r[1] for r in cur.fetchall()})
+    return out
 
 
 def lot_checks(current: list[dict], open_lots: list[dict], qty_tol: float, basis_tol: float) -> list[dict]:

@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "rotate_filled_tranche_1689_20261109",
+  "files": [
+    "tests/test_rotate_filled_tranche_1689_20261109.py"
+  ],
+  "anchor": "ROTATE_FILLED_TRANCHE_1689_20261109",
+  "comment": [
+    "ANCHOR: ROTATE_FILLED_TRANCHE_1689_20261109 — the Home rotation card knows what the book already holds",
+    "(LQ-20261107-1689). A position of >=90% of the planned tranche-1 shares marks that tranche FILLED with the held",
+    "shares/avg/date, the cash-after line stops deducting a tranche that was already paid for, and the next step is",
+    "Tranche 2 after the CIO's own catalyst label. No fill is claimed without a real held quantity and a live share count."
+  ]
+}

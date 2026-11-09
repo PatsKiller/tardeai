@@ -44,3 +44,43 @@ def test_analyze_concentration_with_null_asset_types():
                 {"symbol": "YYYY", "asset_type": None, "market_value": 500.0, "is_fund": False}]
     pa.compute_etf_lookathrough(holdings, {})
     assert pa.analyze_concentration(holdings, {}) is not None
+
+
+# --- LQ-20261107-1689: a just-bought ETF the history store never saw -----------------------
+class _Cur:
+    """A cursor whose two reads answer from fixed tables; it records every statement and bind it was asked."""
+
+    def __init__(self, profiles, history):
+        self.profiles, self.history, self.sql, self.binds = profiles, history, [], []
+
+    def execute(self, sql, params=None):
+        self.sql.append(sql)
+        self.binds.append(tuple(params[0]) if params else ())
+        self._rows = self.profiles if "symbol_profiles" in sql else self.history
+
+    def fetchall(self):
+        return list(self._rows)
+
+
+def test_a_new_etfs_quote_type_fills_it_when_the_history_has_never_seen_it():
+    # The live case: XLV bought 2026-11-09, asset_intelligence_history has no XLV row at all, but
+    # symbol_profiles carries yfinance's quote_type=ETF. Before this the class was absent and the row stayed NULL.
+    cur = _Cur(profiles=[("XLV", "ETF")], history=[])
+    assert ps.load_asset_classes(cur, ["XLV"]) == {"XLV": "etf"}
+    plan = {"snapshots": [], "current": [{"symbol": "XLV", "asset_type": None}]}
+    assert ps.fill_missing_asset_type(plan, {"XLV": "etf"}) == 1
+    assert plan["current"][0]["asset_type"] == "ETF"
+
+
+def test_history_is_the_fallback_for_symbols_the_profile_does_not_type():
+    cur = _Cur(profiles=[("PFE", None)], history=[("PFE", "stock")])
+    assert ps.load_asset_classes(cur, ["PFE", "XLV"]) == {"PFE": "stock"}
+    # The history read is asked only for what the profile could not answer, never for the whole list.
+    assert cur.binds[1] == ("PFE", "XLV")
+
+
+def test_an_unmapped_quote_type_stays_unknown():
+    # INDEX/CURRENCY/NULL are not position classes: no entry, so the position stays NULL rather than guessed.
+    cur = _Cur(profiles=[("SPX", "INDEX"), ("EURUSD", "CURRENCY")], history=[])
+    assert ps.load_asset_classes(cur, ["SPX", "EURUSD", "ZZZZ"]) == {}
+    assert cur.binds[1] == ("EURUSD", "SPX", "ZZZZ") and cur.history == []  # the history had nothing either

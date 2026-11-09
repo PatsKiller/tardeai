@@ -26,6 +26,11 @@ import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Iterable, Mapping
 
+try:  # one definition of "cash row" shared with the rotation engine (LQ-20261107-1688/1689)
+    from lib.holdings_universe import is_cash_row as _is_cash_row
+except ImportError:  # this module imported as scripts.lib.home_cio_card
+    from .holdings_universe import is_cash_row as _is_cash_row
+
 SCHEMA = "HomeCioCard@v1"
 
 #: Proposed rotation sizing rule (v5 mockup, "proposed, needs your OK"): target % of book by sector state.
@@ -35,6 +40,10 @@ PROPOSED_TRANCHES = (0.30, 0.30, 0.40)
 PROPOSED_HEDGE_SHARE = 0.5
 #: Defensive groups the rotate column considers (market-risk group keys).
 DEFENSIVE_KEYS = ("healthcare", "staples", "utilities")
+#: A holding of at least this share of the planned tranche-1 shares is that tranche already bought (operator
+#: 2026-11-09, LQ-20261107-1689: a held position of "~90% of the tranche" marks tranche 1 FILLED). A rounding's worth
+#: of shares short is a fill; a fifth of the tranche short is not. Never applied without a live share count.
+FILLED_FRACTION = 0.90
 #: Hedge candidates by what is stressed: tech-led stress → Nasdaq-100 inverse.
 TECH_KEYS = {"tech", "semis", "ai_basket"}
 ACTIONABLE = ("RAISE", "ADD_STOP", "LOWER", "TIGHTEN")
@@ -379,6 +388,62 @@ def tranche_rows(target_usd: float | None, price: float | None) -> list[dict]:
     return rows
 
 
+def tranche1_filled(held_shares: float | None, tranche1_shares: float | None) -> bool:
+    """Whether the book already holds the planned tranche-1 shares (LQ-20261107-1689).
+
+    Both numbers must be real: an unknown holding is not a fill, and a tranche with no live price has no share count
+    to be filled. A quantity of zero is no holding, and a tranche of zero shares holds nothing to compare against.
+    """
+    if held_shares is None or tranche1_shares is None:
+        return False
+    if held_shares != held_shares or tranche1_shares != tranche1_shares:  # NaN
+        return False
+    if tranche1_shares <= 0 or held_shares <= 0:
+        return False
+    return held_shares >= FILLED_FRACTION * tranche1_shares
+
+
+def _held_by_symbol(holdings: Iterable[Mapping] | None) -> dict[str, dict]:
+    """{SYMBOL: {shares, avg_cost, as_of, source_id}} from the holdings-store rows the API already joins.
+
+    Cash rows are not holdings. A symbol held in several accounts is one holding: the shares are summed, the average
+    cost is the basis-weighted one when every row carries a basis, and ``as_of`` is the NEWEST row's instant (compared
+    as instants, never as text — two stamps with different UTC offsets sort wrongly as strings). A row with no
+    ``as_of`` cannot be shown as a fact and is left out; the card then reports no holding rather than an undated one.
+    """
+    acc: dict[str, dict] = {}
+    for r in holdings or []:
+        if not isinstance(r, Mapping) or not r.get("symbol") or _is_cash_row(dict(r)):
+            continue
+        q = _num(r.get("shares") if r.get("shares") is not None else r.get("quantity"))
+        if q is None or q <= 0:
+            continue
+        at = _parse_ts(r.get("as_of"))
+        if at is None:
+            continue
+        sym = str(r["symbol"]).upper()
+        rec = acc.setdefault(sym, {"shares": 0.0, "basis": 0.0, "basis_known": True, "at": None, "raw": None, "run": None})
+        rec["shares"] += q
+        basis = _num(r.get("cost_basis_total"))
+        if basis is None:
+            rec["basis_known"] = False
+        else:
+            rec["basis"] += basis
+        if rec["at"] is None or at > rec["at"]:
+            rec["at"], rec["raw"] = at, r.get("as_of")
+            rec["run"] = r.get("sync_run_id") if r.get("sync_run_id") is not None else rec["run"]
+    out: dict[str, dict] = {}
+    for sym, rec in acc.items():
+        costs = rec["shares"]
+        out[sym] = {
+            "shares": round(costs, 4),
+            "avg_cost": round(rec["basis"] / costs, 2) if (rec["basis_known"] and costs) else None,
+            "as_of": rec["raw"],
+            "source_id": f"positions_current:sync_run_{rec['run']}" if rec["run"] is not None else "positions_current",
+        }
+    return out
+
+
 def _quote_time(value: str | None) -> datetime | None:
     """An aware ISO instant, or None when the string does not carry one.
 
@@ -396,10 +461,16 @@ def _quote_time(value: str | None) -> datetime | None:
 
 
 def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dict | None,
-            quotes: Mapping[str, Mapping] | None = None) -> dict | None:
+            quotes: Mapping[str, Mapping] | None = None,
+            held: Mapping[str, Mapping] | None = None) -> dict | None:
     """``quotes``: {SYMBOL: {price, as_of, source}} from the intraday quote tier (Finviz ≤30 min, else a fresh
     broker row — api_v2._fresh_price_batch). The daily bars still supply the 20-session average and the last close as
-    context; they are never a sizing price (operator 2026-11-09: the card sized off the prior close)."""
+    context; they are never a sizing price (operator 2026-11-09: the card sized off the prior close).
+
+    ``held``: {SYMBOL: {shares, avg_cost, as_of, source_id}} from ``_held_by_symbol``. A position of at least
+    ``FILLED_FRACTION`` of the planned tranche-1 shares marks that tranche FILLED (LQ-20261107-1689): the card then
+    reports the shares, average cost and date actually held, and the plan stops proposing — and stops deducting — the
+    money already spent."""
     heat = {h.get("key"): h for h in mr.get("heatmap") or [] if isinstance(h, Mapping)}
     groups = {g.get("key"): g for g in (mr.get("sectors") or {}).get("groups") or [] if isinstance(g, Mapping)}
     lead = ((mr.get("leadership") or {}).get("groups") or {})
@@ -452,6 +523,19 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
                 "priced": price is not None,
                 "proposed": True,
             }
+            # The book's own position, and whether it already covers the tranche. Only a group that offers a tranche
+            # can have one filled: a non-qualifying group shows a target, not a tranche.
+            hq = (held or {}).get(str(sym).upper()) if sym else None
+            if hq and t1:
+                t1_shares = tr[0]["shares"]
+                hs = _num(hq.get("shares"))
+                h_rec = item(hq.get("source_id") or "positions_current", hq.get("as_of"),
+                             shares=hs, avg_cost=hq.get("avg_cost"),
+                             pct_of_tranche1=(round(min(100.0, hs / t1_shares * 100.0), 1)
+                                              if (hs is not None and t1_shares) else None),
+                             filled=tranche1_filled(hs, t1_shares))
+                if h_rec:
+                    c["held"] = h_rec
         cands.append(c)
     if not cands:
         return None
@@ -459,10 +543,16 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
     cands.sort(key=lambda c: (order.get(c.get("leadership") if c.get("leadership") == "LEADERSHIP_CONFIRMED" else c["state"], 3), -(c.get("rs20") or 0)))
     plan = None
     if advice_ok and total:
-        t1_total = sum((c.get("proposed") or {}).get("tranche1_usd") or 0 for c in cands)
+        offering = [c for c in cands if (c.get("proposed") or {}).get("tranche1_usd")]
+        t1_total = sum((c.get("proposed") or {}).get("tranche1_usd") or 0 for c in offering)
         if t1_total:
+            # A tranche the book already bought is not money still to be spent: only the UNFILLED tranches come out of
+            # cash (LQ-20261107-1689 — the card used to deduct the filled tranche a second time).
+            t1_open = sum((c.get("proposed") or {}).get("tranche1_usd") or 0
+                          for c in offering if not (c.get("held") or {}).get("filled"))
             plan = {"proposed": True, "tranche1_usd": t1_total, "tranche1_pct_book": round(t1_total / total * 100, 1),
-                    "cash_after_pct": round((cash - t1_total) / total * 100, 1) if cash is not None else None,
+                    "tranche1_filled": bool(offering) and all((c.get("held") or {}).get("filled") is True for c in offering),
+                    "cash_after_pct": round((cash - t1_open) / total * 100, 1) if cash is not None else None,
                     "tranche2_after": (catalyst or {}).get("label"), "tranche3_when": "market tier YELLOW or better",
                     "split": list(PROPOSED_TRANCHES),
                     "rule": "target 4% of book if leadership confirmed, 3% if resilient, 2% if neutral (starts once resilient); staged 30/30/40"}
@@ -533,7 +623,8 @@ def _stopped_out(mr: Mapping) -> list:
 
 
 def build_panel(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, actions: list, catalyst: dict | None,
-                quotes: Mapping[str, Mapping] | None = None) -> dict:
+                quotes: Mapping[str, Mapping] | None = None,
+                holdings: Iterable[Mapping] | None = None) -> dict:
     sid, at = f"market_risk:{mr.get('as_of')}", mr.get("as_of")
     be = mr.get("book_exposure") or {}
     bsid, bat = f"book_exposure:{be.get('as_of')}", be.get("as_of") or at
@@ -560,7 +651,7 @@ def build_panel(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, actions: 
         },
         "protect": _protect(mr, actions) if advice_ok else [],
         "hedge": _hedge(mr, advice_ok),
-        "rotate": _rotate(mr, bars, advice_ok, catalyst, quotes),
+        "rotate": _rotate(mr, bars, advice_ok, catalyst, quotes, _held_by_symbol(holdings)),
         "positions": _positions(mr),
         "stopped_out": _stopped_out(mr),
     }
@@ -633,7 +724,7 @@ def build_notes(mr: Mapping, defense: Mapping | None, momentum: Mapping | None, 
 def build(mr: Mapping | None, since_close: Mapping | None, *, defense: Mapping | None = None,
           momentum: Mapping | None = None, bars: Iterable[Mapping] | None = None,
           bars_meta: Mapping | None = None, quotes: Mapping[str, Mapping] | None = None,
-          now: datetime | None = None) -> dict:
+          holdings: Iterable[Mapping] | None = None, now: datetime | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
     bars = list(bars or [])
     ok, why = advice_gate(mr, since_close)
@@ -647,7 +738,7 @@ def build(mr: Mapping | None, since_close: Mapping | None, *, defense: Mapping |
         return out
     card = build_card(mr, since_close, now, ok)
     out["card"] = card
-    out["panel"] = build_panel(mr, bars, ok, card["actions"], card.get("catalyst"), quotes)
+    out["panel"] = build_panel(mr, bars, ok, card["actions"], card.get("catalyst"), quotes, holdings)
     out["notes"] = build_notes(mr, defense, momentum, bars)
     return out
 
