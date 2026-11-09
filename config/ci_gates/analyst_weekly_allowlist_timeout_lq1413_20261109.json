@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "analyst_weekly_allowlist_timeout_lq1413_20261109",
+  "files": [
+    "tests/test_analyst_weekly_allowlist_timeout_lq1413_20261109.py"
+  ],
+  "anchor": "ANALYST_WEEKLY_ALLOWLIST_TIMEOUT_LQ1413_20261109",
+  "comment": [
+    "ANCHOR: ANALYST_WEEKLY_ALLOWLIST_TIMEOUT_LQ1413_20261109 — LQ-20261107-1413. generate-analyst-reports-autonomous-weekly timeout_s is 21600 (6h). The 2026-11-08 cron run took about 2h25m and the old 1800s bound could not finish it. Cron line 577 was retired 2026-11-09 00:02 ET. The bound stays under one week so it ends before the next Sunday 21:15 ET fire."
+  ]
+}

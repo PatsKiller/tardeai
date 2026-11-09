@@ -5677,14 +5677,14 @@
     },
     {
       "lane_id": "generate-analyst-reports-autonomous-weekly",
-      "source": "15 21 * * 0; cd $PROJ && flock -n /tmp/analyst_reports_weekly.lock $PY scripts/generate_analyst_reports_autonomous.py --mode weekly; onboarded 2026-11-07 (overnight wave LQ-20261107-24; the script has its own --dry-run) | CW0 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv ['--mode', 'weekly'], lock = the cron flock lock /tmp/analyst_reports_weekly.lock (shared: the lock proves no double run).",
+      "source": "15 21 * * 0; cd $PROJ && flock -n /tmp/analyst_reports_weekly.lock $PY scripts/generate_analyst_reports_autonomous.py --mode weekly; onboarded 2026-11-07 (overnight wave LQ-20261107-24; the script has its own --dry-run) | CW0 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv ['--mode', 'weekly'], lock = the cron flock lock /tmp/analyst_reports_weekly.lock (shared: the lock proves no double run). | LQ-20261107-1413 (2026-11-09): timeout_s 1800->21600. The 2026-11-08 cron run took about 2h25m, so 1800s killed it. Cron line 577 was retired 2026-11-09 00:02 ET; n8n is the only scheduler. 21600s is 6h, inside the gap before the next Sunday 21:15 ET fire.",
       "command": [
         "$PY",
         "scripts/generate_analyst_reports_autonomous.py"
       ],
       "lock": "/tmp/analyst_reports_weekly.lock",
       "lock_kind": "flock",
-      "timeout_s": 1800,
+      "timeout_s": 21600,
       "dry_run_arg": [
         "--mode",
         "weekly",
