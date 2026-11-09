@@ -1,0 +1,38 @@
+{
+  "schema": "FinvizCookieFeatures@v1",
+  "as_of": "2026-11-08",
+  "authority": "READ_ONLY_ADVISORY",
+  "note": "One source of truth for what a dead FINVIZ_COOKIE costs while FINVIZ_API_TOKEN works (LQ-20261107-1289 item 4; extends LQ-20261107-1287 grok-b's audit). Every row is a call site that FETCHES with the cookie and has no working token substitute in the code as it stands. A call site with a working token fallback (export?s=..., grp_export.ashx, news_export.ashx, export?v=171) is deliberately absent: with the token alive it is not degraded. The banner and the operator alert both read this file; scripts/lib/finviz_cookie_features.py is the reader and tests/test_finviz_cookie_features_lq1289_20261108.py pins the evidence strings so this list cannot drift silently.",
+  "features": [
+    {
+      "id": "position_technicals",
+      "label": "RSI/SMA/ATR for held positions",
+      "detail": "Tier 2 scrapes elite.finviz.com/quote.ashx per ticker; the token export can serve view 171 but this path does not use it",
+      "evidence": [
+        "scripts/portfolio_technical.py:_finviz_cookie_batch",
+        "scripts/portfolio_technical.py:quote.ashx?t="
+      ],
+      "impact": "position technicals fall back to the stale snapshot; RSI/SMA/ATR alert triggers are suppressed"
+    },
+    {
+      "id": "options_universe_completeness",
+      "label": "optionable-universe completeness",
+      "detail": "screener.ashx HTML carries the declared total; the token export returns symbols only, so completeness cannot be proven",
+      "evidence": [
+        "scripts/lib/options_discovery.py:fetch_discovery",
+        "scripts/lib/options_discovery.py:screener.ashx"
+      ],
+      "impact": "discovery returns PARTIAL ('missing or changing source total') instead of COMPLETE"
+    },
+    {
+      "id": "news_headline_fallback",
+      "label": "per-symbol news fallback",
+      "detail": "the quote-page news scrape is the fallback when the token news export yields no headline mentioning the symbol",
+      "evidence": [
+        "scripts/catalyst_enrichment.py:_fetch_finviz_news",
+        "scripts/catalyst_enrichment.py:quote.ashx?t="
+      ],
+      "impact": "symbols the token news export does not cover lose their headlines"
+    }
+  ]
+}
