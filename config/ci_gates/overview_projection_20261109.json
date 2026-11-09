@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overview_projection_20261109",
+  "files": [
+    "tests/test_overview_projection_20261109.py"
+  ],
+  "anchor": "OVERVIEW_PROJECTION_20261109",
+  "comment": [
+    "ANCHOR: OVERVIEW_PROJECTION_20261109 — /api/v2/overview serves the OverviewProjection@v1 that lane",
+    "overview-projection builds out of process, only while it is at most 150 s old, from the serving release,",
+    "and began after the last operator write that can change the overview; otherwise the route computes",
+    "inline exactly as before and names the reason in _projection (LQ-20261107-1612). Never blank. A failed",
+    "build keeps the previous file; an overlapping build is refused. Synthetic documents only."
+  ]
+}

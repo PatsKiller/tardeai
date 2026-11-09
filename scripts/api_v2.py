@@ -5523,6 +5523,37 @@ def _overview_with_today_move():
     return out
 
 
+try:  # LQ-20261107-1612: the overview projection reader, and the writes that invalidate it
+    from lib import overview_projection as _overview_projection  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    try:
+        from scripts.lib import overview_projection as _overview_projection  # noqa: E402
+    except ImportError:  # the route then computes inline, exactly as before the projection existed
+        _overview_projection = None
+try:
+    from lib import stale_serve as _ovp_swr  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib import stale_serve as _ovp_swr  # noqa: E402
+if _overview_projection is not None:
+    _overview_projection.register_write_invalidation(_ovp_swr)
+_OVERVIEW_CODE_IDENTITY: list[str] = []
+
+
+def _overview_served():
+    """GET /api/v2/overview (LQ-20261107-1612): the projection lane overview-projection built, when it is at
+    most 150 s old, from this release, and began after the last operator write that can change it; otherwise
+    _overview_with_today_move() inline, with ``_projection.reason`` naming why. Never blank."""
+    if _overview_projection is None:
+        return _overview_with_today_move()
+    if not _OVERVIEW_CODE_IDENTITY:
+        _OVERVIEW_CODE_IDENTITY.append(_overview_projection.code_identity(PROJECT_ROOT))
+    return _overview_projection.serve(
+        _overview_with_today_move,
+        identity=_OVERVIEW_CODE_IDENTITY[0],
+        invalidated_at_fn=_overview_projection.invalidation_reader(_ovp_swr),
+    )
+
+
 def research_ticker(symbol: str):
     ec = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
     news = _load_json(STATE_DIR / "portfolio_news.json") or {}
@@ -49644,7 +49675,7 @@ ROUTES = {
     "/api/v2/atm/protection-advisory-outcomes": lambda: _atm_advisory_outcomes(),
     "/api/v2/atm/profit-capture": lambda: _atm_profit_capture(),
     "/api/v2/atm/advisory-threshold-tuning": lambda: _atm_advisory_threshold_tuning(),
-    "/api/v2/overview": lambda: _overview_with_today_move(),
+    "/api/v2/overview": lambda: _overview_served(),
     "/api/v2/portfolio/holdings": lambda: _cio_truth_readers().holdings_payload(
         portfolio_holdings(), db_query=_db_query
     ),

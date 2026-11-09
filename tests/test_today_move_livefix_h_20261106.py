@@ -87,4 +87,11 @@ def test_overview_route_and_performance_share_one_overlay():
     assert "_market_day_holdings(holdings)" in inspect.getsource(api_v2.portfolio_performance)
     route = inspect.getsource(api_v2._overview_with_today_move)
     assert "_market_day_holdings(" in route and "today_move_payload(" in route
-    assert "_overview_with_today_move()" in inspect.getsource(api_v2.ROUTES["/api/v2/overview"])
+    # LQ-20261107-1612: the route reads the projection first; its inline fallback, and the lane that
+    # builds the projection, are both this same function, so the overlay still has one path.
+    assert "_overview_served()" in inspect.getsource(api_v2.ROUTES["/api/v2/overview"])
+    assert "_overview_with_today_move," in inspect.getsource(api_v2._overview_served)
+    from pathlib import Path
+
+    lane = Path(api_v2.__file__).with_name("build_overview_projection.py").read_text(encoding="utf-8")
+    assert "_overview_with_today_move()" in lane
