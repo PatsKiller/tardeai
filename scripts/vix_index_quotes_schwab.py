@@ -270,7 +270,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if not cfg.get("enabled"):
         receipt = {"schema": SCHEMA, "status": "disabled", "now": now.isoformat(), "dry_run": bool(args.dry_run),
-                   "detail": "config/vix_index_quotes.yaml enabled: false (operator approval pending)"}
+                   "detail": "config/vix_index_quotes.yaml enabled: false"}
         print(json.dumps(receipt))
         if args.apply:  # a live fire of a disabled lane is a misconfiguration, never a quiet success
             _write_receipt(receipt, started.isoformat())

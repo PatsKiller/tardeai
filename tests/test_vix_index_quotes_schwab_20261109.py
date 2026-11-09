@@ -66,8 +66,14 @@ def test_fail_before_the_off_hours_lane_refuses_premarket_vix_and_skips_the_regu
 # ── the lane's units ──────────────────────────────────────────────────────────────────────────────────────────
 
 
-def test_the_shipped_config_is_off_index_only_and_names_its_grant():
-    assert CFG["enabled"] is False
+def test_the_shipped_config_is_on_only_with_its_recorded_grant_and_index_only():
+    # 2026-11-09 16:08 ET the operator approved AGENTS 32.0.0 §23.20a; enabled only while the grant is recorded.
+    import json as _json
+    auth = _json.loads((Path(__file__).resolve().parents[1] / "config" / "data_source_authority.json").read_text())
+    grants = auth["providers"]["schwab"]["supply_grants"]
+    granted = any(g["supply"] == "market_data_quotes" and g["domain"] == "quote_price"
+                  and "vix-index-quotes-schwab" in g["scope"] for g in grants)
+    assert CFG["enabled"] is granted is True
     assert CFG["symbols"] == ["$VIX", "$VIX9D", "$VIX3M"]
     assert (CFG["store"], CFG["source"], CFG["cadence_minutes"], CFG["max_trade_age_minutes"]) == (
         "market_quotes", "schwab", 15, 30)
@@ -134,19 +140,27 @@ def test_outside_the_window_nothing_is_fetched():
     assert r["status"] == "outside_window"
 
 
-def test_apply_while_disabled_stops_before_any_schwab_module_is_imported_and_fails_its_receipt(monkeypatch, capsys):
+def _disabled_config(tmp_path):
+    # the shipped config is enabled since 2026-11-09 16:08 ET; these cases pin the switched-off behaviour
+    off = tmp_path / "vix_index_quotes.yaml"
+    off.write_text(lane.CONFIG_PATH.read_text().replace("\nenabled: true\n", "\nenabled: false\n"))
+    assert "\nenabled: false\n" in off.read_text()
+    return str(off)
+
+
+def test_apply_while_disabled_stops_before_any_schwab_module_is_imported_and_fails_its_receipt(monkeypatch, capsys, tmp_path):
     monkeypatch.setitem(sys.modules, "market_quotes_offhours_schwab", None)  # an import would raise
     got = []
     monkeypatch.setattr(lane, "_write_receipt", lambda r, s: got.append(r))
-    assert lane.main(["--apply"]) == 1  # a live fire of a disabled lane is never a quiet success (LQ-1684)
+    assert lane.main(["--apply", "--config", _disabled_config(tmp_path)]) == 1  # a live fire of a disabled lane is never a quiet success (LQ-1684)
     assert '"status": "disabled"' in capsys.readouterr().out
     assert [r["status"] for r in got] == ["disabled"]
 
 
-def test_a_shadow_dry_run_while_disabled_imports_nothing_and_writes_no_receipt(monkeypatch, capsys):
+def test_a_shadow_dry_run_while_disabled_imports_nothing_and_writes_no_receipt(monkeypatch, capsys, tmp_path):
     monkeypatch.setitem(sys.modules, "market_quotes_offhours_schwab", None)
     monkeypatch.setattr(lane, "_write_receipt", lambda r, s: pytest.fail("a dry run wrote a receipt"))
-    assert lane.main(["--dry-run", "--live-read"]) == 0
+    assert lane.main(["--dry-run", "--live-read", "--config", _disabled_config(tmp_path)]) == 0
     assert '"status": "disabled"' in capsys.readouterr().out
 
 

@@ -78,6 +78,14 @@
           "approved_on": "2026-11-01",
           "reference": "operator 2026-11-01 ~13:45 ET in-session (verbatim): \"enable schwab\"; under the operator's 2026-10-31 allowance (AGENTS.md 29.2.0 \u00a724.11, ratified #2407): scheduled host lanes may read broker market data only, via the existing token managers, never account, order, stop, 2FA or auth endpoints, and no agent reads credentials or cookies",
           "scope": "scripts/market_quotes_offhours_schwab.py reads GET https://api.schwabapi.com/marketdata/v1/quotes only (marketdata_url rail); never imports schwab_transport; reads the stored access token only while fresh (never refreshes); writes market_quotes_extended feed schwab through its single writer"
+        },
+        {
+          "supply": "market_data_quotes",
+          "domain": "quote_price",
+          "approved_by": "operator",
+          "approved_on": "2026-11-09",
+          "reference": "operator 2026-11-09 16:08 ET in-session: \"I approve the above. Expedite as fast as possible.\" in reply to APPROVE_AGENTS_POLICY_32_0_0 local 2bfb6c511 (LQ-20261107-1684 option B, picked 15:45 ET: n8n with a narrow exception for one read-only Schwab quote lane); AGENTS.md 32.0.0 \u00a723.20a",
+          "scope": "lane vix-index-quotes-schwab only: scripts/vix_index_quotes_schwab.py reads GET https://api.schwabapi.com/marketdata/v1/quotes for $VIX, $VIX9D, $VIX3M only (config/vix_index_quotes.yaml), writes through the single market_quotes writer; never account, order, stop, 2FA or auth endpoints; the token is loaded on the host by schwab_token_manager, never by n8n or an agent"
         }
       ]
     },

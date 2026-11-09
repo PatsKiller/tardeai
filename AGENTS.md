@@ -1,24 +1,24 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      31.0.0
+Policy-Version:      32.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
-Effective-Date:      2026-11-03
+Effective-Date:      2026-11-09
 Last-Reviewed:       2026-11-05T20:07:49Z
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          30.0.1
+Supersedes:          31.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**31.0.0 is ACTIVE (MAJOR)** — one named exception to §24.5: the `self-heal-fixer` lane may push one
-`self-heal-fix/…` branch and open one draft PR per fix job, never merge, never main/release, never broker,
-credential, order or policy paths, and every fix PR needs two independent reviews (§24.16).
-Ratified by the operator at the reviewed source head; this status-only edit takes effect on merge.
+**32.0.0 is ACTIVE (MAJOR)** — one named exception for one broker MARKET-DATA quote lane on the n8n dispatcher
+(§23.20a): `vix-index-quotes-schwab` may be dispatched as an R1 `ingest` lane although its name and argv carry `schwab`
+and its import graph reaches `schwab_token_manager`. Quote reads only; no order, account, position or send; no
+credential in n8n or the executor env. Ratified by the operator at the reviewed source head (LQ-20261107-1684).
 Approval and consolidation records are in docs/governance/AGENTS_HISTORY.md; old source branches remain.
-No broker, secret or deploy grant.
+No order, account, secret or deploy grant.
 
 ---
 
@@ -2041,6 +2041,24 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
   qualifies:** market data only, advisory writes, host sends, no secret via n8n (`advisory_lane_guard.py`). Adding a
   lane is operator-only (§17). *Cause: 2026-10-14 — a sender passed the token gate (LESSONS L23-28).*
 
+## 23.20a One broker market-data quote lane on the dispatcher (32.0.0)
+- **Exactly one lane, `vix-index-quotes-schwab`, may be dispatched although it names and reaches a broker.** It
+  reads Schwab MARKET-DATA quotes for `$VIX`, `$VIX9D` and `$VIX3M` only and writes them through the single
+  `market_quotes` writer. It is an R1 `ingest` lane (§23.18): every R1, stage (§23.11), cutover (§23.21) and lock rule
+  applies. *Cause: 2026-11-09 — the headline VIX read a 03:45 ET print as fresh all session; the operator ordered a
+  15-minute VIX across the whole weekday and chose the dispatcher over host cron (LQ-20261107-1684, 15:45 ET).*
+- **The exception is code, pinned to one shape** (`lane_dispatch.SCHWAB_QUOTE_READ_*`): the lane id; the registry
+  match and allowlist command `$PY scripts/vix_index_quotes_schwab.py`; dry run `--dry-run --live-read`
+  (reads, writes nothing); live `--apply` or none; flock lock; class `ingest`. It lifts the forbidden token `schwab`
+  and nothing else. The import-graph scan (`schwab_quote_read_static_errors`, check_lane_registry and CI) allows the
+  broker module `schwab_token_manager` and nothing else, and refuses any trade context, order verb, account or
+  position read, or send. Any other shape, lane or token is refused as before.
+- **No credential crosses n8n.** The allowlist `env_names` name no broker credential; the child process loads its
+  OAuth token on the host from the 0600 credential file, exactly as the host cron lane does (§24.11, §23.23). n8n
+  triggers the run and never sees a credential, an account or an order route.
+- **Widening is MAJOR and operator-only (§17):** another lane, another symbol class, another broker module or token,
+  or any write beyond `market_quotes`. This section does not touch §23.14, §27.1 or the broker execution subsystem.
+
 ## 23.21 The cutover standard — fixed, dry run, regression tests, one live run
 - **Cut over only when all four hold, with evidence in the change record.** (1) Defect fixed, merged and served. (2)
   Latest n8n `dry_run` fire `RUN_DONE` with a receipt; a forced fire counts. (3) Lane regression tests pass under
@@ -2689,6 +2707,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 32.0.0 | 2026-11-09 | ACTIVE | MAJOR | Supersedes 31.0.0. §23.20a: ONE named exception for one broker market-data quote lane on the n8n dispatcher — `vix-index-quotes-schwab` (R1 `ingest`, `$VIX`/`$VIX9D`/`$VIX3M` into `market_quotes`) may carry the `schwab` token and reach `schwab_token_manager` only, in a code-pinned shape (`lane_dispatch.SCHWAB_QUOTE_READ_*`); no trade context, account read, send or credential in n8n. §0, §2, §2A, §7A, §17, §23.14 and §27.1 unchanged. | `APPROVE_AGENTS_POLICY_32_0_0 <pr> <head_sha>` |
 | 31.0.0 | 2026-11-03 | ACTIVE | MAJOR | Supersedes 30.0.1. §24.16: ONE named exception to §24.5 for the `self-heal-fixer` lane only — it may push one `self-heal-fix/…` branch and open one draft PR per fix job (labelled `self-heal-fix`), within the push budget and never with an override; never main/release, never force-push, never broker/credential/order/execution/policy paths, the diff guard still refuses them; every fix PR needs two independent reviews and the fixer never merges; armed only by an active `git-push` grant naming `self-heal-fixer`. Nothing else in §24.5 loosens. | `APPROVE_AGENTS_POLICY_31_0_0 2538 331e39d303f2af7c948306f8475b4aa1fc43438e` (operator, https://github.com/PatsKiller/tardeai/pull/2538#issuecomment-6618462233). Provenance: issued at 331e39d3, whose `AGENTS.md` is byte-identical (blob `c6dac5f08`) to the 31.0.0 text merged in this PR at its tip; later commits are the `origin/main` merge and this repair, with no rule-text change. |
 | 30.0.1 | 2026-11-03 | ACTIVE | PATCH | Documents the standing merge route's checkout coupling: the canonical checkout's HEAD must equal `origin/main` and GitHub `main`, so each merge needs a checkout refresh before the next, and nothing invokes the helper on a schedule. No authority change. | PATCH — rides APPROVE_AGENTS_POLICY_30_0_0; no authority change; operator ratifies at merge |
 | 30.0.0 | 2026-11-03 | ACTIVE | MAJOR | Supersedes 29.3.0. Standing scoped/delegated uploads, ordinary AND held engineering merges with tests/docs and two held reviews, merge-watching, one approved-plan registry; §0 rule 4/§2B/§11/§17/§20/§25.10/§28.4/§28.15/§28.17; AI_WORK_POLICY §3/§9/§11/§16/§21/§27/§28 aligned. No broker, secret or deploy authority. | `APPROVE_AGENTS_POLICY_30_0_0 2501 995e86f9abf961a37c58ae2667b0b6f6eef1c9af` (operator, https://github.com/PatsKiller/tardeai/pull/2501#issuecomment-6594072975) |

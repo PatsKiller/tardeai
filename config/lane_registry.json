@@ -19528,15 +19528,28 @@
         "kind": "n8n",
         "expression": "dispatcher",
         "match": "scripts/vix_index_quotes_schwab.py",
-        "cadence": "*/15 18-23 * * 0 + */15 * * * 1-4 + */15 0-19 * * 5",
+        "cadence": "*/15 * * * *",
         "stage": "shadow",
         "wave": "W4",
         "timezone": "America/New_York"
       },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/15 18-23 * * 0",
+          "*/15 * * * 1-4",
+          "*/15 0-19 * * 5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 3,
+        "retry_policy": "none"
+      },
       "expected_cadence_hours": 0.25,
       "state": "ACTIVE",
       "state_since": "2026-11-09",
-      "state_reason": "LQ-20261107-1684 option B (operator GO 2026-11-09 15:45 ET, relayed by claude-lead): the 15-minute VIX on the n8n dispatcher under AGENTS.md 32.0.0 §23.20a (PROPOSED). Until the operator ratifies 32.0.0 (APPROVE_AGENTS_POLICY_32_0_0) lane_dispatch refuses this row on forbidden_token:schwab, so nothing fires. Stage SHADOW: the dry run is --dry-run --live-read (reads Schwab $VIX/$VIX9D/$VIX3M quotes and the store, writes nothing) and the allowlist has no live_arg, so a live fire is refused. The row has NO dispatch block until 32.0.0 is ratified (an R1 ingest block on a lane that is still forbidden fails check_lane_registry): the ratifying commit flips lane_dispatch.SCHWAB_QUOTE_READ_STATUS to ACTIVE and adds the block {mode dry_run, class ingest, cron Sun 18-23 / Mon-Thu all day / Fri 00-19 every 15 min, W4, retry none} in one change. config/vix_index_quotes.yaml enabled:false also makes every fire report `disabled` without a Schwab call until the data_source_authority grant is recorded.",
+      "state_reason": "LQ-20261107-1684 option B (operator GO 2026-11-09 15:45 ET, relayed by claude-lead): the 15-minute VIX on the n8n dispatcher under AGENTS.md 32.0.0 §23.20a, RATIFIED by the operator in-session 2026-11-09 16:08 ET (APPROVE_AGENTS_POLICY_32_0_0 local 2bfb6c511); dispatch block added in the ratifying commit. Stage SHADOW: the dry run is --dry-run --live-read (reads Schwab $VIX/$VIX9D/$VIX3M quotes and the store, writes nothing) and the allowlist has no live_arg, so a live fire is refused. The row has NO dispatch block until 32.0.0 is ratified (an R1 ingest block on a lane that is still forbidden fails check_lane_registry): the ratifying commit flips lane_dispatch.SCHWAB_QUOTE_READ_STATUS to ACTIVE and adds the block {mode dry_run, class ingest, cron Sun 18-23 / Mon-Thu all day / Fri 00-19 every 15 min, W4, retry none} in one change. config/vix_index_quotes.yaml enabled:false also makes every fire report `disabled` without a Schwab call until the data_source_authority grant is recorded.",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/vix-index-quotes-schwab_last.json",

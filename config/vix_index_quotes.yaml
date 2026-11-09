@@ -8,11 +8,11 @@
 # was refused no_dated_reference_for_premarket, every 16:00-16:15 print no_dated_reference_for_afterhours, and the
 # regular session was never fetched (skip_regular_session).
 #
-# OFF until the operator approves (a) the supply grant below in config/data_source_authority.json and (b) the n8n
-# schedule. While off, --apply stops at ``disabled`` before any Schwab or database module is imported.
+# ON since 2026-11-09 16:08 ET: the operator approved AGENTS 32.0.0 §23.20a (supply grant recorded in data_source_authority.json, n8n
+# dispatch block in lane_registry.json). If set false again, --apply stops at ``disabled`` before any Schwab or database module is imported.
 schema: VixIndexQuotes@v1
-enabled: false
-requires_grant: "data_source_authority providers.schwab.supply_grants: market_data_quotes for quote_price, symbols below only (PROPOSED, LQ-20261107-1669)"
+enabled: true
+requires_grant: "data_source_authority providers.schwab.supply_grants: market_data_quotes for quote_price, symbols below only (GRANTED 2026-11-09 16:08 ET, AGENTS 32.0.0 §23.20a)"
 symbols: ["$VIX", "$VIX9D", "$VIX3M"]
 # STORE: market_quotes through its single writer (scripts/lib/writers/market_quotes_writer.py), source 'schwab'.
 # fetched_at holds Schwab's own quote.tradeTime (the instant the level was observed), NEVER the fetch time, so a

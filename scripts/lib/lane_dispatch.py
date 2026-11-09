@@ -129,7 +129,7 @@ ADVISORY_MD_BYPASS_FILES = frozenset({"scripts/active_trader/momentum_alerts.py"
 #: allows the token manager module only, and no trade context, account read, order verb or send. It is an R1 `ingest`
 #: lane like any price ingest: every other R1, stage, env and lock rule still applies. Widening = a code change + MAJOR.
 SCHWAB_QUOTE_READ_POLICY_VERSION = "32.0.0"
-SCHWAB_QUOTE_READ_STATUS = "PROPOSED"  # PENDING APPROVE_AGENTS_POLICY_32_0_0 <pr> <head_sha>
+SCHWAB_QUOTE_READ_STATUS = "ACTIVE"  # APPROVE_AGENTS_POLICY_32_0_0 local 2bfb6c511, operator in-session 2026-11-09 16:08 ET
 SCHWAB_QUOTE_READ_LANE = "vix-index-quotes-schwab"
 SCHWAB_QUOTE_READ_COMMAND = ("$PY", "scripts/vix_index_quotes_schwab.py")
 SCHWAB_QUOTE_READ_DRY_RUN_ARGS = (("--dry-run", "--live-read"),)  # a bare --dry-run is refused by the lane itself

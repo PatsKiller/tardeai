@@ -447,8 +447,16 @@ def test_no_dispatched_lane_sends_or_reaches_a_broker_outside_the_named_classes(
     bad = {lane: (rep.sends[:2] + rep.problems()[:2]) for lane, rep in _dispatched_reach().items()
            if (rep.is_sender or rep.broker_modules or rep.trade_context or rep.account_reads)
            and lane not in NAMED_SENDER_EXCEPTIONS and lane not in LD.ADVISORY_MARKET_DATA_LANES
-           and lane not in BASELINE}
-    assert not bad, f"dispatched lane reaches a sender or broker outside §23.3/§23.20 and the baseline: {bad}"
+           and lane not in BASELINE and not _schwab_quote_read_clean(lane)}
+    assert not bad, f"dispatched lane reaches a sender or broker outside §23.3/§23.20/§23.20a and the baseline: {bad}"
+
+
+def _schwab_quote_read_clean(lane: str) -> bool:
+    """AGENTS 32.0.0 §23.20a: the one pinned Schwab quote lane is allowed only while its static scan is clean."""
+    if lane != LD.SCHWAB_QUOTE_READ_LANE or LD.SCHWAB_QUOTE_READ_STATUS != "ACTIVE":
+        return False
+    row = next(r for r in REGISTRY["lanes"] if r.get("lane_id") == lane)
+    return LD.schwab_quote_read_static_errors(row) == []
 
 
 def test_baseline_is_shrink_only():
