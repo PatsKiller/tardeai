@@ -25,6 +25,8 @@ script is run with ``--no-db --no-http``. Nothing here writes durable state.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -199,3 +201,43 @@ def test_the_three_files_agree_on_one_lane():
 def test_site_audit_records_that_this_lane_supersedes_it():
     site = next(r for r in registry()["lanes"] if r.get("lane_id") == "site-audit")
     assert "superseded_by numbers-truth-audit (phase 2 DOM pass)" in site["note"]
+
+
+# ── the script the entry runs (lands with LQ-1701) ─────────────────────────────────────────────
+
+
+def _script() -> Path:
+    path = ROOT / SCRIPT
+    assert path.is_file(), f"{SCRIPT} is not in this tree (fold LQ-1701 with or before LQ-1703)"
+    return path
+
+
+def _run_script(state_root: Path, *mode: str) -> subprocess.CompletedProcess:
+    """The scheduled argv, forced offline: no DB and no HTTP, so nothing live is touched."""
+    env = dict(os.environ, TRADEAI_STATE_ROOT=str(state_root), PYTHONDONTWRITEBYTECODE="1")
+    return subprocess.run(
+        [sys.executable, str(_script()), *mode, "--no-db", "--no-http", "--state-root", str(state_root)],
+        capture_output=True, text=True, timeout=150, cwd=str(ROOT), env=env,
+    )
+
+
+def test_a_shadow_fire_writes_no_receipt(tmp_path):
+    """The §23.11 stage clamp's promise: in dry_run the fire cannot advance ok_at or write anything."""
+    proc = _run_script(tmp_path, "--dry-run", "--json")
+    assert "Traceback" not in proc.stderr, proc.stderr[-800:]
+    assert proc.returncode in (0, 1), proc.stderr[-800:]
+    assert not (tmp_path / SIGNAL).exists(), "a dry run wrote the receipt it must never write"
+    assert list(tmp_path.rglob("*")) == [], "a dry run wrote into the state root"
+    payload = json.loads(proc.stdout)
+    assert payload["lane_id"] == LID
+
+
+def test_the_script_accepts_the_registered_flags():
+    src = _script().read_text(encoding="utf-8")
+    assert f'LANE = "{LID}"' in src, "the script must write under the registered lane id"
+    assert "MAX_RUNTIME_S = 120" in src, "the script self-bounds at the allowlist timeout"
+    proc = subprocess.run([sys.executable, str(_script()), "--help"], capture_output=True, text=True,
+                          timeout=60)
+    assert proc.returncode == 0, proc.stderr[-800:]
+    for flag in (*entry()["dry_run_arg"], "--apply", "--state-root", "--catalog", "--no-db", "--no-http"):
+        assert flag in proc.stdout, f"the registered argv names {flag}; the script does not accept it"
