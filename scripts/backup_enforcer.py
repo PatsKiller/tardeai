@@ -560,7 +560,8 @@ def drive_md5_cached(drive: Any, obj: dict, cache: StateCache) -> str:
 
 def verify_drive_object(obj: dict, ledger: dict, drive: Any, cache: StateCache) -> dict:
     """A Drive object is verified when the host's upload ledger names it and its size and md5 match."""
-    out: dict = {"drive_name": obj["name"], "drive_id": obj["id"], "drive_size": obj.get("size")}
+    out: dict = {"drive_name": obj["name"], "drive_id": obj["id"], "drive_size": obj.get("size"),
+                 "modifiedTime": obj.get("modifiedTime")}
     rec = ledger_for_drive(ledger, obj["name"])
     if rec is None:
         return {**out, "verified": False, "reason": "no_upload_record"}
@@ -847,7 +848,91 @@ def _hours_since_iso(stamp: Any, now: float) -> Optional[float]:
         return None
 
 
-def classify(result: dict, *, now: float, vcfg: dict, unreachable_since: Optional[str]) -> dict:
+_CADENCE_UNIT = "tradeai-portfolio-backup-cadence.service"
+_CADENCE_INACTIVE = {"active": False, "started_at": None, "ended_at": None}
+
+
+def _epoch_of(stamp: Any) -> Optional[float]:
+    if stamp is None or stamp == "":
+        return None
+    text = str(stamp).strip()
+    if text.lower() in {"n/a", "none"}:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(text).timestamp()
+    except ValueError:
+        pass
+    try:
+        return datetime.strptime(text, "%a %Y-%m-%d %H:%M:%S UTC").replace(tzinfo=timezone.utc).timestamp()
+    except ValueError:
+        return None
+
+
+def parse_cadence_show(text: str) -> dict:
+    """systemctl show --timestamp=utc properties. An active unit ignores a previous exit timestamp."""
+    props: dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        props[key.strip()] = value.strip()
+    active = props.get("ActiveState") in {"active", "activating"}
+    return {
+        "active": active,
+        "started_at": _epoch_of(props.get("ExecMainStartTimestamp")),
+        "ended_at": None if active else _epoch_of(props.get("ExecMainExitTimestamp")),
+    }
+
+
+def _systemctl_cadence_text() -> str:
+    proc = subprocess.run(
+        ["systemctl", "--user", "show", _CADENCE_UNIT,
+         "-p", "ActiveState", "-p", "ExecMainStartTimestamp", "-p", "ExecMainExitTimestamp",
+         "--timestamp=utc"],
+        capture_output=True, text=True, timeout=5, check=False,
+    )
+    if proc.returncode != 0:
+        raise OSError(f"systemctl rc={proc.returncode}")
+    return proc.stdout
+
+
+def read_cadence_run(show: Optional[Callable[[], str]] = None) -> dict:
+    """Read-only. A failed read is inactive, so a genuinely missing record still fails."""
+    try:
+        return parse_cadence_show((show or _systemctl_cadence_text)())
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return dict(_CADENCE_INACTIVE)
+
+
+def missing_upload_record_is_pending(*, dump_epoch: Optional[float], ledger: Optional[dict],
+                                     cadence: Optional[dict], now: float) -> bool:
+    """Pending while this dump's cadence run is still active, or a ledger row written inside that run is newer
+    than the dump. A finished run with no such row is a real missing record."""
+    if not cadence or dump_epoch is None:
+        return False
+    start = cadence.get("started_at")
+    if not isinstance(start, (int, float)):
+        return False
+    end = cadence.get("ended_at")
+    if end is None and cadence.get("active"):
+        end = now
+    if cadence.get("active") and dump_epoch >= float(start) and (end is None or dump_epoch <= float(end)):
+        return True
+    if not isinstance(end, (int, float)):
+        return False
+    for rec in (ledger or {}).get("records") or []:
+        if not isinstance(rec, dict):
+            continue
+        ts = _epoch_of(rec.get("uploaded_at"))
+        if ts is not None and ts > dump_epoch and float(start) <= ts <= float(end):
+            return True
+    return False
+
+
+def classify(result: dict, *, now: float, vcfg: dict, unreachable_since: Optional[str],
+             ledger: Optional[dict] = None, cadence: Optional[dict] = None) -> dict:
     """Condition key -> (state, alertable, detail). Pending offsite and short Drive outages wait out their grace."""
     conds: dict = {}
     unreachable_h = _hours_since_iso(unreachable_since, now) if unreachable_since else None
@@ -871,9 +956,14 @@ def classify(result: dict, *, now: float, vcfg: dict, unreachable_since: Optiona
     elif reason in _PENDING_REASONS:
         newest = local.get("newest") or {}
         age_h = None
+        dump_epoch = None
         with contextlib.suppress(OSError, TypeError):
-            age_h = (now - os.lstat(newest["path"]).st_mtime) / 3600.0
+            dump_epoch = os.lstat(newest["path"]).st_mtime
+            age_h = (now - dump_epoch) / 3600.0
         within = age_h is not None and age_h <= float(vcfg["newest_unverified_grace_hours"])
+        if (reason == "no_upload_record" and missing_upload_record_is_pending(
+                dump_epoch=dump_epoch, ledger=ledger, cadence=cadence, now=now)):
+            within = True
         conds[CONDITION_HOST] = ("pending_offsite" if within else reason, not within,
                                  f"newest dump {Path(str(newest.get('path'))).name} not verified on Drive"
                                  f" ({reason}, age {age_h or 0:.1f}h)")
@@ -888,7 +978,12 @@ def classify(result: dict, *, now: float, vcfg: dict, unreachable_since: Optiona
     elif drive.get("delete_errors"):
         conds[CONDITION_DRIVE] = ("drive_delete_error", True, f"{len(drive['delete_errors'])} Drive delete(s) failed")
     elif dreason and drive.get("candidates") and dreason != "prune_disabled":
-        conds[CONDITION_DRIVE] = (dreason.split(":")[0], True,
+        state, alertable = dreason.split(":")[0], True
+        if dreason == "newest_drive_unverified:no_upload_record" and missing_upload_record_is_pending(
+                dump_epoch=_epoch_of((drive.get("newest") or {}).get("modifiedTime")),
+                ledger=ledger, cadence=cadence, now=now):
+            state, alertable = "pending_offsite", False
+        conds[CONDITION_DRIVE] = (state, alertable,
                                   f"{len(drive['candidates'])} older Drive dump(s) kept: {dreason}")
     else:
         conds[CONDITION_DRIVE] = ("ok", False, "Drive holds keep_n+1 or fewer, newest verified or nothing to prune")
@@ -944,7 +1039,7 @@ def _lock(path: Path, *, blocking: bool):
 
 def run(policy: dict, *, dry_run: bool = False, now: Optional[float] = None, drive: Any = None,
         notify: Optional[Callable[[str, str], str]] = None, alert_state_path: Optional[Path] = None,
-        force_drive_prune: bool = False) -> dict:
+        force_drive_prune: bool = False, cadence: Optional[dict] = None) -> dict:
     """One enforcement pass. Dry-run performs every read-only check and writes nothing (no cache, receipt, alert)."""
     now = time.time() if now is None else now
     started = _utc_iso(now)
@@ -990,7 +1085,8 @@ def run(policy: dict, *, dry_run: bool = False, now: Optional[float] = None, dri
         "drive_error": drive_error,
         "drive_unreachable_since": cache.data.get("drive_unreachable_since"),
     }
-    conds = classify(result, now=now, vcfg=vcfg, unreachable_since=cache.data.get("drive_unreachable_since"))
+    conds = classify(result, now=now, vcfg=vcfg, unreachable_since=cache.data.get("drive_unreachable_since"),
+                     ledger=ledger, cadence=cadence)
     result["conditions"] = {k: {"state": s, "alertable": a, "detail": d} for k, (s, a, d) in conds.items()}
     result["alertable"] = any(a for (_, a, _) in conds.values())
     result["ok"] = bool(local.get("ok")) and bool(drive_res.get("ok")) and not result["alertable"]
@@ -1110,7 +1206,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 0 if res.get("ok") else 1
 
     if args.dry_run:
-        res = run(pol, dry_run=True, force_drive_prune=args.drive_db)
+        res = run(pol, dry_run=True, force_drive_prune=args.drive_db, cadence=read_cadence_run())
         print(json.dumps(res, indent=2, default=str))
         return 0 if not res.get("alertable") else 1
 
@@ -1118,14 +1214,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         _, _, vcfg = load_sections(pol)
         lock_path = _repo_path(vcfg["lock_path"])
     except PolicyError:
-        res = run(pol, dry_run=False)
+        res = run(pol, dry_run=False, cadence=read_cadence_run())
         print(json.dumps(res, indent=2, default=str))
         return 1
     with _lock(lock_path, blocking=False) as held:
         if not held:
             print(json.dumps({"skipped": "another backup_enforcer run holds the lock", "lock": str(lock_path)}))
             return 0
-        res = run(pol, dry_run=False, force_drive_prune=args.drive_db)
+        res = run(pol, dry_run=False, force_drive_prune=args.drive_db, cadence=read_cadence_run())
     print(json.dumps(res, indent=2, default=str))
     return 0 if not res.get("alertable") else 1
 

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1457_enforcer_cadence_pending_20261109",
+  "files": [
+    "tests/test_lq1457_enforcer_cadence_pending_20261109.py"
+  ],
+  "anchor": "LQ1457_BACKUP_ENFORCER_CADENCE_PENDING_20261109",
+  "comment": [
+    "ANCHOR: LQ1457_BACKUP_ENFORCER_CADENCE_PENDING_20261109 — a missing upload record is pending while the portfolio backup cadence run is still active, or when a ledger record is newer than that dump inside the run. A finished run with no such record still fails. Retention and removal are not changed. Synthetic tmp and a fake Drive only."
+  ]
+}
