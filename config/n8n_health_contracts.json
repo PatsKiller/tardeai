@@ -38597,7 +38597,7 @@
           "source": "config/n8n_run_allowlist.json lock (flock)"
         },
         {
-          "name": "logs/watch_outcomes.log",
+          "name": "data/runtime/reconcile-watch-outcomes_last.json",
           "kind": "receipt",
           "direction": "write",
           "source": "LaneRunReceipt / allowlist output_signal"
@@ -38626,7 +38626,7 @@
         },
         {
           "check": "cron_twin_output_fresh",
-          "text": "the live cron line keeps logs/watch_outcomes.log ok_at within 170 h"
+          "text": "the live cron line keeps data/runtime/reconcile-watch-outcomes_last.json ok_at within 170 h"
         },
         {
           "check": "duration_within_baseline",
@@ -38697,10 +38697,10 @@
         "note": "regenerate config/n8n_remediation_catalogue.json after this entry (scripts/build_remediation_catalogue.py --write)"
       },
       "evidence": {
-        "receipt": "logs/watch_outcomes.log",
+        "receipt": "data/runtime/reconcile-watch-outcomes_last.json",
         "verify": [
           "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='reconcile-watch-outcomes' ORDER BY requested_at DESC LIMIT 10\"",
-          "stat / jq the receipt: logs/watch_outcomes.log"
+          "stat / jq the receipt: data/runtime/reconcile-watch-outcomes_last.json"
         ],
         "never": "an n8n execution status: successful executions are soft-deleted and keep status running; filter deletedAt IS NULL and prove work with the ledger",
         "expected_output_basis": "OVN-9 onboarding: unit = watch candidate event; produced_count emission follows the LaneRunReceipt@v2 write in the lane script"
@@ -38730,7 +38730,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "logs/watch_outcomes.log produced_count"
+            "ref": "data/runtime/reconcile-watch-outcomes_last.json produced_count"
           }
         ],
         "on_violation": {

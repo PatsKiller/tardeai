@@ -5481,7 +5481,7 @@
       "output_signal": {
         "kind": "json_key",
         "key": "ok_at",
-        "path": "logs/watch_outcomes.log"
+        "path": "data/runtime/reconcile-watch-outcomes_last.json"
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "scripts/check_cron_sanity.py::check_relative_interpreters (P1 linter, tests/test_p1_cron_unit_linters_20260926.py::test_r02_relative_venv_inside_release_is_flagged_and_fix_clears_it); persistent-state logs show `flock: failed to execute .venv/bin/python` after 2026-09-20; cio_phase2_exact_main_deploy.sh:533 excludes .venv from releases; grant dbe23b0073b3a925.",

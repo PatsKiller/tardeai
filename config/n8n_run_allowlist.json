@@ -5359,7 +5359,7 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "logs/watch_outcomes.log",
+      "output_signal": "data/runtime/reconcile-watch-outcomes_last.json",
       "env_names": [
         "DB_CONN_TRACE",
         "DB_HOST",
