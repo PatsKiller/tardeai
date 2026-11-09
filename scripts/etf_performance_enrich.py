@@ -251,7 +251,17 @@ def preview() -> dict:
 
 def enrich() -> dict:
     conn = _get_conn(); cur = conn.cursor()
+    # LQ-20261107-1686 — symbol_profiles is read by the watchlist API and written by every enrich
+    # lane, and an ADD COLUMN asks for an ACCESS EXCLUSIVE lock whether or not the column is already
+    # there ("IF NOT EXISTS" suppresses the error, not the lock). One catalog read decides which
+    # columns are genuinely absent — the same question preview() already asks for its dry run.
+    cur.execute("""SELECT column_name FROM information_schema.columns
+                   WHERE table_name = 'symbol_profiles' AND column_name = ANY(%s)""",
+                ([c for c, _ in _PERF_COLS],))
+    present = {r[0] for r in cur.fetchall()}
     for col, typ in _PERF_COLS:
+        if col in present:
+            continue
         cur.execute(  # nosemgrep: tq-py-sql-fstring -- col/typ from the fixed _PERF_COLS tuple
             f"ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS {col} {typ}")
     conn.commit()

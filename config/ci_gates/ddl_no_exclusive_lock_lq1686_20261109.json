@@ -2,17 +2,21 @@
   "schema": "CiGate@v1",
   "name": "ddl_no_exclusive_lock_lq1686_20261109",
   "files": [
+    "tests/test_etf_performance_no_ddl_20261109.py",
     "tests/test_llm_consumption_no_ddl_20261109.py",
     "tests/test_stop_lifecycle_no_ddl_20261109.py"
   ],
   "comment": [
     "ANCHOR: LQ-20261107-1686 — runtime DDL must not take an exclusive lock to assert what is already true.",
-    "ensure_schema() (llm_consumption_log, llm_process_config, llm_cost_reservations) and _persist()",
-    "(stop_lifecycle) ran CREATE ... IF NOT EXISTS and ALTER TABLE ... ADD COLUMN IF NOT EXISTS on every",
-    "process start / every scan; IF NOT EXISTS suppresses the error, not the lock. 2026-11-09 14:18-15:19 ET:",
-    "124 lock timeouts, 5 deadlocks. Both now ask the catalog first (lib.ddl_guard.relation_exists /",
-    "column_exists, no table lock) and issue DDL only for what is genuinely absent; the schema itself moved",
-    "to migrations/2026_11_09_llm_consumption_log_columns.sql and migrations/2026_11_09_stop_lifecycle.sql.",
+    "ensure_schema() (llm_consumption_log, llm_process_config, llm_cost_reservations), _persist()",
+    "(stop_lifecycle), _manual_stops() (manual_broker_stops) and etf_performance_enrich.enrich()",
+    "(symbol_profiles) ran CREATE ... IF NOT EXISTS and ALTER TABLE ... ADD COLUMN IF NOT EXISTS on every",
+    "process start / every scan / every lane run; IF NOT EXISTS suppresses the error, not the lock.",
+    "2026-11-09 14:18-15:19 ET: 124 lock timeouts, 5 deadlocks. All four now ask the catalog first",
+    "(lib.ddl_guard.relation_exists / column_exists, or an information_schema read where the module",
+    "already had one, no table lock) and issue DDL only for what is genuinely absent; the schema itself",
+    "moved to migrations/2026_11_09_llm_consumption_log_columns.sql and",
+    "migrations/2026_11_09_stop_lifecycle.sql.",
     "The tests drive the real functions against a fake cursor that answers catalog reads the way PostgreSQL",
     "would and records every statement: an up-to-date schema must execute no DDL, a missing column must still",
     "be added (a guard that skips everything is worse than the lock). Fake IO: no database, no broker."
