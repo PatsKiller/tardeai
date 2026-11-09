@@ -1,0 +1,30 @@
+{
+  "schema": "CiGate@v1",
+  "name": "document_mentions_conn_loss_lq1696_20261109",
+  "files": [
+    "tests/test_document_mentions_conn_loss_lq1696_20261109.py",
+    "tests/test_pg_reconnect.py",
+    "tests/test_document_mentions.py"
+  ],
+  "comment": [
+    "2026-11-09 — LQ-20261107-1696: a dropped DB session must not kill the hourly",
+    "document-mentions-backfill lane, and if it cannot be recovered the lane must",
+    "exit 69 so transient-1-ingest's one retry actually happens.",
+    "",
+    "The live failures replayed here: slots 0825/0925/1025 ET on 2026-11-09 each",
+    "died with 'psycopg2.OperationalError: SSL connection has been closed",
+    "unexpectedly' inside document_mentions._conflict_target, exited 1, and were",
+    "graded terminal on attempt 1 of 2 — three dead letters, then the breaker.",
+    "",
+    "test_pg_reconnect.py rides with it because the wrapper and its new",
+    "module-level is_connection_loss() are the same decision seen from two sides:",
+    "the proxy retries the lost statement, the script maps an unrecoverable loss",
+    "to the exit code the retry policy reads. A change to one that breaks the other",
+    "must go red in one run.",
+    "",
+    "test_document_mentions.py rides with it because persist() is the transaction",
+    "boundary the retry depends on: its first statement after the read commit is",
+    "the one the proxy can replay, so the conflict-target probe and the write path",
+    "have to be exercised together."
+  ]
+}

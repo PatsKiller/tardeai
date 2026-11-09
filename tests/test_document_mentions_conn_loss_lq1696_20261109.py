@@ -116,7 +116,7 @@ def _patch_extraction(monkeypatch):
     monkeypatch.setattr(DM, "SOURCES", {"t": {"id": "id", "own_symbol": "symbol", "text": ["body"]}})
     monkeypatch.setattr(
         M, "match_mentions",
-        lambda text, names=None, own_symbol=None: [  # noqa: ARG005
+        lambda text, names=None, own_symbol=None: [  # noqa: ARG005 -- the fake ignores its three inputs and only has to answer
             {"symbol": "AAA", "subject_guid": "s-aaa", "issuer_guid": "i-aaa",
              "identity_status": "CONFIRMED", "role": "subject", "role_source": "test",
              "role_confidence": 0.9, "matched_via": "t", "matched_text": "AAA"}])
@@ -173,7 +173,7 @@ class _Receipts:
     def now_iso(self):
         return "2026-11-09T15:26:53+00:00"
 
-    def write_lane_receipt(self, lane_id, **kwargs):  # noqa: ARG002
+    def write_lane_receipt(self, lane_id, **kwargs):  # noqa: ARG002 -- mirrors the real signature; the fake records kwargs
         self.calls.append(kwargs)
         return None
 
