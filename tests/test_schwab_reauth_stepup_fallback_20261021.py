@@ -58,10 +58,12 @@ def test_reauth_exempt_but_step_up_still_enforced_elsewhere():
         assert cc_auth.step_up_blocks_route(cfg, m, p) is None
     for m, p, action in (("POST", "/api/v2/broker-orders/approve", "order_pilot"),
                          ("POST", "/api/v2/holdings/protective-stop", "stop_change"),
-                         ("POST", "/api/v2/admin/secrets", "credential_change"),
+                         ("POST", "/api/v2/admin/broker-account/api", "credential_change"),
                          ("POST", "/api/v2/live-trading-gate", "risk_control_change")):
         assert cc_auth.step_up_action(cfg, m, p) == action
         assert cc_auth.step_up_blocks_route(cfg, m, p) == action
+    # LQ-20261107-1299 (operator 2026-11-08): CC secret writes are exempt like reauth — Tailscale + CSRF only.
+    assert cc_auth.step_up_action(cfg, "POST", "/api/v2/admin/secrets") is None
     d = cc_auth.require_step_up(None, "credential_change")
     assert not d.allowed and d.status == 403 and d.reason == cc_auth.STEP_UP_MESSAGE
 

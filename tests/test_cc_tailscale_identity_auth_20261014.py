@@ -119,8 +119,6 @@ STEP_UP_EXPECTED = {
     ("POST", "/api/v2/atm/stop-trailing-control"): "stop_change",
     ("POST", "/api/v2/stop-confirmations/respond"): "stop_change",
     ("POST", "/api/v2/defense/intent/2fa"): "stop_change",
-    ("POST", "/api/v2/admin/secrets"): "credential_change",
-    ("POST", "/api/v2/admin/validate-secret"): "credential_change",
     ("POST", "/api/v2/admin/broker-account/api"): "credential_change",
     ("POST", "/api/v2/admin/brokers"): "credential_change",
     ("POST", "/api/v2/snaptrade/credentials"): "credential_change",
@@ -213,12 +211,12 @@ def test_enforce_false_is_kill_switch_except_hard_protections(tmp_path):
     assert d.allowed and not d.would_deny  # identity + step-up off
     d = cc_auth.evaluate_request(cfg, "serve_proxy", "POST", "/api/v2/watchlist/x/refresh", {}, store)
     assert d.allowed  # ordinary CSRF follows the kill switch
-    # ...but hard CSRF routes and the secret-write refusal do not
+    # ...but hard CSRF routes do not (secret writes included: a cross-site POST is still refused)
     d = cc_auth.evaluate_request(cfg, "serve_proxy", "POST", "/api/v2/broker-orders/pilot/arm", {}, store)
     assert not d.allowed and d.kind == "csrf"
     d = cc_auth.evaluate_request(cfg, "serve_proxy", "POST", "/api/v2/admin/secrets",
-                                 {**so, "Tailscale-User-Login": ALLOWED}, store)
-    assert not d.allowed and d.kind == "refused"
+                                 {"Tailscale-User-Login": ALLOWED}, store)
+    assert not d.allowed and d.kind == "csrf"
 
 
 def test_env_overrides(tmp_path, monkeypatch):
@@ -403,8 +401,7 @@ def test_step_up_routes_403_even_with_valid_identity(listeners, server_mod, meth
     st, raw = _req(p["serve_proxy"], path, method=method,
                    headers={"Tailscale-User-Login": ALLOWED, **SAME_ORIGIN}, body=body)
     assert st == 403
-    want = cc_auth.REFUSED_MESSAGE if path == "/api/v2/admin/secrets" else cc_auth.STEP_UP_MESSAGE
-    assert json.loads(raw)["error"] == want
+    assert json.loads(raw)["error"] == cc_auth.STEP_UP_MESSAGE
     st2, _ = _req(p["service"], path, method=method, headers={cfg.token_header: TOKEN}, body=body)
     assert st2 == 403
     assert not [c for c in server_mod._fake_calls if c[1] == path], "gated route must never dispatch"
@@ -701,19 +698,26 @@ SECRETS = "/api/v2/admin/secrets"
 PROXIED_OK = {"Tailscale-User-Login": ALLOWED, **SAME_ORIGIN}
 
 
-@pytest.mark.parametrize("kw", [{}, {"report_only": True}, {"enforce": False}, {"step_up_mode": "off"},
-                                {"step_up_mode": "report_only"}, {"bypass": True}])
-def test_secret_write_refused_on_both_listeners_in_every_mode(listeners, server_mod, kw):
-    cfg, p = listeners(**kw)
-    body = {"key": "TELEGRAM_BOT_TOKEN", "value": "x" * 40, "actor": "operator"}
-    st, raw = _req(p["serve_proxy"], SECRETS, method="POST", headers=PROXIED_OK, body=body)
-    assert st == 403 and json.loads(raw)["error"] == cc_auth.REFUSED_MESSAGE
-    st, raw = _req(p["service"], SECRETS, method="POST", headers={cfg.token_header: TOKEN}, body=body)
-    assert st == 403 and json.loads(raw)["error"] == cc_auth.REFUSED_MESSAGE
+# LQ-20261107-1299 (operator 2026-11-08 19:40 ET: "I'm not setting up TOTP since I'm using Tailscale.
+# Remove those blockers."): a CC secret write passes the gate with Tailscale identity + same-origin, and
+# is still refused without identity, cross-site, or from a service token (the handler requires tailnet:).
+def test_secret_write_allowed_with_tailnet_identity_and_same_origin(listeners, server_mod):
+    cfg, p = listeners()
+    body = {"key": "FINVIZ_COOKIE", "value": "x" * 60}
+    st, _ = _req(p["serve_proxy"], SECRETS, method="POST", headers=PROXIED_OK, body=body)
+    assert st == 200
+    assert [c for c in server_mod._fake_calls if c[1] == SECRETS]
+    assert "x" * 60 not in (cfg.decision_log.read_text() if cfg.decision_log.exists() else "")
+
+
+def test_secret_write_still_refused_without_identity_or_cross_site(listeners, server_mod):
+    cfg, p = listeners()
+    body = {"key": "FINVIZ_COOKIE", "value": "x" * 60}
+    st, _ = _req(p["serve_proxy"], SECRETS, method="POST", headers=SAME_ORIGIN, body=body)
+    assert st == 403  # no tailnet identity
+    st, _ = _req(p["serve_proxy"], SECRETS, method="POST", headers={"Tailscale-User-Login": ALLOWED}, body=body)
+    assert st == 403  # hard CSRF: no same-origin proof
     assert not [c for c in server_mod._fake_calls if c[1] == SECRETS]
-    rows = [json.loads(l) for l in cfg.decision_log.read_text().splitlines()]
-    assert {r["kind"] for r in rows if r["path"] == SECRETS} == {"refused"}
-    assert "x" * 40 not in cfg.decision_log.read_text()
 
 
 def test_secret_read_listing_is_not_refused(listeners, server_mod):

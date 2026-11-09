@@ -89,10 +89,11 @@ cc_auth:
   # (TELEGRAM_BOT_TOKEN, SCHWAB_CALLBACK_URL, *_DSN ...). Until operator step-up (TOTP) exists there is
   # no identity strong enough to allow it: secret writes are CLI-only. The handler additionally takes
   # its audit actor from the authenticated principal (never the body) and refuses without one.
-  always_refuse:
-    - action: secret_write
-      methods: [POST, PUT, PATCH, DELETE]
-      pattern: /api/v2/admin/secrets
+  # 2026-11-08 19:40 ET operator decision (LQ-20261107-1299): "I'm not setting up TOTP since I'm using
+  # Tailscale. Remove those blockers." Secret writes from the Command Center are allowed again behind
+  # Tailscale identity (allowed_logins) + hard CSRF (csrf.hard_routes secret_admin). The handler still
+  # takes its audit actor from the authenticated tailnet principal and refuses a service token.
+  always_refuse: []
 
   # WS4-03 CSRF. tailscale serve stamps the operator's identity on a request a hostile page forged
   # from the operator's own device, so state-changing methods must also prove same-origin.
@@ -203,9 +204,11 @@ cc_auth:
       # Command Center renewal impossible. The two routes stay behind Tailscale identity auth + CSRF, and the
       # renewal itself still needs the operator's Schwab login + Schwab 2FA. Every other step-up route keeps
       # its gate. Restore this entry once TOTP enrollment/verification exists.
+      # admin/secrets + admin/validate-secret removed 2026-11-08 (LQ-20261107-1299, operator: Tailscale is
+      # the factor, no TOTP) — same treatment as schwab_reauth: Tailscale identity + hard CSRF only.
       - action: credential_change
         methods: [POST]
-        pattern: /api/v2/(admin/(secrets|validate-secret|broker-account/api|brokers)|snaptrade/credentials|broker-accounts/api-read-toggle)
+        pattern: /api/v2/(admin/(broker-account/api|brokers)|snaptrade/credentials|broker-accounts/api-read-toggle)
       - action: risk_control_change
         methods: [POST]
         # Kill switches: only the DISABLE direction is gated. ENABLE / PANIC must stay one click away
