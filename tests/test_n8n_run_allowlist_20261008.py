@@ -132,6 +132,31 @@ def _never_tokens(entry: dict) -> list[str]:
     return [*LD.strip_queue_only_notify(entry["lane_id"], argv), entry["lock"], entry.get("output_signal") or ""]
 
 
+REGISTRY_ROWS = {
+    r["lane_id"]: r for r in json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))["lanes"]
+}
+
+
+def _ratified_lift(lane_id: str) -> frozenset[str]:
+    """Words an ACTIVE AGENTS exception lifts for this lane, and nothing else.
+
+    AGENTS 32.0.0 §23.20a (ACTIVE 2026-11-09, LQ-20261107-1684) lifts the token ``schwab`` for exactly one lane,
+    ``vix-index-quotes-schwab``, in a shape pinned in lane_dispatch.SCHWAB_QUOTE_READ_* (lane id, registry match,
+    class ingest, exact command, pinned dry-run/live argv, flock lock, no broker credential in env_names). The test
+    reads lane_dispatch's own lift instead of restating the exception, so the allowlist rows and the exception
+    cannot drift: a row that does not hold the pinned shape gets an empty set and is checked against NEVER
+    unchanged. test_the_ratified_lift_is_one_lane_and_one_word pins the lift shut."""
+    return LD._schwab_quote_read_lift(REGISTRY_ROWS.get(lane_id) or {})
+
+
+def test_the_ratified_lift_is_one_lane_and_one_word():
+    """The exception may not grow: one lane, one token, and only while AGENTS 32.0.0 is ACTIVE."""
+    lifts = {lane_id: _ratified_lift(lane_id) for lane_id in LANES}
+    assert LD.SCHWAB_QUOTE_READ_STATUS == "ACTIVE", "32.0.0 withdrawn: the lift must be empty everywhere"
+    assert set().union(*lifts.values()) == {"schwab"}
+    assert {lane_id for lane_id, words in lifts.items() if words} == {LD.SCHWAB_QUOTE_READ_LANE}
+
+
 def test_every_command_token_passes_both_forbidden_lists_and_names_no_authority_script():
     for lane_id, entry in LANES.items():
         for token in _tokens(entry):
@@ -139,9 +164,12 @@ def test_every_command_token_passes_both_forbidden_lists_and_names_no_authority_
                 assert forbidden not in token, (lane_id, token, forbidden)
             hit = _route_forbidden(token)
             assert hit is None, (lane_id, token, hit)
+        lifted = _ratified_lift(lane_id)
         for token in _never_tokens(entry):
             low = token.lower()
             for never in NEVER:
+                if never in lifted:  # AGENTS 32.0.0 §23.20a, one lane and one word (pinned above)
+                    continue
                 assert never not in low, (lane_id, token, never)
         assert "market_day_gate" not in json.dumps(entry["command"])  # the executor prepends the gate from the flag
 
