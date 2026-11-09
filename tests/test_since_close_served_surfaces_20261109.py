@@ -190,3 +190,25 @@ def test_an_unread_book_keeps_every_ask_as_a_decision():
 def test_a_brief_without_a_synopsis_gains_none():
     doc = C.served_since_close(_snap(), _read(), now=NOW)                # synopsis is a bare string
     assert doc["cio_brief"]["synopsis"] == "synthetic test synopsis"
+
+
+def test_the_route_read_asks_only_for_the_briefs_own_symbols():
+    seen = {}
+
+    def _q(sql, params):
+        seen["sql"], seen["syms"] = sql, list(params[0])
+        out = []
+        for sym, orders in _read()["stops"].items():
+            for o in orders:
+                out.append({"symbol": sym, "account": o["account"], "order_id": o["order_id"],
+                            "stop_price": o["stop"], "qty": o["qty"], "status": o["status"],
+                            "captured_at": o["captured_at"]})
+        return out
+
+    read = C.fetch_stops_for_snapshot(_q, _snap())
+    assert seen["syms"] == ["ZQAA", "ZQAB", "ZQAC", "ZQAD", "ZQAE"]     # deduped, sorted, from the brief itself
+    assert "stop_last_known" in seen["sql"]
+    assert read["status"] == "read" and read["rows"] == 4
+    # a document with no advice asks for nothing, and an unreadable DB is unread rather than an empty book
+    assert C.fetch_stops_for_snapshot(_q, {"cio_brief": {}})["rows"] == 0
+    assert C.fetch_stops_for_snapshot(lambda sql, params: None, _snap())["status"] == "unread"

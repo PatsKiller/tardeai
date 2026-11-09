@@ -1002,6 +1002,16 @@ def fetch_stops_query(query: Callable[..., Any], symbols: Sequence[str]) -> dict
     return _stop_book(rows)
 
 
+def fetch_stops_for_snapshot(query: Callable[..., Any], snap: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The stop read a route needs to serve ``snap``: the symbols are the brief's own advice rows, so a caller that
+    already has the document makes one call — ``served_since_close(snap, fetch_stops_for_snapshot(query, snap), ...)``."""
+    brief = (snap or {}).get("cio_brief") if isinstance(snap, Mapping) and isinstance(snap.get("cio_brief"),
+                                                                                       Mapping) else {}
+    advice = brief.get("stop_advice")
+    syms = [str(r.get("symbol") or "") for r in (advice or []) if isinstance(r, Mapping) and r.get("symbol")]
+    return fetch_stops_query(query, syms)
+
+
 def stop_read_block(read: Mapping[str, Any] | None, *, now: datetime) -> dict[str, Any]:
     """The card's label for the reconcile: the STOPS source's clock, plus when this render checked. ``status:
     unread`` says the read failed and prints no as-of — a check time is not a stop time."""
