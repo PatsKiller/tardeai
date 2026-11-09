@@ -6082,6 +6082,28 @@
       "env_report_reason": "report until the import closure is re-inventoried for enforce: the lane reads DB_* for one Postgres session (read-only in the dry run) and the state root for its LaneRunReceipt",
       "env_evidence": "scripts/alert_delivery_queue_hygiene.py _connect reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD from os.environ; scripts/lib/lane_last_receipt.receipt_path resolves the state root",
       "source": "LQ-20261107-1607 (WORK-QUEUE cc-opus-1, claude-lead 2026-11-09; METHODOLOGY FIRST operator order 2026-11-09). SHADOW ONLY: live_arg null and registry dispatch.mode dry_run, so the only argv the executor can run is the read-only dry run. The canary flip (live_arg ['--apply']) is the lead's, after the one-time backlog expiry is approved."
+    },
+    {
+      "lane_id": "market-event-lifecycle",
+      "command": [
+        "$PY",
+        "$CODE_ROOT/scripts/market_event_lifecycle.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_market_event_lifecycle.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 180,
+      "cwd": "$CODE_ROOT",
+      "market_gate": false,
+      "output_signal": "data/runtime/market-event-lifecycle_last.json",
+      "output_receipt": "v2",
+      "env_names": [],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "New lane: inventory the env NAMES from its first dry-run receipt before enforce (DB_* for the read-only psycopg connection; TRADEAI_ENV_FILE / TRADEAI_STATE_ROOT for the state root). It reads no credential.",
+      "source": "LQ-20261107-1656 design + LQ-20261107-1674 build (design build order step 2). SHADOW: live_arg null, so the executor refuses a live mode; dry_run_arg --dry-run reads the stores read-only and prints the transitions. Promotion to [\"--apply\"] is the lead's after migrations/2026_11_09_market_event_lifecycle.sql is applied. Advisory only, MBI_BEHAVIOR = 0."
     }
   ],
   "blocked_reasons": {

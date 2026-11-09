@@ -27990,6 +27990,56 @@
         "priority": 3,
         "retry_policy": "transient-2"
       }
+    },
+    {
+      "lane_id": "market-event-lifecycle",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/market_event_lifecycle.py",
+        "cadence": "*/15 9-16 * * 1-5",
+        "stage": "shadow",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 0.25,
+      "active_days": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-09",
+      "state_reason": "LQ-20261107-1656 design (cc-opus-1) + LQ-20261107-1674 build, relayed by claude-lead 2026-11-09 14:51 ET AFTER the P0 disk item and BEFORE LQ-1670: the full-lifecycle monitor for rotation / re-entry positions, the half of the WP3 state machine that keeps advising after ENTERED. Stage SHADOW: the clamp runs --dry-run (read-only, prints, writes nothing) and the allowlist carries no live_arg, so a live fire is refused. Promotion to --apply is the lead's after migrations/2026_11_09_market_event_lifecycle.sql is applied and the operator has seen a transition on a held name.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/market-event-lifecycle_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/market_event_lifecycle.py main() writes the LaneRunReceipt v2 on --apply only, produced_count = position rows evaluated (transitions are summary.transitions); tests/test_market_event_lifecycle_lane_20261109.py::test_the_dry_run_writes_nothing_and_reports_the_four_receipt_fields; no n8n fire has happened yet, so runtime is NOT_MEASURED"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_market_event_lifecycle_20261109.py (evaluate_position: the eight design proofs plus the verdict matrix) and tests/test_market_event_lifecycle_lane_20261109.py (the lane step: RS-loss counting, proxy selection, the calendar mapping, a held row, a vanished position read as STOPPED_OUT against the snapshot's own clock, the stale-guardian drop, the two typed empties, one persisted row per transition with the account LABEL and never the key, a replay writing nothing, an UNVERIFIABLE row never advancing, and a dry run that writes nothing).",
+      "review_by": "2026-11-23",
+      "note": "Advisory only (MBI_BEHAVIOR = 0): reads positions_current, stop_lifecycle, holding_exit_metrics, market_quotes bars and the MRE tier read-only; writes only market_event_lifecycle (one row per transition, unique per episode/symbol/label/to_stage) and market_event_candidates.plan->'lifecycle'. The design's triggers are the 15-min tick 09:30-16:00 ET plus 08:00, 16:35, the CPI/FOMC/NFP/PCE release + settle, an MRE tier change and a stop/qty change; the cadence here is the tick and the other triggers arrive with stage 3. It never sizes, orders, stops or touches a broker.",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/15 9-16 * * 1-5",
+          "0 8 * * 1-5",
+          "35 16 * * 1-5",
+          "0 */2 * * 0,6"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "report",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     }
   ],
   "freshness_contracts": [

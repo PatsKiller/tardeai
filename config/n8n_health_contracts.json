@@ -41398,6 +41398,199 @@
     },
     {
       "schema": "N8nHealthContract@v1",
+      "id": "market-event-lifecycle",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Keep advising an entered position: t2 after its release + settle and only if the print did not worsen the tier or put the low under the invalidation; t3 only at the MRE tier at YELLOW or better with the SMA20 reclaimed; TRIM_READY on an overweight sleeve, a 25% gain at RSI 75, or the Gain Guardian's giveback state; EXIT_READY on a 5% RS loss for 3 sessions, a RED tier under the entry basis, or a thesis-invalidating catalyst; INVALIDATED below the recorded invalidation; STOPPED_OUT with a recovery_state handoff. Advisory only.",
+        "business_function": "Market Event Re-entry (SPEC_MARKET_EVENT_REENTRY_20261107), the lifecycle half after ENTERED",
+        "source": "LQ-20261107-1656 design (DESIGN-LQ-20261107-1656-cc-opus-1.md); LQ-20261107-1674 build; scripts/market_event_lifecycle.py; scripts/lib/market_event_lifecycle.py"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3 (the relay address is documented there; not copied into this row)"
+        },
+        {
+          "name": "$PY $CODE_ROOT/scripts/market_event_lifecycle.py (--apply live, --dry-run shadow)",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_market_event_lifecycle.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (safe_flock)"
+        },
+        {
+          "name": "Postgres positions_current, stop_lifecycle, holding_exit_metrics (read)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/market_event_lifecycle.py read_positions / read_stops / read_guardian"
+        },
+        {
+          "name": "Postgres market_event_candidates, market_event_episodes (read)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/market_event_api.py read_open_episode / read_candidates"
+        },
+        {
+          "name": "Postgres market_quotes daily bars and MRE tier (read)",
+          "kind": "store",
+          "direction": "read",
+          "source": "market_event_api.read_bars; data/runtime/market_risk_latest.json"
+        },
+        {
+          "name": "Postgres market_event_lifecycle (INSERT, append-only)",
+          "kind": "store",
+          "direction": "write",
+          "source": "migrations/2026_11_09_market_event_lifecycle.sql; persist_results()"
+        },
+        {
+          "name": "Postgres market_event_candidates.plan->'lifecycle' (guarded UPDATE)",
+          "kind": "store",
+          "direction": "write",
+          "source": "persist_results(); IS DISTINCT FROM guard"
+        },
+        {
+          "name": "data/runtime/market-event-lifecycle_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2 / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire ends RUN_DONE in mode dry_run while stage is shadow; a dry run writes no row and no receipt"
+        },
+        {
+          "check": "live_run_produces_rows",
+          "text": "with a held candidate, produced_count (position rows evaluated) >= 1; with none, empty_reason no_held_candidate; with no open episode, no_open_episode"
+        },
+        {
+          "check": "transitions_accounted",
+          "text": "summary.transitions equals the rows this run inserted; a transition that inserted 0 rows is a dedup (already alerted for that to_stage), not a lost one"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 180 s (80% of timeout_s 225)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "input_stale",
+          "text": "a position row or the market snapshot is older than its limit: the row is UNVERIFIABLE, no stage advances, and the lane reports the count in summary.not_measured"
+        },
+        {
+          "check": "guardian_stale",
+          "text": "the newest holding_exit_metrics run is older than lifecycle.guardian_max_age_minutes: the giveback leg is unmeasured, never replayed from an old breach"
+        },
+        {
+          "check": "calendar_unreadable",
+          "text": "the macro calendar is missing or stale: every t2 gate withholds with event_gate: no calendar event in scope"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run inserted a market_event_lifecycle row or changed plan->'lifecycle'"
+        },
+        {
+          "check": "stale",
+          "text": "receipt ok_at older than 45 min during market hours (3x the 15-min tick)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 0.75,
+        "freshness_rule": "degraded beyond 2x the 15-min tick, failed beyond 3x during market hours; nights and weekends are outside the tick by design",
+        "timeout_s": 225,
+        "class": "report",
+        "computed_on": "2026-11-09",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no finished live runs yet (stage shadow); class defaults: duration degraded above 80% of timeout_s",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 180
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "the lifecycle row is advice the operator acts on: a silent stop starves the advice rather than placing anything",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json yet; the diagnoser skips it (lane_not_in_catalogue)"
+      },
+      "evidence": {
+        "receipt": "data/runtime/market-event-lifecycle_last.json",
+        "verify": [
+          "psql read-only: SELECT episode_id, symbol, account_label, from_stage, to_stage, trigger, at FROM market_event_lifecycle ORDER BY at DESC LIMIT 10",
+          "psql read-only: SELECT symbol, plan->'lifecycle' FROM market_event_candidates WHERE episode_id = (SELECT episode_id FROM market_event_episodes WHERE state <> 'CLOSED' ORDER BY opened_at DESC LIMIT 1)",
+          "jq '{produced_count, empty_reason, transitions: .summary.transitions, not_measured: .summary.not_measured, trigger: .summary.trigger}' data/runtime/market-event-lifecycle_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted; prove work with the transaction rows and the receipt"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "position rows evaluated (transitions are summary.transitions on the same receipt)",
+        "rule": "empty_allowed",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_open_episode",
+          "no_held_candidate"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/market-event-lifecycle_last.json produced_count, empty_reason and summary.transitions"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "review": {
+        "status": "REVIEWED",
+        "prepared_by": "cc-deepseek-9 LQ-20261107-1674",
+        "reviewed_by": "cc-deepseek-9, the author, against scripts/lib/market_event_lifecycle.py and tests/test_market_event_lifecycle_lane_20261109.py (the checker refuses a DRAFT contract for a new lane). This is an author review, not a lead review: claude-lead reviews the bundle before applying it, and the operator REVIEW pass for the lane is still owed.",
+        "reviewed_on": "2026-11-09"
+      },
+      "review_by": "2026-11-23"
+    },
+    {
+      "schema": "N8nHealthContract@v1",
       "id": "market-event-outcomes",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
