@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watchlist_research_summary_text_20261109",
+  "files": [
+    "tests/test_watchlist_research_summary_text_lq1292_20261109.py"
+  ],
+  "anchor": "WATCHLIST_RESEARCH_SUMMARY_TEXT_20261109",
+  "comment": [
+    "ANCHOR: WATCHLIST_RESEARCH_SUMMARY_TEXT_20261109 — LQ-20261107-1292: /v3/manual-execution path-a cards rendered '{ \"summary\": \"MPWR is not held…' from watchlist_research_cards.latest_summary. The writer stored parsed[\"summary\"], and the parser fallback stored the model's raw answer; a pretty-printed JSON answer cut off mid-object defeats the balanced-brace extractor, so the markup became the summary (102 live rows, each exactly 300 chars, beginning '{'). cio_agent_contract.summary_text() recovers the sentence from a complete or truncated object (and its action/next_action when a summary member is absent) and every parser that feeds a watchlist_research_cards write uses it; the reader unwraps legacy rows on the way out, so no backfill is required. The operator repair script scripts/ops/backfill_watchlist_research_summary.py is dry by default and is not run by CI or by an agent. Synthetic fixtures only — no database."
+  ]
+}

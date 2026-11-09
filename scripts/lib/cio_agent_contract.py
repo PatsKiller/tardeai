@@ -177,6 +177,56 @@ def extract_json_object(raw: str) -> Optional[dict]:
     return None
 
 
+def summary_text(value) -> str:
+    """The human summary string, never a JSON blob (LQ-20261107-1292).
+
+    A model that answers in pretty-printed JSON and is cut off mid-object defeats
+    ``extract_json_object`` (no balanced brace), so the old fallback stored the raw text — the
+    first 300 characters, i.e. ``{\\n  "summary": "…`` — in ``watchlist_research_cards.latest_summary``,
+    and every card rendered the markup instead of the sentence. This recovers the text:
+
+    * a dict -> its ``summary`` (recursively), never ``str(dict)``;
+    * a JSON object, complete or truncated -> the ``summary`` member, unescaped;
+    * a JSON object with no ``summary`` member -> its ``action`` / ``next_action`` sentence when it
+      has one (14 of the stored rows are exactly that), else the value unchanged (never blanked);
+    * plain text -> unchanged.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        if "summary" in value:
+            return summary_text(value.get("summary"))
+        for key in ("action", "next_action"):
+            text = str(value.get(key) or "").strip()
+            if text:
+                return text
+        return ""
+    text = str(value).strip()
+    if not text.startswith("{"):
+        return text
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, dict):
+        recovered = summary_text(parsed)
+        if recovered:
+            return recovered
+    for key in ("summary", "action", "next_action"):
+        match = re.search(rf'"{key}"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
+        if match:
+            try:
+                return json.loads('"' + match.group(1) + '"')
+            except json.JSONDecodeError:
+                return match.group(1)
+        # The old 300-char cut can land *inside* the value, so the quote never closes. Show the
+        # sentence fragment rather than the opening markup.
+        partial = re.search(rf'"{key}"\s*:\s*"((?:[^"\\]|\\.)*)$', text, re.S)
+        if partial:
+            return partial.group(1)
+    return text
+
+
 def normalize_evidence(raw) -> list:
     out = []
     if not isinstance(raw, list):
@@ -233,7 +283,7 @@ def parse_agent_result(raw: str) -> dict:
     parsed = extract_json_object(raw)
     if parsed and "recommendation" in parsed:
         return {
-            "summary": str(parsed.get("summary", ""))[:500],
+            "summary": summary_text(parsed)[:500],
             "full_narrative": str(parsed.get("full_narrative", parsed.get("summary", "")))[:3000],
             "recommendation": str(parsed.get("recommendation", "RESEARCH_MORE")).upper(),
             "confidence": normalize_agent_confidence(parsed.get("confidence")),
@@ -244,7 +294,9 @@ def parse_agent_result(raw: str) -> dict:
             "agent_contract": AGENT_JSON_CONTRACT_VERSION,
         }
 
-    summary = (raw or "")[:300]
+    # LQ-20261107-1292: a truncated JSON answer is still an answer. Store its summary sentence,
+    # never the markup that produced the `{ "summary": …` text on the path-a cards.
+    summary = summary_text(raw)[:300]
     full_narrative = (raw or "")[:3000]
     recommendation = "RESEARCH_MORE"
     confidence = 0.5
@@ -524,7 +576,7 @@ def parse_synthesis_result(raw: str) -> dict:
         }
     recs = parsed.get("reason_codes", [])
     return merge_structured_into_result({
-        "summary": str(parsed.get("summary", ""))[:500],
+        "summary": summary_text(parsed)[:500],
         "full_narrative": str(parsed.get("synthesis_narrative", parsed.get("summary", "")))[:3000],
         "recommendation": str(parsed.get("recommendation", "RESEARCH_MORE")).upper(),
         "confidence": min(1.0, max(0.0, float(parsed.get("confidence", 0.5)))),
