@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1409_batch3_exit_empty_20261109",
+  "files": [
+    "tests/test_lq1409_batch3_exit_empty_20261109.py"
+  ],
+  "anchor": "lq1409_batch3_exit_empty",
+  "comment": [
+    "ANCHOR: lq1409_batch3_exit_empty — hermes provider_rate_limited→EX_TEMPFAIL(75); lockup/RI receipts declare empty_reason when produced=0"
+  ]
+}

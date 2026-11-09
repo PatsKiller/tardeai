@@ -271,11 +271,27 @@ def main() -> int:
         raise
     if args.drain:
         from lib.lane_last_receipt import write_lane_receipt
-        write_lane_receipt("research-intelligence-queue", ok=bool(out.get("ok")), started_at=started_at,
-                           script="scripts/research_intelligence_queue.py",
-                           summary={"processed": out.get("processed"), "still_queued": out.get("still_queued"),
-                                    "settled_stale": out.get("settled_stale")},
-                           error=out.get("error"))
+        processed = int(out.get("processed") or 0)
+        still_queued = int(out.get("still_queued") or 0)
+        # Idle drain (nothing processed, nothing left) must declare empty_reason so the catalog
+        # does not keep FAIL_RUN "no post-fix run" / empty_violation (LQ-20261107-1409).
+        empty = None
+        if processed == 0 and still_queued == 0 and out.get("ok"):
+            empty = "no_new_input"
+        write_lane_receipt(
+            "research-intelligence-queue",
+            ok=bool(out.get("ok")),
+            started_at=started_at,
+            script="scripts/research_intelligence_queue.py",
+            summary={
+                "processed": out.get("processed"),
+                "still_queued": out.get("still_queued"),
+                "settled_stale": out.get("settled_stale"),
+            },
+            error=out.get("error"),
+            produced_count=processed,
+            empty_reason=empty,
+        )
 
     print(json.dumps({"as_of": datetime.now(timezone.utc).isoformat(), **out},
                      indent=2, default=str))

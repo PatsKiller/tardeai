@@ -36,6 +36,11 @@ RTYPE = "deep_research_local"
 #: (2026-11-07: ChatGPT OAuth answered 429 for 28 h and every overnight run failed the same silent way).
 _FAILURE_REASONS: dict[str, str] = {}
 
+# LQ-20261107-1409: provider 429 is retryable under transient-2 (exit codes 69/75/111). Exit 1 is terminal
+# on attempt 1 and turns every overnight quota window into a dead letter.
+EX_TEMPFAIL = 75
+_RATE_LIMITED_REASON = "provider_rate_limited"
+
 
 def classify_failure(exc, text: str = "") -> str:
     """A typed reason for a failed target, read from the provider's own message — never a guess beyond it."""
@@ -359,9 +364,14 @@ def _execute():
                          status="RUN_FAILED" if failed else "completed")
         if failed:
             # `counts` alone says how many failed, never why; the reasons are what the operator acts on.
-            _LAST_RUN["failure_reasons"] = dict(_FAILURE_REASONS)
+            reasons = dict(_FAILURE_REASONS)
+            _LAST_RUN["failure_reasons"] = reasons
             _LAST_RUN["failure_summary"] = failure_summary(counts, _FAILURE_REASONS)
-        return 1 if failed else 0
+            # Rate-limit-only → EX_TEMPFAIL so transient-2 retries; mixed/hard failures stay exit 1.
+            if reasons and all(r == _RATE_LIMITED_REASON for r in reasons.values()):
+                return EX_TEMPFAIL
+            return 1
+        return 0
     finally:
         LOCK.unlink(missing_ok=True)
 

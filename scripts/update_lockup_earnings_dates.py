@@ -193,18 +193,36 @@ def main(argv=None) -> int:
     if args.dry_run:
         print(json.dumps(run(dry_run=True), indent=2))
         return 0
-    from lib.lane_last_receipt import now_iso, write_receipt
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
 
     started = now_iso()
     try:
         res = run()
     except Exception as exc:  # noqa: BLE001 -- recorded in the receipt, then a non-zero exit
-        write_receipt(RECEIPT_NAME, ok=False, error=f"{type(exc).__name__}: {exc}", started_at=started)
+        write_lane_receipt(
+            RECEIPT_NAME,
+            ok=False,
+            exit_code=1,
+            error=f"{type(exc).__name__}: {exc}",
+            started_at=started,
+            script="scripts/update_lockup_earnings_dates.py",
+        )
         print(f"lockup earnings update FAILED: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
     print(json.dumps({k: v for k, v in res.items() if k != "config_path"}, indent=2))
-    write_receipt(RECEIPT_NAME, ok=True, started_at=started,
-                  summary={"changed": len(res["changed"]), "alert_errors": res.get("alert_errors", 0)})
+    n_changed = len(res["changed"])
+    # Contract empty_allowed_reasons: nothing_due / no_new_input. Without empty_reason the grader
+    # treats changed=0 as empty_violation → FAIL_RUN (LQ-20261107-1409).
+    write_lane_receipt(
+        RECEIPT_NAME,
+        ok=True,
+        exit_code=0,
+        started_at=started,
+        script="scripts/update_lockup_earnings_dates.py",
+        summary={"changed": n_changed, "alert_errors": res.get("alert_errors", 0)},
+        produced_count=n_changed,
+        empty_reason=None if n_changed else "nothing_due",
+    )
     return 0
 
 
