@@ -6,6 +6,6 @@
   ],
   "anchor": "lq1409_batch3_exit_empty",
   "comment": [
-    "ANCHOR: lq1409_batch3_exit_empty — hermes provider_rate_limited→EX_TEMPFAIL(75); lockup/RI receipts declare empty_reason when produced=0"
+    "ANCHOR: lq1409_batch3_exit_empty — hermes rate_limited-only→exit 0 (systemd); mixed→1 via _execute; lockup/RI empty_reason; RI missing processed must not coerce"
   ]
 }

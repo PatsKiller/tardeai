@@ -36,9 +36,10 @@ RTYPE = "deep_research_local"
 #: (2026-11-07: ChatGPT OAuth answered 429 for 28 h and every overnight run failed the same silent way).
 _FAILURE_REASONS: dict[str, str] = {}
 
-# LQ-20261107-1409: provider 429 is retryable under transient-2 (exit codes 69/75/111). Exit 1 is terminal
-# on attempt 1 and turns every overnight quota window into a dead letter.
-EX_TEMPFAIL = 75
+# LQ-20261107-1409 / batch3 REWORK (agent2_grok): this lane is systemd oneshot
+# (hermes-deep-research-local.service), not n8n transient-2. Exit 75 fails the unit the same
+# way exit 1 does (no SuccessExitStatus / Restart). Rate-limit-only → exit 0 with reasons on
+# the receipt so the timer stays green while Quality still sees the quota cause.
 _RATE_LIMITED_REASON = "provider_rate_limited"
 
 
@@ -367,9 +368,11 @@ def _execute():
             reasons = dict(_FAILURE_REASONS)
             _LAST_RUN["failure_reasons"] = reasons
             _LAST_RUN["failure_summary"] = failure_summary(counts, _FAILURE_REASONS)
-            # Rate-limit-only → EX_TEMPFAIL so transient-2 retries; mixed/hard failures stay exit 1.
+            # Rate-limit-only → exit 0 (systemd oneshot); mixed/hard failures stay exit 1.
             if reasons and all(r == _RATE_LIMITED_REASON for r in reasons.values()):
-                return EX_TEMPFAIL
+                _LAST_RUN["rate_limited_only"] = True
+                _LAST_RUN["status"] = "RATE_LIMITED"
+                return 0
             return 1
         return 0
     finally:
@@ -417,11 +420,18 @@ def main(argv=None) -> int:
     finally:
         sys.argv = previous
     summary = dict(_LAST_RUN) if _LAST_RUN else {"completed": rc == 0}
-    ok = rc == 0 and bool(summary.get("completed"))
-    # The Quality tab reads receipt.error to say WHY a run failed; without it the row reads only
-    # "(its receipt says status failed)" and a 13-run streak is a mystery in the UI.
+    rate_limited_only = bool(summary.get("rate_limited_only"))
+    # Rate-limit-only exits 0 for systemd but keeps failure_summary on the receipt (not as
+    # status=failed — that would re-fail the Quality streak the same way exit 1 did).
+    ok = (rc == 0 and bool(summary.get("completed"))) or (rc == 0 and rate_limited_only)
+    err = None
+    if not ok:
+        err = summary.get("failure_summary") or None
+    elif rate_limited_only:
+        # Visible cause without marking the receipt failed.
+        summary.setdefault("quota_note", summary.get("failure_summary"))
     write_lane_receipt(lane, ok=ok, exit_code=rc, started_at=started, script="hermes_deep_research_local.py",
-                       summary=summary, error=None if ok else (summary.get("failure_summary") or None))
+                       summary=summary, error=err)
     return rc
 
 
