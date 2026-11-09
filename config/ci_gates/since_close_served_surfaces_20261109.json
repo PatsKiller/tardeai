@@ -1,0 +1,20 @@
+{
+  "schema": "CiGate@v1",
+  "name": "since_close_served_surfaces_20261109",
+  "files": [
+    "tests/test_since_close_served_surfaces_20261109.py"
+  ],
+  "comment": [
+    "LQ-20261107-1672 (operator 14:39 ET): Home's 'Your actions' (AS OF 2:16 PM), 'Do now 1 of 5',",
+    "'Protect 5 stop changes' and 'Stops 5 to decide' told the operator to raise SPCX (IRA and taxable),",
+    "ANET and SKYD while stop_last_known showed exactly those stops WORKING. Every one of those surfaces",
+    "reads the same overnight brief, written before the broker's book moved. Pins: served_since_close()",
+    "returns the same brief with each stop_advice row reconciled against the passed stop read and the",
+    "stop_read clock beside it, mutating neither the input document nor any other brief key;",
+    "reconcile_stop_surfaces() returns the counts those surfaces print (actions / settled / quiet / total,",
+    "status open|unread|done|quiet) and the one line a satisfied ask moves to ('No change needed — done at",
+    "Schwab (stop time)'); an unread book marks every ask unread, claims no stop time and prints no done line;",
+    "a snapshot with no brief is served unchanged; the surfaces call the brief's own reconcile_stop_advice,",
+    "so there is one rule, not one per route. Synthetic ZQ* fixtures; the real snapshot is never touched."
+  ]
+}

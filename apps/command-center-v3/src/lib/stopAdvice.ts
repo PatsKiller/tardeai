@@ -162,8 +162,10 @@ export function stopList(
   const header = actions.length
     ? `Your actions · ${actions.length} stop change${actions.length === 1 ? '' : 's'} at Schwab`
     : settled.length ? 'Your actions · every stop change is already placed at Schwab' : 'Your actions · 0 stop changes at Schwab'
+  // LQ-20261107-1672: the operator's own words for a satisfied ask. It still names the stop that answers it and the
+  // STOP read's clock — never a render time — so the line can be checked against the broker.
   const settledLine = settled.length
-    ? `Done at Schwab${read.asOfText ? ` · ${read.asOfText}` : ''}: ${settled.map(placedCell).join(' · ')}`
+    ? `No change needed — done at Schwab${read.asOfText ? ` (${read.asOfText})` : ''}: ${settled.map(placedCell).join(' · ')}`
     : null
   return { actions, quiet, settled, settledLine, read, header, rule: STOP_RULE }
 }

@@ -96,7 +96,7 @@ describe('stopList — reconciled against the broker stop read', () => {
     expect(L.actions.map(r => r.symbol)).toEqual(['AAA'])
     expect(L.settled.map(r => r.symbol)).toEqual(['BBB'])
     expect(L.read.status).toBe('read')
-    expect(L.settledLine).toBe('Done at Schwab · Mon 03-10 · 2:00 PM ET: BBB $164.00 × 200')
+    expect(L.settledLine).toBe('No change needed — done at Schwab (Mon 03-10 · 2:00 PM ET): BBB $164.00 × 200')
     expect(L.header).toBe('Your actions · 1 stop change at Schwab')
   })
   it('every ask answered: a header that says so, and the empty line says nothing is left', () => {

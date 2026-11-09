@@ -1105,6 +1105,76 @@ def stop_change_decision(prior: Mapping[str, Any] | None, read: Mapping[str, Any
             "reason": f"new broker stop read {since_close_stamp.stamp_text(cur)}"}
 
 
+def stop_action_counts(rows: Sequence[Mapping[str, Any]], read_block: Mapping[str, Any]) -> dict[str, Any]:
+    """The counts every Home stop surface shows ("5 stop changes", "Stops 5 to decide"), from the reconciled rows.
+
+    ``total`` counts the rows that ever asked for something (RAISE / ADD_STOP / FIX_QTY); ``actions`` counts the ones
+    the broker's book does not answer yet. A satisfied ask is ``settled`` — it is still shown, as done, never as work.
+    """
+    actionable = [r for r in rows if str(r.get("answer") or "").upper() in CIO_ACTIONABLE]
+    open_rows = [r for r in actionable if r.get("state") == "open"]
+    unread = [r for r in actionable if r.get("state") == "unread"]
+    done = [r for r in actionable if r.get("state") == "done"]
+    quiet = [r for r in rows if r.get("state") == "quiet"]
+    status = "open" if open_rows else ("unread" if unread else ("done" if done else "quiet"))
+    return {"actions": len(open_rows), "unread": len(unread), "settled": len(done), "quiet": len(quiet),
+            "total": len(actionable), "status": status, "as_of_text": read_block.get("as_of_text"),
+            "read_status": read_block.get("status")}
+
+
+def _settled_cell(row: Mapping[str, Any]) -> str:
+    ev = row.get("stop_evidence") or {}
+    sym = str(row.get("symbol") or "").upper()
+    parts = [sym, str(row.get("answer") or "").upper()]
+    suggested = _num(row.get("suggested_stop"))
+    if suggested is not None:
+        parts.append(f"{suggested:.2f}")
+    best, covered = _num(ev.get("best_stop")), _num(ev.get("covered_qty"))
+    if best is not None:
+        parts.append(f"-> working {best:.2f}" + (f" x {covered:g}" if covered is not None else ""))
+    return " ".join(parts)
+
+
+def reconcile_stop_surfaces(
+    snap: Mapping[str, Any] | None, read: Mapping[str, Any] | None, *, now: datetime
+) -> dict[str, Any]:
+    """One reconcile for EVERY Home surface that renders a stop action (LQ-20261107-1672).
+
+    ``/home/since-close``, ``/home/do-now``, ``/home/cio-card`` and the stop review all read the same overnight brief,
+    which was written before the broker's book moved. Each surface used to count the brief's asks as work, so the
+    operator was told to raise four stops Schwab had already raised. This returns the reconciled rows, the counts those
+    surfaces print, and the one line a satisfied ask moves to: "No change needed — done at Schwab <stop time>".
+
+    Read-only and pure: it reads the ``read`` the caller took and writes nothing.
+    """
+    brief = (snap or {}).get("cio_brief") if isinstance(snap, Mapping) and isinstance(snap.get("cio_brief"),
+                                                                                       Mapping) else {}
+    rec = reconcile_stop_advice(brief, read, now=now)
+    counts = stop_action_counts(rec["rows"], rec["read"])
+    settled = [r for r in rec["rows"] if r.get("state") == "done"]
+    line = None
+    if settled:
+        when = rec["read"].get("as_of_text") or "the newest broker read"
+        line = f"No change needed — done at Schwab ({when}): " + " · ".join(_settled_cell(r) for r in settled)
+    return {**rec, "counts": counts, "settled_line": line}
+
+
+def served_since_close(
+    snap: Mapping[str, Any] | None, read: Mapping[str, Any] | None, *, now: datetime
+) -> dict[str, Any]:
+    """The snapshot document a route may serve: the same brief with its ``stop_advice`` rows reconciled against the
+    broker's newest stop read and the ``stop_read`` clock beside them. Everything else is byte-identical, and the input
+    document is not mutated — the writer's file on disk stays exactly as the last build wrote it."""
+    if not isinstance(snap, Mapping):
+        return {}
+    if not isinstance(snap.get("cio_brief"), Mapping):
+        return dict(snap)
+    rec = reconcile_stop_advice(snap["cio_brief"], read, now=now)
+    doc = dict(snap)
+    doc["cio_brief"] = {**dict(snap["cio_brief"]), "stop_advice": rec["rows"], "stop_read": rec["read"]}
+    return doc
+
+
 
 # ---------------------------------------------------------------------------- intraday: "Today so far" and change detection (LQ-1260)
 
