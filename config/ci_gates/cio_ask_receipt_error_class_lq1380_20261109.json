@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_ask_receipt_error_class_lq1380_20261109",
+  "files": [
+    "tests/test_cio_ask_receipt_error_class_lq1380_20261109.py"
+  ],
+  "anchor": "CIO_ASK_RECEIPT_ERROR_CLASS_LQ1380_20261109",
+  "comment": [
+    "ANCHOR: CIO_ASK_RECEIPT_ERROR_CLASS_LQ1380_20261109 — the 2026-11-08 22:29:59 ET out-of-band trade_ai role",
+    "password change left the tmpfs secret render stale until 22:47:06; cio-ask-material-events failed three slots",
+    "and its breaker opened at 22:40:06. The lane summary said only material_changes:OperationalError and the",
+    "receipt error field said only material_changes (lane_last_receipt._scrub_error truncated any identifier: head).",
+    "The read-only DB boundary now classifies its own failure (db_auth_failed / db_slots_exhausted /",
+    "db_query_timeout / db_connect_timeout / db_unreachable / db_error), the lifecycle carries that class in",
+    "source_errors, and the receipt keeps <source>:<ExceptionType>[:<class>] whole. Synthetic fixtures only."
+  ]
+}

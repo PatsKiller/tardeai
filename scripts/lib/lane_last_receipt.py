@@ -71,7 +71,12 @@ CODE_SHA_ENV = "TRADEAI_CODE_SHA"
 ATTEMPTS_DIR = "lane_attempts"
 _SAFE_RUN_ID = re.compile(r"[^A-Za-z0-9._-]")
 
-_TYPE_PREFIX = re.compile(r"^\s*([A-Za-z_][\w.]*)\s*:")
+#: An EXCEPTION-shaped head loses its message ("OSError: No space left on device" -> "OSError"). A bare
+#: identifier is a source or lane tag, not a type: several lanes report ``<source>:<ExceptionType>``, and
+#: truncating that to the source alone left the 2026-11-08 cio-ask-material-events breaker ("material_changes")
+#: with no cause in its receipt while the run had actually been rejected for a stale DB password
+#: (LQ-20261107-1380). Only the first token's suffix decides, so "material_changes:OperationalError" is kept.
+_TYPE_PREFIX = re.compile(r"^\s*([A-Za-z_][\w.]*(?:Error|Exception|Exit|Interrupt|Timeout|Warning))\s*:")
 _MAX_ERROR = 300
 
 
@@ -150,7 +155,8 @@ def previous_consecutive_failures(path: Path | str) -> int:
 
 
 def _scrub_error(value: Any) -> Any:
-    """``"OSError: No space left on device"`` -> ``"OSError"``; other strings are length-capped."""
+    """``"OSError: No space left on device"`` -> ``"OSError"``; ``"<source>:<Error>"`` is kept whole;
+    other strings are length-capped."""
     if not isinstance(value, str):
         return value
     m = _TYPE_PREFIX.match(value)

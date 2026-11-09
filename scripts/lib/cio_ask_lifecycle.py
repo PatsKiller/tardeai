@@ -864,7 +864,14 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
                 now=now,
             )
         except Exception as exc:
-            report["source_errors"].append(source.name + ":" + type(exc).__name__)
+            # ``<source>:<ExceptionType>`` alone left the 2026-11-08 breaker triage with no cause: an auth
+            # rejection, a statement timeout and a dead server all read ``material_changes:OperationalError``.
+            # A source that classified its failure (SourceReadError) appends that stable reason
+            # (LQ-20261107-1380).
+            reason = getattr(exc, "reason", None)
+            report["source_errors"].append(
+                source.name + ":" + type(exc).__name__ + (":" + str(reason) if reason else "")
+            )
     if collect is None:
         from scripts.lib.cio_ask_research import collect_current_evidence
 
