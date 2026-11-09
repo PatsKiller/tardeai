@@ -16,6 +16,8 @@ import SinceCloseStops from './SinceCloseStops'
 import SinceCloseMoves from './SinceCloseMoves'
 import SinceCloseNews from './SinceCloseNews'
 import { SINCE_CLOSE_API, pctText, sinceCloseModel, type SinceCloseWire } from '../../lib/sinceClose'
+import CioCardV5 from './CioCardV5'
+import { cardVisible, type CioCardWire } from '../../lib/cioCard'
 
 /** The operator's target cadence (LQ-1269): one read a minute while the card is being looked at. */
 export const SINCE_CLOSE_POLL_MS = 60_000
@@ -58,25 +60,34 @@ const timeOf = (iso?: string | null) => {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', minute: '2-digit' }) + ' ET'
 }
 
-export default function SinceCloseCard() {
+/** LQ-20261107-1352 (design v5): when Home passes an evaluated HomeCioCard@v1 (`cio5`), the v5 CIO card draws above
+ *  this recap and replaces its synopsis; the stop list moves into the card's "Your actions" box unchanged. Without
+ *  it (endpoint missing, not evaluated) the recap draws exactly as before. */
+export default function SinceCloseCard({ cio5 }: { cio5?: CioCardWire | null } = {}) {
   // LQ-1269: a visible tab re-reads every 60 s; a hidden one is not polled at all and re-reads the moment it is shown.
   const visible = usePageVisible()
   const api = useApi<SinceCloseWire>(SINCE_CLOSE_API, visible ? SINCE_CLOSE_POLL_MS : 0)
   const nowMs = useNow()
   const m = sinceCloseModel(api.data, nowMs)
   const [open, setOpen] = useState(false)
+  const v5 = cardVisible(cio5) ? cio5 : null
+  const showStops = m.state !== 'none' && (m.stops !== null || m.cio.actions.length === 0)
+  const v5Card = v5 ? (
+    <CioCardV5 card={v5.card} adviceOk={!!v5.advice?.ok} adviceReason={v5.advice?.reason} nowMs={nowMs}
+      actions={showStops ? <SinceCloseStops list={m.stops} stamp={m.stamp} nowMs={nowMs} v5 /> : undefined} />
+  ) : null
 
   if (m.state === 'collapsed' && !open) {
     return (
-      <div data-testid="since-close-card" data-state="collapsed" style={{ ...S.card, padding: '4px 14px', gap: 0 }}>
+      <>{v5Card}<div data-testid="since-close-card" data-state="collapsed" style={{ ...S.card, padding: '4px 14px', gap: 0 }}>
         <button type="button" style={S.link} onClick={() => setOpen(true)} aria-expanded={false} data-testid="since-close-expand">
           {m.collapsedNote ? <><b style={{ color: warn.color }}>{m.collapsedNote}</b>{' · '}</> : null}{m.label} · overnight recap
         </button>
-      </div>
+      </div></>
     )
   }
   return (
-    <section data-testid="since-close-card" data-state={m.state} aria-label={m.label} style={S.card}>
+    <>{v5Card}<section data-testid="since-close-card" data-state={m.state} aria-label={m.label} style={S.card}>
       <div style={S.hd}>
         <h2 style={S.h2}>{m.label}</h2>
         <span style={{ ...S.meta, color: m.stale ? warn.color : TOKENS.text[3] }} data-testid="since-close-fresh">{m.freshnessText}</span>
@@ -92,9 +103,9 @@ export default function SinceCloseCard() {
         <p style={S.p} data-testid="since-close-none">The recap has not been built yet; it refreshes overnight. Moves and news are on the pages below.</p>
       ) : (
         <>
-          <SinceCloseSynopsis s={m.synopsis} stamp={m.stamp} nowMs={nowMs} />
+          {!v5 && <SinceCloseSynopsis s={m.synopsis} stamp={m.stamp} nowMs={nowMs} />}
 
-          {(m.stops !== null || m.cio.actions.length === 0) && <SinceCloseStops list={m.stops} stamp={m.stamp} nowMs={nowMs} />}
+          {!v5 && showStops && <SinceCloseStops list={m.stops} stamp={m.stamp} nowMs={nowMs} />}
 
           <SinceCloseStamp stamp={m.stamp} nowMs={nowMs} part="detail" />
 
@@ -150,6 +161,6 @@ export default function SinceCloseCard() {
           <SinceCloseNews wire={api.data} />
         </>
       )}
-    </section>
+    </section></>
   )
 }

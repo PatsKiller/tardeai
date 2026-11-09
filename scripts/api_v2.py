@@ -31429,6 +31429,35 @@ def _needs_action(query=None):
 _HOME_DO_NOW_CACHE: dict = {}
 
 
+def _market_risk_latest_projection():
+    """The Market Risk Engine projection that GET "/api/v2/market-risk/latest" serves (snapshot + hedging radar +
+    open episode + the API-side book join). Shared by /api/v2/home/cio-card (LQ-20261107-1352): one record, two routes."""
+    from lib.market_risk_projection import build as _mr_build, load_snapshot as _mr_load
+
+    from lib.market_risk import escalation as _mr_esc
+
+    # live snapshot when present, else the labelled shadow one (never a live episode on a shadow tier)
+    _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())
+    _radar = _load_json(PROJECT_ROOT / "data" / "runtime" / "hedging_radar_latest.json")
+    _ep_err = None
+    try:
+        _ep = _mr_esc.open_episode(_mr_esc.load())
+    except Exception as _e:  # noqa: BLE001 — a torn episode ledger never turns the honest answer into a 500
+        _ep, _ep_err = None, f"episode ledger unreadable: {type(_e).__name__}"
+    _proj = _mr_build(_snap, _radar, episode=_ep)
+    if _ep_err:
+        _proj["episode_error"] = _ep_err
+    # design home/v005: dollars and account labels are joined here, API side, from the holdings store — never
+    # in the engine assessment (it feeds the models; AGENTS.md §2A). Fails soft to the projection without them.
+    try:
+        from lib.market_risk_book_join import join as _mr_join
+
+        _proj = _mr_join(_proj)
+    except Exception as _e:  # noqa: BLE001
+        _proj["book_exposure_error"] = f"{type(_e).__name__}: {_e}"
+    return _proj
+
+
 def _home_since_close():
     """GET /api/v2/home/since-close — the Home "Since last close" card (LQ-20261107-1253). Reads the snapshot file
     scripts/since_close_snapshot.py writes overnight (n8n); never builds it and never calls an LLM on this thread.
@@ -31445,6 +31474,61 @@ def _home_since_close():
     if not snap:
         return {"status": "no_snapshot", "window": win, "as_of_now": now.isoformat()}
     return {"status": "ok", **snap, "window_now": win, "freshness": _sc.freshness(snap, now=now), "as_of_now": now.isoformat()}
+
+
+_HOME_CIO_CARD_CACHE: dict = {}
+
+
+def _home_cio_card():
+    """GET /api/v2/home/cio-card — the Home CIO card + Market Risk panel (design cio-card v5, LQ-20261107-1352).
+    One read-only projection (HomeCioCard@v1, scripts/lib/home_cio_card.py) over the market-risk record, the
+    since-close CIO synopsis and stop advice, daily bars for the rotation ETFs, and — for the disagreement notes only —
+    the defense desk and sector-momentum records. Every value carries source_id + as_of; untraceable values are dropped;
+    a stale input turns advice off. Never writes, never reaches a broker. Cached 30 s."""
+    import time as _t
+    from datetime import date as _date, datetime as _dt, timedelta as _td, timezone as _tz
+    from zoneinfo import ZoneInfo as _Z
+
+    hit = _HOME_CIO_CARD_CACHE.get("v")
+    if hit and _t.monotonic() - hit[0] < 30:
+        return hit[1]
+    from lib import home_cio_card as _hcc
+    from lib import since_close_card as _sc
+
+    try:
+        mr = _market_risk_latest_projection()
+    except Exception as e:  # noqa: BLE001 — the card renders "market risk unavailable", never a 500
+        mr = {"state": "not_evaluated", "reason": f"market risk projection failed: {type(e).__name__}"}
+    snap = _sc.load_json(STATE_DIR / "since_close_latest.json")
+    now_et = _dt.now(_Z("America/New_York"))
+    if snap:
+        snap = {**snap, "freshness": _sc.freshness(snap, now=now_et)}
+    runtime = PROJECT_ROOT / "data" / "runtime"
+    defense = _load_json(runtime / "defense_recommendations_latest.json") or None
+    momentum = _load_json(runtime / "sector_momentum_latest.json") or None
+    syms = set(_hcc.rotation_symbols(mr))
+    for g in (((defense or {}).get("groups") or {}).get("get_into") or []):
+        for ins in (g or {}).get("instruments") or []:
+            if str(ins.get("kind") or "") == "sector ETF" and ins.get("symbol"):
+                syms.add(str(ins["symbol"]).upper())
+    bars, bars_meta = [], {"present": False}
+    if syms:
+        since = _date.today() - _td(days=45)
+        rows = _db_query(
+            "SELECT symbol, bar_time::date AS session, close FROM market_ohlcv_bars WHERE timeframe = 'daily' "
+            "AND symbol = ANY(%s) AND close IS NOT NULL AND bar_time >= %s ORDER BY symbol, bar_time",
+            (sorted(syms), since),
+        )
+        if rows:
+            bars = [{"symbol": r.get("symbol"), "session": str(r.get("session")), "close": r.get("close")} for r in rows]
+            bars_meta = {"present": True, "source_id": "market_ohlcv_bars:daily", "symbols": sorted(syms),
+                         "as_of": max(b["session"] for b in bars)}
+        else:
+            bars_meta = {"present": False, "reason": "no daily bars read (DB unavailable or empty)"}
+    out = _json_clean(_hcc.build(mr, snap, defense=defense, momentum=momentum, bars=bars, bars_meta=bars_meta,
+                                 now=_dt.now(_tz.utc)))
+    _HOME_CIO_CARD_CACHE["v"] = (_t.monotonic(), out)
+    return out
 
 
 def _home_do_now(query=None):
@@ -50130,6 +50214,7 @@ ROUTES = {
     "/api/v2/needs-action": lambda: _needs_action(),
     "/api/v2/home/do-now": lambda: _home_do_now(),
     "/api/v2/home/since-close": lambda: _home_since_close(),
+    "/api/v2/home/cio-card": lambda: _home_cio_card(),
     "/api/v2/queue/pending": lambda: _queue_pending(),
     "/api/v2/queue/completed": lambda: _queue_completed(),
     "/api/v2/queue/failed": lambda: _queue_failed(),
@@ -69565,30 +69650,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # POST ack: records the operator's acknowledgment in the episode ledger (P3-T7, lib.market_risk.escalation).
     if base_path == "/api/v2/market-risk/latest" and method == "GET":
         try:
-            from lib.market_risk_projection import build as _mr_build, load_snapshot as _mr_load
-
-            from lib.market_risk import escalation as _mr_esc
-
-            # live snapshot when present, else the labelled shadow one (never a live episode on a shadow tier)
-            _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())
-            _radar = _load_json(PROJECT_ROOT / "data" / "runtime" / "hedging_radar_latest.json")
-            _ep_err = None
-            try:
-                _ep = _mr_esc.open_episode(_mr_esc.load())
-            except Exception as _e:  # noqa: BLE001 — a torn episode ledger never turns the honest answer into a 500
-                _ep, _ep_err = None, f"episode ledger unreadable: {type(_e).__name__}"
-            _proj = _mr_build(_snap, _radar, episode=_ep)
-            if _ep_err:
-                _proj["episode_error"] = _ep_err
-            # design home/v005: dollars and account labels are joined here, API side, from the holdings store — never
-            # in the engine assessment (it feeds the models; AGENTS.md §2A). Fails soft to the projection without them.
-            try:
-                from lib.market_risk_book_join import join as _mr_join
-
-                _proj = _mr_join(_proj)
-            except Exception as _e:  # noqa: BLE001
-                _proj["book_exposure_error"] = f"{type(_e).__name__}: {_e}"
-            return 200, {"ok": True, "data": _json_clean(_proj)}
+            return 200, {"ok": True, "data": _json_clean(_market_risk_latest_projection())}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
     if base_path == "/api/v2/market-risk/ack" and method == "POST":
