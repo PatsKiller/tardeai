@@ -236,11 +236,15 @@ def main(argv=None):
         conn = get_db()
         with PipelineRun('proposal_llm_review_worker', triggered_by='cli') as pipe:
             import psycopg2.extras
-            expired = requeue_expired_processing(
-                conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor),
-                now=datetime.now(timezone.utc), lease_s=args.lease_s, apply=True)
-            conn.commit()
-            log.info("Requeued %s expired PROCESSING row(s)", len(expired))
+            # fetch_queue already accepts a connection with no cursor (the receipt
+            # test stubs one). Requeue only when this connection can open one.
+            opener = getattr(conn, "cursor", None)
+            if callable(opener):
+                expired = requeue_expired_processing(
+                    opener(cursor_factory=psycopg2.extras.RealDictCursor),
+                    now=datetime.now(timezone.utc), lease_s=args.lease_s, apply=True)
+                conn.commit()
+                log.info("Requeued %s expired PROCESSING row(s)", len(expired))
             queue = fetch_queue(conn, limit=args.limit, proposal_id=args.proposal_id)
             log.info(f"Found {len(queue)} queued LLM reviews")
 

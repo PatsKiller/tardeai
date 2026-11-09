@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 import sys
+import types
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -79,6 +80,74 @@ def test_a_negative_lease_is_refused():
         assert "lease_s" in str(exc)
     else:
         raise AssertionError("negative lease was accepted")
+
+
+def _stub_run(monkeypatch, worker):
+    pipeline = types.ModuleType("pipeline_registry")
+
+    class FakePipeline:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def rows(self, count):
+            self.count = count
+
+    pipeline.PipelineRun = FakePipeline
+    monkeypatch.setitem(sys.modules, "pipeline_registry", pipeline)
+    lane = types.ModuleType("lib.lane_last_receipt")
+    lane.now_iso = lambda: "2026-11-09T14:30:00Z"
+    lane.write_lane_receipt = lambda *a, **k: None
+    monkeypatch.setitem(sys.modules, "lib.lane_last_receipt", lane)
+    monkeypatch.setattr(worker, "_load_env", lambda: None)
+
+
+def test_run_requeues_when_the_connection_has_a_cursor(monkeypatch):
+    worker = _load("lq1513_proposal_worker_run", "proposal_llm_review_worker.py")
+    _stub_run(monkeypatch, worker)
+    order = []
+    cur = _Cur([
+        {"id": 7, "proposal_id": 1, "started_at": None, "attempts": 0},
+    ])
+
+    class Conn:
+        def cursor(self, cursor_factory=None):
+            order.append("cursor")
+            return cur
+
+        def commit(self):
+            order.append("commit")
+
+        def close(self):
+            order.append("close")
+
+    monkeypatch.setattr(worker, "get_db", lambda: Conn())
+    monkeypatch.setattr(
+        worker, "fetch_queue", lambda conn, **kwargs: order.append("fetch") or [],
+    )
+    assert worker.main(["--run", "--limit", "2"]) == 0
+    assert order[:3] == ["cursor", "commit", "fetch"]
+    assert "close" in order
+    assert "DELETE" not in _sql(cur)
+    assert "queue_status = 'PENDING'" in _sql(cur)
+
+
+def test_run_reaches_the_queue_when_the_connection_has_no_cursor(monkeypatch):
+    worker = _load("lq1513_proposal_worker_run_bare", "proposal_llm_review_worker.py")
+    _stub_run(monkeypatch, worker)
+    bare = types.SimpleNamespace(close=lambda: None)
+    seen = []
+    monkeypatch.setattr(worker, "get_db", lambda: bare)
+    monkeypatch.setattr(
+        worker, "fetch_queue", lambda conn, **kwargs: seen.append(conn) or [],
+    )
+    assert worker.main(["--run", "--limit", "2"]) == 0
+    assert seen == [bare]
 
 
 def _insights():
