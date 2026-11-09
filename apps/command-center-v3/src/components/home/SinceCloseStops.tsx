@@ -13,6 +13,30 @@ const up = toneVars('success')
 
 const price = (n: number | null | undefined) => (n == null ? '—' : `$${n.toFixed(2)}`)
 const KEY = 'tradeai.sinceClose.stopsDone.v1'
+/** LQ-1311 (operator 2026-11-08): the action cards sit side by side — three across on a desktop, one column on a phone. */
+const GRID: CSSProperties = { margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 8, alignItems: 'stretch' }
+
+/** A HOLD row says WHY nothing moves: the working stop, its distance under the last price, and the event the CIO weighed. */
+function holdLine(r: StopRow): string {
+  if (r.kind !== 'HOLD') return 'no action'
+  if (r.stopNow == null) return 'hold'
+  const room = r.last != null && r.last > 0 ? `, ${(((r.last - r.stopNow) / r.last) * 100).toFixed(1)}% under ${price(r.last)}` : ''
+  return `hold · stop ${price(r.stopNow)} already set${room}`
+}
+
+function QuietRow({ r }: { r: StopRow }) {
+  return (
+    <li data-testid="stops-quiet-row" style={{ listStyle: 'none', minWidth: 0, padding: '6px 10px', border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, background: TOKENS.bg[0] }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
+        <b style={{ fontSize: 14, color: TOKENS.text[0] }}>{r.symbol}</b>
+        {r.account && <span style={{ fontSize: 11, color: TOKENS.text[3] }}>{r.account}</span>}
+        <span style={{ fontSize: 12, color: up.color, fontFamily: FONT.mono }}>{holdLine(r)}</span>
+      </div>
+      {r.what && <div style={{ fontSize: 12, color: TOKENS.text[1], overflowWrap: 'anywhere' }}>{r.what}</div>}
+      {r.reason && <div style={{ fontSize: 12, color: TOKENS.text[3], overflowWrap: 'anywhere' }}>CIO: {r.reason}</div>}
+    </li>
+  )
+}
 const dayKey = (r: StopRow) => `${new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })}|${r.symbol}|${r.account ?? ''}|${r.kind}`
 
 function loadDone(): Record<string, boolean> {
@@ -39,7 +63,7 @@ function Row({ r, done, toggle }: { r: StopRow; done: boolean; toggle: () => voi
       <span style={{ fontFamily: FONT.mono, color: TOKENS.text[3], fontSize: 13, paddingTop: 4 }}>{r.n}</span>
       <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 24, color: TOKENS.text[0] }}>{r.symbol}</b>
+          <b style={{ fontSize: 20, color: TOKENS.text[0] }}>{r.symbol}</b>
           {r.account && <span style={{ fontSize: 12, color: TOKENS.text[3] }}>{r.account}</span>}
         </div>
         <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.06em', color: info.color }}>{r.verb}</div>
@@ -89,11 +113,12 @@ export default function SinceCloseStops({ list, stamp, nowMs }: { list: StopList
       </div>
       {list.actions.length === 0
         ? <p style={{ margin: 0, fontSize: 14, color: up.color }} data-testid="stops-none">Nothing to change at Schwab today.</p>
-        : <ol style={{ margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>{list.actions.map(r => <Row key={dayKey(r)} r={r} done={!!done[dayKey(r)]} toggle={flip(r)} />)}</ol>}
+        : <ol data-testid="stops-grid" style={GRID}>{list.actions.map(r => <Row key={dayKey(r)} r={r} done={!!done[dayKey(r)]} toggle={flip(r)} />)}</ol>}
       {list.quiet.length > 0 && (
-        <p data-testid="stops-quiet" style={{ margin: 0, fontSize: 13, color: TOKENS.text[3], overflowWrap: 'anywhere' }}>
-          No change needed: {list.quiet.map(r => `${r.symbol} (${r.kind === 'HOLD' ? 'hold' : 'no action'})`).join(' · ')}
-        </p>
+        <div data-testid="stops-quiet" style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+          <span style={{ fontSize: 13, color: TOKENS.text[3] }}>No change needed ({list.quiet.length}):</span>
+          <ul style={GRID}>{list.quiet.map(r => <QuietRow key={dayKey(r)} r={r} />)}</ul>
+        </div>
       )}
       <p style={{ margin: 0, fontSize: 12, color: TOKENS.text[3] }} data-testid="stops-rule">Rule: {list.rule}</p>
     </div>

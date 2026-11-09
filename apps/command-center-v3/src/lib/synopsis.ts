@@ -12,6 +12,7 @@ export interface SynopsisModel {
 }
 
 const ROWS: Array<[string, string, string[]]> = [
+  ['buys', 'Buys', ['buys', 'buy_gate']],  // LQ-1311: the buy gate ("no new buys before CPI Tue") leads
   ['book', 'Book', ['book', 'portfolio', 'holdings']],
   ['market', 'Market', ['market', 'macro']],
   ['reentry', 'Re-entry', ['reentry', 're_entry', 'reentries']],

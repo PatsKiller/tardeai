@@ -50,6 +50,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from lib.cio_buys_gate import buys_block  # noqa: E402  (LQ-1311 synopsis buy gate)
+
 LANE_ID = "cio-overnight-brief"
 SCHEMA = "CIOOvernightBrief@v1"
 ET = ZoneInfo("America/New_York")
@@ -929,6 +931,7 @@ def synopsis_verdict(
     book: Mapping[str, Any],
     stop_advice: Sequence[Mapping[str, Any]],
     reentry: Mapping[str, Any],
+    buys: Optional[Mapping[str, Any]] = None,
 ) -> str:
     """One sentence, at most ``VERDICT_MAX_CHARS`` — every figure is already sourced above."""
     kind = "sector" if market.get("market_wide") is False else ("market-wide" if market.get("market_wide") else "")
@@ -937,6 +940,9 @@ def synopsis_verdict(
     else:
         head = "no market-risk read"
     parts = [head, posture_label.lower()]
+    # LQ-1311 (operator 2026-11-08): the buy gate is part of the bottom line, not only a row below it.
+    if buys and buys.get("gate") == "NONE" and buys.get("until_short"):
+        parts[1] += f", no buys before {buys['until_short']}"
     need = [e for e in stop_advice if e.get("answer") in ("FIX_QTY", "ADD_STOP", "RAISE")]
     if need:
         parts.append(f"{len(need)} stop item(s) need a decision")
@@ -947,6 +953,10 @@ def synopsis_verdict(
         parts.append("not market-wide")
     if not reentry.get("stage2") and not reentry.get("stage3"):
         parts.append("no re-entry past stage 1")
+    # Over the limit, drop "not market-wide" (the Market row says it) before clipping a sentence mid-word.
+    for optional in ("not market-wide", "no re-entry past stage 1"):
+        if len("; ".join(parts) + ".") > VERDICT_MAX_CHARS and optional in parts:
+            parts.remove(optional)
     return _clip("; ".join(parts) + ".", VERDICT_MAX_CHARS)
 
 
@@ -1022,6 +1032,7 @@ def build_synopsis(
         "earnings": list(week_ahead.get("earnings") or []),
         "source_ids": ["macro_calendar", "earnings_dates"],
     }
+    buys = buys_block(market.get("tier"), this_week["macro"], as_of.astimezone(ET))
 
     source_ids: list[str] = []
     for block in (market, book, reentry, this_week, do_now):
@@ -1032,8 +1043,9 @@ def build_synopsis(
     return {
         "posture": posture_text,
         "verdict": synopsis_verdict(
-            posture_label=posture_label, market=market, book=book, stop_advice=stop_advice, reentry=reentry
+            posture_label=posture_label, market=market, book=book, stop_advice=stop_advice, reentry=reentry, buys=buys
         ),
+        "buys": buys,
         "book": book,
         "market": market,
         "reentry": reentry,

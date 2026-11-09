@@ -11,6 +11,8 @@ export interface StopRow {
   consequence: { text: string; tone: Tone; usd: number } | null
   worstCase: number | null
   reason: string | null; what: string | null
+  /** LQ-1311: the working stop and last price, kept for HOLD rows too (they explain why nothing moves). */
+  stopNow: number | null; last: number | null
   qa: { question: string | null; answer: string | null; correction: string | null } | null
 }
 export interface StopList { actions: StopRow[]; quiet: StopRow[]; header: string; rule: string }
@@ -72,7 +74,8 @@ export function stopList(
       n: 0, symbol, account: str(pick(o, ['account', 'account_name'])), kind, urgent: o.urgent === true || kind === 'ADD_STOP', verb: VERB[kind],
       order: kind === 'HOLD' || kind === 'NO_ACTION' ? null : { qty, stop: newStop, oldStop, gtc: o.gtc !== false },
       consequence, worstCase: last != null && stopForWorst != null && qty != null ? (last - stopForWorst) * qty : null,
-      reason: str(pick(o, ['why', 'reason', 'rationale'])), what: str(pick(o, ['what_happened', 'what', 'headline'])),
+      reason: str(pick(o, ['why', 'reason', 'rationale'])), what: str(pick(o, ['what_happened', 'what', 'headline', 'event_summary'])),
+      stopNow: oldStop, last,
       qa: q || a || c ? { question: q, answer: a, correction: c } : null,
     })
   }
