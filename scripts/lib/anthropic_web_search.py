@@ -243,16 +243,30 @@ def _http_error_body(exc: HTTPError) -> bytes:
         return b""
 
 
-def _body_error_code(raw: Any) -> str | None:
-    """The bridge's typed error code from a refused response body, and nothing else from it.
+def _body_refusal(raw: Any) -> str | None:
+    """The bridge's typed credit-refusal reason from a refused response body, and nothing else from it.
 
-    The body is never read into a row: it can quote the question or an auth page (see the HTTPError
-    branch). Only a bare ``error.code`` token is taken, and only if it is shaped like one of ours.
+    The bridge answers a refused call with HTTP status == ``error.status`` and the whole envelope as
+    the body: ``{"error": {"code": "PROVIDER_ERROR", "status": 500, "route_receipts": [...],
+    "retry": {...}}, ...}`` (``GovernedBridgeHandler.do_POST`` sends the dict from ``_error``). The
+    outer ``code`` names the *class* — a credit refusal arrives as a 500 ``PROVIDER_ERROR`` or a 503
+    ``PROVIDER_UNAVAILABLE`` — so the reason an operator can act on is the ``credit_refusal`` token
+    the bridge put on the lane receipt. Read that first, then accept a bare ``error.code`` token, and
+    never anything else in the body: it can quote the question or an auth page and this row is
+    written to the ledger.
     """
     try:
-        code = (json.loads(raw or b"") or {}).get("error", {}).get("code")
+        error = (json.loads(raw or b"") or {}).get("error") or {}
     except (ValueError, AttributeError, TypeError):
         return None
+    if not isinstance(error, dict):
+        return None
+    receipts = error.get("route_receipts")
+    for row in receipts if isinstance(receipts, list) else []:
+        token = row.get("credit_refusal") if isinstance(row, dict) else None
+        if isinstance(token, str) and _TOKEN.match(token):
+            return token
+    code = error.get("code")
     return code if isinstance(code, str) and _TOKEN.match(code) else None
 
 
@@ -282,11 +296,10 @@ def search(query: str, *, count: int = 5, timeout_s: float = 60.0,
         # 2026-11-07 (LQ-20261107-212): the status used to be thrown away — the run row said only
         # "HTTPError", so a lane degraded for a day with no nameable cause. The code and the reason
         # line are what let an operator tell unauthorized (401) from misrouted (404), throttled (429)
-        # and broken (5xx). 2026-11-09 (LQ-20261107-1592): a credit refusal reaches us as HTTP 500,
-        # so the status alone named a server fault; its typed ``error.code`` (CREDIT_PROCESS_CAP,
-        # UNAVAILABLE, ...) is now taken from the body and nothing else in the body is read — it can
-        # quote the question or an auth error page, and this row is written to the ledger.
-        token = _body_error_code(_http_error_body(exc))
+        # and broken (5xx). 2026-11-09 (LQ-20261107-1592): a credit refusal reaches us as an HTTP 500
+        # whose outer code is PROVIDER_ERROR, so neither the status nor ``error.code`` named it; the
+        # ``credit_refusal`` token on the lane receipt does, and that is what is taken from the body.
+        token = _body_refusal(_http_error_body(exc))
         reason = token or f"HTTP {exc.code} {exc.reason}".strip()
         return _refused(reason, state_path=state_path, now=now, status=int(exc.code))
     except URLError as exc:

@@ -40,14 +40,27 @@ def _stamp(value):
     return datetime.fromisoformat(value)
 
 
-def _http_error(code: str, *, body: dict | None = None) -> HTTPError:
-    payload = json.dumps(body or {"error": {"code": code, "message": "refused"}}).encode()
-    return HTTPError("http://127.0.0.1:8766/v1/chat/completions", 500, "Internal Server Error", None, io.BytesIO(payload))
+def _envelope(code: str, status: int, *, refusal: str | None, message: str = "RealProvider failure") -> dict:
+    """The bridge's real error body (``GovernedBridgeHandler.do_POST`` sends ``_error(...)`` as-is).
+
+    A credit refusal is an *outer* ``PROVIDER_ERROR`` (500) or ``PROVIDER_UNAVAILABLE`` (503): the token
+    an operator can act on is the ``credit_refusal`` the bridge put on the lane receipt, not ``code``.
+    """
+    receipt = {"lane": "anthropic", "provider": "anthropic", "attempted": True, "outcome": "credit_refused"}
+    if refusal:
+        receipt["credit_refusal"] = refusal
+    return {"error": {"code": code, "message": message, "status": status, "route_receipts": [receipt]}}
 
 
-def _refusing(code: str):
+def _http_error(status: int = 500, *, code: str = "PROVIDER_ERROR", refusal: str | None = "CREDIT_PROCESS_CAP",
+                message: str = "RealProvider failure") -> HTTPError:
+    payload = json.dumps(_envelope(code, status, refusal=refusal, message=message)).encode()
+    return HTTPError("http://127.0.0.1:8766/v1/chat/completions", status, "Internal Server Error", None, io.BytesIO(payload))
+
+
+def _refusing(refusal: str):
     def transport(_url, _body, _timeout):
-        raise _http_error(code)
+        raise _http_error(refusal=refusal)
 
     return transport
 
@@ -132,12 +145,36 @@ def test_the_open_window_stops_the_next_subject_posting(state):
 
 
 def test_the_body_is_read_only_for_the_typed_code(state):
-    """The bridge body can quote the question; only a shaped ``error.code`` token is taken from it."""
-    body = {"error": {"code": "CREDIT_PROCESS_CAP", "message": "question: should I buy MU " + "x" * 400}}
-    refused = ws.search("q", transport=lambda *_: (_ for _ in ()).throw(_http_error("CREDIT_PROCESS_CAP", body=body)),
-                        state_path=state, now=NOW)
+    """The bridge body can quote the question; only the lane receipt's ``credit_refusal`` token is taken."""
+    body = _envelope("PROVIDER_ERROR", 500, refusal="CREDIT_PROCESS_CAP",
+                     message="question: should I buy MU " + "x" * 400)
+    def transport(_url, _body, _timeout):
+        raise HTTPError("http://127.0.0.1:8766/v1", 500, "Internal Server Error", None,
+                        io.BytesIO(json.dumps(body).encode()))
+    refused = ws.search("q", transport=transport, state_path=state, now=NOW)
     assert refused["error"] == "CREDIT_PROCESS_CAP"
     assert "should I buy MU" not in json.dumps(refused)
+
+
+def test_a_credit_refusal_as_503_names_the_credit_cause_not_the_class(state):
+    """The transport_unavailable branch sends 503 PROVIDER_UNAVAILABLE with the refusal on the receipt."""
+    def transport(_url, _body, _timeout):
+        raise _http_error(503, code="PROVIDER_UNAVAILABLE", refusal="UNAVAILABLE")
+
+    refused = ws.search("q", transport=transport, state_path=state, now=NOW)
+    assert refused["error"] == "UNAVAILABLE"
+    assert refused["cooldown_state"] == "transient"
+
+
+def test_a_plain_provider_error_with_no_receipt_token_names_the_class(state):
+    """An ordinary provider fault is still nameable (the 2026-11-07 fix), and backs off as transient."""
+    def transport(_url, _body, _timeout):
+        raise _http_error(500, refusal=None)
+
+    refused = ws.search("q", transport=transport, state_path=state, now=NOW)
+    assert refused["error"] == "PROVIDER_ERROR"
+    assert refused["cooldown_state"] == "transient"
+    assert _stamp(refused["retry_at"]) == NOW + timedelta(minutes=15)
 
 
 def test_an_unshaped_body_yields_the_status_line_not_free_text(state):
