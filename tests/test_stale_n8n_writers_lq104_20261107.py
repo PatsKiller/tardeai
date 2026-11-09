@@ -199,6 +199,33 @@ def test_watch_reconciler_stays_clean_while_the_feed_is_live(monkeypatch, receip
     assert receipts[0]["ok"] is True and receipts[0]["empty_reason"] == "nothing_due"
 
 
+def test_watch_declared_gap_as_of_the_sunday_slot_is_no_new_input(monkeypatch, receipts, capsys):
+    """Sunday 2026-11-08 09:50 ET failed on hub code (dependency_unavailable, exit 1).
+
+    As of that slot the feed's newest emitted_on is still 2026-07-16 (115 days) and the
+    shipped registry declares the gap, so this pin exits 0 with no_new_input.
+    """
+    mod = _load("reconcile_watch_outcomes")
+
+    def execute(sql, params=None, fetch=None):
+        s = " ".join(sql.split()).lower()
+        if s.startswith("select id, symbol"):
+            return []
+        if s.startswith("update watch_candidate_events"):
+            return None
+        if s.startswith("select max(emitted_on)"):
+            return {"last_on": "2026-07-16", "age_days": 115}
+        raise AssertionError(f"unexpected SQL: {s[:60]}")
+
+    _db_stub(monkeypatch, execute)
+    assert mod.main() == 0
+    err = capsys.readouterr().err
+    assert "no_new_input" in err and "declared_gap_no_producer" in err
+    assert "dependency_unavailable" not in err
+    assert receipts[0]["ok"] is True and receipts[0]["empty_reason"] == "no_new_input"
+    assert receipts[0]["skipped_reasons"] == {"no_new_input": 1}
+
+
 def _exit_execute(ever: int, pending: int = 0, newest_age_days: int = 1):
     import datetime as dt
 
@@ -249,8 +276,8 @@ def test_an_unattributable_zero_is_not_a_clean_run():
     assert mod.empty_input_reason({"ever": 0, "due": 0}, False)[0] == "input_unreadable"
     assert mod.empty_input_reason({"ever": 0, "due": 0, "pending": 0}, None)[0] == "input_unreadable"
     assert mod.empty_input_reason({"ever": 0, "due": 0, "pending": 0}, False)[0] == "dependency_unavailable"
-    # LQ-882: with the switch ON and still 0 rows, the writer is failing -> a named failure, not clean.
-    assert mod.empty_input_reason({"ever": 0, "due": 0, "pending": 0}, True)[0] == "dependency_unavailable"
+    # LQ-1416: published and still zero rows is a quiet book (nothing_due), not a dead producer.
+    assert mod.empty_input_reason({"ever": 0, "due": 0, "pending": 0}, True)[0] == "nothing_due"
 
 
 def test_exit_reconciler_does_not_call_an_unreadable_count_clean(monkeypatch, receipts, capsys):
@@ -284,13 +311,69 @@ def test_the_switch_reader_returns_none_when_the_config_is_unreadable(monkeypatc
 
 
 def test_the_shipped_guardian_switch_no_longer_describes_the_lane_input():
-    """LQ-882: Gain Guardian stays dark, but the lane reconciles every type its producers write, so the
-    shipped ``published: false`` is one producer's state, not 'the reconciler has no input'."""
+    """The published flag is one producer's switch. The lane input is EXIT_ADVISORY_TYPES.
+
+    published=true with zero rows is nothing_due (LQ-1416). published=false with zero rows
+    stays dependency_unavailable. Neither reading means the other producers have no rows.
+    """
     import json
     cfg = json.loads((ROOT / "config" / "gain_guardian_thresholds.json").read_text())
     mod = _load("reconcile_exit_advisory_outcomes")
-    assert cfg.get("published") is False
+    assert isinstance(cfg.get("published"), bool)
     assert {"protection_advisory", "stop_health"} <= set(mod.EXIT_ADVISORY_TYPES)
+    reason, _why = mod.empty_input_reason({"ever": 0, "due": 0, "pending": 0}, cfg["published"])
+    assert reason == ("nothing_due" if cfg["published"] else "dependency_unavailable")
+
+
+def test_exit_pending_advisory_as_of_the_sunday_slot_is_scored(monkeypatch, receipts, capsys):
+    """Sunday 2026-11-08 09:00 ET failed on hub code that only read exit_intelligence while unpublished.
+
+    On this pin a due protection_advisory is scored (exit 0). The run must not repeat that stderr.
+    Synthetic symbol and prices only; bars and the database are stubs.
+    """
+    import datetime as dt
+
+    mod = _load("reconcile_exit_advisory_outcomes")
+    created = dt.datetime(2026, 9, 1, tzinfo=dt.timezone.utc)
+    advisory = {
+        "id": 9101514,
+        "symbol": "SYN",
+        "topic": "synthetic",
+        "created_at": created,
+        "research_type": "protection_advisory",
+        "evidence_json": {
+            "inputs": {"price": 100.0, "atr": 2.0},
+            "recommendation": {"stop_pct_below": 8},
+        },
+    }
+    inserts: list = []
+
+    def execute(sql, params=None, fetch=None):
+        s = " ".join(sql.split()).lower()
+        if s.startswith("create table"):
+            return None
+        if s.startswith("select count(*) as ever"):
+            newest = dt.datetime(2026, 11, 6, tzinfo=dt.timezone.utc)
+            return {"ever": 3, "due": 1, "pending": 1, "newest": newest}
+        if s.startswith("select h.id, h.symbol"):
+            return [advisory]
+        if s.startswith("select 1 from exit_advisory_outcomes"):
+            return None
+        if s.startswith("select 1 from alert_events"):
+            return None
+        if s.startswith("insert into exit_advisory_outcomes"):
+            inserts.append(params)
+            return None
+        raise AssertionError(f"unexpected SQL: {s[:70]}")
+
+    _db_stub(monkeypatch, execute)
+    monkeypatch.setattr(mod, "gain_guardian_published", lambda: True)
+    monkeypatch.setattr(mod, "_closes_since", lambda *_a, **_k: [100.0 + i for i in range(30)])
+    assert mod.reconcile() == 0
+    err = capsys.readouterr().err
+    assert "unpublished" not in err and "dependency_unavailable" not in err
+    assert len(inserts) == 2
+    assert receipts[0]["ok"] is True and receipts[0]["produced_count"] == 2
 
 
 # ── research-intelligence-queue: a dead process must not hold a row 'running' forever ─────────────────────────
