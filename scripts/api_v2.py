@@ -31584,8 +31584,17 @@ def _home_cio_card():
                          "as_of": max(b["session"] for b in bars)}
         else:
             bars_meta = {"present": False, "reason": "no daily bars read (DB unavailable or empty)"}
+    # LQ-20261107-1689: the rotate column must know what the book already holds — a tranche the operator bought is a
+    # fill, not a proposal. The same store the market-risk join reads (lib.portfolio_positions.load_store), read here
+    # through the one accessor; an unreadable store is no holding, and the card then offers the plan as before.
+    try:
+        from lib import portfolio_positions as _pp
+
+        holdings = (_pp.load_store() or {}).get("holdings") or []
+    except Exception as _e:  # noqa: BLE001 — no holdings is "no fill known", never a 500 on the Home card
+        holdings = []
     out = _json_clean(_hcc.build(mr, snap, defense=defense, momentum=momentum, bars=bars, bars_meta=bars_meta,
-                                 quotes=quotes, now=_dt.now(_tz.utc)))
+                                 quotes=quotes, holdings=holdings, now=_dt.now(_tz.utc)))
     _HOME_CIO_CARD_CACHE["v"] = (_t.monotonic(), out)
     return out
 
