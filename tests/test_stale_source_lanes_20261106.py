@@ -57,8 +57,11 @@ def test_regime_vix_joins_through_the_classifier_inputs():
     projection = {"regime": {"snapshot_id": "RS_SYNTH_1", "regime_label": "synthetic_label",
                              "generated_at": "2026-11-04T14:31:00+00:00"}}
     out = cio_truth.regime_for(db_query=db_query, projection=projection, now=NOW)
-    assert out["vix"] == 21.5
-    assert out["vix_as_of"].startswith("2026-11-04T14:30")
+    # LQ-1610: the classifier's own VIX input stays traceable as classifier_vix; the card's VIX is the one
+    # headline read (vix_headline), which this fixture leaves empty, so it is UNAVAILABLE, never the join.
+    assert out["classifier_vix"] == 21.5
+    assert out["classifier_vix_as_of"].startswith("2026-11-04T14:30")
+    assert out["vix"] is None and out["vix_state"] == "UNAVAILABLE"
     assert any("JOIN market_regime_snapshots" in s for s in seen)
 
 

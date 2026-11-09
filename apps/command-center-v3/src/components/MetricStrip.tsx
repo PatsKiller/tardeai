@@ -12,6 +12,8 @@ import { deriveTodayPnlState } from '../lib/todayPnlState'
 // One regime-clock rule for every surface that shows the regime (LQ-20261107-1392). HomeDoNow already
 // reads it; the header tile did not, and painted a "fresh" dot on a 55-hour-old snapshot.
 import { regimeState, regimeClockTitle } from '../lib/homeRegime'
+// LQ-20261107-1610: both market tiles always carry their age; a stale one is grey, never a market colour.
+import { regimeAgeNote, vixStaleAfterHours, NOT_CURRENT_COLOR } from '../lib/headerMarketClock'
 import { HOME_APPROVALS, type NeedsYouSummary } from '../lib/homeApprovals'
 import { deriveHeaderFeedState } from '../lib/headerFeedState'
 import type { HeaderFeed } from '../lib/headerFeedState'
@@ -393,7 +395,9 @@ export default function MetricStrip({ onDrill }: Props) {
   // FQ-086: the freshness sentence is shown to an operator, so it carries no raw table/run token (`vixFreshness`
   // would append `· source trade_ai_run_summary`). The source is humanised for the face by `vixProvenance`, and the
   // raw value stays where it always lived: the tooltip and the drill.
-  const vixReading = vixFreshness(vix, undefined, vixObsTime)
+  // LQ-20261107-1610: judged by the server's own line (vix_stale_after_hours, the one the CIO risk card uses), not a
+  // client-only 36 h, so the two surfaces cannot disagree about whether one VIX observation is current.
+  const vixReading = vixFreshness(vix, undefined, vixObsTime, Date.now(), vixStaleAfterHours(tradeAi?.vix_stale_after_hours))
   const vixProvenanceText = vixProvenance(vixSource, tradeAi?.run_label, vixObsTime ? fmtAsOf(vixObsTime, { timeOnly: true }) : null)
   // Non-current readings join the header's existing fault contract (tone/stale/undated), so they reach the
   // accessible attention list instead of only recolouring the number. FRESH stays exactly as quiet as before.
@@ -588,11 +592,12 @@ export default function MetricStrip({ onDrill }: Props) {
       label: 'REGIME', value: regimeLabel ? `${regimeLabel.replace(/_/g, ' ')}${regimeConf ? ` ${Math.round(regimeConf * 100)}%` : ''}` : '—',
       // The regime's own clock, in the same fault vocabulary as the VIX tile (tone/stale/undated). A stale
       // regime keeps its label — it is the last measured state — but loses the confident dot and says how old.
-      asOfNote: regimeInfo.stale
-        ? regimeClockTitle(regimeInfo)
-        : showQuietProvenance
-          ? ([regime?.trend_state, regime?.breadth_state, regime?.volatility_state].filter(Boolean).join(' · ') || 'risk-regime/latest')
-          : null,
+      // LQ-20261107-1610: the age is on the face in EVERY state, not only once stale.
+      asOfNote: regime
+        ? regimeAgeNote(regimeInfo, !regimeInfo.stale && showQuietProvenance
+          ? ([regime?.trend_state, regime?.breadth_state, regime?.volatility_state].filter(Boolean).join(' · ') || null)
+          : null)
+        : null,
       tone: worseTone(regimeInfo.stale ? 'warn' : 'ok', regimeStale ? 'warn' : 'ok'),
       stale: regimeInfo.stale
         ? (regimeInfo.ageHours != null ? `${regimeInfo.ageHours.toFixed(1)} h old` : 'clock not reported')
@@ -600,7 +605,7 @@ export default function MetricStrip({ onDrill }: Props) {
       staleLabel: regimeInfo.ageHours != null ? `STALE · ${regimeInfo.ageHours.toFixed(1)} h` : 'STALE',
       undated: Boolean(regime) && !regimeInfo.asOf && regimeInfo.ageHours == null,
       valueSize: VALUE_COMPACT, minWidth: 150, maxWidth: 215,
-      color: regimeInfo.stale ? BB.amber
+      color: regimeInfo.stale ? NOT_CURRENT_COLOR
         : regimeLabel === 'risk_off' ? BB.red : regimeLabel === 'risk_on' ? BB.green : BB.amber,
       tip: `Market regime from /api/v2/risk-regime/latest — weighs trend, breadth, and volatility signals into a risk-on/risk-off label with confidence.\n\nCLOCK: ${regimeClockTitle(regimeInfo)}${regimeInfo.stale ? ' — the label is the last measured state, not the current one.' : ''}`,
       drill: { title: 'Market Regime', subtitle: regimeInfo.stale ? `STALE · ${regimeClockTitle(regimeInfo)}` : `From /api/v2/risk-regime/latest · ${regimeClockTitle(regimeInfo)}`, endpoint: '/api/v2/risk-regime/latest',
@@ -614,16 +619,19 @@ export default function MetricStrip({ onDrill }: Props) {
       // the cosmetic provenance flag.
       label: 'VIX', value: vixReading.value ?? '—',
       asOfLabel: 'observation',
-      asOfNote: vixReading.current ? (showQuietProvenance ? vixProvenanceText : null) : vixNote,
+      // LQ-20261107-1610: a current reading still says how old it is ("8 h old · Schwab · 03:45 ET").
+      asOfNote: vixReading.current
+        ? [vixReading.age, showQuietProvenance ? vixProvenanceText : null].filter(Boolean).join(' · ')
+        : vixNote,
       tone: vixTone,
       stale: vixReading.state === 'STALE' ? ` · ${vixReading.age ?? 'stale'}` : null,
       undated: vixReading.state === 'UNDATED',
       minWidth: 110, maxWidth: 160,
-      color: !vixReading.current ? 'var(--text3)'
+      color: !vixReading.current ? NOT_CURRENT_COLOR
         : (Number(vixReading.value) >= 25 ? BB.red : Number(vixReading.value) >= 18 ? BB.amber : BB.green),
       tip: `CBOE Volatility Index. Colour is shown only for a current reading (green <18, amber 18-25, red ≥25). ${vixReading.label}${vixSource ? ` · source ${vixSource}` : ''}${vixObsTime ? ` · observed ${String(vixObsTime).slice(0, 19).replace('T', ' ')}` : ''}`,
       drill: { title: 'VIX', subtitle: `Volatility index · source ${vixSource ?? 'unknown'}${vixObsTime ? ` · observed ${vixObsTime}` : ''}`, endpoint: '/api/v2/trade-ai',
-        rows: tradeAi ? [{ vix: tradeAi.vix, vix_source: tradeAi.vix_source, vix_observation_time: tradeAi.vix_observation_time, market_regime: tradeAi.market_regime, run_label: tradeAi.run_label }] : [] },
+        rows: tradeAi ? [{ vix: tradeAi.vix, vix_source: tradeAi.vix_source, vix_observation_time: tradeAi.vix_observation_time, market_regime: tradeAi.market_regime, run_label: tradeAi.run_label, vix_state: tradeAi.vix_state, vix_stale_after_hours: tradeAi.vix_stale_after_hours, vix_reason: tradeAi.vix_reason }] : [] },
     },
     {
       label: 'SETUPS · LATEST RUN',

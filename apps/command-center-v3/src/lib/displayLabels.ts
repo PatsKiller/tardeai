@@ -105,6 +105,10 @@ const VIX_SOURCE: Record<string, string> = {
   // The two values _vix_observation actually returns (scripts/api_v2.py): the run summary, or the regime
   // collector's vix_close row. Both must read as words, never as a table/column token, on the tile face.
   'market_regime_indicators.vix_close': 'regime feed',
+  // LQ-20261107-1610: the ONE headline VIX (lib/vix_headline -> vix_complex) names one of these two legs; the header
+  // tile and the CIO risk card both carry it, so they must read the same words.
+  'market_quotes_extended:schwab:$VIX': 'Schwab',
+  'fred_economic_series:VIXCLS': 'FRED close',
   finviz: 'Finviz',
   cboe: 'CBOE',
   yahoo: 'Yahoo',

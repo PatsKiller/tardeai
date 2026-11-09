@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "header_market_freshness_health_20261109",
+  "files": [
+    "tests/test_header_market_freshness_health_20261109.py",
+    "tests/test_vix_headline_one_source_20261109.py"
+  ],
+  "anchor": "HEADER_MARKET_FRESHNESS_HEALTH_20261109",
+  "comment": [
+    "ANCHOR: HEADER_MARKET_FRESHNESS_HEALTH_20261109 — one headline VIX (Schwab $VIX, FRED VIXCLS fallback,",
+    "banned feeds refused) dated by its observation, on the header and the CIO card alike, and a regime tile that",
+    "reports its own clock. Escalation only: one system_health per contract per 24 h, no sends."
+  ]
+}

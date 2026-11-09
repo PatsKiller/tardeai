@@ -124,7 +124,20 @@ for (const flag of [true, false]) {
 }
 {
   const r = renderReading({ ...scanner, vix: 17.4, vix_observation_time: ago(0.25) }, false)
-  check('fresh stays quiet when quiet provenance is off (the note is withheld, as before)', r.meta === '—', r.meta)
+  // LQ-20261107-1610 (audit A4): the provenance is still withheld when the flag is off, but the AGE is not — a
+  // current reading says how old it is in every state, so a 5-minute and a 20-hour VIX never look alike.
+  check('fresh with quiet provenance off shows its age and withholds only the provenance',
+    /min old|h old/.test(r.meta) && !/scanner/.test(r.meta), r.meta)
+}
+{
+  // LQ-20261107-1610: the server's line (vix_stale_after_hours, the CIO risk card's line) judges the tile. A 30 h
+  // observation is STALE at the server's 26 h; the old client-only 36 h called it current and coloured it.
+  const r = renderReading({ vix: 25.6, vix_source: 'market_quotes_extended:schwab:$VIX', vix_stale_after_hours: 26,
+    vix_observation_time: ago(30) }, true)
+  check('a reading past the server line is grey, not a market colour', r.style.includes('var(--text3)'), r.style)
+  check('a reading past the server line enters the attention list', /VIX/.test(r.attention), r.attention)
+  check('the headline source reads as Schwab on the face, never the raw token',
+    /Schwab/.test(r.meta) && !/market_quotes_extended/.test(r.meta), r.meta)
 }
 {
   // The other value `_vix_observation` returns (scripts/api_v2.py): it must be words on the face too.

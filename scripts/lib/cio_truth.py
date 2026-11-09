@@ -953,12 +953,19 @@ def paper_win_rate(*, db_query=None, stats=None, now=None) -> dict:
 
 
 def regime_for(*, db_query=None, projection=None, now=None) -> dict:
-    """Regime and VIX from one classifier snapshot's input, with its clock."""
+    """Regime from one classifier snapshot, with its clock; VIX from the one headline read (LQ-1610)."""
     now = now or datetime.now(timezone.utc)
     if projection is None:
         from .data_broker.market_regime import get_market_regime
         projection = get_market_regime(db_query, history=1, now=now) if db_query else {}
     row = projection.get("regime") or {}
+    # LQ-20261107-1610: the card's VIX is the ONE headline VIX (vix_headline -> vix_complex), the same read the
+    # header tile serves, dated by its observation. The classifier snapshot's input is kept as `classifier_vix`
+    # (what the label was computed on), never shown as the VIX: it was dated by its insert time, not the quote's.
+    from .vix_headline import vix_headline
+    head = vix_headline(db_query=db_query, now=now) if db_query else {
+        "vix": None, "vix_observation_time": None, "vix_source": None, "vix_state": "UNAVAILABLE",
+        "vix_stale": True, "vix_age_hours": None, "vix_stale_after_hours": None, "vix_reason": "no database handle"}
     vix = _number(row.get("vix"))
     vix_at = row.get("generated_at") or row.get("created_at")
     if vix is None and row.get("snapshot_id"):
@@ -972,9 +979,15 @@ def regime_for(*, db_query=None, projection=None, now=None) -> dict:
                              (row["snapshot_id"],))
         if values:
             vix, vix_at = _number(values[0].get("value")), values[0].get("created_at")
-    reason = "classifier output unavailable" if not row else "VIX input unavailable for classifier snapshot" if vix is None else None
-    return {"label": row.get("regime_label"), "vix": vix,
-            "vix_as_of": _timestamp(vix_at).isoformat() if _timestamp(vix_at) else None,
+    reason = ("classifier output unavailable" if not row
+              else "VIX input unavailable for classifier snapshot" if head.get("vix") is None else None)
+    return {"label": row.get("regime_label"), "vix": head.get("vix"),
+            "vix_as_of": head.get("vix_observation_time"), "vix_source": head.get("vix_source"),
+            "vix_state": head.get("vix_state"), "vix_stale": head.get("vix_stale"),
+            "vix_age_hours": head.get("vix_age_hours"), "vix_stale_after_hours": head.get("vix_stale_after_hours"),
+            "vix_reason": head.get("vix_reason"),
+            "classifier_vix": vix,
+            "classifier_vix_as_of": _timestamp(vix_at).isoformat() if _timestamp(vix_at) else None,
             "snapshot_id": row.get("snapshot_id"), "confidence": _number(row.get("confidence")),
             "parts": {k: row.get(k) for k in ("volatility_state", "trend_state", "breadth_state", "macro_state")},
             **_evidence("market_regime_snapshots + matching market_regime_indicators.snapshot_id",

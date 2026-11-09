@@ -1033,6 +1033,24 @@
    },
    "expected": "NO_EVIDENCE until the lane is promoted to canary (shadow dry runs write no receipt)",
    "audit_ref": "LQ-20261107-1614"
+  },
+  {
+   "id": "header_market_freshness_health",
+   "name": "Header REGIME/VIX contracts: one headline VIX on header and card, regime clock reported, system_health escalation",
+   "category": "output_integrity",
+   "code": "scripts/header_market_freshness_health.py",
+   "evidence_source": {
+    "kind": "json",
+    "base": "state",
+    "path": "data/runtime/header-market-freshness-health_last.json"
+   },
+   "success_predicate": {
+    "description": "a run found a header market contract BROKEN (summary.broken > 0: the header or the CIO card serves a VIX that is not the one headline read, no admissible VIX exists, or the regime snapshot reports no clock) and escalated it as one system_health alert_events row per contract per 24 h; it never writes a VIX, fetches from a provider, re-runs the classifier or re-warms a cache",
+    "json_path": "summary.broken",
+    "min_count": 1
+   },
+   "expected": "NO_EVIDENCE until the lane is promoted to canary (shadow dry runs write no receipt)",
+   "audit_ref": "LQ-20261107-1610"
   }
  ]
 }

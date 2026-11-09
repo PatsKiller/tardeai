@@ -44,6 +44,8 @@ eq('VIX from a scanner run', vixProvenance('trade_ai_run_summary', '1730', '22:2
 eq('VIX from a feed', vixProvenance('cboe', null, '15:59 ET'), 'CBOE · 15:59 ET')
 eq('VIX from the regime feed', vixProvenance('market_regime_indicators.vix_close', null, '15:59 ET'), 'regime feed · 15:59 ET')
 eq('VIX source unknown', vixProvenance(null, null, null), 'source —')
+eq('LQ-1610 headline VIX from Schwab names its feed, not a table token', vixProvenance('market_quotes_extended:schwab:$VIX', 'x1730', '03:45 ET'), 'Schwab · 03:45 ET')
+eq('LQ-1610 headline VIX from FRED reads as a close', vixProvenance('fred_economic_series:VIXCLS', null, '16:15 ET'), 'FRED close · 16:15 ET')
 
 // Rotation withheld notice chips (captured rotation/summary publication, 2026-10-23).
 const withheld = rotationAvailability({ ok: true, publication: { schema: 'RotationPublication@v1', status: 'UNAVAILABLE',

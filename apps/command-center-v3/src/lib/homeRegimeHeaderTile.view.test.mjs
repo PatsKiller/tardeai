@@ -15,6 +15,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { TOKENS } from './designTokens.ts'
 import { regimeState, regimeClockTitle } from './homeRegime.ts'
+import { regimeAgeNote, NOT_CURRENT_COLOR } from './headerMarketClock.ts'
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -35,8 +36,10 @@ const row = wire.data
 const tile = info => ({
   tone: info.stale ? 'warn' : 'ok',
   staleBadge: info.stale ? (info.ageHours != null ? `STALE · ${info.ageHours.toFixed(1)} h` : 'STALE') : null,
-  meta: info.stale ? regimeClockTitle(info) : null,
-  color: info.stale ? TOKENS.text[2] : TOKENS.text[0],
+  // LQ-20261107-1610: the age line is shown in every state, and a stale label is the not-current grey.
+  meta: regimeAgeNote(info),
+  title: regimeClockTitle(info),
+  color: info.stale ? NOT_CURRENT_COLOR : TOKENS.text[0],
 })
 
 const cases = []
@@ -52,8 +55,9 @@ check('the envelope clock is carried into the tile, not discarded', () => {
 check('the 55-hour snapshot never paints a current dot', () => {
   const v = tile(regimeState(row, wire))
   assert.equal(v.tone, 'warn')
-  assert.equal(v.meta, 'regime as_of 2026-11-06T21:05:01-05:00 (55.2 h old)')
-  assert.equal(v.color, TOKENS.text[2])
+  assert.equal(v.meta, 'stale · 2.3 d old')
+  assert.equal(v.title, 'regime as_of 2026-11-06T21:05:01-05:00 (55.2 h old)')
+  assert.equal(v.color, 'var(--text3)')
 })
 
 check('the stale badge names the age the envelope measured', () => {
@@ -63,7 +67,7 @@ check('the stale badge names the age the envelope measured', () => {
 check('a fresh envelope keeps the quiet dot', () => {
   const v = tile(regimeState(row, { ...wire, stale: false, age_hours: 2.1 }))
   assert.equal(v.tone, 'ok')
-  assert.equal(v.meta, null)
+  assert.equal(v.meta, '2.1 h old', 'a fresh regime must still say how old it is (LQ-1610)')
   assert.equal(v.staleBadge, null)
 })
 
@@ -87,6 +91,9 @@ check('MetricStrip destructures the envelope and uses the shared rule', () => {
   assert.match(src, /tone: worseTone\(regimeInfo\.stale \? 'warn' : 'ok'/, 'the dot does not follow the regime clock')
   assert.match(src, /regimeClockTitle\(regimeInfo\)/, 'the meta line does not name the regime clock')
   assert.ok(!/tone: regimeStale \?/.test(code), 'the dot still follows the transport stale flag')
+  // LQ-20261107-1610: age on the face in every state; stale is grey, not amber.
+  assert.match(code, /asOfNote: regime\s*\n?\s*\? regimeAgeNote\(regimeInfo/, 'the age line is not shown in every state')
+  assert.match(code, /color: regimeInfo\.stale \? NOT_CURRENT_COLOR/, 'a stale regime is not the not-current grey')
 })
 
 const results = []
