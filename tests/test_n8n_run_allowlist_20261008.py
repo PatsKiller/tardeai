@@ -181,7 +181,13 @@ def test_every_command_token_passes_both_forbidden_lists_and_names_no_authority_
 #: `LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/ddq.lock bash scripts/run_with_deepseek_offpeak.sh …` — and the cap
 #: check runs in the lane's own process (scripts/due_diligence_questions.py cap_env_warning), so dropping the
 #: assignment would make every governed call refuse with COST_CAP_EXCEEDED. Pinned to the value on the line.
-INLINE_ENV_KNOBS = {"SCALP_HOT_TIER": {"1"}, "MOMENTUM_SCALP_OUTER_DEADLINE_S": {"100"},
+#: 2026-11-09 (LQ-20261107-1697): MOMENTUM_SCALP_OUTER_DEADLINE_S was pinned at 100, the 2026-10-14 line. The
+#: operator widened the budget on 2026-10-23 to `MOMENTUM_SCALP_OUTER_DEADLINE_S=170 ... timeout 180` and the host
+#: line, the registry command_text and config/n8n_run_allowlist.json all carry 170; only this copy stayed at 100, so
+#: the real line failed its own allowlist. 170 is the operator's value, not this test's to relitigate: whether a
+#: 180 s timeout belongs on a */2 (120 s) line is a separate open operator decision (LQ-20261107-376 / the
+#: scalp-hot cadence conflict), and changing the assignment here would not change the host line either way.
+INLINE_ENV_KNOBS = {"SCALP_HOT_TIER": {"1"}, "MOMENTUM_SCALP_OUTER_DEADLINE_S": {"170"},
                     "LLM_GLOBAL_DAILY_USD_CAP": {"2.00"}}
 
 
@@ -195,6 +201,28 @@ def _strip_inline_env(lane_id, cmd):
         i += 1
     assert i > 1 and cmd[i:i + 1] == ["$PY"], (lane_id, cmd)
     return cmd[i:]
+
+
+def test_an_inline_env_value_matches_the_registry_cron_line():
+    """The pin above is a copy; the registry's command_text is the cron line the host actually runs.
+
+    A copied value that drifts from the line is the defect, not the line: 2026-10-23 widened the scalp budget to
+    MOMENTUM_SCALP_OUTER_DEADLINE_S=170 and this file's copy of the *old* value made the real line fail. Every
+    inline assignment an allowlist command carries must appear verbatim in its registry command_text.
+    """
+    drifted = []
+    for lane_id, entry in LANES.items():
+        cmd = entry["command"]
+        if cmd[:1] != ["env"]:
+            continue
+        line = str((REGISTRY_ROWS.get(lane_id) or {}).get("scheduler", {}).get("command_text") or "")
+        assert line, f"{lane_id} sets inline env but has no registry command_text to check against"
+        i = 1
+        while i < len(cmd) and "=" in cmd[i] and not cmd[i].startswith("-"):
+            if cmd[i] not in line:
+                drifted.append((lane_id, cmd[i]))
+            i += 1
+    assert drifted == [], drifted
 
 
 def test_commands_run_repo_scripts_or_crontab_only_and_mode_args_differ():
