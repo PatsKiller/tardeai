@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "scope_governor_crontab_snapshot_lq261",
+  "files": [
+    "tests/test_scope_governor_crontab_snapshot_lq261.py"
+  ],
+  "anchor": "SCOPE_GOVERNOR_CRONTAB_SNAPSHOT_LQ261",
+  "comment": [
+    "ANCHOR: SCOPE_GOVERNOR_CRONTAB_SNAPSHOT_LQ261 — LQ-20261107-261: the hardened health agent is denied `crontab -l` and the spool, so the scope governor reads the cron-written snapshot (lib.crontab_snapshot) instead of returning \"\" and failing open. Fixtures are synthetic. Registered by cc-deepseek-4 on 2026-11-09 during LQ-1383 wrap-up: the test was already on the LIVE chain (b14b1b48e) and in no gate, so repo_preflight blocked every branch cut from the live fold."
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "sector_leaders_nan_guard_20261107",
+  "files": [
+    "tests/test_sector_leaders_nan_guard_20261107.py"
+  ],
+  "anchor": "SECTOR_LEADERS_NAN_GUARD_20261107",
+  "comment": [
+    "ANCHOR: SECTOR_LEADERS_NAN_GUARD_20261107 — LQ-20261107-205: NaN/inf from enrichment or price rows becomes None, never 0 and never an int()/round() crash (the HTTP 500 on sector-leaders). Fixtures are synthetic. Registered by cc-deepseek-4 on 2026-11-09 during LQ-1383 wrap-up: the test was already on the LIVE chain (b14b1b48e) and in no gate, so repo_preflight blocked every branch cut from the live fold."
+  ]
+}

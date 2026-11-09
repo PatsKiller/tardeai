@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "sec_fundamentals_ingest_output_count_20261107",
+  "files": [
+    "tests/test_sec_fundamentals_ingest_output_count_20261107.py"
+  ],
+  "anchor": "SEC_FUNDAMENTALS_INGEST_OUTPUT_COUNT_20261107",
+  "comment": [
+    "ANCHOR: SEC_FUNDAMENTALS_INGEST_OUTPUT_COUNT_20261107 — LQ round-2, 2026-11-07: the sec-fundamentals-ingest receipt grades what the run WROTE (statuses OK), not what it looked at (summary.symbols), so a NO_FACTS run no longer grades GOOD. Fixtures are synthetic. Registered by cc-deepseek-4 on 2026-11-09 during LQ-1383 wrap-up: the test was already on the LIVE chain (b14b1b48e) and in no gate, so repo_preflight blocked every branch cut from the live fold."
+  ]
+}
