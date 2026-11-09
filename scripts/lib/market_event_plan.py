@@ -782,12 +782,20 @@ def evaluate_position(candidate: Mapping[str, Any], holding: Mapping[str, Any],
     stop_state = str(holding.get("stop_state") or "").upper()
 
     # --- terminal: stopped out hands the name to recovery_state; this lane never re-enters it.
+    # FILLED stays decisive even when the book still shows shares: live 2026-11-09 the filled stops left fractional
+    # remainders behind (V 0.4985, JEPI 0.3964, XLB 0.3274). The disagreement is recorded, not resolved — reading it
+    # as "still held" would leave the row in ordinary progression and offer a tranche on a name whose stop has fired.
+    residual = qty if (stop_state == "FILLED" and qty is not None and qty > 0) else 0.0
     if stop_state == "FILLED" or (qty is not None and qty == 0 and holding.get("had_working_stop") is True):
-        res.update(stage="STOPPED_OUT", verdict="OK",
+        if residual:
+            reasons.append(f"the stop filled while the book still shows {residual:g} shares: a fractional remainder, "
+                           "not a second position")
+        res.update(stage="STOPPED_OUT", verdict="DEGRADED" if residual else "OK",
                    handoff={"to": "recovery_state", "kind": "stop_out", "episode_id": candidate.get("episode_id"),
-                            "symbol": sym, "account_label": label, "stop_state": stop_state or "missing"})
+                            "symbol": sym, "account_label": label, "stop_state": stop_state or "missing",
+                            "residual_qty": residual})
         reasons.append("stop filled or the position went to zero with a working stop gone: recovery owns re-entry")
-        gates["stopped_out"] = {"ok": True}
+        gates["stopped_out"] = {"ok": True, "residual_qty": residual}
         return _with_alert(res, candidate, lc)
 
     # --- exit gates. Any one is enough; each records its own verdict so the alert can say which.
@@ -803,8 +811,12 @@ def evaluate_position(candidate: Mapping[str, Any], holding: Mapping[str, Any],
     else:
         reasons.append("rs5_loss_sessions not measured: the RS-loss exit cannot be evaluated")
     exit_rank = _tier_index(lc.get("exit_min_tier", "RED"), tier_order)
+    # "escalates to >= RED after entry" needs BOTH halves: the tier is at or past the exit tier, and it is worse than
+    # it was at entry. Without the second half a name entered while RED already at RED reads as an escalation for the
+    # whole episode and fires EXIT_READY on any close under the entry basis (observed live 2026-11-09 on PFE and V).
     if (tier_rank is not None and exit_rank is not None and entry_rank is not None
-            and tier_rank >= exit_rank and price is not None and entry is not None and price < entry):
+            and tier_rank >= exit_rank and tier_rank > entry_rank
+            and price is not None and entry is not None and price < entry):
         exits.append(f"tier escalated to {tier} after entry with the close {price:g} under the entry basis {entry:g}")
     ev = candidate.get("reason_evidence") if isinstance(candidate.get("reason_evidence"), Mapping) else {}
     neg = ev.get("negative_catalyst_types") or []

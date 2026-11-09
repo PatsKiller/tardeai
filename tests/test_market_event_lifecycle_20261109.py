@@ -161,6 +161,23 @@ def test_5_rs_loss_for_n_sessions_exits_and_a_break_of_invalidation_is_terminal(
     assert any("terminal" in r for r in still["reasons"])
 
 
+def test_5b_the_tier_exit_needs_an_escalation_after_entry_not_just_red_at_red():
+    """The design's wording is "the tier escalates to >= RED after entry"; both halves are the rule.
+
+    Fail-before: a name entered while already RED read as escalated for the whole episode, so any close under the
+    entry basis produced EXIT_READY (live 2026-11-09 on PFE 29.38 under 29.515 and V 422.22 under 423.42).
+    Pass-after: no crash in the tier after entry, no tier exit; a real escalation still exits.
+    """
+    red_at_entry = evaluate(c=candidate(stage="HELD_T2", entry_tier="RED"), h=holding(qty=60),
+                            snap=snapshot(tier="RED", last_close=99.0))
+    assert red_at_entry["stage"] != "EXIT_READY"
+    assert red_at_entry["gates"]["exit"]["ok"] is True
+    escalated = evaluate(c=candidate(stage="HELD_T2", entry_tier="YELLOW"), h=holding(qty=60),
+                         snap=snapshot(tier="RED", last_close=99.0))
+    assert escalated["stage"] == "EXIT_READY"
+    assert any("escalated to RED" in r for r in escalated["reasons"])
+
+
 # ---------------------------------------------------------------- 6. stop filled -> STOPPED_OUT and a recovery handoff
 
 
@@ -179,6 +196,24 @@ def test_6b_qty_zero_with_the_working_stop_gone_is_stopped_out():
     res = evaluate(c=candidate(stage="HELD_T2"),
                    h=holding(qty=0, stop_state="MISSING", had_working_stop=True))
     assert res["stage"] == "STOPPED_OUT"
+
+
+def test_6c_a_filled_stop_with_a_fractional_remainder_is_still_stopped_out_and_says_so():
+    """Live 2026-11-09: V 0.4985, JEPI 0.3964, XLB 0.3274 shares left under a filled stop.
+
+    Fail-before: the row read as STOPPED_OUT / OK with the remainder silent and the operator could not tell a whole
+    position from dust. Pass-after: FILLED is still decisive (ordinary progression would offer a tranche on a name
+    whose stop fired), and the disagreement grades DEGRADED with the residual named on the handoff.
+    """
+    res = evaluate(c=candidate(stage="HELD_T2"), h=holding(qty=0.4985, stop_state="FILLED"))
+    assert res["stage"] == "STOPPED_OUT"
+    assert res["verdict"] == "DEGRADED"
+    assert res["handoff"]["residual_qty"] == 0.4985
+    assert any("fractional remainder" in r for r in res["reasons"])
+    # no remainder: the ordinary stop-out, unchanged
+    whole = evaluate(c=candidate(stage="HELD_T2"), h=holding(qty=0, stop_state="FILLED"))
+    assert whole["stage"] == "STOPPED_OUT" and whole["verdict"] == "OK"
+    assert whole["handoff"]["residual_qty"] == 0.0
 
 
 # ---------------------------------------------------------------- 7. sleeve overweight -> TRIM_READY with the band

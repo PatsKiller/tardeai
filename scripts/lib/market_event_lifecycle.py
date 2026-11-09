@@ -441,23 +441,31 @@ def build_rows(inputs: Mapping[str, Any], policy: Mapping[str, Any], now: dateti
         if not sym:
             continue
         state = str(c.get("state") or "").upper()
-        if state not in ("ENTERED",) and state not in mep.POSITION_STAGES:
-            continue
+        held_now = [p for p in positions if str(p.get("symbol") or "").upper() == sym]
         stored_lc = (c.get("plan") or {}).get("lifecycle") if isinstance(c.get("plan"), Mapping) else None
         stored_lc = stored_lc if isinstance(stored_lc, Mapping) else {}
+        # Operator decision 2026-11-09 14:50 ET: a held position in this episode's candidate list IS an entered
+        # position — "if I bought 81 shares now it should show the 81 shares are there". ENTERED_OBSERVED is derived
+        # from positions_current and labelled with its source, so it is never confused with an operator-recorded
+        # ENTERED. Without this the engine's WATCH rows never become position rows and the lifecycle never starts.
+        observed = bool(held_now) and state not in ("ENTERED",) and state not in mep.POSITION_STAGES
+        was_observed = bool(stored_lc.get("positions"))
+        if state not in ("ENTERED",) and state not in mep.POSITION_STAGES and not observed and not was_observed:
+            continue
         entry_tier = stored_lc.get("entry_tier") or str(mre.get("tier") or "").upper() or None
         cand = {
             "episode_id": c.get("episode_id") or eid,
             "symbol": sym,
             "sector": c.get("sector"),
-            "state": state,
+            "state": "ENTERED_OBSERVED" if (observed or was_observed) else state,
+            "entry_source": "positions_snapshot" if (observed or was_observed) else "engine_state",
+            "observed_state": state if (observed or was_observed) else None,
             "entry_tier": entry_tier,
             "last_price": c.get("last_price"),
             "fell_for_reason": c.get("fell_for_reason"),
             "reason_evidence": c.get("reason_evidence"),
             "plan": plan_for_holding(c, None),
         }
-        held_now = [p for p in positions if str(p.get("symbol") or "").upper() == sym]
         held_labels = {_label(p.get("account_key")): p for p in held_now}
         prev_map = stored_lc.get("positions") if isinstance(stored_lc.get("positions"), Mapping) else {}
         labels = list(held_labels) + [k for k in prev_map if k not in held_labels]
@@ -534,6 +542,7 @@ def evaluate_rows(rows: Sequence[Mapping[str, Any]], policy: Mapping[str, Any],
         res["episode_id"] = r.get("episode_id")
         res["account_label"] = r["account_label"]
         res["entry_tier"] = cand.get("entry_tier")
+        res["entry_source"] = cand.get("entry_source")
         res["schema"] = SCHEMA_ROW
         res["first_observation"] = not r.get("previous_recorded")
         # carried into the state map so the next run can tell a qty or stop CHANGE from an unchanged book
@@ -906,7 +915,8 @@ def persist_results(conn: Any, results: Sequence[Mapping[str, Any]], *, trigger:
                 (eid, sym, label, str(r.get("previous_stage")), str(r.get("stage")), trigger,
                  json.dumps(r.get("gates") or {}, sort_keys=True, default=str),
                  json.dumps({"verdict": r.get("verdict"), "reasons": list(r.get("reasons") or [])[:12],
-                             "alert": r.get("alert")}, sort_keys=True, default=str),
+                             "alert": r.get("alert"), "entry_source": r.get("entry_source")},
+                            sort_keys=True, default=str),
                  now))
             inserted += max(0, int(cur.rowcount or 0))
         prior = (st["positions"].get(label) or {}) if isinstance(st["positions"].get(label), Mapping) else {}

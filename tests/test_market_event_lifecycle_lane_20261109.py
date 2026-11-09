@@ -212,6 +212,31 @@ def test_a_candidate_with_no_held_label_is_not_a_row():
     assert life.build_rows(inp, policy(), NOW) == []
 
 
+def test_a_held_candidate_is_entered_observed_with_its_source_labelled():
+    """Operator 2026-11-09 14:50 ET: "if I bought 81 shares now it should show the 81 shares are there"."""
+    rows = life.build_rows(inputs(candidates=[candidate(state="WATCH")]), policy(), NOW)
+    assert len(rows) == 1
+    assert rows[0]["candidate"]["state"] == "ENTERED_OBSERVED"
+    assert rows[0]["candidate"]["entry_source"] == "positions_snapshot"
+    assert rows[0]["candidate"]["observed_state"] == "WATCH"
+    assert rows[0]["previous_stage"] == "WATCH"          # the engine state it was adopted from, so the first
+    res = life.evaluate_rows(rows, policy(), NOW)[0]    # observation is one recorded transition, not a silence
+    assert res["entry_source"] == "positions_snapshot"
+    assert res["stage"] in life.mep.POSITION_STAGES
+    # a WATCH candidate with nothing held is not a position row
+    assert life.build_rows(inputs(candidates=[candidate(state="WATCH")], positions=[]), policy(), NOW) == []
+
+
+def test_an_adopted_position_that_vanishes_still_evaluates_as_stopped_out():
+    stored = {"positions": {"Tst Taxable": {"stage": "ADD_T2_READY", "qty": 30.0}}}
+    inp = inputs(candidates=[candidate(state="WATCH", plan={**candidate()["plan"], "lifecycle": stored})],
+                 positions=[], positions_as_of=NOW.isoformat(),
+                 stops={("tst_taxable", SYM): {"lifecycle": "filled", "stop_price": 92.0}})
+    rows = life.build_rows(inp, policy(), NOW)
+    assert len(rows) == 1 and rows[0]["candidate"]["state"] == "ENTERED_OBSERVED"
+    assert life.evaluate_rows(rows, policy(), NOW)[0]["stage"] == "STOPPED_OUT"
+
+
 def test_the_giveback_state_is_used_only_while_the_guardian_run_is_fresh():
     fresh = inputs(guardian_run_at=NOW.isoformat(),
                    guardian={("tst_taxable", SYM): {"giveback_state": "GIVEBACK_BREACH",
