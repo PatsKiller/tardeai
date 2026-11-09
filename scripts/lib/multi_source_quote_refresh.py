@@ -41,12 +41,14 @@ class MultiSourceRefresh:
 
     def _do_refresh(self):
         symbols = []
+        cache_read_error = None
         if os.path.exists(self.cache_path):
             try:
                 with open(self.cache_path) as f:
                     symbols = list(json.load(f).keys())
-            except:
-                pass
+            except (OSError, ValueError) as exc:
+                cache_read_error = type(exc).__name__
+                symbols = []
 
         if not symbols:
             try:
@@ -57,16 +59,17 @@ class MultiSourceRefresh:
                 cur.execute("SELECT DISTINCT symbol FROM trade_closed WHERE close_date > CURRENT_DATE - 90 UNION SELECT DISTINCT symbol FROM candidate_setup_advisory LIMIT 100")
                 symbols = [r[0] for r in cur.fetchall()]
                 conn.close()
-            except Exception:
-                return {'status': 'no_symbols'}
+            except Exception as exc:
+                return {'status': 'no_symbols', 'error': type(exc).__name__}
 
         symbols = [s for s in symbols if s and not _is_cusip_like(s)]
         if not symbols:
             return {'status': 'no_symbols'}
 
         refreshed = {}
+        quote_errors = []
 
-        # Schwab first. CUSIP-like symbols are already gone.
+        # Schwab first. CUSIP-like symbols are already gone. A failed quote is recorded, not hidden.
         for sym in symbols[:20]:
             try:
                 r = _cc_urlopen(f'http://localhost:7777/api/v2/brokers/schwab/quote/{sym}', timeout=5)
@@ -75,10 +78,15 @@ class MultiSourceRefresh:
                     px = d.get('lastPrice') or d.get('mark')
                     if px:
                         refreshed[sym] = float(px)
-            except Exception:
-                pass
+                    else:
+                        quote_errors.append(f"{sym}:no_price")
+                else:
+                    quote_errors.append(f"{sym}:http_{r.status}")
+            except Exception as exc:
+                quote_errors.append(f"{sym}:{type(exc).__name__}")
 
         # Local Finviz cache for symbols Schwab did not price. No network.
+        finviz_error = None
         try:
             from pathlib import Path
             try:
@@ -94,8 +102,16 @@ class MultiSourceRefresh:
                 px = row.get('price') if isinstance(row, dict) else None
                 if px:
                     refreshed[sym] = float(px)
-        except Exception:
-            pass
+        except Exception as exc:
+            finviz_error = type(exc).__name__
+
+        notes = {}
+        if cache_read_error:
+            notes['cache_read_error'] = cache_read_error
+        if quote_errors:
+            notes['quote_errors'] = quote_errors
+        if finviz_error:
+            notes['finviz_error'] = finviz_error
 
         if refreshed:
             existing = {}
@@ -103,11 +119,20 @@ class MultiSourceRefresh:
                 try:
                     with open(self.cache_path) as f:
                         existing = json.load(f)
-                except:
-                    pass
-            existing.update(refreshed)
-            with open(self.cache_path, 'w') as f:
-                json.dump(existing, f, separators=(',', ':'))
-            return {'status': 'refreshed', 'symbols': len(refreshed), 'total': len(existing)}
+                except (OSError, ValueError) as exc:
+                    notes['cache_merge_error'] = type(exc).__name__
+                    existing = {}
+            existing.update({sym: refreshed[sym] for sym in refreshed})
+            tmp_name = self.cache_path + '.tmp'
+            try:
+                with open(tmp_name, 'w') as f:
+                    json.dump(existing, f, separators=(',', ':'))
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp_name, self.cache_path)
+            except OSError as exc:
+                notes['cache_write_error'] = type(exc).__name__
+                return {'status': 'refresh_failed', 'error': 'cache write failed', **notes}
+            return {'status': 'refreshed', 'symbols': len(refreshed), 'total': len(existing), **notes}
 
-        return {'status': 'refresh_failed', 'error': 'No quotes from any source'}
+        return {'status': 'refresh_failed', 'error': 'No quotes from any source', **notes}

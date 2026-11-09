@@ -58,7 +58,7 @@ def test_load_document_file_fallback_hides_the_dead_row(tmp_path: Path):
     from scripts.lib.holdings_document import load_document
 
     store = tmp_path / "holdings.json"
-    store.write_text(json.dumps(_book()), encoding="utf-8")
+    store.write_text(json.dumps(_book()), encoding="utf-8")  # nosemgrep: tq-py-nonatomic-store-write -- synthetic fixture under pytest tmp_path, not a live store
     doc = load_document(store, use_cache=False)
     assert DEAD not in _symbols(doc["holdings"])
     assert TICKER in _symbols(doc["holdings"])
@@ -80,7 +80,7 @@ def test_alerts_skip_an_injected_dead_row(tmp_path: Path):
     from scripts.lib.held_position_alerts import load_holdings, positions_for
 
     path = tmp_path / "holdings.json"
-    path.write_text(json.dumps(_book()), encoding="utf-8")
+    path.write_text(json.dumps(_book()), encoding="utf-8")  # nosemgrep: tq-py-nonatomic-store-write -- synthetic fixture under pytest tmp_path, not a live store
     loaded = load_holdings(path)
     assert DEAD not in _symbols(loaded["holdings"])
     assert positions_for(DEAD, _book(), policy=_alert_policy()) == []
@@ -93,7 +93,7 @@ def test_office_and_portfolio_state_drop_the_dead_row(tmp_path: Path):
     from scripts.lib.cio_portfolio_state_v1 import load_holdings_document as state_load
 
     path = tmp_path / "holdings.json"
-    path.write_text(json.dumps(_book()), encoding="utf-8")
+    path.write_text(json.dumps(_book()), encoding="utf-8")  # nosemgrep: tq-py-nonatomic-store-write -- synthetic fixture under pytest tmp_path, not a live store
     office = office_load(path)
     assert DEAD not in _symbols(office["holdings"])
     assert DEAD not in _symbols(compact_holdings_rows(_book()))
@@ -190,7 +190,7 @@ def test_multi_source_refresh_skips_cusip_and_reads_finviz(monkeypatch, tmp_path
     monkeypatch.setattr(mod, "_cc_urlopen", no_network)
     cache = tmp_path / "data" / "portfolios" / "state" / "finviz_quote_cache.json"
     cache.parent.mkdir(parents=True)
-    cache.write_text(json.dumps({
+    cache.write_text(json.dumps({  # nosemgrep: tq-py-nonatomic-store-write -- synthetic quote cache under pytest tmp_path, not a live store
         TICKER: {"price": 11.25, "source": "finviz", "last_fetched": "2026-11-09T00:00:00Z"},
         DEAD: {"price": 4.0, "source": "finviz", "last_fetched": "2026-11-09T00:00:00Z"},
     }), encoding="utf-8")
