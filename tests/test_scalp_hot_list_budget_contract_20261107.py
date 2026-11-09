@@ -101,8 +101,19 @@ def test_the_three_files_agree_with_the_installed_cron_line():
 
 
 def test_the_baseline_no_longer_claims_a_class_default_it_cannot_know():
+    """The operator's 2026-10-23 budget, in the health-contract vocabulary.
+
+    The first pin was OPERATOR_BUDGET_2026_10_23 — a string this file's own schema never allowed
+    (lib/n8n_health_contracts.BASELINE_BASES), so the gate rejected the contract while this test
+    approved it. OPERATOR_SLO is the vocabulary's name for the same fact; the date and the 180 s
+    kill stay asserted here and restated in source.
+    """
+    from scripts.lib.n8n_health_contracts import BASELINE_BASES
+
     base = _contract()["baseline"]
-    assert base["basis"] == "OPERATOR_BUDGET_2026_10_23"
+    assert base["basis"] == "OPERATOR_SLO"
+    assert base["basis"] in BASELINE_BASES
+    assert base["basis"] != "CLASS_DEFAULT_PROVISIONAL"
     assert "2026-10-23" in base["source"] and str(INSTALLED_TIMEOUT_S) in base["source"]
 
 
