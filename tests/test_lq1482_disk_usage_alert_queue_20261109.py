@@ -66,7 +66,7 @@ def _run(tmp_path, monkeypatch, pct):
     monkeypatch.setattr(M, "measure", _measure(pct))
     monkeypatch.setattr(M, "measure_inodes", lambda mount: None)
     ledger = tmp_path / "ledger.sqlite"
-    ledger.write_bytes(b"")
+    sqlite3.connect(ledger).close()
     rc = M.run(
         rules=RULES,
         state_root=tmp_path,
