@@ -295,6 +295,217 @@ def latest_manifest(rules: Mapping[str, Any], state_root: Optional[Path]) -> Opt
     }
 
 
+GIB = 1024 ** 3
+
+
+def latest_budget_report(rules: Mapping[str, Any], state_root: Optional[Path]) -> Optional[list]:
+    """The lane's per-root budget report (``budget_report``) from the latest manifest, or None.
+
+    Only the LANE can measure the roots it owns, and it already does so while planning; reading its own measurement
+    keeps the monitor from running a second ``du`` over 91 GiB. A report that is absent is not an empty one: the
+    caller measures those roots itself and never reads "no report" as "under cap".
+    """
+    try:
+        p = DH.manifest_dir(rules, state_root) / rules["manifest"]["latest_name"]
+        m = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError):
+        return None
+    rows = m.get("budget_report")
+    return rows if isinstance(rows, list) else None
+
+
+def latest_tmp_rows(rules: Mapping[str, Any], state_root: Optional[Path]) -> Optional[list]:
+    """Every row (candidate and excluded) of the latest tmp_hygiene manifest, or None.
+
+    The tmp lane owns /tmp/claude-1000; the monitor reads its measurement rather than walking that tree itself.
+    Two walkers of the same tree disagree the moment one of them is a poll behind, and a second ``du`` over a tmpfs
+    full of session scratch is exactly the load this lane is meant to observe, not add to.
+    """
+    try:
+        p = DH.manifest_dir(rules, state_root) / rules["tmp"]["manifest_latest_name"]
+        m = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    rows = m.get("items")
+    rows = list(rows) if isinstance(rows, list) else []
+    excluded = m.get("excluded")
+    rows += list(excluded) if isinstance(excluded, list) else []
+    return rows
+
+
+def budget_measurements(rules: Mapping[str, Any], lane_rows: Optional[list],
+                        tmp_rows: Optional[list] = None) -> list[dict[str, Any]]:
+    """One row per configured budget root: ABSOLUTE bytes against its cap, never a share of the mount.
+
+    The numbers come from the lanes that own each tree — ``budget_report`` for the standing lane's roots, the tmp
+    lane's manifest for /tmp/claude-1000 — so the monitor never walks a tree twice. A root no lane measured is
+    ``unmeasured``: it is never coerced to 0, because a zero would read as a healthy root that simply holds nothing.
+    """
+    lane = {}
+    for e in lane_rows or []:
+        if isinstance(e, dict) and e.get("root"):
+            lane[str(e["root"])] = e
+    out: list[dict[str, Any]] = []
+    for root in rules.get("_budget_roots") or []:
+        name = str(root.get("name") or "")
+        path = Path(str(root.get("_path") or root.get("path")))
+        base = os.path.normpath(str(path))
+        cap = int(float(root.get("max_total_gb") or 0) * GIB)
+        e = lane.get(name) or {}
+        measured = e.get("measured_bytes") if e.get("status") not in (None, "no_rows") else None
+        source = "lane_manifest" if measured is not None else None
+        partial = False
+        if measured is None and "tmp" in (root.get("rules") or []) and tmp_rows is not None:
+            total = 0
+            seen = False
+            for r in tmp_rows:
+                if not isinstance(r, dict):
+                    continue
+                rp = os.path.normpath(str(r.get("path") or ""))
+                if not (rp == base or rp.startswith(base + os.sep)):
+                    continue
+                seen = True
+                v = r.get("size_bytes")
+                if isinstance(v, int) and v >= 0:
+                    total += v
+                elif r.get("candidate") is not True:
+                    partial = True  # a held row we could not weigh: the total is a floor, not the measurement
+            if seen:
+                measured = total
+                source = "tmp_manifest"
+        floor = e.get("floor_bytes") if isinstance(e.get("floor_bytes"), int) else None
+        row: dict[str, Any] = {
+            "root": name, "path": str(path), "cap_bytes": cap, "measured_bytes": measured,
+            "measured_gb": round(measured / GIB, 2) if isinstance(measured, int) else None,
+            "cap_gb": round(cap / GIB, 2), "source": source, "partial": partial,
+            "floor_bytes": floor,
+            "floor_exceeds_cap": bool(e.get("floor_exceeds_cap") is True),
+            "over_max_age": e.get("over_max_age"),
+        }
+        if isinstance(measured, int):
+            row["over_bytes"] = max(0, measured - cap)
+            row["status"] = "over_cap" if measured > cap else "under_cap"
+        else:
+            row["over_bytes"] = None
+            row["status"] = "unmeasured"
+        out.append(row)
+    return out
+
+
+def budget_samples(previous: Any, rows: list[dict[str, Any]], now: datetime,
+                   growth: Mapping[str, Any]) -> dict[str, list[list[Any]]]:
+    """Append this poll's measurement per root; keep the window and a hard cap on stored samples.
+
+    The samples are the only input to the growth rate, so an unmeasured root contributes nothing (its old samples
+    stay, and the rate is computed over whatever real readings exist inside the window)."""
+    window_days = float(growth.get("window_days") or 3)
+    keep_max = int(growth.get("max_samples_per_root") or 96)
+    cutoff = now.timestamp() - window_days * 86400.0
+    out: dict[str, list[list[Any]]] = {}
+    for key, series in (previous or {}).items() if isinstance(previous, dict) else []:
+        if isinstance(series, list):
+            out[str(key)] = [s for s in series if isinstance(s, list) and len(s) == 2 and isinstance(s[1], int)
+                             and isinstance(s[0], (int, float)) and float(s[0]) >= cutoff][-keep_max:]
+    for row in rows:
+        if not isinstance(row.get("measured_bytes"), int):
+            continue  # unmeasured is not a reading
+        series = out.setdefault(str(row["root"]), [])
+        series.append([now.timestamp(), row["measured_bytes"]])
+        out[str(row["root"])] = series[-keep_max:]
+    return out
+
+
+def growth_gb_per_day(series: Any, now: datetime, growth: Mapping[str, Any]) -> Optional[float]:
+    """GiB/day over the samples inside the window, or None when the window holds too few to date a rate."""
+    if not isinstance(series, list):
+        return None
+    min_samples = int(growth.get("min_samples") or 3)
+    window_days = float(growth.get("window_days") or 3)
+    cutoff = now.timestamp() - window_days * 86400.0
+    pts = sorted((float(s[0]), s[1]) for s in series if isinstance(s, list) and len(s) == 2
+                 and isinstance(s[0], (int, float)) and isinstance(s[1], int) and float(s[0]) >= cutoff)
+    if len(pts) < min_samples:
+        return None
+    span_days = (pts[-1][0] - pts[0][0]) / 86400.0
+    if span_days <= 0:
+        return None
+    return round((pts[-1][1] - pts[0][1]) / GIB / span_days, 3)
+
+
+def budget_findings(rows: list[dict[str, Any]], samples: Mapping[str, Any], now: datetime,
+                    growth: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """What each root's budget says, with the band the alert dedupe uses.
+
+    over a cap (or over the cap-floor it cannot cross) is ``critical`` — the operator named a number and the host is
+    past it. A growth rate above the ceiling is ``warn`` — the root may still be under its cap today, which is exactly
+    the state the used% bands are blind to. ``unmeasured`` carries band None so it can never be mistaken for ok.
+    """
+    ceiling = float(growth.get("max_gb_per_day") or 0)
+    out = []
+    for row in rows:
+        rate = growth_gb_per_day(samples.get(str(row.get("root"))), now, growth)
+        row = dict(row)
+        row["growth_gb_per_day"] = rate
+        if row.get("status") == "unmeasured":
+            row["band"] = None
+            row["why"] = "unmeasured"
+        elif row.get("over_bytes", 0) > 0 or row.get("floor_exceeds_cap"):
+            row["band"] = "critical"
+            row["why"] = "over_cap"
+        elif rate is not None and ceiling > 0 and rate > ceiling:
+            row["band"] = "warn"
+            row["why"] = "growth_rate"
+        else:
+            row["band"] = "ok"
+            row["why"] = None
+        out.append(row)
+    return out
+
+
+def budget_intent_text(finding: Mapping[str, Any]) -> tuple[str, str]:
+    """Subject and summary for one root's budget alert, in the operator's own units (GiB, GiB/day).
+
+    The summary names the cap, the measurement, the bytes that must come off, and — when the cap cannot be reached
+    without touching held work — how much is held and why. "Still over cap" with no number is what the lane used to
+    say by saying nothing."""
+    name = finding.get("root")
+    measured = finding.get("measured_gb")
+    cap = finding.get("cap_gb")
+    if finding.get("why") == "growth_rate":
+        subject = f"Disk growth {name}: {finding.get('growth_gb_per_day')} GiB/day"
+        text = (f"{name} ({finding.get('path')}) grew {finding.get('growth_gb_per_day')} GiB/day over the window; "
+                f"now {measured} GiB of a {cap} GiB budget. Growth is alerted independently of used%.")
+        return subject, text
+    subject = f"Disk budget exceeded {name}: {measured} GiB of {cap} GiB"
+    over = round((finding.get("over_bytes") or 0) / GIB, 2)
+    text = (f"{name} ({finding.get('path')}) holds {measured} GiB against an absolute {cap} GiB cap: {over} GiB "
+            f"must come off. Reclaimable under the reviewed rules is taken oldest-first first.")
+    if finding.get("floor_exceeds_cap"):
+        floor = finding.get("floor_bytes")
+        floor_gb = round(floor / GIB, 2) if isinstance(floor, int) else None
+        text += (f" The PROTECTED floor alone is {floor_gb} GiB, so the cap cannot be met by evicting eligible work: "
+                 f"live claims, running processes, unmeasured or never-touch trees hold the rest. Escalated for a "
+                 f"human decision — nothing protected was touched.")
+    age = finding.get("over_max_age") or {}
+    if age.get("count"):
+        text += (f" {age['count']} held entr(y/ies) ({round((age.get('bytes') or 0) / GIB, 2)} GiB) are older than "
+                 f"{age.get('max_item_age_days')} days; held by: {', '.join(age.get('reasons') or []) or 'unknown'}.")
+    return subject, text
+
+
+def budget_alert_policy(mon: Mapping[str, Any], budget_cfg: Optional[Mapping[str, Any]]) -> Mapping[str, Any]:
+    """The band machine, with the budget's own (slower) re-alert clock when one is configured.
+
+    A budget breach is a structural condition (live sessions hold a scratch floor), not a mount filling up inside one
+    interval, so repeating it every mount `realert_minutes` would be noise. The escalation and recovery paths are
+    unchanged: "worse" and "fixed" are still said at once.
+    """
+    br = (budget_cfg or {}).get("realert_minutes")
+    if type(br) in (int, float) and br > 0:
+        return {**mon, "realert_minutes": float(br)}
+    return mon
+
+
 def latest_tmp_manifest(rules: Mapping[str, Any], state_root: Optional[Path]) -> Optional[dict[str, Any]]:
     """Totals of the latest tmp_hygiene manifest (DiskHygieneManifest@v1, scope tmp), or None."""
     try:
@@ -858,6 +1069,57 @@ def _run_locked(
                 entry["alerted_band"] = cur
             mounts_state[mount] = entry
         results.append(row)
+    # ── absolute budgets (LQ-20261107-1638) ───────────────────────────────────────────────────────────────────────
+    # Independent of the used% bands by construction: a 2 TB disk at 20% with a 40 GiB scratch root is a budget
+    # breach, and the percentage bands would never say a word about it.
+    budget_cfg = rules.get("budgets") if isinstance(rules.get("budgets"), dict) else None
+    budget_results: list[dict[str, Any]] = []
+    budget_state: dict[str, Any] = dict(state.get("budget_roots") or {})
+    budget_samples_state = state.get("budget_samples")
+    if budget_cfg and budget_cfg.get("enabled") and rules.get("_budget_roots"):
+        growth = budget_cfg.get("growth") or {}
+        kinds = budget_cfg.get("alert_kinds") or {}
+        policy = budget_alert_policy(mon, budget_cfg)
+        budget_rows = budget_measurements(
+            rules, latest_budget_report(rules, state_root), latest_tmp_rows(rules, state_root),
+        )
+        samples = budget_samples(budget_samples_state, budget_rows, now, growth)
+        for finding in budget_findings(budget_rows, samples, now, growth):
+            entry = dict(budget_state.get(str(finding["root"])) or {})
+            if finding["band"] is None:
+                # unmeasured is not a band: never recorded as ok, never alerts, retried next poll
+                finding["alert"] = None
+                budget_results.append(finding)
+                continue
+            alert = alert_for(entry.get("band"), finding["band"], entry, now, policy)
+            finding["alert"] = alert
+            if alert:
+                kind = kinds.get("over_cap") if finding["why"] == "over_cap" else kinds.get("growth")
+                subject, text = budget_intent_text(finding)
+                if apply:
+                    try:
+                        rec = queue_host_intent(
+                            producer=mon["producer"], domain=mon["intent_domain"], kind=kind,
+                            subject=subject, summary=text, execution_id=_execution_id(now),
+                            node="disk_usage_monitor.budget", ledger_path=ledger, now=now.timestamp(),
+                        )
+                        finding["intent"] = {"intent_id": rec.get("intent_id"), "duplicate": rec.get("duplicate")}
+                    except HostIntentError as exc:
+                        finding["intent_error"] = exc.reason
+                        _count_intent_failure(exc.reason)
+                        budget_results.append(finding)
+                        continue  # band NOT recorded: the next run retries the alert
+            if apply:
+                if entry.get("band") != finding["band"]:
+                    entry["since"] = now.isoformat()
+                entry.update(band=finding["band"], last_bytes=finding["measured_bytes"],
+                             checked_at=now.isoformat(), growth_gb_per_day=finding["growth_gb_per_day"])
+                if alert:
+                    entry["alerted_at"] = now.isoformat()
+                    entry["alerted_band"] = alert
+                budget_state[str(finding["root"])] = entry
+            budget_results.append(finding)
+        budget_samples_state = samples
     standing_previous = dict(state.get("standing_hygiene") or {})
     measured_pct = [r["used_pct"] for r in results if isinstance(r.get("used_pct"), (int, float))]
     standing = standing_hygiene_status(rules, state_root, standing_previous, now, max(measured_pct) if measured_pct else None)
@@ -907,7 +1169,7 @@ def _run_locked(
         pressure_active = False
     summary = {"mounts": results, "inodes": inode_results, "manifest": manifest, "standing_hygiene": standing,
                "standing_pressure": pressure, "consumer_snapshot": consumer_snapshot,
-               "consumer_snapshot_refreshed": refreshed, "failures": failures}
+               "consumer_snapshot_refreshed": refreshed, "budgets": budget_results, "failures": failures}
     if failures and failures == ledger_busy_failures:
         busy_rc = EX_UNAVAILABLE
     else:
@@ -924,7 +1186,8 @@ def _run_locked(
             state_path,
             {"schema": STATE_SCHEMA, "updated_at": now.isoformat(), "mounts": mounts_state, "inodes": inodes_state,
              "standing_hygiene": standing_previous, "standing_pressure_active": pressure_active,
-             "standing_pressure_epoch": pressure_epoch, "consumer_snapshot": consumer_snapshot},
+             "standing_pressure_epoch": pressure_epoch, "consumer_snapshot": consumer_snapshot,
+             "budget_roots": budget_state, "budget_samples": budget_samples_state},
             indent=1,
         )
     except OSError as exc:
@@ -1013,6 +1276,12 @@ def main(argv: Optional[list[str]] = None) -> int:
                     raise DH.RulesError(f"rules_missing:monitor.inodes.{key}")
             if not float(ino["warn_pct"]) < float(ino["critical_pct"]):
                 raise DH.RulesError("monitor_inode_thresholds_out_of_order")
+        # LQ-20261107-1638: an enabled budget with no routeable kind would measure a breach and say nothing.
+        bud = rules.get("budgets")
+        if isinstance(bud, dict) and bud.get("enabled"):
+            kinds = bud.get("alert_kinds")
+            if not isinstance(kinds, dict) or not kinds.get("over_cap") or not kinds.get("growth"):
+                raise DH.RulesError("budgets_alert_kinds")
     except (DH.RulesError, KeyError, TypeError, ValueError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}))
         if a.apply:

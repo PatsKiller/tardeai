@@ -1,0 +1,24 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_budget_absolute_20261109",
+  "files": [
+    "tests/test_disk_budget_absolute_20261109.py",
+    "tests/test_disk_hygiene_20261018.py"
+  ],
+  "comment": [
+    "LQ-20261107-1638 (2026-11-09). Operator: 'a new 2TB drive is going in this week; hygiene must NOT",
+    "relax because there is more space — cache and scratch must not just grow.' Measured before the change:",
+    "the standing lane planned 19.65 GiB of rule T and applied 0.78 GiB, ~/.cache/agent-tmp held 91.3 GiB",
+    "across 592 entries with 0 candidates, and the monitor bands on used% only — so the same 420 GB reads",
+    "95% on this 468 GB disk and 21% on the 2 TB one arriving this week.",
+    "Pins: the operator's D16 numbers (keep 24 h, cap 10 GB) exist in config/disk_hygiene_rules.json, not",
+    "only in apply_scratch_cap(); every budget root and every ENABLED cache root names a positive absolute",
+    "byte cap and the rule that feeds it; a root over cap is reclaimed oldest-first (fingerprint.activity or",
+    "the rule-C newest mtime), only as far as the cap needs, and a candidate that must stay is re-excluded",
+    "with budget_over_cap_kept, never dropped; a protected floor above the cap is reported and ESCALATED,",
+    "never crossed; held entries past max_item_age_days are counted with the reason that holds them; the",
+    "monitor measures each root from the lane that owns it and reports unmeasured (band None) rather than 0;",
+    "growth is GiB/day over the sample window with min_samples, so a quiet mount still alerts.",
+    "Synthetic rows and configs only; no host tree is walked and nothing is deleted."
+  ]
+}

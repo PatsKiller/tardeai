@@ -169,6 +169,40 @@ def load_rules(path: Optional[Path] = None, *, home: Optional[Path] = None) -> d
     _RELEASE_ROOTS = tuple(sorted(set(_RELEASE_ROOTS) | normalised))
     doc["_pointer_dir"] = x(rel["pointer_dir"]) if rel.get("pointer_dir") else None
     doc["_cache_rules"] = [{**r, "_path": x(r["path"])} for r in doc["caches"].get("rules") or []]
+    # LQ-20261107-1638: absolute per-root budgets. A cap is bytes, so it must be a positive finite number; a root
+    # without one is refused rather than silently measured and never enforced. Nothing here can widen a hold: the
+    # budget only ever decides which ALREADY-eligible rows are taken first, and reports the floor it cannot cross.
+    budgets = doc.get("budgets")
+    budget_roots: list[dict] = []
+    if budgets is not None:
+        if not isinstance(budgets, dict) or not isinstance(budgets.get("enabled"), bool) or not isinstance(budgets.get("roots"), list):
+            raise RulesError("budgets_shape")
+        for b in budgets["roots"]:
+            if not isinstance(b, dict):
+                raise RulesError("budgets_root_shape")
+            for key in ("name", "path", "rules", "max_total_gb"):
+                if key not in b:
+                    raise RulesError(f"budgets_missing:{key}")
+            if not isinstance(b["rules"], list) or not b["rules"] or any(r not in SR.RULE_KINDS and r != "tmp" for r in b["rules"]):
+                raise RulesError("budgets_rules")
+            cap = b["max_total_gb"]
+            if type(cap) not in (int, float) or not math.isfinite(float(cap)) or not 0 < float(cap) <= 4096:
+                raise RulesError("budgets_cap")
+            for key in ("keep_younger_than_hours", "max_item_age_days"):
+                v = b.get(key)
+                if v is not None and (type(v) not in (int, float) or not math.isfinite(float(v)) or float(v) < 0):
+                    raise RulesError(f"budgets_{key}")
+            budget_roots.append({**b, "_path": x(b["path"])})
+        growth = budgets.get("growth")
+        if not isinstance(growth, dict):
+            raise RulesError("budgets_growth")
+        g = growth.get("max_gb_per_day")
+        if type(g) not in (int, float) or not math.isfinite(float(g)) or float(g) <= 0:
+            raise RulesError("budgets_growth_rate")
+        for key in ("window_days", "min_samples"):
+            if type(growth.get(key)) is not int or growth[key] <= 0:
+                raise RulesError(f"budgets_growth_{key}")
+    doc["_budget_roots"] = budget_roots
     ref = doc["references"]
     doc["_unit_dirs"] = [x(s) for s in ref.get("systemd_unit_dirs") or []]
     doc["_proc_root"] = Path(ref.get("proc_root") or "/proc")
@@ -2251,12 +2285,143 @@ def apply_scratch_cap(rows: list[dict], t_cfg: Mapping[str, Any]) -> tuple[list[
             summary["kept_over_cap"] += 1
     return rows, summary
 
+
+GIB = 1024 ** 3
+
+
+def _budget_age_s(r: Mapping[str, Any], now_ts: float) -> Optional[float]:
+    """Seconds since the row's newest real activity, from the field the producer emits; None when undatable.
+
+    Mirrors ``apply_scratch_cap``'s local helper (fingerprint.activity first, evidence.idle_days second) so the two
+    caps sort the same rows in the same order. Rule C emits the tree's newest mtime (``fingerprint.mtime``), not
+    ``activity``; reading only ``activity`` made every cache entry undatable, which silently turned "oldest first"
+    into "largest first" and left the caches' max_item_age_days unmeasured (LQ-20261107-1638). A non-finite age is
+    not an age.
+    """
+    fp = r.get("fingerprint") or {}
+    for key in ("activity", "mtime"):
+        act = fp.get(key)
+        if type(act) in _NUM:
+            act = float(act)
+            if math.isfinite(act) and act > 0:
+                return max(0.0, now_ts - act)
+    idle = (r.get("evidence") or {}).get("idle_days")
+    if type(idle) in _NUM:
+        idle = float(idle)
+        if math.isfinite(idle) and idle >= 0:
+            return idle * 86400.0
+    return None
+
+
+def _under_root(path: str, base: str) -> bool:
+    return path == base or path.startswith(base + os.sep)
+
+
+def apply_root_budgets(rows: list[dict], budget_roots: list[Mapping[str, Any]], *,
+                       now_ts: Optional[float] = None) -> tuple[list[dict], list[dict]]:
+    """Per-root ABSOLUTE caps (LQ-20261107-1638, operator 2026-11-09).
+
+    Each configured root is measured as a WHOLE, in bytes, never as a share of the mount: the cap answers "how much
+    may this cache/scratch hold", so a 2 TB drive cannot relax it. Above the cap, candidates are taken OLDEST-FIRST
+    until the projected total fits; a candidate that would have to stay is re-excluded with ``budget_over_cap_kept``
+    (named in the plan, never silently dropped). Two things are reported, never hidden:
+
+    * ``floor_bytes`` — the rows that are NOT candidates (live claims, running processes, never-touch paths, unmeasured
+      trees). When the floor alone exceeds the cap the pass reports ``floor_exceeds_cap`` and ``escalate``: the number
+      cannot be reached without touching work that is still in use, so a human decides, the sweep does not.
+    * ``over_max_age`` — held entries older than the root's ``max_item_age_days``. Age never overrides a hold (a live
+      claim is live however old the tree is), but the operator asked for the bound to be measured and raised.
+
+    Pure over the rows (sizes already measured by standing_plan); returns (rows, per-root report).
+    """
+    if not budget_roots:
+        return rows, []
+    now_ts = time.time() if now_ts is None else float(now_ts)
+    # A measure-only row (an enabled cache root the standing lane does not execute) is never a candidate: counting
+    # it as reclaimable would report bytes as "planned" that nothing in this lane would remove. It stays in the
+    # floor, so an over-cap cache escalates instead of claiming a reclaim it cannot perform.
+    for r in rows:
+        if r.get("budget_measure_only") and r.get("candidate"):
+            r["candidate"] = False
+            r["reasons"] = list(dict.fromkeys(list(r.get("reasons") or []) + ["budget_measure_only"]))
+    report: list[dict] = []
+    for root in budget_roots:
+        base = os.path.normpath(str(root.get("_path") or root.get("path")))
+        rules_for_root = list(root.get("rules") or [])
+        members = [
+            r for r in rows
+            if type(r.get("size_bytes")) is int and r["size_bytes"] > 0
+            and r.get("rule") in rules_for_root and _under_root(str(r.get("path")), base)
+        ]
+        cap = int(float(root.get("max_total_gb") or 0) * GIB)
+        measured = sum(r["size_bytes"] for r in members)
+        floor = sum(r["size_bytes"] for r in members if not r.get("candidate"))
+        entry: dict[str, Any] = {
+            "root": root.get("name"), "path": base, "rules": rules_for_root,
+            "measured_bytes": measured, "cap_bytes": cap, "floor_bytes": floor,
+            "over_by_bytes": max(0, measured - cap), "planned_bytes": 0,
+            "status": "no_rows" if not members else ("under_cap" if measured <= cap else "over_cap"),
+            "floor_exceeds_cap": False, "escalate": False,
+            "rows": len(members), "held_rows": sum(1 for r in members if not r.get("candidate")),
+            "measure_only_rows": sum(1 for r in members if r.get("budget_measure_only")),
+        }
+        if not members:
+            report.append(entry)
+            continue
+        if measured > cap:
+            candidates = sorted(
+                (r for r in members if r.get("candidate")),
+                key=lambda r: (-(_budget_age_s(r, now_ts) or 0.0), -r["size_bytes"]),
+            )
+            projected = measured
+            taken: set[str] = set()
+            for r in candidates:  # oldest first
+                if projected <= cap:
+                    break
+                taken.add(r["path"])
+                projected -= r["size_bytes"]
+            for r in candidates:
+                if r["path"] not in taken:
+                    r["reasons"] = list(dict.fromkeys(list(r.get("reasons") or []) + ["budget_over_cap_kept"]))
+                    r["candidate"] = False
+            entry["planned_bytes"] = sum(r["size_bytes"] for r in members if r["path"] in taken)
+            entry["status"] = "cap_met" if projected <= cap else "over_cap_after_reclaim"
+            entry["escalate"] = projected > cap
+        entry["floor_exceeds_cap"] = bool(floor > cap)
+        entry["escalate"] = bool(entry["escalate"] or floor > cap)
+        max_age_days = root.get("max_item_age_days")
+        if type(max_age_days) in _NUM and max_age_days > 0:
+            held_over = []
+            for r in members:
+                if r.get("candidate"):
+                    continue
+                age = _budget_age_s(r, now_ts)
+                if age is not None and age > float(max_age_days) * 86400.0:
+                    held_over.append(r)
+            entry["over_max_age"] = {
+                "max_item_age_days": max_age_days,
+                "count": len(held_over),
+                "bytes": sum(r["size_bytes"] for r in held_over),
+                "reasons": sorted({why.split(":")[0] for r in held_over for why in (r.get("reasons") or [])}),
+            }
+        report.append(entry)
+    return rows, report
+
 def standing_plan(rules: Mapping[str, Any], now: datetime, evidence: Mapping, *, measure: bool = True) -> dict:
     try:
         ctx = SR.evidence_context(evidence, now)
     except ValueError as exc:
         raise RulesError(str(exc)) from exc
     rows = standing_results(rules, ctx)
+    # LQ-20261107-1638: the caches section (evaluate_caches) is NOT one of the standing rules, so its roots had no
+    # rows in this manifest and an absolute cap on pip/npm/playwright would measure nothing. Measure them here, for
+    # the budget only: ``budget_measure_only`` rows are never added to items/excluded, because the hourly standing
+    # lane must not gain a deletion class ("C" in the standing cfg is abandoned worktrees, a different rule) without
+    # an operator ruling. Their over-cap state is reported and escalated by budget_report.
+    budget_roots = rules.get("_budget_roots") or []
+    budget_rows_extra: list[dict] = []
+    if budget_roots and any("C" in (r.get("rules") or []) for r in budget_roots):
+        budget_rows_extra = [dict(r, budget_measure_only=True) for r in evaluate_caches(rules, ctx)]
     if measure:
         # 2026-11-06 DISKHYG: this loop ran `du` serially over every row, candidates AND protected excluded rows
         # (~2,000 rows / ~200 GB on this host), and was 28-34 min of each 26-60 min standing run (manifest
@@ -2264,10 +2429,10 @@ def standing_plan(rules: Mapping[str, Any], now: datetime, evidence: Mapping, *,
         # run it on the same bounded pool the legacy plan uses (git.size_workers); per-path timeout and the
         # None-on-failure contract are unchanged, and the result is identical row for row.
         workers = max(1, int((rules.get("git") or {}).get("size_workers") or 4))
-        targets = [item for item in rows if item["kind"] != "archive_ref"]
+        targets = [item for item in rows + budget_rows_extra if item["kind"] != "archive_ref"]
         with ThreadPoolExecutor(max_workers=workers) as pool:
             sizes = list(pool.map(lambda item: du_bytes(Path(item["path"]), 60), targets))
-        for item in rows:
+        for item in rows + budget_rows_extra:
             item["size_bytes"] = None
         for item, size in zip(targets, sizes):
             item["size_bytes"] = size
@@ -2276,6 +2441,12 @@ def standing_plan(rules: Mapping[str, Any], now: datetime, evidence: Mapping, *,
     if isinstance(t_cfg, Mapping) and ("max_total_gb" in t_cfg or "keep_younger_than_hours" in t_cfg):
         rows, scratch_budget = apply_scratch_cap(rows, t_cfg)
     items, excluded = [r for r in rows if r["candidate"]], [r for r in rows if not r["candidate"]]
+    budget_report = []
+    if budget_roots:
+        budgeted, budget_report = apply_root_budgets(rows + budget_rows_extra, budget_roots, now_ts=now.timestamp())
+        # only the standing rows may be applied; the measure-only cache rows are reported, never listed
+        rows = [r for r in budgeted if not r.get("budget_measure_only")]
+        items, excluded = [r for r in rows if r["candidate"]], [r for r in rows if not r["candidate"]]
     return {"schema": MANIFEST_SCHEMA, "generated_at": now.isoformat(), "host": socket.gethostname(),
             "home": str(rules["_home"]), "rules_path": rules["_path"], "rules_sha256": rules["_sha256"],
             "mode": "plan", "scope": "standing", "offline": ctx["offline"], "evidence_sha256": ctx["evidence_sha256"],
@@ -2285,7 +2456,7 @@ def standing_plan(rules: Mapping[str, Any], now: datetime, evidence: Mapping, *,
             "protected_excluded_unmeasured": sum(r.get("size_bytes") is None for r in excluded),
             "opaque_processes": _opaque_summary(ctx.get("opaque_processes") or []),
             "apply_admissible": not ctx["offline"] and not ctx.get("opaque_processes"),
-            "scratch_budget": scratch_budget}
+            "scratch_budget": scratch_budget, "budget_report": budget_report}
 
 
 def _opaque_summary(opaque: list) -> Optional[dict]:
@@ -2402,6 +2573,17 @@ def human_summary(m: Mapping[str, Any], top_n: int) -> str:
         lines += ["", "PER RULE  (candidates GB | held count, GB)"]
         for k in sorted(set(m["per_rule"]) | set(held)):
             lines.append(f"  {k:<3} {_gb((m['per_rule'].get(k) or {}).get('planned_bytes')):>8.2f} GB | held {held.get(k, [0, 0])[0]:>5}  {_gb(held.get(k, [0, 0])[1]):>8.2f} GB")
+    if m.get("budget_report"):
+        # LQ-20261107-1638: an absolute cap is only useful if a human can see it next to the measurement and the
+        # reclaim this pass would make. A root whose protected floor alone is over cap says ESCALATE, never silent.
+        lines += ["", "ABSOLUTE BUDGETS  (GiB measured of cap | planned = reclaimed by this pass, floor = held)"]
+        for b in m["budget_report"]:
+            gib = lambda v: (v or 0) / 1024 ** 3  # noqa: E731
+            lines.append(
+                f"  {b['root']:<18} {gib(b['measured_bytes']):>8.2f} of {gib(b['cap_bytes']):>7.2f}"
+                f"  planned {gib(b['planned_bytes']):>7.2f}  floor {gib(b['floor_bytes']):>8.2f}"
+                f"  {b['status']}" + ("  ESCALATE" if b.get("escalate") else "")
+            )
     lines += ["", f"LARGEST {top_n} CANDIDATES"]
     for r in sorted(m["items"], key=lambda r: -(r.get("size_bytes") or 0))[:top_n]:
         ev = r.get("evidence") or {}

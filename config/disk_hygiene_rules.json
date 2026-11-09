@@ -160,21 +160,94 @@
     ]
   },
   "caches": {
-    "_why": "Rule C: optional, default disabled. An entry `item_depth` levels under `path` whose newest mtime is older than `older_than_days` is a candidate.",
+    "_why": "Rule C (LQ-20261107-1638, 2026-11-09): an entry `item_depth` levels under `path` whose newest mtime is older than `older_than_days` is a candidate, and `max_total_gb` is the root's ABSOLUTE cap: when the measured root is over it, candidates are taken oldest-first until it fits (apply_root_budgets), then the pass escalates rather than reporting nothing to do. Absolute, never a share of the mount: a bigger drive must not relax retention (operator 2026-11-09). These roots were disabled until 2026-11-09; pip/npm/playwright caches hold 3.4 GiB here and nothing reclaimed them.",
     "rules": [
       {
         "path": "~/.cache/pip",
         "older_than_days": 30,
         "item_depth": 1,
-        "enabled": false
+        "max_total_gb": 2,
+        "enabled": true
       },
       {
         "path": "~/.npm/_cacache",
         "older_than_days": 30,
         "item_depth": 1,
-        "enabled": false
+        "max_total_gb": 4,
+        "enabled": true
+      },
+      {
+        "path": "~/.cache/ms-playwright",
+        "older_than_days": 30,
+        "item_depth": 1,
+        "max_total_gb": 3,
+        "enabled": true
       }
     ]
+  },
+  "budgets": {
+    "_why": "LQ-20261107-1638, operator 2026-11-09, verbatim: 'a new 2TB drive is going in this week; hygiene must NOT relax because there is more space — cache and scratch must not just grow.' Every cap here is ABSOLUTE BYTES, never a share of the mount, so df used% is irrelevant to it. Read by scripts/disk_hygiene.py (planning, oldest-orphaned-first reclaim, escalation) and scripts/disk_usage_monitor.py (alerting, independent of the used% bands). A root is measured and compared as a whole. When the protected floor alone exceeds a cap the pass reports floor_exceeds_cap for that root and NEVER evicts young or referenced work to reach the number: it escalates. Growth is GiB/day over a rolling window from the monitor's own samples, so a disk that is quiet at 20% but gaining 20 GiB/day still alerts. Values are operator-tunable (§17); changing one is a new ruling and must cite it here.",
+    "enabled": true,
+    "roots": [
+      {
+        "name": "agent_tmp",
+        "path": "~/.cache/agent-tmp",
+        "rules": ["T"],
+        "max_total_gb": 10,
+        "keep_younger_than_hours": 24,
+        "max_item_age_days": 30
+      },
+      {
+        "name": "claude_scratch",
+        "path": "/tmp/claude-1000",
+        "rules": ["tmp"],
+        "max_total_gb": 10,
+        "keep_younger_than_hours": 24,
+        "max_item_age_days": 7
+      },
+      {
+        "name": "pip_cache",
+        "path": "~/.cache/pip",
+        "rules": ["C"],
+        "max_total_gb": 2,
+        "max_item_age_days": 30
+      },
+      {
+        "name": "npm_cache",
+        "path": "~/.npm/_cacache",
+        "rules": ["C"],
+        "max_total_gb": 4,
+        "max_item_age_days": 30
+      },
+      {
+        "name": "playwright_cache",
+        "path": "~/.cache/ms-playwright",
+        "rules": ["C"],
+        "max_total_gb": 3,
+        "max_item_age_days": 30
+      },
+      {
+        "name": "closed_releases",
+        "path": "~/trade-ai-releases/portfolio-server",
+        "rules": ["R"],
+        "max_total_gb": 20,
+        "max_item_age_days": 14
+      }
+    ],
+    "growth": {
+      "_why": "GB/day is the operator's unit. A root gaining more than this per day over the window is alerted even while it is under its cap and the mount is quiet. min_samples keeps a first run from alarming on one reading.",
+      "max_gb_per_day": 5.0,
+      "window_days": 3,
+      "min_samples": 3,
+      "sample_name": "disk_budget_samples.json",
+      "max_samples_per_root": 96
+    },
+    "alert_kinds": {
+      "over_cap": "disk_budget_exceeded",
+      "growth": "disk_growth_rate"
+    },
+    "realert_minutes": 240,
+    "_why_realert": "A budget breach is structural (live sessions hold a scratch floor) and cannot clear inside one poll; repeating it on the mounts' 60-minute clock is noise. The band machine still says an escalation (warn -> critical) and a recovery at once; only the unchanged repeat waits 4 hours."
   },
   "references": {
     "_why": "A candidate whose absolute path appears in any of these texts is excluded (crontab, systemd units and drop-ins, release pointer files).",
@@ -489,10 +562,12 @@
       "never": "standalone clone, branch/ref or commit deletion; force removal"
     },
     "agent_scratch": {
-      "_why": "Rule T (2026-10-30, AGENTS.md §24.13): ~/.cache/agent-tmp grew to 43 GB across per-task agent scratch dirs nothing reclaimed. Read by scripts/disk_hygiene.py (load_rules validates; standing_results applies). <root>/<entry>/ is a candidate only when: a real dir directly under exactly this path; name fullmatches entry_regex; newest mtime (bounded scan, symlinks never followed) older than idle_days; no .git entry inside (worktrees are rule W); no never-touch path; and its path appears in no coordination document, live claim/worklog, open PR, or running process cwd/fd. There is no PR-merged check: the board reference is the hold. Removed by rmtree. 2026-11-09 (LQ-20261107-1456): a live session dir was holding tens of GiB because a source file named like *token* or *secret* (designTokens.ts, secret-scan.yml) inside a checkout with no .git failed the whole directory, and the nested-repo scan walked node_modules until the entry cap. source_name_globs do not hold when an ancestor has a repo_copy_marker; other globs (.env, *credential*, *cookie*, *.pem, *.key) still hold. The nested scan and the activity scan do not enter git.ignored_scan_skip_dirs. reclaim_idle_children: an idle task directory directly inside a held session dir is its own candidate, except when that session is referenced by a live claim or a process cwd — then every direct child stays held (LQ-20261107-1463). Operator-only values (§17).",
+      "_why": "Rule T (2026-10-30, AGENTS.md §24.13): ~/.cache/agent-tmp grew to 43 GB across per-task agent scratch dirs nothing reclaimed. Read by scripts/disk_hygiene.py (load_rules validates; standing_results applies). <root>/<entry>/ is a candidate only when: a real dir directly under exactly this path; name fullmatches entry_regex; newest mtime (bounded scan, symlinks never followed) older than idle_days; no .git entry inside (worktrees are rule W); no never-touch path; and its path appears in no coordination document, live claim/worklog, open PR, or running process cwd/fd. There is no PR-merged check: the board reference is the hold. Removed by rmtree. 2026-11-09 (LQ-20261107-1456): a live session dir was holding tens of GiB because a source file named like *token* or *secret* (designTokens.ts, secret-scan.yml) inside a checkout with no .git failed the whole directory, and the nested-repo scan walked node_modules until the entry cap. source_name_globs do not hold when an ancestor has a repo_copy_marker; other globs (.env, *credential*, *cookie*, *.pem, *.key) still hold. The nested scan and the activity scan do not enter git.ignored_scan_skip_dirs. reclaim_idle_children: an idle task directory directly inside a held session dir is its own candidate, except when that session is referenced by a live claim or a process cwd — then every direct child stays held (LQ-20261107-1463). keep_younger_than_hours and max_total_gb are the operator's 2026-11-04 ruling ('48 hours and 10 GB is fine, build them', the 48 later ruled down to 24 h): a FLOOR on age and a CEILING on the root's total, applied oldest-first by apply_scratch_cap. They were missing from this file until 2026-11-09 (LQ-20261107-1638), so the cap had never run and ~/.cache/agent-tmp reached 91 GiB. Operator-only values (§17).",
       "path": "~/.cache/agent-tmp",
       "idle_days": 2,
       "idle_hours": 12,
+      "keep_younger_than_hours": 24,
+      "max_total_gb": 10,
       "reclaim_idle_children": true,
       "source_name_globs": ["*token*", "*secret*"],
       "repo_copy_markers": ["pyproject.toml", "AGENTS.md", "package.json", ".git"],

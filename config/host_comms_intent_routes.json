@@ -38,6 +38,20 @@
       "producer": "disk_usage_monitor"
     },
     {
+      "domain": "host",
+      "kind": "disk_budget_exceeded",
+      "tier": "DIGEST",
+      "runbook_id": "disk-usage-band",
+      "producer": "disk_usage_monitor"
+    },
+    {
+      "domain": "host",
+      "kind": "disk_growth_rate",
+      "tier": "DIGEST",
+      "runbook_id": "disk-usage-band",
+      "producer": "disk_usage_monitor"
+    },
+    {
       "domain": "data",
       "kind": "data_plausibility_violation",
       "tier": "DIGEST",

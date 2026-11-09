@@ -860,7 +860,13 @@ def test_the_committed_rules_hold_the_operator_numbers_and_the_hard_list():
     assert doc["monitor"]["warn_pct"] == 80.0 and doc["monitor"]["critical_pct"] == 90.0
     assert doc["monitor"]["host_backstop_pct"] == 95.0
     assert doc["git"]["idle_days"] == 7 and doc["git"]["main_ref"] == "origin/main"
-    assert all(c["enabled"] is False for c in doc["caches"]["rules"])
+    # LQ-20261107-1638 (2026-11-09): cache roots may be enabled, but ONLY with an absolute byte cap. The guard this
+    # replaced ("all disabled") was written when rule C had no ceiling; enabling a root without one is how a cache
+    # grows to fill whatever drive it is given.
+    for c in doc["caches"]["rules"]:
+        if c["enabled"]:
+            assert type(c.get("max_total_gb")) in (int, float) and c["max_total_gb"] > 0, c["path"]
+        assert int(c["older_than_days"]) > 0
     home = rules["_home"]
     for p in ("db_backups", "trade-ai-releases/persistent-state", "llama-cpp-vulkan", ".ssh", ".config", ".docker"):
         assert DH.never_touch_reason(home / p / "x", rules), p
