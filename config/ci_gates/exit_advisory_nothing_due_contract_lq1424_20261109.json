@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "exit_advisory_nothing_due_contract_lq1424_20261109",
+  "files": [
+    "tests/test_exit_advisory_nothing_due_contract_lq1424_20261109.py"
+  ],
+  "anchor": "EXIT_ADVISORY_NOTHING_DUE_CONTRACT_LQ1424",
+  "comment": [
+    "ANCHOR: EXIT_ADVISORY_NOTHING_DUE_CONTRACT_LQ1424 — LQ-20261107-1424, prereq for the LQ-1416 fold. reconcile-exit-advisory-outcomes empty_allowed_reasons is nothing_due, up_to_date, and all_skipped. dependency_unavailable stays a violation."
+  ]
+}

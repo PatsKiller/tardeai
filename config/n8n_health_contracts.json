@@ -36991,6 +36991,7 @@
           "dependency_unavailable"
         ],
         "empty_allowed_reasons": [
+          "nothing_due",
           "up_to_date",
           "all_skipped"
         ],
