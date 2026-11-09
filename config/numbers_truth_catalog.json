@@ -1,0 +1,694 @@
+{
+  "schema": "NumbersTruthCatalog@v1",
+  "as_of": "2026-11-09",
+  "_why": "DSN-20261109-numbers-truth-audit.md \u00a71 (rev 1) aligned by REV 2 (truth sources, current nav pages, no duplicates) and REV 3 (the authority family G1-G3). One row per displayed figure: the surface it is served from (API path + JSON pointer, or runtime artifact + key) and the truth it must agree with. scripts/numbers_truth_audit.py grades each row read-only and emits the findings list M in its LaneRunReceipt@v2 (LQ-1702 consumes M for strikes/heal/ticket/escalation). A row for a route that is not in lib/navConfig.ts fails the CI gate tests/test_numbers_truth_audit_20261109.py.",
+  "nav_config": "apps/command-center-v3/src/lib/navConfig.ts",
+  "codes": [
+    "NT_QTY_MISMATCH",
+    "NT_VALUE_MISMATCH",
+    "NT_PRICE_MISMATCH",
+    "NT_TOTAL_MISMATCH",
+    "NT_ACCOUNT_TOTAL_MISMATCH",
+    "NT_DAY_PNL_SPLIT",
+    "NT_STOP_PRICE_MISMATCH",
+    "NT_STOP_QTY_MISMATCH",
+    "NT_STOP_STATE_MISMATCH",
+    "NT_STOP_CROSS_CHECK",
+    "NT_UNPROTECTED",
+    "NT_SESSION_LABEL",
+    "NT_QUOTE_SOURCE",
+    "NT_AUTHORITY_WRITE",
+    "NT_AUTHORITY_STATIC",
+    "NT_NOT_MEASURED"
+  ],
+  "_codes_note": "The closed code set. Every emitted code is validated against this list by the tests; NT_NOT_MEASURED is the only status-bearing code and always means an unreadable side.",
+  "policy": {
+    "session_et": {
+      "start": "09:30",
+      "end": "16:15",
+      "_note": "the in-session gate for freshness bounds; identical to desk_truth_monitor's display-truth window"
+    },
+    "sources": {
+      "quotes": {
+        "allowed": [
+          "alpaca",
+          "finviz"
+        ],
+        "allowed_prefixes": [
+          "refresh:schwab"
+        ],
+        "never": [
+          "yfinance"
+        ],
+        "_note": "REV 2 A: market_quotes WHERE source IN ('alpaca','finviz') OR source LIKE 'refresh:%schwab%'; never yfinance. ticker_prices is NOT a truth source (LQ-1695)."
+      }
+    },
+    "brief": {
+      "artifact": "data/runtime/cio_overnight_brief/latest.json",
+      "_note": "the CIO overnight brief the pages read; last_close.session_date is the authoritative session day"
+    },
+    "coverage": {
+      "working_lifecycles": [
+        "working",
+        "near_trigger"
+      ],
+      "snapshot_stale_after_h": 0.25,
+      "min_position_value_usd": 1000.0,
+      "exclude_asset_types": [
+        "option"
+      ],
+      "paper_accounts": [],
+      "exempt": [],
+      "account_aliases": {
+        "schwab_roth": "schwab_roth_ira"
+      },
+      "_note": "Handed verbatim to desk_truth_monitor.held_exit_coverage (REV 2 C: reuse, do not write new coverage SQL). snapshot_stale_after_h 0.25 = broker_stops freshness_sla 10 min with slack; a stale snapshot is NOT_MEASURED, never 'unprotected'."
+    },
+    "domains": {
+      "quote_price": {
+        "table": "market_quotes",
+        "writer": "scripts/lib/writers/market_quotes.py",
+        "producer_lane": "market-quotes",
+        "allowed_sources": [
+          "alpaca",
+          "finviz",
+          "finviz_elite",
+          "refresh:schwab",
+          "schwab"
+        ],
+        "never_sources": [
+          "yfinance",
+          "yahoo",
+          "ticker_prices"
+        ],
+        "_note": "REV 2 A. finviz_elite is the label the CIO brief stamps on a Finviz-sourced mark; it is the same provider, not a second source."
+      },
+      "positions_store": {
+        "table": "positions_current",
+        "writer": "scripts/positions_sync.py",
+        "producer_lane": "positions-sync",
+        "allowed_sources": [
+          "schwab",
+          "schwab_api",
+          "moomoo",
+          "alpaca"
+        ],
+        "never_sources": []
+      },
+      "broker_stops": {
+        "table": "stop_lifecycle",
+        "writer": "scripts/stop_lifecycle_monitor.py",
+        "producer_lane": "stop-health-check",
+        "_note": "REV 2 A: the latest stop_lifecycle snapshot is canonical; stop_last_known is a retiring copy and is cross-checked, never truth."
+      }
+    },
+    "write_watch": {
+      "quote_price": {
+        "table": "market_quotes",
+        "time_col": "fetched_at",
+        "provider_col": "source",
+        "declared_sources": [
+          "alpaca",
+          "finviz",
+          "refresh:schwab",
+          "schwab"
+        ],
+        "never_sources": [
+          "yfinance",
+          "yahoo"
+        ],
+        "producer_lane": "market-quotes",
+        "_note": "G2. First measured instance (REV 2 A): 625 market_quotes rows written by the retired yfinance provider in 6 h."
+      },
+      "positions_store": {
+        "table": "positions_current",
+        "time_col": "as_of",
+        "provider_col": "source",
+        "declared_sources": [
+          "schwab",
+          "schwab_api",
+          "moomoo",
+          "alpaca",
+          "schwab_positions"
+        ],
+        "never_sources": [],
+        "producer_lane": "positions-sync",
+        "_note": "G2 for the positions writer. Empty result is a pass; a provider outside the list is a finding.",
+        "declared_prefixes": [
+          "schwab",
+          "moomoo",
+          "alpaca"
+        ]
+      }
+    },
+    "authority": {
+      "gate": "scripts/check_data_source_authority.py",
+      "file": "config/data_source_authority.json",
+      "_note": "G1 runs the gate with --json at this code root (the live release's HEAD) each hour; its findings are M entries with fingerprint authority|rule|file."
+    },
+    "http": {
+      "window_start_et": "04:00",
+      "window_end_et": "16:15",
+      "_note": "AGENTS.md \u00a728.8: no HTTP to :7777 on a weekday inside this window. Inside it the audit reads the served artifacts the API reads; an api-only row is NOT_MEASURED with reason in_window_artifact_only."
+    },
+    "max_findings": 200
+  },
+  "rows": [
+    {
+      "page": "/",
+      "figure_id": "overview.portfolio_value",
+      "label": "Portfolio total (Home header)",
+      "domain": "positions_store",
+      "producer_lane": "positions-sync",
+      "severity": "P1",
+      "check": "book_total",
+      "served_from": {
+        "kind": "api",
+        "path": "/api/v2/overview",
+        "value": [
+          "/portfolio_value",
+          "/derived_total_value"
+        ]
+      },
+      "truth": {
+        "provider": "positions_current",
+        "fresh_min_in_session": 35
+      },
+      "tolerance": {
+        "kind": "abs",
+        "value": 1.0,
+        "unit": " USD"
+      },
+      "_note": "REV 2 A: positions_current as_of <= 35 min in session, else NOT_MEASURED. Sum = non-cash broker_market_value + cash rows' dollar balance."
+    },
+    {
+      "page": "/",
+      "figure_id": "overview.account_total",
+      "label": "Account totals (Home accounts rows)",
+      "domain": "positions_store",
+      "producer_lane": "positions-sync",
+      "severity": "P1",
+      "check": "account_total",
+      "served_from": {
+        "kind": "api",
+        "path": "/api/v2/overview",
+        "rows": "/portfolio_aggregate/accounts",
+        "key": [
+          "/account",
+          "/account_id"
+        ],
+        "value": [
+          "/display_value",
+          "/total_value"
+        ]
+      },
+      "truth": {
+        "provider": "positions_current"
+      },
+      "tolerance": {
+        "kind": "abs",
+        "value": 1.0,
+        "unit": " USD"
+      }
+    },
+    {
+      "page": "/",
+      "figure_id": "overview.day_pnl",
+      "label": "Day P&L header vs its account rows",
+      "domain": "positions_store",
+      "producer_lane": "positions-sync",
+      "severity": "P1",
+      "check": "same_figure",
+      "served_from": {
+        "kind": "api",
+        "path": "/api/v2/overview",
+        "figure": "day P&L",
+        "surfaces": [
+          {
+            "name": "header today_pnl.change",
+            "value": [
+              "/today_pnl/change"
+            ]
+          },
+          {
+            "name": "accounts stored_row_change",
+            "sum_of": "/stored_row_change",
+            "rows": "/today_by_account"
+          }
+        ]
+      },
+      "_note": "DSN \u00a71 'Day P&L header == account rows -> same_figure_everywhere'. Reuses scripts/lib/site_audit/cross_checks.same_figure_everywhere; a cent-rounding step is not a defect, a different figure is."
+    },
+    {
+      "page": "/",
+      "figure_id": "overview.vix",
+      "label": "VIX tile",
+      "domain": "quote_price",
+      "producer_lane": "vix-index-quotes-schwab",
+      "severity": "P1",
+      "check": "row_scalar",
+      "served_from": {
+        "kind": "api",
+        "path": "/api/v2/overview",
+        "key": {},
+        "value": [
+          "/trade_ai/vix"
+        ]
+      },
+      "truth": {
+        "provider": "market_quotes",
+        "key": {},
+        "value": "price",
+        "symbol": "$VIX",
+        "fresh_min_in_session": 15
+      },
+      "tolerance": {
+        "kind": "pct",
+        "value": 0.5,
+        "unit": "%"
+      },
+      "_note": "REV 2 A: Finviz/Schwab quote, value <=0.5%, as_of <=15 min in session. The single-key form compares the tile against the newest allowed $VIX row."
+    },
+    {
+      "page": "/cio",
+      "figure_id": "cio.uncovered_count",
+      "label": "'Unprotected' count on the CIO page",
+      "domain": "broker_stops",
+      "producer_lane": "cio-overnight-brief",
+      "severity": "P0",
+      "check": "coverage",
+      "served_from": {
+        "kind": "artifact",
+        "path": "data/runtime/cio_overnight_brief/latest.json",
+        "value": [
+          "/counts/uncovered_positions"
+        ]
+      },
+      "_note": "The XLV case. Truth = held - working-stop coverage from positions_current x stop_lifecycle, via desk_truth_monitor.held_exit_coverage; a stale stop snapshot is NOT_MEASURED. Money at risk, so P0."
+    },
+    {
+      "page": "/portfolio",
+      "figure_id": "holdings.qty",
+      "label": "Shares per holding",
+      "domain": "positions_store",
+      "producer_lane": "positions-sync",
+      "severity": "P0",
+      "check": "row_scalar",
+      "served_from": {
+        "kind": "artifact",
+        "path": "data/portfolios/state/holdings.json",
+        "rows": "/holdings",
+        "key": {
+          "account": [
+            "account_key",
+            "account"
+          ],
+          "symbol": "symbol"
+        },
+        "value": [
+          "/shares",
+          "/broker_shares",
+          "/qty"
+        ],
+        "as_of": [
+          "/broker_position_as_of_at",
+          "/as_of"
+        ],
+        "code": "NT_QTY_MISMATCH"
+      },
+      "truth": {
+        "provider": "positions_current",
+        "key": {
+          "account": "account_key",
+          "symbol": "symbol"
+        },
+        "value": "qty",
+        "fresh_min_in_session": 35
+      },
+      "tolerance": {
+        "kind": "exact"
+      },
+      "_note": "REV 2 A: DB is the system of record (positions_current). Exact, P0: a wrong share count is money at risk."
+    },
+    {
+      "page": "/portfolio",
+      "figure_id": "holdings.market_value",
+      "label": "Market value per holding",
+      "domain": "positions_store",
+      "producer_lane": "positions-sync",
+      "severity": "P1",
+      "check": "row_scalar",
+      "served_from": {
+        "kind": "artifact",
+        "path": "data/portfolios/state/holdings.json",
+        "rows": "/holdings",
+        "key": {
+          "account": [
+            "account_key",
+            "account"
+          ],
+          "symbol": "symbol"
+        },
+        "value": [
+          "/market_value",
+          "/broker_market_value"
+        ],
+        "code": "NT_VALUE_MISMATCH"
+      },
+      "truth": {
+        "provider": "positions_current",
+        "key": {
+          "account": "account_key",
+          "symbol": "symbol"
+        },
+        "value": "broker_market_value",
+        "fresh_min_in_session": 35
+      },
+      "tolerance": {
+        "kind": "abs",
+        "value": 1.0,
+        "unit": " USD"
+      }
+    },
+    {
+      "page": "/portfolio",
+      "figure_id": "holdings.price",
+      "label": "Price per holding",
+      "domain": "quote_price",
+      "producer_lane": "market-quotes",
+      "severity": "P1",
+      "check": "row_scalar",
+      "served_from": {
+        "kind": "artifact",
+        "path": "data/portfolios/state/holdings.json",
+        "rows": "/holdings",
+        "key": {
+          "symbol": "symbol"
+        },
+        "value": [
+          "/price",
+          "/current_price",
+          "/mark"
+        ],
+        "code": "NT_PRICE_MISMATCH",
+        "truth_fresh_min_in_session": 15
+      },
+      "truth": {
+        "provider": "market_quotes",
+        "key": {
+          "symbol": "symbol"
+        },
+        "value": "price"
+      },
+      "tolerance": {
+        "kind": "pct",
+        "value": 0.5,
+        "unit": "%"
+      },
+      "only_displayed": true,
+      "_note": "REV 2 A: newest allowed market_quotes row (alpaca/finviz/refresh:schwab; never yfinance). A price matching only a yfinance row is a FAIL, never a pass."
+    },
+    {
+      "page": "/portfolio",
+      "figure_id": "holdings.stop_price",
+      "label": "Stop price per row",
+      "domain": "broker_stops",
+      "producer_lane": "stop-health-check",
+      "severity": "P0",
+      "check": "row_scalar",
+      "served_from": {
+        "kind": "api",
+        "path": "/api/v2/portfolio/holdings",
+        "rows": "/holdings",
+        "key": {
+          "account": [
+            "account_key",
+            "account"
+          ],
+          "symbol": "symbol"
+        },
+        "value": [
+          "/stop_price"
+        ],
+        "code": "NT_STOP_PRICE_MISMATCH",
+        "only_displayed": true
+      },
+      "truth": {
+        "provider": "stop_lifecycle",
+        "key": {
+          "account": "account",
+          "symbol": "symbol"
+        },
+        "value": "stop_price"
+      },
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.005,
+        "unit": " USD"
+      },
+      "_note": "The /portfolio stop column is served by /api/v2/portfolio/holdings, which merges stop_last_known into each row (cio_truth.holdings_payload) \u2014 the retiring copy, not the canonical snapshot. Inside the 04:00-16:15 ET window this row is NOT_MEASURED (in_window_artifact_only); outside it the served stop is graded against stop_lifecycle."
+    },
+    {
+      "page": "/portfolio",
+      "figure_id": "holdings.stop_state",
+      "label": "Stop state per row (working / filled / none)",
+      "domain": "broker_stops",
+      "producer_lane": "stop-health-check",
+      "severity": "P0",
+      "check": "row_scalar",
+      "served_from": {
+        "kind": "api",
+        "path": "/api/v2/portfolio/holdings",
+        "rows": "/holdings",
+        "key": {
+          "account": [
+            "account_key",
+            "account"
+          ],
+          "symbol": "symbol"
+        },
+        "value": [
+          "/stop_state",
+          "/lifecycle"
+        ],
+        "code": "NT_STOP_STATE_MISMATCH",
+        "only_displayed": true
+      },
+      "truth": {
+        "provider": "stop_lifecycle",
+        "key": {
+          "account": "account",
+          "symbol": "symbol"
+        },
+        "value": "lifecycle",
+        "transform": "lifecycle_state"
+      },
+      "tolerance": {
+        "kind": "exact"
+      },
+      "_note": "The /portfolio stop column is served by /api/v2/portfolio/holdings, which merges stop_last_known into each row (cio_truth.holdings_payload) \u2014 the retiring copy, not the canonical snapshot. Inside the 04:00-16:15 ET window this row is NOT_MEASURED (in_window_artifact_only); outside it the served stop is graded against stop_lifecycle."
+    },
+    {
+      "page": "/portfolio",
+      "figure_id": "holdings.stop_qty",
+      "label": "Stop quantity per row",
+      "domain": "broker_stops",
+      "producer_lane": "stop-health-check",
+      "severity": "P0",
+      "check": "row_scalar",
+      "served_from": {
+        "kind": "api",
+        "path": "/api/v2/portfolio/holdings",
+        "rows": "/holdings",
+        "key": {
+          "account": [
+            "account_key",
+            "account"
+          ],
+          "symbol": "symbol"
+        },
+        "value": [
+          "/stop_qty"
+        ],
+        "code": "NT_STOP_QTY_MISMATCH",
+        "only_displayed": true
+      },
+      "truth": {
+        "provider": "stop_lifecycle",
+        "key": {
+          "account": "account",
+          "symbol": "symbol"
+        },
+        "value": "qty"
+      },
+      "tolerance": {
+        "kind": "exact"
+      },
+      "_note": "The /portfolio stop column is served by /api/v2/portfolio/holdings, which merges stop_last_known into each row (cio_truth.holdings_payload) \u2014 the retiring copy, not the canonical snapshot. Inside the 04:00-16:15 ET window this row is NOT_MEASURED (in_window_artifact_only); outside it the served stop is graded against stop_lifecycle."
+    },
+    {
+      "page": "/portfolio",
+      "figure_id": "holdings.stop_crosscheck",
+      "label": "stop_lifecycle vs its retiring stop_last_known copy",
+      "domain": "broker_stops",
+      "producer_lane": "stop-health-check",
+      "severity": "P1",
+      "check": "cross_source",
+      "served_from": {
+        "kind": "artifact",
+        "path": "data/portfolios/state/holdings.json"
+      },
+      "working_lifecycles": [
+        "working",
+        "near_trigger"
+      ],
+      "_note": "REV 2 A: the two disagreeing is itself a P1 finding. stop_last_known is write-only and retiring (config/data_source_authority.json broker_stops.derived_copies); it is never truth."
+    },
+    {
+      "page": "/cio",
+      "figure_id": "cio.stop_advice.stop_now",
+      "label": "Stop advice: stop now, per row",
+      "domain": "broker_stops",
+      "producer_lane": "cio-overnight-brief",
+      "severity": "P0",
+      "check": "row_scalar",
+      "served_from": {
+        "kind": "artifact",
+        "path": "data/runtime/cio_overnight_brief/latest.json",
+        "rows": "/stop_advice",
+        "key": {
+          "account": "account",
+          "symbol": "symbol"
+        },
+        "value": [
+          "/stop_now"
+        ],
+        "code": "NT_STOP_PRICE_MISMATCH",
+        "only_displayed": true
+      },
+      "truth": {
+        "provider": "stop_lifecycle",
+        "key": {
+          "account": "account",
+          "symbol": "symbol"
+        },
+        "value": "stop_price",
+        "fresh_min_in_session": 15
+      },
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.005,
+        "unit": " USD"
+      }
+    },
+    {
+      "page": "/cio",
+      "figure_id": "cio.stop_advice.stop_qty",
+      "label": "Stop advice: stop quantity, per row",
+      "domain": "broker_stops",
+      "producer_lane": "cio-overnight-brief",
+      "severity": "P0",
+      "check": "row_scalar",
+      "served_from": {
+        "kind": "artifact",
+        "path": "data/runtime/cio_overnight_brief/latest.json",
+        "rows": "/stop_advice",
+        "key": {
+          "account": "account",
+          "symbol": "symbol"
+        },
+        "value": [
+          "/stop_qty"
+        ],
+        "code": "NT_STOP_QTY_MISMATCH",
+        "only_displayed": true
+      },
+      "truth": {
+        "provider": "stop_lifecycle",
+        "key": {
+          "account": "account",
+          "symbol": "symbol"
+        },
+        "value": "qty"
+      },
+      "tolerance": {
+        "kind": "exact"
+      }
+    },
+    {
+      "page": "/cio",
+      "figure_id": "cio.holdings.price",
+      "label": "Briefed holding price",
+      "domain": "quote_price",
+      "producer_lane": "cio-overnight-brief",
+      "severity": "P1",
+      "check": "row_scalar",
+      "served_from": {
+        "kind": "artifact",
+        "path": "data/runtime/cio_overnight_brief/latest.json",
+        "rows": "/holdings",
+        "key": {
+          "symbol": "symbol"
+        },
+        "value": [
+          "/price"
+        ],
+        "code": "NT_PRICE_MISMATCH",
+        "truth_fresh_min_in_session": 15,
+        "only_displayed": true
+      },
+      "truth": {
+        "provider": "market_quotes",
+        "key": {
+          "symbol": "symbol"
+        },
+        "value": "price"
+      },
+      "tolerance": {
+        "kind": "pct",
+        "value": 0.5,
+        "unit": "%"
+      }
+    },
+    {
+      "page": "/cio",
+      "figure_id": "cio.holdings.quote_source",
+      "label": "Briefed holding: which provider marked it",
+      "domain": "quote_price",
+      "producer_lane": "cio-overnight-brief",
+      "severity": "P1",
+      "check": "authority_source",
+      "served_from": {
+        "kind": "artifact",
+        "path": "data/runtime/cio_overnight_brief/latest.json",
+        "rows": "/holdings",
+        "key": [],
+        "value": [
+          "/quote_source"
+        ]
+      },
+      "_note": "G3: a figure served from a non-authoritative or retired provider FAILS even when the number happens to match."
+    },
+    {
+      "page": "/",
+      "figure_id": "sinceclose.session_label",
+      "label": "Stop card: the session day it names",
+      "domain": "broker_stops",
+      "producer_lane": "since-close-snapshot",
+      "severity": "P1",
+      "check": "session_label",
+      "served_from": {
+        "kind": "pair",
+        "path": "data/portfolios/state/since_close_latest.json",
+        "other_path": "data/runtime/cio_overnight_brief/latest.json",
+        "text_pointers": [
+          "/window/close_tag",
+          "/window/label"
+        ],
+        "own_date_pointer": "/window/session_date",
+        "date_pointer": "/last_close/session_date"
+      },
+      "_note": "The 'Friday' label: the weekday the card names ('Mon close') must be the weekday of brief.last_close.session_date, and the card's own session_date must agree with it."
+    }
+  ]
+}

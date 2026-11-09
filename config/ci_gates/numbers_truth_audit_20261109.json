@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "numbers_truth_audit_20261109",
+  "files": [
+    "tests/test_numbers_truth_audit_20261109.py"
+  ],
+  "anchor": "NUMBERS_TRUTH_AUDIT_20261109",
+  "comment": [
+    "ANCHOR: NUMBERS_TRUTH_AUDIT_20261109 — every displayed number against its truth (LQ-20261107-1701).",
+    "DSN-20261109-numbers-truth-audit.md rev 1 §1-2, REV 2 (DB is the system of record; current nav only;",
+    "stop_lifecycle canonical, stop_last_known a retiring copy; never yfinance) and REV 3 (authority G1-G3).",
+    "Pins the three live defects: the XLV 'unprotected' undercount, the wrong session-day label, and the",
+    "SPCX stop the broker cancelled while the page still showed it working. Hermetic, synthetic ZQ* fixtures."
+  ]
+}
