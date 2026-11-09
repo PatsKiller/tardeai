@@ -130,16 +130,20 @@ def test_one_unusable_row_makes_the_row_sum_unknown_not_wrong():
 
 def test_the_position_count_is_one_named_scope_with_its_definition():
     pt = build_portfolio_total(document(ROWS, ROW_SUM))
-    assert pt["position_count"] == 3, "SCHD, V, SPCX — not TINY (<$100), not the two cash rows"
-    assert pt["position_scope"] == POSITION_SCOPE == "holdings.non_cash_over_100"
+    assert pt["position_count"] == 4, "SCHD, V, SPCX and the $99 TINY lot — held, priced; not the two cash rows"
+    assert pt["position_scope"] == POSITION_SCOPE == "holdings.held"
     assert pt["position_scope_definition"]
-    assert "above $100" in pt["position_scope_definition"]
+    assert "quantity" in pt["position_scope_definition"] and "priced" in pt["position_scope_definition"]
+    assert pt["position_summary"] == "4 positions · 1 under $100"
 
 
 def test_every_other_population_is_named_beside_it():
     counts = build_portfolio_total(document(ROWS, ROW_SUM))["position_counts"]
     assert counts["scopes"] == {
+        "holdings.held": 4,
         "holdings.non_cash_over_100": 3,
+        "holdings.held_under_100": 1,
+        "holdings.unpriced": 0,
         "holdings.all_rows": 6,
         "holdings.non_cash": 4,
         "holdings.cash": 2,
@@ -164,7 +168,7 @@ def test_an_extra_scope_from_another_store_is_carried_and_defined():
     pt = build_portfolio_total(document(ROWS, ROW_SUM), extra_scopes={"risk.risk_included": 5})
     assert pt["position_counts"]["scopes"]["risk.risk_included"] == 5
     assert pt["position_counts"]["definitions"]["risk.risk_included"] == "scope risk.risk_included"
-    assert pt["position_count"] == 3, "an extra scope never moves the primary count"
+    assert pt["position_count"] == 4, "an extra scope never moves the primary count"
 
 
 # ── every alternative is named, none is the total ─────────────────────────────────────────────────────────────
@@ -202,7 +206,7 @@ def test_cash_is_published_with_its_own_basis():
 def test_load_portfolio_total_reads_the_store(tmp_path: Path):
     (tmp_path / "holdings.json").write_text(json.dumps(document(ROWS, ROW_SUM)), encoding="utf-8")  # nosemgrep: tq-py-nonatomic-store-write -- a tmp_path fixture, not a store; nothing outside this test reads it
     pt = load_portfolio_total(tmp_path)
-    assert pt["value"] == ROW_SUM and pt["position_count"] == 3
+    assert pt["value"] == ROW_SUM and pt["position_count"] == 4
 
 
 def test_load_portfolio_total_on_a_missing_store_alerts_and_publishes_none(tmp_path: Path):
@@ -216,3 +220,92 @@ def test_load_portfolio_total_on_an_unparseable_store_alerts(tmp_path: Path):
     pt = load_portfolio_total(tmp_path)
     assert pt["value"] is None
     assert [f["code"] for f in pt["findings"]][-1] == "HOLDINGS_UNREADABLE"
+
+
+# ── F1 / F3 (cc-opus-1 takeover): one read per page, and a count that does not flicker ────────────────────────
+#
+# F1: the Home accounts card summed to $7,330 less than its own All-accounts row, because the per-account
+# values came from a 07:41 performance snapshot and the All row from the live store. The contract now
+# publishes the per-account values from the same rows as the total, so one payload can draw the whole card.
+# F3: the headline count was "non-cash over $100"; a $97 dust lot ticking to $101 moved it (12 ↔ 13).
+
+def _acct_rows() -> list[dict]:
+    return [
+        row("SPCX", 800_000.0, "schwab_rollover_ira"),
+        row("CASH", 300_000.0, "schwab_rollover_ira", is_cash=True),
+        row("V", 211.58, "schwab_roth"),
+        row("SPAXX", 56_935.42, "schwab_roth"),
+        row("RTX", 97.14, "schwab_taxable"),
+        row("SRNE", 0.30, "schwab_taxable"),
+        row("543354104", 0.0, "schwab_taxable"),       # unpriced CUSIP lot, quantity held
+        row("T", 5_000.0, "schwab_taxable"),
+    ]
+
+
+def test_account_values_come_from_the_same_rows_and_sum_to_the_total():
+    rows = _acct_rows()
+    total = round(sum(r["market_value"] for r in rows), 2)
+    pt = build_portfolio_total(document(rows, total))
+    by = pt["by_account"]
+    assert set(by) == {"schwab_rollover_ira", "schwab_roth", "schwab_taxable"}
+    assert by["schwab_rollover_ira"]["value"] == 1_100_000.0
+    assert by["schwab_roth"]["cash"] == 56_935.42
+    assert round(sum(a["value"] for a in by.values()), 2) == pytest.approx(pt["value"], abs=pt["tolerance_usd"])
+    assert pt["by_account_sum"] == pytest.approx(pt["value"], abs=1.0)
+
+
+def test_an_unusable_row_makes_only_its_account_unknown():
+    rows = _acct_rows() + [{"account": "schwab_roth", "symbol": "BAD", "market_value": "abc", "shares": 1}]
+    by = build_portfolio_total(document(rows, 1_162_244.44))["by_account"]
+    assert by["schwab_roth"]["value"] is None
+    assert by["schwab_rollover_ira"]["value"] == 1_100_000.0
+
+
+def test_the_headline_count_does_not_move_when_a_dust_lot_crosses_100():
+    before = build_portfolio_total(document(_acct_rows(), None))
+    moved = [dict(r, market_value=101.02) if r["symbol"] == "RTX" else r for r in _acct_rows()]
+    after = build_portfolio_total(document(moved, None))
+    assert before["position_count"] == after["position_count"] == 5, "SPCX, V, RTX, SRNE, T"
+    s0, s1 = before["position_counts"]["scopes"], after["position_counts"]["scopes"]
+    assert (s0["holdings.non_cash_over_100"], s1["holdings.non_cash_over_100"]) == (3, 4), \
+        "the $100 scope still moves — it is published by name, never as the headline"
+
+
+def test_unpriced_lots_are_excluded_from_the_count_and_named():
+    pt = build_portfolio_total(document(_acct_rows(), None))
+    scopes = pt["position_counts"]["scopes"]
+    assert pt["position_scope"] == "holdings.held"
+    assert scopes["holdings.unpriced"] == 1
+    assert scopes["holdings.held_under_100"] == 2, "RTX and SRNE; V at $211.58 is over the line"
+    assert "quantity" in pt["position_scope_definition"]
+    assert pt["position_summary"] == "5 positions · 2 under $100 · 1 unpriced lot excluded"
+
+
+# ── part 2: the publisher. /api/v2/overview's financial facts come from cio_truth.overview_payload, so the
+#    contract is built there, from the same repriced rows as portfolio_value and today_by_account (one read). ─
+
+def test_the_overview_payload_publishes_the_contract_from_its_own_rows():
+    from datetime import datetime, timezone
+
+    from scripts.lib import cio_truth as truth
+
+    now = datetime(2026, 1, 12, 15, 0, tzinfo=timezone.utc)
+    h = {"last_repriced": "2026-01-12 10:00:00 ET", "generated_at": "2026-01-12 10:00:00 ET",
+         "reprice_source": "finviz_live",
+         "portfolio_totals": {"total_value": 9_999.0, "total_cash": 300.0},  # a stale stored field
+         "holdings": [row("ZZAA", 600.0, "schwab_rollover_ira", shares=10, price=60),
+                      row("ZZBB", 97.0, "schwab_roth", shares=1, price=97),
+                      row("000000ZZ9", 0.0, "schwab_taxable", shares=300, price=0),
+                      row("CASH", 300.0, "schwab_taxable", is_cash=True)]}
+    p = truth.portfolio_for(h, now=now)
+    doc = {"portfolio": p, "approvals": {"total": 0}, "paper": {},
+           "regime": {"label": None, "vix": None, "vix_as_of": None}}
+    out = truth.overview_payload({}, document=doc, now=now)
+    pt = out["portfolio_total"]
+    assert pt["value"] == out["portfolio_value"] == 997.0, "the contract total is the header, to the cent"
+    assert pt["by_account_sum"] == out["portfolio_value"]
+    assert set(pt["by_account"]) == set(out["today_by_account"]), "one account key space"
+    assert pt["by_account"]["schwab_roth_ira"]["value"] == 97.0
+    assert pt["position_count"] == 2 and pt["position_summary"] == "2 positions · 1 under $100 · 1 unpriced lot excluded"
+    stored = [a for a in pt["alternatives"] if a["name"] == "stored_total"]
+    assert stored and stored[0]["value"] == 9_999.0 and stored[0]["delta"] == round(997.0 - 9_999.0, 2)

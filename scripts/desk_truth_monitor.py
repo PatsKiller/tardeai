@@ -240,7 +240,7 @@ def portfolio_total_agreement(store: Mapping[str, Any], cfg: Mapping[str, Any]) 
                    **f.get("evidence", {}))
                 for f in contract.get("findings") or [] if f.get("alert")]
     report = {k: contract.get(k) for k in ("contract_version", "value", "basis", "as_of", "cash",
-                                           "position_count", "position_scope", "agree")}
+                                           "position_count", "position_scope", "position_summary", "agree")}
     report["alternatives"] = [{"name": a["name"], "value": a["value"], "delta": a["delta"],
                                "basis": a["basis"]} for a in contract.get("alternatives") or []]
     return {"portfolio_total": report, "findings": findings}

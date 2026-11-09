@@ -485,7 +485,7 @@ export default function PortfolioHub({ onDrill }: Props) {
           <div style={hubSubtitle(terminalUi)}>
             {(needLookthrough || needAllocation) ? 'Current holdings opened into their underlying exposures' : !needHoldingsData ? 'Select Holdings for position totals and stop coverage' : holdingsPending ? 'Loading holdings…' : holdingsUnavailable ? 'Holdings temporarily unavailable' : filtered
               ? `${holdingsList.length} rows · ${fmt$(headerValue, 0)}`
-              : <><span title={pt.tip}>{headerValue != null ? fmt$(headerValue, 0) : '—'} · {headerCount ?? '—'} positions</span>{` · ${holdingsList.length} rows (cash included)`}</>}
+              : <><span title={pt.tip}>{headerValue != null ? fmt$(headerValue, 0) : '—'} · {pt.summary ?? `${headerCount ?? '—'} positions`}</span>{` · ${holdingsList.length} rows (cash included)`}</>}
             {needHoldingsData && !needLookthrough && !needAllocation && !holdingsPending && !holdingsUnavailable && <>
               {' · '}
               {/* The day figure is the backend's and says what it is. With no figure it states the backend's

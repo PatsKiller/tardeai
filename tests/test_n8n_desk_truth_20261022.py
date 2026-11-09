@@ -139,7 +139,8 @@ def test_portfolio_total_is_clean_when_the_field_equals_its_rows():
     pt = out["portfolio_total"]
     assert out["findings"] == [] and pt["agree"] is True
     assert pt["value"] == TOTAL and pt["basis"] == "portfolio_totals.total_value"
-    assert pt["position_count"] == 2 and pt["position_scope"] == "holdings.non_cash_over_100"
+    assert pt["position_count"] == 2 and pt["position_scope"] == "holdings.held"
+    assert pt["position_summary"] == "2 positions"
 
 
 def test_a_total_that_disagrees_with_its_rows_alerts_on_this_lane():

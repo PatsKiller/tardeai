@@ -41,13 +41,19 @@ CONTRACT_VERSION = "PortfolioTotal@v1"
 TOTAL_FIELD = "portfolio_totals.total_value"
 CASH_FIELD = "portfolio_totals.total_cash"
 BROKER_TOTAL_FIELD = "portfolio_totals.broker_market_value_total"
-POSITION_SCOPE = "holdings.non_cash_over_100"
+# The headline count is the held instruments, not a value line: a $97 lot ticking to $101 moved the old
+# "over $100" headline (12 <-> 13) with nothing bought or sold (LQ-1611 F3). The $100 scope stays published by name.
+POSITION_SCOPE = "holdings.held"
 POSITION_SCOPE_DEFINITION = (
-    "non-cash holding rows (symbol not CASH/SPAXX/FDRXX) whose market_value is above $100, "
-    "one per (account, symbol)"
+    "non-cash instruments held, one per (account, symbol): quantity above 0 (or not reported) and a priced "
+    "market_value above $0; unpriced lots are counted separately, never as positions"
 )
+OVER_100_SCOPE = "holdings.non_cash_over_100"
 SCOPE_DEFINITIONS = {
     POSITION_SCOPE: POSITION_SCOPE_DEFINITION,
+    OVER_100_SCOPE: "non-cash instruments, one per (account, symbol), whose market_value is above $100",
+    "holdings.held_under_100": "held instruments priced above $0 and at or below $100",
+    "holdings.unpriced": "non-cash lots with a quantity but no market_value above $0 (e.g. a CUSIP with no quote)",
     "holdings.all_rows": "every row in the holdings store, cash rows included, one per (account, symbol)",
     "holdings.non_cash": "non-cash holding rows, whatever their value",
     "holdings.cash": "cash rows (CASH/SPAXX/FDRXX) in the holdings store",
@@ -74,13 +80,29 @@ def is_cash_row(row: Mapping[str, Any]) -> bool:
     return bool(row.get("is_cash")) or str(row.get("symbol") or "").upper() in CASH_SYMBOLS
 
 
+def _row_key(r: Mapping[str, Any]) -> tuple[str, str]:
+    return (_account_of(r), str(r.get("symbol") or "").upper())
+
+
+def _account_of(r: Mapping[str, Any]) -> str:
+    return str(r.get("account") or r.get("account_key") or "")
+
+
+def _quantity(r: Mapping[str, Any]) -> Optional[float]:
+    for f in ("quantity", "shares"):
+        q = _num(r.get(f))
+        if q is not None:
+            return q
+    return None
+
+
 def position_scopes(rows: Iterable[Mapping[str, Any]], *, min_position_usd: float = MIN_POSITION_USD,
                     extra: Optional[Mapping[str, int]] = None) -> dict[str, int]:
-    """Every named population, counted once. ``(account, symbol)`` de-duplicates a split row."""
+    """Every named population, counted once. A split (account, symbol) is summed first, then classified."""
     all_rows = 0
     cash_rows = 0
-    seen: set[tuple[str, str]] = set()
-    qualifiers: set[tuple[str, str]] = set()
+    value: dict[tuple[str, str], float] = {}
+    qty_seen: dict[tuple[str, str], bool] = {}
     for r in rows:
         if not isinstance(r, Mapping):
             continue
@@ -88,19 +110,57 @@ def position_scopes(rows: Iterable[Mapping[str, Any]], *, min_position_usd: floa
         if is_cash_row(r):
             cash_rows += 1
             continue
-        key = (str(r.get("account") or r.get("account_key") or ""), str(r.get("symbol") or "").upper())
-        seen.add(key)
+        key = _row_key(r)
         mv = _num(r.get("market_value"))
-        if mv is not None and mv > min_position_usd:
-            qualifiers.add(key)
+        value[key] = value.get(key, 0.0) + (mv if mv is not None else 0.0)
+        q = _quantity(r)
+        qty_seen[key] = qty_seen.get(key, False) or q is None or q > 0
+    held = {k for k, v in value.items() if qty_seen.get(k) and v > 0}
+    unpriced = {k for k, v in value.items() if qty_seen.get(k) and v <= 0}
     scopes = {
-        POSITION_SCOPE: len(qualifiers),
+        POSITION_SCOPE: len(held),
+        OVER_100_SCOPE: sum(1 for k in held if value[k] > min_position_usd),
+        "holdings.held_under_100": sum(1 for k in held if value[k] <= min_position_usd),
+        "holdings.unpriced": len(unpriced),
         "holdings.all_rows": all_rows,
-        "holdings.non_cash": len(seen),
+        "holdings.non_cash": len(value),
         "holdings.cash": cash_rows,
     }
     scopes.update({k: int(v) for k, v in (extra or {}).items()})
     return scopes
+
+
+def position_summary(scopes: Mapping[str, int]) -> str:
+    """The one line a page prints under the total: the headline count and what it leaves out, by name."""
+    n = scopes.get(POSITION_SCOPE, 0)
+    parts = [f"{n} position{'' if n == 1 else 's'}"]
+    under = scopes.get("holdings.held_under_100", 0)
+    if under:
+        parts.append(f"{under} under ${MIN_POSITION_USD:,.0f}")
+    unp = scopes.get("holdings.unpriced", 0)
+    if unp:
+        parts.append(f"{unp} unpriced lot{'' if unp == 1 else 's'} excluded")
+    return " · ".join(parts)
+
+
+def accounts_from_rows(rows: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Per-account value, cash and held count from the same rows as the total (LQ-1611 F1).
+
+    An account with an unusable market_value is ``value: None`` — unknown, never a short sum.
+    """
+    out: dict[str, dict[str, Any]] = {}
+    acct_rows: dict[str, list[Mapping[str, Any]]] = {}
+    for r in rows:
+        if isinstance(r, Mapping):
+            acct_rows.setdefault(_account_of(r), []).append(r)
+    for acct, rs in acct_rows.items():
+        cash = sum(_num(r.get("market_value")) or 0.0 for r in rs if is_cash_row(r))
+        out[acct] = {
+            "value": rows_total(rs),
+            "cash": round(cash, 2),
+            "position_count": position_scopes(rs)[POSITION_SCOPE],
+        }
+    return out
 
 
 def rows_total(rows: Iterable[Mapping[str, Any]]) -> Optional[float]:
@@ -197,6 +257,9 @@ def build_portfolio_total(document: Optional[Mapping[str, Any]], *,
                                      alert=False, projection=proj, published=value, delta=delta))
 
     cash = _num(totals.get("total_cash"))
+    by_account = accounts_from_rows(rows)
+    acct_values = [a["value"] for a in by_account.values()]
+    by_account_sum = round(sum(acct_values), 2) if acct_values and None not in acct_values else None
     alerting = [f["code"] for f in findings if f["alert"]]
     return {
         "contract_version": CONTRACT_VERSION,
@@ -219,6 +282,9 @@ def build_portfolio_total(document: Optional[Mapping[str, Any]], *,
         "position_scope": POSITION_SCOPE,
         "position_scope_definition": counts_contract["primary_definition"],
         "position_counts": counts_contract,
+        "position_summary": position_summary(counts),
+        "by_account": by_account,
+        "by_account_sum": by_account_sum,
         "alternatives": alternatives,
         "tolerance_usd": float(tolerance_usd),
         "agree": not alerting,
@@ -246,5 +312,5 @@ def load_portfolio_total(state_dir: Any, *, snapshot_totals: Optional[Mapping[st
 __all__ = [
     "CONTRACT_VERSION", "POSITION_SCOPE", "POSITION_SCOPE_DEFINITION", "SCOPE_DEFINITIONS",
     "DEFAULT_TOLERANCE_USD", "MIN_POSITION_USD", "build_portfolio_total", "load_portfolio_total",
-    "position_scopes", "rows_total", "is_cash_row",
+    "position_scopes", "position_summary", "accounts_from_rows", "rows_total", "is_cash_row", "OVER_100_SCOPE",
 ]

@@ -1407,6 +1407,33 @@ def _refresh_position_aggregate(aggregate: dict, p: dict, now: datetime | None) 
                      position_clock=deepcopy(p["clock_provenance"]["positions"]))
 
 
+def _portfolio_total_contract(p: dict) -> dict:
+    """PortfolioTotal@v1 from THIS document's rows (LQ-20261107-1611): the value is ``portfolio_value`` to the
+    cent and ``by_account`` uses the same account keys as ``today_by_account``, so a page that draws its header,
+    All row and account rows from one /api/v2/overview response cannot disagree with itself. The stored
+    ``portfolio_totals.total_value`` predates this read's re-mark; it is published as an alternative, never the total.
+    """
+    from .portfolio_total_contract import build_portfolio_total
+    stored = p.get("stored_totals") or {}
+    rows = [{**r, "account": r.get("account_id") or r.get("account")} for r in p.get("holdings") or []]
+    totals = {"total_value": p.get("total_usd"), "total_cash": p.get("cash_usd"),
+              "as_of": p.get("valuation_as_of") or p.get("quote_as_of"),
+              "broker_market_value_total": stored.get("broker_market_value_total")}
+    out = build_portfolio_total({"holdings": rows, "portfolio_totals": totals,
+                                 "document_source": p.get("document_source"),
+                                 "document_fallback_reason": p.get("document_fallback_reason")})
+    out["basis_label"] = ("sum of the holdings rows as re-marked on this read" if out.get("value") is not None
+                          else out.get("basis_label"))
+    sv = _number(stored.get("total_value"))
+    if sv is not None:
+        out["alternatives"].append({
+            "name": "stored_total", "value": sv,
+            "delta": round(out["value"] - sv, 2) if out.get("value") is not None else None,
+            "basis": "portfolio_totals.total_value (as stored)",
+            "why": "the store's own total from its last write; this read re-marked the rows since then"})
+    return out
+
+
 def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None, document=None) -> dict:
     """Preserve unrelated Overview fields, replace shared financial/display facts."""
     doc = document or resolve(root, now, db_query=db_query, inputs=inputs)
@@ -1418,6 +1445,7 @@ def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None
                paper=doc["paper"], clock_provenance=p.get("clock_provenance"),
                truth={k: p[k] for k in ("source", "as_of", "stale", "gap")})
     out["derived_total_value"] = p["total_usd"]
+    out["portfolio_total"] = _portfolio_total_contract(p)
     pricing = out.setdefault("pricing", {})
     pricing.update(canonical_total_value=p["total_usd"], derived_total_value=p["total_usd"],
                    last_repriced=p["quote_as_of"], reprice_source=p["quote_source"])

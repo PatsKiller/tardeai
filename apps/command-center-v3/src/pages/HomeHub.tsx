@@ -186,7 +186,7 @@ function HomeClassic({ onDrill }: Props) {
 
   const tiles = [
     { label: 'PORTFOLIO', value: pv != null ? fmt$(pv, 0) : '—', sub: todayChg != null ? `${todayChg >= 0 ? '+' : ''}${fmt$(todayChg, 0)} today` : '', color: 'var(--text0)',
-      drill: { title: 'Portfolio', subtitle: '/api/v2/overview', endpoint: '/api/v2/overview', rows: overview ? [{ portfolio_value: pv, today_change: todayChg, position_count: overview.position_count, as_of: overview.as_of }] : [] } },
+      drill: { title: 'Portfolio', subtitle: '/api/v2/overview', endpoint: '/api/v2/overview', rows: overview ? [{ portfolio_value: pv, today_change: todayChg, position_count: pt.count, position_scope: pt.scope, position_summary: pt.summary, as_of: overview.as_of }] : [] } },
     { label: 'PAPER WIN RATE', value: paperWr.value != null ? `${paperWr.value}%` : '—', sub: `${paperWr.trades ?? 0} closed usable · ${paperWr.basis ?? 'paper_trade_statistics'}`, color: paperWr.value == null ? 'var(--text3)' : paperWr.value >= 50 ? BB.green : BB.amber,
       drill: { title: 'Paper validation win rate', subtitle: `paper_trade_statistics · ${paperWr.window ?? 'all_time'} · /api/v2/paper-trade-readiness`, endpoint: '/api/v2/paper-trade-readiness', rows: readiness ? [{ win_rate: readiness.win_rate, profit_factor: readiness.profit_factor, closed_usable: readiness.closed_usable, source: paperWr.source, basis: paperWr.basis, window: paperWr.window, as_of: paperWr.asOf }] : [] } },
     // Design home/v002 §4: the classic hero tile REGIME is renamed MARKET RISK (tier + score, top contributor).
@@ -204,7 +204,7 @@ function HomeClassic({ onDrill }: Props) {
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={hubTitle()}>Home</div>
-          <div style={hubSubtitle(terminalUi)}>{overviewLoading ? <Skel w={180} h={12} /> : <>{pv != null ? fmt$(pv, 0) : '—'} · <span title={pt.definition ? `${pt.scope}: ${pt.definition}` : 'The published position count (PortfolioTotal@v1).'}>{pt.count ?? '—'} positions over $100</span> · command router</>}</div>
+          <div style={hubSubtitle(terminalUi)}>{overviewLoading ? <Skel w={180} h={12} /> : <>{pv != null ? fmt$(pv, 0) : '—'} · <span title={pt.definition ? `${pt.scope}: ${pt.definition}` : 'The published position count (PortfolioTotal@v1).'}>{pt.summary ?? '— positions'}</span> · command router</>}</div>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <Link to="/" data-testid="new-home-link" style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textDecoration: 'none' }}>New Home (Do now) →</Link>

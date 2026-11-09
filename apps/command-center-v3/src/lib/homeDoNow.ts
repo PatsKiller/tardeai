@@ -6,7 +6,7 @@
 // Positions come from holdings.json via /api/v2/overview and the risk snapshot: no approved positions_current reader
 // batch covers Home yet (batch #1 is the Watch held flag), so every number says so.
 
-import { accountName as accountLabelName, rowAccountKey } from './accountLabels.ts'
+import { accountName as accountLabelName, canonicalAccountKey, rowAccountKey } from './accountLabels.ts'
 import { STOP_CATEGORY_LABEL, stopCategory } from './stopDisplay.ts'
 import { readableTimesInText } from './readableTime.ts'
 
@@ -433,6 +433,12 @@ export interface PortfolioTotalView {
   basisLabel: string | null
   asOf: string | null
   agree: boolean | null
+  /** The count line: the published summary ("26 positions · 14 under $100 · 3 unpriced lots excluded"), or
+   *  "N positions" from the legacy field. */
+  summary: string | null
+  /** Per-account value from the SAME rows as `value` (canonical account key → value; null = unknown). Empty when
+   *  the server sent no contract, in which case the accounts card keeps its legacy sources. */
+  byAccount: Record<string, number | null>
   tip: string
 }
 
@@ -447,13 +453,18 @@ export function portfolioTotalView(overview: any): PortfolioTotalView {
   const asOf = present ? str(c.as_of) : null
   const basis = present ? str(c.basis) : null
   const agree = present ? Boolean(c.agree) : null
+  const summary = (present ? str(c.position_summary) : null) ?? (count != null ? `${count} positions` : null)
+  const byAccount: Record<string, number | null> = {}
+  if (present && c.by_account && typeof c.by_account === 'object') {
+    for (const [k, a] of Object.entries(c.by_account) as [string, any][]) byAccount[canonicalAccountKey(k)] = num(a?.value)
+  }
   const head = present
     ? `Portfolio · ${basisLabel ?? 'one total'}${asOf ? ` (as of ${asOf})` : ''}`
     : 'Portfolio · /api/v2/overview portfolio_value (this server has no portfolio_total contract)'
   const positions = count != null
     ? `${count} positions${scope ? ` (${scope}${definition ? `: ${definition}` : ''})` : ''}`
     : 'position count unavailable'
-  return { present, value, count, scope, definition, basis, basisLabel, asOf, agree, tip: `${head}\n${positions}` }
+  return { present, value, count, scope, definition, basis, basisLabel, asOf, agree, summary, byAccount, tip: `${head}\n${positions}` }
 }
 
 function periodChange(d: any): { ch: number | null; approx: boolean; note: string | null } {
@@ -478,7 +489,26 @@ export function accountRows(perf: any, overview: any): AccountRow[] {
       tip: [pt.tip, allYtd.approx ? 'YTD ≈ market change ex-transfers' : null, allYtd.note].filter(Boolean).join('\n') })
   }
   const accts = perf?.accounts && typeof perf.accounts === 'object' ? perf.accounts : null
-  if (accts) {
+  const oneRead = pt.present && Object.keys(pt.byAccount).length > 0
+  if (oneRead) {
+    // LQ-1611 F1: every value on this card from ONE payload (overview.portfolio_total), so the rows add up to the
+    // All row. performance_history is a pre-market snapshot: it supplies only 1D/YTD here, never a value.
+    const perfBy: Record<string, any> = {}
+    for (const [k, row] of Object.entries(accts ?? {}) as [string, any][]) perfBy[canonicalAccountKey(k)] = row
+    const keys = [...Object.keys(pt.byAccount), ...Object.keys(perfBy).filter(k => !(k in pt.byAccount))]
+    for (const k of keys) {
+      const row = perfBy[k]
+      const d1 = periodChange(row?.periods?.['1D'])
+      const y = periodChange(row?.periods?.YTD)
+      const inStore = k in pt.byAccount
+      rows.push({ key: k, name: accountName(k), value: inStore ? pt.byAccount[k] : null,
+        d1: d1.ch ?? num(overview?.today_by_account?.[k]?.change), ytd: y.ch, ytdApprox: y.approx,
+        tip: [inStore ? `${accountName(k)} · value: the published portfolio total's rows${pt.asOf ? ` (as of ${pt.asOf})` : ''}`
+          : `${accountName(k)} · not in the holdings store: value unknown`,
+          row ? '1D / YTD · /api/v2/portfolio/performance' : null,
+          y.approx ? 'YTD ≈ market change ex-transfers' : null, y.note].filter(Boolean).join('\n') })
+    }
+  } else if (accts) {
     for (const [k, row] of Object.entries(accts) as [string, any][]) {
       const d1 = periodChange(row?.periods?.['1D'])
       const y = periodChange(row?.periods?.YTD)

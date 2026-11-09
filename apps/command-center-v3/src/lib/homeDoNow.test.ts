@@ -101,6 +101,23 @@ const cp = cashPct(contractOverview)
 check('cash uses the published denominator', cp != null && Math.abs(cp - (951096.24 / 1248686.32) * 100) < 1e-9)
 check('a null contract total renders unknown, never the legacy projection', portfolioTotalView({ portfolio_value: 5, portfolio_total: { value: null } }).value === null)
 check('a server without the contract falls back and says so', portfolioTotalView({ portfolio_value: 5, position_count: 2 }).value === 5 && portfolioTotalView({ portfolio_value: 5 }).tip.includes('no portfolio_total contract'))
+// LQ-1611 F1 (cc-opus-1): the accounts card summed to $7,330 less than its own All row — account values from a 07:41
+// performance snapshot, the All row from the live store. With the contract present every value on the card comes
+// from overview.portfolio_total (one read); performance only supplies 1D/YTD. Synthetic figures.
+const f1Overview = { portfolio_value: 1000, portfolio_total: { value: 1300.5, position_count: 26, position_scope: 'holdings.held',
+  position_summary: '26 positions · 14 under $100 · 3 unpriced lots excluded',
+  by_account: { schwab_rollover_ira: { value: 1000.25 }, schwab_roth: { value: 300.25 } }, by_account_sum: 1300.5 } }
+const f1Perf = { current_value: 1290, periods: { '1D': { change: 5 } },
+  accounts: { schwab_rollover_ira: { current_value: 990, periods: { '1D': { change: 3 }, YTD: { change: 40 } } },
+    schwab_roth_ira: { current_value: 300, periods: { '1D': { change: 2 } } }, old_acct: { current_value: 7, periods: {} } } }
+const f1 = accountRows(f1Perf, f1Overview)
+const f1Sum = f1.slice(1).reduce((a, r) => a + (r.value ?? 0), 0)
+check('F1: account rows sum to the All row from one payload', f1[0].value === 1300.5 && Math.abs(f1Sum - 1300.5) < 0.005)
+check('F1: account value from the contract, 1D/YTD still from performance', f1[1].value === 1000.25 && f1[1].d1 === 3 && f1[1].ytd === 40)
+check('F1: a roth alias matches across the two stores', f1.filter(r => r.name === 'Schwab Roth IRA').length === 1 && f1.find(r => r.name === 'Schwab Roth IRA')?.d1 === 2)
+check('F1: an account the holdings store does not carry shows unknown, never a snapshot value', f1.find(r => r.key === 'old_acct')?.value === null)
+check('F3: the count line is the published summary', portfolioTotalView(f1Overview).summary === '26 positions · 14 under $100 · 3 unpriced lots excluded')
+check('F3: no contract, no invented summary', portfolioTotalView({ position_count: 12 }).summary === '12 positions')
 check('formatting', money(-6795, true) === '−$6,795' && money(25097, true) === '+$25,097' && money(null) === '—' && pct(-0.54) === '−0.54%' && ageLabel(3000) === '50 min')
 // briefingSummary — /api/v2/command serves {content, generated_at}; never "[object Object]" (site validation 2026-10-22)
 const bObj = briefingSummary({ content: 'The portfolio shows   limited exposure.', generated_at: '2026-10-22 16:20' })
