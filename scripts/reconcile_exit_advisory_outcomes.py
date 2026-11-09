@@ -35,6 +35,14 @@ LQ-104's receipt contract: the selector and the producer counts both read EXIT_A
 promoted Gain Guardian is reconciled too), "nothing to do" is measured as *pending* (advisories still owing an
 outcome) rather than as "rows older than 5 days", and an empty or dead input is attributed to the producers by
 name. The 200-advisory window is drained oldest-first, one bar fetch per symbol per run.
+
+2026-11-09 (LQ-20261107-1706): a bar source that returns bars **without a date** (the shape
+``holding_protection_advisor._bars`` falls back to when Schwab is unavailable, which is every credential-free
+n8n child) measured nothing, yet the run wrote 400 NOT_EVALUABLE rows, reported ``produced 400`` and exited 0.
+Those rows are permanent — UNIQUE(advisory_id, horizon_days) plus ON CONFLICT DO NOTHING means no later run
+re-scores them — so a green run quietly poisoned the evidence table. Such a pair is now a ``bars_unavailable``
+skip, and a run in which that was the only obstacle exits 1 with ``dependency_unavailable``. A series that
+merely starts after one advisory's window still writes NOT_EVALUABLE: that is a fact about that advisory.
 """
 from __future__ import annotations
 
@@ -129,6 +137,11 @@ CLEAN_EMPTY_REASONS = frozenset({"up_to_date", "nothing_due"})
 # Skip reasons that describe a quiet but healthy run: the advisory is still inside its horizon, or it was
 # already scored for that horizon. Any other reason in an all-skipped run is a failure, not a quiet week.
 QUIET_SKIP_REASONS = frozenset({"not_due", "already_reconciled"})
+# LQ-20261107-1706: the bar source answered with bars that carry no date (holding_protection_advisor._bars'
+# credential-free fallback shape), so no window can be measured at all. Written as a skip, never as an outcome:
+# an INSERT'd NOT_EVALUABLE is permanent under UNIQUE(advisory_id, horizon_days) + ON CONFLICT DO NOTHING, and
+# a run that filled the table with unmeasurable rows still reported produced=N and exit 0.
+BARS_UNAVAILABLE = "bars_unavailable"
 
 
 def _num(v) -> float | None:
@@ -280,14 +293,20 @@ def verdict_for(*, symbol_return_pct: float | None, spy_return_pct: float | None
     return "SIGNAL_WRONG"
 
 
-def _closes_since(symbol: str, since_iso: str, needed_days: int, cache: dict | None = None) -> list[float]:
-    """Closes for ``symbol`` on/after ``since_iso``, oldest first.
+def _closes_since(symbol: str, since_iso: str, needed_days: int,
+                  cache: dict | None = None) -> list[float] | None:
+    """Closes for ``symbol`` on/after ``since_iso``, oldest first; ``None`` when nothing can be dated.
 
     ``needed_days`` is how far back this advisory's window can reach (its age plus the longest horizon), so a
     backlogged advisory cannot be measured against a series that starts after it. ``cache`` maps symbol ->
     (days fetched, bars) and is reused only when it already reaches far enough; because the drain is
     oldest-first, that stays one network call per symbol per run. A series that still does not begin near the
     advisory returns ``[]``, so the caller writes NOT_EVALUABLE instead of a verdict on a shifted window.
+
+    ``None`` is a different answer and the caller must not write an outcome for it: the fetch returned no bar
+    that carries a parseable date (or no bars at all), so *every* window is unmeasurable and the fault is the
+    source's, not this advisory's (LQ-1706). ``[]`` stays the per-advisory "this series does not reach this
+    window" answer.
     """
     from holdings_gain_guardian import _bars_with_volume
     days = max(int(needed_days), LONGEST_HORIZON_CAL_DAYS + BAR_SPAN_SLACK_DAYS)
@@ -304,6 +323,7 @@ def _closes_since(symbol: str, since_iso: str, needed_days: int, cache: dict | N
     cover_by = since + dt.timedelta(days=BAR_COVER_SLACK_DAYS)
     out: list[float] = []
     first = None
+    dated = 0
     for b in bars:
         ts = b.get("datetime") or b.get("t") or b.get("date") or ""
         try:
@@ -311,12 +331,15 @@ def _closes_since(symbol: str, since_iso: str, needed_days: int, cache: dict | N
                     if isinstance(ts, (int, float)) else dt.datetime.fromisoformat(str(ts)[:19]).replace(tzinfo=dt.timezone.utc))
         except Exception:
             continue
+        dated += 1
         if str(when.date()) >= since_iso[:10]:
             c = float(b.get("close") or 0)
             if c > 0:
                 if first is None:
                     first = when.date()
                 out.append(c)
+    if dated == 0:
+        return None          # no bar carries a date: the source cannot window any advisory (LQ-1706)
     if first is None or first > cover_by:
         return []            # the fetch did not reach the advisory date: no honest outcome for this window
     return out
@@ -394,6 +417,12 @@ def reconcile() -> int:
             span = age_days + LONGEST_HORIZON_CAL_DAYS + BAR_SPAN_SLACK_DAYS
             closes = _closes_since(a["symbol"], str(a["created_at"]), span, bars_cache)
             spy = _closes_since("SPY", str(a["created_at"]), span, bars_cache)
+            if closes is None or spy is None:
+                # The bar source gave nothing datable: no window is measurable, so the pair is skipped rather
+                # than written as a permanent NOT_EVALUABLE. Name it so a cred-less child fails loudly instead
+                # of reporting 400 unmeasurable rows as produced (LQ-1706).
+                skipped[BARS_UNAVAILABLE] = skipped.get(BARS_UNAVAILABLE, 0) + 1  # nosemgrep: tq-py-missing-as-zero -- a skip counter starts at 0; it is not a data value
+                continue
             if len(closes) <= trading_days or len(spy) <= trading_days or not p0:
                 ret = spy_ret = dd_atr = None
                 v = "NOT_EVALUABLE"
@@ -439,7 +468,11 @@ def reconcile() -> int:
         print(f"[exit-outcomes] all_skipped — {why}", file=sys.stderr)
         bad = {k: v for k, v in skipped.items() if k not in QUIET_SKIP_REASONS}
         if bad:
-            _receipt(ok=False, produced=0, attempted=attempted, empty_reason="input_inconsistent",
+            # A run where the only obstacle was the bar source names that dependency; anything else is an
+            # internal contradiction between the selector and what it returned.
+            reason = ("dependency_unavailable"
+                      if set(bad) == {BARS_UNAVAILABLE} else "input_inconsistent")
+            _receipt(ok=False, produced=0, attempted=attempted, empty_reason=reason,
                      skipped=skipped, error=f"selected advisories were not attemptable: {bad}")
             return 1
         # LQ-1416: a not_due-only quiet run is ``nothing_due`` (allowed empty), not a generic all_skipped.

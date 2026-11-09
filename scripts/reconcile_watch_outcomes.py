@@ -20,6 +20,12 @@ operator-approved declaration (``config/data_source_authority.json`` — ``watch
 undetected death: the zero is typed ``no_new_input`` (exit 0) and the receipt names the declaration, while an
 *undeclared* dead feed, or an unreadable registry, stays ``dependency_unavailable`` exit 1. The zero is still
 visible either way; only the grading stops calling an approved standing state a fresh failure.
+
+2026-11-09 (LQ-20261107-1706): the same failure the exit-advisory reconciler had — a bar source returning bars
+with no date settled every due event as NOT_EVALUABLE (``verdict`` set, so it leaves the ``verdict IS NULL``
+selector forever) while the run reported ``produced=N`` and exit 0. Such events are now a ``bars_unavailable``
+skip that leaves the verdict NULL to be retried, and a run where none could be scored exits 1 naming the bar
+source.
 """
 from __future__ import annotations
 
@@ -64,6 +70,10 @@ LANE_ID = "reconcile-watch-outcomes"
 INPUT_DEAD_DAYS = 45
 WATCH_TABLE = "watch_candidate_events"
 AUTHORITY_PATH = ROOT / "config" / "data_source_authority.json"
+# LQ-20261107-1706: the bar fetch answered with bars carrying no date (holding_protection_advisor._bars'
+# credential-free fallback shape), so no return can be measured. A skipped event keeps verdict NULL and is
+# retried; writing NOT_EVALUABLE would settle it permanently, and a run of those still reported produced=N ok.
+BARS_UNAVAILABLE = "bars_unavailable"
 
 
 def _declared_gap(table: str = WATCH_TABLE) -> dict | None:
@@ -109,11 +119,16 @@ def _receipt(*, ok: bool, produced: int, empty_reason=None, skipped=None, error=
         print(f"[watch-outcomes] receipt not written: {exc}", file=sys.stderr)
 
 
-def _closes(symbol: str, bars_cache: dict) -> list[tuple[dt.date, float]]:
+def _closes(symbol: str, bars_cache: dict) -> list[tuple[dt.date, float]] | None:
+    """Dated closes for ``symbol``, or ``None`` when the fetch returned no bar that carries a date.
+
+    ``[]`` (a dated series with no positive close) stays distinct: it is a statement about the symbol's
+    series, while ``None`` is a statement about the bar source and must not settle anything (LQ-1706)."""
     if symbol in bars_cache:
         return bars_cache[symbol]
     from holdings_gain_guardian import _bars_with_volume
     seq = []
+    dated = 0
     for b in _bars_with_volume(symbol, days=160):
         ts = b.get("datetime") or b.get("t") or b.get("date") or ""
         try:
@@ -121,11 +136,12 @@ def _closes(symbol: str, bars_cache: dict) -> list[tuple[dt.date, float]]:
                     if isinstance(ts, (int, float)) else dt.date.fromisoformat(str(ts)[:10]))
         except Exception:
             continue
+        dated += 1
         c = float(b.get("close") or 0)
         if c > 0:
             seq.append((when, c))
-    bars_cache[symbol] = seq
-    return seq
+    bars_cache[symbol] = None if dated == 0 else seq
+    return bars_cache[symbol]
 
 
 def _ret_after(seq, start: dt.date, anchor: float, tdays: int):
@@ -182,8 +198,14 @@ def main() -> int:
     cache: dict = {}
     spy = _closes("SPY", cache)
     done = 0
+    skipped: dict[str, int] = {}
     for r in rows:
         seq = _closes(r["symbol"], cache)
+        if seq is None or spy is None:
+            # Nothing datable came back, so no return exists for this event. Leaving verdict NULL keeps it in
+            # the selector for a later run; writing NOT_EVALUABLE here would retire it for good (LQ-1706).
+            skipped[BARS_UNAVAILABLE] = skipped.get(BARS_UNAVAILABLE, 0) + 1  # nosemgrep: tq-py-missing-as-zero -- a skip counter starts at 0; it is not a data value
+            continue
         a = float(r["anchor_price"])
         ret21 = _ret_after(seq, r["emitted_on"], a, 21)
         spy_anchor = next((c for (d, c) in spy if d >= r["emitted_on"]), None)
@@ -201,12 +223,21 @@ def main() -> int:
                   verdict=%s, evaluated_at=NOW() WHERE id=%s""",
            (ret21, spy21, a21, ret63, spy63, a63, verdict, r["id"]), fetch=None)
         done += 1
+    if done == 0:
+        # The selector found due events and none could be written. That is a failure of the run's most
+        # important input, not a green zero (LQ-1706).
+        why = f"{len(rows)} anchored events due, none written: {skipped or 'no reason recorded'}"
+        print(f"[watch-outcomes] all_skipped — {why}", file=sys.stderr)
+        reason = ("dependency_unavailable" if set(skipped) == {BARS_UNAVAILABLE}
+                  else "input_inconsistent")
+        _receipt(ok=False, produced=0, empty_reason=reason, skipped=skipped, error=why)
+        return 1
     lg = ex("""SELECT source_type, count(*) FILTER (WHERE verdict NOT IN ('NOT_EVALUABLE')) AS n,
                       round(percentile_cont(0.5) WITHIN GROUP (ORDER BY alpha_21d)::numeric, 2) AS median_a21
                FROM watch_candidate_events WHERE alpha_21d IS NOT NULL GROUP BY 1 ORDER BY 1""", fetch="all") or []
     print(f"[watch-outcomes] evaluated {done} events · league:",
           " / ".join(f"{r['source_type']} α{r['median_a21']:+} (n={r['n']})" for r in lg))
-    _receipt(ok=True, produced=done)
+    _receipt(ok=True, produced=done, skipped=skipped)
     return 0
 
 
