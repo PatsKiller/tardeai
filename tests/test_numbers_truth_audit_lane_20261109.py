@@ -241,3 +241,22 @@ def test_the_script_accepts_the_registered_flags():
     assert proc.returncode == 0, proc.stderr[-800:]
     for flag in (*entry()["dry_run_arg"], "--apply", "--state-root", "--catalog", "--no-db", "--no-http"):
         assert flag in proc.stdout, f"the registered argv names {flag}; the script does not accept it"
+
+def test_apply_writes_the_v2_receipt_the_contract_reads(tmp_path):
+    """--apply against a scratch root: the receipt lands at the registered signal path, on v2, with the
+    produced field the contract grades. Forced offline all three sources are unreadable, so the script's
+    own dependency_unavailable path runs — the typed skip my contract lists as fatal."""
+    proc = _run_script(tmp_path, "--apply", "--json")
+    assert "Traceback" not in proc.stderr, proc.stderr[-800:]
+    receipt = tmp_path / SIGNAL
+    assert receipt.is_file(), "the lane's own writer did not produce the registered signal path"
+    doc = json.loads(receipt.read_text(encoding="utf-8"))
+    eo = contract()["expected_output"]
+    assert doc["schema"] == "LaneRunReceipt@v2", "the entry declares output_receipt v2; the writer must write it"
+    assert eo["produced_field"] in doc, "the field the contract grades must exist on the receipt it grades"
+    assert doc[eo["produced_field"]] == 0, "all three sources were unreadable: produced_count 0"
+    assert set(doc.get("skipped_reasons") or {}) <= set(eo["fatal_skip_reasons"]), (
+        "a failed read is a fatal skip the contract names, not an unlisted empty_reason"
+    )
+    assert doc["ok_at"] is None, "a failed run carries ok_at forward; it must not advance it"
+    assert isinstance((doc.get("summary") or {}).get("findings"), list), "the findings list LQ-1702 consumes"
