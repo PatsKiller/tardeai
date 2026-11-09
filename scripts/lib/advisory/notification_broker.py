@@ -12,6 +12,7 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import os
 import re
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -20,7 +21,11 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RUNTIME = PROJECT_ROOT / "data" / "runtime"
-BROKER_DIR = RUNTIME / "advisory_notif_broker"
+# The shadow ledger is production evidence, so by default it lives in the checkout. A test that exercises the real
+# chokepoint (`send_telegram` -> wrap_send_hook -> ingest) must not append to it: TRADEAI_ADVISORY_NOTIF_BROKER_DIR
+# redirects it. Read at import so both module spellings (`lib.*`, `scripts.lib.*`) honour one setting
+# (LQ-20261107-1713: the leftover ingest.jsonl blocked preflight's receipt check).
+BROKER_DIR = Path(os.environ.get("TRADEAI_ADVISORY_NOTIF_BROKER_DIR") or (RUNTIME / "advisory_notif_broker"))
 INGEST_PATH = BROKER_DIR / "ingest.jsonl"
 DECISIONS_PATH = BROKER_DIR / "decisions.jsonl"
 METRICS_PATH = BROKER_DIR / "metrics.json"

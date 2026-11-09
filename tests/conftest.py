@@ -57,6 +57,10 @@ os.environ.setdefault("TRADEAI_PORTFOLIO_REPORTS_ROOT", _scratch("tradeai_portfo
 # append to the live ledger (AGENTS.md §24.6).
 os.environ.setdefault("UNIFIED_MOMENTUM_ALERT_LEDGER", os.path.join(
     _scratch("tradeai_unified_alert_tests_"), "unified_momentum_alerts.jsonl"))
+# Phase 6 advisory broker (2026-11-09): send_telegram's SHADOW ingest appends ingest.jsonl into the checkout, so a test
+# that exercised the real chokepoint left an untracked file behind and preflight refused an otherwise clean tree
+# (LQ-20261107-1713). The module resolves this at import, so both spellings (`lib.*`, `scripts.lib.*`) honour it.
+os.environ.setdefault("TRADEAI_ADVISORY_NOTIF_BROKER_DIR", _scratch("tradeai_advisory_broker_tests_"))
 # The host editor-failure policy file must not steer tests either (M5 4d, 2026-09-23).
 os.environ.setdefault("COMMS_EDITOR_FAIL_MODE_FILE", os.path.join(_scratch("tradeai_comms_fail_mode_tests_"), "absent"))
 # LQ-20261107-1289: the Finviz credential-health verdict now drives a real operator alert (Telegram +
