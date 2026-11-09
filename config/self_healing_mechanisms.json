@@ -997,6 +997,24 @@
     },
     "expected": "NO_EVIDENCE until the lane is promoted to canary (shadow dry runs write no receipt)",
     "audit_ref": "LQ-20261107-1607"
+  },
+  {
+   "id": "frozen_output_monitor",
+   "name": "Frozen-output detection: rerun proposal + system_health escalation",
+   "category": "output_integrity",
+   "code": "scripts/frozen_output_monitor.py",
+   "evidence_source": {
+    "kind": "json",
+    "base": "state",
+    "path": "data/runtime/frozen-output-monitor_last.json"
+   },
+   "success_predicate": {
+    "description": "a run found a lane whose output stayed identical across its last k runs while its inputs moved (summary.frozen > 0) and recorded one rerun_with_fresh_inputs proposal for it; the escalation is a system_health alert_events row (6 h cooldown per lane), never a send, and the monitor never edits the lane, its rows or its thresholds",
+    "json_path": "summary.frozen",
+    "min_count": 1
+   },
+   "expected": "NO_EVIDENCE until the lane is promoted to canary (shadow dry runs write no receipt)",
+   "audit_ref": "LQ-20261107-1613"
   }
  ]
 }

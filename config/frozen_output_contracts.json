@@ -1,0 +1,27 @@
+{
+  "schema": "FrozenOutputContracts@v1",
+  "description": "LQ-20261107-1613: per-lane frozen-output contracts judged by scripts/frozen_output_monitor.py (lane frozen-output-monitor). A lane is FROZEN (health DEGRADED) when its output fingerprint is identical across its newest k runs while its input fingerprint took two or more values. Validation: scripts/lib/frozen_output.py validate_document.",
+  "contracts": [
+    {
+      "lane_id": "market-regime-classifier",
+      "k": 4,
+      "source": {
+        "kind": "pg_rows",
+        "table": "market_regime_snapshots",
+        "time_column": "created_at",
+        "window_days": 14,
+        "input_join": {
+          "table": "market_regime_indicators",
+          "match_column": "snapshot_id",
+          "match_from": "inputs._indicator_snapshot_id",
+          "key_column": "indicator_key",
+          "value_column": "value"
+        }
+      },
+      "output_fields": ["regime_label", "confidence", "volatility_state", "trend_state", "breadth_state"],
+      "input_fields": ["inputs"],
+      "input_exclude": ["inputs._indicator_snapshot_id"],
+      "why": "The regime label feeds the CIO situation, the scalp regime gate and the cash/capital read. Four runs (two trading days) with the same label and confidence while the indicator values underneath changed means the classifier is reading inputs that no longer carry information (LQ-1613: avg |gap| and avg score over the scanner's own selected population are constant, so the label became a two-state function of the VIX bucket)."
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "frozen_output_20261109",
+  "files": [
+    "tests/test_frozen_output_20261109.py"
+  ],
+  "anchor": "FROZEN_OUTPUT_20261109",
+  "comment": [
+    "ANCHOR: FROZEN_OUTPUT_20261109 — a lane whose output fingerprint is identical across its last k runs while",
+    "its input fingerprint moved is FROZEN (DEGRADED): one rerun proposal, one system_health escalation per 6 h,",
+    "dry run by default, never a send."
+  ]
+}
