@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "executor_effect_claim_retry_lq1349_20261109",
+  "files": [
+    "tests/test_executor_effect_claim_retry_lq1349_20261109.py"
+  ],
+  "anchor": "EXECUTOR_EFFECT_CLAIM_RETRY_LQ1349",
+  "comment": [
+    "ANCHOR: EXECUTOR_EFFECT_CLAIM_RETRY_LQ1349 — 2026-11-08 21:30 ET material-change-detector-stage1 was",
+    "RUN_REFUSED and dead-lettered on attempt 1 (effect:effect_store_unavailable) because a single transient",
+    "sqlite lock on EffectGate.begin()'s claim (receipt 5.1 s = the connection's busy timeout) ended the slot.",
+    "The gate pins: locked/busy is retried a bounded three attempts with 0.25/0.5 s backoff; every other",
+    "sqlite error, the missing store and a refusal result keep the fail-closed RUN_REFUSED with the same",
+    "reason string; a retried claim records claim_retries. Hermetic: a duck-typed store, no ledger, no spawn."
+  ]
+}

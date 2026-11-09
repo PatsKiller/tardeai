@@ -37,7 +37,7 @@ class FlakyStore:
         self.outcomes = list(outcomes)
         self.calls = 0
 
-    def claim(self, key, **kwargs):  # noqa: ANN001 - mirrors EffectClaimStore.claim
+    def claim(self, key, **kwargs):  # noqa: ANN001 -- mirrors EffectClaimStore.claim
         self.calls += 1
         outcome = self.outcomes.pop(0) if len(self.outcomes) > 1 else self.outcomes[0]
         if isinstance(outcome, BaseException):
