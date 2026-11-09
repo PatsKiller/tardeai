@@ -1084,6 +1084,10 @@ class CIORunWorker:
 
         from scripts.lib.cio_action_validator import validate_action_evidence, determine_action_type
 
+        # LQ-20261107-1537 / defect #110: transition to ACTION_WRITE once after the
+        # ledger writes, not per recommendation. A per-rec transition tried
+        # ACTION_WRITE -> ACTION_WRITE (invalid), logged "Action write failed" for
+        # every rec after the first, and re-scanned cio_runs.jsonl (~2 s each).
         for i, rec in enumerate(recommendations):
             # Post-synthesis evidence validation (Gate C5c)
             proposed_action_type = determine_action_type(rec)
@@ -1135,11 +1139,6 @@ class CIORunWorker:
                 if aid:
                     action_ids.append(aid)
                     actions_written.append({**(event.get("payload") or {}), **action, "cio_action_id": aid})
-                    if self.run_store:
-                        self.run_store.transition(
-                            self._run_id, "ACTION_WRITE",
-                            action_id=aid, actor="cio_run_worker",
-                        )
             except Exception as e:
                 log.warning("Action write failed for rec %d: %s", i, e)
 
@@ -1164,13 +1163,21 @@ class CIORunWorker:
                 aid = event.get("payload", {}).get("cio_action_id")
                 if aid:
                     action_ids.append(aid)
-                    if self.run_store:
-                        self.run_store.transition(
-                            self._run_id, "ACTION_WRITE",
-                            action_id=aid, actor="cio_run_worker",
-                        )
+                    actions_written.append({**(event.get("payload") or {}), **action, "cio_action_id": aid})
             except Exception:
                 pass
+
+        if action_ids and self.run_store and self._run_id:
+            try:
+                self.run_store.transition(
+                    self._run_id,
+                    "ACTION_WRITE",
+                    action_id=action_ids[0],
+                    action_ids=action_ids,
+                    actor="cio_run_worker",
+                )
+            except Exception as e:
+                log.warning("ACTION_WRITE transition failed after %d actions: %s", len(action_ids), e)
 
         return {"action_ids": action_ids, "actions": actions_written,
                 "blocked_recommendations": blocked_recommendations}

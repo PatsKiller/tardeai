@@ -428,9 +428,14 @@ class CIORunStore:
             run["cio_artifact_id"] = payload.get("cio_artifact_id")
         elif etype == "CIO_RUN_ACTION_CREATED":
             run["status"] = "ACTION_WRITE"
+            # One transition may carry every action id written in the batch (LQ-1537).
+            ids = list(payload.get("action_ids") or [])
             action_id = payload.get("action_id")
-            if action_id:
-                run["created_action_ids"].append(action_id)
+            if action_id and action_id not in ids:
+                ids.insert(0, action_id)
+            for aid in ids:
+                if aid and aid not in run["created_action_ids"]:
+                    run["created_action_ids"].append(aid)
         elif etype == "CIO_RUN_NOTIFICATION_ENQUEUED":
             run["status"] = "NOTIFICATION_ENQUEUE"
             nid = payload.get("notification_id")
