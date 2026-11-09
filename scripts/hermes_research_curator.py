@@ -52,8 +52,46 @@ def _is_pg_lock_error(exc: BaseException | str) -> bool:
     )
 
 
+def _drop_traceback(exc: BaseException) -> BaseException:
+    """Copy the error without keeping the failed frame (and its conn) alive."""
+    out = type(exc)(str(exc))
+    out.__cause__ = None
+    out.__context__ = None
+    out.__traceback__ = None
+    return out
+
+
+def _rollback_close(conn) -> None:
+    """Release an aborted txn's locks before a retry opens a new connection."""
+    if conn is None:
+        return
+    try:
+        conn.rollback()
+    except Exception:
+        pass
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+
+def _db_connect():
+    import psycopg2
+
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST", "localhost"),
+        port=os.getenv("DB_PORT", "5432"),
+        dbname=os.getenv("DB_NAME", "trade_ai"),
+        user=os.getenv("DB_USER", "trade_ai"),
+        password=os.getenv("DB_PASSWORD", ""),
+    )
+
+
 def _env():
-    for ln in (ROOT / ".env").read_text().splitlines():
+    env_path = ROOT / ".env"
+    if not env_path.is_file():
+        return
+    for ln in env_path.read_text().splitlines():
         if "=" in ln and not ln.strip().startswith("#"):
             k, _, v = ln.partition("=")
             os.environ.setdefault(k.strip(), v.strip().strip("'\""))
@@ -249,24 +287,57 @@ def _log_consciousness(conn, report: dict, depth: dict, *, apply: bool):
     return consciousness
 
 
+def _run_scalp_with_lock_retry(conn, signals: dict, *, apply: bool, max_mine: int, max_stage: int):
+    """Retry only the scalp→watchlist_items txn; never re-run think-tank or staging.
+
+    On LockNotAvailable the open connection still references the aborted txn (and its
+    row locks). Roll back + close, drop the traceback, then open a fresh connection
+    for the next attempt (LQ-20261107-1421 REWORK / grok-b).
+    """
+    from momentum_scalp_lead_miner import run_scalp_lead_pipeline
+
+    last_exc: BaseException | None = None
+    for attempt in range(1, _LOCK_RETRIES + 1):
+        try:
+            return run_scalp_lead_pipeline(
+                conn,
+                signals,
+                apply=apply,
+                max_mine=max_mine,
+                max_stage=max_stage,
+            ), conn
+        except Exception as exc:  # noqa: BLE001 — classify lock vs hard fail
+            if not _is_pg_lock_error(exc):
+                _rollback_close(conn)
+                raise
+            _rollback_close(conn)
+            last_exc = _drop_traceback(exc)
+            print(
+                f"lock contention attempt {attempt}/{_LOCK_RETRIES}: {last_exc}",
+                file=sys.stderr,
+            )
+            if attempt >= _LOCK_RETRIES:
+                raise last_exc from None
+            time.sleep(_LOCK_SLEEP_S * attempt)
+            conn = _db_connect()
+    raise last_exc from None  # pragma: no cover — loop always returns or raises
+
+
 def run_curator(*, apply: bool, force_deep: bool = False) -> dict:
     _env()
     from hermes_think_tank import run_think_tank
-
-    depth = tick_depth(force_deep=force_deep)
-    import psycopg2
-    from think_tank_prospect_discovery import run_prospect_pipeline
+    from think_tank_prospect_discovery import (
+        mine_signal_prospects,
+        stage_signal_prospects,
+        run_intel_discovery,
+        _run_script,
+    )
     from sector_research_universe import run_sector_universe
     from research_critique_pipeline import run_critique_pipeline
 
-    conn = psycopg2.connect(
-        host=os.getenv("DB_HOST", "localhost"),
-        port=os.getenv("DB_PORT", "5432"),
-        dbname=os.getenv("DB_NAME", "trade_ai"),
-        user=os.getenv("DB_USER", "trade_ai"),
-        password=os.getenv("DB_PASSWORD", ""),
-    )
+    depth = tick_depth(force_deep=force_deep)
 
+    # Own connection inside think_tank; already-committed themes/sites stay outside retry.
     report = run_think_tank(
         apply=apply,
         max_themes=depth["max_themes"],
@@ -276,36 +347,84 @@ def run_curator(*, apply: bool, force_deep: bool = False) -> dict:
         skip_sites=depth["skip_sites"],
         max_site_register=depth["max_site_register"],
     )
+    signals = report.get("signals") or {}
 
-    report["prospect_pipeline"] = run_prospect_pipeline(
-        conn,
-        report.get("signals") or {},
-        apply=apply,
-        skip_watchlist_drain=depth.get("skip_watchlist_drain", True),
-        max_prospects_stage=depth.get("max_prospects_stage", 6),
-        max_scalp_mine=depth.get("max_scalp_mine", 24),
-        max_scalp_stage=depth.get("max_scalp_stage", 8),
-        max_intel_discover=depth.get("max_intel_discover", 3),
-        directive_discovery_limit=depth.get("directive_discovery_limit", 4),
-    )
+    conn = _db_connect()
+    try:
+        # Prospect staging commits on success — leave it outside the scalp retry loop.
+        prospects = mine_signal_prospects(
+            conn, signals, max_prospects=depth.get("max_prospects_stage", 6) * 2
+        )
+        staged = stage_signal_prospects(
+            conn,
+            prospects,
+            apply=apply,
+            max_stage=depth.get("max_prospects_stage", 6),
+        )
 
-    report["sector_universe"] = run_sector_universe(
-        conn,
-        apply=apply,
-        batch_size=depth.get("sector_universe_batch", 12),
-        research_queue=depth.get("sector_universe_research_queue", 3),
-        refresh_finviz=depth.get("refresh_finviz", False),
-    )
+        scalp, conn = _run_scalp_with_lock_retry(
+            conn,
+            signals,
+            apply=apply,
+            max_mine=depth.get("max_scalp_mine", 24),
+            max_stage=depth.get("max_scalp_stage", 8),
+        )
 
-    report["critique"] = run_critique_pipeline(
-        conn,
-        apply=apply,
-        directive_batch=depth.get("critique_directive_batch", 15),
-        run_tagger=depth.get("run_taxonomy_tagger", False),
-    )
+        pp = {
+            "prospects_mined": len(prospects),
+            "signal_staging": staged,
+            "scalp_leads": scalp,
+            "intel_discovery": run_intel_discovery(
+                apply=apply, max_add=depth.get("max_intel_discover", 3)
+            ),
+            "directive_discovery": _run_script(
+                "hermes_directive_discovery.py",
+                (
+                    ["--apply", "--limit-per-directive", str(depth.get("directive_discovery_limit", 4))]
+                    if apply
+                    else ["--limit-per-directive", str(depth.get("directive_discovery_limit", 4))]
+                ),
+            ),
+            "watchlist_drain": {},
+        }
+        if apply and not depth.get("skip_watchlist_drain", True):
+            pp["watchlist_drain"] = _run_script(
+                "watch_directives_service.py",
+                ["--apply", "--max-hermes-drain", "5"],
+                timeout=600,
+            )
+            drain = (pp["watchlist_drain"].get("result") or {})
+            pp["promoted_to_watchlist"] = drain.get("promoted", 0)
+            pp["staged_for_review"] = drain.get("staged", 0)
+            pp["hermes_drained"] = drain.get("hermes_drained", 0)
+        else:
+            pp["promoted_to_watchlist"] = 0
+            pp["staged_for_review"] = 0
+            pp["hermes_drained"] = 0
+        pp["updated_at"] = datetime.now(timezone.utc).isoformat()
+        report["prospect_pipeline"] = pp
 
-    consciousness = _log_consciousness(conn, report, depth, apply=apply)
-    conn.close()
+        report["sector_universe"] = run_sector_universe(
+            conn,
+            apply=apply,
+            batch_size=depth.get("sector_universe_batch", 12),
+            research_queue=depth.get("sector_universe_research_queue", 3),
+            refresh_finviz=depth.get("refresh_finviz", False),
+        )
+
+        report["critique"] = run_critique_pipeline(
+            conn,
+            apply=apply,
+            directive_batch=depth.get("critique_directive_batch", 15),
+            run_tagger=depth.get("run_taxonomy_tagger", False),
+        )
+
+        consciousness = _log_consciousness(conn, report, depth, apply=apply)
+        conn.close()
+        conn = None
+    except Exception:
+        _rollback_close(conn)
+        raise
 
     report["curator"] = {"depth": depth, "consciousness": consciousness}
     return report
@@ -316,26 +435,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--force-deep", action="store_true", help="Full web+LLM+drain pass (ignore rotation)")
     args = parser.parse_args(argv)
-    last_exc: BaseException | None = None
-    for attempt in range(1, _LOCK_RETRIES + 1):
-        try:
-            report = run_curator(apply=args.apply, force_deep=args.force_deep)
-            print(json.dumps(report, indent=2, default=str))
-            return 0
-        except Exception as exc:  # noqa: BLE001 — boundary: classify lock vs hard fail
-            if not _is_pg_lock_error(exc):
-                raise
-            last_exc = exc
-            msg = f"lock contention attempt {attempt}/{_LOCK_RETRIES}: {exc}"
-            print(msg, file=sys.stderr)
-            if attempt < _LOCK_RETRIES:
-                time.sleep(_LOCK_SLEEP_S * attempt)
-    print(
-        f"EX_TEMPFAIL: DB lock contention after {_LOCK_RETRIES} attempts "
-        f"(watchlist_items / peer writer): {last_exc}",
-        file=sys.stderr,
-    )
-    return EX_TEMPFAIL
+    try:
+        report = run_curator(apply=args.apply, force_deep=args.force_deep)
+        print(json.dumps(report, indent=2, default=str))
+        return 0
+    except Exception as exc:  # noqa: BLE001 — boundary: lock → 75, else propagate
+        if _is_pg_lock_error(exc):
+            print(
+                f"EX_TEMPFAIL: DB lock contention after {_LOCK_RETRIES} attempts "
+                f"(watchlist_items / peer writer): {exc}",
+                file=sys.stderr,
+            )
+            return EX_TEMPFAIL
+        raise
 
 
 if __name__ == "__main__":
