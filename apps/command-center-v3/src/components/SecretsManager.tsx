@@ -32,9 +32,9 @@ export default function SecretsManager() {
   const { data: finvizHealth } = useApi<any>('/api/v2/data-sources/finviz/credential-health', 60_000)
   const finvizCookieState = String(finvizHealth?.cookie_status || '').toLowerCase()
   const finvizValidity =
-    finvizCookieState === 'expired' ? { label: 'cookie expired', c: '#ef4444' }
-      : finvizCookieState === 'missing' ? { label: 'cookie not set', c: '#ef4444' }
-        : finvizCookieState === 'ok' ? { label: 'cookie valid', c: '#22c55e' }
+    finvizCookieState === 'expired' ? { label: 'cookie expired', c: 'var(--red)', bad: true }
+      : finvizCookieState === 'missing' ? { label: 'cookie not set', c: 'var(--red)', bad: true }
+        : finvizCookieState === 'ok' ? { label: 'cookie valid', c: 'var(--green)', bad: false }
           : null
   const secrets: any[] = data?.secrets ?? []
   const [open, setOpen] = useState(false)
@@ -116,7 +116,7 @@ export default function SecretsManager() {
         {secrets.map((s: any) => {
           const v = vres[s.key]
           const vs = v ? VSTATUS[v.status] : null
-          const fv = s.key === 'FINVIZ_COOKIE' ? (finvizValidity as { label: string; c: string } | null) : null
+          const fv = s.key === 'FINVIZ_COOKIE' ? (finvizValidity as { label: string; c: string; bad: boolean } | null) : null
           const ro = !!s.read_only
           return (
             <div key={s.key} onClick={ro ? undefined : () => { setKey(s.key); setOpen(true); setMsg('') }}
@@ -124,7 +124,7 @@ export default function SecretsManager() {
                 : fv ? `credential-health: ${fv.label}${finvizHealth?.message ? ` — ${finvizHealth.message}` : ''}`
                   : v ? `${v.status}: ${v.detail}` : 'rotate this secret'}
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', borderRadius: 7, cursor: ro ? 'default' : 'pointer', background: 'var(--bg2)', opacity: ro ? 0.78 : 1,
-                border: `1px solid ${v?.status === 'INVALID' || fv?.c === '#ef4444' ? '#ef4444' : v?.status === 'valid' ? '#22c55e44' : 'var(--border)'}` }}>
+                border: `1px solid ${v?.status === 'INVALID' || fv?.bad ? 'var(--red)' : v?.status === 'valid' ? '#22c55e44' : 'var(--border)'}` }}>
               <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                 <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text1)' }}>{s.key}
                   {s.is_config && <span style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 4, padding: '0 3px', border: '1px solid var(--border)', borderRadius: 3 }}>cfg</span>}
@@ -141,9 +141,9 @@ export default function SecretsManager() {
                 )}
               </span>
               <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-                {fv && <span data-testid="finviz-cookie-validity" style={{ fontSize: 8.5, fontWeight: 800, color: fv.c }}>{fv.label}</span>}
+                {fv && <span data-testid="finviz-cookie-validity" style={{ fontSize: 10, fontWeight: 800, color: fv.c }}>{fv.label}</span>}
                 {vs && <span style={{ fontSize: 8.5, fontWeight: 800, color: vs.c }}>{vs.label}</span>}
-                <span data-testid={`secret-presence-${s.key}`} style={{ fontSize: 10, color: s.present ? (fv?.c === '#ef4444' ? '#ef4444' : '#22c55e') : '#ef4444' }}>{presenceLabel(s)}</span>
+                <span data-testid={`secret-presence-${s.key}`} style={{ fontSize: 10, color: s.present ? (fv?.bad ? 'var(--red)' : '#22c55e') : '#ef4444' }}>{presenceLabel(s)}</span>
               </span>
             </div>
           )
