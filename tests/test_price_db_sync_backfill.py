@@ -68,7 +68,7 @@ def price_store(monkeypatch):
 
     monkeypatch.setattr(prices, "_get_conn", connect)
     monkeypatch.setattr(prices, "sync_ticker_prices_from_market_quotes", quote_writer)
-    monkeypatch.setattr(prices, "backfill_yfinance_history", no_provider)
+    monkeypatch.setattr(prices, "backfill_price_history", no_provider)
     return store
 
 
@@ -112,7 +112,7 @@ def test_ensure_price_history_for_symbol(price_store):
     before = count_price_rows(sym)
     result = ensure_price_history([sym], min_rows=3, yfinance_cap=0)
     after = count_price_rows(sym)
-    assert result == {"symbols": 1, "quotes_synced": 1, "short_candidates": 1, "yfinance": {"filled": 0}}
+    assert result == {"symbols": 1, "quotes_synced": 1, "short_candidates": 1, "backfill": {"filled": 0}}
     assert after == before + 1
     assert price_store.writes[0][0] == ["SPY"]
 

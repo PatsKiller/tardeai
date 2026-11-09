@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""external_market_data_ingest.py — yfinance + Alpha Vantage + FRED data ingestion.
+"""external_market_data_ingest.py — live quotes (Alpaca + Finviz) + Finviz fundamentals + FRED.
 
 Sources:
-  yfinance: real-time quotes, dividends, earnings dates (no API key)
-  Finviz (stored): fundamentals for fundamental_data, read from the Finviz enrichment cache through
-    the data broker (operator 2026-10-16 "Switch to Finviz"; Alpha Vantage OVERVIEW is premium on our key)
+  Alpaca: live intraday quotes, batched, no rate limit (PRIMARY)
+  Finviz: quote.ashx live quotes for what Alpaca misses (per-symbol), and stored fundamentals for
+    fundamental_data, read from the Finviz enrichment cache through the data broker
+    (operator 2026-10-16 "Switch to Finviz"; Alpha Vantage OVERVIEW is premium on our key)
   FRED: macro economic series (free key, optional)
+  yfinance: NONE. Its quote tier and ``--quotes-yf`` path were deleted in LQ-20261107-1679 — a
+    banned price source (operator price rule: Finviz fresh, else a fresh Schwab/Alpaca/moomoo quote).
 
 Usage:
     python3 scripts/external_market_data_ingest.py --test
-    python3 scripts/external_market_data_ingest.py --quotes          # yfinance quotes for all symbols
+    python3 scripts/external_market_data_ingest.py --quotes          # Alpaca + Finviz quotes
     python3 scripts/external_market_data_ingest.py --fundamentals    # Finviz fundamentals via the data broker
     python3 scripts/external_market_data_ingest.py --fundamentals --dry-run --symbols V,CLF   # read-only preview
     python3 scripts/external_market_data_ingest.py --fred            # FRED macro window (upsert)
@@ -139,61 +142,14 @@ def _get_symbols() -> list:
     return [s for s in merged if "-" not in s and len(s) <= 5]
 
 
-# ── yfinance ─────────────────────────────────────────────────────────
-
-def ingest_yfinance_quotes(symbols: list = None) -> dict:
-    """Fetch real-time quotes via yfinance for all portfolio symbols."""
-    import yfinance as yf
-    if not symbols:
-        symbols = _get_symbols()
-
-    conn = _get_conn()
-    cur = conn.cursor()
-    fetched = 0
-
-    for batch_start in range(0, len(symbols), 10):
-        batch = symbols[batch_start:batch_start + 10]
-        try:
-            tickers = yf.Tickers(" ".join(batch))
-            for sym in batch:
-                try:
-                    t = tickers.tickers.get(sym)
-                    if not t:
-                        continue
-                    info = t.info or {}
-                    price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
-                    if not price:
-                        continue
-
-                    rc = write_market_quotes(cur, [{
-                        "symbol": sym, "price": price,
-                        "prev_close": info.get("previousClose"),
-                        "day_change_pct": info.get("regularMarketChangePercent"),
-                        "volume": info.get("volume"),
-                        "avg_volume": info.get("averageVolume"),
-                        "market_cap": info.get("marketCap"),
-                        "pe_ratio": info.get("trailingPE"),
-                        "forward_pe": info.get("forwardPE"),
-                        "dividend_yield": info.get("dividendYield"),
-                        "fifty_two_week_high": info.get("fiftyTwoWeekHigh"),
-                        "fifty_two_week_low": info.get("fiftyTwoWeekLow"),
-                    }], source="yfinance")
-                    fetched += rc.rows_accepted
-                except Exception:
-                    pass
-        except Exception as e:
-            print(f"  [yfinance] Batch error: {e}")
-
-    conn.commit()
-    conn.close()
-    print(f"[yfinance] Fetched {fetched}/{len(symbols)} quotes")
-    try:
-        from lib.data_source_report import report_source
-        report_source("yahoo_finance", fetched > 0, rows=fetched,
-                      error=None if fetched else f"0/{len(symbols)} quotes fetched")
-    except Exception:
-        pass
-    return {"source": "yfinance", "fetched": fetched, "total": len(symbols)}
+# ── yfinance — RETIRED as a quote writer (LQ-20261107-1679) ──────────
+# This module used to carry ``ingest_yfinance_quotes``: the last tier of ``ingest_quotes``, the
+# ``--quotes-yf`` CLI path and the ``test()`` smoke run all called it. It is deleted, not merely
+# unreferenced, because each of those was a live writer of ``market_quotes`` rows from a source the
+# operator's price rule bans (Finviz fresh, else a fresh Schwab/Alpaca/moomoo quote; never
+# yfinance). cc-opus-1 measured 583 yfinance rows in two days, newest 14:24 ET 2026-11-09. A
+# function left behind is a path a future caller can take, and the module is PUBLIC: the removal,
+# not a comment, is the containment. Prices from Alpaca (live intraday) and Finviz only.
 
 
 # ── Alpaca (PRIMARY: live intraday, no rate limit, IEX free feed) ─────────────────────
@@ -391,15 +347,19 @@ def ingest_finviz_quotes(symbols: list = None) -> dict:
 
 
 def ingest_quotes(symbols: list = None) -> dict:
-    """Quote ingest with tiered fallback: Alpaca live-intraday PRIMARY (batched, no rate limit) →
-    finviz quote.ashx (live, per-symbol) for what Alpaca misses → yfinance last resort. Each tier only
-    runs on the symbols the prior tier couldn't price.
+    """Quote ingest: Alpaca live-intraday PRIMARY (batched, no rate limit) → finviz quote.ashx
+    (live, per-symbol) for what Alpaca misses. There is no third tier.
 
-    LQ-20261107-1609 — "couldn't price" and "was never asked" are different facts. This function used
-    to hand the WHOLE miss list to the next tier when a tier raised, so a dead Finviz connection sent
-    ~156 symbols to yfinance every run (yfinance writes ~73 rows/h and is the source the outlook
-    method bans). Now a tier failure routes nothing: the symbols it could not attempt come back as
-    ``unpriced.tier_unavailable`` and are reported, never silently re-attributed to another provider.
+    LQ-20261107-1679 — the yfinance tier is GONE, not skipped: this function used to hand the
+    finviz miss list to ``ingest_yfinance_quotes``, and that tier wrote ``market_quotes`` rows
+    from a source the operator's price rule bans (Finviz fresh, else a fresh Schwab/Alpaca/moomoo
+    quote; never yfinance). A symbol finviz genuinely cannot price is now reported unpriced
+    (``unpriced.no_quote``) and nothing is written for it — a missing price is a fact the caller
+    can show; a price from a banned source is a lie the next reader cannot see.
+
+    LQ-20261107-1609 — "couldn't price" and "was never asked" are different facts. A tier failure
+    routes nothing: the symbols it could not attempt come back as ``unpriced.tier_unavailable``
+    and are reported, never silently re-attributed to another provider.
     """
     if not symbols:
         symbols = _get_symbols()
@@ -417,21 +377,16 @@ def ingest_quotes(symbols: list = None) -> dict:
             print(f"  [fallback] finviz tier UNAVAILABLE: {e} — {len(miss1)} symbol(s) not routed on")
     miss2 = fv.get("missing", [])
     tier_unavailable = list(fv.get("unwritten") or [])
-    yf = {"fetched": 0}
-    if miss2:
-        try:
-            yf = ingest_yfinance_quotes(miss2)
-        except Exception as e:
-            print(f"  [fallback] yfinance failed (non-fatal): {e}")
     # A tier that raised has no measured count: "we could not read it" is None, never 0 (tq taxonomy
     # #2 — a swallowed failure reported as an empty success is the same defect one level up).
-    counts = {"alpaca": a.get("fetched"), "finviz": fv.get("fetched"), "yfinance": yf.get("fetched")}
+    counts = {"alpaca": a.get("fetched"), "finviz": fv.get("fetched")}
     measured = all(isinstance(v, int) for v in counts.values())
     total = sum(counts.values()) if measured else None
     shown = {k: (v if isinstance(v, int) else "?") for k, v in counts.items()}
     print(f"[quotes] {total if total is not None else '?'}/{len(symbols)} "
-          f"(alpaca {shown['alpaca']} + finviz {shown['finviz']} + yf {shown['yfinance']})"
-          + (f" — finviz tier unavailable: {len(tier_unavailable)} unpriced, not routed" if tier_unavailable else ""))
+          f"(alpaca {shown['alpaca']} + finviz {shown['finviz']})"
+          + (f" — finviz tier unavailable: {len(tier_unavailable)} unpriced, not routed" if tier_unavailable else "")
+          + (f" — {len(miss2)} with no finviz quote: left unpriced" if miss2 else ""))
 
     # 2026-09-13 (Phase 3, "a health ledger that cannot lie"): this used to write
     # report_source("yahoo_finance", True) when yfinance had NOT run, so that Alpaca
@@ -440,14 +395,14 @@ def ingest_quotes(symbols: list = None) -> dict:
     # the ledger may not hold. The stall it papered over is now handled on the read
     # side: the decay view gives yahoo_finance a 168h window (yfinance domains in
     # config/data_source_authority.json) and pro_analyst_fetch.py (06:10 daily)
-    # reports the real daily yfinance call. When yfinance DID run above,
-    # ingest_yfinance_quotes() reported its own ok/error state.
+    # reports the real daily yfinance call. Since LQ-20261107-1679 there is no
+    # yfinance quote tier left to report at all.
 
-    return {"alpaca": counts["alpaca"], "finviz": counts["finviz"], "yfinance": counts["yfinance"],
+    return {"alpaca": counts["alpaca"], "finviz": counts["finviz"],
             "fetched": total, "total": len(symbols),
             "finviz_reconnects": fv.get("reconnects"),  # unknown when the tier never reported
             "finviz_error": fv.get("error"),
-            "unpriced": {"tier_unavailable": tier_unavailable}}
+            "unpriced": {"tier_unavailable": tier_unavailable, "no_quote": list(miss2)}}
 
 
 # ── Alpha Vantage ────────────────────────────────────────────────────
@@ -960,7 +915,8 @@ def get_macro_context() -> str:
 
 
 def get_yfinance_context(symbol: str) -> str:
-    """Get latest yfinance quote context for a symbol."""
+    """Quote + fundamentals context for a symbol. (Name is historic: LQ-20261107-1679 removed the
+    yfinance writer, so the quote line now names the source that actually wrote the row.)"""
     conn = _get_conn()
     cur = _dict_cursor(conn)
     cur.execute("""
@@ -984,7 +940,8 @@ def get_yfinance_context(symbol: str) -> str:
         pe = float(r.get("pe_ratio") or 0)
         hi = float(r.get("fifty_two_week_high") or 0)
         lo = float(r.get("fifty_two_week_low") or 0)
-        parts.append(f"YFINANCE QUOTE ({symbol}): ${p:.2f} | PE:{pe:.1f} | Yield:{dy*100:.1f}% | 52wk: ${lo:.0f}-${hi:.0f}")
+        src = str(r.get("source") or "unknown").upper()
+        parts.append(f"{src} QUOTE ({symbol}): ${p:.2f} | PE:{pe:.1f} | Yield:{dy*100:.1f}% | 52wk: ${lo:.0f}-${hi:.0f}")
 
     if avs:
         av_str = ", ".join(f"{a['metric_name']}={float(a['metric_value']):.2f}" for a in avs[:6])
@@ -999,13 +956,8 @@ def get_yfinance_context(symbol: str) -> str:
 def test():
     print("=== External Market Data Test ===\n")
 
-    # yfinance
-    print("yfinance (V, SCHD, LMT):")
-    result = ingest_yfinance_quotes(["V", "SCHD", "LMT"])
-    print(f"  Result: {result}")
-
     # Fundamentals (stored Finviz via the data broker; AV OVERVIEW is premium on our key)
-    print("\nFundamentals from Finviz (V), dry run:")
+    print("Fundamentals from Finviz (V), dry run:")
     result = ingest_finviz_fundamentals(["V"], limit=1, dry_run=True)
     print(f"  Result: {result}")
 
@@ -1015,7 +967,7 @@ def test():
     print(f"  Result: {result}")
 
     # Context test
-    print("\nyfinance context for V:")
+    print("\nquote context for V:")
     print(f"  {get_yfinance_context('V')}")
     print("\nMacro context:")
     print(f"  {get_macro_context()}")
@@ -1035,9 +987,14 @@ if __name__ == "__main__":
     if "--test" in sys.argv:
         test()
     elif "--quotes" in sys.argv:
-        ingest_quotes()  # Alpaca live-intraday primary → yfinance fallback
+        ingest_quotes()  # Alpaca live-intraday primary → Finviz for what Alpaca misses
     elif "--quotes-yf" in sys.argv:
-        ingest_yfinance_quotes()  # legacy yfinance-only path (kept for comparison/debug)
+        # LQ-20261107-1679: the yfinance-only path wrote market_quotes from a banned source. It is
+        # retired, and it REFUSES instead of exiting 0 — a cron line still carrying it must fail
+        # loudly rather than run as a silent no-op.
+        print("external_market_data_ingest: --quotes-yf is retired (LQ-20261107-1679). Quotes come "
+              "from Alpaca + Finviz; run --quotes.", file=sys.stderr)
+        sys.exit(2)
     elif "--fundamentals" in sys.argv:
         # 2026-10-16: Finviz via the data broker (cron line unchanged). Alpha Vantage OVERVIEW is premium.
         _syms = None

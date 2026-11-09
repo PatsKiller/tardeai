@@ -1,6 +1,7 @@
 """
 portfolio_price_cache.py — Price History Cache for Portfolio Intelligence
-Downloads full OHLCV history for all held/held symbols from Yahoo Finance.
+Downloads closing history for all held/held symbols from Alpaca SIP daily bars
+(never yfinance — LQ-20261107-1679, operator price rule 2026-11-07).
 Saves to data/portfolios/state/price_cache.json for zero-latency pipeline use.
 
 Run once manually, then weekly (Sunday 7PM via Task Scheduler).
@@ -32,13 +33,12 @@ except ImportError:
     _db_save_cache = None
 from typing import Dict, List, Optional
 
-logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 logging.getLogger("peewee").setLevel(logging.CRITICAL)
 
 # ── Constants ────────────────────────────────────────────────────────────────
 CACHE_START     = "2020-01-01"          # Jan 1 2020 per user spec
 STALE_DAYS      = 7                     # re-download if older than this
-BATCH_SIZE      = 10                    # symbols per yfinance batch call
+BATCH_SIZE      = 10                    # symbols per historical batch call
 RETRY_DELAY     = 2.0                   # seconds between retries
 MAX_RETRIES     = 2
 
@@ -47,7 +47,7 @@ DELISTED = frozenset([
     "AUUD","AXTI","BNAI","12507E201","628518102","MEMI","BOF","ACNB",
 ])
 
-# Cash-equivalent symbols — always $1.00/share, never fetch from Yahoo
+# Cash-equivalent symbols — always $1.00/share, never fetched from a provider
 # Schwab exports "CASH" as a money-market placeholder; these are all NAV=$1.00
 CASH_EQUIV = frozenset([
     "CASH", "SWVXX", "SWGXX", "SNSXX", "MMDA1", "MMDA10",
@@ -61,7 +61,7 @@ def _is_clean(sym: str) -> bool:
     if sym in DELISTED:
         return False
     if sym in CASH_EQUIV:
-        return False  # Always $1.00 — no Yahoo fetch needed
+        return False  # Always $1.00 — no provider fetch needed
     if len(sym) > 6:
         return False
     if not sym.replace("-","").isalpha():
@@ -117,68 +117,53 @@ def _is_stale(cache: Dict, sym: str, force: bool) -> bool:
         return True
 
 
+def _bar_closes(sym: str, start: str, end: str) -> Dict[str, float]:
+    """{'YYYY-MM-DD': close} for one symbol from Alpaca SIP daily bars, clipped to [start, end].
+
+    LQ-20261107-1679 — the bars come from the provider ``config/data_source_authority.json`` grants
+    ``bars`` to (Alpaca), through the existing read-only bars path. yfinance was this cache's only
+    source and is banned for prices (operator rule 2026-11-07). A symbol Alpaca cannot price yields
+    ``{}`` — the caller leaves it out of the cache and reports it, rather than inventing a close.
+    """
+    try:
+        from market_data_snapshot_loader import fetch_alpaca_daily_bars
+    except ImportError:
+        from scripts.market_data_snapshot_loader import fetch_alpaca_daily_bars  # type: ignore
+    try:
+        days = max(1, (date.fromisoformat(end) - date.fromisoformat(start)).days + 1)
+    except Exception:
+        return {}
+    prices: Dict[str, float] = {}
+    for bar in fetch_alpaca_daily_bars(sym, days) or []:
+        price, when = bar.get("close"), bar.get("bar_time")
+        if price is None or when is None:
+            continue  # a bar without a close or a date is skipped, never stored as 0
+        try:
+            if float(price) <= 0:
+                continue
+            d = str(when.date() if hasattr(when, "date") else when)
+            if start <= d <= end:
+                prices[d] = round(float(price), 4)
+        except (TypeError, ValueError):
+            continue
+    return prices
+
+
 def _fetch_symbols(symbols: List[str], start: str, end: str) -> Dict[str, Dict[str, float]]:
     """Fetch closing prices for a batch of symbols. Returns {sym: {date_str: price}}."""
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        import yfinance as yf
-
     results: Dict[str, Dict[str, float]] = {}
-    if not symbols:
-        return results
-
-    for attempt in range(MAX_RETRIES + 1):
-        try:
-            if len(symbols) == 1:
-                sym = symbols[0]
-                hist = yf.download(sym, start=start, end=end,
-                                   progress=False, auto_adjust=True,
-                                   threads=False)
-                if hist.empty:
-                    return results
-                close = hist["Close"]
-                prices = {}
-                for idx_val, price in close.items():
-                    try:
-                        d = idx_val.date() if hasattr(idx_val, "date") else idx_val
-                        if float(price) > 0:
-                            prices[str(d)] = round(float(price), 4)
-                    except Exception:
-                        pass
+    for sym in symbols or []:
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                prices = _bar_closes(sym, start, end)
                 if prices:
                     results[sym] = prices
-            else:
-                hist = yf.download(symbols, start=start, end=end,
-                                   progress=False, auto_adjust=True,
-                                   group_by="ticker", threads=True)
-                if hist.empty:
-                    return results
-                for sym in symbols:
-                    try:
-                        col = hist[sym]["Close"] if sym in hist.columns.get_level_values(0) else None
-                        if col is None or col.empty:
-                            continue
-                        prices = {}
-                        for idx_val, price in col.items():
-                            try:
-                                d = idx_val.date() if hasattr(idx_val, "date") else idx_val
-                                if float(price) > 0:
-                                    prices[str(d)] = round(float(price), 4)
-                            except Exception:
-                                pass
-                        if prices:
-                            results[sym] = prices
-                    except Exception:
-                        pass
-            return results
-        except Exception as e:
-            if attempt < MAX_RETRIES:
-                time.sleep(RETRY_DELAY)
-                continue
-            print(f"  [cache] fetch error ({symbols}): {e}")
-            return results
-
+                break
+            except Exception as e:  # noqa: BLE001 -- retried, then named; never a fabricated close
+                if attempt < MAX_RETRIES:
+                    time.sleep(RETRY_DELAY)
+                    continue
+                print(f"  [cache] fetch error ({sym}): {e}")
     return results
 
 
@@ -216,12 +201,12 @@ def get_price(sym: str, date_str: str, cache: Dict,
               fallback_live: bool = True) -> Optional[float]:
     """
     Look up closing price for sym on or before date_str.
-    Uses cache first; optionally falls back to live Yahoo.
+    Uses cache first; optionally falls back to a live Alpaca daily bar.
 
     G-PRICE-01: skip dates present in ticker_prices_quarantine.
     """
     sym = sym.upper()
-    # Cash-equivalents are always $1.00 — never trust Yahoo
+    # Cash-equivalents are always $1.00 — never fetch a price for them
     if sym in CASH_EQUIV:
         return 1.00
     # Delisted are $0 — no lookup
@@ -251,31 +236,21 @@ def get_price(sym: str, date_str: str, cache: Dict,
     if not fallback_live or sym in DELISTED:
         return None
 
-    # Live fallback (single date window) — still skip quarantine dates
+    # Live fallback (single date window) — Alpaca daily bars, still skip quarantine dates.
+    # LQ-20261107-1679: this was the second yfinance read in this module; it is a PRICE read, so
+    # the operator rule bans it here too. No bars before the date = None, never a guess.
     try:
-        import warnings, yfinance as yf
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            dt = datetime.strptime(date_str, "%Y-%m-%d")
-            start = (dt - timedelta(days=5)).strftime("%Y-%m-%d")
-            end   = (dt + timedelta(days=2)).strftime("%Y-%m-%d")
-            hist  = yf.download(sym, start=start, end=end,
-                                progress=False, auto_adjust=True)
-            if hist.empty:
-                return None
-            close = hist["Close"]
-            avail = sorted(
-                str(d.date() if hasattr(d, "date") else d)
-                for d in close.index
-            )
-            avail_before = [
-                d for d in avail
-                if d <= date_str and not (is_quarantined and is_quarantined(sym, d, quarantined))
-            ]
-            if avail_before:
-                price = float(close.iloc[avail.index(avail_before[-1])])
-                return round(price, 4)
-    except Exception:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        start = (dt - timedelta(days=5)).strftime("%Y-%m-%d")
+        end = (dt + timedelta(days=2)).strftime("%Y-%m-%d")
+        prices = _bar_closes(sym, start, end)
+        avail_before = [
+            d for d in sorted(prices)
+            if d <= date_str and not (is_quarantined and is_quarantined(sym, d, quarantined))
+        ]
+        if avail_before:
+            return round(float(prices[avail_before[-1]]), 4)
+    except Exception:  # noqa: BLE001 -- a fallback that cannot read its provider returns None
         pass
     return None
 
@@ -355,7 +330,7 @@ def build_price_cache(project_root: Path, force: bool = False,
             results = _fetch_symbols(full_fetch, CACHE_START, end_date)
             for sym, prices in results.items():
                 cache[sym] = prices
-                meta[sym] = {"updated": today_str, "days": len(prices), "source": "yahoo"}
+                meta[sym] = {"updated": today_str, "days": len(prices), "source": "alpaca"}
                 print(f"    ✅ {sym}: {len(prices)} trading days ({min(prices)} → {max(prices)})")
             for sym in full_fetch:
                 if sym not in results:
@@ -372,7 +347,7 @@ def build_price_cache(project_root: Path, force: bool = False,
                 meta[sym] = {
                     "updated": today_str,
                     "days": len(cache[sym]),
-                    "source": "yahoo"
+                    "source": "alpaca"
                 }
                 print(f"    ✅ {sym}: +{len(new_prices)} new days (total {len(cache[sym])})")
             for sym in incremental:

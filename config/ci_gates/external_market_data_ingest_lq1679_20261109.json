@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "external_market_data_ingest_lq1679_20261109",
+  "files": [
+    "tests/test_external_market_data_ingest_lq1679_20261109.py"
+  ],
+  "comment": [
+    "ANCHOR: LQ-20261107-1679 — the banned yfinance quote writer is removed from",
+    "scripts/external_market_data_ingest.py, not merely skipped. market_quotes took 583 yfinance rows in",
+    "two days (newest 14:24 ET 2026-11-09) against the operator price rule (Finviz fresh <=30 min, else",
+    "fresh Schwab/Alpaca/moomoo; never yfinance). The tests pin: no ingest_yfinance_quotes definition /",
+    "no yfinance import / no source='yfinance' call (AST); a Finviz miss is reported under",
+    "unpriced.no_quote and nothing is written for it; a dead tier routes nothing; and --quotes-yf",
+    "refuses with exit 2 instead of exiting 0 as a silent no-op. Synthetic symbols only; no DB, no",
+    "provider call (fakes), the CLI case exits before any I/O."
+  ]
+}

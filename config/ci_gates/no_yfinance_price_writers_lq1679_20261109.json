@@ -1,0 +1,19 @@
+{
+  "schema": "CiGate@v1",
+  "name": "no_yfinance_price_writers_lq1679_20261109",
+  "files": [
+    "tests/test_no_yfinance_writers_lq1679_20261109.py"
+  ],
+  "comment": [
+    "ANCHOR: LQ-20261107-1679 — yfinance is never a price source (operator rule 2026-11-07: Finviz",
+    "fresh <=30 min, else a fresh Schwab/Alpaca/moomoo quote, else the stored mark flagged stale).",
+    "Measured on the live line 2026-11-09 before the fix: market_quotes 870 yfinance rows/3d (newest",
+    "15:56 ET), ticker_prices 881/7d (newest 2026-11-08 20:39), price_cache rebuilt from yfinance",
+    "weekly. This gate pins the three fixed store writers free of yfinance (AST), the Alpaca-only",
+    "backfill and cache read (behaviour with fakes), the retired --quotes-yf CLI (exit 2), and a",
+    "repo-wide SHRINK-ONLY ratchet: config/yfinance_import_baseline.json lists every remaining",
+    "importer with its kind, so a NEW import fails, a stale entry fails, and the price_read",
+    "follow-up set is frozen in the open rather than remembered. Synthetic symbols only; no DB, no",
+    "provider call, no credential."
+  ]
+}

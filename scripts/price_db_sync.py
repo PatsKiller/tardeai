@@ -5,7 +5,7 @@ Called after repricing in the daily pipeline. Reads current prices from:
 1. finviz_quote_cache.json (Schwab tickers)
 2. holdings.json (Fidelity current prices)
 3. market_quotes (watchlist + proposal symbols — via ensure_price_history)
-4. yfinance gap-fill for symbols still short on close history
+4. Alpaca daily bars for symbols still short on close history (never yfinance — LQ-20261107-1679)
 
 Writes to: ticker_prices (symbol, price_date, close_price, source)
 Dedupes via UPSERT (ON CONFLICT DO UPDATE).
@@ -21,6 +21,11 @@ from typing import NamedTuple
 
 
 LANE_ID = "price-db-sync"
+
+#: ``ticker_prices.source`` this file writes for a gap-fill close. Alpaca SIP daily bars — the
+#: provider ``config/data_source_authority.json`` grants ``bars`` to. yfinance was this source
+#: until LQ-20261107-1679 (operator price rule 2026-11-07: Finviz/broker only, never yfinance).
+ALPACA_PRICE_SOURCE = "alpaca"
 
 
 def _receipt_lib():
@@ -188,9 +193,13 @@ def ensure_price_history(
     min_rows: int = 60,
     yfinance_cap: int | None = None,
 ) -> dict:
-    """Sync market_quotes → ticker_prices and yfinance-gap-fill symbols still short on history.
+    """Sync market_quotes → ticker_prices and Alpaca-gap-fill symbols still short on history.
 
     Used by watchlist refresh, proposal enrichment, and broker/paper proposal refresh endpoints.
+    LQ-20261107-1679: the gap-fill is Alpaca (``backfill_price_history``); the receipt key is
+    ``backfill``. ``yfinance_cap`` is kept as the parameter name for existing callers (it is a cap
+    on how many symbols get a gap-fill, not a source choice); every consumer already reads
+    ``backfill`` first with ``yfinance`` as the pre-LQ-455 fallback key.
     """
     syms = [str(s).upper().strip() for s in (symbols or []) if s and str(s).strip()]
     syms = list(dict.fromkeys(syms))
@@ -198,14 +207,14 @@ def ensure_price_history(
     _counts = count_price_rows_many(syms) if syms else {}
     short = [s for s in syms if _counts.get(s, 0) < min_rows] if syms else []
     cap = yfinance_cap if yfinance_cap is not None else (len(short) if len(short) <= 50 else 40)
-    yf_result = {"filled": 0}
+    bf_result = {"filled": 0}
     if short and cap > 0:
-        yf_result = backfill_yfinance_history(short[:cap])
+        bf_result = backfill_price_history(short[:cap])
     return {
         "symbols": len(syms),
         "quotes_synced": n_quotes,
         "short_candidates": len(short),
-        "yfinance": yf_result,
+        "backfill": bf_result,
     }
 
 
@@ -226,14 +235,14 @@ def sync_daily_watchlist_prices(*, yfinance_cap: int = 40, min_rows: int = 60) -
             scope.append(etf)
     _counts = count_price_rows_many(scope)
     short = [s for s in scope if _counts.get(str(s).upper(), 0) < min_rows]
-    yf_result = {"filled": 0}
+    bf_result = {"filled": 0}
     if short and yfinance_cap > 0:
-        yf_result = backfill_yfinance_history(short[:yfinance_cap])
+        bf_result = backfill_price_history(short[:yfinance_cap])
     return {
         "quotes_synced": n_quotes,
         "scope_symbols": len(scope),
         "short_candidates": len(short),
-        "yfinance": yf_result,
+        "backfill": bf_result,
     }
 
 
@@ -304,7 +313,7 @@ def sync_daily_prices():
               f"{'; '.join(rejected[:10])}" + (" ..." if len(rejected) > 10 else ""))
     wl = sync_daily_watchlist_prices()
     print(f"  [price-db] Watchlist quotes→ticker_prices: {wl.get('quotes_synced', 0)} rows; "
-          f"yfinance filled {wl.get('yfinance', {}).get('filled', 0)}")
+          f"alpaca bars filled {wl.get('backfill', {}).get('filled', 0)}")
     return written
 
 
@@ -780,19 +789,31 @@ def sync_session_closes(symbols=None, *, session=None, dry_run=False, window=Non
         conn.close()
 
 
-def backfill_yfinance_history(
+def backfill_price_history(
     symbols: list[str],
     *,
     period: str = "1y",
-    sleep_sec: float = 0.25,
+    sleep_sec: float = 0.0,
 ) -> dict:
-    """Fetch yfinance daily closes into ticker_prices for symbols still missing history."""
+    """Daily closes from Alpaca's SIP daily bars into ``ticker_prices`` for symbols short on history.
+
+    LQ-20261107-1679 — this used to be ``backfill_yfinance_history``: one ``yf.Ticker(sym).history()``
+    per symbol, written with ``source='yfinance'`` (881 such rows landed in the 7 days to 2026-11-09,
+    newest 2026-11-08 20:39 ET). The operator price rule (2026-11-07) bans that source outright, so
+    the closes now come from the provider ``config/data_source_authority.json`` grants ``bars`` to —
+    Alpaca — through the same read-only bars path ``lib/redeploy_price_history`` already uses
+    (``market_data_snapshot_loader.fetch_alpaca_daily_bars``), and are written as ``source='alpaca'``.
+
+    A symbol Alpaca has no bars for is reported ``failed``; it is never filled from another vendor.
+    ``sleep_sec`` defaults to 0 because the bars path is Alpaca's batched API, not a per-symbol page
+    scrape (the old 0.25 s politeness delay existed for yfinance's rate limiter).
+    """
     import time
 
-    try:
-        import yfinance as yf
+    try:  # scripts/ is on sys.path when this module runs; both import spellings are in use here
+        from lib.redeploy_price_history import _alpaca_close_rows
     except ImportError:
-        return {"error": "yfinance not installed", "filled": 0}
+        from scripts.lib.redeploy_price_history import _alpaca_close_rows
 
     conn = _get_conn()
     cur = conn.cursor()
@@ -802,19 +823,12 @@ def backfill_yfinance_history(
         if not sym:
             continue
         try:
-            hist = yf.Ticker(sym).history(period=period, interval="1d", auto_adjust=False)
-            if hist is None or len(hist) == 0:
+            px_rows = _alpaca_close_rows(sym, period)
+            if not px_rows:  # Alpaca answered with no bars: failed, not silently empty
                 failed.append(sym)
                 continue
-            px_rows = []
-            for idx, row in hist.iterrows():
-                px = float(row.get("Close") or 0)
-                if px <= 0:
-                    continue
-                d = idx.date() if hasattr(idx, "date") else idx
-                px_rows.append({"symbol": sym, "price_date": d, "close_price": px})
-            rows = write_ticker_prices(cur, px_rows, source="yfinance", on_conflict="nothing",
-                                       round_to=4).rows_written
+            rows = write_ticker_prices(cur, px_rows, source=ALPACA_PRICE_SOURCE,
+                                       on_conflict="nothing", round_to=4).rows_written
             conn.commit()
             if rows:
                 filled.append(sym)
@@ -825,17 +839,27 @@ def backfill_yfinance_history(
             time.sleep(sleep_sec)
     cur.close()
     conn.close()
-    return {"filled": len(filled), "failed": len(failed), "symbols": filled[:20], "failed_sample": failed[:20]}
+    return {"source": ALPACA_PRICE_SOURCE, "filled": len(filled), "failed": len(failed),
+            "symbols": filled[:20], "failed_sample": failed[:20]}
+
+
+def backfill_yfinance_history(symbols: list[str], **kwargs) -> dict:
+    """Deprecated alias (pre-LQ-20261107-1679 name) for :func:`backfill_price_history`.
+
+    Kept so a stale caller gets the Alpaca backfill rather than an AttributeError — and certainly
+    rather than a yfinance write. Nothing in this repo calls it; delete once no external caller does.
+    """
+    return backfill_price_history(symbols, **kwargs)
 
 
 def sync_watchlist_prices(symbols: list[str] | None = None, *, min_rows: int = 60) -> dict:
-    """Quotes sync + yfinance gap-fill for watchlist symbols (used by refresh + daily pipeline)."""
+    """Quotes sync + Alpaca gap-fill for watchlist symbols (used by refresh + daily pipeline)."""
     syms = [str(s).upper() for s in (symbols or []) if s]
     n_quotes = sync_quotes_to_ticker_prices(syms if syms else None)
     _counts = count_price_rows_many(syms) if syms else {}
     short = [s for s in syms if _counts.get(s, 0) < min_rows] if syms else []
-    yf_result = backfill_yfinance_history(short) if short else {"filled": 0}
-    return {"quotes_synced": n_quotes, "yfinance": yf_result}
+    bf_result = backfill_price_history(short) if short else {"filled": 0}
+    return {"quotes_synced": n_quotes, "backfill": bf_result}
 
 
 def main(argv=None) -> int:
@@ -865,7 +889,8 @@ def main(argv=None) -> int:
         return 0
     if args.dry_run:
         print(f"DRY-RUN {LANE_ID}: would persist daily cache/holdings prices, sync market_quotes "
-              "and fill short watchlist history via yfinance; reject outliers before ticker_prices writes")
+              "and fill short watchlist history via Alpaca daily bars; reject outliers before "
+              "ticker_prices writes")
         return 0
     lr = _receipt_lib()
     started = lr.now_iso()

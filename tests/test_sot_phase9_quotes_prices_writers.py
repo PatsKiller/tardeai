@@ -159,8 +159,13 @@ def test_golden_api_v2_protective_stop_refresh():
 
 
 def test_golden_ingest_yfinance_thirteen_columns():
-    """Legacy (external_market_data_ingest.ingest_yfinance_quotes): thirteen columns in
-    this order, with None for any yfinance field the info dict lacked."""
+    """The thirteen-column shape, in this order, with None for any field the row lacked.
+
+    The producer this golden test was recorded from -- ``ingest_yfinance_quotes`` -- was deleted in
+    LQ-20261107-1679 (a quote never comes from yfinance). The pin stays: the writer still owns this
+    column order for a row that carries the fundamentals block, including the rows it wrote before
+    the retirement.
+    """
     info = {"currentPrice": 101.5, "previousClose": 100.0, "regularMarketChangePercent": 1.5,
             "volume": 1234567, "averageVolume": 2000000, "marketCap": 50_000_000_000,
             "trailingPE": 21.7, "forwardPE": None, "dividendYield": 0.012,

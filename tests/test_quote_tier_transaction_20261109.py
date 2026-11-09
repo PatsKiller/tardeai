@@ -22,7 +22,8 @@ These tests pin both halves:
   A. no provider call is ever made while a transaction is open, and a killed connection is repaired
      (bounded, via lib.pg_reconnect) instead of losing the run;
   B. a symbol the tier could not attempt is ``unwritten``, never ``missing``, so it is not routed to
-     the next provider; only a genuine "finviz has no quote" reaches the yfinance tier.
+     the next provider; and a genuine "finviz has no quote" is reported unpriced — since
+     LQ-20261107-1679 there is no yfinance tier to reach at all.
 
 No database, no network, no provider call: the connection and the writer are fakes.
 """
@@ -185,15 +186,15 @@ def test_an_unattemptable_symbol_is_unwritten_not_missing(monkeypatch):
 
 
 def test_a_dead_tier_routes_nothing_to_the_next_provider(monkeypatch):
-    """ingest_quotes: the ~156-symbol hand-off to yfinance on a tier failure must not happen."""
-    yf_calls: list[list[str]] = []
+    """ingest_quotes: a tier failure must not hand its miss list to anything else.
+
+    LQ-20261107-1679 removed the yfinance tier outright, so the property is now absolute: there is
+    no next provider to route to, and the module no longer carries the writer at all.
+    """
     monkeypatch.setattr(ingest, "_get_symbols", lambda: ["AAA", "BBB"])
     monkeypatch.setattr(ingest, "ingest_alpaca_quotes",
                         lambda symbols=None: {"source": "alpaca", "fetched": 0, "total": 2,
                                               "missing": ["AAA", "BBB"]})
-    monkeypatch.setattr(ingest, "ingest_yfinance_quotes",
-                        lambda symbols=None: (yf_calls.append(list(symbols or [])),
-                                              {"fetched": 0})[1])
 
     def dead_tier(symbols=None):
         raise RuntimeError("connection already closed")
@@ -201,13 +202,18 @@ def test_a_dead_tier_routes_nothing_to_the_next_provider(monkeypatch):
     monkeypatch.setattr(ingest, "ingest_finviz_quotes", dead_tier)
     out = ingest.ingest_quotes(["AAA", "BBB"])
 
-    assert yf_calls == [], f"a failed tier sent {yf_calls} to yfinance"
+    assert not hasattr(ingest, "ingest_yfinance_quotes"), "the banned writer is back"
+    assert "yfinance" not in out
     assert out["unpriced"]["tier_unavailable"] == ["AAA", "BBB"]
     assert "connection already closed" in (out["finviz_error"] or "")
 
 
-def test_only_a_genuine_finviz_miss_reaches_the_next_provider(monkeypatch):
-    yf_calls: list[list[str]] = []
+def test_a_genuine_finviz_miss_is_reported_unpriced_never_routed(monkeypatch):
+    """A real "finviz has no quote" used to reach yfinance and be WRITTEN as a price.
+
+    LQ-20261107-1679: it is now reported as unpriced and nothing is written — a missing price the
+    caller can show, not a price from a banned source.
+    """
     monkeypatch.setattr(ingest, "ingest_alpaca_quotes",
                         lambda symbols=None: {"source": "alpaca", "fetched": 0, "total": 3,
                                               "missing": ["AAA", "BBB", "CCC"]})
@@ -215,14 +221,12 @@ def test_only_a_genuine_finviz_miss_reaches_the_next_provider(monkeypatch):
                         lambda symbols=None: {"source": "finviz", "fetched": 1, "total": 3,
                                               "missing": ["BBB"], "unwritten": ["AAA"],
                                               "reconnects": 1, "rows_dropped": 1})
-    monkeypatch.setattr(ingest, "ingest_yfinance_quotes",
-                        lambda symbols=None: (yf_calls.append(list(symbols or [])),
-                                              {"fetched": 1})[1])
 
     out = ingest.ingest_quotes(["AAA", "BBB", "CCC"])
 
-    assert yf_calls == [["BBB"]], "unwritten (tier could not tell) must not be routed on"
-    assert out["unpriced"]["tier_unavailable"] == ["AAA"]
+    assert out["unpriced"]["no_quote"] == ["BBB"], "a finviz miss must be reported, not routed"
+    assert out["unpriced"]["tier_unavailable"] == ["AAA"], "unwritten (the tier could not tell) is not a miss"
+    assert "yfinance" not in out
 
 
 def test_the_news_gap_path_writes_no_quote():
