@@ -59,6 +59,12 @@ os.environ.setdefault("UNIFIED_MOMENTUM_ALERT_LEDGER", os.path.join(
     _scratch("tradeai_unified_alert_tests_"), "unified_momentum_alerts.jsonl"))
 # The host editor-failure policy file must not steer tests either (M5 4d, 2026-09-23).
 os.environ.setdefault("COMMS_EDITOR_FAIL_MODE_FILE", os.path.join(_scratch("tradeai_comms_fail_mode_tests_"), "absent"))
+# LQ-20261107-1289: the Finviz credential-health verdict now drives a real operator alert (Telegram +
+# email-to-text) on the first fresh cookie-dead verdict of an ET day. A unit test that produces that
+# verdict must not reach the communications gateway, so the alert is off for every test unless that
+# test switches it on itself (monkeypatch.setenv wins over this default) — and a test of the alert
+# injects `send=` and a tmp `state_path`, never the real persistent root.
+os.environ.setdefault("TRADEAI_FINVIZ_COOKIE_ALERT", "0")
 
 # The operator's ~/.pgpass is STALE and must never be a test's credential (n8nmat/b6, 2026-10-09).
 # A worktree has no .env, so every script helper that reads DB_PASSWORD from PROJECT_ROOT/.env
