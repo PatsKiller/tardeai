@@ -202,7 +202,8 @@ def material_news(conn: Any, policy: dict[str, Any], now: datetime, symbols: lis
         sevs = [str(s).lower() for s in (cfg.get("severities") or ["high", "critical"])]
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT upper(symbol), catalyst_type, lower(severity), COALESCE(published_at, created_at) AS at
+                """SELECT upper(symbol) AS symbol, catalyst_type, lower(severity) AS severity,
+                          COALESCE(published_at, created_at) AS at
                      FROM catalyst_events
                     WHERE upper(symbol) = ANY(%s) AND COALESCE(published_at, created_at) >= %s
                       AND lower(severity) = ANY(%s)""",
@@ -216,7 +217,14 @@ def material_news(conn: Any, policy: dict[str, Any], now: datetime, symbols: lis
         return {}
     rank = {"critical": 0, "high": 1}
     out: dict[str, dict[str, Any]] = {}
-    for sym, ctype, sev, at in rows:
+    # LQ-20261107-1293: a row is read by column name. `_db_query` and every RealDictCursor reader answer dicts, and
+    # unpacking a dict row yields its KEYS — `str("symbol")` marks every name present with garbage and `rank.get`
+    # demotes them all. Tuple rows, which plain cursors answer, stay supported.
+    for row in rows:
+        if isinstance(row, dict):
+            sym, ctype, sev, at = row.get("symbol"), row.get("catalyst_type"), row.get("severity"), row.get("at")
+        else:
+            sym, ctype, sev, at = row
         rec = out.setdefault(str(sym), {"count": 0, "catalyst_type": None, "severity": None, "latest": None,
                                         "_rank": 9})
         rec["count"] += 1
@@ -270,7 +278,14 @@ def overnight_markets(conn: Any, now: datetime, policy: dict[str, Any]) -> dict[
     sn = _import("session_now")
     next_text = sn.next_session_text(now, "futures")
     items = []
-    for sym, session, session_date, price, change_pct, basis, ref_date, bar_end in rows:
+    # LQ-20261107-1293: read by column name (the SELECT's own names), tuple rows still supported. Unpacking a dict row
+    # binds the KEYS: `price` becomes the string "price", the float below raises, and the card loses the block.
+    cols = ("symbol", "session", "session_date", "price", "change_pct", "reference_basis", "reference_date", "bar_end")
+    for row in rows:
+        if isinstance(row, dict):
+            sym, session, session_date, price, change_pct, basis, ref_date, bar_end = (row.get(c) for c in cols)
+        else:
+            sym, session, session_date, price, change_pct, basis, ref_date, bar_end = row
         age_h = None
         ts = None
         try:
@@ -623,7 +638,13 @@ def join(
                     "SELECT symbol, account, close_date, pnl FROM trade_closed WHERE close_date >= %s::date - %s AND pnl < 0",
                     (now.date(), ledger_days),
                 )
-                for sym, acct, d, pnl in cur.fetchall():
+                # LQ-20261107-1293: by column name — unpacking a dict row binds the SQL column names, and the
+                # str()/float() below then either raise (losing the whole ledger block) or cache nonsense.
+                for row in cur.fetchall():
+                    if isinstance(row, dict):
+                        sym, acct, d, pnl = row.get("symbol"), row.get("account"), row.get("close_date"), row.get("pnl")
+                    else:
+                        sym, acct, d, pnl = row
                     deferred_cache.setdefault((str(sym).upper(), str(d)[:10]), []).append((str(acct), float(pnl)))
             overnight, transitions = _home_v006_reads(conn, policy, now)
             news_material = material_news(

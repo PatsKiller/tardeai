@@ -203,7 +203,9 @@ def _articles(cur, since: datetime, limit: int) -> list[dict[str, Any]]:
         (since, limit),
     )
     cols = ("id", "symbol", "title", "summary", "published_at", "created_at")
-    return [dict(zip(cols, r)) for r in cur.fetchall()]
+    # LQ-20261107-1293: a dict row (RealDictCursor / data_broker._db_query) already IS the mapping. Zipping it would
+    # pair the column names with the dict's KEYS, so every field would read "id", "symbol", … instead of its value.
+    return [r if isinstance(r, dict) else dict(zip(cols, r)) for r in cur.fetchall()]
 
 
 def _catalyst_by_news(cur, since: datetime) -> dict[str, dict[str, Any]]:
@@ -215,7 +217,13 @@ def _catalyst_by_news(cur, since: datetime) -> dict[str, dict[str, Any]]:
         (since,),
     )
     out: dict[str, dict[str, Any]] = {}
-    for nid, ctype, sev in cur.fetchall():
+    # LQ-20261107-1293: read by column name; a dict row unpacked as a tuple would bind "nid"/"catalyst_type"/
+    # "severity", keying the whole map off the literal string "nid".
+    for row in cur.fetchall():
+        if isinstance(row, dict):
+            nid, ctype, sev = row.get("nid"), row.get("catalyst_type"), row.get("severity")
+        else:
+            nid, ctype, sev = row
         if nid and nid not in out:  # newest first is not guaranteed; the first row per article wins
             out[str(nid)] = {"catalyst_type": ctype, "severity": sev}
     return out
@@ -225,7 +233,10 @@ def _open_market_episode(cur) -> str | None:
     cur.execute("SELECT episode_id FROM market_event_episodes WHERE state <> 'CLOSED' AND scope = 'market' "
                 "ORDER BY opened_at DESC LIMIT 1")
     row = cur.fetchone()
-    return str(row[0]) if row else None
+    if not row:
+        return None
+    # LQ-20261107-1293: a dict row has no index 0 — row[0] raised KeyError before the episode id was ever read.
+    return str(row.get("episode_id")) if isinstance(row, dict) else str(row[0])
 
 
 # ── database writes (reached only under --apply) ────────────────────────────────────────────────────────────

@@ -168,6 +168,18 @@ def _read_doc(path: Path) -> Any:
     return yaml.safe_load(text)
 
 
+def _first_column(row: Any) -> Any:
+    """The one selected column of a universe query row, whatever shape the reader answers (LQ-20261107-1293).
+
+    ``db_query`` (data_broker) and every ``RealDictCursor`` reader answer dict rows; a plain cursor answers tuples.
+    Returns the value, never the row: a caller that stringifies a whole row invents a symbol."""
+    if isinstance(row, dict):
+        return next(iter(row.values()), None)
+    if isinstance(row, (list, tuple)):
+        return row[0] if row else None
+    return row
+
+
 def resolve_universe(cfg: dict[str, Any], *, root: Path = ROOT,
                      db_query: Callable[[str], Any] | None = None) -> tuple[list[str], dict[str, Any]]:
     """(symbols, provenance): the union of every ``universe.sources`` list, in order. A missing file, key or query is
@@ -191,7 +203,9 @@ def resolve_universe(cfg: dict[str, Any], *, root: Path = ROOT,
             except Exception as exc:  # noqa: BLE001 -- a source that fails is named, never invented around
                 prov["missing_refs"].append(f"{ref} ({type(exc).__name__})")
                 continue
-            vals = [r[0] if isinstance(r, (list, tuple)) and r else r for r in (rows or [])]
+            # LQ-20261107-1293: a dict row has no index 0. Taking the whole dict fell through to str(row) below and
+            # put a symbol-shaped string of the row text into the universe; take the row's one column by name.
+            vals = [_first_column(r) for r in (rows or [])]
         else:
             try:
                 vals = _lookup(_read_doc(root / str(src["file"])), str(src["key"]))
@@ -201,7 +215,7 @@ def resolve_universe(cfg: dict[str, Any], *, root: Path = ROOT,
         if isinstance(vals, list) and (vals or sql):
             # A SQL source that answered zero rows ANSWERED: the count says 0 and the run continues. Only a source that
             # could not be read at all is a missing ref -- "the book is empty" and "the read failed" are different facts.
-            got = [str(s).strip().upper() for s in vals if str(s).strip()]
+            got = [str(s).strip().upper() for s in vals if s is not None and str(s).strip()]
             limit = src.get("limit")
             if isinstance(limit, int) and limit > 0 and len(got) > limit:
                 got = got[:limit]
