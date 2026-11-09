@@ -527,6 +527,32 @@ def test_over_cover_is_a_fix_qty():
     assert entry["stop_qty"] == 130.0 and entry["held_qty"] == 101.0
 
 
+def test_stop_advice_prose_uses_the_account_display_name_not_the_raw_key():
+    # LQ-1391: the sentences are read by the operator; the canonical key is for joins and links.
+    # config/account_display_names.json: schwab_taxable -> "Schwab Individual".
+    ev = {"kind": "news", "neutral": False, "summary": "x", "premise_correction": None}
+    add = B.stop_advice_for_account(
+        symbol="ZRKT", account="schwab_taxable", held_qty=200, price=134.27, move_pct=8.62, atr=8.94,
+        stops=[], event=ev, source_ids=[], as_of="2026-11-09T05:50:00-05:00",
+    )
+    assert add["answer"] == "ADD_STOP"
+    assert add["account"] == "schwab_taxable"                    # the join key is unchanged
+    assert add["account_label"] == "Schwab Individual"           # the row's one display name
+    assert "Schwab Individual" in add["reason"]
+    assert "schwab_taxable" not in add["reason"]
+    fix = B.stop_advice_for_account(
+        symbol="ZV", account="schwab_taxable", held_qty=101.0, price=410.0, move_pct=0.2, atr=5.0,
+        stops=[{"account": "schwab_taxable", "order_id": "1", "stop": 395.0, "qty": 130, "status": "pending_activation"}],
+        event=ev, source_ids=[], as_of="2026-11-09T05:50:00-05:00",
+    )
+    assert fix["answer"] == "FIX_QTY"
+    assert "Schwab Individual" in fix["reason"] and "schwab_taxable" not in fix["reason"]
+
+
+def test_an_unconfigured_account_key_is_title_cased_never_echoed_raw():
+    assert B._acct("acct_a") == "Acct A"
+
+
 def test_tiny_position_is_no_action():
     entry = B.stop_advice_for_account(
         symbol="ZDUST", account="acct_a", held_qty=0.13, price=190.0, move_pct=9.0, atr=3.0,

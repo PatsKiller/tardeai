@@ -50,6 +50,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from lib.account_display import account_label  # noqa: E402  (LQ-1391 one name per account)
 from lib.cio_buys_gate import buys_block  # noqa: E402  (LQ-1311 synopsis buy gate)
 from lib.cio_regime import reader as regime_reader  # noqa: E402  (LQ-1317 regime block)
 from lib.cio_regime import build as build_regime  # noqa: E402
@@ -144,6 +145,15 @@ def _f(value: Any, default: Optional[float] = None) -> Optional[float]:
 
 def _r(value: Optional[float], nd: int = 2) -> Optional[float]:
     return None if value is None else round(float(value), nd)
+
+def _acct(account: Any) -> str:
+    """The account's one human display name in prose (LQ-1391).
+
+    Structured fields keep the canonical key (``schwab_taxable``) because links and joins need it;
+    a sentence an operator reads must not. ``config/account_display_names.json`` owns the names
+    (``schwab_taxable`` → "Schwab Individual"), so this prose and the account table agree.
+    """
+    return account_label(account)
 
 
 def _latest(values: Iterable[Any]) -> Optional[str]:
@@ -415,7 +425,7 @@ def advisory_action(
     if uncovered > 0.5:
         bits.append(
             f"cover the {uncovered:g} sh with no resting stop"
-            + (f" (accounts: {', '.join(sorted(cov.get('uncovered_by_account') or {}))})"
+            + (f" (accounts: {', '.join(_acct(a) for a in sorted(cov.get('uncovered_by_account') or {}))})"
                if cov.get("uncovered_by_account") else "")
         )
     if cov.get("reconcile_by_account") or cov.get("stops_in_accounts_without_holding"):
@@ -554,6 +564,9 @@ def stop_advice_for_account(
     base = {
         "symbol": symbol,
         "account": account,
+        # The row's one human name (LQ-1391). ``account`` stays the canonical key the UI joins on;
+        # this is what the row prints, so no surface has to title-case a key itself.
+        "account_label": _acct(account),
         "event_summary": event.get("summary"),
         "answer": "HOLD",
         "stop_now": _r(stop_now),
@@ -581,7 +594,7 @@ def stop_advice_for_account(
     if stop_qty > held_qty + tol:
         base["answer"] = "FIX_QTY"
         base["reason"] = (
-            f"the working stop covers {stop_qty:g} sh against {held_qty:g} sh held in {account}; "
+            f"the working stop covers {stop_qty:g} sh against {held_qty:g} sh held in {_acct(account)}; "
             f"reduce the stop quantity to the holding before anything else"
         )
         return base
@@ -593,9 +606,9 @@ def stop_advice_for_account(
             suggested = min(price - atr, price * (1 - RAISE_MIN_DISTANCE_BELOW_CLOSE))
         base["suggested_stop"] = _r(suggested)
         if stop_qty <= 0:
-            base["reason"] = f"{held_qty:g} sh in {account} have no working stop"
+            base["reason"] = f"{held_qty:g} sh in {_acct(account)} have no working stop"
         else:
-            base["reason"] = f"the working stop covers {stop_qty:g} of {held_qty:g} sh in {account}"
+            base["reason"] = f"the working stop covers {stop_qty:g} of {held_qty:g} sh in {_acct(account)}"
         if suggested is not None:
             base["reason"] += f"; a stop near {suggested:.2f} would cover the difference"
         return base
@@ -843,7 +856,7 @@ def book_summary(
     if worst:
         tail = (
             f"largest unprotected: {worst['symbol']} {worst['shares']:g} sh "
-            f"(~${worst['value']:,.0f}) in {worst['account'] or 'an unnamed account'}"
+            f"(~${worst['value']:,.0f}) in {_acct(worst['account']) if worst.get('account') else 'an unnamed account'}"
         )
     else:
         tail = "every held share is covered by a working stop"
@@ -1018,7 +1031,7 @@ def build_synopsis(
         }.get(str(first.get("answer")), "hold")
         do_now_line = (
             f"{len(stop_advice)} stop item(s), {len(actionable)} needing a decision; "
-            f"first: {first.get('symbol')} in {first.get('account')} — {first.get('answer')} ({verb})"
+            f"first: {first.get('symbol')} in {_acct(first.get('account'))} — {first.get('answer')} ({verb})"
         )
     else:
         do_now_line = "no stop items tonight"
