@@ -1171,12 +1171,18 @@ def _src_anthropic_search(ent: Entity, ctx: ResearchContext) -> list[Fact]:
     if resp.get("ok") is not True:
         # A paid enhancement must never take the Ask lane down. The reason is recorded (gap + run row) and the
         # source reports no data for this subject; the free/paid router source still answers the same query.
+        # LQ-20261107-1592: the refusal carries when the leg is worth another try (``retry_at``) and whether
+        # this call was skipped by the backoff (``skipped``), so the answer can say "web search unavailable
+        # until X" instead of leaving the silence to a gap code the reader cannot act on.
         return SourceFacts(
             outcome={
                 "ok": False,
                 "degraded": True,
                 "reason": str(resp.get("error") or "WEB_SEARCH_UNAVAILABLE"),
                 "provider": resp.get("provider") or "anthropic",
+                "retry_at": resp.get("retry_at"),
+                "skipped": resp.get("skipped") is True,
+                "cooldown_state": resp.get("cooldown_state"),
             }
         )
     # `web_search_20260209` answers through Anthropic-side dynamic filtering, which runs sandboxed code
@@ -2642,6 +2648,21 @@ def _contract_dissent(internal: Mapping[str, Any]) -> list[Any]:
     return out
 
 
+def web_search_unavailable_note(source_runs: Sequence[Mapping[str, Any]]) -> str | None:
+    """The operator-facing line when the paid web-search leg is unavailable, else None.
+
+    LQ-20261107-1592: a degraded paid source used to be counted as just another gap, so an answer with no
+    web facts read as "the web had nothing" rather than "the web search leg was down". The note names the
+    refusal and when the leg is retried — the same two facts the run row carries.
+    """
+    row = next((r for r in source_runs or [] if r.get("source") == "web.anthropic" and r.get("degraded") is True), None)
+    if row is None:
+        return None
+    reason = str(row.get("reason") or "WEB_SEARCH_UNAVAILABLE")
+    retry = f"; retry after {row['retry_at']}" if row.get("retry_at") else ""
+    return f"Web search unavailable ({reason}{retry}). Other sources answered from stored data."
+
+
 def to_contract_answer(internal: Mapping[str, Any], ctx: Any):
     """Map this module's research result onto the shared ``AskAnswer@v1`` (scripts/lib/cio_ask_contract.py).
 
@@ -2677,6 +2698,9 @@ def to_contract_answer(internal: Mapping[str, Any], ctx: Any):
     gaps = internal.get("gaps") or []
     if gaps:
         lines.append(f"{len(gaps)} named data gap(s); see provenance.gaps.")
+    web_off = web_search_unavailable_note(internal.get("source_runs") or [])
+    if web_off:
+        lines.append(web_off)
     summary, _ = C.mbi_guard_text("\n".join(lines))
     researched = bool(pros)
     req = ctx.request

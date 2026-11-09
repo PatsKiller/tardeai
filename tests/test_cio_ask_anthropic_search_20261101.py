@@ -29,6 +29,13 @@ from scripts.lib import cio_ask_research as car  # noqa: E402
 NOW = datetime(2026, 11, 1, 18, 0, tzinfo=timezone.utc)
 
 
+@pytest.fixture(autouse=True)
+def _isolated_web_search_cooldown(tmp_path, monkeypatch):
+    """LQ-20261107-1592: ``search()`` now keeps its backoff state under the CIO root. Point that root at
+    ``tmp_path`` so no test reads or writes the host's cooldown file, or another test's."""
+    monkeypatch.setenv("TRADEAI_CIO_DIR", str(tmp_path))
+
+
 # ---------------------------------------------------------------------------------------------- fixtures
 def _results_document(model: str = "claude-sonnet-5-5") -> dict:
     """The provider message body the transport receives (``content`` = raw provider blocks)."""

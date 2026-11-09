@@ -25,9 +25,18 @@ if str(ROOT) not in sys.path:
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
+import pytest  # noqa: E402
+
 from scripts.lib import anthropic_web_search as ws  # noqa: E402
 
 URL = "http://127.0.0.1:8766/v1/chat/completions"
+
+
+@pytest.fixture(autouse=True)
+def _isolated_web_search_cooldown(tmp_path, monkeypatch):
+    """LQ-20261107-1592: ``search()`` now keeps its backoff state under the CIO root. Point that root at
+    ``tmp_path`` so no test reads or writes the host's cooldown file, or another test's."""
+    monkeypatch.setenv("TRADEAI_CIO_DIR", str(tmp_path))
 
 
 def _http_error(code: int, reason: str, body: bytes):

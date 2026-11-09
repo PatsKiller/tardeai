@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "CIO_ASK_WEB_SEARCH_BACKOFF_20261109",
+  "files": [
+    "tests/test_cio_ask_web_search_backoff_20261109.py"
+  ],
+  "anchor": "CIO_ASK_WEB_SEARCH_BACKOFF_20261109",
+  "comment": [
+    "ANCHOR: CIO_ASK_WEB_SEARCH_BACKOFF_20261109 — LQ-20261107-1592: a refused paid web search opened no"
+    " cooldown, so every Ask subject re-attempted the bridge and logged another refusal (91+4 in 24 h, zero"
+    " answers); the answer also never said the leg was down. This gate holds the backoff window, the typed"
+    " bridge code, and the operator-visible 'web search unavailable' line."
+  ]
+}
