@@ -126,14 +126,23 @@ def _extended_batch(db_query, symbols: list[str], window_s: float,
         # The caller marks its rows ``extended_unknown`` so the card can say the off-hours view is unavailable.
         return {"__unknown__": True}
     out: dict[str, dict[str, Any]] = {}
+    cols = ("symbol", "session", "price", "change_pct", "reference_basis", "bar_end", "feed")
     for row in rows or []:
-        sym, session, price, chg, basis, bar_end, feed = row
-        if price is None or bar_end is None:
+        # _db_query returns dict rows in production; tuple rows are accepted too. Unpacking a dict
+        # yields its KEYS, so float('price') 500'd /api/v2/sectors/monitor on 5d3c0c42f (LQ-20261107-1291).
+        try:
+            sym, session, price, chg, basis, bar_end, feed = (
+                tuple(row.get(c) for c in cols) if isinstance(row, dict) else tuple(row))
+            if price is None or bar_end is None:
+                continue
+            price_f = float(price)
+            chg_f = None if chg is None else float(chg)
+        except (TypeError, ValueError):  # one bad row is skipped, never an exception in the request thread
             continue
-        level_only = not basis or str(basis).startswith("none_level_only") or chg is None
+        level_only = not basis or str(basis).startswith("none_level_only") or chg_f is None
         out[str(sym).upper()] = {
-            "price": float(price),
-            "chg_pct": None if level_only else float(chg),
+            "price": price_f,
+            "chg_pct": None if level_only else chg_f,
             "as_of": str(bar_end),
             "session": str(session),
             "feed": str(feed),

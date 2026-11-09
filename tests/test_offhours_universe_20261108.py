@@ -248,3 +248,16 @@ def test_the_newer_of_the_two_stores_wins(monkeypatch):
     assert out["V"]["price"] == 424.10
     assert out["V"]["session"] == "afterhours"
     assert out["V"]["label"] == "after-hours Fri 7:58 PM $424.10 (+0.3%)"
+
+
+def test_extended_batch_dict_rows_lq1291():
+    """Production _db_query returns dict rows; unpacking one gave its keys -> float('price') 500."""
+    from datetime import datetime, timezone
+    bar_end = datetime(2026, 11, 7, 1, 0, tzinfo=timezone.utc)
+    row = {"symbol": "V", "session": "afterhours", "price": 424.10, "change_pct": 0.3,
+           "reference_basis": "basis", "bar_end": bar_end, "feed": "schwab"}
+    bad = dict(row, symbol="W", price="not-a-number")
+    out = mq._extended_batch(lambda sql, params, fetch: [row, bad], ["V", "W"], 96 * 3600.0,
+                             now=datetime(2026, 11, 7, 2, 0, tzinfo=timezone.utc))
+    assert out["V"]["price"] == 424.10 and out["V"]["chg_pct"] == 0.3
+    assert "W" not in out
