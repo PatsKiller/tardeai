@@ -65,11 +65,11 @@ def _rollback_close(conn) -> None:
     """Release an aborted txn's locks before a retry opens a new connection."""
     if conn is None:
         return
-    try:
+    try:  # nosemgrep: tq-py-except-pass -- best-effort unlock before retry; lock path still raises EX_TEMPFAIL
         conn.rollback()
     except Exception:
         pass
-    try:
+    try:  # nosemgrep: tq-py-except-pass -- best-effort close of aborted conn; retry opens a fresh one
         conn.close()
     except Exception:
         pass
