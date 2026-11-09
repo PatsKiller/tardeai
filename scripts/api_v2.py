@@ -31521,6 +31521,9 @@ def _home_since_close():
     win = _sc.window(now)
     if not snap:
         return {"status": "no_snapshot", "window": win, "as_of_now": now.isoformat()}
+    # LQ-20261107-1672: the brief was written overnight and the broker's book moves during the day. Reconcile its
+    # stop advice against a fresh read, so a stop Schwab already has working is never served as an action.
+    snap = _sc.served_since_close(snap, _sc.fetch_stops_for_snapshot(_db_query, snap), now=now)
     return {"status": "ok", **snap, "window_now": win, "freshness": _sc.freshness(snap, now=now), "as_of_now": now.isoformat()}
 
 
@@ -31550,6 +31553,9 @@ def _home_cio_card():
     snap = _sc.load_json(STATE_DIR / "since_close_latest.json")
     now_et = _dt.now(_Z("America/New_York"))
     if snap:
+        # LQ-20261107-1672: this card's actions and its "Do now n of N" counts both read this brief; reconcile it
+        # against the broker's book before it is rendered (the 30 s cache above bounds the extra read).
+        snap = _sc.served_since_close(snap, _sc.fetch_stops_for_snapshot(_db_query, snap), now=now_et)
         snap = {**snap, "freshness": _sc.freshness(snap, now=now_et)}
     runtime = PROJECT_ROOT / "data" / "runtime"
     defense = _load_json(runtime / "defense_recommendations_latest.json") or None

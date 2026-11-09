@@ -1,0 +1,19 @@
+{
+  "schema": "CiGate@v1",
+  "name": "home_cio_card_reconcile_route_20261109",
+  "files": [
+    "tests/test_home_cio_card_reconcile_route_20261109.py"
+  ],
+  "comment": [
+    "LQ-20261107-1687 (lead 15:46 ET): on Home the CIO card read 'Stops 5 to decide' and the Do-now line said",
+    "the same, while the card's own action list held one row (XAR). The served snapshot at 21:01Z proves the",
+    "cause is not staleness: its stop_advice rows already carry reconcile states (four done at Schwab, XAR open)",
+    "but synopsis.do_now is written from the answers (cio_overnight_brief.py counts RAISE/ADD_STOP/FIX_QTY and",
+    "never reads a state), so the sentence is stale by construction and cannot self-heal. Pins: GET",
+    "/home/cio-card serves stops_actionable == 1 with do_now n=1 of=1 (XAR) for that document; GET",
+    "/home/since-close serves the recomputed do_now (actionable 1, settled 4) with the stop_read clock; both",
+    "routes are reads — the writer's file is byte-identical after the render; an UNREAD stop book settles",
+    "nothing (every ask stays an action, do_now counts 5, the rows are marked unread, no stop time is claimed).",
+    "Synthetic fixtures in tmp_path; no live snapshot, DB or broker is read."
+  ]
+}
