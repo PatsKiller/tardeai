@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1438_stocktwits_dead_cusip_20261109",
+  "files": [
+    "tests/test_lq1438_stocktwits_dead_cusip_20261109.py"
+  ],
+  "anchor": "LQ1438_STOCKTWITS_DEAD_CUSIP_20261109",
+  "comment": [
+    "ANCHOR: LQ1438_STOCKTWITS_DEAD_CUSIP_20261109 — social-ingest-all must not ask StockTwits for a dead CUSIP holding.",
+    "The public ticker stream answers HTTP 404. A priced CUSIP stays. Synthetic rows only."
+  ]
+}

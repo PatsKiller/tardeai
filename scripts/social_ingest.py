@@ -52,6 +52,31 @@ def _get_conn():
                             password=os.environ.get("DB_PASSWORD", ""))
 
 
+def stocktwits_symbols(rows) -> list:
+    """Tickers the StockTwits symbol stream can be asked for.
+
+    A dead CUSIP holding is not a ticker. The public stream answers HTTP 404 for
+    it (Playwright item 152, lane social-ingest-all). The predicate is
+    ``security_identity.is_dead_cusip_holding``: CUSIP-shaped, no price and no
+    market value. A CUSIP-shaped row that still has a price stays, because that
+    operator rule keeps it. Cash and fund rows stay out, as they did before.
+    """
+    from lib.security_identity import is_dead_cusip_holding
+
+    if not isinstance(rows, list):
+        return []
+    kept = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if not row.get("symbol") or row.get("is_cash") or row.get("is_fund"):
+            continue
+        if is_dead_cusip_holding(row):
+            continue
+        kept.append(row["symbol"])
+    return kept
+
+
 def holdings_universe():
     """``(symbols, state)`` from holdings.json — the read state travels WITH the symbols.
 
@@ -73,11 +98,8 @@ def holdings_universe():
     data, state = read_holdings_state(f)
     if data is None:
         return [], state
-    return [
-        h["symbol"]
-        for h in object_rows(data.get("holdings")) or []
-        if h.get("symbol") and not h.get("is_cash") and not h.get("is_fund")
-    ], state
+    rows = object_rows(data.get("holdings"))
+    return stocktwits_symbols(rows if isinstance(rows, list) else []), state
 
 
 def _get_holdings_symbols():
