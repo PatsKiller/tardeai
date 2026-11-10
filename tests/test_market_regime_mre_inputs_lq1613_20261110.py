@@ -9,6 +9,12 @@ These pins: the collector records the engine's technical and breadth observation
 stale, missing or UNKNOWN observation is `not_measured` with its reason, never a value; the classifier maps them to
 trend/breadth states and scores them from config; and the outputs change when those inputs change (the G8 bar).
 Synthetic engine snapshots and indicator rows only.
+
+LQ-1826 review r2: with the engine at technical STRESS the label must not publish `risk_on_trend` on ANY breadth
+state or VIX bucket (M1 — at `risk_off: 2` the dominant (STRESS, CALM) pair tied 2-2 and `max()`'s dict order won
+it for risk_on_trend beside `trend_state=bearish`, and scripts/api_v2.py derived the opposite answer from the same
+row), and a configured score label that is not a regime is named rather than silently unscored (N1). The file is
+registered as CiGate@v1 `market_regime_mre_inputs_lq1613_20261110` (M2).
 """
 from __future__ import annotations
 
@@ -140,6 +146,67 @@ def test_the_11_10_snapshot_replayed_no_longer_reads_risk_on_with_trend_unmeasur
     assert snap["risk_appetite_state"] == "bearish"
     assert snap["regime_label"] != "risk_on_trend"
     assert snap["inputs"]["mre_technical"] == "STRESS" and snap["inputs"]["mre_breadth"] == "WARN"
+
+
+def _display_and_flag(snap):
+    """scripts/api_v2.py:892 (the display string) and :897 (risk_off), verbatim, from the snapshot row."""
+    now = str(snap["regime_label"]).replace("_", " ")
+    ts = str(snap.get("trend_state") or "").strip()
+    now += (f" {ts}" if ts else "") + (f" {int(float(snap['confidence']) * 100)}%"
+                                       if snap.get("confidence") is not None else "")
+    return now, any(w in now.lower() for w in ("off", "bear", "defensive"))
+
+
+def test_technical_stress_with_calm_breadth_is_not_risk_on():
+    """LQ-1826 M1 exactly: (technical STRESS, breadth CALM) is the dominant engine pair — 477 of 538 receipts,
+    11-03..11-10. At `mre_technical.STRESS: {risk_off: 2}` the scores tie 2-2 against the vix `normal` bonus and
+    `max()` resolves the tie by dict order to risk_on_trend while trend_state says bearish; scripts/api_v2.py:892
+    then prints "risk on trend bearish" and :897 derives risk_off=True from the same row (Rule 9: the UI may not
+    contradict reality; one payload, two answers). The label and the trend must agree on direction."""
+    snap = _snap("STRESS", "CALM")
+    assert snap["trend_state"] == "bearish" and snap["breadth_state"] == "broad"
+    assert snap["regime_label"] != "risk_on_trend", snap["summary"]
+    display, flag = _display_and_flag(snap)
+    assert "risk on" not in display, display
+    assert flag is True  # the cautious reading and the label agree: risk_off is the label
+    assert not (snap["trend_state"] == "bearish" and snap["regime_label"] == "risk_on_trend")
+
+
+@pytest.mark.parametrize("breadth", ["CALM", "IMPROVING", "WARN", "STRESS"])
+@pytest.mark.parametrize("vix", ["extreme", "high", "normal", "low"])
+def test_technical_stress_never_publishes_risk_on_trend_on_any_breadth_or_vix(breadth, vix):
+    """The invariant, not one row: with the engine at technical STRESS, no breadth state and no VIX bucket can
+    produce a risk-on label beside trend_state=bearish."""
+    inds, _ = _ind(_engine("STRESS", breadth))
+    base = [r for r in BASE_241 if r[0] != "vix_close"] + [_row("vix_close", vix, 19.76)]
+    snap = _classify(base + _rows_from(inds))
+    assert snap["inputs"]["mre_technical"] == "STRESS"
+    assert snap["trend_state"] == "bearish"
+    assert snap["regime_label"] != "risk_on_trend", (breadth, vix, snap["confidence"])
+    display, _ = _display_and_flag(snap)
+    assert "risk on" not in display, (breadth, vix, display)
+
+
+def test_the_configured_stress_weight_exceeds_the_largest_risk_on_bonus():
+    """Config intent, so a later weight edit cannot silently re-open M1: the STRESS risk_off weight must exceed
+    the largest risk_on_trend total the breadth config adds (plus the VIX bucket's at most +1)."""
+    cfg = _cfg()
+    stress = int(cfg["scores"]["mre_technical"]["STRESS"].get("risk_off", 0))
+    best_breadth = max(int(p.get("risk_on_trend", 0)) for p in cfg["scores"]["mre_breadth"].values())
+    assert stress > best_breadth + 1, f"technical STRESS {stress} could tie or lose to risk_on_trend"
+
+
+def test_a_score_label_that_is_not_a_regime_is_named_and_scores_nothing(tmp_path):
+    """LQ-1826 N1: `{risk_of: 2}` used to load cleanly, record the state and add zero points in silence."""
+    doc = yaml.safe_load(CFG_PATH.read_text())
+    alt = copy.deepcopy(doc)
+    alt["scores"]["mre_technical"]["WARN"] = {"risk_of": 9}
+    p = tmp_path / "badlabel.yaml"
+    p.write_text(yaml.safe_dump(alt))
+    inds, _ = _ind(_engine("WARN", "CALM"))
+    snap = _classify(BASE_241 + _rows_from(inds), cfg=mre_inputs.load_config(p))
+    assert snap["trend_state"] == "weakening"
+    assert "bad_label:risk_of" in snap["missing_data"]
 
 
 def test_outputs_change_whenever_the_engine_inputs_change():

@@ -141,7 +141,9 @@ def apply(
 ) -> tuple[dict[str, str], list[str]]:
     """Add the engine states' points to ``scores`` (in place) and return ({column: state}, named gaps).
 
-    A configured key with no row is ``no_<key>``; a ``not_measured`` row is ``<key>:<reason>``. Neither scores."""
+    A configured key with no row is ``no_<key>``; a ``not_measured`` row is ``<key>:<reason>``. Neither scores.
+    A configured score label that is not a regime the classifier scores is named ``bad_label:<label>`` rather
+    than dropped in silence: a typo in the yaml otherwise moves the label by zero points and says nothing."""
     states: dict[str, str] = {}
     gaps: list[str] = []
     for key in cfg["market_risk_engine"]["categories"].values():
@@ -157,5 +159,7 @@ def apply(
             for label, pts in (cfg["scores"][key].get(signal) or {}).items():
                 if label in scores:
                     scores[label] += int(pts)
+                elif f"bad_label:{label}" not in gaps:
+                    gaps.append(f"bad_label:{label}")
         states.setdefault(st["column"], NOT_MEASURED)
     return states, gaps

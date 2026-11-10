@@ -38,7 +38,12 @@ scores:
     CALM: {risk_on_trend: 2, broad_momentum: 1}
     IMPROVING: {risk_on_trend: 1, broad_momentum: 1}
     WARN: {choppy_range: 1, risk_off: 1}
-    STRESS: {risk_off: 2}
+    # 3, not 2 (LQ-1826 M1). The most any other line can add to risk_on_trend on top of a technical STRESS is 2
+    # (vix low +1, breadth CALM +1), so a STRESS technical state can never reach, tie or lose to risk_on_trend on
+    # any breadth state or VIX bucket: the engine's own STRESS cannot be outvoted by a calm breadth reading plus
+    # the VIX bucket. At 2 the (STRESS, CALM) scores tied 2-2 and max() resolved by dict order to risk_on_trend
+    # with trend_state=bearish — 477 of 538 engine receipts over 11-03..11-10 were exactly that pair.
+    STRESS: {risk_off: 3}
   mre_breadth:
     CALM: {risk_on_trend: 1, broad_momentum: 1}
     IMPROVING: {broad_momentum: 1}

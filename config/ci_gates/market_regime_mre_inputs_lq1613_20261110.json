@@ -1,0 +1,19 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_regime_mre_inputs_lq1613_20261110",
+  "files": [
+    "tests/test_market_regime_mre_inputs_lq1613_20261110.py"
+  ],
+  "anchor": "MARKET_REGIME_MRE_INPUTS_LQ1613_20261110",
+  "comment": [
+    "ANCHOR: MARKET_REGIME_MRE_INPUTS_LQ1613_20261110 — LQ-20261107-1613 (audit C3, re-opened 2026-11-10) and the",
+    "LQ-2026-1826 review M2: the test file that commit 85f9c3828 added was registered in no CiGate@v1 and in",
+    "neither UNLISTED_BASELINE nor DENY in scripts/check_test_coverage.py, so --fail-on-new reported a new",
+    "unlisted file. This gate is that registration. The tests pin the regime's market-wide trend and breadth: the",
+    "collector records the Market Risk Engine's technical and breadth observations with their age; a stale,",
+    "missing, unreadable or UNKNOWN observation is `not_measured` with its reason and never a value (Rule 11);",
+    "the classifier maps and scores them from config/market_regime_classifier.yaml; a technical STRESS never",
+    "publishes risk_on_trend on any breadth state or VIX bucket and never contradicts trend_state=bearish",
+    "(LQ-1826 M1); and a configured score label that does not exist is named, not silently unscored."
+  ]
+}
