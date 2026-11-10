@@ -95,7 +95,9 @@ MANIFEST_SCHEMA = "DiskHygieneManifest@v1"
 APPLY_SCHEMA = "DiskHygieneApplyReport@v1"
 #: Fixed in code (not config) so the n8n env allowlist inventory stays a literal, statically checked read.
 GRANT_ENV = "TRADEAI_DISK_HYGIENE_GRANT"
-#: Default wall budget for the pressure loop (pressure.run_budget_s overrides): under the hourly slot and the 3600 s timeout.
+#: Default per-run budget for the pressure loop (pressure.run_budget_s overrides): 40 min, under the 3000 s wall the
+#: executor enforces (`timeout -k 30 3000`, from n8n_run_allowlist timeout_s) and at the contract's
+#: duration_degraded_above_s. Over budget no new pass starts; the wall itself is the executor's kill.
 RUN_BUDGET_S = 2400
 
 #: Executor request identity; default --apply refuses it, separately reviewed --standing may admit it.
@@ -2657,9 +2659,10 @@ def standing_plan(rules: Mapping[str, Any], now: datetime, evidence: Mapping, *,
     rows = standing_results(rules, ctx)
     # LQ-20261107-1638: the caches section (evaluate_caches) is NOT one of the standing rules, so its roots had no
     # rows in this manifest and an absolute cap on pip/npm/playwright would measure nothing. Measure them here, for
-    # the budget only: ``budget_measure_only`` rows are never added to items/excluded, because the hourly standing
-    # lane must not gain a deletion class ("C" in the standing cfg is abandoned worktrees, a different rule) without
-    # an operator ruling. Their over-cap state is reported and escalated by budget_report.
+    # the budget only: ``budget_measure_only`` rows are never added to items/excluded, because the standing lane
+    # (nightly 03:45 ET since LQ-1838) must not gain a deletion class ("C" in the standing cfg is abandoned
+    # worktrees, a different rule) without an operator ruling. Their over-cap state is reported and escalated by
+    # budget_report.
     budget_roots = rules.get("_budget_roots") or []
     budget_rows_extra: list[dict] = []
     if budget_roots and any("C" in (r.get("rules") or []) for r in budget_roots):
@@ -3531,7 +3534,8 @@ def _apply_main(a: argparse.Namespace, rules: Mapping[str, Any], now: datetime, 
 
     pcfg = (rules.get("standing_apply") or {}).get("pressure") or {}
     max_passes = int(pcfg.get("max_passes") or 1) if a.until_target is not None else 1
-    # One run must end well inside its hourly slot (n8n takes the flock -n lock, so an overlap skips the next slot).
+    # One run must end well inside the 3000 s executor wall (`timeout -k 30 3000`): over it the executor SIGTERMs the
+    # run, which then writes no receipt, and with one fire a night there is no next slot until tomorrow.
     # A pass re-scans everything (~20 min on the live host): do not start one that cannot finish inside the budget.
     run_budget_s = int(pcfg.get("run_budget_s") or RUN_BUDGET_S)
     longest_pass_s = 0.0
@@ -3672,8 +3676,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--only-if-above", type=float, metavar="PCT",
                     help="exit 0 with a below_threshold receipt, planning nothing, when used%% <= PCT")
     ap.add_argument("--scheduled", action="store_true",
-                    help="--standing --apply, fired hourly: the day's full run once at/after pressure.daily_hour_et (ET), "
-                         "otherwise only above pressure.trigger_pct; both re-run until pressure.target_pct")
+                    help="--standing --apply, for the scheduled fire (n8n dispatch.cron 45 3 * * * America/New_York): "
+                         "the day's full run once at/after pressure.daily_hour_et (ET), otherwise only above "
+                         "pressure.trigger_pct; both re-run until pressure.target_pct")
     try:
         a = ap.parse_args(argv)
     except SystemExit as exc:
@@ -3758,7 +3763,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         rc = _apply_main(a, rules, now, state_root, wall_start, evidence, evidence_error)
         if daily_due and not a.dry_run:
             # Recorded whatever the outcome: a refused/failed day alerts once (monitor) and is retried tomorrow; only
-            # a crash before this line (no record) is retried at the next hourly fire.
+            # a crash before this line (no record) is retried at the next fire, i.e. the following night.
             from scripts.lib.atomic_json_store import atomic_write_json
 
             atomic_write_json(manifest_dir(rules, state_root) / DAILY_STATE, {"date_et": _et_date(now), "exit": rc,
