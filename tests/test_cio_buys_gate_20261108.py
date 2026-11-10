@@ -1,11 +1,11 @@
 """LQ-20261107-1311: the CIO synopsis states the buy gate (synthetic calendar, no real data)."""
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from lib.cio_buys_gate import buys_block, first_gating_event  # noqa: E402
+from lib.cio_buys_gate import buys_block, event_passed, first_gating_event  # noqa: E402
 
 ET = ZoneInfo("America/New_York")
 SUN = datetime(2031, 3, 9, 20, 0, tzinfo=ET)
@@ -35,3 +35,20 @@ def test_yellow_green_unknown():
 def test_past_or_far_events_ignored():
     far = [{"date": "2031-03-30", "event": "Consumer Price Index", "time_et": "08:30"}]
     assert buys_block("RED", far, SUN)["line"] == "No new buys while the tier is RED; protect gains with stops"
+
+
+# LQ-20261107-1784 (grok-a/-9 review r3, minor C): the properties ``event_passed`` promises, pinned.
+def test_event_passed_needs_a_timezone_and_places_a_utc_now_on_the_et_clock():
+    naive = datetime(2031, 3, 11, 8, 31)
+    assert event_passed("2031-03-11", "08:30", naive) is False, "a naive now cannot be placed on the clock"
+    assert event_passed("2031-03-11", "08:30", None) is False
+    assert event_passed("2031-03-11", "08:30", datetime(2031, 3, 11, 12, 35, tzinfo=timezone.utc)) is True  # 08:35 ET
+    assert event_passed("2031-03-11", "08:30", datetime(2031, 3, 11, 12, 29, tzinfo=timezone.utc)) is False  # 08:29 ET
+
+
+def test_a_date_only_row_is_passed_only_when_the_whole_day_is_behind():
+    today_late = datetime(2031, 3, 11, 23, 59, tzinfo=ET)
+    next_morning = datetime(2031, 3, 12, 0, 1, tzinfo=ET)
+    assert event_passed("2031-03-11", None, today_late) is False
+    assert event_passed("2031-03-11", "", today_late) is False
+    assert event_passed("2031-03-11", None, next_morning) is True

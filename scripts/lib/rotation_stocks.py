@@ -25,9 +25,9 @@ in ``config/market_risk_policy.yaml`` ``sectors.constituents``:
 
 * ``min_price`` — the latest ``ticker_prices`` close is at least this;
 * ``min_avg_dollar_volume_usd`` — the 20-session average of ``market_ohlcv_bars`` close × volume is at
-  least this (the only volume owner in the DB). A name whose dollar volume cannot be measured (no bars)
-  is counted as unmeasured and is NOT ranked — an unmeasured floor is not a passed floor — though a HELD
-  name is still listed;
+  least this (the only volume owner in the DB). A non-held name whose dollar volume cannot be measured (no
+  bars) is NOT ranked and is counted in the group note — an unmeasured floor is not a passed floor. A HELD
+  name is still listed, and the note never counts a row it draws;
 * ``max_abs_rs20`` — a |RS20| above it is a data error (unadjusted history), dropped and counted, never
   ranked;
 * ``max_split_diff_pct`` — the ``ticker_prices`` close and the ``market_ohlcv_bars`` close for the same
@@ -410,8 +410,9 @@ def read(db_query: Callable[..., Any], *, held: Iterable[Mapping] | None = None,
                 continue
             # LQ-1784 r2 (grok-a review): an UNMEASURED dollar volume is not a passed floor. It is counted
             # in the group note and it is never ranked — a name the liquidity floor cannot vouch for must not
-            # take a top-N slot the caption calls liquid. A HELD name is still listed (a fact about the book).
-            if adv is None:
+            # take a top-N slot the caption calls liquid. A HELD name is still listed (a fact about the book),
+            # so it is not counted as "not ranked": the note must not name an absence for a row on screen.
+            if adv is None and not is_held:
                 unmeasured_liquidity += 1
             rank_trusted = not ({"rs_sanity", "split_mismatch"} & set(failed))
             row = {

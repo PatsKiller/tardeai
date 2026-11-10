@@ -323,6 +323,19 @@ def test_a_watch_group_owes_a_target_and_no_tranche():
     assert xlp["proposed"]["target_pct"] == 2.0 and xlp["proposed"]["target_usd"] == 20_000.0
 
 
+def test_a_partial_fill_still_owes_tranche_one_not_tranche_two():
+    """grok-a/-9 review r3: the view suppresses its "tranche 1 … needs your OK" line whenever ``next_tranche``
+    exists, so a half-filled position must not carry one — three quarters of tranche 1 would still be unbought
+    while the card named tranche 2 as the next step."""
+    half = {"XLV": {"shares": 60.0, "avg_cost": 100.00, "as_of": "2031-03-09T20:00:00+00:00",
+                    "source_id": "synthetic_book:fixture_1"}}
+    c = _cand(hc._rotate(MR, BARS, True, None, QUOTES, half, None, BUYS), "XLV")
+    assert c["held"]["filled"] is False and c["held"]["pct_of_tranche1"] == 50.0
+    assert "next_tranche" not in c, "a 50% fill was told the next step is tranche 2"
+    # the row still reports what is held, which is the fact that lets the view offer the rest of tranche 1
+    assert c["held"]["shares"] == 60
+
+
 def test_a_held_flag_and_the_drop_count_reach_the_column():
     stocks = {"healthcare": {"as_of": "2031-03-07", "rows": [
         {"symbol": "DEMOH", "held": True, "close": 2.0, "flag": "below $5.00 — review",

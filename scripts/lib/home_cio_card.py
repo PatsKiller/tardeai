@@ -645,9 +645,10 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
                 if h_rec:
                     c["held"] = h_rec
             # LQ-20261107-1784: once tranche 1 is a fill, the one thing the row still owes the operator is the next
-            # step — its size at the CURRENT price and what it waits on. Only a group that already holds the name has
-            # a next tranche to state, so a gated column never shows tranche-1 dollars it may not act on.
-            if c.get("held") and len(tr) > 1:
+            # step — its size at the CURRENT price and what it waits on. Only a group whose tranche 1 is FILLED has
+            # a next tranche to state: a partial fill still owes the rest of tranche 1, and the view's own
+            # "tranche 1 … needs your OK" line is suppressed whenever this key exists (grok-a/-9 review, r3).
+            if (c.get("held") or {}).get("filled") is True and len(tr) > 1:
                 c["next_tranche"] = {"tranche": 2, "usd": tr[1]["usd"], "shares": tr[1]["shares"],
                                      "after": (catalyst or {}).get("label")}
         if stocks is not None:
