@@ -36,6 +36,11 @@ SHADOW_DELIVERY_REASON_PREFIX = "shadow_legacy_owns_delivery:"
 #: sender owns it" whether or not it had actually sent (LQ-20261107-1815).
 SHADOW_UNDELIVERED_REASON_PREFIX = "shadow_legacy_undelivered:"
 
+#: delivery_reason prefix of the terminal row a non-ACTIVE IMMEDIATE decision records when the legacy sender OBSERVED
+#: that it did NOT deliver, and the alert is not critical (a critical one is handed over as QUEUED work above).
+#: Before LQ-20261107-1841 this row said "the legacy sender owns delivery" about a message that never left the process.
+LEGACY_SEND_FAILED_REASON_PREFIX = "legacy_send_failed:"
+
 #: Severity whose failure to reach the operator is itself an incident. Matched case-insensitively against the
 #: occurrence's own severity; the routing decision has already decided this alert is worth interrupting for.
 CRITICAL_SEVERITY = "critical"
@@ -136,29 +141,43 @@ def load_prior_state(cur, dedupe_key: str, *, correlation_key: str | None = None
 
 def immediate_delivery_row(*, runtime_mode: str, notify: bool, route_mode: str | None,
                            suppression_reason: str | None, severity: str | None,
-                           decision_reason: str, legacy_delivered: bool | None = None) -> dict[str, Any] | None:
+                           decision_reason: str, legacy_delivered: bool | None = None,
+                           legacy_message_id: str | None = None) -> dict[str, Any] | None:
     """The delivery row one occurrence writes, or None when it writes no IMMEDIATE row at all.
 
-    Pure, so the ownership rule is testable without a database. Three outcomes:
+    Pure, so the ownership rule is testable without a database. Four outcomes:
 
       ACTIVE                                   -> 'queued'      (the normalized outbox owns delivery)
       SHADOW/OFF, critical, NOT delivered      -> 'queued'      (handover: the legacy send reached nobody)
-      SHADOW/OFF, anything else                -> 'suppressed'  (terminal evidence of the legacy decision)
+      SHADOW/OFF, anything else, NOT delivered -> 'suppressed'  (terminal: 'legacy_send_failed:<decision>')
+      SHADOW/OFF, delivered                    -> 'suppressed'  (terminal: 'shadow_legacy_owns_delivery:<decision>')
 
     ``legacy_delivered`` is what the legacy sender OBSERVED (``telegram_alert._legacy_send`` returns it). ``None``
     means nobody asked it, and for a critical alert that is NOT a reason to call the alert delivered: the safe
     direction for a critical is one possible duplicate, never a silent loss. A non-critical row keeps the old
     behaviour exactly, so the shadow history is not re-sent.
+
+    ``legacy_message_id`` (LQ-20261107-1841) is the provider id of the message the sender actually delivered — the
+    receipt C1 needs. It rides the row the sender already wrote; nothing new is sent. A delivered send with no id
+    (a held chunk, a caller that bypassed the transport) stores None, which stays NOT OBSERVABLE rather than
+    inventing one.
     """
     if not (notify and route_mode == "IMMEDIATE" and not suppression_reason):
         return None
     if str(runtime_mode or "").upper() == "ACTIVE":
-        return {"status": "queued", "reason": decision_reason, "queued": True, "handover": False}
+        return {"status": "queued", "reason": decision_reason, "queued": True, "handover": False,
+                "telegram_message_id": None}
     if str(severity or "").strip().lower() == CRITICAL_SEVERITY and legacy_delivered is not True:
         return {"status": "queued", "reason": f"{SHADOW_UNDELIVERED_REASON_PREFIX}{decision_reason}",
-                "queued": True, "handover": True}
+                "queued": True, "handover": True, "telegram_message_id": None}
+    if legacy_delivered is False:
+        # The legacy sender observed a failed send. Saying "the legacy sender owns delivery" about a message that
+        # never left is the same lie LQ-1815 fixed for criticals, one severity down: name the failure instead.
+        return {"status": "suppressed", "reason": f"{LEGACY_SEND_FAILED_REASON_PREFIX}{decision_reason}",
+                "queued": False, "handover": False, "telegram_message_id": None}
     return {"status": "suppressed", "reason": f"{SHADOW_DELIVERY_REASON_PREFIX}{decision_reason}",
-            "queued": False, "handover": False}
+            "queued": False, "handover": False,
+            "telegram_message_id": (str(legacy_message_id) if legacy_message_id else None)}
 
 
 def record_occurrence(
@@ -174,12 +193,15 @@ def record_occurrence(
     resolving: bool = False,
     runtime_mode: str = "OFF",
     legacy_delivered: bool | None = None,
+    legacy_message_id: str | None = None,
 ) -> dict[str, Any]:
     """Append one occurrence, applying should_notify() against persisted prior state.
 
     Returns the structured publish result. Single transaction: prior-state claim,
     decision, occurrence append, incident update, and delivery/digest enqueue either
-    all land or none do.
+    all land or none do. ``legacy_message_id`` is the provider id of the legacy send
+    this observation is about, written onto the delivery row as the receipt
+    (LQ-20261107-1841); it is None whenever no send was observed.
     """
     observed_at = _aware(observed_at) or datetime.now(timezone.utc)
     with conn.cursor() as cur:
@@ -303,23 +325,28 @@ def record_occurrence(
         row = immediate_delivery_row(runtime_mode=runtime_mode, notify=decision.notify,
                                      route_mode=route.route_mode, suppression_reason=route.suppression_reason,
                                      severity=event.severity, decision_reason=decision.reason,
-                                     legacy_delivered=legacy_delivered)
+                                     legacy_delivered=legacy_delivered,
+                                     legacy_message_id=legacy_message_id)
         if row is not None:
             # LQ-20261107-1607 measured the old rule's cost: every SHADOW row said "the legacy sender owns delivery"
             # whether or not it had sent, and one deliver_immediate() call would have re-sent the whole history.
             # LQ-20261107-1815 keeps that guard for what the legacy path delivered and adds the one case it got
             # wrong: a CRITICAL alert the legacy router suppressed reached nobody, so it is queued for the worker
             # that now exists (alert_outbox.deliver_critical) instead of being recorded as delivered.
+            # LQ-20261107-1841: the receipt rides this row. A delivered legacy send stores the provider message id
+            # here, so the occurrence's chain closes (generated -> queued -> delivered -> received) instead of
+            # depending on a second table that only the gateway path writes. A queued row has no id yet: the consumer
+            # that sends it writes one when it does.
             cur.execute(
                 """
                 INSERT INTO alert_notification_deliveries
                     (occurrence_id, alert_id, incident_id, attempt_seq, logical_destination,
-                     route_mode, delivery_status, delivery_reason, completed_at)
-                VALUES (%s,%s,%s,1,%s,'IMMEDIATE',%s,%s, CASE WHEN %s THEN NULL ELSE now() END)
+                     route_mode, delivery_status, delivery_reason, telegram_message_id, completed_at)
+                VALUES (%s,%s,%s,1,%s,'IMMEDIATE',%s,%s,%s, CASE WHEN %s THEN NULL ELSE now() END)
                 RETURNING id
                 """,
                 (occurrence_id, alert_id, incident_id, route.logical_destination,
-                 row["status"], row["reason"], row["queued"]),
+                 row["status"], row["reason"], row.get("telegram_message_id"), row["queued"]),
             )
             delivery_id = cur.fetchone()[0]
             queued = row["queued"]

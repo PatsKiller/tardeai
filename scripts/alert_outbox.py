@@ -123,7 +123,8 @@ def publish_legacy_message(message: str, *, source_producer: str = "legacy_send_
                            bypass_router: bool = False,
                            resolving: bool = False,
                            intent_priority: str | None = None,
-                           legacy_delivered: bool | None = None) -> dict[str, Any]:
+                           legacy_delivered: bool | None = None,
+                           legacy_message_id: str | None = None) -> dict[str, Any]:
     """Publish one legacy message as an observation.
 
     ``resolving`` says this observation reports the condition ENDING, not
@@ -143,6 +144,10 @@ def publish_legacy_message(message: str, *, source_producer: str = "legacy_send_
     ``legacy_delivered`` is what the legacy sender OBSERVED for this message (True/False from
     ``telegram_alert._legacy_send``); None means the caller did not ask. It is what tells the occurrence store whether a
     CRITICAL decision the legacy path suppressed is still owed to the operator (LQ-20261107-1815).
+
+    ``legacy_message_id`` is the provider id of the message that send returned (LQ-20261107-1841). It is stored on
+    the occurrence's delivery row as the receipt the C1 chain needs; None means no send happened or no id came back,
+    and stays None rather than being guessed.
     """
     event = classify_legacy_message(message, source_producer=source_producer)
     payload = dict(event.payload)
@@ -153,12 +158,15 @@ def publish_legacy_message(message: str, *, source_producer: str = "legacy_send_
         payload["intent_priority"] = str(intent_priority)
     if legacy_delivered is not None:
         payload["legacy_delivered"] = bool(legacy_delivered)
+    if legacy_message_id:
+        payload["legacy_message_id"] = str(legacy_message_id)
     event = AlertEvent(**{**event.__dict__, "payload": payload})
     # Only a caller that observed the legacy outcome passes the kwarg, so every other caller keeps its exact
     # pre-LQ-1815 call shape (same rule as the intent kwargs above).
-    if legacy_delivered is None:
+    if legacy_delivered is None and legacy_message_id is None:
         return publish_event(event, resolving=resolving)
-    return publish_event(event, resolving=resolving, legacy_delivered=legacy_delivered)
+    return publish_event(event, resolving=resolving, legacy_delivered=legacy_delivered,
+                         legacy_message_id=legacy_message_id)
 
 
 def occurrence_alert_id(fingerprint: str, observed_at: datetime) -> str:
@@ -182,7 +190,8 @@ def _aware_utc(dt: datetime | None) -> datetime:
 
 
 def publish_event(event: AlertEvent, *, resolving: bool = False,
-                  legacy_delivered: bool | None = None) -> dict[str, Any]:
+                  legacy_delivered: bool | None = None,
+                  legacy_message_id: str | None = None) -> dict[str, Any]:
     """Publish one observation through the occurrence model.
 
     Rewritten 2026-07-29. The previous version wrote a single row per fingerprint:
@@ -252,6 +261,7 @@ def publish_event(event: AlertEvent, *, resolving: bool = False,
             resolving=resolving,
             runtime_mode=get_mode(),
             legacy_delivered=legacy_delivered,
+            legacy_message_id=legacy_message_id,
         )
     except Exception:
         try:

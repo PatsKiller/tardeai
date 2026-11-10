@@ -724,6 +724,11 @@ def publish_operator_message(message: str, *, bypass_router: bool = False,
 
     if mode == MODE_SHADOW:
         delivered = _legacy_send(message, bypass_router, **intent)
+        # LQ-20261107-1841: the receipt this call ALREADY holds. `_raw_send_telegram_result` captured the provider
+        # ids of this send in the module store (the 182 boolean call sites see the bool only), and the send happened
+        # microseconds ago in this very call — so an id here belongs to this message, and an empty list means the
+        # send returned no id (held chunk, unconfigured transport), which stays None rather than being invented.
+        legacy_ids = ",".join(last_message_ids()) if delivered else ""
         shadow: dict = {"persisted": False}
         try:
             from alert_runtime_mode import can_persist_shadow
@@ -737,7 +742,10 @@ def publish_operator_message(message: str, *, bypass_router: bool = False,
                     # the legacy sender had already delivered every message; measured 2026-11-10, 55 % of critical
                     # immediate decisions were router-suppressed and reached nobody while the shadow row recorded
                     # "the legacy sender owns delivery" (REPORT.md §C1).
-                    legacy_delivered=bool(delivered))
+                    legacy_delivered=bool(delivered),
+                    # ...and the id that proves it, so the occurrence's own delivery row carries a receipt instead
+                    # of leaving the chain at "the legacy sender owns it" (LQ-20261107-1841).
+                    legacy_message_id=(legacy_ids or None))
                 shadow["persisted"] = True
         except Exception as e:
             # Never let shadow bookkeeping affect the operator's alert.

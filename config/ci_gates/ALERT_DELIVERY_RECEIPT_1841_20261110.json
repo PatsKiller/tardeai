@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ALERT_DELIVERY_RECEIPT_1841_20261110",
+  "files": [
+    "tests/test_alert_delivery_receipt_1841_20261110.py"
+  ],
+  "anchor": "ALERT_DELIVERY_RECEIPT_1841_20261110",
+  "comment": [
+    "ANCHOR: ALERT_DELIVERY_RECEIPT_1841_20261110 — LQ-20261107-1841 (C1): the sender writes its outcome against the occurrence. Measured 2026-11-10 by scripts/alert_delivery_chain_probe.py, 124 of 138 critical occurrences were receipt_unobservable:legacy_delivery_unreported — the SHADOW plane handed delivery to the legacy sender and that sender recorded no result anywhere the chain reads. A suppression reason that says 'the legacy sender owns delivery' is not evidence that it delivered.",
+    "The writer side stores the provider message id the send already returned (alert_occurrence_store.immediate_delivery_row / record_occurrence), threads it from telegram_alert.publish_operator_message through alert_outbox.publish_legacy_message, and names a proven failure instead of claiming ownership; a queued row stores no id. The reader side (alert_delivery_chain_probe._legacy_claim) accepts a delivery-row id as the receipt it already accepted for communication_events, keeps a bare legacy_delivered:true flag a self-report, and keeps an unobserved outcome NOT OBSERVABLE. Synthetic fixtures only, every sender stubbed, no database and no network."
+  ]
+}

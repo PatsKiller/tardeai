@@ -37,7 +37,8 @@ def test_active_immediate_decision_is_always_queued_work():
     row = store.immediate_delivery_row(runtime_mode="ACTIVE", notify=True, route_mode="IMMEDIATE",
                                        suppression_reason=None, severity="critical",
                                        decision_reason="first_occurrence", legacy_delivered=False)
-    assert row == {"status": "queued", "reason": "first_occurrence", "queued": True, "handover": False}
+    assert row == {"status": "queued", "reason": "first_occurrence", "queued": True, "handover": False,
+                   "telegram_message_id": None}
 
 
 def test_shadow_critical_the_legacy_path_did_not_deliver_is_handed_over():
@@ -62,7 +63,10 @@ def test_shadow_critical_the_legacy_path_delivered_stays_terminal():
                                        decision_reason="first_occurrence", legacy_delivered=True)
     assert row == {"status": "suppressed",
                    "reason": store.SHADOW_DELIVERY_REASON_PREFIX + "first_occurrence",
-                   "queued": False, "handover": False}
+                   "queued": False, "handover": False,
+                   # LQ-20261107-1841: the provider id the send returned is the receipt, so the row stays terminal AND
+                   # the chain can be closed. It rides this row; nothing is re-sent.
+                   "telegram_message_id": None}
 
 
 def test_shadow_non_critical_keeps_the_lq_1607_rule_exactly():

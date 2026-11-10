@@ -272,17 +272,25 @@ def _classify_immediate(row: dict, out: dict, now: datetime) -> dict:
 def _legacy_claim(row: dict, out: dict) -> dict:
     """A row the normalized plane suppressed because the legacy sender owned delivery.
 
-    The suppression reason is the normalized plane's claim ABOUT another sender.  It is not a receipt.  Only a
-    provider message id (from the matched communication_events row) is; a ``legacy_delivered: true`` payload flag is
-    the sender's self-report and is reported, never counted as received.
+    The suppression reason is the normalized plane's claim ABOUT another sender.  It is not a receipt.  A provider
+    message id is: the sender's own ``telegram_message_id`` on this delivery row, or the id on the matched
+    ``communication_events`` row.  A ``legacy_delivered: true`` payload flag alone is the sender's self-report and is
+    reported, never counted as received.
+
+    LQ-20261107-1841 made the sender write that id onto its own row; before it, only the comms-event match could
+    close a shadow row.  Reading it here is the same evidence class the ``sent`` branch already accepts (it takes
+    ``msg_id or provider_id``), not a looser rule: measured on the 7-day BEFORE set, this change moved no count
+    (zero suppressed rows carried an id then, because none were written).
     """
     provider_id = row.get("provider_message_id")
+    msg_id = row.get("delivery_msg_id")
     settled = row.get("provider_settled_at")
-    if provider_id:
-        out["delivered_at"] = _iso(settled)
-        out["received_at"] = _iso(settled)
-        out["receipt"] = str(provider_id)
-        out["evidence"] = "communication_events"
+    if msg_id or provider_id:
+        rid = msg_id or provider_id
+        out["delivered_at"] = _iso(settled) or _iso(row.get("delivery_completed_at")) or out.get("queued_at")
+        out["received_at"] = out["delivered_at"]
+        out["receipt"] = str(rid)
+        out["evidence"] = "delivery_row" if msg_id else "communication_events"
         return _set(out, "received", None)
     if row.get("legacy_delivered") is True:
         out["delivered_at"] = out["queued_at"]
