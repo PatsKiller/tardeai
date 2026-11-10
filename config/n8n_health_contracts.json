@@ -43076,9 +43076,9 @@
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
       "target_reason": "lq1607_registration_20261109; reviewed field-by-field 2026-11-09 under LQ-20261107-1697 (a new lane needs a REVIEWED contract, not a grandfathered DRAFT)",
-      "stage": "shadow",
+      "stage": "canary",
       "purpose": {
-        "text": "Hold the IMMEDIATE alert delivery queue to its contract: no deliverable row stays 'queued' more than 10 min. Close rows that can never be delivered (written outside ACTIVE, or older than 6 h) as 'abandoned' with an 'expired:' reason, never send, and raise one system_health CRITICAL per hour when a deliverable row is stuck (the consumer is not draining).",
+        "text": "Hold the IMMEDIATE alert delivery queue to its contract: no deliverable row stays 'queued' more than 10 min. Close rows the normalized pipeline will never send - written while the legacy path owned delivery (it already made the send/suppress decision), or ACTIVE rows older than 6 h - as 'abandoned' with an 'expired:' reason, never send, and raise one system_health CRITICAL per hour when a deliverable row is stuck (the consumer is not draining).",
         "business_function": "ops",
         "source": "scripts/alert_delivery_queue_hygiene.py module docstring"
       },
@@ -43123,8 +43123,8 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire ends RUN_DONE in mode dry_run (coordination ledger runs)"
+          "check": "live_apply_done",
+          "text": "every dispatcher fire ends RUN_DONE in mode live and writes the LaneRunReceipt@v2 at data/runtime/alert-delivery-queue-hygiene_last.json"
         },
         {
           "check": "dry_run_writes_nothing",
@@ -43160,7 +43160,7 @@
         },
         {
           "check": "sent",
-          "text": "any operator message sent by this lane (summary.sends must be 0)"
+          "text": "no direct send by this lane (summary.sends must be 0); escalation is only the system_health CRITICAL row, at most one per 60 min"
         }
       ],
       "baseline": {
@@ -43173,7 +43173,8 @@
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "NOT_MEASURED: the lane has never been dispatched by the dispatcher (no run row in the coordination ledger for a live fire); class defaults only. The live argv was emulated in an isolated PROJECT_ROOT before activation (LQ-20261107-1279 DONE note).",
         "runs_considered": null,
-        "duration_degraded_above_s": 96.0
+        "duration_degraded_above_s": 96.0,
+        "duration_rule": "0.8x timeout_s: the monitor class rule every 120 s lane uses (0.8 x 120 = 96 s); the measured max is 5 s over 197 runs, so this line is a bound, not a target"
       },
       "alerting": {
         "lane_severity": "High",

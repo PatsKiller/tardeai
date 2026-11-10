@@ -6062,12 +6062,15 @@
         "scripts/alert_delivery_queue_hygiene.py"
       ],
       "dry_run_arg": [],
-      "live_arg": null,
+      "live_arg": [
+        "--apply"
+      ],
       "lock": "/tmp/alert_delivery_queue_hygiene.lock",
       "lock_kind": "flock",
       "timeout_s": 120,
       "market_gate": false,
       "output_signal": "data/runtime/alert-delivery-queue-hygiene_last.json",
+      "output_receipt": "v2",
       "env_names": [
         "DB_HOST",
         "DB_NAME",
@@ -6081,7 +6084,7 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "report until the import closure is re-inventoried for enforce: the lane reads DB_* for one Postgres session (read-only in the dry run) and the state root for its LaneRunReceipt",
       "env_evidence": "scripts/alert_delivery_queue_hygiene.py _connect reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD from os.environ; scripts/lib/lane_last_receipt.receipt_path resolves the state root",
-      "source": "LQ-20261107-1607 (WORK-QUEUE cc-opus-1, claude-lead 2026-11-09; METHODOLOGY FIRST operator order 2026-11-09). SHADOW ONLY: live_arg null and registry dispatch.mode dry_run, so the only argv the executor can run is the read-only dry run. The canary flip (live_arg ['--apply']) is the lead's, after the one-time backlog expiry is approved."
+      "source": "LQ-20261107-1607 (WORK-QUEUE cc-opus-1, claude-lead 2026-11-09; METHODOLOGY FIRST operator order 2026-11-09). CANARY (LQ-20261107-1607 part 3, operator noon registry order 2026-11-10): live_arg ['--apply'] and registry dispatch.mode live, after the one-time backlog expiry was approved with this flip. dry_run_arg [] stays the read-only emulation argv. The lane expires undeliverable queued rows and escalates a stuck deliverable row; it sends nothing."
     },
     {
       "lane_id": "market-event-lifecycle",

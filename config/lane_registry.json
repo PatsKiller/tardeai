@@ -27951,7 +27951,7 @@
         "match": "scripts/alert_delivery_queue_hygiene.py",
         "cadence": "*/5 * * * *",
         "timezone": "America/New_York",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W5"
       },
       "expected_cadence_hours": 0.25,
@@ -27966,7 +27966,7 @@
       ],
       "state": "ACTIVE",
       "state_since": "2026-11-09",
-      "state_reason": "LQ-20261107-1607 (WORK-QUEUE cc-opus-1, claude-lead 2026-11-09; METHODOLOGY FIRST operator order 2026-11-09): the IMMEDIATE delivery queue gets an owner. Every 5 min the lane classifies each 'queued' alert_notification_deliveries row by the runtime mode it was written under; rows written outside ACTIVE (the legacy sender owned delivery) and ACTIVE rows older than 6 h are closed as 'abandoned' with an 'expired:' reason that keeps the original; nothing is ever sent. A deliverable row still queued after 10 min is BROKEN and raises one system_health CRITICAL per hour. SHADOW: dispatch.mode dry_run and allowlist live_arg null, so a fire runs the read-only dry run.",
+      "state_reason": "LQ-20261107-1607 (WORK-QUEUE cc-opus-1, claude-lead 2026-11-09; METHODOLOGY FIRST operator order 2026-11-09): the IMMEDIATE delivery queue gets an owner. Every 5 min the lane classifies each 'queued' alert_notification_deliveries row by the runtime mode it was written under; rows written outside ACTIVE (the legacy sender owned delivery) and ACTIVE rows older than 6 h are closed as 'abandoned' with an 'expired:' reason that keeps the original; nothing is ever sent. A deliverable row still queued after 10 min is BROKEN and raises one system_health CRITICAL per hour. CANARY (LQ-20261107-1607 part 3, operator noon registry order 2026-11-10): dispatch.mode live and allowlist live_arg ['--apply'], so a fire expires the undeliverable backlog and raises the BROKEN alert; the one-time backlog expiry was approved with this flip. A dry run remains available as dry_run_arg [] for emulation.",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/alert-delivery-queue-hygiene_last.json",
@@ -27980,7 +27980,7 @@
       "value_class": "Operationally Important",
       "severity": "High",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/5 * * * *"
         ],
