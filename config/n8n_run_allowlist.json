@@ -6087,6 +6087,130 @@
       "source": "LQ-20261107-1607 (WORK-QUEUE cc-opus-1, claude-lead 2026-11-09; METHODOLOGY FIRST operator order 2026-11-09). CANARY (LQ-20261107-1607 part 3, operator noon registry order 2026-11-10): live_arg ['--apply'] and registry dispatch.mode live, after the one-time backlog expiry was approved with this flip. dry_run_arg [] stays the read-only emulation argv. The lane expires undeliverable queued rows and escalates a stuck deliverable row; it sends nothing."
     },
     {
+      "lane_id": "header-market-freshness-health",
+      "command": [
+        "$PY",
+        "scripts/header_market_freshness_health.py"
+      ],
+      "dry_run_arg": [],
+      "live_arg": [
+        "--apply"
+      ],
+      "lock": "/tmp/header_market_freshness_health.lock",
+      "lock_kind": "flock",
+      "timeout_s": 120,
+      "market_gate": false,
+      "output_signal": "data/runtime/header-market-freshness-health_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_STATE_DIR",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "report until the import closure is re-inventoried for enforce: the lane reads DB_* for a read-only Postgres session and the state root for its LaneRunReceipt",
+      "env_evidence": "scripts/header_market_freshness_health.py reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD from os.environ; scripts/lib/lane_last_receipt.receipt_path resolves the state root",
+      "source": "LQ-20261107 noon registry batch (ASSIGN-20261110T1425Z, operator order 2026-11-10). dry_run_arg [] is the read-only default; --apply writes the LaneRunReceipt@v2 (and, where stated, escalates)."
+    },
+    {
+      "lane_id": "frozen-output-monitor",
+      "command": [
+        "$PY",
+        "scripts/frozen_output_monitor.py"
+      ],
+      "dry_run_arg": [],
+      "live_arg": [
+        "--apply"
+      ],
+      "lock": "/tmp/frozen_output_monitor.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/frozen-output-monitor_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_STATE_DIR",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "report until the import closure is re-inventoried for enforce: the lane reads DB_* for a read-only Postgres session and the state root for its LaneRunReceipt",
+      "env_evidence": "scripts/frozen_output_monitor.py reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD from os.environ; scripts/lib/lane_last_receipt.receipt_path resolves the state root",
+      "source": "LQ-20261107 noon registry batch (ASSIGN-20261110T1425Z, operator order 2026-11-10). dry_run_arg [] is the read-only default; --apply writes the LaneRunReceipt@v2 (and, where stated, escalates)."
+    },
+    {
+      "lane_id": "cio-capital-plan-record",
+      "command": [
+        "$PY",
+        "scripts/cio_capital_plan_record.py"
+      ],
+      "dry_run_arg": [],
+      "live_arg": [
+        "--apply"
+      ],
+      "lock": "/tmp/cio_capital_plan_record.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/cio-capital-plan-record_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_STATE_DIR",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "report until the import closure is re-inventoried for enforce: the lane reads DB_* for a read-only Postgres session and the state root for its LaneRunReceipt",
+      "env_evidence": "scripts/cio_capital_plan_record.py reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD from os.environ; scripts/lib/lane_last_receipt.receipt_path resolves the state root",
+      "source": "LQ-20261107 noon registry batch (ASSIGN-20261110T1425Z, operator order 2026-11-10). dry_run_arg [] is the read-only default; --apply writes the LaneRunReceipt@v2 (and, where stated, escalates)."
+    },
+    {
+      "lane_id": "overview-projection",
+      "command": [
+        "$PY",
+        "scripts/build_overview_projection.py"
+      ],
+      "dry_run_arg": [],
+      "live_arg": [
+        "--apply"
+      ],
+      "lock": "/tmp/overview_projection.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/overview-projection_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_STATE_DIR",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "report until the import closure is re-inventoried for enforce: the lane reads DB_* for a read-only Postgres session and the state root for its LaneRunReceipt",
+      "env_evidence": "scripts/build_overview_projection.py reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD from os.environ; scripts/lib/lane_last_receipt.receipt_path resolves the state root",
+      "source": "LQ-20261107 noon registry batch (ASSIGN-20261110T1425Z, operator order 2026-11-10). dry_run_arg [] is the read-only default; --apply writes the LaneRunReceipt@v2 (and, where stated, escalates)."
+    },
+    {
       "lane_id": "market-event-lifecycle",
       "command": [
         "$PY",

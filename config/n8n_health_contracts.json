@@ -43238,6 +43238,649 @@
     },
     {
       "schema": "N8nHealthContract@v1",
+      "id": "header-market-freshness-health",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "lq_noon_registry_20261110",
+      "stage": "canary",
+      "purpose": {
+        "text": "Hold the header REGIME/VIX surfaces to one dated truth: the header tile and the CIO risk card must serve the same admissible VIX headline at the same value and observation instant and be FRESH (<= 26 h), and the newest regime snapshot must be inside its envelope. It reads only; it may not write a VIX, fetch from a provider, re-run the classifier, or re-warm or edit a cache.",
+        "business_function": "header truth / VIX source",
+        "source": "scripts/header_market_freshness_health.py; READY-LQ-20261107-1610-cc-opus-1"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/header_market_freshness_health.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/header_market_freshness_health.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock"
+        },
+        {
+          "name": "served header cache + Postgres market_regime_snapshots / market_regime_indicators (read-only session)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/header_market_freshness_health.py"
+        },
+        {
+          "name": "config/market_regime_vix_complex.yaml (fresh_after_hours)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/header_market_freshness_health.py"
+        },
+        {
+          "name": "data/runtime/header-market-freshness-health_last.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/lane_last_receipt.write_lane_receipt (LaneRunReceipt@v2)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "vix_ok",
+          "text": "header and card serve the same admissible headline at the same value and observation instant, FRESH <= 26 h"
+        },
+        {
+          "check": "regime_ok",
+          "text": "the newest regime snapshot is within its envelope (stale_after_hours 26 h)"
+        },
+        {
+          "check": "sends_zero",
+          "text": "summary.sends is 0"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "vix_degraded",
+          "text": "the headline is STALE or UNDATED, or the header cache was written before the newest print"
+        },
+        {
+          "check": "regime_degraded",
+          "text": "the newest snapshot is past its stale_after_hours line"
+        }
+      ],
+      "failed": [
+        {
+          "check": "vix_broken",
+          "text": "no admissible VIX, an inadmissible source on either surface, or the two surfaces disagree"
+        },
+        {
+          "check": "regime_broken",
+          "text": "there is no snapshot or no clock"
+        },
+        {
+          "check": "run_failed",
+          "text": "the process exits non-zero (an uncaught error; a BROKEN verdict still exits 0 and is named above)"
+        }
+      ],
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "contracts judged",
+        "rule": "empty_allowed",
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "file",
+            "ref": "data/runtime/header-market-freshness-health_last.json produced_count (written under --apply only)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "baseline": {
+        "timeout_s": 120,
+        "class": "monitor",
+        "freshness_degraded_after_h": 2.0,
+        "freshness_failed_after_h": 4.0,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 4x the expected cadence",
+        "computed_on": "2026-11-10",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED: registered 2026-11-10 by the noon registry batch and not yet dispatched; class defaults only.",
+        "runs_considered": null,
+        "duration_degraded_above_s": 240.0,
+        "duration_rule": "2x timeout_s: a run longer than 120 s is killed by the executor bound"
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "scripts/header_market_freshness_health.py; READY-LQ-20261107-1610-cc-opus-1",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity, else the fan-in priority. Wiring the bridge, notifier and diagnoser to this contract is the next build item."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json yet: regenerate with scripts/build_remediation_catalogue.py --write after this allowlist entry merges"
+      },
+      "evidence": {
+        "receipt": "data/runtime/header-market-freshness-health_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, verdict FROM runs WHERE lane_id='header-market-freshness-health' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.verdict, .contracts' $STATE_ROOT/data/runtime/header-market-freshness-health_last.json"
+        ]
+      },
+      "review_by": "2026-11-24",
+      "review": {
+        "prepared_by": "agent draft (cc-deepseek-7, noon registry batch, 2026-11-10)",
+        "status": "DRAFT",
+        "reviewed_by": null,
+        "reviewed_on": null,
+        "requested_of": "cc-deepseek-9",
+        "requested_on": "2026-11-10",
+        "note": "cc-deepseek-9 is the batch reviewer (ASSIGN-20261110T1425Z-NOON-registry); the REVIEWED sign-off is theirs to write in the 11:40 review. "
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "frozen-output-monitor",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "lq_noon_registry_20261110",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Detect a lane whose output is frozen while its inputs move: compare the sha256 fingerprint of each lane's declared output fields across its newest k runs against the fingerprint of its declared input fields; FROZEN means the output is identical and the inputs took >= 2 values. Escalate once per lane per cooldown, propose one rerun_with_fresh_inputs, send nothing, and never start, stop, edit or rewrite a lane.",
+        "business_function": "output integrity",
+        "source": "scripts/frozen_output_monitor.py; scripts/lib/frozen_output.py; config/frozen_output_contracts.json; READY-LQ-20261107-1613-cc-opus-1"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/frozen_output_monitor.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/frozen_output_monitor.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock"
+        },
+        {
+          "name": "Postgres lane run receipts and declared outputs (read-only session)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/frozen_output.py"
+        },
+        {
+          "name": "Postgres alert_events (system_health warning per FROZEN lane per cooldown, --apply only)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/frozen_output_monitor.py"
+        },
+        {
+          "name": "data/runtime/frozen-output-monitor_last.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/lane_last_receipt.write_lane_receipt (LaneRunReceipt@v2)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "detector_ran",
+          "text": "every contract lane was judged and the run verdict is OK"
+        },
+        {
+          "check": "no_frozen",
+          "text": "no lane reports FROZEN"
+        },
+        {
+          "check": "sends_zero",
+          "text": "summary.sends is 0"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "frozen_lane",
+          "text": "at least one lane reports FROZEN: its output field is identical across k runs while its inputs took >= 2 values"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED or RUN_TIMEOUT"
+        },
+        {
+          "check": "unverifiable_all",
+          "text": "every lane is UNVERIFIABLE: fewer than k runs, missing fingerprint, or a read error"
+        }
+      ],
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "lanes judged",
+        "rule": "empty_allowed",
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "file",
+            "ref": "data/runtime/frozen-output-monitor_last.json produced_count (written under --apply only)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "baseline": {
+        "timeout_s": 300,
+        "class": "monitor",
+        "freshness_degraded_after_h": 2.0,
+        "freshness_failed_after_h": 4.0,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 4x the expected cadence",
+        "computed_on": "2026-11-10",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED: registered 2026-11-10 by the noon registry batch and not yet dispatched; class defaults only.",
+        "runs_considered": null,
+        "duration_degraded_above_s": 360.0,
+        "duration_rule": "2x timeout_s: a run longer than 300 s is killed by the executor bound"
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "scripts/frozen_output_monitor.py; scripts/lib/frozen_output.py; config/frozen_output_contracts.json; READY-LQ-20261107-1613-cc-opus-1",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity, else the fan-in priority. Wiring the bridge, notifier and diagnoser to this contract is the next build item."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json yet: regenerate with scripts/build_remediation_catalogue.py --write after this allowlist entry merges"
+      },
+      "evidence": {
+        "receipt": "data/runtime/frozen-output-monitor_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, verdict FROM runs WHERE lane_id='frozen-output-monitor' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.verdict, .frozen, .summary' $STATE_ROOT/data/runtime/frozen-output-monitor_last.json"
+        ]
+      },
+      "review_by": "2026-11-24",
+      "review": {
+        "prepared_by": "agent draft (cc-deepseek-7, noon registry batch, 2026-11-10)",
+        "status": "DRAFT",
+        "reviewed_by": null,
+        "reviewed_on": null,
+        "requested_of": "cc-deepseek-9",
+        "requested_on": "2026-11-10",
+        "note": "cc-deepseek-9 is the batch reviewer (ASSIGN-20261110T1425Z-NOON-registry); the REVIEWED sign-off is theirs to write in the 11:40 review. Shadow registration: dispatch.mode dry_run, so only the read-only detector can fire."
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "cio-capital-plan-record",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "lq_noon_registry_20261110",
+      "stage": "canary",
+      "purpose": {
+        "text": "Record the CIO capital plan's position decisions once, on a schedule, instead of on a GET: build the same plan the read route serves with recording off, append only decision ids the journal does not already hold, and write a LaneRunReceipt (produced_count = rows appended, attempted_count = decisions in the plan). It cannot invent a decision, cannot record a plan whose sources failed, and never deletes or rewrites a journal row.",
+        "business_function": "cio decision journal integrity",
+        "source": "scripts/cio_capital_plan_record.py; READY-LQ-20261107-1608-cc-deepseek-9"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/cio_capital_plan_record.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/cio_capital_plan_record.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock"
+        },
+        {
+          "name": "data/cio/cio_capital_plan_decisions.jsonl (dedupe by decision_id under flock)",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "scripts/lib/cio_capital_plan_decision_store.py"
+        },
+        {
+          "name": "data/runtime/cio-capital-plan-record_last.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/lane_last_receipt.write_lane_receipt (LaneRunReceipt@v2)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "journal_advanced",
+          "text": "a new decision id was appended, or the plan held none to append"
+        },
+        {
+          "check": "pending_zero",
+          "text": "the receipt's pending count is 0 after the run"
+        },
+        {
+          "check": "live_apply_done",
+          "text": "every dispatcher fire ends RUN_DONE in mode live and writes the receipt"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "the journal was untouched across two consecutive scheduled runs while the plan produced decisions"
+        }
+      ],
+      "failed": [
+        {
+          "check": "write_error",
+          "text": "the append failed or the journal is unwritable"
+        },
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED or RUN_TIMEOUT"
+        }
+      ],
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "decisions recorded",
+        "rule": "empty_allowed",
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_position_decisions",
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "file",
+            "ref": "data/runtime/cio-capital-plan-record_last.json produced_count (written under --apply only)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "baseline": {
+        "timeout_s": 300,
+        "class": "monitor",
+        "freshness_degraded_after_h": 2.0,
+        "freshness_failed_after_h": 4.0,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 4x the expected cadence",
+        "computed_on": "2026-11-10",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED: registered 2026-11-10 by the noon registry batch and not yet dispatched; class defaults only.",
+        "runs_considered": null,
+        "duration_degraded_above_s": 360.0,
+        "duration_rule": "2x timeout_s: a run longer than 300 s is killed by the executor bound"
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "scripts/cio_capital_plan_record.py; READY-LQ-20261107-1608-cc-deepseek-9",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity, else the fan-in priority. Wiring the bridge, notifier and diagnoser to this contract is the next build item."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json yet: regenerate with scripts/build_remediation_catalogue.py --write after this allowlist entry merges"
+      },
+      "evidence": {
+        "receipt": "data/runtime/cio-capital-plan-record_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, verdict FROM runs WHERE lane_id='cio-capital-plan-record' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.produced_count, .attempted_count, .empty_reason' $STATE_ROOT/data/runtime/cio-capital-plan-record_last.json"
+        ]
+      },
+      "review_by": "2026-11-24",
+      "review": {
+        "prepared_by": "agent draft (cc-deepseek-7, noon registry batch, 2026-11-10)",
+        "status": "DRAFT",
+        "reviewed_by": null,
+        "reviewed_on": null,
+        "requested_of": "cc-deepseek-9",
+        "requested_on": "2026-11-10",
+        "note": "cc-deepseek-9 is the batch reviewer (ASSIGN-20261110T1425Z-NOON-registry); the REVIEWED sign-off is theirs to write in the 11:40 review. "
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "overview-projection",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "lq_noon_registry_20261110",
+      "stage": "canary",
+      "purpose": {
+        "text": "Keep /api/v2/overview fast and out of portfolio-server's heap: an out-of-process builder writes OverviewProjection@v1 (built_at, build_ms, code_identity, inputs) every 60 s in the market window; the API serves it while it is fresh and from the same release, and otherwise computes inline with the reason named. It never blanks the header, never writes an input store, and never touches a broker.",
+        "business_function": "api latency / heap",
+        "source": "scripts/build_overview_projection.py; scripts/lib/overview_projection.py; DESIGN-LQ-20261107-1612"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/build_overview_projection.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/overview_projection.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock"
+        },
+        {
+          "name": "Postgres (read-only session, default_transaction_read_only=on)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/build_overview_projection.py"
+        },
+        {
+          "name": "data/runtime/overview_projection.json (OverviewProjection@v1, atomic rename, 0600)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/overview_projection.py"
+        },
+        {
+          "name": "data/runtime/overview-projection_last.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/lane_last_receipt.write_lane_receipt (LaneRunReceipt@v2)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "projection_fresh",
+          "text": "built_at within 90 s in market hours and status ok"
+        },
+        {
+          "check": "same_release",
+          "text": "code_identity equals the serving release, so a fold is not served a stale body"
+        },
+        {
+          "check": "api_serves_it",
+          "text": "the API's _projection.source is projection, not inline"
+        },
+        {
+          "check": "live_apply_done",
+          "text": "every dispatcher fire ends RUN_DONE in mode live and writes the LaneRunReceipt@v2"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "aged",
+          "text": "built_at 90-300 s old, or the release moved and the next build has not landed"
+        },
+        {
+          "check": "build_refused",
+          "text": "a tick was refused RUN_REFUSED build_in_flight and the next tick succeeded"
+        }
+      ],
+      "failed": [
+        {
+          "check": "aged_out",
+          "text": "built_at older than 300 s in market hours"
+        },
+        {
+          "check": "three_failures",
+          "text": "3 consecutive failed builds"
+        },
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED"
+        }
+      ],
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "overview projection built",
+        "rule": "empty_allowed",
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "file",
+            "ref": "data/runtime/overview-projection_last.json produced_count (written under --apply only)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "baseline": {
+        "timeout_s": 300,
+        "class": "monitor",
+        "freshness_degraded_after_h": 1.0,
+        "freshness_failed_after_h": 2.0,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 4x the expected cadence",
+        "computed_on": "2026-11-10",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED: registered 2026-11-10 by the noon registry batch and not yet dispatched; class defaults only.",
+        "runs_considered": null,
+        "duration_degraded_above_s": 360.0,
+        "duration_rule": "2x timeout_s: a run longer than 300 s is killed by the executor bound, so 360 s can only be reached by a bypass"
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "scripts/build_overview_projection.py; scripts/lib/overview_projection.py; DESIGN-LQ-20261107-1612",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity, else the fan-in priority. Wiring the bridge, notifier and diagnoser to this contract is the next build item."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json yet: regenerate with scripts/build_remediation_catalogue.py --write after this allowlist entry merges"
+      },
+      "evidence": {
+        "receipt": "data/runtime/overview-projection_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, verdict FROM runs WHERE lane_id='overview-projection' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.built_at, .build_ms, .code_identity' $STATE_ROOT/data/runtime/overview_projection.json"
+        ]
+      },
+      "review_by": "2026-11-24",
+      "review": {
+        "prepared_by": "agent draft (cc-deepseek-7, noon registry batch, 2026-11-10)",
+        "status": "DRAFT",
+        "reviewed_by": null,
+        "reviewed_on": null,
+        "requested_of": "cc-deepseek-9",
+        "requested_on": "2026-11-10",
+        "note": "cc-deepseek-9 is the batch reviewer (ASSIGN-20261110T1425Z-NOON-registry); the REVIEWED sign-off is theirs to write in the 11:40 review. "
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
       "id": "numbers-truth-audit",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",

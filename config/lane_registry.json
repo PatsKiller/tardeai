@@ -27992,6 +27992,170 @@
       }
     },
     {
+      "lane_id": "header-market-freshness-health",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/header_market_freshness_health.py",
+        "cadence": "0 * * * *",
+        "timezone": "America/New_York",
+        "stage": "canary",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 1.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-10",
+      "state_reason": "LQ-20261107-1610 (READY-LQ-20261107-1610-cc-opus-1; operator noon registry order 2026-11-10): the header tile and the CIO risk card served two different VIX numbers and neither was dated by its observation. Hourly, read-only: both surfaces must serve the same admissible headline (Schwab $VIX or FRED VIXCLS) at the same value and observation instant and be FRESH (<= 26 h), and the newest regime snapshot must be inside its envelope. It may not write a VIX, fetch from a provider, re-run the classifier or re-warm a cache.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/header-market-freshness-health_last.json",
+        "key": "ok_at"
+      },
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "0 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "monitor",
+        "priority": 3,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "frozen-output-monitor",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/frozen_output_monitor.py",
+        "cadence": "7 * * * *",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 1.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-10",
+      "state_reason": "LQ-20261107-1613 part 1 (READY-LQ-20261107-1613-cc-opus-1; operator noon registry order 2026-11-10): a lane whose output fingerprint is identical across its newest k runs while its input fingerprint took >= 2 values is FROZEN (health DEGRADED), with per-lane k in config/frozen_output_contracts.json. Hourly. SHADOW: dispatch.mode dry_run, so a fire is the read-only detector; promotion to --apply (and the system_health escalation it writes) is the lead's after the detection set has been seen.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/frozen-output-monitor_last.json",
+        "key": "ok_at"
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "7 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "monitor",
+        "priority": 3,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "cio-capital-plan-record",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/cio_capital_plan_record.py",
+        "cadence": "0 9-16 * * 1-5",
+        "timezone": "America/New_York",
+        "stage": "canary",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 1.0,
+      "active_days": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-10",
+      "state_reason": "LQ-20261107-1608 (READY-LQ-20261107-1608-cc-deepseek-9; operator noon registry order 2026-11-10): GET /api/v2/cio/capital-plan built the plan with record=True, so every page view appended to the decision journal. The GET now builds with record=False and this lane is the one recording owner. Cadence is hourly on the CIO reactive cycle's operating window (config/lane_registry.json row cio-reactive-cycle, expected_cadence_hours 1.0); the recorder is idempotent, appending only decision ids the journal does not already hold.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/cio-capital-plan-record_last.json",
+        "key": "ok_at"
+      },
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "0 9-16 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "monitor",
+        "priority": 3,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "overview-projection",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/build_overview_projection.py",
+        "cadence": "*/1 4-20 * * 1-5",
+        "timezone": "America/New_York",
+        "stage": "canary",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 0.016666666666666666,
+      "active_days": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-10",
+      "state_reason": "LQ-20261107-1612 (DESIGN-LQ-20261107-1612; operator noon registry order 2026-11-10): /api/v2/overview is the most-read route (157 GETs) and its cold, memory-pressured tail reached 22.9 s. This lane builds the same body out of process every 60 s inside the market window and writes OverviewProjection@v1 atomically; api_v2 serves it while it is fresh and from the same release, and otherwise computes inline with the reason named, so a builder outage costs latency, never the overview. Scheduled only 04:00-20:00 ET weekdays: outside that window the API computes inline, which is the designed fallback (DESIGN option B), not a gap.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/overview_projection.json",
+        "key": "built_at"
+      },
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "*/1 4-20 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "pipeline",
+        "priority": 2,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
       "lane_id": "market-event-lifecycle",
       "owner": "platform",
       "scheduler": {
