@@ -41950,13 +41950,14 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "review_by": "2026-11-23",
+      "state_note": "2026-11-10: stage canary, dispatch.mode live (LQ-20261107-1856, operator APPROVED 2026-11-10 18:17 ET: \"This conditional is proven\"). Promoted from shadow by the same transform n8n_cutover_wave.py applies: shadow_dry_run_done replaced by canary_live_done. The window is unchanged -- Sun 18:00 through Fri 20:00 ET, every 15 min, all week; activation is not validation, so this contract's baseline stays CLASS_DEFAULT_PROVISIONAL until live runs are measured.",
       "purpose": {
         "text": "Keep the VIX term structure ($VIX, $VIX9D, $VIX3M) fresh to 15 minutes across the whole futures week so no consumer reads an overnight print as current. Read-only market data.",
         "business_function": "market risk / regime volatility input (headline VIX, MRE volatility category)",
-        "source": "LQ-20261107-1684; scripts/vix_index_quotes_schwab.py; config/vix_index_quotes.yaml; AGENTS.md 32.0.0 §23.20a (PROPOSED)"
+        "source": "LQ-20261107-1684; scripts/vix_index_quotes_schwab.py; config/vix_index_quotes.yaml; AGENTS.md 32.0.0 §23.20a (ACTIVE, ratified 2026-11-09 16:08 ET; live dispatch from LQ-20261107-1856)"
       },
       "owner": "platform",
       "connects_to": [
@@ -41967,7 +41968,7 @@
           "source": "AGENTS.md §23.3 (the relay address is documented there)"
         },
         {
-          "name": "$PY scripts/vix_index_quotes_schwab.py (--apply live after ratification, --dry-run --live-read shadow)",
+          "name": "$PY scripts/vix_index_quotes_schwab.py (--apply live; --dry-run --live-read for a shadow fire)",
           "kind": "runner",
           "direction": "calls",
           "source": "config/n8n_run_allowlist.json command"
@@ -41999,8 +42000,8 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire ends RUN_DONE in mode dry_run while stage is shadow; a dry run writes no row and no receipt"
+          "check": "canary_live_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live, or RUN_SKIPPED_LOCK while the cron twin holds the shared flock (coordination ledger)"
         },
         {
           "check": "live_run_produces_rows",
@@ -42051,7 +42052,7 @@
         "class": "ingest",
         "computed_on": "2026-11-09",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
-        "source": "no finished live runs yet (stage shadow); class defaults",
+        "source": "no finished live runs yet (live from 2026-11-10, LQ-20261107-1856; dry fires measured every 15 min, would_insert 3 at 15:45/16:00/16:15 ET, inserted 0); class defaults",
         "runs_considered": 0,
         "duration_degraded_above_s": 96
       },

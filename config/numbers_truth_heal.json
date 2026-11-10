@@ -18,7 +18,7 @@
   "healable": {
     "vix-index-quotes-schwab": {
       "mode": "dry_run",
-      "why": "re-reads the VIX/index quotes and reports the tiles' source; ACTIVE n8n lane with a dry_run arg only"
+      "why": "re-reads the VIX/index quotes and reports the tiles' source; the lane has a live_arg since LQ-20261107-1856 (2026-11-10) but the heal deliberately stays on the dry read -- a diagnosis needs the observed print, not a write, and a heal-triggered live run would spend the lane's grant for no extra evidence"
     },
     "cio-overnight-brief": {
       "mode": "live",

@@ -43,7 +43,12 @@ for _p in (ROOT / "scripts", ROOT):
 LANE_ID = "header-market-freshness-health"
 ESCALATION_SOURCE = "header_market_freshness_health.py"
 ESCALATION_COOLDOWN_H = 24
-ADMISSIBLE_VIX_SOURCES = ("market_quotes_extended:schwab:$VIX", "fred_economic_series:VIXCLS")
+# The admissible sources, by the exact ``vix_source`` string the headline carries (``vix_complex`` writes
+# ``<store>:<feed>:<symbol>``). ``market_quotes:schwab:$VIX`` is the continuous Schwab index-quote lane's row
+# (vix-index-quotes-schwab, LQ-20261107-1669); from LQ-20261107-1856 it is live and its print is the newest admissible
+# one for most of the day -- without it here, a fresh continuous print would read BROKEN header_source_inadmissible.
+ADMISSIBLE_VIX_SOURCES = ("market_quotes_extended:schwab:$VIX", "market_quotes:schwab:$VIX",
+                          "fred_economic_series:VIXCLS")
 RANK = {"OK": 0, "UNVERIFIABLE": 1, "DEGRADED": 2, "BROKEN": 3}
 VALUE_TOL = 0.005
 

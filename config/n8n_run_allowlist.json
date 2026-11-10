@@ -5879,7 +5879,9 @@
         "--dry-run",
         "--live-read"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--apply"
+      ],
       "lock": "/tmp/tradeai_vix_index_quotes_schwab.lock",
       "lock_kind": "flock",
       "timeout_s": 120,
@@ -5890,7 +5892,7 @@
       "env_names": [],
       "env_allowlist_mode": "report",
       "env_report_reason": "New lane: inventory env NAMES from the first dry-run receipt before enforce (DB_* for the market_quotes read/write, the state root). Never a broker credential name: §23.20a and lane_dispatch.schwab_quote_read_shape_problem refuse one.",
-      "source": "LQ-20261107-1684 option B (operator GO 2026-11-09 15:45 ET, relayed by claude-lead): the 15-minute VIX on the n8n dispatcher under AGENTS.md 32.0.0 §23.20a (PROPOSED). Until the operator ratifies 32.0.0 (APPROVE_AGENTS_POLICY_32_0_0) lane_dispatch refuses this row on forbidden_token:schwab, so nothing fires. SHADOW: live_arg null. Promotion to [\"--apply\"] is the lead's after ratification, the grant record and a clean shadow fire."
+      "source": "LQ-20261107-1684 option B (operator GO 2026-11-09 15:45 ET, relayed by claude-lead): the 15-minute VIX on the n8n dispatcher under AGENTS.md 32.0.0 §23.20a, ratified 2026-11-09 16:08 ET (APPROVE_AGENTS_POLICY_32_0_0 local 2bfb6c511). LIVE from LQ-20261107-1856 (operator APPROVED 2026-11-10 18:17 ET: \"This conditional is proven\", relayed by claude-lead): live_arg [\"--apply\"], the pinned shape SCHWAB_QUOTE_READ_LIVE_ARGS already admits. The window is the whole Sun 18:00 -> Fri 20:00 ET span every 15 min; the script refuses a fire outside it as outside_window. --apply needs the lane's grant, which data_source_authority records; it writes market_quotes rows only."
     },
     {
       "lane_id": "market-event-data-refresh",

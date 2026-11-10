@@ -401,7 +401,8 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # 2026-11-09 LQ-1674 market-event-lifecycle: n8n-native dispatcher row at shadow, dispatch dry_run (no host line).
         "market-event-lifecycle",
         # 2026-11-09 AGENTS 32.0.0 §23.20a: n8n-native read-only Schwab index-quote lane ($VIX/$VIX9D/$VIX3M),
-        # dispatcher row at shadow, dispatch dry_run, */15 in the overnight/weekday windows. No host line.
+        # */15 across the Sun 18:00 -> Fri 20:00 ET span. No host line. Canary, dispatch live from 2026-11-10
+        # LQ-20261107-1856 (operator APPROVED); still n8n-native, so it stays in this set.
         "vix-index-quotes-schwab",
         # 2026-11-03 agent_nudge (board item 16, P2 of docs/ops/NUDGER_N8N_MIGRATION_PROPOSAL_20261103.md): the
         # nudger's n8n-native dispatcher row at shadow, every 5 min, dispatch dry_run. No host line is retired: the
