@@ -1,7 +1,7 @@
 # Command Center Engineering Constitution
 ## Trust, Quality, Auditability, and Production Excellence
 
-**Version:** 1.3 · **Status:** Foundational Doctrine · **Ratified by the operator:** v1.0 2026-11-10 ~12:00 ET; v1.1 amendments 2026-11-10 ~12:20 ET; v1.2 (Rule 15) 2026-11-10 ~12:30 ET; v1.3 (Principle 5, Rule 16, Documentation Drift, reference cases) 2026-11-10 ~12:32 ET
+**Version:** 1.4 · **Status:** Foundational Doctrine · **Ratified by the operator:** v1.0 2026-11-10 ~12:00 ET; v1.1 amendments 2026-11-10 ~12:20 ET; v1.2 (Rule 15) 2026-11-10 ~12:30 ET; v1.3 (Principle 5, Rule 16, Documentation Drift, reference cases) 2026-11-10 ~12:32 ET; v1.4 (Principle 6, Article VI-A Documentation Drift, Reference Case B, audit cover page) 2026-11-10 ~12:41 ET
 **Applies to:** all agents, engineers, auditors, reviewers, operators, workflows, services, releases and decision systems.
 **Precedence:** this Constitution is the top of the rule hierarchy. Where any other document (AGENTS.md, WORKERS.md, ONBOARDING.md,
 runbooks, lessons, queues) conflicts with it, the Constitution wins. The operational thresholds that implement it are in
@@ -35,6 +35,12 @@ the screen disagree, what the operator sees is the judged result, and the disagr
 
 **Principle 5 (v1.3). Health and verdicts are computed, never declared.** Every health state (Rule 15) and every verdict (Rule 16) is a
 function of measurable evidence. A person, agent, report, ledger row or ticket may supply evidence; none may supply the state.
+
+**Principle 6 (v1.4). Registration is not execution.** The existence of a workflow, scheduler, receipt, registration record,
+database row, queue entry, deployment artifact, or status flag does not prove execution, completion, success, delivery, or
+correctness. A queue row is not delivery. An embedding table is not working memory. A receipt is not useful output. A registered
+workflow is not a running one. A healthy flag is not health. A completed deployment is not a fixed issue. Only the measured
+outcome counts (Article II Rules 2, 15, 16; Reference Case B).
 
 ---
 
@@ -152,6 +158,13 @@ They may rely only on production evidence, artifacts, measurements and receipts.
 9. Documentation Drift (v1.3): agent runtime rules version (session hook), agent documentation version (AGENTS.md the agents open),
    live release version, canonical checkout version, and the code each production service actually executes. Pass: all synchronized.
    Fail: any mismatch. Rules that are not in the checkout are eventually forgotten; code that runs outside a release is an unreviewed deploy.
+   Measured by the five drift types of Article VI-A (v1.4).
+
+**Audit cover page (v1.4).** Every audit opens with four computed lines, each backed by the sections below it:
+System Status (capital readiness, item 7) · Audit Status (is the audit process itself working) · Governance Status (IMPROVING /
+STABLE / DEGRADING, from the trend of Trust Debt, Reality Drift and Documentation Drift) · Primary Risk (the largest open category).
+2026-11-10 cover page: **System Status: NOT CAPITAL READY · Audit Status: WORKING AS INTENDED · Governance Status: IMPROVING ·
+Primary Risk: Reality Drift between reported state and actual state.**
 
 ---
 
@@ -172,6 +185,21 @@ to the UI is still untrustworthy. **Required: Reality Drift = 0.** Required tabl
 |---|---|---|---|
 
 ---
+
+## Article VI-A: Documentation Drift, a core trust category (v1.4)
+Trust Debt (surface vs surface) and Reality Drift (surface vs truth) have a third sibling: **Documentation Drift**, where the
+authorities that govern and run the system disagree with each other. It is measured in every audit (Article V item 9). Five types:
+
+| Type | Definition | Measured by |
+|---|---|---|
+| Rule Drift | the Constitution version differs between its copies (coordinator file, session hook, repo, agent docs) | version line of each copy |
+| Documentation Drift | the AGENTS.md version differs between the checkout agents open, the live release and main | `Policy-Version` of each |
+| Runtime Drift | services execute different code from the release (old checkout, or old code held in memory since before a sync) | each process's cwd + start time vs the sync/activation time |
+| Release Drift | release metadata (deployment log, BUILD_SHA, ledger "LIVE") differs from what is actually running | BUILD_SHA + process cwd vs the log |
+| Source-of-Truth Drift | different authorities give different answers to the same question | the Article VI tables |
+
+**Required: all five = 0.** Any non-zero type is a finding with an owner. Reference: 2026-11-10 12:3x ET, four versions at once
+(main 30.0.1, canonical 31.0.0, live 32.0.0, fold 32.1.0); canonical synced to the fold at 12:39 ET.
 
 ## Article VII: Intelligence Standards
 - **Memory** is not operational until all four are demonstrated: (1) retrieval hit, (2) retrieval used, (3) answer changed, (4) answer improved.
@@ -222,12 +250,16 @@ validated and the observation windows are completed.
 
 ---
 
-## Appendix A: Reference cases (v1.3; used to train every auditor)
+## Appendix A: Reference cases (v1.3, extended v1.4; used to train every auditor)
+**Reference Case A (canonical): contradiction.** **Reference Case B (v1.4): Outcome Substitution:** the system measures existence,
+registration or freshness and mistakes it for successful completion (Principle 6).
+
 | Case | What the system said | What was true | Rules violated |
 |---|---|---|---|
 | **source-litmus-vs-yahoo (canonical case)** | `status=ok`, `outcome=ok` in the same file as `summary.verdict=BLOCK` (2026-11-10 07:46 ET) | the check blocked | 9, 10, 11, 15, 16 |
 | Alert queue "clean" | queue depth 0; scorecard row passed | 655 rows abandoned in one update at 10:51:01 ET; 0 ever sent or delivered | 2, Art. VIII |
 | DeepSeek 79.8% vs 0 failures | route `deepseek_only`; records say `deepseek-flash`; usage log says 0 failures | the calls ran on Anthropic and 219 of 262 failed in 24 h (provider identity drift) | 7, 14, Reality Drift |
+| **Reference Case B: the scorecard (Outcome Substitution)** | scorecard rows PASS | per the operator's review of the 11-10 re-audit, 12 of 16 passes check only age or registration, not outcome (LQ-1811 re-measures) | Principle 6, 15, 16 |
 | CIO memory | memory lanes running | `intelligence.embedding` = 0 rows; 0 decisions changed | Art. VII |
 
 ---
@@ -235,6 +267,6 @@ validated and the observation windows are completed.
 ## Constitutional Statement
 Every agent, auditor, engineer, workflow, deployment process and operational system shall follow this doctrine:
 
-**Trust is a feature. Evidence is truth. Activation is not validation. Exit 0 is not evidence. Unknown beats wrong. Health and verdicts are computed, never declared.
+**Trust is a feature. Evidence is truth. Activation is not validation. Exit 0 is not evidence. Unknown beats wrong. Health and verdicts are computed, never declared. Registration is not execution.
 If it cannot be measured, it cannot be trusted. If it cannot be audited, it cannot influence decisions.
 If it cannot be proven in production, it is not complete.**
