@@ -37,3 +37,15 @@ def classify_instrument(symbol: str, *, is_cash: bool = False, asset_type: str |
         "authority": AUTHORITY,
         "financial_action": False,
     }
+
+
+# ── stop eligibility (LQ-20261107-1739) ─────────────────────────────────────────────────────────────────────────
+# A mutual fund trades once a day at NAV: the broker has no intraday session in which a resting stop could work, so
+# "held with no working stop" is not a coverage gap for it. Classified from the holding's OWN asset_type through the
+# same classifier above — never a symbol list, and never a symbol-shape guess.
+STOPLESS_ASSET_TYPES = frozenset({"MUTUAL_FUND"})
+
+
+def is_stopless_asset(asset_type: Any) -> bool:
+    """True when the broker cannot carry a resting stop for this instrument. Unknown/None -> False (eligible)."""
+    return classify_instrument("", asset_type=asset_type)["instrument_class"] in STOPLESS_ASSET_TYPES

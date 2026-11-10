@@ -299,7 +299,8 @@ def test_a_malformed_agreement_table_refuses_the_whole_run(tmp_path):
 def test_the_shipped_config_ships_the_mechanism_with_an_empty_table():
     """The operator approved the design, not an entry: every suppression today is an explicit operator act."""
     cfg = json.loads((ROOT / "config" / "numbers_truth_heal.json").read_text(encoding="utf-8"))
-    assert cfg["page_codes"] == list(PAGE_CODES)
+    # LQ-20261107-1739 adds the broker-truth code; the 19:03 replay above stays the 1726 distribution.
+    assert cfg["page_codes"] == list(PAGE_CODES) + ["NT_STOP_EXPIRED"]
     assert cfg["known_disagreement"] == []
     # and the gate is the config's list, not a literal anyone can edit along with the code
     assert S.page_codes({}) == frozenset()

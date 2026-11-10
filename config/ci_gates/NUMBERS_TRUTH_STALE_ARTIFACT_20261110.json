@@ -1,0 +1,21 @@
+{
+  "schema": "CiGate@v1",
+  "name": "NUMBERS_TRUTH_STALE_ARTIFACT_20261110",
+  "files": [
+    "tests/test_numbers_truth_stale_artifact_20261110.py"
+  ],
+  "anchor": "NUMBERS_TRUTH_STALE_ARTIFACT_20261110",
+  "comment": [
+    "ANCHOR: NUMBERS_TRUTH_STALE_ARTIFACT_20261110 — LQ-20261107-1739. The 19:4x dry run's three pages were false",
+    "positives: each compared the CIO overnight-brief ARTIFACT (built before the XAR stop existed, on an older",
+    "release) with today's broker book, and XAR in fact had a working 229.33 x100 stop. A stop/coverage finding whose",
+    "shown side is a producer artifact older than the truth read is now marked stale_artifact by the audit; the",
+    "strike engine heals that producer FIRST (one run through the existing gateway heal path), then tickets it, and",
+    "never pages it. A rebuilt, fresh artifact whose mismatch survives is the page's own defect again and pages",
+    "normally. NT_UNPROTECTED truth excludes holdings the broker cannot carry a resting stop for — classified from",
+    "the row's own asset_type through scripts/lib/instrument_normalize.is_stopless_asset, never a symbol list.",
+    "The page-worthy event is broker truth: a held, stoppable position whose stop order expired at the close now",
+    "pages with 'your stop expired at the close (Day order)' and the order, price and quantity. Hermetic: synthetic",
+    "fixtures only, throwaway state roots, injected senders; the 1713 guard would raise on a real sender."
+  ]
+}

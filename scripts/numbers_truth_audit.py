@@ -72,6 +72,14 @@ HTTP_WINDOW = (time(4, 0), time(16, 15))
 # comparing a page number against an arbitrary historical row is a false positive (verified live
 # 2026-11-09: ANET had five rows in the same snapshot, one `working`; rollover V had six, one `working`).
 LIVE_STOP_LIFECYCLES = ("working", "near_trigger")
+#: Stop/coverage codes. Their shown side can be a PRODUCER ARTIFACT (the overnight brief), which must heal its
+#: producer and never page while it is older than the truth it is graded against (LQ-20261107-1739).
+#: The codes graded against the PAGE's own (artifact) figure. NT_STOP_EXPIRED is deliberately absent: its evidence
+#: is the broker's expired order in stop_lifecycle, so the artifact's age says nothing about it.
+ARTIFACT_GRADED_CODES = ("NT_STOP_PRICE_MISMATCH", "NT_STOP_QTY_MISMATCH", "NT_UNPROTECTED")
+#: How far behind the truth an artifact may be and still be treated as a fresh read of the broker. The overnight
+#: brief is rebuilt hourly; older than that it predates the truth it is compared with, so it is drift, not a defect.
+ARTIFACT_STALE_AFTER = timedelta(minutes=60)
 #: One request per endpoint, ≥1 s apart (DSN §2).
 HTTP_PACING_S = 1.0
 HTTP_TIMEOUT_S = 5.0
@@ -505,7 +513,14 @@ def _key_label(keys: Iterable[str]) -> tuple[Optional[str], Optional[str]]:
 def truth_bundle_coverage(bundle: Bundle, cfg: Mapping[str, Any], *, now: datetime, session: bool) -> dict[str, Any]:
     """Reuse desk_truth_monitor.held_exit_coverage for the DB side — no second coverage SQL (REV 2 C)."""
     from scripts import desk_truth_monitor as D
+    from scripts.lib.instrument_normalize import STOPLESS_ASSET_TYPES
 
+    # A holding the broker cannot carry a resting stop for (a mutual fund) is not a coverage gap: counting it made
+    # the page's own count and the derived truth disagree permanently (LQ-20261107-1739, the AMANX case). The
+    # exclusion is the row's OWN asset_type through the shared classifier — never a symbol list.
+    cfg = dict(cfg or {})
+    cfg["exclude_asset_types"] = sorted({str(x).lower() for x in cfg.get("exclude_asset_types") or []}
+                                        | {t.lower() for t in STOPLESS_ASSET_TYPES})
     pos = bundle.get("positions")
     stp = bundle.get("stops")
     if pos["status"] != "ok" or stp["status"] != "ok":
@@ -811,19 +826,89 @@ def coverage(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[str
     sf = _num(shown)
     if sf is None:
         return [finding(row, "NT_UNPROTECTED", "MISMATCH", f"the page shows {shown!r}, not a count",
-                        shown={"value": shown, "source": meta.get("source")})]
-    if int(sf) == truth_n:
+                        shown={"value": shown, "source": meta.get("source")})] \
+            + expired_stop_events(row, bundle, cfg, res)
+    out: list[dict[str, Any]] = []
+    if int(sf) != truth_n:
+        missing = [f["key"].split(":", 1)[1] for f in res.get("findings") or []
+                   if f.get("code") == "UNCOVERED" and f.get("alert")]
+        out.append(finding(row, "NT_UNPROTECTED", "MISMATCH",
+                           f"the page shows {int(sf)} unprotected; held - working-stop coverage is {truth_n}"
+                           + (f" ({', '.join(missing)})" if missing else ""),
+                           shown={"value": int(sf), "source": meta.get("source")},
+                           truth={"value": truth_n, "provider": "positions_current x stop_lifecycle",
+                                  "accounts": missing, "snapshot_age_h": res.get("snapshot_age_h"),
+                                  "as_of": (bundle.get("stops").get("as_of").isoformat()
+                                            if bundle.get("stops").get("as_of") else None)}))
+    # The page-worthy event is BROKER truth, not page drift: a held, stoppable position whose own stop order
+    # expired at the close has no working protection now, and the operator can act on that (LQ-20261107-1739).
+    out.extend(expired_stop_events(row, bundle, cfg, res))
+    return out
+
+
+def expired_stop_events(row: Mapping[str, Any], bundle: Bundle, cfg: Mapping[str, Any],
+                        res: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Broker truth: an uncovered holding whose last stop order EXPIRED (a Day order, gone at the close).
+
+    Coverage counts page drift; this is the actionable fact underneath it. The evidence is the broker's own
+    ``status: expired`` row in stop_lifecycle, with no live row for the same position — never a page number.
+    """
+    stp = bundle.get("stops")
+    if stp.get("status") != "ok":
         return []
-    missing = [f["key"].split(":", 1)[1] for f in res.get("findings") or []
-               if f.get("code") == "UNCOVERED" and f.get("alert")]
-    return [finding(row, "NT_UNPROTECTED", "MISMATCH",
-                    f"the page shows {int(sf)} unprotected; held - working-stop coverage is {truth_n}"
-                    + (f" ({', '.join(missing)})" if missing else ""),
-                    shown={"value": int(sf), "source": meta.get("source")},
-                    truth={"value": truth_n, "provider": "positions_current x stop_lifecycle",
-                           "accounts": missing, "snapshot_age_h": res.get("snapshot_age_h"),
-                           "as_of": (bundle.get("stops").get("as_of").isoformat()
-                                     if bundle.get("stops").get("as_of") else None)})]
+    aliases = dict(cfg.get("account_aliases") or {})
+    working = {str(x) for x in cfg.get("working_lifecycles") or LIVE_STOP_LIFECYCLES}
+    by_key: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
+    for r in stp.get("rows") or []:
+        acct = str(aliases.get(r.get("account"), r.get("account")))
+        by_key.setdefault((acct, str(r.get("symbol") or "").upper()), []).append(r)
+    out: list[dict[str, Any]] = []
+    for f in res.get("findings") or []:
+        if f.get("code") != "UNCOVERED" or not f.get("alert"):
+            continue
+        # desk_truth_monitor's finding carries the pair under `evidence`, not at the top level.
+        ev = f.get("evidence") or {}
+        key = (str(f.get("account") or ev.get("account")), str(f.get("symbol") or ev.get("symbol") or "").upper())
+        rows = by_key.get(key) or []
+        if any(str(x.get("lifecycle") or "") in working for x in rows):
+            continue  # protected after all; UNCOVERED said otherwise, but the broker row is the evidence
+        expired = [x for x in rows if str(x.get("status") or "").lower() == "expired"]
+        if not expired:
+            continue
+        e = max(expired, key=lambda x: _ts(x.get("snapshot_at")) or datetime.min.replace(tzinfo=timezone.utc))
+        as_of = _ts(e.get("snapshot_at"))
+        out.append(finding(row, "NT_STOP_EXPIRED", "MISMATCH",
+                           f"{key[0]} {key[1]}: your stop expired at the close (Day order) — "
+                           f"{_fmt(e.get('stop_price'))} x{_fmt(e.get('qty'))} on order "
+                           f"{e.get('order_id')}; no working stop",
+                           account=key[0], symbol=key[1],
+                           shown={"value": _num(e.get("stop_price")), "qty": _num(e.get("qty")),
+                                  "source": "stop_lifecycle", "status": "expired",
+                                  "order_id": str(e.get("order_id") or ""),
+                                  "as_of": as_of.isoformat() if as_of else None},
+                           truth={"value": None, "provider": "stop_lifecycle", "working": False,
+                                  "as_of": as_of.isoformat() if as_of else None}))
+    return out
+
+
+def mark_stale_artifacts(found: Iterable[dict[str, Any]], meta: Mapping[str, Any]) -> None:
+    """A mismatch whose SHOWN side is a runtime artifact older than the truth read is drift, not a defect.
+
+    The overnight brief is rebuilt hourly; a brief built before a broker change still describes the old book.
+    Such a finding must heal the producer first and never page (LQ-20261107-1739). The band is the brief's own
+    cadence: an artifact rebuilt within it is fresh enough that a surviving mismatch is the page's defect.
+    """
+    if not str(meta.get("source") or "").startswith("artifact:"):
+        return
+    artifact_at = _ts(meta.get("as_of"))
+    if artifact_at is None:
+        return
+    for f in found:
+        if str(f.get("code") or "") not in ARTIFACT_GRADED_CODES:
+            continue
+        truth_at = _ts((f.get("truth") or {}).get("as_of"))
+        if truth_at is not None and truth_at - artifact_at > ARTIFACT_STALE_AFTER:
+            f["reason"] = "stale_artifact"
 
 
 def cross_source(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[str, Any], *,
@@ -1418,6 +1503,7 @@ def audit(catalog: Mapping[str, Any], bundle: Bundle, *, now: datetime, state_ro
             doc, meta = served(row, state_root=state_root, http_open=http_open, base_url=base_url,
                                fetcher=_cached)
             found = fn(row, bundle, doc, meta, now=now, session=session)
+            mark_stale_artifacts(found, meta)
         except Unreadable as exc:
             findings.append(not_measured(row, exc.reason, exc.detail))
             continue

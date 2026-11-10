@@ -77,6 +77,9 @@ ACTION_RECORD, ACTION_HEAL, ACTION_TICKET, ACTION_CLEAR = "record", "heal", "tic
 #: A measured FAIL the operator has accepted as a known source disagreement: no strike, no heal, no clear, no page,
 #: and never counted as a pass. The entry that matched, with its reason, travels on the decision so it stays visible.
 ACTION_KNOWN = "known_disagreement"
+#: The audit's reason for a mismatch whose SHOWN side is a producer artifact older than the truth read. It heals
+#: the producer and tickets; it never pages (LQ-20261107-1739 — the XAR false positive).
+STALE_ARTIFACT = "stale_artifact"
 _FP_RE = re.compile(r"^[^|]*\|[^|]*\|[^|]*\|[^|]*$")
 
 
@@ -105,10 +108,14 @@ def _clean(value: Any) -> Optional[str]:
 
 
 def _side(value: Any) -> Optional[dict[str, Any]]:
-    """One side of a finding: `{value, source, as_of}`. Anything else is None (malformed)."""
+    """One side of a finding: `{value, source, as_of}` plus the evidence that makes it actionable.
+
+    ``qty``/``status``/``order_id`` travel with the broker side of an expired stop: the phone sentence names the
+    order that lapsed and the shares it no longer protects (LQ-20261107-1739). Anything else is None (malformed).
+    """
     if not isinstance(value, Mapping):
         return None
-    out = {k: value.get(k) for k in ("value", "source", "provider", "as_of")}
+    out = {k: value.get(k) for k in ("value", "source", "provider", "as_of", "qty", "status", "order_id")}
     return out if any(v is not None for v in out.values()) else None
 
 
@@ -167,6 +174,9 @@ def normalise(row: Mapping[str, Any]) -> dict[str, Any]:
         "truth": truth,
         "tolerance": row.get("tolerance"),
         "detail": str(row.get("detail") or "").strip() or None,
+        # The producer's own reason travels: ``stale_artifact`` is the audit's statement that the shown side is an
+        # artifact older than the truth, and the ladder must see it to heal-first and never page.
+        "reason": str(row.get("reason") or "").strip() or None,
         "missing_as_of": missing_as_of,
     }
 
@@ -276,6 +286,23 @@ def _root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def root_for(state_path_: Optional[Path]) -> Optional[Path]:
+    """The state root an explicit state path implies: ``<root>/data/runtime/numbers_truth_state.json`` -> ``<root>``.
+
+    ``None`` when the caller named no state path (the live default stands). Every default writer in ``run()``
+    resolves under this root: a replay or a test against a throwaway state must never write a FINDING, an escalation
+    intent or a heal request into the live tree (LQ-20261107-1739 leak note: a replay wrote 26 FINDING files into the
+    live lead inbox because the FINDING writer fell back to the live resolver).
+    """
+    if state_path_ is None:
+        return None
+    p = Path(state_path_).resolve()
+    parts = Path(STATE_REL).parts
+    if len(p.parts) > len(parts) and p.parts[-len(parts):] == parts:
+        return p.parents[len(parts) - 1]
+    return p.parent
+
+
 def load_config(path: Optional[Path] = None) -> dict[str, Any]:
     p = Path(path) if path is not None else _root() / CONFIG_REL
     try:
@@ -371,7 +398,12 @@ def heal_lane(finding: Mapping[str, Any], config: Mapping[str, Any]) -> tuple[Op
     if finding.get("family") == "authority":
         return None, "authority_finding"
     by_figure = config.get("by_figure_id") or {}
-    lane = by_figure.get(finding.get("figure_id")) or (config.get("by_page") or {}).get(finding.get("page"))
+    by_page = config.get("by_page") or {}
+    # The catalog's pages are routes ("/cio") and the config's by_page keys are bare ("cio"). Without both
+    # spellings every page-mapped figure was "no_heal_mapped" and strike 3 ticketed instead of healing.
+    page = str(finding.get("page") or "")
+    lane = (by_figure.get(finding.get("figure_id"))
+            or by_page.get(page) or by_page.get(page.lstrip("/")))
     lane = lane or config.get("default_lane")
     if not lane:
         return None, "no_heal_mapped"
@@ -484,7 +516,10 @@ def plan(
 
         # FAIL
         fails += 1
-        paged = finding["check"].strip().upper() in pages_for
+        stale_artifact = str(finding.get("reason") or "").startswith(STALE_ARTIFACT)
+        # A stale-artifact mismatch is drift between an old producer artifact and today's broker book: it can never
+        # page, whatever its code (LQ-20261107-1739). The actionable variant is broker truth, a separate finding.
+        paged = finding["check"].strip().upper() in pages_for and not stale_artifact
         row["consecutive_fails"] = fails
         row["last_seen_at"] = _iso(moment)
         row.setdefault("first_seen_at", row["last_seen_at"])
@@ -495,6 +530,29 @@ def plan(
             row["status"] = "ticketed"
             figures[fp] = row
             continue
+        if stale_artifact:
+            # The producer artifact predates the broker change it is graded against. The FIRST action is the heal of
+            # that producer (once), then the figure is a stale_artifact ticket. Never a page: the operator cannot act
+            # on a page that is merely old, and the broker truth is reported by the audit's own broker-side check.
+            lane, why = heal_lane(finding, config)
+            limit = int((config.get("rate_limit") or {}).get("per_lane_per_hour") or 1)
+            used = _heals_this_hour({"figures": figures}, lane, moment) if lane else 0
+            if lane and not row.get("heal") and used < limit:
+                mode = ((config.get("healable") or {}).get(lane) or {}).get("mode") or "live"
+                decisions.append({**finding, "action": ACTION_HEAL, "fails": fails, "lane": lane, "mode": mode,
+                                  "reason": "stale_artifact_heal", "paged": False})
+                row.update({"status": "healing",
+                            "heal": {"lane": lane, "mode": mode, "requested_at": _iso(moment), "strike": fails,
+                                     "state": "REQUESTED"}})
+                figures[fp] = row
+                continue
+            decisions.append({**finding, "action": ACTION_TICKET, "fails": fails, "lane": lane or None,
+                              "reason": STALE_ARTIFACT if not why else f"{STALE_ARTIFACT}:{why}",
+                              "paged": False})
+            row.update({"status": "ticketed", "ticket": {"id": ticket_id(fp), "at": _iso(moment), "paged": False}})
+            figures[fp] = row
+            continue
+
         if fails < HEAL_STRIKE:
             decisions.append({**finding, "action": ACTION_RECORD, "fails": fails, "reason": "strike_recorded"})
             row["status"] = "striking"
@@ -626,7 +684,8 @@ def cleared_line(decision: Mapping[str, Any]) -> str:
 # ── production defaults for the four injected actions ───────────────────────────────────────────────────────────
 
 
-def request_heal(*, lane: str, mode: str, run_id: Optional[str] = None, now: Optional[datetime] = None) -> dict[str, Any]:
+def request_heal(*, lane: str, mode: str, run_id: Optional[str] = None, now: Optional[datetime] = None,
+                 ledger: Optional[Path] = None) -> dict[str, Any]:
     """Ask for ONE run of the producer lane through the sanctioned host path. Never a broker, never a send.
 
     scripts/lib/n8n_cc_wave_c.enqueue_host_run applies the gateway's own coordination/run validation (allowlist,
@@ -640,21 +699,27 @@ def request_heal(*, lane: str, mode: str, run_id: Optional[str] = None, now: Opt
     try:
         out = W.enqueue_host_run(lane_id=lane, mode=mode, run_id=rid,
                                  requested_by="host:numbers-truth-audit", caller_id="tradeai-cc-wave-c",
-                                 now=_now(now).timestamp())
+                                 ledger=ledger, now=_now(now).timestamp())
     except Exception as exc:  # a heal request must never take the audit down; the reason is recorded
         return {"ok": False, "accepted": False, "state": "ERROR", "reason": type(exc).__name__, "run_id": rid}
     return {**({"ok": True} if out.get("accepted") else {"ok": False}), **out}
 
 
 def queue_escalation(*, domain: str, kind: str, subject: str, summary: str, fingerprint_: str,
-                     now: Optional[datetime] = None, ledger_path: Optional[Path] = None) -> dict[str, Any]:
-    """Queue ONE host comms intent (never a send). The existing route table names this module as the producer."""
+                     now: Optional[datetime] = None, ledger_path: Optional[Path] = None,
+                     root: Optional[Path] = None) -> dict[str, Any]:
+    """Queue ONE host comms intent (never a send). The existing route table names this module as the producer.
+
+    ``root`` names the state root a caller already resolved (run() hands it the root implied by an explicit
+    ``state_path_``). An intent raised by a replay against a throwaway root must land in that root's ledger, never in
+    the live one (LQ-20261107-1739 leak note).
+    """
     from scripts.check_registry_runtime_truth import IntentRefused, queue_host_intent  # noqa: PLC0415
 
     if ledger_path is None:
         from scripts.lib import n8n_cc_wave_c as W  # noqa: PLC0415
 
-        ledger_path = W.ledger_path()
+        ledger_path = W.ledger_path(root)
     try:
         rec = queue_host_intent(producer=PRODUCER, domain=domain, kind=kind, subject=subject, summary=summary,
                                 execution_id="nta:" + ticket_id(fingerprint_), node="numbers-truth-strikes",
@@ -681,6 +746,49 @@ def _bare(side: Optional[Mapping[str, Any]]) -> str:
     return "unreadable" if value is None else str(value)
 
 
+def _account_name(account: Any) -> str:
+    """The one short human name for an account key (`config/account_display_names.json`); never the raw key.
+
+    The page is read on a phone: ``schwab_taxable`` is an internal key, ``Schwab Individual`` is what the operator
+    calls the account. A missing label falls back to a title-cased key and never costs the page.
+    """
+    key = str(account or "").strip()
+    if not key:
+        return ""
+    try:
+        from scripts.lib.account_display import account_label  # noqa: PLC0415 — a config read, not a transport
+        return str(account_label(key) or "")
+    except Exception:  # noqa: BLE001 — a missing name must not cost the page
+        return " ".join(w.capitalize() for w in key.replace("-", "_").split("_") if w)
+
+
+def _expired_stop_line(decision: Mapping[str, Any], *, name_symbol: bool = True) -> Optional[str]:
+    """The operator sentence for a stop that expired at the close (LQ-20261107-1739): the actionable fact, named.
+
+    Built from the audit's broker-side evidence (the expired order's own price and quantity), so the phone says
+    what happened and what is no longer protected — never a comparison of two page numbers, a fingerprint or a path.
+    ``name_symbol=False`` is the TRIGGER form: ``format_text`` already puts the symbol and the account name in its
+    head, so repeating them would spend the 160 characters twice.
+    """
+    if str(decision.get("check") or "").upper() != "NT_STOP_EXPIRED":
+        return None
+    served = decision.get("served") or {}
+    price, qty = served.get("value"), served.get("qty")
+    fact = ("no working stop; "
+            + (f"your {price:g} Day stop expired at the close" if isinstance(price, (int, float))
+               else "your Day stop expired at the close"))
+    if not name_symbol:
+        return fact
+    bits = [str(decision.get("symbol") or "").upper()]
+    if isinstance(qty, (int, float)):
+        bits.append(f"{qty:g} sh")
+    label = _account_name(decision.get("account"))
+    if label:
+        bits.append(label)
+    who = " ".join(x for x in bits if x)
+    return f"{who}: {fact}" if who else fact
+
+
 def critical_event(decision: Mapping[str, Any]) -> dict[str, Any]:
     """The one CRITICAL event a NEW ticket raises, in the shape `critical_producers` builds for its own classes.
 
@@ -696,15 +804,21 @@ def critical_event(decision: Mapping[str, Any]) -> dict[str, Any]:
     cannot text the operator twice about the same fingerprint.
     """
     where = f"{decision.get('page')}/{decision.get('figure_id')}"
+    expired = _expired_stop_line(decision)                                   # "SPCX 200 sh Schwab Individual: ..."
+    expired_trigger = _expired_stop_line(decision, name_symbol=False)        # "...; the phone head names both"
+    action = "place a new stop before the next open"
     return {
         "alert_class": CRITICAL_CLASS,
         "event_id": ticket_id(decision["fingerprint"]),
         "symbol": str(decision.get("symbol") or "PORTFOLIO").upper(),
-        "account": str(decision.get("account") or ""),
-        "what": ticket_summary(decision),
-        "trigger": (f"served {_bare(decision.get('served'))} vs truth {_bare(decision.get('truth'))} "
-                    f"on {where}"),
-        "action": "check the figure's source",
+        # the account NAME, not the internal key: `format_text` renders it as "(Schwab Individual)"
+        "account": _account_name(decision.get("account")),
+        # a broker-truth page is the operator's sentence in every channel; the technical both-sides line lives in the
+        # FINDING and the decision, never on the phone (LQ-20261107-1739 acceptance: readable, no paths/fingerprints)
+        "what": f"{expired}. {action[0].upper()}{action[1:]}." if expired else ticket_summary(decision),
+        "trigger": expired_trigger or (f"served {_bare(decision.get('served'))} vs truth "
+                                       f"{_bare(decision.get('truth'))} on {where}"),
+        "action": action if expired else "check the figure's source",
         "evidence": {"fingerprint": decision["fingerprint"], "page": decision.get("page"),
                      "figure_id": decision.get("figure_id")},
     }
@@ -805,13 +919,24 @@ def run(
     critical_fn = critical or deliver_critical
     ticket_fn = ticket
     esc_cfg = config.get("escalation") or {}
+    # Every default writer resolves under the root an explicit state path implies; an injected callable is the
+    # caller's own and is handed no extra keyword (LQ-20261107-1739 leak note).
+    derived = root_for(state_path_)
+
+    def _default_ledger() -> Optional[Path]:
+        if derived is None:
+            return None
+        from scripts.lib import n8n_cc_wave_c as W  # noqa: PLC0415 — the state root resolver, not this module's own
+
+        return W.ledger_path(derived)
 
     for decision in plan_["decisions"]:
         action = decision["action"]
         taken: dict[str, Any] = {}
         if action == ACTION_HEAL and apply:
+            heal_kw = {"ledger": _default_ledger()} if heal is None else {}
             healed = dict(heal_fn(lane=decision["lane"], mode=decision.get("mode") or "live",
-                                  now=moment) or {})
+                                  now=moment, **heal_kw) or {})
             taken = {"heal": healed}
             row = figures.get(decision["fingerprint"]) or {}
             heal_row = dict(row.get("heal") or {})
@@ -833,17 +958,19 @@ def run(
                 taken = {**taken, "ticket": dict(ticket_fn(decision=decision, now=moment) or {})}
             elif inbox is not None or esc_cfg:
                 taken = {**taken, "ticket": write_finding(
-                    decision=decision, inbox=Path(inbox) if inbox is not None else default_inbox(), now=moment)}
+                    decision=decision,
+                    inbox=Path(inbox) if inbox is not None else default_inbox(derived), now=moment)}
             # The operator's page is turned on for the config's page_codes and NOTHING else (LQ-20261107-1726):
             # a code outside that list is a ticket + FINDING + state record, with no Telegram, no text and no email.
             # The escalation intent is itself a Telegram delivery, so it is gated with the page.
             if not decision.get("paged"):
                 taken["page_suppressed"] = "code_not_in_page_codes"
             else:
+                esc_extra = {"root": derived} if escalate is None and derived is not None else {}
                 esc = dict(escalate_fn(domain=esc_cfg.get("domain") or "data",
                                        kind=esc_cfg.get("kind_ticket") or "numbers_truth_ticket",
                                        subject=ticket_subject(decision), summary=ticket_summary(decision),
-                                       fingerprint_=decision["fingerprint"], now=moment) or {})
+                                       fingerprint_=decision["fingerprint"], now=moment, **esc_extra) or {})
                 taken["escalation"] = esc
                 # the operator's contract is a PROMPT page (REV 3 H), not a digest slot: the intent above is the
                 # durable record, and this is the three-channel delivery that does not wait for a batch or 07:00.
@@ -860,11 +987,12 @@ def run(
             if not (decision.get("ticket") or {}).get("paged"):
                 taken["clear_suppressed"] = "ticket_was_not_paged"
             else:
+                esc_extra = {"root": derived} if escalate is None and derived is not None else {}
                 taken = dict(escalate_fn(domain=esc_cfg.get("domain") or "data",
                                          kind=esc_cfg.get("kind_cleared") or "numbers_truth_cleared",
                                          subject=f"numbers-truth cleared: {ticket_id(decision['fingerprint'])}",
                                          summary=cleared_line(decision),
-                                         fingerprint_=decision["fingerprint"], now=moment) or {})
+                                         fingerprint_=decision["fingerprint"], now=moment, **esc_extra) or {})
             action = ACTION_CLEAR
         if apply:
             actions.append({"fingerprint": decision["fingerprint"], "action": action, "taken": taken})
