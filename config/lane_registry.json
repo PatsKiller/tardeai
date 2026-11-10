@@ -28049,12 +28049,12 @@
         "expression": "dispatcher",
         "match": "scripts/numbers_truth_audit.py",
         "cadence": "7 * * * *",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W3",
         "timezone": "America/New_York"
       },
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "7 * * * *"
         ],

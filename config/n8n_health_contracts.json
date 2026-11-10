@@ -43241,8 +43241,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Hourly check that every number a page shows equals its truth (positions/qty, market value and price, account and portfolio totals, day P&L header vs its rows, stop price/qty/state, the unprotected count/list, the stop card's named session, VIX/index tiles, CIO 'now' prices) and that every figure is served from its domain's authoritative source (G1 static, G2 writes in the last hour, G3 served source). Findings carry both sides and their timestamps; an unreadable truth is NOT_MEASURED. It never repairs, sends, or calls a broker.",
         "business_function": "numbers truth / source-of-truth audit",

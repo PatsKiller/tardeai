@@ -6114,7 +6114,9 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--apply"
+      ],
       "lock": "/tmp/tradeai_numbers_truth_audit.lock",
       "lock_kind": "flock",
       "timeout_s": 120,

@@ -87,14 +87,14 @@ def retry_policy_names() -> set[str]:
 # ── the registry row ────────────────────────────────────────────────────────────────────────────
 
 
-def test_the_row_is_one_shadow_dispatcher_lane():
+def test_the_row_is_one_canary_dispatcher_lane():
     r = row()
     assert validate_row(r) == []
     sched = r["scheduler"]
     assert sched["kind"] == "n8n"
     assert sched["expression"] == "dispatcher", "a §23.11 dispatcher row, never the workflow id"
     assert sched["match"] == SCRIPT, "the retired-cron match text keeps the host-conflict check alive"
-    assert sched["stage"] == "shadow", "nothing fires live until the operator promotes it"
+    assert sched["stage"] == "canary", "operator promoted 2026-11-09 ~19:00 ET after grok-a MERGE + live dry run"
     assert sched["cadence"] == "7 * * * *"
     assert sched["timezone"] == "America/New_York"
     assert r["state"] == "ACTIVE"
@@ -121,7 +121,7 @@ def test_the_dispatch_block_is_clean_and_the_lane_is_eligible():
     r = row()
     block = parse_dispatch_block(r)
     assert block is not None
-    assert block.mode == "dry_run", "shadow runs dry_run; the clamp would refuse anything else anyway"
+    assert block.mode == "live", "canary runs live: --apply writes the receipt (read-only audit, no send)"
     assert block.klass == "monitor"
     assert block.retry_policy == "transient-2", "a monitor may retry; transient-2 permits the class"
     assert tuple(block.cron) == ("7 * * * *",), "the block and the cadence cannot disagree"
@@ -140,7 +140,7 @@ def test_the_entry_runs_the_registered_script_in_the_registered_mode():
     e = entry()
     assert e["command"] == ["$PY", SCRIPT]
     assert e["dry_run_arg"] == ["--dry-run"]
-    assert e["live_arg"] is None, "no live argv: a live fire is refused until the operator promotes the lane"
+    assert e["live_arg"] == ["--apply"], "promoted: the live fire writes this lane's LaneRunReceipt@v2"
     assert e["lock"] == LOCK
     assert e["lock_kind"] == "flock"
     assert e["timeout_s"] == 120, "DSN §F: a run must not hold the executor drain longer than 120 s"
