@@ -59,6 +59,15 @@ sys.stdout.write("\n" + json.dumps(out, default=str))
 # child refreshes it (LQ-20261107-259: control-plane-surface-authority took 15 s on every TTL expiry).
 STALE_OK_SEC = {"control_plane_surface_authority": 1800.0}
 
+# Contracts where a stale answer beats no answer (LQ-1789): when the live recompute misses its deadline, the child
+# crashes, or a second caller cannot take the single-flight lock, serve the newest answer ever computed for that key
+# with its TRUE age and the live failure beside it, instead of a TIMEOUT/UNAVAILABLE body. A caller that gets a
+# labelled last-known answer can render it; a caller that gets nothing renders UNKNOWN, which is what the two
+# /v3/control-plane pages did for 26-47 s under load while an hour-old answer sat in the cache.
+# Membership is the whole opt-in: every other contract keeps failing closed, because for a store that is genuinely
+# gone an old success read unlabelled would look like a current one.
+LAST_KNOWN_KEYS = frozenset(STALE_OK_SEC)
+
 _cache: dict[str, tuple[float, dict[str, Any]]] = {}
 # LQ-20261107-416: the in-memory cache dies with the server, so the first call after every deploy restart paid the
 # whole cold computation (21 s for control-plane-surface-authority). Stale-ok results are also written to disk and
@@ -186,21 +195,71 @@ def _disk_save(key: str, body: dict[str, Any]) -> None:
         pass
 
 
-def _disk_seed(key: str, stale_ttl: float) -> bool:
-    """Load a persisted result into ``_cache`` with its true age; True when it is inside ``stale_ttl``."""
+def _disk_load(key: str) -> tuple[float, dict[str, Any]] | None:
+    """The persisted result for ``key`` and its true age in seconds, at any age; None on no record."""
     path = _disk_path(key)
     if path is None:
-        return False
+        return None
     try:
         rec = json.loads(path.read_text())
         age = time.time() - float(rec["saved_at"])
         body = rec["body"]
-        if rec.get("key") != key or not isinstance(body, dict) or age < 0 or age >= stale_ttl:
-            return False
+        if rec.get("key") != key or not isinstance(body, dict) or age < 0:
+            return None
     except Exception:  # noqa: BLE001 - torn or missing file is simply a cold miss
+        return None
+    return age, body
+
+
+def _disk_seed(key: str, stale_ttl: float) -> bool:
+    """Load a persisted result into ``_cache`` with its true age; True when it is inside ``stale_ttl``."""
+    loaded = _disk_load(key)
+    if loaded is None:
+        return False
+    age, body = loaded
+    if age >= stale_ttl:
         return False
     _cache[key] = (time.monotonic() - age, body)
     return True
+
+
+def _last_known(key: str) -> tuple[float, dict[str, Any]] | None:
+    """The newest answer ever computed for ``key``, at any age — memory first, then the on-disk seed."""
+    hit = _cache.get(key)
+    if hit is not None:
+        return time.monotonic() - hit[0], hit[1]
+    return _disk_load(key)
+
+
+def _serve_last_known(key: str) -> dict[str, Any] | None:
+    """The last-known body, relabelled with its as-of age, or None when nothing was ever computed."""
+    found = _last_known(key)
+    if found is None:
+        return None
+    age, body = found
+    out = dict(body)
+    out.update(
+        {
+            "served_stale": True,
+            "served_last_known": True,
+            "stale_age_sec": round(age, 1),
+            "stale_as_of": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - age)),
+            "isolation": "last_known",
+        }
+    )
+    return out
+
+
+def _with_last_known(key: str, failure: dict[str, Any], enabled: bool) -> dict[str, Any]:
+    """A failed live computation becomes the last-known answer (labelled) when one exists and the key opts in."""
+    if not enabled:
+        return failure
+    served = _serve_last_known(key)
+    if served is None:
+        return failure
+    served["live_status"] = failure.get("status")
+    served["live_reason"] = failure.get("reason")
+    return served
 
 
 def run_isolated(
@@ -211,6 +270,7 @@ def run_isolated(
     timeout: float | None = None,
     ttl: float | None = None,
     stale_ttl: float | None = None,
+    last_known: bool | None = None,
 ) -> dict[str, Any]:
     """Return ``module.fn(**kwargs)`` computed in a child process under a deadline.
 
@@ -218,6 +278,13 @@ def run_isolated(
     older than ``ttl`` but younger than ``stale_ttl`` is returned at once, marked
     ``served_stale``, and one background child refreshes it. Only the very first call
     after a restart (or after ``stale_ttl`` of silence) pays the cold computation.
+
+    ``last_known`` (default: whether ``fn`` is in ``LAST_KNOWN_KEYS``) extends that to the
+    failure path: when the live computation misses its deadline, the child crashes, or the
+    single-flight lock is BUSY, the newest answer ever computed for the key is returned with
+    ``served_last_known``, ``stale_age_sec`` and ``stale_as_of``, plus the live failure in
+    ``live_status``/``live_reason``. No answer is ever invented: with nothing cached the
+    failure body comes back unchanged.
 
     Never raises for a slow, failing or crashing computation: those come back as a
     dict with ``status`` ``TIMEOUT`` or ``UNAVAILABLE`` and the reason. Successful
@@ -230,6 +297,8 @@ def run_isolated(
     keep_for = cache_ttl_sec() if ttl is None else ttl
     if stale_ttl is None:
         stale_ttl = STALE_OK_SEC.get(fn)
+    if last_known is None:
+        last_known = fn in LAST_KNOWN_KEYS
     key = f"{module}:{fn}:{json.dumps(kwargs, sort_keys=True, default=str)}"
 
     hit = _cache.get(key)
@@ -243,7 +312,8 @@ def run_isolated(
 
     lock = _lock_for(key)
     if not lock.acquire(timeout=deadline):
-        return _failure(module, fn, "BUSY", "an identical computation is still running", deadline)
+        busy = _failure(module, fn, "BUSY", "an identical computation is still running", deadline)
+        return _with_last_known(key, busy, last_known)
     try:
         hit = _cache.get(key)
         if hit and time.monotonic() - hit[0] < keep_for:
@@ -255,7 +325,8 @@ def run_isolated(
             _cache[key] = (time.monotonic(), body)
             if stale_ttl:
                 _disk_save(key, body)
-        return body
+            return body
+        return _with_last_known(key, body, last_known)
     finally:
         lock.release()
 

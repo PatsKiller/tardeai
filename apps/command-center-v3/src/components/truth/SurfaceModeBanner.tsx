@@ -32,16 +32,22 @@ export default function SurfaceModeBanner({ route }: { route: string }) {
     '/api/v2/system/control-plane-surface-authority',
     300_000,
   )
-  const v = surfaceVerdict(loading && !data ? null : data, route)
-  const tone = TONE[v.mode] ?? TONE.UNKNOWN
+  // LQ-1789: an in-flight first read is not a verdict. The endpoint takes 26-47 s under load, and rendering the
+  // UNKNOWN verdict for that whole time told the operator the server had failed to determine something it had not
+  // yet been asked to say. UNKNOWN now means "the server has said nothing"; reading is its own state.
+  const pending = loading && !data
+  const v = surfaceVerdict(pending ? null : data, route)
+  const mode = pending ? 'PENDING' : v.mode
+  // A last-known answer is a real answer, but it must never wear the live tone: amber until the live compute returns.
+  const tone = pending ? { bg: BB.bgShift, fg: BB.text3 } : v.lastKnown ? TONE.FROZEN_SNAPSHOT : TONE[v.mode] ?? TONE.UNKNOWN
 
   return (
     <div
-      data-surface-mode={v.mode}
+      data-surface-mode={mode}
       data-surface-route={v.route}
       data-banner-dismissible="false"
       role="status"
-      aria-label={`Data mode ${v.mode}: ${v.reason}`}
+      aria-label={pending ? 'Data mode pending: asking the server' : `Data mode ${v.mode}: ${v.reason}`}
       style={{
         display: 'grid',
         gap: 3,
@@ -54,11 +60,16 @@ export default function SurfaceModeBanner({ route }: { route: string }) {
       }}
     >
       <div style={{ fontWeight: 800, letterSpacing: 0.4, color: tone.fg }}>
-        {v.label}
+        {pending ? 'ASKING THE SERVER…' : v.label}
       </div>
       <div style={{ color: BB.text2 }}>
-        {loading && !data ? 'asking the server what this surface is showing…' : v.reason}
+        {pending ? 'asking the server what this surface is showing…' : v.reason}
       </div>
+      {!pending && v.asOf && (
+        <div style={{ color: BB.text3, fontFamily: 'var(--mono)' }}>
+          {v.asOf}
+        </div>
+      )}
       {v.fixtureBundled && (
         <div style={{ color: BB.text3, fontFamily: 'var(--mono)' }}>
           bundled fixture present: {v.fixturePath} — disclosed, never rendered as live data

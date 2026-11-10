@@ -55,6 +55,13 @@ def probe_module(tmp_path, monkeypatch):
 
             def verdict():
                 return {"status": "UNAVAILABLE", "reason": "no store"}
+
+            def probe():
+                # Same key either way: the environment decides whether this compute answers or overruns. That is
+                # what lets a test prime a key with a good answer and then make the same key fail.
+                if os.environ.get("RI_PROBE_SLEEP"):
+                    time.sleep(float(os.environ["RI_PROBE_SLEEP"]))
+                return {"status": "OK", "served": "live"}
             """
         )
     )
@@ -126,6 +133,62 @@ def test_concurrent_callers_share_one_child(probe_module, monkeypatch):
         t.join()
     assert len(calls) == 1
     assert len(out) == 4 and all(o["status"] == "OK" for o in out)
+
+
+# ── last-known answers (LQ-1789) ──────────────────────────────────────────────
+# The two /v3/control-plane pages rendered "UNKNOWN — the server could not determine" for 26-47 s under load,
+# because a missed bound returned a TIMEOUT body while an hour-old answer was still in the cache. These pin both
+# halves of the fix: a labelled last-known answer when one exists, and an unchanged failure when one does not.
+
+
+def test_a_failed_recompute_serves_the_last_known_answer_with_its_age(probe_module, monkeypatch):
+    live = ri.run_isolated(probe_module, "probe", {}, timeout=30, ttl=0.01, last_known=True)
+    assert live["status"] == "OK" and not live.get("served_last_known")
+    time.sleep(0.05)  # past the ttl; no stale-while-revalidate window is configured for this key
+    monkeypatch.setenv("RI_PROBE_SLEEP", "30")
+    served = ri.run_isolated(probe_module, "probe", {}, timeout=1.0, ttl=0.01, last_known=True)
+    assert served["status"] == "OK", "the last known answer must be served, not a timeout body"
+    assert served["served_last_known"] is True and served["served_stale"] is True
+    assert served["stale_age_sec"] >= 0.05, "the age is the real age, not zero"
+    assert served["stale_as_of"].endswith("Z") and len(served["stale_as_of"]) == 20
+    assert served["live_status"] == "TIMEOUT" and "killed" in served["live_reason"]
+    assert served["isolation"] == "last_known"
+
+
+def test_last_known_survives_a_restart_through_the_disk_seed(probe_module, monkeypatch, tmp_path):
+    monkeypatch.setattr(ri, "DISK_DIR_OVERRIDE", tmp_path / "last_good")
+    assert ri.run_isolated(probe_module, "probe", {}, timeout=30, ttl=0.01, stale_ttl=1800, last_known=True)[
+        "status"
+    ] == "OK"
+    ri.clear_cache()  # a deploy restart: the memory is gone, the persisted answer is not
+    time.sleep(0.05)
+    monkeypatch.setenv("RI_PROBE_SLEEP", "30")
+    served = ri.run_isolated(
+        probe_module, "probe", {}, timeout=1.0, ttl=0.01, stale_ttl=0.02, last_known=True
+    )
+    assert served["served_last_known"] is True
+    assert served["stale_age_sec"] >= 0.05, "the disk record's age is measured against the wall clock"
+
+
+def test_no_last_known_answer_leaves_the_failure_body_unchanged(probe_module, monkeypatch):
+    monkeypatch.setenv("RI_PROBE_SLEEP", "30")
+    body = ri.run_isolated(probe_module, "probe", {}, timeout=1.0, ttl=60, last_known=True)
+    assert body["status"] == "TIMEOUT" and "served_last_known" not in body
+
+
+def test_last_known_is_opt_in_per_contract(probe_module, monkeypatch):
+    """A contract that is not in LAST_KNOWN_KEYS keeps failing closed even with a cached answer."""
+    assert "probe" not in ri.LAST_KNOWN_KEYS
+    assert ri.run_isolated(probe_module, "probe", {}, timeout=30, ttl=0.01)["status"] == "OK"
+    time.sleep(0.05)
+    monkeypatch.setenv("RI_PROBE_SLEEP", "30")
+    body = ri.run_isolated(probe_module, "probe", {}, timeout=1.0, ttl=0.01)
+    assert body["status"] == "TIMEOUT" and "served_last_known" not in body
+
+
+def test_the_control_plane_authority_is_the_contract_that_opts_in():
+    """The key is the function name the API passes: lib.whole_site_truth.control_plane_surface_authority."""
+    assert "control_plane_surface_authority" in ri.LAST_KNOWN_KEYS
 
 
 def test_operating_values_come_from_the_environment(monkeypatch):

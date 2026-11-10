@@ -45,6 +45,20 @@ export type SurfaceAuthority = {
   surfaces?: SurfaceAuthorityRow[]
   status?: string
   reason?: string | null
+  // LQ-1789: the server answered from its last known-good result because the live recompute missed its deadline
+  // (scripts/lib/request_isolation.py `_serve_last_known`). Those rows are real, so they are rendered — never
+  // replaced by UNKNOWN — but the banner must say how old they are and why the live read did not answer.
+  served_last_known?: boolean
+  // `served_stale` alone is the ordinary stale-while-revalidate answer (LQ-259): the recompute is running on
+  // schedule, not failing. It carries no age sentence and must not be labelled a failure.
+  served_stale?: boolean
+  /** Age of the last known answer, seconds, as measured by the server. */
+  stale_age_sec?: number | null
+  /** ISO instant the last known answer was computed. */
+  stale_as_of?: string | null
+  /** Why the live recompute did not answer: TIMEOUT | UNAVAILABLE | BUSY. */
+  live_status?: string | null
+  live_reason?: string | null
 }
 
 const KNOWN: ReadonlySet<string> = new Set([
@@ -71,6 +85,12 @@ export type SurfaceVerdict = {
   /** True when a fixture is compiled into the bundle for this route. */
   fixtureBundled: boolean
   fixturePath: string | null
+  /** True when these rows came from the server's last known answer, not a live compute. */
+  lastKnown: boolean
+  /** How old that answer is, seconds; null when the answer is live. */
+  asOfAgeSec: number | null
+  /** Operator-facing age sentence, e.g. "last known 12 min ago — the live recompute timed out"; null when live. */
+  asOf: string | null
 }
 
 const LABELS: Record<DataMode, string> = {
@@ -87,10 +107,25 @@ function normaliseMode(v: unknown): DataMode {
 }
 
 /**
+ * The age of a last-known answer, in the largest unit that still reads precisely.
+ * Seconds below 90 s, whole minutes below 90 min, hours above.
+ */
+export function ageLabel(seconds: number | null | undefined): string {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) return 'unknown age'
+  if (seconds < 90) return `${Math.round(seconds)} s`
+  if (seconds < 5400) return `${Math.round(seconds / 60)} min`
+  return `${(seconds / 3600).toFixed(1)} h`
+}
+
+/**
  * Resolve one route's verdict from the server authority payload.
  *
  * An absent payload, an absent row, or an unrecognised mode all resolve to
  * UNKNOWN with a banner — never to LIVE, and never to the fixture's own opinion.
+ *
+ * A payload the server marked as a last-known answer (endpoint alive, live recompute missed its bound) resolves to
+ * the row's own mode with its age attached: UNKNOWN is reserved for "the server has said nothing", never for "the
+ * server has not finished saying it". A last-known answer is still an answer.
  */
 export function surfaceVerdict(
   authority: SurfaceAuthority | null | undefined,
@@ -98,8 +133,20 @@ export function surfaceVerdict(
 ): SurfaceVerdict {
   const rows = Array.isArray(authority?.surfaces) ? authority!.surfaces! : []
   const row = rows.find(r => r?.route === route)
+  // Only a failed live recompute earns the "last known" sentence. An ordinary stale-while-revalidate answer is
+  // flagged served_stale too, and it is the healthy steady state — saying the recompute "did not answer" there
+  // would put a failure sentence on every ordinary poll.
+  const lastKnown = Boolean(authority?.served_last_known)
+  const asOfAgeSec =
+    lastKnown && typeof authority?.stale_age_sec === 'number' && authority.stale_age_sec >= 0
+      ? authority.stale_age_sec
+      : null
+  const liveStatus = authority?.live_status ? String(authority.live_status) : null
+  const asOf = lastKnown
+    ? `last known ${ageLabel(asOfAgeSec)} ago — the live recompute did not answer${liveStatus ? ` (${liveStatus})` : ''}`
+    : null
 
-  if (!authority || authority.status === 'UNAVAILABLE') {
+  if (!authority || (authority.status === 'UNAVAILABLE' && !lastKnown)) {
     return {
       route,
       mode: UNKNOWN,
@@ -112,6 +159,9 @@ export function surfaceVerdict(
       isLive: false,
       fixtureBundled: false,
       fixturePath: null,
+      lastKnown: false,
+      asOfAgeSec: null,
+      asOf: null,
     }
   }
 
@@ -119,13 +169,18 @@ export function surfaceVerdict(
     return {
       route,
       mode: UNKNOWN,
-      reason: `the server authority lists no row for ${route}`,
+      reason: lastKnown
+        ? `the server's last known answer lists no row for ${route}`
+        : `the server authority lists no row for ${route}`,
       bannerRequired: true,
       dismissible: false,
       label: LABELS[UNKNOWN],
       isLive: false,
       fixtureBundled: false,
       fixturePath: null,
+      lastKnown,
+      asOfAgeSec,
+      asOf,
     }
   }
 
@@ -134,12 +189,15 @@ export function surfaceVerdict(
     route,
     mode,
     reason: row.reason || 'no reason supplied by the server',
-    bannerRequired: mode !== LIVE_GOVERNED,
+    bannerRequired: mode !== LIVE_GOVERNED || lastKnown,
     dismissible: false,
     label: LABELS[mode],
     isLive: mode === LIVE_GOVERNED,
     fixtureBundled: Boolean(row.bundled_fixture?.bundled),
     fixturePath: row.bundled_fixture?.path ?? null,
+    lastKnown,
+    asOfAgeSec,
+    asOf,
   }
 }
 

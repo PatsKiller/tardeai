@@ -5,6 +5,7 @@
 // explicit server LIVE_GOVERNED verdict resolves to a banner, and a compiled
 // fixture is never allowed to stand in for a failed live read.
 import {
+  ageLabel,
   surfaceVerdict,
   fixtureMayRenderAsLive,
   LIVE_GOVERNED,
@@ -102,6 +103,65 @@ function authority(mode: string, extra: Record<string, unknown> = {}): SurfaceAu
   const v = surfaceVerdict(authority(LIVE_GOVERNED), '/v3/control-plane/audit')
   check('asking for a different route does not inherit another route verdict', v.mode === UNKNOWN)
   check('a mismatched route is not live', v.isLive === false)
+}
+
+// ── LQ-1789: a last-known answer is an answer, and it carries its age ────────
+// The defect: under load the endpoint took 26-47 s, so the banner read "UNKNOWN — the server could not determine
+// what this page is showing" while the server had a perfectly good answer from minutes before. UNKNOWN now means
+// the server has said nothing at all; a stale answer is rendered as stale, never as UNKNOWN.
+{
+  const lastKnown = (ageSec: number, mode = LIVE_GOVERNED, liveStatus = 'TIMEOUT'): SurfaceAuthority => ({
+    ...authority(mode),
+    served_stale: true,
+    served_last_known: true,
+    stale_age_sec: ageSec,
+    stale_as_of: '2026-11-10T15:00:00Z',
+    live_status: liveStatus,
+    live_reason: 'computation exceeded 25s and was killed; the API stayed up',
+  })
+
+  const v = surfaceVerdict(lastKnown(754), R)
+  check('a last known answer keeps the server verdict, it is not UNKNOWN', v.mode === LIVE_GOVERNED)
+  check('a last known answer is flagged lastKnown', v.lastKnown === true)
+  check('a last known answer carries its age in seconds', v.asOfAgeSec === 754)
+  check(
+    'a last known answer says how old it is and why the live read missed',
+    v.asOf === 'last known 13 min ago — the live recompute did not answer (TIMEOUT)',
+  )
+  check('a last known answer still keeps the server reason', v.reason === 'server said LIVE_GOVERNED')
+  check('a last known LIVE answer still requires a banner', v.bannerRequired === true)
+
+  const fresh = surfaceVerdict(authority(LIVE_GOVERNED), R)
+  check('a live answer is not flagged lastKnown', fresh.lastKnown === false)
+  check('a live answer carries no age', fresh.asOfAgeSec === null && fresh.asOf === null)
+  check('a live LIVE_GOVERNED answer needs no banner', fresh.bannerRequired === false)
+
+  const staleUnavailable = surfaceVerdict(lastKnown(30, UNAVAILABLE, 'BUSY'), R)
+  check('a last known UNAVAILABLE row stays UNAVAILABLE, not UNKNOWN', staleUnavailable.mode === UNAVAILABLE)
+  check('a BUSY live recompute is named', (staleUnavailable.asOf || '').includes('(BUSY)'))
+
+  const noRows = surfaceVerdict({ ...lastKnown(120), surfaces: [] }, R)
+  check('a last known answer with no row for the route is still UNKNOWN', noRows.mode === UNKNOWN)
+  check('a last known answer with no row still carries its age', noRows.lastKnown === true && noRows.asOfAgeSec === 120)
+
+  const unknownAge = surfaceVerdict({ ...authority(LIVE_GOVERNED), served_last_known: true }, R)
+  check('a last known answer with no age says the age is unknown, never zero', (unknownAge.asOf || '').includes('unknown age'))
+
+  // An ordinary stale-while-revalidate answer (LQ-259) is flagged served_stale while a background refresh runs.
+  // That is the healthy steady state, so it must not wear the failure sentence — only served_last_known does.
+  const swr = surfaceVerdict({ ...authority(LIVE_GOVERNED), served_stale: true, stale_age_sec: 600 }, R)
+  check('a stale-while-revalidate answer is not labelled last known', swr.lastKnown === false)
+  check('a stale-while-revalidate answer carries no failure sentence', swr.asOf === null)
+  check('a stale-while-revalidate LIVE answer still needs no banner', swr.bannerRequired === false)
+}
+
+// ── the age reads in the largest honest unit ─────────────────────────────────
+{
+  check('age under 90 s reads in seconds', ageLabel(45) === '45 s')
+  check('age under 90 min reads in whole minutes', ageLabel(754) === '13 min')
+  check('age past 90 min reads in hours', ageLabel(7200) === '2.0 h')
+  check('a missing age is named, not invented', ageLabel(null) === 'unknown age')
+  check('a negative age is not silently zero', ageLabel(-5) === 'unknown age')
 }
 
 console.log(`\nsurfaceAuthority: ${pass} passed, ${fail} failed`)
