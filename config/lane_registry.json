@@ -2559,7 +2559,19 @@
         "kind": "cron",
         "expression": "*/8 * * * *",
         "command_text": "warm_caches.py",
-        "match": "warm_caches.py"
+        "match": "warm_caches.py",
+        "stage": "shadow"
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/8 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "pipeline",
+        "priority": 3,
+        "retry_policy": "transient-2"
       },
       "expected_cadence_hours": 1,
       "state": "ACTIVE",
