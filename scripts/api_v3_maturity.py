@@ -143,6 +143,14 @@ def _build_memory_view(limit: int) -> dict[str, Any]:
         except _json.JSONDecodeError:
             continue
     health = prov.health()
+    try:  # real retrieval use (consumption + ladder receipts); the comparator file below is not it
+        from scripts.lib.memory_usage_view import usage_window
+        usage_24h = usage_window(_Path(prov.path).parent)
+    except Exception as exc:  # noqa: BLE001
+        usage_24h = {"error": type(exc).__name__}
+    shadow = shadow_metrics(shadow_runs)
+    shadow["source"] = "memory_shadow_runs.jsonl (compare_memory_shadow comparator, not production retrieval)"
+    shadow["last_run_at"] = (shadow_runs[-1].get("at") if shadow_runs else None)
     return redact({
         "ok": True, **AUTHORITY,
         "backend": health,
@@ -157,7 +165,8 @@ def _build_memory_view(limit: int) -> dict[str, Any]:
         "contradictions_total": contradictions_total,
         "admission_receipts": prov.tail_jsonl(prov.receipts_path, 20),
         "retrieval_receipts": prov.tail_jsonl(prov.retrievals_path, 20),
-        "shadow": shadow_metrics(shadow_runs),
+        "shadow": shadow,
+        "usage_24h": usage_24h,
         "shadow_runs": shadow_runs[-10:],
         "operator_actions": ["dispute", "retract", "expire"],
         "control_path": "/api/v3/maturity-control/memory/{dispute|retract|expire}",
