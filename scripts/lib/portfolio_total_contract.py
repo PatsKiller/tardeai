@@ -30,6 +30,9 @@ finding, because a zero would be a lie (tq-ts-missing-as-zero) and a raise would
 """
 from __future__ import annotations
 
+import json
+import logging
+from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional
 
 try:  # scripts/ on sys.path (the served API) vs repo root (tests)
@@ -51,8 +54,8 @@ POSITION_SCOPE_DEFINITION = (
 OVER_100_SCOPE = "holdings.non_cash_over_100"
 SCOPE_DEFINITIONS = {
     POSITION_SCOPE: POSITION_SCOPE_DEFINITION,
-    OVER_100_SCOPE: "non-cash instruments, one per (account, symbol), whose market_value is above $100",
-    "holdings.held_under_100": "held instruments priced above $0 and at or below $100",
+    OVER_100_SCOPE: "non-cash instruments held, one per (account, symbol), whose market_value is at or above the configured floor (config/position_count_authority.json)",
+    "holdings.held_under_100": "held instruments priced above $0 and below the configured floor",
     "holdings.unpriced": "non-cash lots with a quantity but no market_value above $0 (e.g. a CUSIP with no quote)",
     "holdings.all_rows": "every row in the holdings store, cash rows included, one per (account, symbol)",
     "holdings.non_cash": "non-cash holding rows, whatever their value",
@@ -61,21 +64,30 @@ SCOPE_DEFINITIONS = {
 CASH_SYMBOLS = frozenset({"CASH", "SPAXX", "FDRXX"})
 
 
-def _load_min_position_usd(default: float = 100.0) -> float:
-    """The over-floor threshold lives in config/position_count_authority.json (LQ-20261107-1820)."""
-    import json
-    from pathlib import Path
+CONFIG_PATH = None  # tests may point this at a temp config; None = config/position_count_authority.json
+FALLBACK_FLOOR_USD = 100.0
+_log = logging.getLogger(__name__)
 
+
+def current_floor() -> tuple[float, str]:
+    """(floor, source). source is ``config`` or ``config_unreadable:<why>`` (the fallback is loud, never silent).
+
+    The floor lives in config/position_count_authority.json (LQ-20261107-1820); this re-reads it per call so a
+    config change moves the served count without a code change.
+    """
+    path = Path(CONFIG_PATH) if CONFIG_PATH else Path(__file__).resolve().parents[2] / "config" / "position_count_authority.json"
     try:
-        raw = json.loads((Path(__file__).resolve().parents[2] / "config" / "position_count_authority.json")
-                         .read_text(encoding="utf-8"))
-        v = float(raw["min_position_usd"])
-        return v if v == v and v >= 0 else default
-    except (OSError, ValueError, KeyError, TypeError):
-        return default
+        v = float(json.loads(path.read_text(encoding="utf-8"))["min_position_usd"])
+        if v != v or v < 0:
+            raise ValueError("min_position_usd must be a number >= 0")
+        return v, "config"
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        why = f"{type(exc).__name__}: {exc}"[:120]
+        _log.warning("position-count floor config unreadable (%s): using fallback %s", why, FALLBACK_FLOOR_USD)
+        return FALLBACK_FLOOR_USD, f"config_unreadable:{why}"
 
 
-MIN_POSITION_USD = _load_min_position_usd()
+MIN_POSITION_USD, MIN_POSITION_SOURCE = current_floor()
 DEFAULT_TOLERANCE_USD = 1.0
 BASIS_STORE_FIELD = TOTAL_FIELD
 BASIS_ROW_SUM = "holdings[].market_value"
@@ -112,9 +124,11 @@ def _quantity(r: Mapping[str, Any]) -> Optional[float]:
     return None
 
 
-def position_scopes(rows: Iterable[Mapping[str, Any]], *, min_position_usd: float = MIN_POSITION_USD,
+def position_scopes(rows: Iterable[Mapping[str, Any]], *, min_position_usd: Optional[float] = None,
                     extra: Optional[Mapping[str, int]] = None) -> dict[str, int]:
     """Every named population, counted once. A split (account, symbol) is summed first, then classified."""
+    if min_position_usd is None:
+        min_position_usd = current_floor()[0]
     all_rows = 0
     cash_rows = 0
     value: dict[tuple[str, str], float] = {}
@@ -135,8 +149,8 @@ def position_scopes(rows: Iterable[Mapping[str, Any]], *, min_position_usd: floa
     unpriced = {k for k, v in value.items() if qty_seen.get(k) and v <= 0}
     scopes = {
         POSITION_SCOPE: len(held),
-        OVER_100_SCOPE: sum(1 for k in held if value[k] > min_position_usd),
-        "holdings.held_under_100": sum(1 for k in held if value[k] <= min_position_usd),
+        OVER_100_SCOPE: sum(1 for k in held if value[k] >= min_position_usd),
+        "holdings.held_under_100": sum(1 for k in held if value[k] < min_position_usd),
         "holdings.unpriced": len(unpriced),
         "holdings.all_rows": all_rows,
         "holdings.non_cash": len(value),
@@ -146,13 +160,13 @@ def position_scopes(rows: Iterable[Mapping[str, Any]], *, min_position_usd: floa
     return scopes
 
 
-def position_summary(scopes: Mapping[str, int]) -> str:
+def position_summary(scopes: Mapping[str, int], min_position_usd: Optional[float] = None) -> str:
     """The one line a page prints under the total: the headline count and what it leaves out, by name."""
     n = scopes.get(POSITION_SCOPE, 0)
     parts = [f"{n} position{'' if n == 1 else 's'}"]
     under = scopes.get("holdings.held_under_100", 0)
     if under:
-        parts.append(f"{under} under ${MIN_POSITION_USD:,.0f}")
+        parts.append(f"{under} under ${(current_floor()[0] if min_position_usd is None else float(min_position_usd)):,.0f}")
     unp = scopes.get("holdings.unpriced", 0)
     if unp:
         parts.append(f"{unp} unpriced lot{'' if unp == 1 else 's'} excluded")
@@ -203,7 +217,7 @@ def build_portfolio_total(document: Optional[Mapping[str, Any]], *,
                           extra_scopes: Optional[Mapping[str, int]] = None,
                           scope_definitions: Optional[Mapping[str, str]] = None,
                           tolerance_usd: float = DEFAULT_TOLERANCE_USD,
-                          min_position_usd: float = MIN_POSITION_USD) -> dict[str, Any]:
+                          min_position_usd: Optional[float] = None) -> dict[str, Any]:
     """One total, one count, and every alternative named. Never raises on a malformed store."""
     doc = document if isinstance(document, Mapping) else {}
     rows = [r for r in (doc.get("holdings") or []) if isinstance(r, Mapping)]

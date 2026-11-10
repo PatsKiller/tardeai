@@ -222,7 +222,7 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
     another quote clock. A missing non-cash day change is unknown, not zero:
     the day figure is the sum of the known rows, flagged incomplete, with the
     unknown rows and their value named (``day_pl_coverage``).
-    Position count is distinct held account+symbol, non-cash, value >= $100.
+    Position count is distinct held account+symbol, non-cash, value at or above the configured floor.
     """
     from .portfolio_positions import is_cash
     now = now or datetime.now(timezone.utc)
@@ -259,7 +259,10 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
     noncash = [r for r in rows if not r["is_cash"] and not r.get("is_loan")]
     held = [r for r in noncash if (_number(r.get("shares", r.get("quantity"))) or 0) > 0]
     counted = [r for r in held if (_number(r.get("market_value")) or 0) >= _min_position_usd()]
-    keys = {(r["account_id"], str(r.get("symbol") or "").upper()) for r in counted}
+    from .position_count_authority import counts_for_rows
+    _counts = counts_for_rows(rows, as_of=at)
+    _counts["excluded_cusip_zero"] = sum(1 for r in noncash if len(str(r.get("symbol") or "")) == 9
+                                         and (_number(r.get("market_value")) or 0) == 0)
     accounts = []
     summaries: dict[str, list[dict]] = {}
     for key, summary in (holdings_doc.get("account_summaries") or {}).items():
@@ -336,13 +339,8 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
             "quote_source": holdings_doc.get("reprice_source"),
             "day_pl_pct": round(day / (total - day) * 100, 3)
             if total is not None and day is not None and total - day > 0 else None,
-            "position_count": len(keys) if rows else None,
-            "position_counts": {"definition": "held non-cash account+symbol with market_value >= 100",
-                                "all_rows": len(rows), "cash_rows": sum(r["is_cash"] for r in rows),
-                                "non_cash_rows": len(noncash), "held_rows": len(held),
-                                "below_100": len(held) - len(counted), "counted": len(keys),
-                                "excluded_cusip_zero": sum(1 for r in noncash if len(str(r.get("symbol") or "")) == 9
-                                                           and (_number(r.get("market_value")) or 0) == 0)},
+            "position_count": _counts["position_count"] if rows else None,
+            "position_counts": _counts,
             "accounts": accounts, "holdings": rows,
             "stored_totals": deepcopy(holdings_doc.get("portfolio_totals") or {}),
             "document_source": holdings_doc.get("document_source"),
@@ -1457,8 +1455,8 @@ def _portfolio_total_contract(p: dict) -> dict:
 
 
 def _min_position_usd() -> float:
-    from .portfolio_total_contract import MIN_POSITION_USD
-    return MIN_POSITION_USD
+    from .portfolio_total_contract import current_floor
+    return current_floor()[0]
 
 
 def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None, document=None) -> dict:
@@ -1890,7 +1888,7 @@ def do_now_for(positions, approvals, *, now=None) -> dict:
     now = now or datetime.now(timezone.utc)
     items = []
     for p in positions:
-        if p.get("broker_protected") or (_number(p.get("market_value")) or 0) < 100:
+        if p.get("broker_protected") or (_number(p.get("market_value")) or 0) < _min_position_usd():
             continue
         state = p.get("stop_state")
         reason = ("Stop awaiting activation" if state == "pending_activation"

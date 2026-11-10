@@ -2813,7 +2813,7 @@ def _reports_analyst_symbols(query=None):
         {
             str(h.get("symbol", "")).upper()
             for h in holdings
-            if h.get("symbol") and not h.get("is_cash") and (h.get("market_value") or 0) > 100
+            if h.get("symbol") and not h.get("is_cash") and (h.get("market_value") or 0) >= _position_floor()
         }
     )
     wl = _db_query("SELECT DISTINCT symbol FROM watchlist_items ORDER BY symbol LIMIT 200") or []
@@ -3828,11 +3828,7 @@ def overview():
     holdings = h.get("holdings", [])
     totals = h.get("portfolio_totals", {})
     periods = perf.get("periods", {})
-    try:
-        from lib.portfolio_total_contract import MIN_POSITION_USD as _min_pos_usd
-    except ImportError:  # pragma: no cover - imported as scripts.<module>
-        from scripts.lib.portfolio_total_contract import MIN_POSITION_USD as _min_pos_usd
-    active_positions = [p for p in holdings if not p.get("is_cash") and (p.get("market_value") or 0) > _min_pos_usd]
+    active_positions = [p for p in holdings if not p.get("is_cash") and (p.get("market_value") or 0) >= _position_floor()]
 
     # ── Data Broker Wave B: pre-computed snapshot replaces individual recomputes ──
     from lib.data_broker.portfolio_snapshot import get_portfolio_snapshot
@@ -4115,7 +4111,7 @@ def overview():
         }
     )
     _position_counts["scope_definitions"] = {
-        "overview.non_cash_over_100": "holdings.json rows where not is_cash and market_value > 100",
+        "overview.non_cash_over_100": f"holdings.json rows where not is_cash and market_value >= {_position_floor():g} (config floor)",
         "holdings.all_rows": "every row in holdings.json including cash",
         "holdings.non_cash": "holdings.json rows where not is_cash, no value floor",
         "risk.risk_included": "risk_management.json positions where not risk_excluded (same rule as GET /api/v2/risk)",
@@ -5520,6 +5516,15 @@ def _market_day_holdings(holdings: dict) -> dict:
     return holdings
 
 
+def _position_floor() -> float:
+    """The configured position-count floor (config/position_count_authority.json)."""
+    try:
+        from lib.portfolio_total_contract import current_floor
+    except ImportError:  # pragma: no cover - imported as scripts.<module>
+        from scripts.lib.portfolio_total_contract import current_floor
+    return current_floor()[0]
+
+
 def _overview_with_today_move():
     """GET /api/v2/overview: the CIO read model plus today_move (LIVEFIX-H 2026-11-06).
 
@@ -5551,6 +5556,10 @@ def _overview_with_today_move():
         position_count_authority.publish_position_counts(out, doc.get("portfolio") or {})
     except Exception as exc:  # noqa: BLE001 -- say so; never headline a count with no named source
         out["position_counts_authority_error"] = f"{type(exc).__name__}: {exc}"[:200]
+        _pc = out.get("position_counts")
+        if isinstance(_pc, dict):  # unreconciled live-mark count: still names its source and as_of
+            _pc.setdefault("source", "cio_truth_unreconciled")
+            _pc.setdefault("as_of", out.get("as_of") or (doc.get("portfolio") or {}).get("valuation_as_of"))
     try:
         from portfolio_snapshot_sanity import account_market_days, portfolio_market_day
 
