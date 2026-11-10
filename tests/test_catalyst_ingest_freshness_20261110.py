@@ -141,8 +141,8 @@ def test_news_to_catalyst_skips_aged_rows_and_counts(monkeypatch):
 def test_news_to_catalyst_fresh_row_is_still_inserted(monkeypatch):
     rows = [(2, "EXMP", "watchlist", "Example Corp raises full-year guidance", "s", "t", "u",
              datetime.now(timezone.utc))]
-    n2c = importlib.import_module("news_to_catalyst")
-    monkeypatch.setattr(n2c, "gate_catalyst_symbol", lambda sym: (True, ""))
+    sv = importlib.import_module("lib.hermes_discovery.symbol_validation")
+    monkeypatch.setattr(sv, "gate_catalyst_symbol", lambda sym: (True, ""))
     n2c, conn, out = _run_n2c(monkeypatch, rows)
     assert out["excluded"]["backfill_aged"] == 0
     assert any("INSERT INTO catalyst_events" in s for s in conn.c.sql)
