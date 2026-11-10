@@ -151,9 +151,9 @@ def _receipt_lib():
 
 
 try:
-    from lib.catalyst_freshness import is_backfill as _is_backfill
+    from lib.catalyst_freshness import is_backfill as _is_backfill, resolve_limit as _resolve_limit
 except Exception:  # noqa: BLE001
-    from scripts.lib.catalyst_freshness import is_backfill as _is_backfill  # type: ignore
+    from scripts.lib.catalyst_freshness import is_backfill as _is_backfill, resolve_limit as _resolve_limit  # type: ignore
 
 
 def _dry_report(lane_id, summary, *, would_write, json_stdout=False):
@@ -224,13 +224,16 @@ def run(as_json: bool = False, *, single_symbol: str | None = None, dry_run: boo
     # lane did not choose to skip it — a research-directive slug is not a symbol), while ``skipped`` is a candidate
     # the lane considered and did not write. Counting them together made a full run that created 80 rows grade
     # "skipped 420 items, more than it produced (80)" (WORK-QUEUE item 26).
-    excluded = {"research_directive_slug": 0, "not_in_ticker_universe": 0, "acronym_not_issuer": 0}
-    skipped = {"already_present": 0, "backfill_aged": 0}
+    excluded = {"research_directive_slug": 0, "not_in_ticker_universe": 0, "acronym_not_issuer": 0,
+                "backfill_aged": 0}   # LQ-1817: never eligible as a NEW catalyst (not a skip the run chose)
+    skipped = {"already_present": 0}
+    _max_age_h, _fresh_status = _resolve_limit()     # once per run, not per article
+    # config_unreadable: the fallback limit is in use (warned in the log); surfaced in the run summary below
     attempted = 0
     for nid, symbol, strategy_type, title, summary, source, source_url, published_at in rows:
         # LQ-20261107-1817: an article published long before ingest is a backfill, not a new catalyst.
-        if _is_backfill(published_at):
-            skipped["backfill_aged"] += 1
+        if _is_backfill(published_at, max_hours=_max_age_h):
+            excluded["backfill_aged"] += 1
             continue
         # Filter BEFORE classify/LLM spend — junk must not reach identity later.
         if is_research_directive_slug is not None and is_research_directive_slug(symbol):
@@ -327,7 +330,8 @@ def run(as_json: bool = False, *, single_symbol: str | None = None, dry_run: boo
     return {"candidates": len(rows), "attempted": attempted,
             "created": 0 if dry_run else len(created),
             "would_create": len(created) if dry_run else None,
-            "skipped": dict(skipped), "excluded": dict(excluded)}
+            "skipped": dict(skipped), "excluded": dict(excluded),
+            "config_unreadable": _fresh_status != "ok"}
 
 
 def lane_output(summary: dict) -> dict:

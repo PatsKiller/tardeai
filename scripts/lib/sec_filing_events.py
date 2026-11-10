@@ -9,7 +9,8 @@ hand. Idempotent on catalyst_events (symbol, headline). READ_ONLY_ADVISORY.
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Any, Optional
 
 # 8-K item -> (catalyst_type, severity, label)
@@ -32,11 +33,22 @@ HIGH = {"high"}
 
 def _published(f: dict[str, Any], filed: date) -> str:
     """EDGAR acceptance time when the submissions payload carries it (date-only filingDate is midnight UTC, which
-    made every filing look 5-29 h old at ingest -- LQ-20261107-1817); else the filing date."""
+    made every filing look 5-29 h old at ingest -- LQ-20261107-1817); else the filing date.
+
+    filingDate is an America/New_York calendar date and acceptanceDateTime is UTC (``Z``), so an evening filing
+    has a UTC date one day later. The acceptance time is used when its New York date equals ``filed``."""
     acc = str(f.get("accepted_at") or "").strip()
-    if acc and acc[:10] == filed.isoformat():
-        return acc if acc.endswith("Z") or "+" in acc[10:] else acc + "+00:00"
-    return filed.isoformat()
+    if not acc:
+        return filed.isoformat()
+    try:
+        dt = datetime.fromisoformat(acc.replace("Z", "+00:00"))
+    except ValueError:
+        return filed.isoformat()
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    if dt.astimezone(ZoneInfo("America/New_York")).date() != filed:
+        return filed.isoformat()
+    return dt.astimezone(timezone.utc).isoformat()
 
 
 def events_from_filings(symbol: str, filings: list[dict[str, Any]], *, since_days: int = 45,

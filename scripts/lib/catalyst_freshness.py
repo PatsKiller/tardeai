@@ -7,20 +7,44 @@ config/catalyst_ingest_freshness.json (``max_publish_age_hours``; 0 disables the
 from __future__ import annotations
 
 import json
+import logging
+import math
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 
 _CONFIG = Path(__file__).resolve().parents[2] / "config" / "catalyst_ingest_freshness.json"
+# Fail-CLOSED fallback, used only when the config file is missing, empty, malformed, not a JSON object, or holds an
+# invalid limit (negative / NaN / inf / non-numeric). It keeps the gate ON; it is never a silent value: every use
+# logs a WARNING and callers surface ``config_unreadable``. The normal source of truth is the config file.
 DEFAULT_MAX_AGE_HOURS = 72.0
+STATUS_OK = "ok"
+STATUS_UNREADABLE = "config_unreadable"
+_log = logging.getLogger(__name__)
+
+
+def resolve_limit(config_path: Optional[Path] = None) -> Tuple[float, str]:
+    """(max_age_hours, status). status is ``ok`` or ``config_unreadable`` (fallback constant in use, warned)."""
+    path = config_path or _CONFIG
+    try:
+        data = json.loads(path.read_text())
+        if not isinstance(data, dict):
+            raise ValueError(f"top-level JSON is {type(data).__name__}, not an object")
+        if "max_publish_age_hours" not in data:
+            raise ValueError("key max_publish_age_hours missing")
+        val = float(data["max_publish_age_hours"])
+        if math.isnan(val) or math.isinf(val) or val < 0:
+            raise ValueError(f"invalid limit {data['max_publish_age_hours']!r}")
+        return val, STATUS_OK
+    except (OSError, ValueError, TypeError) as exc:
+        _log.warning("catalyst freshness config unreadable (%s: %s); gate stays ON with fallback %sh",
+                     path, exc, DEFAULT_MAX_AGE_HOURS)
+        return DEFAULT_MAX_AGE_HOURS, STATUS_UNREADABLE
 
 
 def max_age_hours(config_path: Optional[Path] = None) -> float:
-    try:
-        return float(json.loads((config_path or _CONFIG).read_text()).get("max_publish_age_hours", DEFAULT_MAX_AGE_HOURS))
-    except (OSError, ValueError, TypeError):
-        return DEFAULT_MAX_AGE_HOURS
+    return resolve_limit(config_path)[0]
 
 
 def parse_published(value: Any) -> Optional[datetime]:
@@ -44,7 +68,7 @@ def parse_published(value: Any) -> Optional[datetime]:
 
 def is_backfill(published_at: Any, *, now: Optional[datetime] = None, max_hours: Optional[float] = None) -> bool:
     """True when the item is older than the configured cutoff. Unknown/unparseable dates are not backfill."""
-    limit = max_age_hours() if max_hours is None else max_hours
+    limit = max_age_hours() if max_hours is None else max_hours   # hot loops pass max_hours (resolve once)
     if not limit or limit <= 0:
         return False
     pub = parse_published(published_at)

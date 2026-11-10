@@ -369,6 +369,20 @@ def _fetch_benzinga_api(symbol: str, api_key: str) -> list:
     return articles
 
 
+_FRESH_LIMIT: float | None = None
+
+
+def _freshness_limit() -> float:
+    """Publish-age limit, resolved once per run (reset in ingest()); logs and flags an unreadable config."""
+    global _FRESH_LIMIT
+    if _FRESH_LIMIT is None:
+        from lib.catalyst_freshness import resolve_limit
+        _FRESH_LIMIT, status = resolve_limit()
+        if status != "ok":
+            print("  [news] config_unreadable: catalyst freshness fallback limit in use", file=sys.stderr)
+    return _FRESH_LIMIT
+
+
 def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, scores: dict, tags: dict) -> bool:
     """Write the catalyst/sentiment rows for one article. Returns True when a catalyst row was written.
 
@@ -387,11 +401,12 @@ def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, score
     relevance = scores.get("relevance_score", 0)
     catalyst_state = "skipped"          # no catalyst named: the default, and the honest one
 
+    aged = False
     try:
         from lib.catalyst_freshness import is_backfill
-        aged = is_backfill(article.get("published_at"))   # LQ-20261107-1817: backfill is news, not a new catalyst
-    except Exception:  # noqa: BLE001 -- a broken gate must not stop ingest; the row is then treated as fresh
-        aged = False
+        aged = is_backfill(article.get("published_at"), max_hours=_freshness_limit())   # LQ-20261107-1817
+    except Exception as exc:  # noqa: BLE001 -- a broken gate must not stop ingest, but it is never silent
+        print(f"catalyst freshness gate failed for {symbol}: {type(exc).__name__}: {exc}"[:300], file=sys.stderr)
     if relevance > 0.3 and not aged:
         try:
             from news_to_catalyst import _classify, _severity_from_weight
@@ -577,6 +592,8 @@ def _emit_catalyst_news_as_of(mode: str, new_articles: int) -> None:
 
 
 def ingest(mode: str = "priority", *, single_symbol: str | None = None) -> dict:
+    global _FRESH_LIMIT
+    _FRESH_LIMIT = None      # re-read the freshness config once for this run
     conn = _get_conn()
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
