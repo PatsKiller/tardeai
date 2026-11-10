@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "tests"))
 
 from lib import home_cio_card as h  # noqa: E402
-from test_home_cio_card_20261108 import MR, SC, _build  # noqa: E402  (synthetic fixture, one source)
+from test_home_cio_card_20261108 import MR, SC, _build, buys_open  # noqa: E402  (synthetic fixture, one source)
 
 PRICE = 184.80
 AS_OF = "2031-03-10T14:45:00+00:00"
@@ -39,9 +39,9 @@ Q_XLP = {"price": 85.40, "as_of": "2031-03-10T15:10:00+00:00", "source": "finviz
 def _rot(**kw):
     # LQ-20261107-1389: this file is about the whole-share SIZING rule, and the shared fixture's buys verdict
     # withholds a tranche (which is the point of 1389). It is read here under a buys line that allows one; the
-    # withholding has its own tests in test_home_cio_cio_verdict_lq1389_20261109.py.
-    sc = copy.deepcopy(kw.pop("sc", SC))
-    sc["cio_brief"]["synopsis"]["buys"] = {"line": "Buys open, slowly", "gate": "OPEN"}
+    # withholding has its own tests in test_home_cio_cio_verdict_lq1389_20261109.py. `buys_open` carries the
+    # `until`, so this file keeps reading the catalyst label too (LQ-20261107-1735).
+    sc = buys_open(kw.pop("sc", SC))
     kw.setdefault("quotes", {"XLV": copy.deepcopy(Q_XLV), "XLP": copy.deepcopy(Q_XLP)})
     return _build(sc=sc, **kw)["panel"]["rotate"]
 

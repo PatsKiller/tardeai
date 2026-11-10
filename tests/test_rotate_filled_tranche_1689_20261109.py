@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "tests"))
 
 from lib import home_cio_card as h  # noqa: E402
-from test_home_cio_card_20261108 import MR, SC, _build  # noqa: E402  (synthetic fixture, one source)
+from test_home_cio_card_20261108 import MR, SC, _build, buys_open  # noqa: E402  (synthetic fixture, one source)
 
 PRICE = 184.80            # XLV quote
 PRICE_XLP = 85.40         # XLP quote
@@ -60,7 +60,11 @@ def _hold(symbol, shares, avg, *, as_of=HOLD_AT, run=918, account="example_ira",
 def _rot(*, holdings=None, quotes=None, mr=None):
     kw = {"holdings": holdings}
     kw["quotes"] = dict(QUOTES if quotes is None else quotes)
-    return _build(mr=_book(mr or MR), **kw)["panel"]["rotate"]
+    # LQ-20261107-1735: this file's subject is the FILL rule (and the sizing rule that gives a tranche its share
+    # count), so it reads the shared fixture under the buys line that permits a tranche. 1389's withholding is a
+    # different claim and has its own tests. The override carries `until`, because the next-step assertion below is
+    # `plan.tranche2_after` — the catalyst label, which is the synopsis's own `until`.
+    return _build(mr=_book(mr or MR), sc=buys_open(), **kw)["panel"]["rotate"]
 
 
 def _by(rot):

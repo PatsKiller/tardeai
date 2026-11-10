@@ -112,6 +112,24 @@ def _build(mr=MR, sc=SC, **kw):
     return h.build(copy.deepcopy(mr), copy.deepcopy(sc), now=NOW, **kw)
 
 
+def buys_open(sc=SC):
+    """The shared fixture read under a buys line that ALLOWS a tranche (LQ-20261107-1389 / -1735).
+
+    ``SC``'s CIO verdict is "Buys NONE until CPI Tue", and a no-buys gate withholds every tranche — that is what
+    1389 is for, and its withholding has its own tests in ``test_home_cio_cio_verdict_lq1389_20261109.py``. A
+    neighbour whose subject is the sizing rule, the fill rule or the quote batch reads the same fixture under the
+    verdict that permits a buy, instead of carrying its own copy of the override.
+
+    The ``until`` is CARRIED, not dropped: it is the catalyst label the rotate column prints as
+    ``plan.tranche2_after`` (``home_cio_card._catalyst``), so an OPEN fixture without it silently loses that
+    coverage. Keep the rest of the producer's shape for the same reason — only the gate changes.
+    """
+    sc = copy.deepcopy(sc)
+    sc["cio_brief"]["synopsis"]["buys"] = {**(sc["cio_brief"]["synopsis"].get("buys") or {}),
+                                           "line": "Buys open, slowly", "gate": "OPEN"}
+    return sc
+
+
 def _walk(node, path="$"):
     if isinstance(node, dict):
         yield path, node
@@ -164,9 +182,7 @@ def test_rotate_uses_bars_and_proposed_rule():
     # the tranche (test_home_cio_cio_verdict_lq1389_20261109 pins that). The sizing RULE is a separate thing, so it
     # is exercised under the verdict that allows a buy — the card obeys the synopsis it is handed, it never
     # re-derives the gate from the tier.
-    sc = copy.deepcopy(SC)
-    sc["cio_brief"]["synopsis"]["buys"] = {"line": "Buys open, slowly", "gate": "OPEN"}
-    rot = _build(sc=sc)["panel"]["rotate"]
+    rot = _build(sc=buys_open())["panel"]["rotate"]
     by = {c["symbol"]: c for c in rot["candidates"]}
     assert list(by) == ["XLV", "XLP", "XLU"]
     xlv = by["XLV"]
@@ -294,8 +310,7 @@ def test_the_route_passes_the_fresh_quote_batch_into_the_card(monkeypatch):
 
     # LQ-20261107-1389: a share count needs a tranche to size, and the no-buys verdict in SC withholds it. This test
     # is about the quote batch reaching the sizing, so the synopsis it serves carries a buys line that allows one.
-    brief = copy.deepcopy(SC["cio_brief"])
-    brief["synopsis"]["buys"] = {"line": "Buys open, slowly", "gate": "OPEN"}
+    brief = buys_open()["cio_brief"]
 
     monkeypatch.setattr(api_v2, "_HOME_CIO_CARD_CACHE", {})
     monkeypatch.setattr(api_v2, "_market_risk_latest_projection", lambda: copy.deepcopy(MR))
@@ -357,9 +372,7 @@ def _by_symbol():
     # LQ-20261107-1389: the 1655 share-sizing assertions below need a tranche to size, and the no-buys verdict in
     # SC withholds one (that withholding has its own tests in test_home_cio_cio_verdict_lq1389_20261109.py). These
     # tests are about the rule and the per-name split, so they read it under a buys line that allows a tranche.
-    sc = copy.deepcopy(SC)
-    sc["cio_brief"]["synopsis"]["buys"] = {"line": "Buys open, slowly", "gate": "OPEN"}
-    rot = _build(sc=sc, stocks=_stocks())["panel"]["rotate"]
+    rot = _build(sc=buys_open(), stocks=_stocks())["panel"]["rotate"]
     return {c["symbol"]: c for c in rot["candidates"]}
 
 

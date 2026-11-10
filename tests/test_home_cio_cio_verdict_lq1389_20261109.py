@@ -140,6 +140,42 @@ STOCKS = {"healthcare": {"source_id": "ticker_prices:daily", "as_of": "2031-03-0
      "rs_source_id": "ticker_prices:rs20_vs_spy:DEMON"}]}}
 
 
+def test_a_filled_tranche_stays_a_fact_under_a_no_buys_gate():
+    """LQ-20261107-1735 (F3): the gate withholds the PROPOSAL, never the holding.
+
+    DEMOX tranche 1 is $1,200 = 6 shares at the live quote (floor(1200/184.40)); the book holds all 6. Under the
+    no-buys verdict the tranche is still withheld — no dollars and no next step — but the row must keep reading
+    FILLED. A RED/ORANGE tier is exactly what produces a NONE gate, so the alternative is the first defensive day
+    after the fold telling the operator that a tranche already bought is waiting on the release (1689's rule: a
+    filled tranche is a fact about the book, not a command)."""
+    out = _build(quotes={"DEMOX": {"price": 184.40, "as_of": "2031-03-10T02:00:00+00:00",
+                                   "source": "finviz_quote_cache"}},
+                 holdings=[{"symbol": "DEMOX", "account": "example_ira", "shares": 6, "quantity": 6,
+                            "cost_basis_total": 1080.0, "as_of": "2031-03-10T01:54:02+00:00",
+                            "sync_run_id": 918},
+                           {"symbol": "DEMOZ", "account": "example_ira", "shares": 50, "quantity": 50,
+                            "cost_basis_total": 2050.0, "as_of": "2031-03-10T01:54:02+00:00",
+                            "sync_run_id": 918}])
+    rot = _rotate(out)
+    x = {c["symbol"]: c for c in rot["candidates"]}["DEMOX"]
+    assert x["proposed"]["tranche1_usd"] is None and x["proposed"]["shares"] is None   # the proposal is withheld
+    assert rot.get("plan") is None and rot.get("gated")                                 # and so is the next step
+    assert x["held"]["shares"] == 6 and x["held"]["filled"] is True                    # the fill is not
+    assert x["held"]["pct_of_tranche1"] == 100.0
+    # a group that qualifies for no tranche can have none filled, and the gate does not invent a holding
+    assert "held" not in {c["symbol"]: c for c in _rotate(_build())["candidates"]}["DEMOY"]   # no holding at all
+    assert "held" not in {c["symbol"]: c for c in rot["candidates"]}["DEMOZ"]                 # NEUTRAL: no tranche
+
+
+def test_the_actionable_vocabulary_is_the_producers_own():
+    """LQ-20261107-1735 (F2): the ranking set is imported, not restated. Stop advice emits RAISE / ADD_STOP /
+    FIX_QTY / HOLD / NO_ACTION; a local tuple that named LOWER/TIGHTEN and omitted FIX_QTY ranked the producer's
+    own "fix stop size" answer as a hold."""
+    import lib.since_close_card as scc
+    assert h.ACTIONABLE == scc.CIO_ACTIONABLE == ("RAISE", "ADD_STOP", "FIX_QTY")
+    assert "FIX_QTY" in h._STANCE
+
+
 def test_the_names_under_a_gated_etf_keep_their_readings_and_lose_their_share_count():
     """The per-name rows are the same tranche 1 as the ETF row: under a no-buys gate they carry the readings and
     no money, no share count and no proposed flag — otherwise the page shows the same buy one level down."""
@@ -243,6 +279,22 @@ def test_an_actionable_answer_outranks_a_hold_across_accounts():
         {"symbol": "DEMOA", "account": "b", "answer": "RAISE"},
         {"symbol": "DEMOA", "account": "a", "answer": "HOLD"}]}})
     assert v == {"DEMOA": "CIO: raise stop"}
+    # LQ-20261107-1735 (F2): FIX_QTY is an actionable answer too — the producer emits it (cio_overnight_brief.py
+    # STOP_ADVICE_ANSWERS). Ranked as a hold, one row order told the operator the CIO was HOLDING a name whose stop
+    # quantity they had asked to fix, which is the two-verdicts-on-one-screen defect this ticket removes.
+    v = h._cio_verdicts({"cio_brief": {"stop_advice": [
+        {"symbol": "DEMOA", "account": "a", "answer": "HOLD"},
+        {"symbol": "DEMOA", "account": "b", "answer": "FIX_QTY"}]}})
+    assert v == {"DEMOA": "CIO: fix stop size"}
+    v = h._cio_verdicts({"cio_brief": {"stop_advice": [
+        {"symbol": "DEMOA", "account": "b", "answer": "FIX_QTY"},
+        {"symbol": "DEMOA", "account": "a", "answer": "HOLD"}]}})
+    assert v == {"DEMOA": "CIO: fix stop size"}
+    # and the card's action list reads the same vocabulary, so a "fix the stop size" ask is an action, not a drop
+    acts = h._actions({"cio_brief": {"stop_advice": [
+        {"symbol": "DEMOA", "account": "b", "answer": "FIX_QTY", "as_of": SYN_AT},
+        {"symbol": "DEMOB", "account": "b", "answer": "HOLD", "as_of": SYN_AT}]}})
+    assert [a["symbol"] for a in acts] == ["DEMOA"] and acts[0]["answer"] == "FIX_QTY"
 
 
 def test_the_buys_gate_helper_reads_facts_it_can_trace():

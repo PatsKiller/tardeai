@@ -31,6 +31,11 @@ try:  # one definition of "cash row" shared with the rotation engine (LQ-2026110
 except ImportError:  # this module imported as scripts.lib.home_cio_card
     from .holdings_universe import is_cash_row as _is_cash_row
 
+try:  # the stop-advice producer's own actionable answers (LQ-20261107-1735): never a second copy of the vocabulary
+    from lib.since_close_card import CIO_ACTIONABLE as ACTIONABLE
+except ImportError:  # this module imported as scripts.lib.home_cio_card
+    from .since_close_card import CIO_ACTIONABLE as ACTIONABLE
+
 SCHEMA = "HomeCioCard@v1"
 
 #: Proposed rotation sizing rule (v5 mockup, "proposed, needs your OK"): target % of book by sector state.
@@ -46,7 +51,9 @@ DEFENSIVE_KEYS = ("healthcare", "staples", "utilities")
 FILLED_FRACTION = 0.90
 #: Hedge candidates by what is stressed: tech-led stress → Nasdaq-100 inverse.
 TECH_KEYS = {"tech", "semis", "ai_basket"}
-ACTIONABLE = ("RAISE", "ADD_STOP", "LOWER", "TIGHTEN")
+#: ``ACTIONABLE`` is imported above from its producer (``since_close_card.CIO_ACTIONABLE`` — RAISE / ADD_STOP /
+#: FIX_QTY). The old local tuple listed LOWER/TIGHTEN, which stop advice never emits, and omitted FIX_QTY, which it
+#: does: a name answered "fix stop size" in one account and "hold" in another ranked as a hold (LQ-20261107-1735).
 #: How the CIO's stop-advice answer reads in a table's Stance column (LQ-20261107-1389): the answer alone ("RAISE")
 #: does not say WHAT is raised, and it must be visibly the CIO's verdict, not a second engine's label.
 _STANCE = {"RAISE": "CIO: raise stop", "ADD_STOP": "CIO: add stop", "FIX_QTY": "CIO: fix stop size", "HOLD": "CIO: hold"}
@@ -562,7 +569,9 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
     ``buys``: the CIO's buys line ({gate, until, until_short, line}), taken from the synopsis the card already
     renders (LQ-20261107-1389). Under a no-buys gate every candidate keeps its target and loses its tranche: no
     dollars, no share count, no plan, and the gate rides out on the column (``gated``) so the row can say which
-    release the tranche is waiting for. The gate is read, never re-derived from the market-risk tier."""
+    release the tranche is waiting for. The gate is read, never re-derived from the market-risk tier. It withholds
+    the proposal only: a position the book already holds still reports its FILLED state, because that is a fact
+    about the book rather than a command (LQ-20261107-1735)."""
     heat = {h.get("key"): h for h in mr.get("heatmap") or [] if isinstance(h, Mapping)}
     groups = {g.get("key"): g for g in (mr.get("sectors") or {}).get("groups") or [] if isinstance(g, Mapping)}
     lead = ((mr.get("leadership") or {}).get("groups") or {})
@@ -623,8 +632,12 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
             }
             # The book's own position, and whether it already covers the tranche. Only a group that offers a tranche
             # can have one filled: a non-qualifying group shows a target, not a tranche.
+            # LQ-20261107-1735 (F3): a buys gate withholds the PROPOSAL, never the fact. `t1` is None under such a
+            # gate — that IS the withholding — but the tranche's share count is still in `tr`, so the holding is
+            # reported as FILLED either way. Otherwise the first RED/ORANGE morning after the fold tells the
+            # operator that a tranche already bought is "after CPI Tue".
             hq = (held or {}).get(str(sym).upper()) if sym else None
-            if hq and t1:
+            if hq and qualifies and tr:
                 t1_shares = tr[0]["shares"]
                 hs = _num(hq.get("shares"))
                 h_rec = item(hq.get("source_id") or "positions_current", hq.get("as_of"),
