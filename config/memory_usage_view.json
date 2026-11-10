@@ -1,0 +1,7 @@
+{
+  "schema": "MemoryUsageViewConfig@v1",
+  "_note": "Memory panel usage window. Env overrides: TRADEAI_MEMORY_USAGE_HOURS, TRADEAI_MEMORY_USAGE_MAX_ROWS, TRADEAI_MEMORY_USAGE_SKEW_S.",
+  "window_hours": 24,
+  "max_rows": 20000,
+  "future_skew_seconds": 300
+}

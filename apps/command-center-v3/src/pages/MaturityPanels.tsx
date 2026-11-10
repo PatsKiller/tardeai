@@ -39,7 +39,7 @@ export function MemoryPanel() {
   const contradictions = data?.contradictions || []
   const retrievals = data?.retrieval_receipts || []
   const shadow = data?.shadow || {}
-  const usage = data?.usage_24h || {}
+  const usage = data?.usage_24h || { error: 'cannot be read: usage_24h missing from API response' }
   async function act(action: string, memoryId: string) {
     setMsg('')
     try {
@@ -68,8 +68,15 @@ export function MemoryPanel() {
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '10px 0' }}>
       {Object.entries(counts).map(([k, v]) => <Badge key={k}>{`${k} ${String(v)}`}</Badge>)}
       <Badge>{`comparator_runs ${String(shadow.comparator_runs ?? 0)} (last ${String(shadow.last_run_at || 'never').slice(0, 10)})`}</Badge>
-      <Badge>{`retrievals ${String(usage.consumption_receipts ?? '—')} / ${String(usage.window_hours ?? 24)}h (consumption receipts)`}</Badge>
-      <Badge>{`ladder receipts ${String(usage.ladder_receipts ?? '—')} / ${String(usage.window_hours ?? 24)}h · used_refs ${String(usage.ladder_used_refs ?? '—')}`}</Badge>
+      {usage.error
+        ? <Badge><span style={{ color: 'var(--red)' }} data-testid="memory-usage-unreadable">{`retrievals: ${String(usage.error)}`}</span></Badge>
+        : <>
+          <Badge>{`retrievals ${String(usage.consumption_receipts)} / ${String(usage.window_hours)}h (${String(usage.consumption?.file)}, newest ${String(usage.consumption?.newest_receipt_at || 'none')}, age ${String(usage.consumption?.age_s ?? 'n/a')}s)`}</Badge>
+          <Badge>{`ladder receipts ${String(usage.ladder_receipts)} / ${String(usage.window_hours)}h · used_refs ${String(usage.ladder_used_refs)} (${String(usage.ladder?.file)}, newest ${String(usage.ladder?.newest_receipt_at || 'none')}, age ${String(usage.ladder?.age_s ?? 'n/a')}s)`}</Badge>
+          {(usage.consumption?.truncated || usage.ladder?.truncated) && <Badge>{'truncated: older in-window rows unread'}</Badge>}
+          {((usage.consumption?.future_dated || 0) + (usage.ladder?.future_dated || 0) + (usage.consumption?.malformed || 0) + (usage.ladder?.malformed || 0)) > 0
+            && <Badge>{`integrity: future_dated ${String((usage.consumption?.future_dated || 0) + (usage.ladder?.future_dated || 0))}, malformed ${String((usage.consumption?.malformed || 0) + (usage.ladder?.malformed || 0))}`}</Badge>}
+        </>}
       <Badge>{`showing newest ${String(recs.length)} of ${String(data?.records_total ?? recs.length)}`}</Badge>
     </div>
     {loading && <div>Loading…</div>}

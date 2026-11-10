@@ -147,7 +147,7 @@ def _build_memory_view(limit: int) -> dict[str, Any]:
         from scripts.lib.memory_usage_view import usage_window
         usage_24h = usage_window(_Path(prov.path).parent)
     except Exception as exc:  # noqa: BLE001
-        usage_24h = {"error": type(exc).__name__}
+        usage_24h = {"error": f"cannot be read: {type(exc).__name__}: {str(exc)[:160]}"}
     shadow = shadow_metrics(shadow_runs)
     shadow["source"] = "memory_shadow_runs.jsonl (compare_memory_shadow comparator, not production retrieval)"
     shadow["last_run_at"] = (shadow_runs[-1].get("at") if shadow_runs else None)
