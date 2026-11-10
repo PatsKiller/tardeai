@@ -6,7 +6,7 @@ const assert = {
   deepEqual(a: unknown, b: unknown, m?: string) { const x = JSON.stringify(a), y = JSON.stringify(b); if (x !== y) fail(m ?? `expected ${x} to deep-equal ${y}`) },
   match(s: string, re: RegExp, m?: string) { if (!re.test(s)) fail(m ?? `expected ${JSON.stringify(s)} to match ${re}`) },
 }
-import { plainEngineReason, unwrapMarketRisk, bannerVisible, factLine, tierTone, contributorsLine, pointsSum, episodeLine, fmtPct, shadowMarker, SHADOW_MARKER, CARRIED_MARKER,
+import { plainEngineReason, unwrapMarketRisk, bannerVisible, factLine, renderedTier, tierTone, contributorsLine, pointsSum, episodeLine, fmtPct, shadowMarker, SHADOW_MARKER, CARRIED_MARKER,
   summaryVisible, summaryDefaultOpen, summaryModel, fmtPoints, budgetLabel, SUMMARY_PHONE_MAX_PX,
   actionableModel, verdictLine, fmtUsd, fmtSignedPct, hedgeModel, rotateModel, pointsToScore, reentryVerdictDisplay } from './marketRisk.ts'
 
@@ -23,6 +23,21 @@ assert.equal(bannerVisible(red), true)
 assert.equal(tierTone(red!.tier), 'danger')
 assert.equal(factLine(red).value, 'RED 83')
 assert.equal(factLine(red).sub, 'futures / extended hours · NQ −1.6%')
+// A held RED whose score is under red's min_score (75) must not paint RED beside that score.
+// Floors are config/market_risk_policy.yaml tiers: red 75, orange 60, yellow 40, blue 25.
+const heldLow = unwrapMarketRisk({ state: 'evaluated', tier: 'RED', score: 36.7, as_of: '2026-11-02T21:30:00Z', age_hours: 0.2, stale: false,
+  contributors: [{ name: 'Breadth', points: 12 }], categories: [], uplift: null })
+assert.equal(heldLow?.tier, 'RED', 'the payload keeps the engine tier')
+assert.equal(factLine(heldLow).value, 'BLUE 37', '36.7 is below yellow 40, so the label is BLUE')
+assert.equal(factLine(heldLow).tone, 'info')
+const heldOrange = unwrapMarketRisk({ state: 'evaluated', tier: 'RED', score: 70, as_of: '2026-11-02T21:30:00Z', age_hours: 0.2, stale: false, contributors: [], categories: [], uplift: null })
+assert.equal(factLine(heldOrange).value, 'ORANGE 70', 'a score in [60, 75) renders ORANGE')
+const upliftRed = unwrapMarketRisk({ state: 'evaluated', tier: 'RED', score: 68, as_of: '2026-11-02T21:30:00Z', age_hours: 0.2, stale: false, contributors: [], categories: [],
+  uplift: { market_score: 68, vulnerability: 80, note: 'Market ORANGE -> RED after portfolio vulnerability high' } })
+assert.equal(factLine(upliftRed).value, 'RED 68', 'a portfolio uplift keeps the engine tier')
+assert.equal(renderedTier('RED', null, null), 'RED', 'no score: keep the engine tier')
+assert.equal(renderedTier('YELLOW', 59.7, null), 'YELLOW')
+assert.equal(renderedTier('GREEN', 18, null), 'GREEN', 'GREEN is not re-derived from the score')
 assert.equal(contributorsLine(red), 'Futures / extended hours +18 · Event cluster +17 · Options flow +15 · Breadth +14 · Semiconductors +11', 'five contributors, never six')
 assert.equal(pointsSum(red), 18 + 17 + 15 + 14 + 11 + 99, 'the sum is computed, so a mismatch with the score is visible')
 assert.match(episodeLine(red), /repeat 3 of 12 · not acknowledged/)
