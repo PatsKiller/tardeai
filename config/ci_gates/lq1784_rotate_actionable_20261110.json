@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1784_rotate_actionable_20261110",
+  "files": [
+    "tests/test_lq1784_rotate_actionable_20261110.py"
+  ],
+  "anchor": "LQ1784_ROTATE_ACTIONABLE_20261110",
+  "comment": [
+    "ANCHOR: LQ1784_ROTATE_ACTIONABLE_20261110 - the Home CIO rotate column (operator complaint, P0). D1: the",
+    "constituent floors (price >= $5.00, 20-session average dollar volume >= $10M, |RS20| <= 100 dropped and counted, a",
+    ">5% same-session split disagreement) drop what the operator cannot trade, while a HELD name stays listed with a",
+    "plain flag and the drops are counted per group. D2: one action line per group, one line per stock (symbol, held",
+    "flag, price, stronger/weaker than the ETF by N pts), a next tranche for a filled one, and a time-aware event line",
+    "so a release that has already printed is never the next event. Hermetic: synthetic fixtures and an injected",
+    "read-only db_query; no live store is read."
+  ]
+}
