@@ -346,7 +346,10 @@ def test_brief_shape_uses_the_last_exchange_close_and_five_sessions():
         "selected": 3,
         "with_news": 2,
         "with_move": 2,
-        # ZRKT has 200 uncovered shares; ZQUIET holds 100 with no resting stop at all
+        # ZRKT has 200 uncovered shares; ZQUIET holds 100 with no resting stop at all.
+        # LQ-20261107-1731: the count names its population and lists its members beside it.
+        "uncovered_population": "held",
+        "uncovered_symbols": ["ZQUIET", "ZRKT"],
         "uncovered_positions": 2,
     }
     by = {h["symbol"]: h for h in doc["holdings"]}

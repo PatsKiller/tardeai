@@ -627,6 +627,10 @@ def stop_advice_for_account(
         # LQ-20261107-1700: today's lapsed Day order, when there is one, so the card can say
         # "expired at the close" rather than showing a stop that never existed.
         "expired_stop": None,
+        # LQ-20261107-1731: when the broker stops behind this row were READ — not when the brief ran.
+        # A row that says "no working stop" is a statement about that read; without its time the page
+        # reads a 16:15 picture as a 19:00 fact, which is exactly the XAR P0.
+        "stops_as_of": _latest([s.get("captured_at") for s in in_account]),
         "premise_correction": event.get("premise_correction"),
         "source_ids": list(source_ids),
         "as_of": as_of,
@@ -2094,6 +2098,16 @@ def build_brief(
                     it["what_why"] = _safe_prose(ent.get("what_why"), 900) or None
                     it["impact"] = _safe_prose(ent.get("impact"), 400) or None
 
+    # LQ-20261107-1731: the uncovered population, computed once so the count and the members cannot
+    # drift. Counted over the HELD book (LQ-1699) — the artifact that showed 2 against a held book of 3
+    # was the pre-1699 release, and nothing in its output said which book the number described.
+    uncovered_held = sorted(
+        sym
+        for sym, pos in held.items()
+        if position_value(pos, quotes.get(sym)) >= MIN_POSITION_MARKET_VALUE
+        and not stop_coverage(pos, list(stops_by_symbol.get(sym) or [])).get("fully_covered")
+    )
+
     doc = {
         "schema": SCHEMA,
         "lane_id": LANE_ID,
@@ -2141,12 +2155,11 @@ def build_brief(
             "with_move": sum(1 for it in items if "move" in (it["reasons"] or [])),
             # LQ-20261107-1699: counted over the HOLDINGS, not over the briefed items — a quiet name
             # with no stop is exactly the position the count used to omit.
-            "uncovered_positions": sum(
-                1
-                for sym, pos in held.items()
-                if position_value(pos, quotes.get(sym)) >= MIN_POSITION_MARKET_VALUE
-                and not stop_coverage(pos, list(stops_by_symbol.get(sym) or [])).get("fully_covered")
-            ),
+            # LQ-20261107-1731: the population and its members are published with the number, so a
+            # reader comparing 2 to 3 can see which book each describes instead of guessing.
+            "uncovered_population": "held",
+            "uncovered_symbols": uncovered_held,
+            "uncovered_positions": len(uncovered_held),
         },
     }
     return doc

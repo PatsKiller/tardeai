@@ -8,6 +8,10 @@ move was invisible: it is unprotected tonight whatever it did today. Every held 
 ``MIN_POSITION_MARKET_VALUE`` with uncovered shares in an account now gets an ADD_STOP row for that
 account, and ``counts.uncovered_positions`` counts the HOLDINGS, not the briefed items.
 
+1731 (P0): the uncovered count now names the book it counts and lists its members, and each stop
+row dates the broker read behind it (``stops_as_of``) instead of leaving a 16:15 "no stop" to be
+read as a 19:00 fact.
+
 1700 (P1): a ``stop_last_known`` row with ``status='expired'`` captured today is a Day order that
 lapsed at the close and covers nothing afterwards. The ADD_STOP row for that symbol and account now
 says so and says to re-enter it as GTC, instead of reading like a stop that was never placed.
@@ -150,6 +154,38 @@ def test_uncovered_positions_counts_holdings_not_briefed_items():
 def test_a_fully_covered_quiet_holding_is_not_advised():
     doc = build()
     assert advice(doc, "ZCOVER") == []
+
+
+# ── LQ-20261107-1731: a count that says which book it counts, and a row that dates its read ──
+
+
+def test_the_uncovered_count_publishes_the_book_it_counts_and_its_members():
+    """The page showed 2 unprotected where the held book had 3, and the artifact recorded neither the
+    population nor the members — so a count of briefed names and a count of holdings were
+    indistinguishable. Fail-before: the base publishes only the bare number."""
+    doc = build()
+    counts = doc["counts"]
+    assert counts["uncovered_population"] == "held"
+    assert counts["uncovered_symbols"] == ["ZLAPSE", "ZSLEEP", "ZSPLIT"]
+    assert counts["uncovered_positions"] == len(counts["uncovered_symbols"]) == 3
+
+
+def test_a_no_stop_row_carries_when_its_stops_were_read():
+    """XAR's row said "no stop" with no read time, so a 16:15 artifact was read as a 19:00 fact after
+    the stop had been placed and captured. The row now dates its evidence: the capture time of the
+    working stops it was built from, and None when it had none — never the run time, which would
+    assert a check that did not happen. Fail-before: the base row carries no such field."""
+    # ZCOVER is partly covered here (40 of 100 shares): it earns an ADD_STOP row that carries a
+    # working stop, so both directions of the field are exercised — a dated read and an absent one.
+    rows = [r for r in STOP_ROWS if r["symbol"] != "ZCOVER"] + [
+        {"symbol": "ZCOVER", "account": "acct_a", "order_id": "C2", "stop_price": 90.0, "qty": 40,
+         "status": "working", "captured_at": TODAY, "origin": "schwab"},
+    ]
+    doc = build(rows=rows)
+    partial = advice(doc, "ZCOVER")
+    assert partial and partial[0]["stop_qty"] == 40.0 and partial[0]["stops_as_of"] == TODAY
+    quiet = advice(doc, "ZSLEEP")
+    assert quiet and quiet[0]["stop_now"] is None and quiet[0]["stops_as_of"] is None
 
 
 def test_a_holding_below_the_position_floor_is_not_advised():
