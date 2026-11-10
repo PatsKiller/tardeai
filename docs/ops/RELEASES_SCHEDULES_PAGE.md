@@ -9,6 +9,57 @@ Authority:   READ_ONLY_ADVISORY · MBI_BEHAVIOR = 0
 Approval:    operator 2026-10-22 ("perfect approved"), mockup gate3 Pipeline.dc.html
 ```
 
+## 2026-11-10: the deployment log (LQ-20261107-1794)
+
+Operator, 10:50 ET: *"I need in the ops a deployment log of everything that's deployed, date, what is it fixed, what
+is the truth. And I need that for everything we've done for the last week since we stopped using Git."*
+
+The data already exists and is not this change's: a lead-owned **`DeploymentLog@v1`** file,
+`<state root>/data/runtime/deployment_log/deployments.json`, rebuilt by `lead/scratch/deployment_log_build.py` after
+every `scripts/activate_live.sh`. This change serves it and draws it.
+
+**Read model — `deployment_log` section.** `read_deployment_log(path, now, limit=200, serving_release=…)` reads the
+file resolved by `default_paths()` (`TRADEAI_DEPLOYMENT_LOG`, else `<state root>/data/runtime/deployment_log/`) and
+returns the newest deployments with `since`, `generated_at`, `current_release`, `summary`, `truth_rule`,
+`deployments_total`, `shown`, `truncated`.
+
+- **Truth is copied, never derived.** `items[].truth` (`state`, `text`) travels exactly as the builder wrote it. This
+  reader does not upper-case, default or promote a state: a state it does not recognise goes out as itself, and the
+  page renders it `UNKNOWN (<state>)`. A reader that re-graded would be the false positive this log exists to prevent.
+- **`is_current` is strictly the builder's boolean** (a truthy string is not "this is what is live now").
+- **Size.** The file grows with every deploy (448 KB on 2026-11-10; 290 KB served after trimming), so it is read with
+  its own 8 MB cap — the 512 KB default would have called a real log corrupt. The newest **200** rows are served;
+  commits are trimmed to their **subjects** (max 200 per row, `commits_shown` vs `commit_count`); `truncated` says the
+  list was cut.
+- **UNAVAILABLE, with a reason, never an empty log:** file absent; over the cap (the reason carries the byte size);
+  unreadable / not a JSON object; `schema` not `DeploymentLog@v1` (the value is named); no `deployments` list.
+- **STALE (value kept, labelled):** no `generated_at` (nothing can be called current without the builder's stamp), or
+  `current_release` is not the release now serving — the log was not rebuilt after the last activation, and the reason
+  names both releases.
+
+**Page — Deploys tab, at the top, above the "Details for engineers" toggle.** The tab's content is closed by default
+(operator, 2026-11-03) and the log is operator content, so it is rendered for the Deploys tab *above* that toggle, not
+inside it. Heading "Deployment log (since &lt;since&gt;)"; summary chips `deploys · verified · not re-measured` (a count
+the record does not carry reads `unknown`, never 0); the truth rule in one line. One tappable row per deployment: date
+(ET), short SHA, kind (a rollback flagged), `LIVE now` on the current release; then its LQ items, one line each
+(`LQ-nnnn · what it fixed · truth chip`), the first three inline with "+N more"; a row with no tracked LQ item shows
+`N commits with no tracked LQ item` instead. **Truth chip:** `VERIFIED` (success) only when
+`truth.state === 'VERIFIED'`; `NOT RE-MEASURED` (warning); `UNTRACKED` / `NO CHANGE` (neutral); anything else
+`UNKNOWN (<state>)` (neutral), and a missing truth member `NOT RECORDED`. The chip's `title` is `truth.text`; the whole
+text is on the sheet.
+
+**Detail sheet.** Tap a row → full-screen sheet (the shared `MobileDetailSheet` + `DetailHeader`, one layout at every
+width, URL-backed so browser Back restores the list): date, kind, release, SHA, previous release, commit count;
+**What it fixed** — every LQ item with its owner, its truth chip and the truth text in full; **Commits** — `N commits`
+with the subjects behind a disclosure. No horizontal scroll at 412 / 390 px.
+
+Tests: `tests/test_deployment_log_probe_20261110.py` (synthetic fixture under `tmp_path`; missing / corrupt / foreign
+schema / no list / oversized / unstamped / behind-serving; truth copied verbatim; `is_current` strict; row and commit
+caps; a bounded payload; the state-root path; nothing written) and
+`apps/command-center-v3/src/lib/deploymentLog.test.mjs` (VERIFIED only for the exact state, `unknown` never 0, the
+summary and row labels). Render proof at 1440 / 412 / 390 px with synthetic fixtures:
+`e2e/deploys-train-removal.spec.ts` (the deployment-log block).
+
 ## Novice operator — Deploys tab (2026-10-30)
 
 You do **not** need to know GitHub to use this page. There are two jobs:
@@ -98,6 +149,7 @@ pattern of `scripts/lib/release_train_view.py`); the response is cached 30 s.
 | `windows` | `config/release_train_policy.json` + `release_train_view.upcoming_windows`; state and reason from `release_train_window.readiness_view` + `decide` (STOP latch, armed, delegation, shadow, window enabled) | States LIVE / SHADOW / OFF / STOPPED; last shadow tick per slot. |
 | `queue` | `release_train_view.build_queue` (Postgres `release_queue`) + the PR-hygiene census receipt (`release_train_census`); when the census is not OK, the census lane's last ledger attempt (`runs`, any mode, `mode=ro`) and its next fire (registry `dispatch.cron`) | Each open PR with its census bucket as "why not riding". A census that is not OK sets `census.alert` ("PR census MISSING — <why>; last attempt <ET> <mode> <state>; next fire <ET> (<mode>). Open PRs are UNKNOWN …"), shown as a red banner, and the store chip reads "N queued (explicit train queue only) · open PRs UNKNOWN": the queue store counts only PRs explicitly queued for the train. |
 | `history` | `~/.local/state/cio-phase2-exact-main/release_pins/{apply,rollback}-*.json` (ReleasePinReceipt@v1), SHA from the target's `BUILD_SHA` (else the dir-name prefix, labelled), PRs per release from first-parent `git log` between consecutive releases, verify from `deploy_receipt.json` | Verify is shown only for the release the deploy receipt names; older releases say "not retained" (the receipt is overwritten on every operation). |
+| `deployment_log` | `<state root>/data/runtime/deployment_log/deployments.json` (lead-owned `DeploymentLog@v1`) | Newest 200 rows, commits trimmed to subjects; `items[].truth` copied verbatim and never re-graded; UNAVAILABLE for absent / oversized / unreadable / foreign schema; STALE when unstamped or when its newest entry is not the release now serving. See the 2026-11-10 section above. |
 | `release_errors` | `release_window/windows/*.json` outcomes other than RELEASED / NO_CHANGE, `release_pins/rollback-*`, a not-ok deploy receipt, non-success checks in `post_merge_ci.json`, FAILURE workflows in the main-ci-watch receipt, the STOP latch (last 48 h) | Not covered, stated in the payload: main CI failures of SHAs other than the one the watch receipt last checked. |
 | `n8n_today` | `<state root>/data/governance/n8n_coordination_ledger.sqlite`, opened `mode=ro` + `PRAGMA query_only`, `runs` and `dead_letters` | Day = America/New_York, by `requested_at`. Totals by mode/state, failures (reason only; receipt env names never leave the ledger), lock skips, unreleased dead letters, busiest 10 lanes. |
 | `timeline` | host crontab (`crontab_snapshot.read_crontab`: `crontab -l`, else its fresh snapshot) including `# PAUSED <date> <note> <line>`; `config/lane_registry.json` (n8n `cadence`, dispatcher `stage`); relay live list names (`check_registry_runtime_truth.read_live_lanes`); fires from `cron_schedule.fires_between` | Next 3 h. A schedule firing more than 4 times becomes one "every N min" recurring row. Cron rows have no last-run (not in the ledger); n8n rows show today's last ledger run. |

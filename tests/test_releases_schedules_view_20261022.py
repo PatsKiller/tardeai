@@ -126,8 +126,25 @@ def host(tmp_path):
     ]}))
     live = tmp_path / "n8n-live-lanes.env"
     live.write_text("SOME_SECRET=never-read\nTRADEAI_N8N_RELAY_LIVE_LANES=heartbeat-watch,other\n")
+    # The deployment log is a lead-owned file under the state root; the fixture names its own so the probe is
+    # hermetic and its absence here is a stated UNAVAILABLE, not a read of the host's real log (LQ-20261107-1794).
+    deployment_log = tmp_path / "state" / "data" / "runtime" / "deployment_log" / "deployments.json"
+    deployment_log.parent.mkdir(parents=True)
+    deployment_log.write_text(json.dumps(
+        {"schema": "DeploymentLog@v1", "generated_at": "2026-10-22T15:05:00-04:00", "since": "2026-10-15",
+         "current_release": Path(new).name, "summary": {"deploys": 1, "rollbacks": 0, "lq_items": 1, "verified": 0,
+                                                        "not_remeasured": 1},
+         "truth_rule": "VERIFIED only when re-measured on live",
+         "deployments": [{"activated_at": "2026-10-22T15:11:31+00:00", "activated_et": "Thu 10-22 11:11 ET",
+                          "kind": "deploy", "release": Path(new).name, "sha": SHA_B, "previous_release": Path(old).name,
+                          "previous_sha": SHA_A, "commit_count": 1,
+                          "commits": [{"sha": SHA_B[:9], "subject": "LQ-9001: synthetic subject", "lq": ["LQ-9001"]}],
+                          "items": [{"lq": "LQ-9001", "title": "synthetic item", "owner": "agent-example",
+                                     "truth": {"state": "NOT_REMEASURED", "text": "not re-measured on live"}}],
+                          "is_current": True}]}))
     paths = {"releases_base": base, "deploy_state_dir": dep, "canonical_source": tmp_path / "canonical",
-             "release_window_state_dir": rw, "ledger": ledger, "live_lanes_env": live, "registry": registry}
+             "release_window_state_dir": rw, "ledger": ledger, "live_lanes_env": live, "registry": registry,
+             "deployment_log": deployment_log}
     crontab = ("SHELL=/bin/bash\n"
                "35 17 * * 1-5 cd $P && python scripts/entry_plans.py >> logs/x.log 2>&1\n"
                "*/5 * * * * cd $P && python scripts/watchdog.py\n"
@@ -210,7 +227,8 @@ def test_parse_crontab_paused_and_env_lines():
 
 def test_unavailable_sources_are_null_never_zero(host, tmp_path):
     paths = dict(host["paths"], releases_base=tmp_path / "nope", ledger=tmp_path / "nope.sqlite",
-                 deploy_state_dir=tmp_path / "nodeploy", registry=tmp_path / "noreg.json")
+                 deploy_state_dir=tmp_path / "nodeploy", registry=tmp_path / "noreg.json",
+                 deployment_log=tmp_path / "nolog.json")
     d = R.build(lambda *a, **k: None, now=NOW, paths=paths, git=lambda a: (128, ""),
                 crontab_reader=lambda: ("", "none", "crontab -l denied", None))
     for key in ("serving", "next_release", "n8n_today", "timeline", "history"):

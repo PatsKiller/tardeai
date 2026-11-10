@@ -1,7 +1,7 @@
 """Releases & Schedules — read-only Command Center projection (operator-approved 2026-10-22).
 
 Backs ``GET /api/v2/ops/releases-schedules`` (the System → Releases & schedules page). Contract:
-``docs/ops/RELEASES_SCHEDULES_PAGE.md``. One response, seven sections, each a Field envelope
+``docs/ops/RELEASES_SCHEDULES_PAGE.md``. One response, eight sections, each a Field envelope
 (``value``, ``as_of``, ``freshness`` OK|STALE|UNAVAILABLE, ``source``, ``reason``, ``age_s``):
 
   serving        CURRENT symlink + its BUILD_SHA pins (exact_release_receipt.observed_identity), the
@@ -11,6 +11,10 @@ Backs ``GET /api/v2/ops/releases-schedules`` (the System → Releases & schedule
                  (scripts/main_ci_watch.py: SUCCESS | FAILURE | PENDING with its age), else from
                  post_merge_ci.json, each only when it names the same SHA. GitHub is never called from the
                  request path.
+  deployment_log the operator's deployment log (DeploymentLog@v1, lead-owned, rebuilt after every
+                 activation): each deployment's date (ET), SHA, kind, commits and the LQ items it fixed with
+                 the builder's own ``truth.state``. Newest 200 rows; commits trimmed to subjects. Never
+                 re-graded here — a state this module does not recognise travels through as itself.
   history        release pin receipts (apply / rollback) + the deploy receipt, PRs per release from git.
   release_errors refused / stopped release-window receipts, rollbacks, a failed deploy receipt, the STOP
                  latch, non-success checks in post_merge_ci.json, and FAILURE workflows in the main-ci-watch
@@ -53,6 +57,10 @@ HORIZON_H = 3
 MAX_TIMELINE = 150
 MAX_HISTORY = 12
 MAX_ERRORS = 50
+DEPLOYMENT_LOG_SCHEMA = "DeploymentLog@v1"
+MAX_DEPLOYMENTS = 200          # newest rows served; the file itself keeps the whole week
+MAX_COMMITS_PER_DEPLOYMENT = 200
+MAX_DEPLOYMENT_LOG_BYTES = 8 * 1024 * 1024   # the file grows every deploy (448 KB on 2026-11-10)
 COLLAPSE_AFTER = 4  # a schedule firing more often than this in the horizon becomes one "every N min" row
 FETCH_STALE_AFTER_S = 6 * 3600
 MAIN_CI_STALE_AFTER_S = 2 * 3600
@@ -180,6 +188,10 @@ def default_paths(env: Optional[Mapping[str, str]] = None) -> dict[str, Path]:
         "registry": ROOT / "config" / "lane_registry.json",
         # scripts/main_ci_watch.py (lib/lane_last_receipt.receipt_path("main-ci-watch"))
         "main_ci_receipt": state_root / "data" / "runtime" / "main-ci-watch_last.json",
+        # Lead-owned builder: lead/scratch/deployment_log_build.py (DeploymentLog@v1), rebuilt after every
+        # scripts/activate_live.sh. Read here; never written.
+        "deployment_log": Path(env.get("TRADEAI_DEPLOYMENT_LOG")
+                               or state_root / "data" / "runtime" / "deployment_log" / "deployments.json"),
     }
 
 
@@ -378,6 +390,77 @@ def _release_sha(releases_base: Path, target: Optional[str]) -> tuple[Optional[s
         return pin, "BUILD_SHA"
     m = re.match(r"^([0-9a-f]{7,40})-", Path(target).name)
     return (m.group(1), "dir_name_prefix") if m else (None, "none")
+
+
+def _deployment_row(d: Mapping[str, Any]) -> dict[str, Any]:
+    """One deployment, trimmed for the wire: commits become their subjects, items keep their truth verbatim.
+
+    ``truth`` is copied, never derived: whatever the builder wrote is what the page is allowed to show, and a state
+    this module does not recognise travels through as itself so the page can render it unknown rather than green.
+    """
+    commits = [c for c in (d.get("commits") or []) if isinstance(c, Mapping)] if isinstance(d.get("commits"), list) else []
+    subjects = [str(c["subject"]) for c in commits if c.get("subject")][:MAX_COMMITS_PER_DEPLOYMENT]
+    items = [i for i in (d.get("items") or []) if isinstance(i, Mapping)] if isinstance(d.get("items"), list) else []
+    kind = d.get("kind")
+    return {
+        "activated_at": d.get("activated_at"), "activated_et": d.get("activated_et"), "kind": kind,
+        "rollback": isinstance(kind, str) and "rollback" in kind.lower(),
+        "release": d.get("release"), "sha": d.get("sha"), "short_sha": str(d["sha"])[:9] if d.get("sha") else None,
+        "previous_release": d.get("previous_release"), "previous_sha": d.get("previous_sha"),
+        "commit_count": d["commit_count"] if isinstance(d.get("commit_count"), int) else len(commits),
+        "commits": subjects, "commits_shown": len(subjects),
+        "items": [{"lq": i.get("lq"), "title": i.get("title"), "owner": i.get("owner"),
+                   "truth": {"state": (i.get("truth") or {}).get("state") if isinstance(i.get("truth"), Mapping) else None,
+                             "text": (i.get("truth") or {}).get("text") if isinstance(i.get("truth"), Mapping) else None}}
+                  for i in items],
+        # Strictly the builder's own boolean: a truthy string is not "this is what is live now".
+        "is_current": d.get("is_current") is True,
+    }
+
+
+def read_deployment_log(path: Path, now: datetime, limit: int = MAX_DEPLOYMENTS,
+                        serving_release: Optional[str] = None) -> dict[str, Any]:
+    """The operator's deployment log (lead-owned ``DeploymentLog@v1``, rebuilt after every activation).
+
+    What was deployed, when (ET), what it fixed, and — per LQ item — what the builder recorded as its truth. The page
+    renders a truth chip from ``items[].truth.state`` alone; this reader neither re-grades nor infers a state, because
+    a reader that promoted anything to VERIFIED would be exactly the false positive the operator asked to avoid.
+
+    Size: the file grows with every deploy (448 KB on 2026-11-10), so it is read with its own cap rather than the
+    512 KB default (which would call it corrupt), a file over the cap is UNAVAILABLE with the size in the reason, and
+    only the newest ``limit`` rows are served, with per-row commits trimmed to subjects.
+    """
+    src = "file:deployment_log/deployments.json"
+    path = Path(path)
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return _unavailable(src, "no deployment log yet (data/runtime/deployment_log/deployments.json is absent)", now)
+    if size > MAX_DEPLOYMENT_LOG_BYTES:
+        return _unavailable(src, f"deployment log too large to serve ({size} bytes; cap {MAX_DEPLOYMENT_LOG_BYTES})", now)
+    doc = _read_json(path, limit=MAX_DEPLOYMENT_LOG_BYTES)
+    if doc is None:
+        return _unavailable(src, "deployment log unreadable (not a JSON object)", now)
+    if str(doc.get("schema")) != DEPLOYMENT_LOG_SCHEMA:
+        return _unavailable(src, f"deployment log schema is {str(doc.get('schema'))[:40]!r}, not {DEPLOYMENT_LOG_SCHEMA}", now)
+    rows = doc.get("deployments")
+    if not isinstance(rows, list):
+        return _unavailable(src, "deployment log has no deployments list", now)
+    shown = [_deployment_row(d) for d in rows[:limit] if isinstance(d, Mapping)]
+    value = {"since": doc.get("since"), "generated_at": doc.get("generated_at"),
+             "current_release": doc.get("current_release"),
+             "summary": doc.get("summary") if isinstance(doc.get("summary"), dict) else None,
+             "truth_rule": doc.get("truth_rule"), "deployments_total": len(rows), "shown": len(shown),
+             "truncated": len(rows) > len(shown), "deployments": shown}
+    # Without the builder's own stamp nothing here can be called current; and a log whose newest entry is not the
+    # release now serving was not rebuilt after the last activation — say both rather than showing an old log as now.
+    if not _parse(doc.get("generated_at")):
+        return field(value, None, "STALE", src, "deployment log does not state when it was generated", now=now)
+    reason = None
+    if serving_release and value["current_release"] and str(value["current_release"]) != str(serving_release):
+        reason = (f"log's newest entry ({value['current_release']}) is not the release now serving "
+                  f"({serving_release}) — not rebuilt after the last activation")
+    return field(value, doc.get("generated_at"), "STALE" if reason else "OK", src, reason, now=now)
 
 
 def read_history(releases_base: Path, deploy_state_dir: Path, now: datetime,
@@ -915,15 +998,18 @@ def build(db_query, *, now: Optional[datetime] = None, paths: Optional[Mapping[s
     serving_sha = (sec["serving"].get("value") or {}).get("sha")
     ledger_last = (sec["n8n_today"].get("value") or {}).get("last_run_by_lane")
     remaining = max(0.5, timeout_s - 0.5)
+    serving_name = (sec["serving"].get("value") or {}).get("release_name")
     res2 = run_probes({
         "next_release": lambda: read_next_release(p["canonical_source"], p["deploy_state_dir"], serving_sha, now,
                                                   git=g, main_ci_receipt=p.get("main_ci_receipt")),
+        "deployment_log": lambda: read_deployment_log(p["deployment_log"], now, serving_release=serving_name),
         "release_errors": lambda: read_release_errors(p["deploy_state_dir"], p["release_window_state_dir"], now,
                                                       stop=stop, main_ci_receipt=p.get("main_ci_receipt")),
         "timeline": lambda: read_timeline(now, registry_path=p["registry"], live_lanes_path=p["live_lanes_env"],
                                           crontab_reader=crontab_reader, last_run_by_lane=ledger_last),
     }, remaining, executor=ex)
     src2 = {"next_release": "git:canonical origin/main", "release_errors": "release receipts",
+            "deployment_log": "file:deployment_log/deployments.json",
             "timeline": "crontab + lane_registry"}
     for k, r in res2.items():
         sec[k] = r["value"] if r["status"] == "OK" else _unavailable(src2[k], r["error"], now)
@@ -961,5 +1047,5 @@ def clear_cache() -> None:
 
 
 __all__ = ["SCHEMA", "ROUTE", "build", "handle", "clear_cache", "parse_crontab", "read_serving", "read_next_release",
-           "read_history", "read_release_errors", "read_ledger_today", "read_timeline",
+           "read_history", "read_release_errors", "read_ledger_today", "read_timeline", "read_deployment_log",
            "main_ci_from_receipt", "read_stop", "run_probes", "kpis", "default_paths"]

@@ -3,6 +3,7 @@
 // own freshness (as_of, age, source). Rules: an UNAVAILABLE section renders "UNAVAILABLE" with its reason, never 0,
 // empty or green; an unknown schema, a failed request or a response older than STALE_AFTER_MS is not current.
 import type { Tone } from './designTokens'
+import type { DeploymentLog } from './deploymentLog'
 
 export const RELEASES_SCHEDULES_PATH = '/api/v2/ops/releases-schedules'
 export const RELEASES_SCHEDULES_SCHEMA = 'ReleasesSchedules@v1'
@@ -45,11 +46,13 @@ export type Timeline = { horizon_hours: number; from: string; to: string; rows: 
 export type ReleasesSchedulesWire = {
   schema?: string; generated_at?: string; status?: string; kpis?: Kpi[]
   serving?: Section<Serving>; next_release?: Section<NextRelease>; history?: Section<{ releases: ReleaseRow[]; receipts_total: number }>
+  // LQ-20261107-1794: the operator's deployment log (lead-owned DeploymentLog@v1, served trimmed to the newest rows).
+  deployment_log?: Section<DeploymentLog>
   release_errors?: Section<{ rows: ReleaseError[]; window_hours: number; not_covered: string }>; n8n_today?: Section<LedgerToday>; timeline?: Section<Timeline>
   stop?: { state?: string; effective_stop?: boolean; latched_at?: string | null; reason?: string | null }
 }
 
-export const SECTION_KEYS = ['serving', 'next_release', 'history', 'release_errors', 'n8n_today', 'timeline'] as const
+export const SECTION_KEYS = ['serving', 'next_release', 'deployment_log', 'history', 'release_errors', 'n8n_today', 'timeline'] as const
 export type SectionKey = (typeof SECTION_KEYS)[number]
 
 export function ageText(seconds: number | null | undefined): string {

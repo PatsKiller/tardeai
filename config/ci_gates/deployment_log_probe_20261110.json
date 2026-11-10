@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "deployment_log_probe_20261110",
+  "files": [
+    "tests/test_deployment_log_probe_20261110.py"
+  ],
+  "comment": [
+    "LQ-20261107-1794. The operator's deployment log on Releases & schedules: read_deployment_log() serves the",
+    "lead-owned DeploymentLog@v1 file. These tests pin the property the operator asked for - VERIFIED only when",
+    "the builder recorded VERIFIED, every state copied verbatim and never promoted - plus the caps (newest 200",
+    "rows, commits trimmed to subjects) and the rule that every read failure (absent, oversized, unreadable,",
+    "foreign schema, no list, unstamped, behind the serving release) is UNAVAILABLE or STALE with a reason, never",
+    "an empty all-good log. Fixtures are synthetic: the repository is PUBLIC."
+  ]
+}

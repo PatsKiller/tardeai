@@ -24,6 +24,11 @@ import {
 import { releaseRowModel } from '../lib/releaseRow'
 import { ReleaseHistoryCard } from '../lib/releaseHistoryCard'
 import OpsDeskFrame from '../components/OpsDeskFrame'
+import { MobileDetailSheet, useMobilePageDetail } from '../components/MobileDetailSheet'
+import {
+  commitLine, commitSubjects, fixedItems, fixedLine, kindLabel, logTitle, shownLine, summaryChips, truthChip, whenET,
+  type DeployRow, type DeploymentLog,
+} from '../lib/deploymentLog'
 import { IN_FLIGHT_PATH, KNOWN_SCHEMAS, normalizeCoordination, normalizeRows, type DeployInFlightWire, type InFlightPr } from '../lib/deployInFlight'
 import { agentStateSentence, coordinationSource, engineerPanelProps, flightSource, goingLive, goingLiveSentence, jobsLine, liveNow, mergedWaiting, needsYou, needsYouAction, needsYouFacts, panelSentence, plainText, runningBuild, stuck } from '../lib/releasesOperatorView'
 
@@ -72,6 +77,122 @@ function Table({ label, heads, rows, empty }: { label: string; heads: string[]; 
 
 function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
   return <Chip tone={tone} variant="solid">{children}</Chip>
+}
+
+// How many fixes a list row prints before the sheet holds the rest. The operator asked for one line per fix; a row
+// with 53 of them is unreadable at 412 px, so the list keeps the first three and says how many more there are.
+const INLINE_ITEMS = 3
+
+/** One LQ item: the ticket, one line of what it fixed, and the record's own truth as a chip (never inferred). */
+function FixItem({ item, full }: { item: ReturnType<typeof fixedItems>[number]; full?: boolean }) {
+  const t = truthChip(item.truth)
+  return <div data-testid="rs-deploy-fix" style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'baseline', minWidth: 0 }}>
+      <span style={{ ...mono, fontWeight: 700, color: TOKENS.text[0] }}>{item.lq ?? 'no ticket id'}</span>
+      <Chip tone={t.tone} title={t.text ?? undefined}>{t.label}</Chip>
+      {full && item.owner ? <span style={{ ...muted, fontSize: TYPE.xs }}>{item.owner}</span> : null}
+    </div>
+    <span style={{ ...muted, color: TOKENS.text[1], overflowWrap: 'anywhere' }}>{item.title ?? 'the record carries no title'}</span>
+    {/* The truth's own words: inline on the sheet, and on the chip's title everywhere. */}
+    {full ? <span style={{ ...muted, fontSize: TYPE.xs, overflowWrap: 'anywhere' }}>{t.text ?? 'the record carries no truth text'}</span> : null}
+  </div>
+}
+
+/** Deployment log — the operator's "what did we deploy, when, what did it fix, and what is the truth" (LQ-1794).
+ *  Full-screen sheet on tap at every width, so there is one layout to prove at 412 and 390 px, not two. */
+function DeploymentLogSection({ v }: { v: SectionView<DeploymentLog> }) {
+  const detail = useMobilePageDetail('deploy')
+  const log = v.value
+  const rows: DeployRow[] = Array.isArray(log?.deployments) ? log!.deployments! : []
+  const picked = detail.id == null ? -1 : Number(detail.id)
+  const selected = Number.isInteger(picked) && picked >= 0 && picked < rows.length ? rows[picked] : null
+  const chips = summaryChips(log)
+  const cut = shownLine(log)
+  return <Section title={logTitle(log)} sub={log?.current_release ? `newest entry ${log.current_release}` : undefined}
+    testId="rs-deployment-log" v={v}>
+    <ChipRow>
+      {chips.map(c => <Chip key={c.label} tone={c.tone}>{c.value} {c.label}</Chip>)}
+      {cut ? <Chip tone="warning">{cut}</Chip> : null}
+    </ChipRow>
+    {log?.truth_rule ? <p style={muted} data-testid="rs-deploy-truth-rule">{log.truth_rule}</p> : null}
+    {!rows.length ? <p style={muted}>The log carries no deployments.</p> : null}
+    <div data-testid="rs-deploy-rows" style={{ display: 'grid', gap: 6, minWidth: 0 }}>
+      {rows.map((r, i) => <DeploymentLogRow key={`${r.activated_at}-${r.release}-${i}`} r={r} onOpen={() => detail.open(String(i))} />)}
+    </div>
+    <p style={muted}>The truth chip is the record's own state: VERIFIED only when the outcome was re-measured on live.
+      {log?.generated_at ? ` Log generated ${etDateTime(log.generated_at)}.` : ' The log states no generation time.'}</p>
+    {selected ? <MobileDetailSheet title={`Deployment · ${selected.short_sha ?? 'no SHA'}`} backLabel="Deployments" onBack={detail.close}>
+      <DeploymentDetail r={selected} />
+    </MobileDetailSheet> : null}
+  </Section>
+}
+
+function DeploymentLogRow({ r, onOpen }: { r: DeployRow; onOpen: () => void }) {
+  const items = fixedItems(r)
+  const kind = kindLabel(r)
+  const when = whenET(r, etDateTime)
+  return <button type="button" onClick={onOpen} data-testid="rs-deploy-row"
+    aria-label={`${when}, ${r.short_sha ?? 'no SHA'}, ${kind.label}${r.is_current ? ', live now' : ''} — open details`}
+    style={{ textAlign: 'left', width: '100%', minWidth: 0, boxSizing: 'border-box', minHeight: 44, cursor: 'pointer',
+      background: TOKENS.bg[2], border: `1px solid ${r.is_current ? TOKENS.primary : TOKENS.border}`,
+      borderRadius: RADIUS.md, padding: '10px 12px', color: TOKENS.text[0], display: 'grid', gap: 6 }}>
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline', minWidth: 0 }}>
+      <span style={{ fontSize: TYPE.sm, fontWeight: 700, color: TOKENS.text[0] }}>{when}</span>
+      <span style={{ ...mono, color: TOKENS.text[1] }}>{r.short_sha ?? 'SHA not recorded'}</span>
+      <Chip tone={kind.tone}>{kind.label}</Chip>
+      {r.rollback ? <Chip tone="warning" variant="solid">ROLLBACK</Chip> : null}
+      {r.is_current ? <Chip tone="success" variant="solid">LIVE now</Chip> : null}
+    </div>
+    <span style={{ ...muted, color: TOKENS.text[1] }}>{fixedLine(r)}</span>
+    {items.length
+      ? <>
+        {items.slice(0, INLINE_ITEMS).map((it, j) => <FixItem key={`${it.lq}-${j}`} item={it} />)}
+        {items.length > INLINE_ITEMS
+          ? <span style={{ ...muted, color: TOKENS.primary }}>+{items.length - INLINE_ITEMS} more — tap for every fix</span> : null}
+      </>
+      : <span style={{ ...muted, overflowWrap: 'anywhere' }}>{commitLine(r)} with no tracked LQ item — tap for the subjects</span>}
+  </button>
+}
+
+/** The full record for one deployment: every fix with its truth and its text, then the commit subjects. */
+function DeploymentDetail({ r }: { r: DeployRow }) {
+  const items = fixedItems(r)
+  const subjects = commitSubjects(r)
+  const rows: Array<[string, string]> = [
+    ['When', whenET(r, etDateTime)], ['Kind', kindLabel(r).label],
+    ['Release', r.release ?? 'not recorded'], ['SHA', r.sha ?? 'not recorded'],
+    ['Previous release', r.previous_release ?? 'not recorded'], ['Commits', commitLine(r)],
+  ]
+  return <div style={{ display: 'grid', gap: 14, maxWidth: 720, minWidth: 0 }}>
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      {r.is_current ? <Chip tone="success" variant="solid">LIVE now</Chip> : null}
+      {r.rollback ? <Chip tone="warning" variant="solid">ROLLBACK</Chip> : null}
+    </div>
+    <dl style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr)', gap: '6px 12px', margin: 0 }}>
+      {rows.map(([k, val]) => <div key={k} style={{ display: 'contents' }}>
+        <dt style={{ fontWeight: 700, fontSize: TYPE.sm, color: TOKENS.text[0] }}>{k}</dt>
+        <dd style={{ margin: 0, fontSize: TYPE.sm, color: TOKENS.text[1], overflowWrap: 'anywhere' }}>{val}</dd>
+      </div>)}
+    </dl>
+    <div style={{ display: 'grid', gap: 10 }}>
+      <h3 style={{ ...h2, fontSize: TYPE.sm }}>What it fixed</h3>
+      {items.length ? items.map((it, j) => <FixItem key={`${it.lq}-${j}`} item={it} full />)
+        : <p style={muted}>This deployment's record carries no tracked LQ item.</p>}
+    </div>
+    <div style={{ display: 'grid', gap: 6 }}>
+      <h3 style={{ ...h2, fontSize: TYPE.sm }}>Commits ({commitLine(r)})</h3>
+      {subjects.length ? <details>
+        <summary style={{ fontSize: TYPE.sm, color: TOKENS.primary, minHeight: 44, display: 'flex', alignItems: 'center' }}>
+          Show the {subjects.length === 1 ? 'subject' : `${subjects.length} subjects`}
+        </summary>
+        <ul style={{ margin: '6px 0 0', paddingLeft: 18, display: 'grid', gap: 4 }}>
+          {subjects.map((s, j) => <li key={j} style={{ fontSize: TYPE.sm, color: TOKENS.text[1], overflowWrap: 'anywhere' }}>{s}</li>)}
+        </ul>
+      </details> : <p style={muted}>No commit subject was recorded for this deployment.</p>}
+      {typeof r.commit_count === 'number' && r.commit_count > subjects.length
+        ? <p style={muted}>{r.commit_count} commits in this deployment; the log serves the newest {subjects.length} subjects.</p> : null}
+    </div>
+  </div>
 }
 
 function DeploysTab({ s, stopEffective, stopState, inFlightApi }: {
@@ -435,7 +556,7 @@ export default function ReleasesSchedules() {
   const flightAgents = normalizeCoordination(flightWire?.coordination).agents
   const flightError = flight.error ? String(flight.error) : (flightWire?.reason ?? null)
   const opts = { nowMs: now, error: !!api.error, stale: api.stale }
-  const keys: SectionKey[] = ['serving', 'next_release', 'history', 'release_errors', 'n8n_today', 'timeline']
+  const keys: SectionKey[] = ['serving', 'next_release', 'deployment_log', 'history', 'release_errors', 'n8n_today', 'timeline']
   const s = Object.fromEntries(keys.map(k => [k, sectionView(api.data, k, opts)])) as Record<SectionKey, SectionView<any>>
   const current = !api.error && !api.stale && keys.some(k => s[k].state === 'OK')
   const kpis = api.data?.schema === 'ReleasesSchedules@v1' ? api.data.kpis ?? [] : []
@@ -453,6 +574,12 @@ export default function ReleasesSchedules() {
       flightLoading={!!flight.loading && !flightWire} flightStale={!!flight.stale}
       flightAnswered={inFlightCensus(flightWire, { stale: !!flight.stale }).answered}
       coordStatus={normalizeCoordination(flightWire?.coordination).status} />
+
+    {/* Operator ask 2026-11-10 (LQ-1794): the deployment log — what was deployed, when, what it fixed, and the truth —
+        leads the Deploys tab. It sits above the "Details for engineers" toggle on purpose: the tab's content is closed
+        by default (operator 2026-11-03), and a log the operator asked for must not be behind a switch labelled for
+        engineers. Nothing here is a control; it is a list and a sheet. */}
+    {tab === 'deploys' ? <DeploymentLogSection v={s.deployment_log} /> : null}
 
     <button type="button" id="rs-engineer-toggle" data-testid="rs-engineer-toggle" aria-expanded={eng} aria-controls="rs-engineer-details"
       onClick={() => setEng(!eng)}
