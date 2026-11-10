@@ -36,6 +36,11 @@ try:  # the stop-advice producer's own actionable answers (LQ-20261107-1735): ne
 except ImportError:  # this module imported as scripts.lib.home_cio_card
     from .since_close_card import CIO_ACTIONABLE as ACTIONABLE
 
+try:  # one owner of "has this release already printed" (LQ-20261107-1784)
+    from lib.cio_buys_gate import event_passed as _event_passed
+except ImportError:  # this module imported as scripts.lib.home_cio_card
+    from .cio_buys_gate import event_passed as _event_passed
+
 SCHEMA = "HomeCioCard@v1"
 
 #: Proposed rotation sizing rule (v5 mockup, "proposed, needs your OK"): target % of book by sector state.
@@ -187,7 +192,11 @@ def _catalyst(syn: Mapping, now: datetime) -> dict | None:
     sid = f"cio_synopsis:{syn.get('as_of')}"
     today = now.date().isoformat()
     for m in tw.get("macro") or []:
-        if isinstance(m, Mapping) and str(m.get("date") or "") >= today and m.get("event"):
+        # LQ-20261107-1784: a release already behind ``now`` is not "the next event". The old date-only test kept
+        # "CPI Tue 11-10 08:30 ET" on the card all day, after the print, which is exactly the stale line the
+        # operator called out. Fall through to the next event; if none is ahead, the card shows the gate's state.
+        if (isinstance(m, Mapping) and str(m.get("date") or "") >= today and m.get("event")
+                and not _event_passed(m.get("date"), m.get("time_et"), now)):
             return item(sid, syn.get("as_of"), event=m.get("event"), date=m.get("date"), time_et=m.get("time_et"),
                         label=(syn.get("buys") or {}).get("until"))
     return None
@@ -471,35 +480,23 @@ def _quote_time(value: str | None) -> datetime | None:
 
 
 def _stock_line(one: Mapping, cand: Mapping, rs: Mapping | None) -> str | None:
-    """One comparison line: the stock against the group's ETF, on the same 20-session RS and the same close.
+    """One relational phrase: this name against the group's ETF, on the same 20-session RS (LQ-20261107-1784).
 
-    LQ-20261107-1655: the operator asked for individual stocks next to the ETF, so the line says which of the
-    two is stronger and by how much. It is descriptive only (never "buy"/"sell"): the numbers themselves stay
-    on the record as facts (``close``, ``rs20``); this is their one-line reading.
+    The operator asked for one line per stock: symbol, held flag, price, and "stronger/weaker than <ETF> by N pts".
+    The old line repeated the two RS numbers and compared two closes the operator cannot act on; the numbers stay
+    on the record as facts, this is the only reading drawn from them. Descriptive
+    only, never "buy"/"sell". Unmeasurable on either side means no phrase, not an invented comparison.
     """
     etf = cand.get("symbol")
     etf_rs = _num(cand.get("rs20"))
-    parts = []
-    if rs:
-        if etf_rs is not None:
-            diff = round(rs["value"] - etf_rs, 1)
-            if diff > 0:
-                rel = f"leads the ETF by {diff:.1f} pts"
-            elif diff < 0:
-                rel = f"trails the ETF by {abs(diff):.1f} pts"
-            else:
-                rel = "matches the ETF"
-            parts.append(f"RS {rs['value']:+.1f} vs {etf} {etf_rs:+.1f} pts vs SPY over 20 sessions — {rel}")
-        else:
-            parts.append(f"RS {rs['value']:+.1f} pts vs SPY over 20 sessions (ETF RS not measured)")
-    elif etf_rs is not None:
-        parts.append(f"RS vs SPY not measured; {etf} {etf_rs:+.1f} pts over 20 sessions")
-    etf_close = _num((cand.get("close") or {}).get("value"))
-    if etf_close:
-        parts.append(f"close {one['close']['value']:.2f} vs {etf} {etf_close:.2f}")
-    else:
-        parts.append(f"close {one['close']['value']:.2f}")
-    return "; ".join(parts)
+    if not rs or etf_rs is None:
+        return None
+    diff = round(rs["value"] - etf_rs, 1)
+    if diff > 0:
+        return f"stronger than {etf} by {diff:.1f} pts"
+    if diff < 0:
+        return f"weaker than {etf} by {abs(diff):.1f} pts"
+    return f"matches {etf}"
 
 
 def _buy_hold(buys: Mapping | None) -> dict | None:
@@ -647,6 +644,13 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
                              filled=tranche1_filled(hs, t1_shares))
                 if h_rec:
                     c["held"] = h_rec
+            # LQ-20261107-1784: once tranche 1 is a fill, the one thing the row still owes the operator is the next
+            # step — its size at the CURRENT price and what it waits on. Only a group whose tranche 1 is FILLED has
+            # a next tranche to state: a partial fill still owes the rest of tranche 1, and the view's own
+            # "tranche 1 … needs your OK" line is suppressed whenever this key exists (grok-a/-9 review, r3).
+            if (c.get("held") or {}).get("filled") is True and len(tr) > 1:
+                c["next_tranche"] = {"tranche": 2, "usd": tr[1]["usd"], "shares": tr[1]["shares"],
+                                     "after": (catalyst or {}).get("label")}
         if stocks is not None:
             # LQ-20261107-1655: the individual names under this group's ETF. The group block already ordered
             # them (held names first, then the best RS20 constituents); here each row becomes traceable values,
@@ -662,6 +666,11 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
                 if r.get("held_value_usd") is not None:
                     one["held_value_usd"] = fact(r.get("held_value_usd"), f"book_exposure:{sat}", sat)
                 one["close"] = close
+                # LQ-20261107-1784: a HELD name is a fact about the book, so a name that fails a floor is still
+                # listed — with a plain flag ("below $5.00 — review", "no reliable price — review") instead of a
+                # silently good-looking number. A non-held name that fails a floor never reaches this loop.
+                if r.get("flag"):
+                    one["flag"] = str(r["flag"])
                 rs = fact(r.get("rs20"), r.get("rs_source_id") or f"ticker_prices:rs20_vs_spy:{one['symbol']}",
                           r.get("rs20_as_of"))
                 if rs:
@@ -683,6 +692,12 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
                 c["stocks"] = rows
             else:
                 c["stocks_gap"] = (grp or {}).get("gap") or "no constituent with a measured close"
+            # LQ-20261107-1784: what the floors dropped and why, counted — the operator must be able to tell a
+            # short list from a filtered one. The rotation reader owns the sentence; this only carries it out.
+            if (grp or {}).get("filter_note"):
+                c["stocks_note"] = str(grp["filter_note"])
+            if _num((grp or {}).get("min_price")) is not None:
+                c["stocks_min_price"] = _num(grp["min_price"])
         cands.append(c)
     if not cands:
         return None
@@ -715,7 +730,12 @@ def _rotate(mr: Mapping, bars: Iterable[Mapping], advice_ok: bool, catalyst: dic
     out = item(f"market_risk:sectors:{sat}", sat, candidates=cands, plan=plan, cash_usd=cash,
                prices_as_of=prices_as_of,
                prices_sources=sorted({str(p["source_id"]) for p in quoted}) or None,
-               prices_missing=missing or None, gated=hold)
+               prices_missing=missing or None, gated=hold,
+               # LQ-20261107-1784: the CIO's buys line itself (all gates, not only a gating one) rides out so the
+               # column can state TODAY from the verdict the operator is being shown — and, because the gate owner
+               # is now time-aware, it stops naming a release that has already printed.
+               buys=({k: buys.get(k) for k in ("gate", "until", "until_short", "line") if buys.get(k)}
+                     if buys else None))
     return out
 
 

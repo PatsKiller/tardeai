@@ -141,6 +141,17 @@
 .mr5 .rc .h b { font: 700 14px/1.2 var(--font-mono); }
 .mr5 .rc .h .nm { font-weight: 600; }
 .mr5 .rc .h .amt { margin-left: auto; font: 700 13px/1.2 var(--font-mono); }
+/* LQ-20261107-1784 — GROUP · ETF · STATE on one line, and one action line beneath it. The separators are explicit
+   so the label, ticker and badge can never run together at any width; the action text wraps instead of scrolling
+   the page sideways at 390/412 px. */
+.mr5 .rc .h .sep { color: var(--text-2); font-weight: 400; }
+.mr5 .rc .h .st { margin-left: 0; }
+.mr5 .rc .act { font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+.mr5 .rc .act .go { color: var(--info-color); font-weight: 700; }
+.mr5 .rc .act b { font-family: var(--font-display); letter-spacing: .02em; }
+.mr5 .rc .act.next { font-size: 12.5px; color: var(--text-2); }
+.mr5 .rc .sk .sl b { font: 700 13px/1.2 var(--font-mono); }
+.mr5 .today { border-top: 1px solid var(--border-color); padding-top: 8px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
 .mr5 .rc .ln { font: 400 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
 .mr5 .rc.off { opacity: .75; }
 /* LQ-20261107-1655 — individual names under the ETF row. One column at every width: the row is the mobile 412 px

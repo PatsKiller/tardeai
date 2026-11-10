@@ -19,6 +19,24 @@ in; a name ranked among constituents needs a measured RS20 (a missing SPY sessio
 incomplete, and an incomplete horizon is not a rank). A held name is listed on the strength of the
 holding even when its RS20 cannot be measured, but it still needs a dated close.
 
+LQ-20261107-1784 (operator 2026-11-10, "not clear what to do"): the rank showed penny/microcap data
+accidents at the top because it had no floor. Before a name may be RANKED it must now also pass the floors
+in ``config/market_risk_policy.yaml`` ``sectors.constituents``:
+
+* ``min_price`` — the latest ``ticker_prices`` close is at least this;
+* ``min_avg_dollar_volume_usd`` — the 20-session average of ``market_ohlcv_bars`` close × volume is at
+  least this (the only volume owner in the DB). A non-held name whose dollar volume cannot be measured (no
+  bars) is NOT ranked and is counted in the group note — an unmeasured floor is not a passed floor. A HELD
+  name is still listed, and the note never counts a row it draws;
+* ``max_abs_rs20`` — a |RS20| above it is a data error (unadjusted history), dropped and counted, never
+  ranked;
+* ``max_split_diff_pct`` — the ``ticker_prices`` close and the ``market_ohlcv_bars`` close for the same
+  session inside the RS window must agree within this; a wider gap is a split/unadjusted-history artifact.
+
+A HELD name is a fact about the book, so it is listed whatever its numbers. When a floor fails it carries
+a plain ``flag`` (``no reliable price — review`` / ``below $5.00 — review`` / ``illiquid — review``) and,
+for a split/RS-sanity failure, no RS20 fact (an unreliable rank is not shown as one).
+
 The numbers are the operator's, not this file's: ``config/market_risk_policy.yaml`` ``sectors.constituents``
 carries the group set, ``top_n``, the RS window and the bar lookback (``defaults``). The module constants are
 the fallback for a policy that cannot be read — the card draws on the last rule this file knew rather than
@@ -44,7 +62,15 @@ TOP_N = 5
 #: The RS window the rank uses. It is the owner's (``sector_signals.relative_strength`` rs20); this constant exists
 #: so the contract test can pin the number in ``config/market_risk_policy.yaml`` to that behaviour.
 RS_WINDOW_SESSIONS = 20
+#: LQ-20261107-1784 floors. The operator owns these numbers in ``sectors.constituents``; these are the fallback.
+MIN_PRICE = 5.00
+MIN_AVG_DOLLAR_VOLUME_USD = 10_000_000.0
+MAX_ABS_RS20 = 100.0
+MAX_SPLIT_DIFF_PCT = 5.0
+#: Sessions in the dollar-volume average (the same 20 the rank uses).
+VOLUME_LOOKBACK_SESSIONS = 20
 PRICE_SOURCE = "ticker_prices:daily"
+BAR_SOURCE = "market_ohlcv_bars:daily"
 SPY = "SPY"
 
 
@@ -53,6 +79,17 @@ def _positive_int(value: Any) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         return None
     return value
+
+
+def _positive_number(value: Any) -> float | None:
+    """A positive number from the policy, or None (a bool is not a number)."""
+    if isinstance(value, bool):
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if f > 0 else None
 
 
 def _policy_constituents() -> tuple[Mapping, str | None]:
@@ -72,10 +109,10 @@ def _policy_constituents() -> tuple[Mapping, str | None]:
 
 
 def defaults() -> dict[str, Any]:
-    """The contract's thresholds: groups, ranked top_n, RS window, bar lookback.
+    """The contract's thresholds: groups, ranked top_n, RS window, bar lookback, and the LQ-1784 floors.
 
     ``config/market_risk_policy.yaml`` ``sectors.constituents`` is the operator-owned home of these numbers;
-    the module constants are used only when a value is absent or not a positive int. ``policy_gap`` names why the
+    the module constants are used only when a value is absent or not a positive number. ``policy_gap`` names why the
     policy could not be read (``None`` when it was), so a fallback is visible rather than silent.
     """
     block, policy_gap = _policy_constituents()
@@ -87,6 +124,13 @@ def defaults() -> dict[str, Any]:
         "bar_lookback_days": _positive_int(block.get("bar_lookback_days")) or BAR_LOOKBACK_DAYS,
         "held_first": bool(block.get("held_first", True)),
         "drop_untraceable": bool(block.get("drop_untraceable", True)),
+        # LQ-20261107-1784: the NO-FALSE-POSITIVES floors. Zero is not a threshold here — a 0 floor would
+        # silently disable the check, so a non-positive value falls back to the module constant.
+        "min_price": _positive_number(block.get("min_price")) or MIN_PRICE,
+        "min_avg_dollar_volume_usd": (_positive_number(block.get("min_avg_dollar_volume_usd"))
+                                      or MIN_AVG_DOLLAR_VOLUME_USD),
+        "max_abs_rs20": _positive_number(block.get("max_abs_rs20")) or MAX_ABS_RS20,
+        "max_split_diff_pct": _positive_number(block.get("max_split_diff_pct")) or MAX_SPLIT_DIFF_PCT,
         "policy_gap": policy_gap,
     }
 
@@ -131,6 +175,107 @@ def _series(rows: Iterable[Mapping] | None) -> dict[str, dict[str, float]]:
         if prev is None or close > prev:
             by_day[day] = close
     return out
+
+
+def _bar_series(rows: Iterable[Mapping] | None) -> tuple[dict[str, dict[str, float]], dict[str, dict[str, float]]]:
+    """``({symbol: {session: close}}, {symbol: {session: volume}})`` from ``market_ohlcv_bars`` daily rows.
+
+    A bar without a positive close is not a bar. Volume is kept only when it is a number, so an absent
+    volume leaves the dollar volume unmeasured instead of being read as zero.
+    """
+    closes: dict[str, dict[str, float]] = {}
+    volumes: dict[str, dict[str, float]] = {}
+    for r in rows or []:
+        sym = str((r or {}).get("symbol") or "").upper()
+        day = str((r or {}).get("session") or "")[:10]
+        close = _num((r or {}).get("close"))
+        if not sym or not day or close is None or close <= 0:
+            continue
+        prior = closes.setdefault(sym, {}).get(day)
+        if prior is None or close > prior:
+            closes[sym][day] = close
+        vol = _num((r or {}).get("volume"))
+        if vol is not None and vol >= 0:
+            prior_v = volumes.setdefault(sym, {}).get(day)
+            if prior_v is None or vol > prior_v:
+                volumes[sym][day] = vol
+    return closes, volumes
+
+
+def _avg_dollar_volume(bar_closes: Mapping[str, float] | None, bar_volumes: Mapping[str, float] | None,
+                       sessions: int = VOLUME_LOOKBACK_SESSIONS) -> float | None:
+    """The mean close × volume over the last ``sessions`` daily bars, or None when it cannot be measured."""
+    shares = set(bar_closes or {}) & set(bar_volumes or {})
+    days = sorted(shares)[-max(1, int(sessions)):]
+    if not days:
+        return None
+    return sum(bar_closes[d] * bar_volumes[d] for d in days) / len(days)
+
+
+def _split_mismatch(series: Iterable[tuple[str, float]], bar_closes: Mapping[str, float] | None,
+                    window_sessions: int, max_pct: float) -> tuple[bool, float]:
+    """``(the two sources disagree beyond tolerance inside the RS window, the worst gap %)``.
+
+    A split (or any unadjusted-history artifact) makes the stored close and the bar close for the SAME
+    session disagree. Only the sessions that feed the rank are compared: an old split outside the window
+    has already been absorbed by the 20-session return and is not a reason to drop a live name.
+    """
+    window = list(series)[-(max(1, int(window_sessions)) + 1):]
+    worst = 0.0
+    for day, close in window:
+        bar = (bar_closes or {}).get(day)
+        if bar is None or bar <= 0 or close <= 0:
+            continue
+        worst = max(worst, abs(close / bar - 1.0) * 100.0)
+    return worst > max_pct, worst
+
+
+def _floor_failures(symbol: str, close: float, rs20: float | None, series: Iterable[tuple[str, float]],
+                    bar_closes: Mapping[str, Mapping[str, float]] | None,
+                    bar_volumes: Mapping[str, Mapping[str, float]] | None, *,
+                    min_price: float, min_adv: float, max_abs_rs20: float,
+                    max_split_pct: float, rs_window: int) -> tuple[list[str], float | None]:
+    """``([every floor a name fails], its measured 20-session dollar volume or None)``.
+
+    The order of the list is the display priority of the held flag: an unreliable price (split / data
+    error) outranks a cheap or illiquid one, because it is the stronger statement.
+    """
+    failed: list[str] = []
+    if close < min_price:
+        failed.append("below_price")
+    if rs20 is not None and abs(rs20) > max_abs_rs20:
+        failed.append("rs_sanity")
+    split, _worst = _split_mismatch(series, (bar_closes or {}).get(symbol), rs_window, max_split_pct)
+    if split:
+        failed.append("split_mismatch")
+    adv = _avg_dollar_volume((bar_closes or {}).get(symbol), (bar_volumes or {}).get(symbol))
+    if adv is not None and adv < min_adv:
+        failed.append("below_liquidity")
+    return failed, adv
+
+
+def _held_flag(failed: Iterable[str], min_price: float) -> str | None:
+    """The plain words a held name carries when a floor fails (the book owns it, so it is still shown)."""
+    keys = set(failed)
+    if keys & {"rs_sanity", "split_mismatch"}:
+        return "no reliable price — review"
+    if "below_price" in keys:
+        return f"below ${min_price:,.2f} — review"
+    if "below_liquidity" in keys:
+        return "illiquid — review"
+    return None
+
+
+def _filter_note(excluded: Mapping[str, int], unmeasured: int, labels: Mapping[str, str]) -> str | None:
+    """The one-line count of names the floors removed, and of names not ranked for want of a measurement."""
+    parts = [f"{n} {labels[k]}" for k, n in excluded.items() if n]
+    if not parts and not unmeasured:
+        return None
+    note = f"Excluded: {', '.join(parts)}." if parts else ""
+    if unmeasured:
+        # LQ-1784 r2: not kept as a ranked row — counted, and named as unmeasured rather than illiquid
+        note = (note + f" {unmeasured} not ranked: dollar volume unmeasured.").strip()
+    return note or None
 
 
 def read(db_query: Callable[..., Any], *, held: Iterable[Mapping] | None = None,
@@ -204,12 +349,47 @@ def read(db_query: Callable[..., Any], *, held: Iterable[Mapping] | None = None,
     closes = _series(bars)
     spy_series = sorted(closes.get(SPY, {}).items())
 
+    # LQ-20261107-1784: the volume owner. The split guard and the dollar-volume floor both compare against
+    # this store, so its failure is a named gap; a name whose liquidity cannot be measured is kept and
+    # counted (unmeasured is not illiquid), never dropped on the strength of a failed read.
+    volume_closes: dict[str, dict[str, float]] = {}
+    volume_volumes: dict[str, dict[str, float]] = {}
+    volume_gap = None
+    try:
+        vol_rows = db_query(
+            "SELECT upper(symbol) AS symbol, bar_time::date AS session, max(close) AS close, "
+            "max(volume) AS volume FROM market_ohlcv_bars "
+            "WHERE timeframe = 'daily' AND upper(symbol) = ANY(%s) AND close IS NOT NULL "
+            "AND bar_time > CURRENT_DATE - %s "
+            "GROUP BY upper(symbol), bar_time::date ORDER BY upper(symbol), bar_time::date",
+            (symbols, int(days)),
+        )
+        if vol_rows is None:
+            volume_gap = "volume history unavailable"
+    except Exception as exc:  # noqa: BLE001 -- same rule: the gap names the cause
+        vol_rows, volume_gap = None, f"volume history unavailable ({type(exc).__name__})"
+    volume_closes, volume_volumes = _bar_series(vol_rows)
+
+    min_price = thresholds["min_price"]
+    min_adv = thresholds["min_avg_dollar_volume_usd"]
+    max_abs_rs20 = thresholds["max_abs_rs20"]
+    max_split_pct = thresholds["max_split_diff_pct"]
+    rs_window = thresholds["rs_window_sessions"]
+    labels_for = {
+        "below_price": f"under ${min_price:,.2f}",
+        "below_liquidity": f"under ${min_adv / 1_000_000:,.1f}M/day",
+        "rs_sanity": f"|RS20| > {max_abs_rs20:g} (data error)",
+        "split_mismatch": f"prices disagree by > {max_split_pct:g}% (split artifact)",
+    }
+
     out: dict[str, dict] = {}
     for group, group_labels in sectors_by_group(groups).items():
         members = {sym for sym, meta in universe.items() if meta["group"] == group}
         members |= {sym for sym, g in held_group.items() if g == group}
         rows: list[dict] = []
         measured = 0
+        excluded = {k: 0 for k in labels_for}
+        unmeasured_liquidity = 0
         for sym in sorted(members - skip):
             series = sorted(closes.get(sym, {}).items())
             if not series:
@@ -220,18 +400,40 @@ def read(db_query: Callable[..., Any], *, held: Iterable[Mapping] | None = None,
             signal = relative_strength(series, spy_series) if spy_series else {"rs20": None, "as_of": None}
             if signal.get("rs20") is not None:
                 measured += 1
-            rows.append({
+            is_held = sym in held_group
+            failed, adv = _floor_failures(sym, close, signal.get("rs20"), series, volume_closes, volume_volumes,
+                                          min_price=min_price, min_adv=min_adv, max_abs_rs20=max_abs_rs20,
+                                          max_split_pct=max_split_pct, rs_window=rs_window)
+            if failed and not is_held:
+                for key in failed:
+                    excluded[key] += 1
+                continue
+            # LQ-1784 r2 (grok-a review): an UNMEASURED dollar volume is not a passed floor. It is counted
+            # in the group note and it is never ranked — a name the liquidity floor cannot vouch for must not
+            # take a top-N slot the caption calls liquid. A HELD name is still listed (a fact about the book),
+            # so it is not counted as "not ranked": the note must not name an absence for a row on screen.
+            if adv is None and not is_held:
+                unmeasured_liquidity += 1
+            rank_trusted = not ({"rs_sanity", "split_mismatch"} & set(failed))
+            row = {
                 "symbol": sym,
                 "source_id": f"{PRICE_SOURCE}:{sym}",
                 "rs_source_id": f"ticker_prices:rs20_vs_spy:{sym}",
                 "sector": held_sector.get(sym) or (universe.get(sym) or {}).get("sector"),
-                "held": sym in held_group,
+                "held": is_held,
                 "held_value_usd": round(held_value[sym], 2) if sym in held_value else None,
                 "close": close,
                 "close_as_of": series[-1][0],
-                "rs20": signal.get("rs20"),
-                "rs20_as_of": signal.get("as_of"),
-            })
+                # a split / RS-sanity failure means the rank itself is untrustworthy: do not carry it
+                "rs20": signal.get("rs20") if rank_trusted else None,
+                "rs20_as_of": signal.get("as_of") if rank_trusted else None,
+                # the liquidity floor could not be measured: never liquid, so never a ranked slot
+                "liquidity_measured": adv is not None,
+            }
+            if is_held and failed:
+                # the holding is a fact about the book: still listed, plainly flagged
+                row["flag"] = _held_flag(failed, min_price)
+            rows.append(row)
         kept = [r for r in rows if r["held"]]
         # a held name with a known value leads, by value; a held name whose value could not be read still
         # leads the sector (the ticket says held first) but sorts after the known ones, never as a zero
@@ -239,19 +441,27 @@ def read(db_query: Callable[..., Any], *, held: Iterable[Mapping] | None = None,
                        key=lambda r: (-r["held_value_usd"], r["symbol"]))
         unknown = sorted((r for r in kept if r["held_value_usd"] is None), key=lambda r: r["symbol"])
         kept = known + unknown
-        ranked = [r for r in rows if not r["held"] and r["rs20"] is not None]
+        ranked = [r for r in rows if not r["held"] and r["rs20"] is not None and r["liquidity_measured"]]
         ranked.sort(key=lambda r: (-r["rs20"], r["symbol"]))
         picked = kept + ranked[:max(0, int(limit))]
+        filter_note = _filter_note(excluded, unmeasured_liquidity, labels_for)
         gap = None
         if not picked:
-            gap = bars_gap or profile_gap or "no constituent with a measured close"
+            gap = bars_gap or volume_gap or profile_gap or filter_note or "no constituent with a measured close"
         out[group] = {
             "sector": list(group_labels),
             "source_id": PRICE_SOURCE,
+            "bar_source_id": BAR_SOURCE,
             "as_of": spy_series[-1][0] if spy_series else None,
             "universe": len(members - skip),
             "measured": measured,
             "rows": picked,
             "gap": gap,
+            "excluded": {k: n for k, n in excluded.items() if n},
+            "unmeasured_liquidity": unmeasured_liquidity or None,
+            "filter_note": filter_note,
+            # LQ-20261107-1784: the floor the list was drawn under, so the card's caption names the operator's
+            # number rather than a copy of it that goes stale when the contract changes.
+            "min_price": min_price,
         }
     return out

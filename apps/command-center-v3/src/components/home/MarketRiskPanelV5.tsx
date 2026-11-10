@@ -5,7 +5,7 @@
  *  Advisory only (MBI_BEHAVIOR = 0): every link opens a review page; nothing here places or edits an order or a stop. */
 import { Link } from 'react-router-dom'
 import '../../styles/cioCard.css'
-import { fv, accountText, calDay, etDay, etTime, pct, px, trancheShares, triggerFill, usd, usdShort, type CioNote, type CioPanel, type RotateCandidate } from '../../lib/cioCard'
+import { fv, accountText, calDay, etDay, etTime, pct, px, triggerFill, usd, usdShort, type CioNote, type CioPanel, type RotateCandidate } from '../../lib/cioCard'
 import type { MarketRisk } from '../../lib/marketRisk'
 import { MarketRiskAckRow } from './MarketRiskBanner'
 import { tierStyle } from './CioCardV5'
@@ -14,39 +14,99 @@ const when = (iso: string | undefined) => (iso ? `${etDay(iso)} ${etTime(iso).re
 const day = (d: string | undefined) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? calDay(d) : when(d))
 
 function stateBadge(c: RotateCandidate) {
-  if (c.leadership === 'LEADERSHIP_CONFIRMED') return <span className="st lead">LEADING · CONFIRMED</span>
+  if (c.leadership === 'LEADERSHIP_CONFIRMED') return <span className="st lead">LEADING (confirmed)</span>
   if (c.state === 'RESILIENT') return <span className="st res">RESILIENT</span>
   return <span className="st neu">{c.state ?? '—'}</span>
 }
 
-/** LQ-20261107-1655 — the individual names under a defensive ETF row. The server already ordered them: names the
- *  book holds in this sector first, then the group's best RS20 constituents. Each row shows its own dated close,
- *  its RS vs SPY over 20 sessions and the server's one-line stock-vs-ETF reading. A row the server could not trace
- *  is absent; when nothing in the group could be traced the row says why instead of showing "none exist". */
+/** LQ-20261107-1655 / -1784 — the individual names under a defensive ETF row. The server ordered them (held names
+ *  first, then the group's best RS20 constituents) and never ranks a name that fails any floor (price, dollar
+ *  volume, split, RS-sanity), nor one whose dollar volume it could not measure — an unmeasured floor is not a
+ *  passed floor. Each name is ONE line: symbol, held flag, price, and
+ *  the server's relational phrase ("weaker than XLV by 6.5 pts"). A HELD name is still listed whatever its numbers
+ *  — the holding is a fact about the book, not a rank — so the caption names the held rows as held and calls only
+ *  the ranked rows liquid. The date and source ride in the title, never in the line. */
 function StockRows({ c }: { c: RotateCandidate }) {
   const rows = c.stocks ?? []
   if (!rows.length) return c.stocks_gap ? <div className="sub sgap" data-testid="mr5-stock-gap">{c.stocks_gap}</div> : null
+  const floor = c.stocks_min_price
+  const liquid = floor != null && Number.isFinite(floor) ? `liquid ≥$${floor}` : 'liquid'
+  // LQ-1784 r2 (grok-a review): a held name can be flagged (below the price floor, an untrustworthy print), so
+  // the caption may not call every drawn row liquid. With held rows it says what selected them, in order.
+  const cap = rows.some(s => s.held) ? `Stocks: held first, then ${liquid}` : `Stocks (${liquid})`
   return (
     <div className="sk" data-testid="mr5-rotate-stocks">
-      <div className="cap">Names in {c.symbol} · held first, then best RS vs SPY over 20 sessions</div>
+      <div className="cap">{cap}</div>
       <ul>{rows.map(s => {
         const close = fv(s.close)
         // a value the server could not trace is absent; a name row without a traceable close is not drawn
         if (close == null) return null
-        const rs = fv(s.rs20), sh = s.tranche1_shares
-        const bits = [`Close ${close.toFixed(2)} · ${day(s.close.as_of)}`,
-          rs != null ? `RS ${rs > 0 ? '+' : ''}${rs.toFixed(1)} vs SPY 20d` : 'RS20 not measurable'].join(' · ')
         return (
-          <li className="sr" key={s.symbol} data-testid="mr5-stock-row" title={s.source_id}>
-            <div className="sh"><b>{s.symbol}</b>{s.held ? <span className="tagheld">HELD</span> : null}
-              {s.proposed && sh ? <span className="amt" title="whole of tranche 1 in this one name">≈{sh} sh · {usd(s.tranche1_usd)}</span> : null}</div>
-            <div className="sl" data-testid="mr5-stock-line">{bits}</div>
-            {s.compare ? <div className="sc">{s.compare}</div> : null}
+          <li className="sr" key={s.symbol} data-testid="mr5-stock-row" title={`${s.source_id} · ${s.close.as_of}`}>
+            <div className="sl" data-testid="mr5-stock-line">
+              <b>{s.symbol}</b>{s.held ? ' held' : ''} {px(close)}
+              {s.flag ? ` · ${s.flag}` : s.compare ? ` · ${s.compare}` : ''}
+            </div>
           </li>
         )
       })}</ul>
+      {c.stocks_note ? <div className="sub sgap" data-testid="mr5-stocks-note">{c.stocks_note}</div> : null}
     </div>
   )
+}
+
+/** LQ-20261107-1784 — ONE action line per group, drawn only from facts the projection already carries: a holding
+ *  (HOLD), a qualifying group under the CIO's gate (WAIT), a sized tranche (PROPOSED), or a group that has not
+ *  qualified yet (NO ACTION). This never derives a verdict of its own — the CIO owns the verdict, and every word
+ *  here is a restatement of FILLED / the gate / qualifies. */
+function actionFor(c: RotateCandidate, gated: GatedRotate['gated']): { verb: string; text: string; next?: string } {
+  const p = c.proposed
+  const held = c.held
+  const live = fv(c.price)
+  const close = fv(c.close)
+  const gateWord = gated?.gate?.value ?? 'no buys'
+  const priceNow = live != null ? `Now ${px(live)}` : close != null ? `No live price (last close ${px(close)})` : 'No live price'
+  if (held) {
+    const shares = held.shares != null ? `${held.shares} sh` : '—'
+    const text = held.filled === true
+      ? `Tranche 1 filled: ${shares} @ ${px(held.avg_cost)}${live != null ? ` (now ${px(live)})` : ''}.`
+      : `Holding ${shares}${held.avg_cost != null ? ` @ ${px(held.avg_cost)}` : ''}${live != null ? ` (now ${px(live)})` : ''}.`
+    const nt = c.next_tranche
+    let next: string | undefined
+    if (nt) {
+      const size = `tranche ${nt.tranche} ≈ ${usdShort(nt.usd)}${nt.shares != null ? ` (~${nt.shares} sh)` : ''}`
+      next = gated ? `Next: ${size}. Waiting on the CIO buys line (now ${gateWord}).`
+        : nt.after ? `Next: ${size}. After ${nt.after}.`
+        : `Next: ${size}.`
+    } else if (gated) {
+      next = `Next: tranche 1 waits on the CIO buys line (now ${gateWord}).`
+    } else if (p?.tranche1_usd != null) {
+      next = `Next: tranche 1 ${usd(p.tranche1_usd)}${p.shares != null ? ` (~${p.shares} sh)` : ''}. Needs your OK.`
+    }
+    return { verb: 'HOLD', text, next }
+  }
+  if (!c.qualifies) {
+    const tgt = p?.target_pct != null
+      ? `Starts at RESILIENT → ${p.target_pct}%${p.target_usd != null ? ` ≈ ${usdShort(p.target_usd)}` : ''}.`
+      : 'No target is set.'
+    const move = live != null
+      ? `${priceNow}${c.dd20 != null ? `, ${pct(Math.abs(c.dd20))} off its 20-day high` : ''}.`
+      : `${priceNow}.`
+    return { verb: 'NO ACTION', text: `${tgt} ${move}` }
+  }
+  if (gated) {
+    const when = gated.until?.value || gated.until_short?.value
+    return { verb: 'WAIT', text: `Tranche 1 waits on ${when ?? 'the CIO buys line'} (buys now ${gateWord}).` }
+  }
+  if (p?.tranche1_usd != null) {
+    // LQ-20261107-1654: the count is floor(usd / CURRENT price), never a count off yesterday's close. No quote
+    // means no count — said plainly, not filled in from the daily close.
+    const size = p.shares != null
+      ? ` ≈ ${p.shares} sh${live != null ? ` at ${px(live)}` : ''}`
+      : ' — share count needs a live price'
+    return { verb: 'PROPOSED', text: `Tranche 1 ${usd(p.tranche1_usd)}${size}. Needs your OK.` }
+  }
+  return { verb: 'NO ACTION', text: `${priceNow}.` }
 }
 
 /** LQ-20261107-1389: the CIO's buys gate rides on the rotate item as its own facts (value + source + as_of).
@@ -58,10 +118,7 @@ export type GatedRotate = NonNullable<CioPanel['rotate']> & {
 
 function Rotate({ r, stressed }: { r: GatedRotate; stressed: string[] }) {
   const cands = r.candidates ?? []
-  const plan = r.plan
   const gated = r.gated
-  // "CPI Tue" when the gate lifts on a named release, else the long form; undefined when the gate names no event.
-  const gatedWhen = gated?.until_short?.value || gated?.until?.value || undefined
   const closeAsOf = cands.find(c => c.close)?.close?.as_of
   return (
     <div className="col" data-testid="mr5-rotate">
@@ -71,75 +128,33 @@ function Rotate({ r, stressed }: { r: GatedRotate; stressed: string[] }) {
         : 'No defensive group qualifies on the market-risk sector table yet.'}</p>
       <div className="rk">
         {cands.map(c => {
-          const p = c.proposed
-          const close = fv(c.close), avg = fv(c.avg20), live = fv(c.price)
-          const trs = p?.tranches ?? []
-          const held = c.held
-          const filled = held?.filled === true
+          const act = actionFor(c, gated)
           return (
             <div className={`rc${c.qualifies ? '' : ' off'}`} key={c.symbol} data-testid="mr5-rotate-row" title={c.source_id}>
-              <div className="h"><b>{c.symbol}</b><span className="nm">{c.label}</span>{stateBadge(c)}
-                <span className="amt" data-testid="mr5-amt">{filled
-                  ? `FILLED · ${held?.shares} sh @ ${px(held?.avg_cost)}`
-                  // LQ-20261107-1389: a qualifying group under a no-buys gate is not "watch" and is not a buy —
-                  // it is a tranche waiting on the named release the CIO's verdict is waiting on. Read before the
-                  // dollars so a tranche left in a stale payload can never outrank the verdict on screen.
-                  : c.qualifies && gated ? `after ${gatedWhen ?? 'the gate'}`
-                  : c.qualifies && p?.tranche1_usd ? `${usd(p.tranche1_usd)} tranche 1` : 'watch'}</span></div>
-              <div className="sub">{c.rs20 != null ? `RS vs SPY ${c.rs20 > 0 ? '+' : ''}${c.rs20.toFixed(1)} pts over 20 sessions` : ''}{c.dd20 != null ? ` · ${pct(Math.abs(c.dd20))} off its 20-day high` : ''}{c.qualifies ? '' : ' · starts when it turns RESILIENT'}</div>
-              {/* LQ-20261107-1654: the price the share counts rest on is the CURRENT quote, never the last daily close
-                  (this card used to size off yesterday's close). With no current quote there is no share count at all. */}
-              <div className="ln" data-testid="mr5-price">{live != null ? `Live ${live.toFixed(2)}` : 'No current price'}
-                {avg != null ? ` · 20-day avg ${avg.toFixed(2)}` : ''}
-                {close != null ? ` · last close ${close.toFixed(2)}` : ''}
-                {p?.target_pct != null ? ` · target ${p.target_pct}% of book${p.target_usd != null ? ` (${usdShort(p.target_usd)})` : ''}${c.qualifies ? '' : ' when it qualifies'}` : ''}</div>
-              {/* A group that does not qualify has a target, not a tranche: it shows no shares until it turns RESILIENT.
-                  LQ-20261107-1689: tranche 1 is a FILL once the book holds ~90% of its shares — the row prints what
-                  was actually bought (shares, average cost, the date it was captured), not the offer again. */}
-              {c.qualifies && trs.length > 0 && (
-                <div className="tot" data-testid="mr5-tranches">{trs.flatMap(t => [
-                  <span key={`t${t.tranche}`}>Tranche {t.tranche}</span>,
-                  t.tranche === 1 && filled ? (
-                    <span key={`v${t.tranche}`} data-testid="mr5-filled">
-                      FILLED · {held?.shares} sh @ {px(held?.avg_cost)}{held?.as_of ? ` · ${when(held.as_of)}` : ''}
-                    </span>
-                  ) : (
-                    <span key={`v${t.tranche}`}>{usd(t.usd)} · {trancheShares(t)}</span>
-                  ),
-                ])}</div>
-              )}
+              {/* LQ-20261107-1784: one header line — GROUP · ETF · STATE — with explicit separators. The old row
+                  ran the label into the ticker and the state badge into the amount ("XLVHealthcareLEADING · CONFIRMEDFILLED"). */}
+              <div className="h">
+                <b>{String(c.label ?? '').toUpperCase()}</b><span className="sep">·</span>
+                <span className="nm">{c.symbol}</span><span className="sep">·</span>
+                {stateBadge(c)}
+              </div>
+              {/* ONE action line, then at most one next step. The action word is a restatement of a fact the
+                  projection already carries — never a verdict this view invents (the CIO owns the verdict). */}
+              <div className="act" data-testid="mr5-action">
+                <span className="go" aria-hidden="true">▶</span> <b>{act.verb}</b>. {act.text}
+              </div>
+              {act.next ? <div className="act next" data-testid="mr5-next">{act.next}</div> : null}
               <StockRows c={c} />
             </div>
           )
         })}
       </div>
-      {plan && (
-        <>
-          {/* LQ-20261107-1689: once tranche 1 is in the book, the card must not keep asking for OK on the money already
-              spent — the pill names the fill and the tranches that are still a proposal. */}
-          <div><span className="pill prop" data-testid="mr5-proposed">{plan.tranche1_filled
-            ? 'TRANCHE 1 FILLED · TRANCHES 2–3 PROPOSED'
-            : 'PROPOSED · NEEDS YOUR OK'}</span></div>
-          <div className="tot" data-testid="mr5-plan">
-            {plan.tranche1_usd != null && <><span>Tranche 1 ({Math.round((plan.split?.[0] ?? 0.3) * 100)}%)</span><span>{usd(plan.tranche1_usd)}{plan.tranche1_pct_book != null ? ` · ${pct(plan.tranche1_pct_book)} of book` : ''}{plan.tranche1_filled ? ' · FILLED' : ''}</span></>}
-            {plan.tranche2_after && <><span>Tranche 2 ({Math.round((plan.split?.[1] ?? 0.3) * 100)}%)</span><span>after {plan.tranche2_after}</span></>}
-            {plan.tranche3_when && <><span>Tranche 3 ({Math.round((plan.split?.[2] ?? 0.4) * 100)}%)</span><span>when {plan.tranche3_when}</span></>}
-            {plan.cash_after_pct != null && <><span>Cash after tranche 1</span><span>{pct(plan.cash_after_pct)}</span></>}
-          </div>
-          {plan.rule && <div className="sub">Proposed rule: {plan.rule}.</div>}
-        </>
-      )}
-      {/* LQ-20261107-1389: a no-buys verdict above a live "$26,224 · tranche 1" proposal is two answers on one
-          screen. The sizing is withheld at the projection and the column says what it is waiting for — never a
-          silent disappearance, and never a dollar amount the CIO's own line forbids acting on. */}
-      {!plan && gated && (
-        <>
-          <div><span className="pill prop" data-testid="mr5-gated">{gatedWhen
-            ? `TRANCHE 1 AFTER ${gatedWhen.toUpperCase()}` : 'BUYS GATED'}</span></div>
-          <div className="sub" data-testid="mr5-gated-line">
-            {gated.line?.value ? `${gated.line.value}. ` : ''}No tranche is proposed while the CIO's buys line reads {gated.gate?.value ?? 'no buys'}.
-          </div>
-        </>
+      {/* LQ-20261107-1784: TODAY is the CIO's own buys line, which now stops naming a release that has already
+          printed (the gate owner is time-aware). One line, derived, never a second verdict. */}
+      {r.buys?.line?.value && (
+        <div className="today" data-testid="mr5-today">
+          <b>TODAY:</b> {r.buys.line.value}{/\.$/.test(r.buys.line.value) ? '' : '.'}
+        </div>
       )}
       {/* LQ-20261107-1654: "Prices as of <ET time>" is the quote the share counts rest on. No quote → say so rather
           than label yesterday's close as the price. */}

@@ -45,6 +45,9 @@ export interface TrancheRow { tranche: number; usd: number; shares?: number | nu
 export interface RotateStock extends Prov {
   symbol: string; held?: boolean; close: Fact<number>; rs20?: Fact<number>; held_value_usd?: Fact<number>
   tranche1_usd?: number; tranche1_shares?: number; proposed?: true; compare?: string
+  /** LQ-20261107-1784: a plain reason a HELD name fails a floor ("below $5.00 — review", "no reliable price —
+   *  review"). The holding is still listed; the flag replaces a rank it cannot honestly carry. */
+  flag?: string
 }
 export interface RotateCandidate extends Prov {
   key: string; symbol: string; label: string; state?: string; leadership?: string; rs20?: number; dd20?: number; qualifies?: boolean
@@ -60,6 +63,11 @@ export interface RotateCandidate extends Prov {
   held?: Prov & { shares?: number; avg_cost?: number; pct_of_tranche1?: number; filled?: boolean }
   /** The individual names under this ETF (LQ-20261107-1655), or why none could be drawn. */
   stocks?: RotateStock[]; stocks_gap?: string
+  /** LQ-20261107-1784: what the floors dropped, counted, and the price floor the list was drawn under. */
+  stocks_note?: string; stocks_min_price?: number | null
+  /** The next step after a held tranche (LQ-20261107-1784): tranche 2's size at the CURRENT price and the event
+   *  it waits on. Present only when the book already holds the group, so a gated column never sizes tranche 1. */
+  next_tranche?: { tranche: number; usd: number; shares?: number | null; after?: string | null }
 }
 export interface PositionRow { symbol: string; account_label?: string; value_usd?: number; pct_account?: number; stressed_share?: number; usd_exposed?: number; stop_distance_pct?: number | null; stance?: string; stops_known?: boolean }
 export interface StoppedOut extends Prov {
@@ -99,6 +107,9 @@ export interface CioPanel {
     prices_sources?: string[]
     /** Qualifying symbols that had no current quote, so the card shows no share count for them. */
     prices_missing?: string[]
+    /** LQ-20261107-1784: the CIO's buys line itself (all gates), so the column can state TODAY from the verdict
+     *  the operator is being shown — already time-aware at the gate owner. */
+    buys?: { gate?: Fact<string>; until?: Fact<string>; until_short?: Fact<string>; line?: Fact<string> } | null
   }
   positions?: Prov & { rows?: PositionRow[]; more_count?: number; more_usd?: number; zero_exposure_symbols?: string[]; stops_known?: boolean }
   stopped_out?: StoppedOut[]

@@ -1,10 +1,9 @@
 // LQ-20261107-1689 — the rotation card's FILLED tranche, rendered for real at phone widths.
-// Renders the actual MarketRiskPanelV5 with a synthetic HomeCioCard@v1 `panel` in which the book already holds
-// 76 of the 80 planned XLV tranche-1 shares (95%), and proves, in a browser:
-//   filled    the row's amount reads FILLED with the shares/avg actually held, tranche 1 prints the held shares,
-//             average cost and capture date instead of the offer again, and the plan's tranche-1 line is marked
-//             FILLED so "Cash after tranche 1" is the book's real cash and not a double spend;
-//   next step the following line is Tranche 2 after the CIO's own catalyst label;
+// LQ-20261107-1784 rewrote the presentation: one HOLD action line, one NEXT line, no duplicated plan table. This
+// fixture keeps the 1689 invariant — the card reports the shares/avg actually held and names the next step — and
+// proves it in a browser:
+//   filled    the action line reads HOLD and reports what was bought, at the current quote;
+//   next step the next line is tranche 2 at the current price, after the CIO's own catalyst label;
 //   at 390 / 412 / 1440 px nothing overflows the viewport (no sideways page scroll).
 //   node e2e/rotation-filled-tranche.fixture.mjs <outdir>
 // Synthetic fixture only (public repo): round figures, no operator quantities.
@@ -45,10 +44,12 @@ const PANEL = {
       // 76 held of the 80 planned = 95%, a fill under the >= 90% rule. The card draws the server's record and never
       // recomputes the verdict, so the fixture supplies it whole.
       held: { shares: 76, avg_cost: 181.06, pct_of_tranche1: 95.0, filled: true, source_id: 'positions_current:sync_run_918', as_of: HOLD_AT },
+      next_tranche: { tranche: 2, usd: 12000.0, shares: 64, after: 'CPI Tue 11-10 08:30 ET' },
     }],
     plan: { proposed: true, tranche1_usd: 12000.0, tranche1_pct_book: 1.2, cash_after_pct: 75.0, tranche1_filled: true,
             tranche2_after: 'CPI Tue 11-10 08:30 ET', tranche3_when: 'market tier YELLOW or better', split: [0.3, 0.3, 0.4],
             rule: 'proposed rule (fixture)' },
+    buys: { gate: fact('OPEN'), line: fact('Buys open, slowly') },
     prices_as_of: QUOTE_AT, prices_sources: ['quote:finviz_quote_cache'],
   },
 }
@@ -92,25 +93,21 @@ try {
       return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
     })
     await page.goto('http://fixture.invalid/')
-    await page.waitForSelector('[data-testid="mr5-tranches"]')
+    await page.waitForSelector('[data-testid="mr5-action"]')
 
-    const amt = (await page.textContent('[data-testid="mr5-amt"]')).replace(/\s+/g, ' ').trim()
-    const filled = (await page.textContent('[data-testid="mr5-filled"]')).replace(/\s+/g, ' ').trim()
-    const plan = (await page.textContent('[data-testid="mr5-plan"]')).replace(/\s+/g, ' ').trim()
-    const pill = (await page.textContent('[data-testid="mr5-proposed"]')).replace(/\s+/g, ' ').trim()
+    const act = (await page.textContent('[data-testid="mr5-action"]')).replace(/\s+/g, ' ').trim()
+    const next = (await page.textContent('[data-testid="mr5-next"]')).replace(/\s+/g, ' ').trim()
+    const head = (await page.textContent('[data-testid="mr5-rotate-row"]')).replace(/\s+/g, ' ').trim()
 
-    // The row header stops offering the tranche and reports what was bought.
-    assert.equal(amt, 'FILLED · 76 sh @ $181.06', `row amount (${width}px)`)
-    // Tranche 1 prints the holding, with its own capture date, not the offer again.
-    assert.match(filled, /^FILLED · 76 sh @ \$181\.06 · \w{3} 03-10 \d{1,2}:\d{2} (AM|PM) ET$/,
-                 `tranche-1 row (${width}px): ${filled}`)
-    // The card stops asking for OK on the money already spent: the pill names the fill and what is still proposed.
-    assert.equal(pill, 'TRANCHE 1 FILLED · TRANCHES 2–3 PROPOSED', `plan pill (${width}px)`)
-    // Tranche 2 is still an offer, and the next step is the CIO's catalyst, not a re-ask of tranche 1.
-    assert.match(plan, /Tranche 1 \(30%\)\$12,000 · 1\.2% of book · FILLED/, `plan tranche 1 (${width}px): ${plan}`)
-    assert.match(plan, /Tranche 2 \(30%\)after CPI Tue 11-10 08:30 ET/, `plan tranche 2 (${width}px): ${plan}`)
-    // Cash after a filled tranche is the book's real cash: no dollars spent twice.
-    assert.match(plan, /Cash after tranche 175\.0%/, `plan cash (${width}px): ${plan}`)
+    // The action line reports what was bought — the shares and average cost the book actually holds, at the
+    // current quote — and never the offer again.
+    assert.equal(act, '▶ HOLD. Tranche 1 filled: 76 sh @ $181.06 (now $184.80).', `action line (${width}px): ${act}`)
+    // The next step is tranche 2 at the current price, after the CIO's own catalyst label.
+    assert.equal(next, 'Next: tranche 2 ≈ $12K (~64 sh). After CPI Tue 11-10 08:30 ET.', `next line (${width}px): ${next}`)
+    // The header is one readable line and no longer runs the label, ticker and state together.
+    assert.match(head, /^HEALTHCARE·XLV·LEADING \(confirmed\)/, `row header (${width}px): ${head}`)
+    // The removed plan table cannot come back: the filled tranche is stated once, as a fact.
+    assert.ok(!/Cash after tranche 1|PROPOSED · NEEDS YOUR OK/.test(head), `the old plan table is back (${width}px)`)
 
     const overflow = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
@@ -124,7 +121,7 @@ try {
     const shot = path.join(out, `rotation-filled-${width}.png`)
     await page.screenshot({ path: shot, fullPage: true })
     receipt.screenshots.push(shot)
-    receipt.checks.push({ width, amt, filled, overflow, ok: true })
+    receipt.checks.push({ width, act, next, overflow, ok: true })
     receipt.viewports.push(width)
     await page.close()
   }

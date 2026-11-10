@@ -526,6 +526,14 @@ sectors:
     bar_lookback_days: 70          # calendar days of ticker_prices read for that window (holiday buffer included)
     held_first: true               # a held name leads its sector whatever its RS
     drop_untraceable: true         # no dated close => no row (never a zero, never a guess)
+    # LQ-20261107-1784 (operator 2026-11-10: "not clear what to do"; NO FALSE POSITIVES). The rank had no floor
+    # and the card led with penny/microcap data accidents instead of names the operator could trade. These floors
+    # gate the RANK only; a held name is a fact about the book and is still listed, flagged "— review".
+    min_price: 5.00                # latest ticker_prices close; a sub-$5 print is not a tradeable candidate here
+    min_avg_dollar_volume_usd: 10000000   # 20-session mean of market_ohlcv_bars close x volume (the volume owner);
+                                          # an unmeasurable dollar volume is counted, never treated as illiquid
+    max_abs_rs20: 100              # above this a |RS20| is a split / unadjusted-history data error: drop + count
+    max_split_diff_pct: 5.0        # ticker_prices close vs market_ohlcv_bars close, same session: > this = split
   groups:
     - {key: tech, label: Technology, kind: sector, symbols: [XLK]}
     - {key: comm, label: Communications, kind: sector, symbols: [XLC]}

@@ -3,10 +3,11 @@
 ANCHOR: ROTATION_INDIVIDUAL_STOCKS_1655_20261109
 
 Synthetic fixtures only (public repo): symbols DEMOA / DEMOB / DEMOH / DEMOUT / DEMOST, round prices, no live
-symbol, no live dollar amount, no database. The two reads the module makes (``symbol_profiles`` then
-``ticker_prices``) are faked; every assertion is about the rule the operator set — held names in that sector
-first, then the group's best constituents by RS vs SPY over exactly 20 sessions — and about the drop rule:
-a symbol with no dated close, or no complete SPY-session window, is never ranked and never filled in.
+symbol, no live dollar amount, no database. The three reads the module makes (``symbol_profiles``,
+``ticker_prices`` then ``market_ohlcv_bars`` for the LQ-1784 liquidity/split guard) are faked; every assertion is
+about the rule the operator set — held names in that sector first, then the group's best constituents by RS vs SPY
+over exactly 20 sessions — and about the drop rule: a symbol with no dated close, or no complete SPY-session
+window, is never ranked and never filled in.
 """
 import sys
 from pathlib import Path
@@ -54,12 +55,18 @@ PRICES = (
 
 
 class DB:
-    """The module's only two reads, faked. An exception instance in ``profiles``/``prices`` is raised; the
-    string ``"none"`` is the db helper's own failure shape (no rows, no exception)."""
+    """The module's three reads, faked. An exception instance in ``profiles``/``prices``/``bars`` is raised; the
+    string ``"none"`` is the db helper's own failure shape (no rows, no exception).
 
-    def __init__(self, profiles=None, prices=None):
+    ``bars`` (market_ohlcv_bars, LQ-1784) defaults to a synthetic daily bar per ticker_prices row with a large
+    volume and the same close, so a fixture written for the rank alone is not changed by the floors: its names
+    pass the price, dollar-volume, RS-sanity and split checks. A test that wants a floor to fail sets ``bars``.
+    """
+
+    def __init__(self, profiles=None, prices=None, bars=None):
         self.profiles = PROFILES if profiles is None else profiles
         self.prices = PRICES if prices is None else prices
+        self.bars = bars
         self.calls = []
 
     def __call__(self, sql, params=None):
@@ -68,11 +75,25 @@ class DB:
             out = self.profiles
         elif "ticker_prices" in sql:
             out = self.prices
-        else:  # pragma: no cover - the module makes exactly these two reads
+        elif "market_ohlcv_bars" in sql:
+            out = self.bars if self.bars is not None else _bars_from(self.prices)
+        else:  # pragma: no cover - the module makes exactly these three reads
             raise AssertionError(f"unexpected read: {sql}")
         if isinstance(out, Exception):
             raise out
         return None if out == "none" else out
+
+
+def _bars_from(prices, volume=1_000_000.0):
+    """A daily bar per stored row, same close and a large volume: the floors pass unless a test says otherwise.
+
+    A failure shape (Exception / ``"none"``) is mirrored, so a test that fails the price read fails the volume
+    read the same way and the gap it asserts on is the one the module saw first.
+    """
+    if isinstance(prices, Exception) or prices == "none":
+        return prices
+    return [{"symbol": p["symbol"], "session": p["session"], "close": p["close"], "volume": volume}
+            for p in prices]
 
 
 def test_groups_and_labels_come_from_the_lookthrough_owner():
@@ -204,9 +225,16 @@ def test_the_numbers_live_in_the_operators_contract_and_the_reader_agrees():
     assert block["rs_window_sessions"] == rs.RS_WINDOW_SESSIONS == 20
     assert block["bar_lookback_days"] == rs.BAR_LOOKBACK_DAYS == 70
     assert block["held_first"] is True and block["drop_untraceable"] is True
+    # LQ-20261107-1784: the NO-FALSE-POSITIVES floors are the operator's, not the module's.
+    assert block["min_price"] == rs.MIN_PRICE == 5.00
+    assert block["min_avg_dollar_volume_usd"] == rs.MIN_AVG_DOLLAR_VOLUME_USD == 10_000_000
+    assert block["max_abs_rs20"] == rs.MAX_ABS_RS20 == 100
+    assert block["max_split_diff_pct"] == rs.MAX_SPLIT_DIFF_PCT == 5.0
     d = rs.defaults()
     assert d["groups"] == tuple(block["groups"]) and d["top_n"] == 5 and d["bar_lookback_days"] == 70
     assert d["rs_window_sessions"] == 20 and d["policy_gap"] is None, "a readable policy reports no gap"
+    assert (d["min_price"], d["min_avg_dollar_volume_usd"], d["max_abs_rs20"], d["max_split_diff_pct"]) == (
+        5.00, 10_000_000, 100, 5.0)
 
 
 def test_a_contract_change_changes_the_list_without_a_code_change(monkeypatch):
