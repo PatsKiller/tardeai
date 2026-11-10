@@ -408,14 +408,24 @@ def load_overnight_rows(*, since: datetime, limit: int = 50) -> tuple[list[dict]
     return newest, last_24h
 
 
-def _deepseek_ok(lanes: list[dict[str, Any]]) -> int:
-    for r in lanes:
-        if r.get("lane") == "deepseek":
-            try:
-                return int(r.get("non_error_24h") or 0)
-            except (TypeError, ValueError):
-                return 0
-    return 0
+def _deepseek_ok(lanes: list[dict[str, Any]]) -> Optional[int]:
+    """The deepseek lane's 24 h success count, or None when it was not measured.
+
+    LQ-20261107-1808 r2 (review should-fix 7): this returned 0 for a row that could not be read — an
+    ``unreadable_lane`` row carries ``non_error_24h=None`` and this read it as a count of zero. That made
+    "0 succeeded" and "never looked at" the same number, and let ``collect_coverage_stall`` charge a flat
+    thesis count to research that was never counted. A real 0 is still 0; an absent row, a ``measured is
+    False`` row, or a value that is not an int is None (Rule 11, unknown beats wrong)."""
+    row = _lane_row(lanes, "deepseek")
+    if row is None or row.get("measured") is False:
+        return None
+    value = row.get("non_error_24h")
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _lane_row(lanes: list[dict[str, Any]], lane: str) -> Optional[dict[str, Any]]:
@@ -433,7 +443,7 @@ COVERAGE_STALL_SUBSTANTIVE_PCT = 0.70
 def collect_coverage_stall(
     *,
     now: Optional[datetime] = None,
-    deepseek_ok_24h: int = 0,
+    deepseek_ok_24h: Optional[int] = None,
     thesis_current: Optional[int] = None,
     thesis_held: Optional[int] = None,
     thesis_substantive: Optional[int] = None,
@@ -453,6 +463,10 @@ def collect_coverage_stall(
     failures is a lane that is 84% down, and then a flat thesis count is the *absence* of
     research, not a thesis-pipeline stall. When the leg is measurably broken the row is held
     (ok, no firing) and ``held_by`` names why; the deepseek lane carries that alarm on its own.
+
+    ``deepseek_ok_24h is None`` means the count was not taken (the lane's row could not be read) and the row
+    is held the same way, with ``held_by`` naming the missing measurement: an alarm that cannot see the
+    research flow may not blame the thesis pipeline for a flat count (LQ-20261107-1808 r2, Rule 11).
     """
     now = now or datetime.now(timezone.utc)
     from pathlib import Path
@@ -470,6 +484,11 @@ def collect_coverage_stall(
         if attempts >= error_rate_min_n() and rate >= thr:
             held_by = (f"research_lane_unhealthy:deepseek error_rate_24h={rate:g}>={thr:g} "
                        f"over {attempts} attempts")
+    if deepseek_ok_24h is None and held_by is None:
+        # LQ-20261107-1808 r2 (review should-fix 7): we never counted the research flow, so a flat thesis
+        # count is not evidence of a research->thesis stall. Hold and name it; the deepseek lane's own
+        # NOT_MEASURED row carries the failure.
+        held_by = "research_ok_unmeasured:deepseek non_error_24h could not be read"
     if snap_path is None:
         snap_path = root / "data" / "runtime" / "coverage_stall_snapshot.json"
     snap_path = Path(snap_path)
@@ -528,6 +547,7 @@ def collect_coverage_stall(
     threshold = max(1, int(COVERAGE_STALL_SUBSTANTIVE_PCT * (thesis_held or 0))) if thesis_held else 1
     if (
         held_by is None
+        and deepseek_ok_24h is not None
         and deepseek_ok_24h >= 20
         and thesis_substantive is not None
         and thesis_held
@@ -561,7 +581,11 @@ def collect_coverage_stall(
         "authority": AUTHORITY,
         "as_of": now.replace(microsecond=0).isoformat(),
     }
-    if persist:
+    if persist and deepseek_ok_24h is not None:
+        # An unmeasured run does not write the snapshot. The snapshot is the "prev" baseline of the next
+        # run's ``deepseek_ok_24h >= prev`` test: persisting None (or a 0 that stands for one) would reset
+        # the baseline to zero and let the alarm fire on a smaller flow than the last measured one. The
+        # last measured baseline is kept, with its age, until a run can count again.
         try:
             import json
             snap_path.parent.mkdir(parents=True, exist_ok=True)

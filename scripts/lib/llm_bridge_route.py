@@ -110,6 +110,29 @@ def text_and_provenance_via_bridge(process_id: str, prompt: str, *, timeout_s: f
     return text, (governance if text is not None else {})
 
 
+def text_and_provenance_via_bridge_or_raise(process_id: str, prompt: str, *, timeout_s: float = 60.0,
+                                            max_tokens: Optional[int] = None,
+                                            manual_trigger: bool = False) -> tuple[str, dict[str, Any]]:
+    """The provenance pair for a caller that treats "no answer" as a failure.
+
+    Same ``(text, provenance)`` on success; on a refusal it raises ``BridgeRouteRefused`` carrying the
+    bridge's typed ``code`` and ``message``. ``text_and_provenance_via_bridge`` returns ``(None, {})`` and
+    a caller that raises a fixed error from it discards *why* the bridge refused — a row that used to say
+    ``(COST_CAP_EXCEEDED)`` said only "no text" (LQ-1808 r2, review should-fix 6).
+    """
+    text, err, governance = _text_and_meta(process_id, prompt, timeout_s=timeout_s, max_tokens=max_tokens,
+                                           manual_trigger=manual_trigger)
+    if text is None or not str(text).strip():
+        code = err.get("code")
+        raise BridgeRouteRefused(
+            f"{REFUSED}: governed bridge returned no text for process {process_id}"
+            + (f" ({code})" if code else ""),
+            code=str(code) if code else None,
+            error_message=str(err.get("message"))[:200] if err.get("message") else None,
+        )
+    return str(text), dict(governance or {})
+
+
 def _text_and_meta(process_id: str, prompt: str, *, timeout_s: float, max_tokens: Optional[int],
                    manual_trigger: bool) -> tuple[Optional[str], dict[str, Any], dict[str, Any]]:
     """The bridge text (or None), the bridge's ``error`` dict ({} when it sent none), and its ``_tradeai`` block."""

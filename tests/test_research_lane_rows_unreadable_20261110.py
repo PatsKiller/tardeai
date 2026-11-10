@@ -160,3 +160,82 @@ def test_collect_report_never_reports_a_blind_lane_as_quiet(monkeypatch):
     # Every blind lane is also named in the report's firing list — the alarm still reaches the operator.
     assert set(report["firing"]) == {r["lane"] for r in blind}
     assert report["ok"] is False
+
+
+# ── should-fix 7 (r2): the coverage stall may not read an uncounted flow as zero ──────────────────────────
+
+
+def _measured(ok):
+    return {"lane": "deepseek", "ok": True, "firing": [], "non_error_24h": ok, "attempts_24h": ok}
+
+
+def test_an_unreadable_deepseek_row_is_unmeasured_not_zero():
+    """``unreadable_lane`` carries ``non_error_24h=None``; reading it as 0 invented a count (should-fix 7)."""
+    row = rla.unreadable_lane("deepseek", rla.RowsUnreadable("cannot be read: OperationalError: down"))
+    assert rla._deepseek_ok([row]) is None
+
+
+def test_an_absent_or_countless_deepseek_row_is_unmeasured():
+    assert rla._deepseek_ok([]) is None
+    assert rla._deepseek_ok([{"lane": "grok", "non_error_24h": 9}]) is None
+    assert rla._deepseek_ok([{"lane": "deepseek"}]) is None
+    assert rla._deepseek_ok([{"lane": "deepseek", "non_error_24h": "n/a"}]) is None
+
+
+def test_a_measured_zero_is_still_a_zero():
+    """A lane that really did produce nothing is measured — the hold is for unknown, not for bad news."""
+    assert rla._deepseek_ok([_measured(0)]) == 0
+    assert rla._deepseek_ok([_measured(33)]) == 33
+
+
+def test_the_stall_holds_and_names_the_missing_measurement():
+    row = rla.collect_coverage_stall(
+        now=NOW, deepseek_ok_24h=None, thesis_substantive=6, thesis_coverage=22, thesis_held=23,
+        persist=False,
+    )
+
+    assert row["ok"] is True, "a flat thesis count may not be charged to a research flow nobody counted"
+    assert row["firing"] == []
+    assert str(row["held_by"]).startswith("research_ok_unmeasured:")
+    assert row["non_error_24h"] is None and row["attempts_24h"] is None
+    assert row["thesis_substantive"] == 6 and row["thesis_held"] == 23
+
+
+def test_a_measured_count_still_fires_and_a_zero_does_not():
+    fired = rla.collect_coverage_stall(
+        now=NOW, deepseek_ok_24h=33, thesis_substantive=6, thesis_coverage=22, thesis_held=23,
+        persist=False,
+    )
+    assert fired["firing"] and fired["firing"][0].startswith("research_up_thesis_flat:")
+
+    quiet = rla.collect_coverage_stall(
+        now=NOW, deepseek_ok_24h=0, thesis_substantive=6, thesis_coverage=22, thesis_held=23,
+        persist=False,
+    )
+    assert quiet["ok"] is True and quiet["held_by"] is None
+    assert quiet["non_error_24h"] == 0, "a measured zero stays on the row as 0"
+
+
+def test_a_broken_leg_keeps_its_own_held_by():
+    """The unhealthy-leg hold is the more specific cause and must not be overwritten by 'unmeasured'."""
+    row = rla.collect_coverage_stall(
+        now=NOW, deepseek_ok_24h=None, thesis_substantive=6, thesis_held=23, persist=False,
+        research_leg={"attempts_24h": 183, "error_rate_24h": 84.2, "non_error_24h": 29},
+    )
+    assert str(row["held_by"]).startswith("research_lane_unhealthy:")
+
+
+def test_an_unmeasured_run_does_not_reset_the_baseline(tmp_path):
+    """The snapshot is the next run's ``>= prev`` baseline; persisting None would reset it to zero."""
+    from pathlib import Path
+
+    snap = Path(tmp_path) / "coverage_stall_snapshot.json"
+    rla.collect_coverage_stall(now=NOW, deepseek_ok_24h=30, thesis_substantive=6, thesis_held=23,
+                               snap_path=snap)
+    assert '"deepseek_ok_24h": 30' in snap.read_text()
+
+    import json
+    before = json.loads(snap.read_text())
+    rla.collect_coverage_stall(now=NOW, deepseek_ok_24h=None, thesis_substantive=6, thesis_held=23,
+                               snap_path=snap)
+    assert json.loads(snap.read_text()) == before, "an unmeasured run must leave the last measured baseline"

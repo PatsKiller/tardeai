@@ -108,6 +108,7 @@ def test_executed_model_of_the_gate_pair_records_the_fallback_provider(monkeypat
                  "requested_policy": "deepseek_only", "fallback_used": True}
     _fake_generate(monkeypatch, ("the answer", gate_prov))
     monkeypatch.setattr(her, "via_bridge", lambda: False)
+    monkeypatch.setattr(her, "admission_for", lambda lane, *a: (True, ""))
     text, prov = her.call_external("deepseek", "deepseek-flash", "prompt", return_provenance=True)
     assert text == "the answer"
     assert her.executed_model(prov, "deepseek-flash") == "claude-haiku-5-5"
@@ -117,38 +118,45 @@ def test_executed_model_of_the_gate_pair_records_the_fallback_provider(monkeypat
 
 
 def test_a_direct_provider_client_claims_no_provenance(monkeypatch):
+    # grok, not claude: LQ-1808 r2 closed the ungated Anthropic lane for this process (see
+    # tests/test_hermes_lane_admission_20261110.py); the direct-client contract is unchanged.
     monkeypatch.setattr(her, "via_bridge", lambda: False)
+    monkeypatch.setattr(her, "admission_for", lambda lane, *a: (True, ""))
     monkeypatch.setattr(her, "_call_direct", lambda cfg, model, prompt, max_tokens: "text")
-    model, prov = her.call_external("claude", "claude-haiku-5-5", "prompt", return_provenance=True)
+    model, prov = her.call_external("grok", "grok-3-mini", "prompt", return_provenance=True)
     assert (model, prov) == ("text", None)
 
 
 def test_a_direct_provider_client_still_returns_bare_text_by_default(monkeypatch):
     monkeypatch.setattr(her, "via_bridge", lambda: False)
+    monkeypatch.setattr(her, "admission_for", lambda lane, *a: (True, ""))
     monkeypatch.setattr(her, "_call_direct", lambda cfg, model, prompt, max_tokens: "text")
-    assert her.call_external("claude", "claude-haiku-5-5", "prompt") == "text"
+    assert her.call_external("grok", "grok-3-mini", "prompt") == "text"
 
 
 def test_the_bridge_route_returns_the_bridge_block(monkeypatch):
     monkeypatch.setattr(her, "via_bridge", lambda: True)
+    monkeypatch.setattr(her, "admission_for", lambda lane, *a: (True, ""))
     monkeypatch.setattr(her, "_account_from_env", lambda *a, **k: None)
     block = {"provider": "anthropic", "model_id": "claude-haiku-5-5", "requested_policy": "deepseek_only"}
     route = importlib.import_module("lib.llm_bridge_route")
-    monkeypatch.setattr(route, "text_and_provenance_via_bridge",
-                        lambda process_id, prompt, **kw: ("{}", block))
+    monkeypatch.setattr(route, "_text_and_meta", lambda *a, **k: ("{}", {}, block))
     text, prov = her.call_external("grok", "m", "prompt", max_tokens=1234, return_provenance=True)
     assert text == "{}" and prov == block
     assert her.executed_model(prov, "deepseek-flash") == "anthropic:claude-haiku-5-5"
 
 
 def test_a_bridge_refusal_raises_rather_than_storing_the_requested_model(monkeypatch):
-    """No text means no claim: the row must not be written as if a model produced it."""
+    """No text means no claim, and the bridge's typed reason survives the provenance path (r2 should-fix 6)."""
     monkeypatch.setattr(her, "via_bridge", lambda: True)
     monkeypatch.setattr(her, "_account_from_env", lambda *a, **k: None)
     route = importlib.import_module("lib.llm_bridge_route")
-    monkeypatch.setattr(route, "text_and_provenance_via_bridge", lambda *a, **k: (None, {}))
-    with pytest.raises(RuntimeError, match="BRIDGE_ROUTE_REFUSED"):
+    monkeypatch.setattr(route, "_text_and_meta",
+                        lambda *a, **k: (None, {"code": "COST_CAP_EXCEEDED", "message": "cap"}, {}))
+    with pytest.raises(route.BridgeRouteRefused) as ei:
         her.call_external("grok", "m", "prompt", return_provenance=True)
+    assert ei.value.code == "COST_CAP_EXCEEDED"
+    assert "BRIDGE_ROUTE_REFUSED" in str(ei.value) and "COST_CAP_EXCEEDED" in str(ei.value)
 
 
 # ── reconcile_accepted_research: the downstream payload repeats the same truth ─────────────────────────────

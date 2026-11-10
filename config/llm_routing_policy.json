@@ -483,8 +483,7 @@
           "reasoning_lane": {
             "provider": "deepseek",
             "policy": "PRO_THINK"
-          },
-          "anthropic_first": true
+          }
         },
         "hermes_golden_judge": {
           "primary": {

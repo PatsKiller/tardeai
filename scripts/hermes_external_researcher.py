@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""hermes_external_researcher.py — Hermes External Researcher lanes (Phase 210D/G). Claude lane implemented.
+"""hermes_external_researcher.py — Hermes External Researcher lanes (Phase 210D/G).
 
 ADVISORY-ONLY. MANUAL / escalation-triggered (NOT auto-scheduled). Sends a REDACTED escalation packet to an
 external cloud model and stores the structured response in hermes_external_research. NEVER touches broker/
 order/stop/proposal/holdings/trading. The API key is read from the environment at call-time only — never
 stored, logged, or returned. DRY-RUN by default (shows exactly what WOULD be sent); --apply to call out.
 
-  python3 scripts/hermes_external_researcher.py --lane claude --question "..." [--symbol AAPL]      # dry-run
-  python3 scripts/hermes_external_researcher.py --lane claude --question "..." --apply               # send
+  python3 scripts/hermes_external_researcher.py --lane deepseek --question "..." [--symbol AAPL]   # dry-run
+  python3 scripts/hermes_external_researcher.py --lane deepseek --question "..." --apply            # send
+
+The bare command (no ``--lane``) defaults to ``deepseek``, the route this process's registry row declares
+(``lane_policy: deepseek_only``). A lane the registry does not admit for ``hermes_external_research`` is
+refused before any provider client runs: LQ-20261107-1808 found that the old default was ``claude`` and that
+``_call_direct`` POSTed api.anthropic.com with no registry read, no allowlist and no consumption row.
 Redaction (hard): strips our $ amounts and share counts, account numbers, API keys/tokens, .env content,
 broker creds, emails, long digit runs — and only a whitelisted, high-level context is ever assembled.
 A figure the caller quotes from public source text (``--public-evidence``) is kept: it is the fact the
@@ -68,7 +73,67 @@ LANE_CFG = {
     "deepseek": {"kind": "governed_deepseek", "default_model": "deepseek-flash",
                  "auth_hint": "governed DeepSeek V4 Flash via llm_lane.py (process hermes_external_research) — no OAuth"},
 }
-DEFAULT_MODEL = "claude-sonnet-4-6"
+
+#: The registered process every call in this file spends as (``config/llm_process_registry.json``).
+PROCESS_ID = "hermes_external_research"
+#: Lane -> the provider it bills. The registry allowlist names lanes, providers and models in one flat
+#: list, so a lane is admitted when any of the three names is on it.
+LANE_PROVIDER = {"claude": "anthropic", "chatgpt": "openai", "grok": "xai", "deepseek": "deepseek"}
+
+
+class LaneNotAdmitted(RuntimeError):
+    """A lane this process's registry row does not admit. Nothing was attempted (EXIT_LANE_GATED).
+
+    A caller holding a ranked lane list may try the next lane; a direct caller sees the refusal instead
+    of a provider call. Raised by ``call_external`` so the gate holds for every caller, not only the CLI.
+    """
+
+    exit_code = EXIT_LANE_GATED
+
+    def __init__(self, lane, process_id, reason):
+        self.lane, self.process_id, self.reason = lane, process_id, reason
+        super().__init__(f"LANE_NOT_ADMITTED: {lane} is not an admitted lane for {process_id} ({reason})")
+
+
+def process_lane_config(process_id=PROCESS_ID) -> dict:
+    """The process's registry row through the one governed reader (``llm_consumption.get_process_config``).
+
+    Only ``allowed_lanes`` is used for admission. ``get_process_config`` returns the registry row even when
+    the DB override cannot be read; a missing or unreadable registry file yields an empty allowlist, which
+    ``lane_admission`` treats as a refusal — an unknown allowlist is not an admission.
+    """
+    from lib.llm_consumption import get_process_config
+
+    return get_process_config(process_id) or {}
+
+
+def lane_admission(lane, cfg) -> tuple[bool, str]:
+    """``(admitted, reason)``: whether ``cfg`` (a registry row) admits ``lane`` for this process.
+
+    The row's ``allowed_lanes`` names the grok/chatgpt OAuth lanes explicitly (so the governed bridge does
+    not skip them) and the deepseek route by its model id (``deepseek-flash``). ``claude``/``anthropic`` is on
+    neither list, which is what closes the ungated door LQ-1808 r2 found: the default lane used to be
+    ``claude`` and it reached ``api.anthropic.com`` without a registry read.
+    """
+    allowed = {str(x).strip().lower() for x in ((cfg or {}).get("allowed_lanes") or []) if str(x).strip()}
+    if not allowed:
+        return False, "allowed_lanes_empty_or_unreadable"
+    lane_l = str(lane or "").strip().lower()
+    provider = str(LANE_PROVIDER.get(lane_l) or "").lower()
+    model = str(((LANE_CFG.get(lane_l) or {}).get("default_model")) or "").lower()
+    for name in (lane_l, provider, model):
+        if name and name in allowed:
+            return True, ""
+    return False, f"lane={lane_l} provider={provider or 'unknown'} not in allowed_lanes"
+
+
+def admission_for(lane, process_id=PROCESS_ID) -> tuple[bool, str]:
+    """``lane_admission`` with the registry read made here, so every failure to read it is a refusal."""
+    try:
+        cfg = process_lane_config(process_id)
+    except Exception as exc:  # noqa: BLE001 -- a registry we cannot read admits nothing
+        return False, f"registry_unreadable:{type(exc).__name__}"
+    return lane_admission(lane, cfg)
 
 
 def _account_from_env(event: str, *, reason: str, attempt_no: int = 0, fallback_from: str | None = None) -> None:
@@ -549,6 +614,10 @@ def call_governed_deepseek(model, prompt, max_tokens=1500, *, return_provenance=
         "symbol": os.getenv("TRADEAI_LLM_SYMBOL") or None,
         "trigger": os.getenv("TRADEAI_LLM_TRIGGER") or None,
     }
+    # ``model`` is deliberately not forwarded as ``generate(model=...)``: the value here is the lane alias
+    # (``deepseek-flash``/a CLI override), while the gate resolves the provider's model id itself
+    # (POLICY_TO_MODEL). The executor-less ledger rows LQ-1808 r2 measured came from the gate's own NULL
+    # fallback on a raising call; that is fixed where the resolved id lives (llm_consumption.log_call).
     text = generate(
         prompt,
         lane="deepseek-flash",
@@ -559,6 +628,7 @@ def call_governed_deepseek(model, prompt, max_tokens=1500, *, return_provenance=
         metadata={k: v for k, v in accounting_meta.items() if v},
         return_provenance=return_provenance,
     )
+
     if return_provenance:
         text, provenance = text if isinstance(text, tuple) and len(text) == 2 else (text, {})
         return str(text or "").strip(), (provenance if isinstance(provenance, dict) else {})
@@ -586,11 +656,12 @@ def executed_model(provenance, requested):
     worse lie than the model id alone.
 
     The one case this cannot reach is a call that RAISED: the gate keeps its provenance inside the exception
-    it throws, so nothing is in hand and the requested model stands. Read the column together with ``status``
-    — for any row that produced output it names the executor, and for a row that produced none (``error``,
-    ``unavailable``, ``auth_pending``) it names the model that was attempted, which after item 1 closes the
-    promotion route is the same provider. Carrying the gate's block out on the exception would close it
-    completely; ``scripts/lib/llm_consumption.py`` is outside this claim and is filed as a follow-up.
+    it throws, so nothing is in hand and the requested lane alias stands here. The ``llm_consumption_log``
+    row for that call is a different matter and is no longer executor-less: the gate resolves the provider
+    model id before it attempts the call and records it there (``llm_consumption.log_call``, LQ-1808 r2).
+    Read this column together with ``status`` — for a row that produced output it names the executor, and
+    for a row that produced none (``error``, ``unavailable``, ``auth_pending``) it names the lane that was
+    attempted, which after item 1 closes the promotion route is the same provider.
     """
     if not isinstance(provenance, dict) or not provenance:
         return requested
@@ -615,21 +686,30 @@ def call_external(lane, model, prompt, max_tokens=1500, *, return_provenance=Fal
     Only the governed paths can say what executed them (the DeepSeek gate and the CIO bridge). A direct
     provider client returns ``None`` provenance: its model is the one this file named, and claiming more
     would be an invention.
+
+    Refuses (``LaneNotAdmitted``) a lane this process's registry row does not admit, before any direct
+    provider client runs — those read a credential and open a socket, so the gate must stand in front of
+    them (LQ-1808 r2 must-fix 1). The governed-bridge route is not gated here: it ignores ``--lane`` and
+    cannot choose a provider the registry does not admit (``anthropic_routing.eligible``), and ``main``
+    refuses the bridge + claude pair explicitly.
     """
     if via_bridge():
         if return_provenance:
-            from lib.llm_bridge_route import text_and_provenance_via_bridge
+            from lib.llm_bridge_route import text_and_provenance_via_bridge_or_raise
 
             _account_from_env("ATTEMPTED", reason="governed_bridge", attempt_no=1)
-            text, meta = text_and_provenance_via_bridge(
+            text, meta = text_and_provenance_via_bridge_or_raise(
                 BRIDGE_PROCESS_ID, prompt, timeout_s=240, max_tokens=max_tokens)
-            if text is None:
-                raise RuntimeError(f"BRIDGE_ROUTE_REFUSED: governed bridge returned no text for {BRIDGE_PROCESS_ID}")
             return str(text), meta
         from lib.llm_bridge_route import require_text_via_bridge
 
         _account_from_env("ATTEMPTED", reason="governed_bridge", attempt_no=1)
         return require_text_via_bridge(BRIDGE_PROCESS_ID, prompt, timeout_s=240, max_tokens=max_tokens)
+    # The gate stands in front of the direct providers: `_call_direct` reads a key and POSTs, and the
+    # governed deepseek lane spends. The bridge above is governed by its own registry read instead.
+    admitted, why = admission_for(lane)
+    if not admitted:
+        raise LaneNotAdmitted(lane, PROCESS_ID, why)
     cfg = LANE_CFG[lane]
     if cfg["kind"] == "governed_deepseek":
         return call_governed_deepseek(model, prompt, max_tokens=max_tokens,
@@ -765,9 +845,15 @@ def classify_reply_status(status, parsed, raw):
     return REFUSED_STATUS
 
 
-def main():
+def build_parser() -> argparse.ArgumentParser:
+    """The CLI. ``--lane`` defaults to the process's declared route, never to a lane the registry refuses.
+
+    ``claude`` stays a choice (the registry, not this parser, is the single source of truth on what is
+    admitted), so a row that later admits it needs no CLI change — and until then the admission gate
+    refuses it with EXIT_LANE_GATED instead of argparse's generic usage error.
+    """
     ap = argparse.ArgumentParser()
-    ap.add_argument("--lane", default="claude", choices=["claude", "chatgpt", "grok", "deepseek"])
+    ap.add_argument("--lane", default="deepseek", choices=["claude", "chatgpt", "grok", "deepseek"])
     ap.add_argument("--question", required=True)
     ap.add_argument(
         "--public-evidence",
@@ -792,7 +878,12 @@ def main():
     ap.add_argument("--call-id", default=None, help="stable accounting call identity supplied by the producer")
     ap.add_argument("--producer", default="hermes_external_researcher")
     ap.add_argument("--family", default=None, choices=["A", "B", "MANUAL", "REGISTERED"])
-    args = ap.parse_args()
+    return ap
+
+
+def main(argv=None):
+    ap = build_parser()
+    args = ap.parse_args(argv)
     if not args.model:
         args.model = LANE_CFG[args.lane]["default_model"]
     family = args.family or ("MANUAL" if args.trigger == "manual" else "REGISTERED")
@@ -832,13 +923,23 @@ def main():
     os.environ["TRADEAI_LLM_TRIGGER"] = args.trigger
 
     # Budget guard (central chokepoint): any producer that shells through this script is gated.
-    # Hard-enforce the broad-universe-no-LLM invariant + fail-closed for unknown triggers. The
-    # deliberate paid (claude) oversight lane is operator-authorized and not auto-blocked here; the
-    # "no paid fallback" rule is enforced where automated lane-selection happens (the budget guard).
+    # Hard-enforce the broad-universe-no-LLM invariant + fail-closed for unknown triggers. A lane the
+    # registry admits is not auto-blocked on cost here; the "no paid fallback" rule is enforced where
+    # automated lane-selection happens (the budget guard) and the DeepSeek cap in the consumption gate.
     args.budget_decision = "ALLOW"
     if via_bridge() and args.lane == "claude":
         print("\n[governed-bridge] the paid claude lane is not a bridge provider — no call (n8n path)")
         account("SKIP_GATED", reason="CLAUDE_NOT_ON_GOVERNED_BRIDGE")
+        return EXIT_LANE_GATED
+
+    # LQ-1808 r2 must-fix 1: the ungated door. A lane this process's registry row does not admit — today
+    # claude/anthropic — is refused here, before _load_env, the budget guard, a DB row or any provider
+    # client, with the EXIT_LANE_GATED contract a caller holding a ranked lane list already reads as "try
+    # the next lane". call_external refuses it too, for callers that do not come through main().
+    _admit, _why = admission_for(args.lane)
+    if not _admit:
+        print(f"\n[lane-admission] --lane {args.lane} refused for {PROCESS_ID}: {_why}")
+        account("SKIP_GATED", reason=f"LANE_NOT_ADMITTED:{_why}")
         return EXIT_LANE_GATED
     try:
         from hermes_research_budget_guard import decide as _bdecide

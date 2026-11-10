@@ -1660,7 +1660,13 @@ def gate_and_generate(
                 lane=lane, process_id=process_id,
                 task_summary=task_summary or summarize_prompt(prompt),
                 trigger_mode=trigger, success=ok,
-                model_name=tradeai.get("returned_model") or tradeai.get("requested_model_id") or model,
+                # LQ-1808 r2: a RAISING call used to log model_name NULL — returned_model and
+                # requested_model_id are absent on an exception and `model` is None unless a caller passed
+                # one (34 such rows in 7 d for hermes_external_research). `model_id` is the id this call
+                # RESOLVED for the provider before it attempted anything, so an error row now names the
+                # model that was attempted instead of nothing. It subsumes `model` (set equal in every
+                # branch above and replaced by POLICY_TO_MODEL/deepseek_model_id on the deepseek branch).
+                model_name=tradeai.get("returned_model") or tradeai.get("requested_model_id") or model_id,
                 prompt=prompt, response=text if ok else None,
                 tokens_in=usage.get("prompt_tokens"),
                 tokens_out=usage.get("completion_tokens"),
