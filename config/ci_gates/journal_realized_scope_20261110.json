@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "journal_realized_scope_20261110",
+  "files": [
+    "tests/test_journal_realized_scope_20261110.py"
+  ],
+  "anchor": "JOURNAL_REALIZED_SCOPE_20261110",
+  "comment": [
+    "ANCHOR: JOURNAL_REALIZED_SCOPE_20261110 — the overview realized total is priced sells only.",
+    "Sells with no cost basis stay out of that total. The journal returns priced_realized,",
+    "unpriced_count and unpriced_proceeds, and the header tile states that scope from those",
+    "fields. A failed unpriced read is None, not zero. Synthetic figures only."
+  ]
+}
