@@ -43341,7 +43341,7 @@
         ],
         "evidence": [
           {
-            "kind": "file",
+            "kind": "receipt_field",
             "ref": "data/runtime/header-market-freshness-health_last.json produced_count (written under --apply only)"
           }
         ],
@@ -43361,8 +43361,8 @@
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "NOT_MEASURED: registered 2026-11-10 by the noon registry batch and not yet dispatched; class defaults only.",
         "runs_considered": null,
-        "duration_degraded_above_s": 240.0,
-        "duration_rule": "2x timeout_s: a run longer than 120 s is killed by the executor bound"
+        "duration_degraded_above_s": 96.0,
+        "duration_rule": "0.8x timeout_s (0.8 x 120 = 96 s): the class rule every 120 s monitor lane uses, the same one cc-deepseek-2 applied to alert-delivery-queue-hygiene"
       },
       "alerting": {
         "lane_severity": "High",
@@ -43498,7 +43498,7 @@
         ],
         "evidence": [
           {
-            "kind": "file",
+            "kind": "receipt_field",
             "ref": "data/runtime/frozen-output-monitor_last.json produced_count (written under --apply only)"
           }
         ],
@@ -43518,8 +43518,8 @@
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "NOT_MEASURED: registered 2026-11-10 by the noon registry batch and not yet dispatched; class defaults only.",
         "runs_considered": null,
-        "duration_degraded_above_s": 360.0,
-        "duration_rule": "2x timeout_s: a run longer than 300 s is killed by the executor bound"
+        "duration_degraded_above_s": 240.0,
+        "duration_rule": "0.8x timeout_s (0.8 x 300 = 240 s): the class rule every 120 s monitor lane uses (0.8 x 120 = 96 s), scaled to this bound; a 2x line (360 s) can only be reached by a bypass"
       },
       "alerting": {
         "lane_severity": "Medium",
@@ -43646,11 +43646,12 @@
         ],
         "empty_allowed_reasons": [
           "no_position_decisions",
-          "nothing_due"
+          "nothing_due",
+          "already_recorded"
         ],
         "evidence": [
           {
-            "kind": "file",
+            "kind": "receipt_field",
             "ref": "data/runtime/cio-capital-plan-record_last.json produced_count (written under --apply only)"
           }
         ],
@@ -43670,8 +43671,8 @@
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "NOT_MEASURED: registered 2026-11-10 by the noon registry batch and not yet dispatched; class defaults only.",
         "runs_considered": null,
-        "duration_degraded_above_s": 360.0,
-        "duration_rule": "2x timeout_s: a run longer than 300 s is killed by the executor bound"
+        "duration_degraded_above_s": 240.0,
+        "duration_rule": "0.8x timeout_s (0.8 x 300 = 240 s): the class rule every 120 s monitor lane uses (0.8 x 120 = 96 s), scaled to this bound; a 2x line (360 s) can only be reached by a bypass"
       },
       "alerting": {
         "lane_severity": "Medium",
@@ -43815,11 +43816,12 @@
           "dependency_unavailable"
         ],
         "empty_allowed_reasons": [
-          "nothing_due"
+          "nothing_due",
+          "build_in_flight"
         ],
         "evidence": [
           {
-            "kind": "file",
+            "kind": "receipt_field",
             "ref": "data/runtime/overview-projection_last.json produced_count (written under --apply only)"
           }
         ],
@@ -43832,15 +43834,15 @@
       "baseline": {
         "timeout_s": 300,
         "class": "monitor",
-        "freshness_degraded_after_h": 1.0,
-        "freshness_failed_after_h": 2.0,
-        "freshness_rule": "degraded beyond 2x cadence, failed beyond 4x the expected cadence",
+        "freshness_degraded_after_h": 0.025,
+        "freshness_failed_after_h": 0.0833,
+        "freshness_rule": "90 s degraded / 300 s failed in market hours (0.025 h / 0.0833 h per DESIGN), matching this contract's own healthy line (built_at within 90 s) and failed line (older than 300 s) against a 1-minute cadence",
         "computed_on": "2026-11-10",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "NOT_MEASURED: registered 2026-11-10 by the noon registry batch and not yet dispatched; class defaults only.",
         "runs_considered": null,
-        "duration_degraded_above_s": 360.0,
-        "duration_rule": "2x timeout_s: a run longer than 300 s is killed by the executor bound, so 360 s can only be reached by a bypass"
+        "duration_degraded_above_s": 240.0,
+        "duration_rule": "0.8x timeout_s (0.8 x 300 = 240 s): the class rule every 120 s monitor lane uses (0.8 x 120 = 96 s), scaled to this bound; a 2x line (360 s) can only be reached by a bypass"
       },
       "alerting": {
         "lane_severity": "High",

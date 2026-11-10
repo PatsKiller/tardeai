@@ -117,6 +117,12 @@ EMPTY_ALLOWED_REASONS = frozenset(
         "all_skipped",         # exit-advisory + build-symbol-profiles zero-work after selection
         "no_stale_symbols",    # build-symbol-profiles-at-0-19: nothing stale to rebuild
         "already_refreshed",   # daily-incubator-refresh: rows already current (scan_refresh_lost stays fatal)
+        # REVIEW-NOON-registry-cc-deepseek-7 findings 1-3: reasons the lane code already emits, which the closed
+        # enum did not admit, so their contracts could not be signed. already_recorded is the same value LQ-1792's
+        # commit adds for cio_capital_plan_record.py; the two commits carry one legal literal each if both land.
+        "already_recorded",    # cio-capital-plan-record: every content-addressed decision_id was already journaled (wrote 0)
+        "no_position_decisions",  # cio-capital-plan-record: the plan carried no position decision this cycle
+        "build_in_flight",     # overview-projection: a tick was refused because another build held the single-flight guard
     }
 )
 EVIDENCE_KINDS = frozenset({"store_rows", "receipt_field", "ledger_row", "file_artifact"})
