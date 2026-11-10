@@ -44095,7 +44095,7 @@
       "id": "warm-caches",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "lq_1790_warm_caches_dispatch_20261110",
       "stage": "shadow",
       "purpose": {
@@ -44224,12 +44224,12 @@
       "review_by": "2026-11-24",
       "review": {
         "prepared_by": "agent draft (cc-deepseek-7, LQ-1790, 2026-11-10)",
-        "status": "DRAFT",
-        "reviewed_by": null,
-        "reviewed_on": null,
+        "status": "REVIEWED",
+        "reviewed_by": "cc-deepseek-9 (non-author reviewer), 2026-11-10",
+        "reviewed_on": "2026-11-10",
         "requested_of": "cc-deepseek-9",
         "requested_on": "2026-11-10",
-        "note": "cc-deepseek-9 reviews LQ-1790; the REVIEWED sign-off is theirs to write. Shadow registration: dispatch.mode dry_run and scheduler.stage shadow, so lane_stage_clamp keeps every fire a dry run whatever the caller requests, and the lane is excluded from the relay live list (live_arg null)."
+        "note": "verified against code and the live cron line, not the READY. Dry run measured exit 0: one line per step with that cache's age, then 'nothing computed, written, proposed or sent; no receipt', returning before api_v2 / rotation_autopilot are imported (scripts/warm_caches.py:108-118). Cron L521 fires */8 with flock -n /tmp/warm_caches.lock, the same lock this allowlist entry names, so cron and a future dispatcher fire cannot double-run. Shadow is enforced twice: registry scheduler.stage shadow (lane_stage_clamp -> dry_run whatever the caller requests) and allowlist live_arg null (n8n_relay_live_lanes excludes it). Baseline honesty checked: the coordination ledger holds 0 runs for warm-caches, and the live receipt exists (steps_s rotation_summary 4.6 / trade_ai 28.8 / rotation_autopilot 4.0, ok_at set), so timeout_s 420 sits above the catalogue's 318-330 s historical peak and 0.8 x 420 = 336 s is the degraded bound. No expected_output block: the lane grades no_rule until one is added, acceptable at shadow and required before any canary promotion, which the catalogue's 'Requires Refactoring Before Migration' item gates anyway."
       }
     }
   ],
