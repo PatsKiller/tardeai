@@ -516,6 +516,16 @@ CRITICAL_MAX_AGE_H = 6
 #: text so the Communications Editor's duplicate hash cannot HOLD the re-delivery as a repeat of a message it saw.
 HANDOVER_MARK = "[critical alert re-delivered — the legacy sender suppressed the original]"
 
+#: LQ-20261107-1815 r2 (M1): ``alert_occurrences.payload`` holds the event's INNER payload -- measured 2026-11-10,
+#: 716/716 critical occurrences are ``{bypass_router_requested, intent_priority, message}``, none nests an event.
+#: So the body arrives from ``payload["message"]`` and the identity from the occurrence COLUMNS. When an occurrence
+#: kept no message (a producer that never set one), the handover says so in words: a critical that reaches the
+#: operator with no text at all is the defect this consumer exists to remove.
+HANDOVER_NO_BODY = "(the original message text was not stored with this occurrence — see the alert link)"
+
+#: A row already delivered by another worker between claim and send. Recorded, never sent again.
+REASON_ALREADY_SENT = "expired:already_sent_by_another_worker"
+
 _CRITICAL_DUE_WHERE = """
        d.route_mode = 'IMMEDIATE'
    AND o.severity = 'critical'
@@ -537,7 +547,7 @@ _CRITICAL_DUE_WHERE = """
 _CRITICAL_SELECT_SQL = f"""
 SELECT d.id, d.occurrence_id, d.alert_id, d.logical_destination, d.attempt_seq, d.retry_count,
        d.delivery_status, d.delivery_reason, o.alert_type, o.source_producer, o.symbol, o.severity,
-       o.payload, o.observed_at
+       o.operator_action_required, o.payload, o.observed_at
   FROM alert_notification_deliveries d
   JOIN alert_occurrences o ON o.occurrence_id = d.occurrence_id
  WHERE {_CRITICAL_DUE_WHERE}
@@ -545,12 +555,23 @@ SELECT d.id, d.occurrence_id, d.alert_id, d.logical_destination, d.attempt_seq, 
  LIMIT %(limit)s
 """
 
+#: LQ-20261107-1815 r2 (S2): at most ONE row per occurrence is claimed. Two 'queued' attempt rows for the same
+#: occurrence (attempt_seq 1 and 2) used to both be claimed in one batch, and both were sent -- the DB's
+#: alert_deliveries_one_sent_per_occurrence_uq then rejected the second 'sent' UPDATE AFTER the second Telegram
+#: message had gone out. The DISTINCT ON runs in its own CTE because PostgreSQL forbids a locking clause in the same
+#: query level as DISTINCT; the lock still sits on the delivery row, so SKIP LOCKED keeps two workers apart.
 _CRITICAL_CLAIM_SQL = f"""
-WITH due AS (
-    SELECT d.id
+WITH candidates AS (
+    SELECT DISTINCT ON (d.occurrence_id) d.id, d.created_at
       FROM alert_notification_deliveries d
       JOIN alert_occurrences o ON o.occurrence_id = d.occurrence_id
      WHERE {_CRITICAL_DUE_WHERE}
+     ORDER BY d.occurrence_id, d.created_at ASC, d.id ASC
+),
+due AS (
+    SELECT d.id, d.created_at
+      FROM alert_notification_deliveries d
+      JOIN candidates c ON c.id = d.id
      ORDER BY d.created_at ASC
      LIMIT %(limit)s
      FOR UPDATE OF d SKIP LOCKED
@@ -565,11 +586,20 @@ RETURNING d.id
 _CRITICAL_DETAIL_SQL = """
 SELECT d.id, d.occurrence_id, d.alert_id, d.logical_destination, d.attempt_seq, d.retry_count,
        d.delivery_status, d.delivery_reason, o.alert_type, o.source_producer, o.symbol, o.severity,
-       o.payload, o.observed_at
+       o.operator_action_required, o.payload, o.observed_at
   FROM alert_notification_deliveries d
   JOIN alert_occurrences o ON o.occurrence_id = d.occurrence_id
  WHERE d.id = ANY(%s)
  ORDER BY d.created_at ASC
+"""
+
+#: The last guard before a send: another worker (or an operator) may have recorded the delivery between the claim and
+#: this row's turn. Sending anyway would duplicate it, and the partial unique index would then reject our UPDATE after
+#: the message had already gone out.
+_CRITICAL_SENT_SQL = """
+SELECT 1 FROM alert_notification_deliveries
+ WHERE occurrence_id = %s AND delivery_status = 'sent'
+ LIMIT 1
 """
 
 
@@ -606,17 +636,35 @@ def critical_due(*, conn=None, occurrence_id: int | None = None, limit: int = 5,
 
 
 def _handover_message(row: dict[str, Any]) -> str:
-    """The message for one claimed row: the operator rendering, marked when the legacy path suppressed the original."""
-    payload = row.get("payload") or {}
-    event = payload.get("payload") if isinstance(payload, dict) else None
-    if isinstance(payload, dict) and "alert_type" in payload:
-        event = payload
-    if isinstance(event, dict):
-        alert_event = AlertEvent(**{k: event.get(k) for k in AlertEvent.__dataclass_fields__.keys() if k in event})
-    else:
-        alert_event = AlertEvent(alert_type=row.get("alert_type") or "operator_alert", source_system="unknown",
-                                 source_producer=row.get("source_producer") or "unknown",
-                                 severity=row.get("severity") or "critical")
+    """The message for one claimed row: the operator rendering, marked when the legacy path suppressed the original.
+
+    LQ-20261107-1815 r2 (M1). The first version built the event from the row's identity columns only and never passed
+    the payload, the symbol or the action flag. Production stores the event's INNER payload
+    (``alert_occurrence_store.py:250``), so the "nested event" branch never fired and every handover reached the
+    operator as a title, ``Severity: CRITICAL · No immediate action`` and a link -- no body, no symbol, and a false
+    "no action" on an emergency-kill alert. Identity now comes from the occurrence columns (they are the stored
+    truth), the body from ``payload["message"]``, and a CRITICAL handover always says an action is required: the
+    original reached nobody, which is itself the reason the operator is being told.
+
+    A payload that nests an event can never raise here either: nothing is spread into the dataclass, every field is
+    read explicitly with a default, so one malformed payload cannot abort the batch (S1).
+    """
+    payload = row.get("payload")
+    payload = dict(payload) if isinstance(payload, dict) else {}
+    severity = str(row.get("severity") or "critical")
+    if not payload.get("message"):
+        payload = {**payload, "message": str(payload.get("raw_text") or HANDOVER_NO_BODY)}
+    alert_event = AlertEvent(
+        alert_type=str(row.get("alert_type") or "operator_alert"),
+        source_system=str(payload.get("source_system") or "unknown"),
+        source_producer=str(row.get("source_producer") or payload.get("source_producer") or "unknown"),
+        symbol=row.get("symbol") or payload.get("symbol"),
+        severity=severity,
+        # A critical handover is never "No immediate action". The column is authoritative when it says True; when it
+        # says False, or is absent, the severity decides -- the safe direction for a critical is "Action required".
+        operator_action_required=bool(row.get("operator_action_required")) or severity.strip().lower() == "critical",
+        payload=payload,
+    )
     message = render_operator_message(alert_event, row.get("alert_id"))
     if str(row.get("delivery_reason") or "").startswith("shadow_legacy_undelivered:"):
         return f"{HANDOVER_MARK}\n{message}"
@@ -628,8 +676,15 @@ def _send_critical_default(message: str, logical_destination: str | None) -> dic
 
     Not ``telegram_transport`` directly: ``telegram_alert.send_telegram_with_id`` is the approved chokepoint (it
     normalizes links, writes the communications ledger row and returns the provider message id), and it is what
-    ``check_telegram_chokepoint.py`` allows. The Communications Editor still applies inside it, so an editor hold is
-    reported as such rather than as a delivery.
+    ``check_telegram_chokepoint.py`` allows. The Communications Editor still applies inside it.
+
+    LQ-20261107-1815 r2 (M2): an editor HOLD is a FAILED attempt, not a terminal suppression. The first version wrote
+    it ``suppressed`` with ``completed_at`` and returned ``ok=True``, so a held critical ended in a state nothing read
+    and nothing retried while the caller was told the handover succeeded. It now stays ``failed`` with
+    ``reason=editor_held``: it retries like any transport failure, an editor release lets the next attempt through,
+    and once ``CRITICAL_MAX_ATTEMPTS`` is spent the hygiene lane escalates it to the ops owner (M3) instead of letting
+    it disappear. ``suppressed`` remains in the vocabulary for senders that can report a deliberate drop, and it is
+    never counted as delivered.
 
     It is a declared P1 intent (AGENTS.md §24.1) with ``dedupe_minutes=0``: a critical handover is never quiet-held,
     never digested, and never deduped -- the original reached nobody, and this process already bounds its own retries
@@ -651,8 +706,30 @@ def _send_critical_default(message: str, logical_destination: str | None) -> dic
     # would not: that bucket is process-wide and not cleared per send, so it can report an EARLIER message's hold.
     outcome = delivery_outcome(bool(out.get("accepted")))
     if outcome["status"] == "HELD":
-        return {"status": "suppressed", "reason": "editor_held", "message_id": None}
-    return {"status": "failed", "reason": f"telegram_{str(outcome['status']).lower()}", "message_id": None}
+        # M2: the operator did NOT receive it. 'failed' keeps the row retryable and keeps the report honest; the
+        # attempt budget bounds how long a stuck editor can hold a critical before the lane escalates it.
+        return {"status": "failed", "reason": "editor_held", "message_id": None}
+    # S5: if the message class ever becomes gateway-owned, ``send_telegram`` takes its gateway branch BEFORE the
+    # explicit chat_ids branch, so the destination above is not the one this handover reaches and a receipt may never
+    # come back. The row must say so rather than look like an ordinary transport failure, and it must stay FAILED
+    # (retryable): a duplicate is recoverable, a lost critical is not.
+    reason = f"telegram_{str(outcome['status']).lower()}"
+    try:
+        from telegram_alert import _comms_gateway_owns
+        if _comms_gateway_owns("operator_alert"):
+            reason += "_gateway_owned"
+    except Exception:  # noqa: BLE001 — a diagnostic must never change the outcome
+        pass
+    return {"status": "failed", "reason": reason, "message_id": None}
+
+
+def _occurrence_already_sent(conn, occurrence_id: Any) -> bool:
+    """True when some row for this occurrence is already 'sent'. One indexed read, just before the send."""
+    if occurrence_id is None:
+        return False
+    with conn.cursor() as cur:
+        cur.execute(_CRITICAL_SENT_SQL, (occurrence_id,))
+        return cur.fetchone() is not None
 
 
 def deliver_critical(*, occurrence_id: int | None = None, limit: int = 5, min_age_s: int = 0,
@@ -664,8 +741,17 @@ def deliver_critical(*, occurrence_id: int | None = None, limit: int = 5, min_ag
 
     Every state change is recorded on the row itself, so a reader can answer "who sent it, when, with what receipt"
     without a log file: claimed_by/claimed_at at claim time, telegram_message_id + completed_at on success, a retry
-    count and a reason on failure. A row is never sent twice: the claim excludes any occurrence that already has a
-    'sent' row.
+    count and a reason on failure. A row is never sent twice: the claim takes at most one row per occurrence and
+    excludes any occurrence that already has a 'sent' row, and the send is preceded by a re-read of that same state.
+
+    ``occurrence_id`` scopes one occurrence (the producer draining the row it just wrote); no ``occurrence_id`` with
+    ``min_age_s`` is the retry sweep the producer runs on the next critical publish (M4). Nothing schedules this on its
+    own: the hygiene lane reads the states it leaves and escalates a row that exhausts its attempts.
+
+    Scope: a critical sent with an explicit ``chat_ids``/``thread_id`` (or a reply_markup) short-circuits in
+    ``telegram_alert.send_telegram`` before ``publish_operator_message``, so it never creates an occurrence row and is
+    outside this consumer's coverage by construction (S7). Every critical that goes through ``send_telegram``'s
+    normal path is covered.
     """
     params = _critical_params(occurrence_id=occurrence_id, limit=limit, min_age_s=min_age_s)
     own = conn is None
@@ -705,17 +791,27 @@ def deliver_critical(*, occurrence_id: int | None = None, limit: int = 5, min_ag
         pass
 
     send_func = send_func or _send_critical_default
-    sent = failed = suppressed = 0
+    sent = failed = suppressed = duplicates = 0
     results = []
     for row in rows:
-        message = _handover_message(row)
+        message = None
         try:
-            outcome = send_func(message, row.get("logical_destination"))
-        except Exception as exc:  # noqa: BLE001 — a sender failure is a failed ATTEMPT, never a lost claim
-            outcome = {"status": "failed", "reason": type(exc).__name__[:60], "message_id": None}
-        status = str(outcome.get("status") or "failed")
-        reason = outcome.get("reason")
-        message_id = outcome.get("message_id")
+            # S1: building the message is part of the guarded attempt. It used to sit outside this try, so one
+            # malformed payload raised out of the loop and left every claimed row 'claimed' -- invisible to the
+            # janitor until M3 -- with the rest of the batch never attempted.
+            message = _handover_message(row)
+            if _occurrence_already_sent(conn, row.get("occurrence_id")):
+                # S2: another worker delivered this occurrence between our claim and this row's turn. Sending would
+                # duplicate a critical; the unique index would then reject our own 'sent' UPDATE after the message
+                # had gone out. Close the attempt as a duplicate, never as a failure (it must not retry).
+                status, reason, message_id = "abandoned", REASON_ALREADY_SENT, None
+            else:
+                outcome = send_func(message, row.get("logical_destination"))
+                status = str(outcome.get("status") or "failed")
+                reason = outcome.get("reason")
+                message_id = outcome.get("message_id")
+        except Exception as exc:  # noqa: BLE001 — a failed ATTEMPT, never a lost claim, never an aborted batch
+            status, reason, message_id = "failed", type(exc).__name__[:60], None
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -725,7 +821,7 @@ def deliver_critical(*, occurrence_id: int | None = None, limit: int = 5, min_ag
                        telegram_message_id = %s,
                        rendered_message = COALESCE(rendered_message, %s),
                        retry_count = retry_count + CASE WHEN %s = 'failed' THEN 1 ELSE 0 END,
-                       completed_at = CASE WHEN %s IN ('sent','suppressed') THEN now() ELSE completed_at END
+                       completed_at = CASE WHEN %s IN ('sent','suppressed','abandoned') THEN now() ELSE completed_at END
                  WHERE id = %s
                 """,
                 (status, reason, message_id, message, status, status, row.get("id")),
@@ -734,12 +830,16 @@ def deliver_critical(*, occurrence_id: int | None = None, limit: int = 5, min_ag
         sent += 1 if status == "sent" else 0
         failed += 1 if status == "failed" else 0
         suppressed += 1 if status == "suppressed" else 0
+        duplicates += 1 if status == "abandoned" else 0
         results.append({"id": row.get("id"), "occurrence_id": row.get("occurrence_id"), "alert_id": row.get("alert_id"),
                         "status": status, "reason": reason, "telegram_message_id": message_id})
     if own:
         conn.close()
-    return {"ok": failed == 0, "outcome": "applied", "claimed": len(rows), "sent": sent, "failed": failed,
-            "suppressed": suppressed, "claimed_by": owner, "rows": results}
+    # M2: ok means "every claimed critical reached the operator". A suppressed row did not, so it cannot be success
+    # any more than a failed one. (Suppressed is no longer produced by the chokepoint; an injected sender may.)
+    return {"ok": failed == 0 and suppressed == 0, "outcome": "applied", "claimed": len(rows), "sent": sent,
+            "failed": failed, "suppressed": suppressed, "duplicates_skipped": duplicates, "claimed_by": owner,
+            "rows": results}
 
 
 def build_digest(bucket: str, *, now: datetime | None = None) -> dict[str, Any]:

@@ -3,9 +3,19 @@
 
 PROCESS   n8n lane ``alert-delivery-queue-hygiene`` (config/lane_registry.json), every 5 min, LaneRunReceipt@v2.
 CONTRACT  "no IMMEDIATE row of alert_notification_deliveries is still 'queued' more than QUEUE_MAX_AGE_MIN (10) min
-          after it was written". Verdicts: OK, DEGRADED (the heal had work: rows expired this run), BROKEN (a
-          deliverable row is older than the bound after the heal: the consumer is not draining), UNVERIFIABLE (no DB).
-HEAL      deterministic and send-free. A 'queued' row is closed as 'abandoned' with a reason that keeps the original:
+          after it was written, and no row the consumer took is left in a state nobody reads". Verdicts: OK, DEGRADED
+          (the heal had work: rows expired this run), BROKEN (the consumer is not draining, or a row is exhausted /
+          orphaned / held), UNVERIFIABLE (no DB).
+          LQ-20261107-1815 r2 (M3): the contract now covers the consumer's OWN states. The first version classified
+          only 'queued', but the consumer moves a row out of 'queued' on its first attempt -- so a row that failed
+          three times, a claim abandoned by a crashed worker, and a held critical were all invisible here. That is the
+          exact hole that makes a dead consumer silent. Classes: 'exhausted' (failed, out of attempts or past
+          STALE_TTL_H), 'retrying' (failed, attempts left: normal, not a verdict), 'orphaned_claim' (claimed past the
+          consumer's TTL: a worker died mid-send), 'held' (suppressed with the consumer's own reason: the operator was
+          not told) -- each of the last three is BROKEN and escalated.
+HEAL      deterministic and send-free, and it never touches a row the consumer is still working. A 'queued' row is
+          closed as 'abandoned' with a reason that keeps the original -- failed, claimed and held rows are ESCALATED,
+          never expired, because expiring them would destroy the only evidence that a critical was lost:
             * ``expired:shadow_legacy_owned_delivery|was:<reason>`` — written while the runtime mode was not ACTIVE,
               so the legacy sender already owned (and did) the delivery; it is never sendable;
             * ``expired:stale_beyond_ttl|was:<reason>`` — ACTIVE but older than STALE_TTL_H: an alert that old is
@@ -17,8 +27,8 @@ HEAL      deterministic and send-free. A 'queued' row is closed as 'abandoned' w
         classified like ACTIVE work (fresh / stuck / stale), so the lane can never abandon it at 10 min before its
         consumer has had a chance, and a consumer that stops draining it still raises BROKEN.
 ESCALATE  BROKEN raises ONE system_health CRITICAL row in alert_events (the path that delivers today), at most one per
-          hour. The lane may NOT fix a dead consumer itself: it never sends an operator alert and never re-queues.
-          That goes to the ops owner via the system_health alert.
+          hour, naming every broken class it found. The lane may NOT fix a dead consumer itself: it never sends an
+          operator alert and never re-queues. That goes to the ops owner via the system_health alert.
 
 Dry run is the default and writes nothing (read-only session). ``--apply`` is the only writing path.
 MBI_BEHAVIOR = 0: nothing here sizes, orders or touches a broker.
@@ -52,11 +62,31 @@ REASON_STALE = "expired:stale_beyond_ttl"
 #: real consumer (``alert_outbox.deliver_critical``), so it must age out like ACTIVE work, never be abandoned at 10 min.
 UNDELIVERED_PREFIX = "shadow_legacy_undelivered:"
 
-# One query classifies every queued row; the occurrence's own runtime_mode says who owned delivery when it was written,
-# and the row's reason says whether that owner actually delivered.
+#: M3: the consumer's own bounds, mirrored from ``alert_outbox`` (CRITICAL_MAX_ATTEMPTS / CRITICAL_CLAIM_TTL_MIN). The
+#: lane is a standalone script and does not import the consumer; a test pins the two pairs equal, so a change on one
+#: side cannot silently leave the other measuring a stale bound.
+CONSUMER_MAX_ATTEMPTS = 3
+CONSUMER_CLAIM_TTL_MIN = 15
+
+#: The consumer's "the operator was NOT told" vocabulary. A row in this state is never expired here -- it is escalated.
+HELD_REASONS = ("editor_held",)
+_HELD_SQL_LIST = ", ".join(f"'{r}'" for r in HELD_REASONS)  # module constants, never user input
+
+#: Classes that mean the queue is not doing its job: each is BROKEN and escalated.
+BROKEN_CLASSES = ("stuck", "exhausted", "orphaned_claim", "held")
+
+# One query classifies every IMMEDIATE row the consumer could own -- including the states it leaves behind. The
+# occurrence's own runtime_mode says who owned delivery when the row was written, and the row's status/reason says
+# whether that owner actually delivered.
 CLASSIFY_SQL = f"""
 SELECT d.id,
        CASE
+         WHEN d.delivery_status = 'failed'
+              AND (d.retry_count >= {CONSUMER_MAX_ATTEMPTS}
+                   OR d.created_at < now() - interval '{STALE_TTL_H} hours') THEN 'exhausted'
+         WHEN d.delivery_status = 'failed' THEN 'retrying'
+         WHEN d.delivery_status = 'claimed' THEN 'orphaned_claim'
+         WHEN d.delivery_status = 'suppressed' THEN 'held'
          WHEN d.delivery_reason LIKE '{UNDELIVERED_PREFIX}%'
               AND d.created_at < now() - interval '{STALE_TTL_H} hours' THEN 'stale'
          WHEN d.delivery_reason LIKE '{UNDELIVERED_PREFIX}%'
@@ -71,7 +101,17 @@ SELECT d.id,
        d.created_at
   FROM alert_notification_deliveries d
   LEFT JOIN alert_occurrences o ON o.occurrence_id = d.occurrence_id
- WHERE d.delivery_status = 'queued' AND d.route_mode = 'IMMEDIATE'
+ WHERE d.route_mode = 'IMMEDIATE'
+   AND (
+         d.delivery_status IN ('queued', 'failed')
+      OR (d.delivery_status = 'claimed'
+          AND (d.claimed_at IS NULL OR d.claimed_at < now() - interval '{CONSUMER_CLAIM_TTL_MIN} minutes'))
+      -- Scoped to the consumer's own vocabulary: the legacy 'shadow_legacy_owned_delivery' rows are terminal history
+      -- and must not page anyone. A reason this lane does not recognise is left alone rather than guessed at.
+      OR (d.delivery_status = 'suppressed'
+          AND (d.delivery_reason IN ({_HELD_SQL_LIST})
+               OR d.delivery_reason LIKE '{UNDELIVERED_PREFIX}%'))
+   )
 """
 
 EXPIRE_SQL = """
@@ -88,7 +128,8 @@ def _iso(v: Any) -> Optional[str]:
 
 
 def classify(rows: list[tuple]) -> dict[str, Any]:
-    groups: dict[str, list[int]] = {"shadow": [], "stale": [], "stuck": [], "fresh": []}
+    groups: dict[str, list[int]] = {"shadow": [], "stale": [], "stuck": [], "fresh": [],
+                                    "exhausted": [], "retrying": [], "orphaned_claim": [], "held": []}
     oldest: dict[str, Optional[str]] = {}
     by_dest: dict[str, int] = {}
     for rid, klass, dest, created in rows:
@@ -102,7 +143,7 @@ def classify(rows: list[tuple]) -> dict[str, Any]:
 
 def verdict_for(plan: dict[str, Any]) -> str:
     ids = plan["ids"]
-    if ids["stuck"]:
+    if any(ids.get(k) for k in BROKEN_CLASSES):
         return "BROKEN"
     if ids["shadow"] or ids["stale"]:
         return "DEGRADED"
@@ -126,16 +167,18 @@ def _connect(read_only: bool):
 def _escalate_default(summary: dict[str, Any]) -> bool:
     from alert_event_writer import save_alert_event  # noqa: PLC0415
 
-    stuck = summary["counts"]["stuck"]
+    broken = {k: summary["counts"].get(k, 0) for k in BROKEN_CLASSES if summary["counts"].get(k)}
+    detail = ", ".join(f"{k}={v} (oldest {summary['oldest'].get(k)})" for k, v in broken.items())
     return save_alert_event(
         alert_type="system_health",
-        raw_text=(f"[{LANE_ID}] BROKEN: {stuck} IMMEDIATE alert(s) still queued after {QUEUE_MAX_AGE_MIN} min "
-                  f"(oldest {summary['oldest'].get('stuck')}); the delivery consumer is not draining. "
-                  f"The lane does not send; the ops owner restores the consumer."),
+        raw_text=(f"[{LANE_ID}] BROKEN: delivery rows the consumer did not finish — {detail}. "
+                  f"stuck = still queued after {QUEUE_MAX_AGE_MIN} min; exhausted = out of attempts; "
+                  f"orphaned_claim = a worker died mid-send; held = the editor held a critical. "
+                  f"The lane does not send and does not re-queue; the ops owner restores delivery."),
         severity="critical",
         source_script=ESCALATION_SOURCE,
         parsed_payload={"kind": "alert_delivery_queue_stuck", "lane_id": LANE_ID, **summary["counts"],
-                        "by_destination": summary["by_destination"]},
+                        "broken_classes": sorted(broken), "by_destination": summary["by_destination"]},
     ) is not None
 
 
@@ -164,7 +207,8 @@ def run(*, apply: bool, conn=None, escalate: Callable[[dict[str, Any]], bool] = 
     counts = {k: len(v) for k, v in plan["ids"].items()}
     summary: dict[str, Any] = {
         "lane_id": LANE_ID, "mode": "apply" if apply else "dry_run", "started_at": started,
-        "contract": f"queued IMMEDIATE row age <= {QUEUE_MAX_AGE_MIN} min",
+        "contract": (f"queued IMMEDIATE row age <= {QUEUE_MAX_AGE_MIN} min; no failed row out of attempts, no claim "
+                     f"older than {CONSUMER_CLAIM_TTL_MIN} min, no held critical"),
         "verdict": verdict_for(plan), "counts": counts, "oldest": plan["oldest"],
         "by_destination": plan["by_destination"],
         "would_expire": {REASON_SHADOW: counts["shadow"], REASON_STALE: counts["stale"]},

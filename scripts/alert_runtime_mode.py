@@ -8,8 +8,11 @@ Modes
 -----
 OFF     Pre-normalization behaviour, byte-for-byte. Legacy router + legacy sender.
         Must not require any new table. This is the default.
-SHADOW  Evaluate and persist normalized decisions when the migration is present, but
-        delivery is unchanged and the new transport is never used for sending.
+SHADOW  Evaluate and persist normalized decisions when the migration is present. The legacy
+        decision is unchanged and is never replaced. One case is deliberately not shadow: a
+        CRITICAL immediate alert the legacy path OBSERVED as not delivered is still owed to the
+        operator, so it is handed over through the Telegram chokepoint
+        (alert_outbox.deliver_critical) after the legacy attempt, on its own delivery row.
         Shadow persistence failures are non-fatal — legacy delivery still happens.
 ACTIVE  Normalized outbox and logical destinations own delivery.
 

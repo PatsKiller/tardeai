@@ -85,7 +85,7 @@ def test_only_a_notifying_unsuppressed_immediate_decision_writes_a_delivery_row(
 
 _COLS = ["id", "occurrence_id", "alert_id", "logical_destination", "attempt_seq", "retry_count",
          "delivery_status", "delivery_reason", "alert_type", "source_producer", "symbol", "severity",
-         "payload", "observed_at"]
+         "operator_action_required", "payload", "observed_at"]
 
 
 class _Desc:
@@ -111,10 +111,24 @@ class _Cursor:
         self.conn.executed.append(norm)
         self._rows = []
         self.description = None
-        if norm.startswith("WITH due"):
-            ids = [r["id"] for r in self.conn.table if r["delivery_status"] in ("queued", "failed")]
+        if norm.startswith("WITH candidates"):
+            # The claim takes at most ONE row per occurrence, and never one whose occurrence already has a sent row.
+            sent_occ = {r["occurrence_id"] for r in self.conn.table if r["delivery_status"] == "sent"}
+            picked = {}
+            for r in self.conn.table:
+                live = (r["delivery_status"] in ("queued", "failed")
+                        or (r["delivery_status"] == "claimed" and r.get("claimed_expired")))
+                if live and r["retry_count"] < alert_outbox.CRITICAL_MAX_ATTEMPTS \
+                        and r["occurrence_id"] not in sent_occ:
+                    picked.setdefault(r["occurrence_id"], r["id"])
+            ids = list(picked.values())
+            self.conn.claimed = ids
             self.description = [_Desc("id")]
             self._rows = [(i,) for i in ids]
+        elif norm.startswith("SELECT 1 FROM alert_notification_deliveries"):
+            hit = any(r["occurrence_id"] == params[0] and r["delivery_status"] == "sent" for r in self.conn.table)
+            self.description = [_Desc("?column?")]
+            self._rows = [(1,)] if hit else []
         elif "WHERE d.id = ANY" in norm:
             wanted = set(params[0])
             self.description = [_Desc(c) for c in _COLS]
@@ -147,6 +161,7 @@ class _Conn:
         self.executed = []
         self.commits = 0
         self.rollbacks = 0
+        self.claimed = []
 
     def cursor(self):
         return _Cursor(self)
@@ -166,9 +181,11 @@ def _row(**kw):
                 attempt_seq=1, retry_count=0, delivery_status="queued",
                 delivery_reason=store.SHADOW_UNDELIVERED_REASON_PREFIX + "first_occurrence",
                 alert_type="orphaned_stop", source_producer="pytest", symbol="ZZZZ", severity="critical",
-                payload={"payload": {"alert_type": "orphaned_stop", "source_system": "test",
-                                     "source_producer": "pytest", "severity": "critical",
-                                     "payload": {"message": "synthetic"}}},
+                operator_action_required=True,
+                # The PRODUCTION shape (measured 2026-11-10: 716/716 critical occurrences are this dict, none nests
+                # an event). The first fixture nested a complete event, which is why M1's missing body went unseen.
+                payload={"bypass_router_requested": True, "intent_priority": "P1",
+                         "message": "synthetic emergency kill"},
                 observed_at=datetime(2026, 11, 10, 15, 0, tzinfo=timezone.utc))
     base.update(kw)
     return base
@@ -181,7 +198,7 @@ def test_dry_run_claims_and_sends_nothing():
     assert out["outcome"] == "dry_run" and out["would_claim"] == 1 and out["sent"] == 0
     assert out["rows"][0]["id"] == 1 and out["rows"][0]["severity"] == "critical"
     assert len(conn.executed) == 1 and conn.executed[0].startswith("SELECT d.id"), "the read, never the claim"
-    assert not any(sql.startswith("WITH due") or sql.startswith("UPDATE") for sql in conn.executed)
+    assert not any(sql.startswith("WITH candidates") or sql.startswith("UPDATE") for sql in conn.executed)
     assert sends == [] and conn.commits == 0
 
 
@@ -200,7 +217,7 @@ def test_apply_claims_sends_through_the_injected_sender_and_records_the_receipt(
     assert sent and "critical alert re-delivered" in sent[0][0], "the operator is told the original was suppressed"
     assert sent[0][1] == "CRITICAL_OPERATIONS"
     assert conn.table[0]["delivery_status"] == "sent" and conn.table[0]["telegram_message_id"] == "9001"
-    assert any(sql.startswith("WITH due") for sql in conn.executed)
+    assert any(sql.startswith("WITH candidates") for sql in conn.executed)
     assert out["claimed_by"].startswith(alert_outbox.CRITICAL_CLAIM_OWNER_PREFIX + "@")
 
 
@@ -242,13 +259,15 @@ def test_the_chokepoint_call_is_a_declared_p1_intent_and_reports_the_provider_id
     assert seen["bypass_router"] is False, "the intent router is the gate; bypass_router is not"
 
 
-def test_an_editor_hold_is_reported_as_suppressed_from_this_calls_outcome(monkeypatch):
+def test_an_editor_hold_is_a_failed_retryable_attempt_not_a_terminal_suppression(monkeypatch):
+    """LQ-20261107-1815 r2 (M2). The operator did NOT receive it, so it is not a delivery and not a success. It stays
+    retryable -- an editor release lets the next attempt through -- and an exhausted hold is escalated by the lane."""
     monkeypatch.setattr(alert_outbox, "resolve_channel_secret", lambda dest: ("-100", None))
     monkeypatch.setattr(telegram_alert, "send_telegram_with_id",
                         lambda *a, **k: {"accepted": True, "message_id": None, "message_ids": []})
     monkeypatch.setattr(telegram_alert, "delivery_outcome", lambda accepted: {"status": "HELD"})
     assert alert_outbox._send_critical_default("synthetic", "CRITICAL_OPERATIONS") == {
-        "status": "suppressed", "reason": "editor_held", "message_id": None}
+        "status": "failed", "reason": "editor_held", "message_id": None}
 
 
 def test_a_transport_failure_reports_its_typed_status(monkeypatch):
@@ -292,7 +311,11 @@ def test_a_shadow_critical_the_legacy_path_suppressed_triggers_the_consumer(monk
 
     out = telegram_alert.publish_operator_message("synthetic critical", bypass_router=True)
     assert seen["legacy_delivered"] is False, "the occurrence store is told what the legacy send OBSERVED"
-    assert calls == [{"occurrence_id": 5, "limit": 1}], "the producer drains the row it just wrote"
+    # M4: the occurrence-scoped attempt, then the bounded retry sweep for rows that failed on an earlier publish.
+    assert calls[0] == {"occurrence_id": 5, "limit": 1}, "the producer drains the row it just wrote"
+    assert calls[1] == {"min_age_s": telegram_alert.CRITICAL_RETRY_MIN_AGE_S,
+                        "limit": telegram_alert.CRITICAL_RETRY_SWEEP_LIMIT}, "and retries older failures"
+    assert len(calls) == 2
     assert out["critical_delivery"] == {"ok": True, "outcome": "applied", "sent": 1}
     # The legacy outcome is unchanged for the 182 send_telegram callers.
     assert out["delivered"] is False and out["suppressed"] is True and out["queued"] is False

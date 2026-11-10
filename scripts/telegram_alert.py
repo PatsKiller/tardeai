@@ -689,9 +689,13 @@ def publish_operator_message(message: str, *, bypass_router: bool = False,
     """Mode-aware publish. Returns the structured PublishResult mapping.
 
     OFF     legacy router + legacy sender; the normalized tables are never touched.
-    SHADOW  legacy delivery happens exactly as in OFF; the normalized decision is
+    SHADOW  the legacy delivery decision happens exactly as in OFF; the normalized decision is
             additionally persisted when the migration is present. Shadow persistence
-            is best-effort and can never suppress or fail a legacy send.
+            is best-effort and can never suppress or fail a legacy send. LQ-20261107-1815:
+            one exception is stated rather than hidden -- a CRITICAL immediate alert the legacy
+            path did NOT deliver is still owed to the operator, so it is handed over through
+            the Telegram chokepoint (alert_outbox.deliver_critical). SHADOW still never changes
+            the legacy outcome; the handover is a second, separately recorded delivery.
     ACTIVE  the normalized outbox owns routing and delivery.
     """
     from alert_runtime_mode import MODE_ACTIVE, MODE_OFF, MODE_SHADOW, get_mode
@@ -742,14 +746,8 @@ def publish_operator_message(message: str, *, bypass_router: bool = False,
         # it 'queued' (immediate_delivery_row), and this is the consumer that claims the row and sends it through the
         # chokepoint. Best effort like the shadow write itself: a delivery failure is reported, never raised, so the
         # legacy send's own outcome is unchanged for all 182 callers of send_telegram.
-        critical_delivery: dict | None = None
-        if shadow.get("persisted") and shadow.get("send_immediate") and shadow.get("occurrence_id") is not None:
-            try:
-                from alert_outbox import deliver_critical
-                critical_delivery = deliver_critical(occurrence_id=shadow.get("occurrence_id"), limit=1)
-            except Exception as e:
-                critical_delivery = {"ok": False, "outcome": f"delivery_failed:{type(e).__name__}"}
-                print(f"[telegram] critical delivery skipped: {type(e).__name__}: {str(e)[:120]}")
+        critical_delivery, critical_retry_sweep = (
+            _drain_critical_if_queued(shadow) if shadow.get("persisted") else (None, None))
         return {
             # `delivered`/`suppressed` keep their pre-LQ-1815 meaning — the LEGACY outcome — because callers use them
             # to settle the communications ledger for the message they themselves sent. The handover is reported
@@ -759,15 +757,61 @@ def publish_operator_message(message: str, *, bypass_router: bool = False,
             "reason": "legacy_delivery_with_shadow_evaluation",
             "alert_id": shadow.get("alert_id"), "incident_id": shadow.get("incident_id"),
             "shadow": shadow, "critical_delivery": critical_delivery,
+            "critical_retry_sweep": critical_retry_sweep,
         }
 
     # ACTIVE — missing tables raise rather than silently dropping the alert.
     from alert_runtime_mode import require_active_capability
     require_active_capability()
     from alert_outbox import publish_legacy_message
-    return publish_legacy_message(message, source_producer=source_producer,
-                                  bypass_router=outbox_bypass, resolving=resolving,
-                                  **({"intent_priority": priority} if priority else {}))
+    persisted = publish_legacy_message(message, source_producer=source_producer,
+                                       bypass_router=outbox_bypass, resolving=resolving,
+                                       **({"intent_priority": priority} if priority else {}))
+    # S6: under ACTIVE the legacy sender is NOT called, so every notifying immediate row is queued and nothing else
+    # reads it. Draining here is what makes the mode's promise ("the normalized outbox owns delivery") true for the
+    # rows this call just wrote; without it a flip to ACTIVE queued criticals forever.
+    critical_delivery, critical_retry_sweep = _drain_critical_if_queued(persisted)
+    return {**(persisted or {}), "runtime_mode": MODE_ACTIVE,
+            "critical_delivery": critical_delivery, "critical_retry_sweep": critical_retry_sweep}
+
+
+#: M4: the producer's in-line drain fires once per occurrence, at publish time. A transient transport failure on that
+#: one call used to mean the critical was never retried. The next critical publish now also sweeps rows that failed at
+#: least this long ago (so it can never re-attempt the row it just tried), and the hygiene lane escalates a row that
+#: exhausts CRITICAL_MAX_ATTEMPTS. No new lane, no schedule change: the retry rides the traffic that creates work.
+CRITICAL_RETRY_MIN_AGE_S = 60
+CRITICAL_RETRY_SWEEP_LIMIT = 5
+
+
+def _drain_critical_if_queued(persisted: dict | None) -> tuple[dict | None, dict | None]:
+    """Deliver the critical row this call queued, then retry older failed rows. Never raises.
+
+    Returns ``(occurrence_result, retry_sweep_result)``; both are None when nothing was queued. M5: a RETURNED failure
+    is printed and carried in the result, not just an exception -- a handover that did not reach the operator must
+    not be visible only to whoever reads the delivery table.
+    """
+    if not isinstance(persisted, dict):
+        return None, None
+    occurrence_id = persisted.get("occurrence_id")
+    if not persisted.get("send_immediate") or occurrence_id is None:
+        return None, None
+    from alert_outbox import deliver_critical
+    try:
+        critical_delivery = deliver_critical(occurrence_id=occurrence_id, limit=1)
+    except Exception as e:
+        critical_delivery = {"ok": False, "outcome": f"delivery_failed:{type(e).__name__}"}
+        print(f"[telegram] critical delivery skipped: {type(e).__name__}: {str(e)[:120]}")
+    try:
+        sweep = deliver_critical(min_age_s=CRITICAL_RETRY_MIN_AGE_S, limit=CRITICAL_RETRY_SWEEP_LIMIT)
+    except Exception as e:
+        sweep = {"ok": False, "outcome": f"retry_sweep_failed:{type(e).__name__}"}
+    for label, result in (("handover", critical_delivery), ("retry sweep", sweep)):
+        if result is None or result.get("ok", True):
+            continue
+        reasons = ", ".join(str(r.get("reason")) for r in (result.get("rows") or []) if r.get("reason"))
+        print(f"[telegram] critical {label} did NOT reach the operator: "
+              f"{result.get('outcome')} failed={result.get('failed')} {reasons[:200]}")
+    return critical_delivery, sweep
 
 
 def _comms_gateway_owns(message_class: str) -> bool:

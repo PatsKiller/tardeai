@@ -112,7 +112,8 @@ telegram_normalization:
   policy_version: operator-alert-policy-v2-2026-07-28
   # OFF | SHADOW | ACTIVE  (default OFF; see scripts/alert_runtime_mode.py)
   #   OFF    pre-normalization behaviour; requires no new table
-  #   SHADOW legacy delivery unchanged, normalized decisions persisted alongside
+  #   SHADOW legacy decision unchanged, normalized decisions persisted alongside; a CRITICAL the
+  #          legacy path observed as NOT delivered is still handed over (LQ-20261107-1815)
   #   ACTIVE normalized outbox owns routing and delivery
   # Override for one process with TELEGRAM_NORMALIZATION_MODE.
   # ACTIVE additionally requires the outbox migration to be applied.
