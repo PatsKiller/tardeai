@@ -3954,6 +3954,7 @@ def overview():
     # Sells the broker ledger cannot price (transferred-in / pre-ledger lots → basis unknown) are kept out
     # of REALIZED by schwab_journal_builder (never a fabricated P&L) — and are now DISCLOSED next to it.
     j_basis_unknown = {"count": 0, "proceeds": 0.0}
+    _unpriced_known = False
     try:
         _bu = (
             _db_query(
@@ -3964,8 +3965,9 @@ def overview():
             or {}
         )
         j_basis_unknown = {"count": int(_bu.get("n") or 0), "proceeds": round(float(_bu.get("proceeds") or 0), 2)}
+        _unpriced_known = True
     except Exception:  # noqa: BLE001 — disclosure is best-effort; the KPI itself does not depend on it
-        pass
+        _unpriced_known = False
     try:
         _jr = (
             _db_query(
@@ -4180,6 +4182,17 @@ def overview():
         has_any_price=bool(total_val),
     )
 
+    from lib.journal_realized_scope import realized_scope
+
+    _realized_scope = realized_scope(
+        priced=j_realized_pnl,
+        unpriced_count=j_basis_unknown["count"],
+        unpriced_proceeds=j_basis_unknown["proceeds"],
+        # The legacy CSV has no basis split. Do not report its unknown-basis
+        # count as a measured zero, and do not attach the Schwab aggregate to it.
+        unpriced_known=_unpriced_known and j_basis == "broker_round_trips",
+    )
+
     return {
         "portfolio_value": total_val,
         "portfolio_aggregate": _portfolio_aggregate,
@@ -4285,6 +4298,10 @@ def overview():
             # separate tile so decades-old-position gains don't inflate the trading number).
             "realized_count": j_realized_count,
             "realized_pnl": round(j_realized_pnl, 2),
+            # Priced sells only. Unknown-basis proceeds are named and never added in.
+            "priced_realized": _realized_scope["priced_realized"],
+            "unpriced_count": _realized_scope["unpriced_count"],
+            "unpriced_proceeds": _realized_scope["unpriced_proceeds"],
             "realized_excluded_basis_unknown": j_basis_unknown,
             "realized_win_rate": round(j_realized_win_rate, 1),
             "long_term_trim_pnl": round(j_long_term_trim_pnl, 2),

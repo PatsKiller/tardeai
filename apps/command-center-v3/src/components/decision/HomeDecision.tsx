@@ -2,6 +2,7 @@
  *  OPPORTUNITIES (green) and TOP RISKS (red) as separate cards — never mixed in one visual area.
  *  Data: /api/v2/overview (strip), /api/v2/communications/* (attention + risks), /api/v3/opportunities (CIO memory). */
 import { useApi } from '../../hooks/useApi'
+import { realizedScope, realizedScopeNote } from '../../lib/realizedScope'
 import { RADIUS, numStyle } from '../../lib/designTokens'
 import { useOpenSymbol } from '../opportunity/OpportunityContext'
 import { ActionCard, ExecutiveStrip, Stat, familyStyle } from './DecisionParts'
@@ -22,12 +23,13 @@ export function HomeExecutiveStrip({ overview, winRate }: { overview: any; winRa
   const today = overview?.today_change
   const pct = overview?.today_pct
   const up = Number(today) >= 0
+  const realized = realizedScope(overview?.journal)
   return (
     <ExecutiveStrip items={[
       { label: 'Portfolio', value: money(overview?.portfolio_value) },
       { label: 'Today', value: `${up ? '+' : ''}${money(today, false)}`, sub: pct != null ? `${up ? '+' : ''}${Number(pct).toFixed(2)}%` : undefined,
         tone: today == null ? undefined : up ? 'var(--success-color)' : 'var(--danger-color)' },
-      { label: 'Realized', value: money(overview?.journal?.realized_pnl) },
+      { label: 'Realized', value: money(realized.priced), sub: realizedScopeNote(realized, (n) => money(n, false)) },
       // scope + denominator are mandatory on a win rate (scripts/validate_metric_consistency.py)
       { label: 'Journal win rate', value: winRate?.value != null ? `${winRate.value}%` : '—',
         sub: winRate?.trades != null ? `${winRate.trades} trades${winRate.scope ? ` · ${String(winRate.scope).replace(/_/g, ' ')}` : ''}` : undefined },
