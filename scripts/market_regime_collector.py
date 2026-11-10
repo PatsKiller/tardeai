@@ -173,6 +173,22 @@ def collect_market_session(snapshot_id):
     }
 
 
+def collect_market_risk_engine(snapshot_id, now, cfg=None, runtime_dir=None):
+    """Market-wide trend and breadth: the Market Risk Engine's technical and breadth observations (LQ-1613).
+
+    Reads <state root>/data/runtime/market_risk_latest.json; never raises. A stale, absent, unreadable or UNKNOWN
+    observation is written `not_measured` with its reason and named in the returned missing list."""
+    from lib.market_regime import mre_inputs
+
+    cfg = cfg or mre_inputs.load_config()
+    if runtime_dir is None:
+        from lib import lane_last_receipt as lr
+
+        runtime_dir = lr.runtime_dir()
+    engine, reason = mre_inputs.read_engine_snapshot(Path(runtime_dir), cfg)
+    return mre_inputs.collect(engine, now, cfg, snapshot_id, _uid, reason=reason)
+
+
 def save_indicators(conn, indicators, dry_run=True):
     if dry_run:
         return
@@ -240,6 +256,13 @@ def main(argv=None):
             print(f"[regime_collector] vol complex failed: {type(exc).__name__}: {exc}", file=sys.stderr)
             vol_inds, missing, vol_summary = [], [f"vol_complex_unavailable:{type(exc).__name__}"], {}
         indicators.extend(vol_inds)
+        try:
+            mre_inds, mre_missing = collect_market_risk_engine(snapshot_id, now)
+        except Exception as exc:  # noqa: BLE001 — a config error is named, never a stopped collector
+            print(f"[regime_collector] market risk engine inputs failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+            mre_inds, mre_missing = [], [f"mre_unavailable:{type(exc).__name__}"]
+        indicators.extend(mre_inds)
+        missing.extend(mre_missing)
 
         for sym in INDEX_SYMBOLS:
             missing.append(f"no_direct_quote_{sym}")

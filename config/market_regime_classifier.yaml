@@ -1,0 +1,46 @@
+# Market regime classifier: market-wide trend and breadth inputs, their scoring, and the confidence floor.
+#
+# LQ-20261107-1613 (re-opened 2026-11-10, audit C3 PARTIALLY FIXED). After the scanner-population proxies stopped
+# scoring, trend_state and breadth_state were hard-coded `not_measured` and the label became a function of the VIX
+# bucket alone (confidence 0.17 on every snapshot without term structure). The Market Risk Engine already measures
+# market-wide technical trend (index/sector closes vs 20/50/200-day averages, drawdowns, failed retests) and breadth
+# (sector-SPDR participation, McClellan proxy, RSP vs SPY) every 15 minutes from market_ohlcv_bars. One source of
+# truth (Constitution Rule 14): the regime reads the engine's category observations instead of measuring them again.
+schema: MarketRegimeClassifier@v1
+authority: LQ-20261107-1613 (claude-lead ASSIGN 2026-11-10 13:08 ET)
+
+# Confidence = (top score - runner-up) / max(total points, confidence_floor). A single small score is not certainty.
+confidence_floor: 6
+
+market_risk_engine:
+  # <state root>/data/runtime/<file>, written by scripts/market_risk_evaluate.py (MarketRiskSnapshot@v1).
+  file: market_risk_latest.json
+  # The engine runs every 15 min in sessions and hourly overnight. An observation older than this is not the
+  # market now: it is written `not_measured` with its age, never carried as a value.
+  max_age_minutes: 90
+  # engine category -> market_regime_indicators.indicator_key
+  categories:
+    technical: mre_technical
+    breadth: mre_breadth
+
+# Engine state -> snapshot state column. Any state not listed (UNKNOWN, missing, stale) is `not_measured`.
+states:
+  mre_technical:
+    column: trend_state
+    map: {CALM: bullish, IMPROVING: improving, WARN: weakening, STRESS: bearish}
+  mre_breadth:
+    column: breadth_state
+    map: {CALM: broad, IMPROVING: improving, WARN: narrow, STRESS: deteriorating}
+
+# Points each engine state adds to the regime scores (the VIX and term-structure points stay in the classifier).
+scores:
+  mre_technical:
+    CALM: {risk_on_trend: 2, broad_momentum: 1}
+    IMPROVING: {risk_on_trend: 1, broad_momentum: 1}
+    WARN: {choppy_range: 1, risk_off: 1}
+    STRESS: {risk_off: 2}
+  mre_breadth:
+    CALM: {risk_on_trend: 1, broad_momentum: 1}
+    IMPROVING: {broad_momentum: 1}
+    WARN: {choppy_range: 1}
+    STRESS: {risk_off: 2}

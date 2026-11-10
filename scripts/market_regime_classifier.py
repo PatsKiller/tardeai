@@ -29,7 +29,7 @@ def _f(v):
 
 
 LANE_ID = "market-regime-classifier"
-CONFIDENCE_FLOOR = 6
+# confidence_floor, the Market Risk Engine inputs and their weights: config/market_regime_classifier.yaml
 VIX_TO_VOL_STATE = {"extreme": "high_vol", "high": "high_vol", "normal": "neutral", "low": "low_vol"}
 
 
@@ -43,8 +43,11 @@ def _get_conn():
     return get_conn()
 
 
-def classify(conn, snapshot_id=None):
+def classify(conn, snapshot_id=None, cfg=None):
     """Classify market regime from available indicators."""
+    from lib.market_regime import mre_inputs
+
+    cfg = cfg or mre_inputs.load_config()
     from market_session import current_market_session
 
     session = current_market_session()
@@ -83,7 +86,7 @@ def classify(conn, snapshot_id=None):
 
     # "Breadth": scan_breadth_24h counts how many symbols the scanner touched in 24h. That is scan
     # activity, not market breadth (advancers, new highs/lows, % above a moving average), so it no
-    # longer scores and breadth_state says so (P0-T1). Real breadth arrives with the Market Risk Engine.
+    # longer scores (P0-T1). Market breadth now comes from the Market Risk Engine (mre_breadth, below).
     breadth = indicators.get("scan_breadth_24h", {})
 
     # Scanner-population proxies are CONTEXT, not score (LQ-20261107-1613). `scan_score_avg` and
@@ -135,6 +138,12 @@ def classify(conn, snapshot_id=None):
         scores["risk_off"] += 1
         missing.append("finviz_degraded")
 
+    # Market-wide trend and breadth from the Market Risk Engine (LQ-1613 re-open): the collector records the
+    # engine's technical and breadth observations; their states and points come from config. A stale, absent or
+    # UNKNOWN observation scores nothing and is named in missing_data.
+    mre_states, mre_gaps = mre_inputs.apply(indicators, scores, cfg)
+    partial.extend(mre_gaps)
+
     # Session
     if session in ("weekend", "holiday", "closed"):
         scores["unknown"] += 2
@@ -148,18 +157,18 @@ def classify(conn, snapshot_id=None):
     # Pick regime
     regime = max(scores, key=scores.get)
     ranked = sorted(scores.values(), reverse=True)
-    # Confidence is the margin over the runner-up, over at least CONFIDENCE_FLOOR points of evidence: a near-tie
+    # Confidence is the margin over the runner-up, over at least confidence_floor points of evidence: a near-tie
     # between two regimes is low confidence, and a single small score is not certainty (top/total read 0.62 for
     # a 5-vs-3 split and 1.0 for one point).
-    confidence = round((ranked[0] - ranked[1]) / max(sum(ranked), CONFIDENCE_FLOOR), 2)
+    confidence = round((ranked[0] - ranked[1]) / max(sum(ranked), cfg["confidence_floor"]), 2)
     stale = len(missing) > 2 or "insufficient_indicators" in missing
     missing.extend(partial)  # named, but a missing context leg does not make the snapshot stale
 
-    # States. Volatility follows the VIX bucket; trend and breadth have no market-wide source yet and say so
-    # instead of echoing the scanner's own population (LQ-1613).
+    # States. Volatility follows the VIX bucket; trend and breadth follow the engine's observations through the
+    # config maps, and stay `not_measured` (never the scanner's own population) when there is none (LQ-1613).
     vol_state = VIX_TO_VOL_STATE.get(vix.get("signal"), "unknown")
-    trend_state = "not_measured"
-    breadth_state = "not_measured"  # scan activity is not breadth; see above
+    trend_state = mre_states.get("trend_state", "not_measured")
+    breadth_state = mre_states.get("breadth_state", "not_measured")
 
     summary = f"Regime: {regime} (conf={confidence:.0%})"
     if missing:
