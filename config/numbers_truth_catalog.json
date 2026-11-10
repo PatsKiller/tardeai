@@ -13,6 +13,7 @@
     "NT_STOP_PRICE_MISMATCH",
     "NT_STOP_QTY_MISMATCH",
     "NT_STOP_STATE_MISMATCH",
+    "NT_STOP_BASIS_MISMATCH",
     "NT_STOP_CROSS_CHECK",
     "NT_UNPROTECTED",
     "NT_STOP_EXPIRED",
@@ -101,6 +102,14 @@
         "writer": "scripts/stop_lifecycle_monitor.py",
         "producer_lane": "stop-health-check",
         "_note": "REV 2 A: the latest stop_lifecycle snapshot is canonical; stop_last_known is a retiring copy and is cross-checked, never truth."
+      },
+      "stop_price_basis": {
+        "allowed_sources": [
+          "quote",
+          "last_close"
+        ],
+        "never_sources": [],
+        "_note": "LQ-20261107-1740 F2: the stop card's price basis is a vocabulary, not a store — 'quote' is an overnight market_quotes mark, 'last_close' is the newest permitted daily bar, as 'last_close:<YYYY-MM-DD>:<feed>'. Both are admitted; anything else is a provenance defect. The feed inside a last_close string belongs to quote_price's allowed_sources; this row grades the basis itself. No age bound is declared yet: the fallback takes the newest permitted bar at any age, so a months-old close is honestly dated but not bounded — open contract question, not a second code path."
       }
     },
     "write_watch": {
@@ -680,6 +689,30 @@
       "tolerance": {
         "kind": "exact"
       }
+    },
+    {
+      "page": "/cio",
+      "figure_id": "cio.stop_advice.price_basis",
+      "label": "Stop advice: the price basis behind each level",
+      "domain": "stop_price_basis",
+      "producer_lane": "cio-overnight-brief",
+      "severity": "P1",
+      "check": "authority_source",
+      "served_from": {
+        "kind": "artifact",
+        "path": "data/runtime/cio_overnight_brief/latest.json",
+        "rows": "/stop_advice",
+        "key": {
+          "account": "account",
+          "symbol": "symbol"
+        },
+        "value": [
+          "/price_basis"
+        ],
+        "code": "NT_STOP_BASIS_MISMATCH",
+        "shown_null_is_absence": true
+      },
+      "_note": "LQ-20261107-1740 F2: 'quote' is an overnight market_quotes mark; 'last_close:<YYYY-MM-DD>:<feed>' is the newest permitted daily bar, never yfinance. A stop row with no price has no basis and is skipped, not reported unreadable. The row grades the field the card's reason now repeats (F1); the age bound on a last_close fallback is the open question recorded on the domain."
     },
     {
       "page": "/cio",

@@ -1037,12 +1037,19 @@ def session_label(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mappin
 
 def authority_source(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[str, Any], *,
                      now: datetime, session: bool) -> list[dict[str, Any]]:
-    """G3: the figure's own provenance field must equal its domain's declared authority."""
+    """G3: the figure's own provenance field must equal its domain's declared authority.
+
+    A row may name its own code in ``served_from.code`` (LQ-20261107-1740 F2: the stop card's price
+    basis is not a quote provenance, so it reports ``NT_STOP_BASIS_MISMATCH``); the default stays the
+    quote code every existing row has always emitted. ``shown_null_is_absence`` means an empty value
+    is the row's claim of absence — a stop row with no price has no basis — not an unreadable side.
+    """
     spec = row["served_from"]
     policy = row.get("_policy") or {}
     dom = (policy.get("domains") or {}).get(str(row.get("domain") or "")) or {}
     allowed = {_canon(x) for x in dom.get("allowed_sources") or []}
     never = {_canon(x) for x in dom.get("never_sources") or []}
+    code = str(spec.get("code") or "NT_QUOTE_SOURCE")
     rows = pointer(doc, spec.get("rows") or "") if spec.get("rows") else [doc]
     if not isinstance(rows, list):
         return [not_measured(row, "no_such_field", "served rows not found")]
@@ -1055,18 +1062,20 @@ def authority_source(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Map
         val, p = first_value(r, spec.get("value") or ())
         v = _canon(val)
         if not v:
+            if spec.get("shown_null_is_absence"):
+                continue
             out.append(not_measured(row, "no_such_field", f"no provenance field at {spec.get('value')}",
                                     account=acct, symbol=sym))
             continue
         base = v.split(":", 1)[0]
         if v in never or base in never:
-            out.append(finding(row, "NT_QUOTE_SOURCE", "MISMATCH",
+            out.append(finding(row, code, "MISMATCH",
                                f"{sym or acct}: served from a retired source {val!r}",
                                account=acct, symbol=sym, shown={"value": val, "field": p},
                                truth={"value": sorted(allowed), "provider": str(row.get("domain"))},
                                severity=str(row.get("severity") or "P1")))
         elif allowed and v not in allowed and base not in allowed:
-            out.append(finding(row, "NT_QUOTE_SOURCE", "MISMATCH",
+            out.append(finding(row, code, "MISMATCH",
                                f"{sym or acct}: served source {val!r} is not the declared authority "
                                f"{sorted(allowed)}", account=acct, symbol=sym,
                                shown={"value": val, "field": p},

@@ -7,6 +7,16 @@ from typing import Any
 AUTHORITY = "READ_ONLY_ADVISORY"
 OCC_RE = re.compile(r"^[A-Z]{1,6}\d{6}[CP]\d{8}$")
 
+#: Instrument classes that cannot carry a resting stop order at the broker. LQ-1739 defines this
+#: pair; LQ-20261107-1740 (the CIO brief) is its first reader. Identical on both branches by
+#: design — whichever folds second resolves to one copy, never a second classifier.
+STOPLESS_ASSET_TYPES = frozenset({"MUTUAL_FUND"})
+
+
+def is_stopless_asset(asset_type: str | None) -> bool:
+    """True when a broker cannot carry a resting stop for this instrument. Unknown/None -> False."""
+    return classify_instrument("", asset_type=asset_type)["instrument_class"] in STOPLESS_ASSET_TYPES
+
 
 def classify_instrument(symbol: str, *, is_cash: bool = False, asset_type: str | None = None) -> dict[str, Any]:
     sym = str(symbol or "").upper().replace(" ", "")

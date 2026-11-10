@@ -648,6 +648,27 @@ def test_a_figure_marked_by_a_retired_provider_fails_even_when_the_number_matche
         assert (got == []) is clean, source
 
 
+def test_a_stop_price_basis_outside_the_declared_vocabulary_is_a_basis_defect(tmp_path):
+    """LQ-20261107-1740 F2: the stop card's basis is a graded field, not prose. A basis outside
+    ``quote`` / ``last_close:<date>:<feed>`` is NT_STOP_BASIS_MISMATCH — a basis defect, never a
+    quote-source finding — and a row that has no basis because it has no price is absence, not an
+    unreadable side, so it is not reported at all."""
+    root = write_state(tmp_path, brief_doc=brief(stop_advice=[
+        {"account": "zz_taxable", "symbol": "ZQAA", "price_basis": "quote"},
+        {"account": "zz_ira", "symbol": "ZQAB", "price_basis": "last_close:2026-10-16:alpaca"},
+        {"account": "zz_ira", "symbol": "ZQAC", "price_basis": "close"},
+    ]))
+    rep = run(root, "cio.stop_advice.price_basis")
+    assert [f["code"] for f in rep["findings"]] == ["NT_STOP_BASIS_MISMATCH"]
+    assert rep["findings"][0]["symbol"] == "ZQAC"
+    assert rep["findings"][0]["severity"] == "P1"
+
+    # No price, no basis: the row claims no level and the audit reads that as absence.
+    root = write_state(tmp_path, brief_doc=brief(stop_advice=[
+        {"account": "zz_ira", "symbol": "ZQAB", "price_basis": None}]))
+    assert run(root, "cio.stop_advice.price_basis")["findings"] == []
+
+
 class _Cursor:
     def __init__(self, rows):
         self._rows = rows

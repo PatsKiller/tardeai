@@ -282,3 +282,124 @@ def test_an_expired_stop_with_no_quantity_states_no_quantity():
     # the only quantity wording in the reason is the holding's ("cover 79 sh in ..."), never the stop's
     assert " for " not in row["reason"]
     assert "expired at the close" in row["reason"] and "GTC" in row["reason"]
+
+
+# ── LQ-20261107-1740: a dated close is a basis, and a fund cannot carry a stop ──────────────────
+
+
+def _daily_bars(close: float, *, n: int = 16, spread: float = 2.0, source: str = "alpaca") -> list[dict]:
+    """A flat synthetic series: every true range is ``spread``, so ATR(14) == spread exactly."""
+    return [
+        {"bar_time": f"2026-10-{d:02d}T20:00:00Z", "open": close, "high": close + spread / 2,
+         "low": close - spread / 2, "close": close, "volume": 1000, "source": source}
+        for d in range(1, n + 1)
+    ]
+
+
+def test_a_missing_quote_is_answered_from_the_dated_close_and_the_row_says_which():
+    """LQ-20261107-1740: with no overnight quote the card still gives an ADD_STOP, computed from the
+    latest dated close by the same rule, and labels the basis — so a Friday close is never read as
+    tonight's print. Fail-before: the row has no price_basis at all."""
+    bars = _daily_bars(50.0)
+    quotes = {k: v for k, v in QUOTES.items() if k != "ZSLEEP"}
+    doc = build(quotes=quotes, bars_by_symbol={"ZSLEEP": bars})
+    row = advice(doc, "ZSLEEP")[0]
+    assert row["answer"] == "ADD_STOP"
+    assert row["price_basis"] == "last_close:2026-10-16:alpaca"
+    atr = B.atr14(bars)
+    assert atr == 2.0
+    assert row["suggested_stop"] == round(min(50.0 - atr, 50.0 * 0.97), 2) == 48.0
+
+    # A quote present is still preferred, and the row says so.
+    with_quote = build(bars_by_symbol={"ZSLEEP": bars})
+    assert advice(with_quote, "ZSLEEP")[0]["price_basis"] == "quote"
+
+
+def test_a_close_basis_level_says_so_in_the_sentence_the_card_renders():
+    """LQ-20261107-1740 F1: ``price_basis`` is a field no card renders — ``SinceCloseStops`` prints
+    only ``reason`` — so the reason of a close-basis row must name the close and say it is not
+    tonight's quote. Every answer that quotes a level carries it; a quote basis adds nothing.
+    Fail-before: the reason is silent and only the unrendered field says which basis was used."""
+    basis = "last_close:2026-11-07:alpaca"
+    caveat = "priced from the 2026-11-07 close (alpaca), not tonight's quote"
+    common = dict(symbol="ZBASIS", account="acct_a", event={}, source_ids=[], as_of=TODAY,
+                  price_basis=basis)
+
+    add = B.stop_advice_for_account(held_qty=100, price=50.0, move_pct=0.1, atr=2.0, stops=[],
+                                    **common)
+    assert add["answer"] == "ADD_STOP" and caveat in add["reason"]
+
+    working_stop = [{"account": "acct_a", "status": "working", "stop": 90.0, "qty": 100,
+                     "captured_at": TODAY}]
+    raised = B.stop_advice_for_account(held_qty=100, price=100.0, move_pct=3.0, atr=2.0,
+                                       stops=working_stop, **common)
+    assert raised["answer"] == "RAISE" and caveat in raised["reason"]
+
+    held = B.stop_advice_for_account(held_qty=100, price=100.0, move_pct=0.1, atr=10.0,
+                                     stops=working_stop, **common)
+    assert held["answer"] == "HOLD" and caveat in held["reason"]
+
+    quoted = B.stop_advice_for_account(held_qty=100, price=50.0, move_pct=0.1, atr=2.0, stops=[],
+                                       **{**common, "price_basis": "quote"})
+    assert quoted["answer"] == "ADD_STOP" and "not tonight's quote" not in quoted["reason"]
+
+
+def test_no_price_anywhere_leaves_the_basis_null_rather_than_invented():
+    """tq-py-missing-as-zero: no quote and no bars is not a price of zero. The row still says the
+    holding has no working stop; it claims no level and names no basis."""
+    quotes = {k: v for k, v in QUOTES.items() if k != "ZSLEEP"}
+    doc = build(quotes=quotes, bars_by_symbol={})
+    row = advice(doc, "ZSLEEP")[0]
+    assert row["price_basis"] is None and row["suggested_stop"] is None
+    assert "no working stop" in row["reason"]
+
+
+def test_a_mutual_fund_gets_no_stop_advice_and_is_not_counted_uncovered():
+    """LQ-20261107-1740 + LQ-1739: a broker cannot carry a resting stop for a mutual fund, so the
+    card does not ask for one and the count does not call it unprotected. The name is still held
+    and still briefed. Fail-before: it gets an ADD_STOP row and lands in uncovered_symbols."""
+    rows = holdings() + [
+        {"symbol": "ZFUND", "account": "acct_a", "broker_shares": 60, "market_value": 4000,
+         "asset_type": "MUTUAL_FUND"},
+    ]
+    doc = build(holdings_doc={"holdings": rows})
+    assert doc["counts"]["held_names"] == 6
+    assert advice(doc, "ZFUND") == []
+    assert "ZFUND" not in doc["counts"]["uncovered_symbols"]
+    assert doc["counts"]["uncovered_positions"] == 3
+
+
+def test_a_holding_without_an_asset_type_is_still_advised():
+    """The classifier may only drop a name on a stated type. An absent type is unknown, not
+    'cannot be stopped' — a missing field must never quietly remove a position from the card."""
+    rows = holdings() + [
+        {"symbol": "ZUNK", "account": "acct_a", "broker_shares": 60, "market_value": 4000},
+    ]
+    doc = build(holdings_doc={"holdings": rows})
+    assert advice(doc, "ZUNK") and advice(doc, "ZUNK")[0]["answer"] == "ADD_STOP"
+    assert "ZUNK" in doc["counts"]["uncovered_symbols"]
+
+
+def test_the_dated_close_never_comes_from_yfinance():
+    """The fallback reads market_ohlcv_bars, and a banned source must not reach it."""
+    log: list[str] = []
+
+    class _Cur:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, sql, params=None):
+            log.append(sql)
+
+        def fetchall(self):
+            return []
+
+    class _Conn:
+        def cursor(self):
+            return _Cur()
+
+    B.load_daily_bars(_Conn(), ["ZSLEEP"], AS_OF)
+    assert log and all("yfinance" in sql for sql in log)

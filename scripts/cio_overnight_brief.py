@@ -54,6 +54,7 @@ from lib.account_display import account_label  # noqa: E402  (LQ-1391 one name p
 from lib.cio_buys_gate import buys_block  # noqa: E402  (LQ-1311 synopsis buy gate)
 from lib.cio_regime import reader as regime_reader  # noqa: E402  (LQ-1317 regime block)
 from lib.cio_regime import build as build_regime  # noqa: E402
+from lib.instrument_normalize import is_stopless_asset  # noqa: E402  (LQ-1739/1740: one classifier)
 
 LANE_ID = "cio-overnight-brief"
 SCHEMA = "CIOOvernightBrief@v1"
@@ -255,8 +256,13 @@ def aggregate_holdings(holdings: Sequence[Mapping[str, Any]]) -> dict[str, dict[
         mv = _f(row.get("market_value"), _f(row.get("broker_market_value"), 0.0)) or 0.0
         ent = out.setdefault(
             symbol,
-            {"symbol": symbol, "shares": 0.0, "market_value": 0.0, "accounts": [], "per_account": {}},
+            {"symbol": symbol, "shares": 0.0, "market_value": 0.0, "accounts": [], "per_account": {},
+             # LQ-20261107-1740: the type travels with the position, so the stop card and the
+             # uncovered count can say a mutual fund is not something a stop protects.
+             "asset_type": None},
         )
+        if ent.get("asset_type") in (None, "") and row.get("asset_type"):
+            ent["asset_type"] = row.get("asset_type")
         ent["shares"] += shares
         ent["market_value"] += mv
         acct = str(row.get("account") or row.get("account_key") or "unknown")
@@ -284,6 +290,51 @@ def position_value(pos: Mapping[str, Any], quote: Optional[Mapping[str, Any]] = 
     implied = (shares * price) if shares is not None and price else None
     known = [v for v in (mv, implied) if v is not None]
     return max(known) if known else 0.0
+
+
+def price_for(
+    symbol: str,
+    quotes: Mapping[str, Mapping[str, Any]],
+    bars: Sequence[Mapping[str, Any]],
+) -> tuple[Optional[float], Optional[str]]:
+    """The price a stop is advised from, and where it came from.
+
+    LQ-20261107-1740: when the overnight quote is missing, the latest dated daily close is a usable
+    basis — a stop is a level, not a tape — but the card must say which it used, so nobody reads a
+    Friday close as tonight's print. Returns ``(None, None)`` when neither exists; the caller then
+    states that it has no price rather than inventing one (tq-py-missing-as-zero).
+    """
+    price = _f((quotes.get(symbol) or {}).get("price"))
+    if price is not None:
+        return price, "quote"
+    for bar in reversed(list(bars or [])):
+        close = _f(bar.get("close"))
+        if close is None:
+            continue
+        stamp = bar.get("bar_time")
+        day = stamp.date().isoformat() if isinstance(stamp, datetime) else str(stamp or "")[:10]
+        source = str(bar.get("source") or "").strip()
+        return close, f"last_close:{day}" + (f":{source}" if source else "")
+    return None, None
+
+
+def price_basis_note(price_basis: Optional[str]) -> str:
+    """The sentence a stop card appends when its level came from a dated close, not a quote.
+
+    LQ-20261107-1740 F1: the row's ``price_basis`` field is correct but no consumer renders it
+    (``SinceCloseStops.tsx`` prints only ``reason``). The reason is the surface the operator reads,
+    so a close-basis level says so there too — ``; priced from the 2026-11-07 close (alpaca), not
+    tonight's quote``. A quote basis (or no basis at all) adds nothing.
+    """
+    if not price_basis or not str(price_basis).startswith("last_close:"):
+        return ""
+    parts = str(price_basis).split(":")
+    day = parts[1].strip() if len(parts) > 1 else ""
+    feed = parts[2].strip() if len(parts) > 2 else ""
+    if not day:
+        return "; priced from the most recent close, not tonight's quote"
+    where = f"the {day} close" + (f" ({feed})" if feed else "")
+    return f"; priced from {where}, not tonight's quote"
 
 
 def working_stops(rows: Iterable[Mapping[str, Any]]) -> dict[str, list[dict[str, Any]]]:
@@ -587,6 +638,7 @@ def stop_advice_for_account(
     event: Mapping[str, Any],
     source_ids: Sequence[str],
     as_of: str,
+    price_basis: Optional[str] = None,
     expired_stop: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     """One advisory entry per account per holding (LQ-1257 AMENDMENT 1).
@@ -631,10 +683,25 @@ def stop_advice_for_account(
         # A row that says "no working stop" is a statement about that read; without its time the page
         # reads a 16:15 picture as a 19:00 fact, which is exactly the XAR P0.
         "stops_as_of": _latest([s.get("captured_at") for s in in_account]),
+        # LQ-20261107-1740: "quote" or "last_close:<date>:<source>". A missing overnight quote is
+        # answered from the dated close rather than skipped, and the row says which it used.
+        "price_basis": price_basis or ("quote" if price is not None else None),
         "premise_correction": event.get("premise_correction"),
         "source_ids": list(source_ids),
         "as_of": as_of,
     }
+    def finish() -> dict[str, Any]:
+        """Return the row, naming a close-basis level in the sentence the card renders.
+
+        LQ-20261107-1740 F1: only an answer that quotes a level (ADD_STOP, RAISE, HOLD) can be
+        read as tonight's print; NO_ACTION and FIX_QTY quote none and stay as they are.
+        """
+        if base["answer"] in ("ADD_STOP", "RAISE", "HOLD"):
+            note = price_basis_note(base.get("price_basis"))
+            if note:
+                base["reason"] = f"{base['reason']}{note}"
+        return base
+
     tol = MIN_STOP_QTY_DELTA
 
     if value is not None and value < NO_ACTION_MAX_VALUE_USD:
@@ -684,14 +751,14 @@ def stop_advice_for_account(
             )
             if suggested is not None:
                 base["reason"] += f"; a stop near {suggested:.2f} would restore the protection"
-            return base
+            return finish()
         if stop_qty <= 0:
             base["reason"] = f"{held_qty:g} sh in {_acct(account)} have no working stop"
         else:
             base["reason"] = f"the working stop covers {stop_qty:g} of {held_qty:g} sh in {_acct(account)}"
         if suggested is not None:
             base["reason"] += f"; a stop near {suggested:.2f} would cover the difference"
-        return base
+        return finish()
 
     # Covered. A raise needs the price above the stop and a real day gain — never the headline.
     if stop_now and price and atr:
@@ -707,7 +774,7 @@ def stop_advice_for_account(
             )
             if event.get("neutral"):
                 base["reason"] += "; the insider event is neutral and did not drive this"
-            return base
+            return finish()
 
     base["answer"] = "HOLD"
     if event.get("neutral"):
@@ -719,7 +786,7 @@ def stop_advice_for_account(
         base["reason"] = "the position is covered and price and structure do not justify moving the stop"
     else:
         base["reason"] = "no resting stop and no computable level — reconcile the stop read"
-    return base
+    return finish()
 
 
 def select_names(
@@ -908,6 +975,10 @@ def book_summary(
 
     worst: Optional[dict[str, Any]] = None
     for symbol, pos in held.items():
+        # LQ-20261107-1740: the synopsis must not name a mutual fund as the worst unprotected
+        # position — the same rule the stop card and the count now apply.
+        if is_stopless_asset(pos.get("asset_type")):
+            continue
         cov = stop_coverage(pos, list(stops_by_symbol.get(symbol) or []))
         uncovered = _f(cov.get("uncovered_shares"), 0.0) or 0.0
         if uncovered <= 0:
@@ -1435,14 +1506,18 @@ def load_daily_bars(conn, symbols: Sequence[str], as_of: datetime) -> dict[str, 
     with conn.cursor() as cur:
         for symbol in symbols:
             cur.execute(
-                """SELECT bar_time, open, high, low, close, volume
+                # LQ-20261107-1740: a close used as a price basis must come from a permitted source.
+                # The bars are read as a dated fallback, never as tonight's quote.
+                """SELECT bar_time, open, high, low, close, volume, source
                      FROM market_ohlcv_bars
                     WHERE symbol=%s AND timeframe IN ('daily','1d') AND bar_time <= %s
+                      AND COALESCE(source, '') <> 'yfinance'
                     ORDER BY bar_time DESC LIMIT 40""",
                 (symbol, as_of),
             )
             rows = [
-                {"bar_time": r[0], "open": r[1], "high": r[2], "low": r[3], "close": r[4], "volume": r[5]}
+                {"bar_time": r[0], "open": r[1], "high": r[2], "low": r[3], "close": r[4], "volume": r[5],
+                 "source": r[6]}
                 for r in cur.fetchall()
             ]
             if rows:
@@ -1900,12 +1975,11 @@ def build_brief(
         filings = list(filings_by_symbol.get(symbol) or [])
         stops = list(stops_by_symbol.get(symbol) or [])
         bars = list(bars_by_symbol.get(symbol) or [])
-        price = sig.get("price")
-        if price is None:
-            for b in reversed(bars):
-                price = _f(b.get("close"))
-                if price is not None:
-                    break
+        # LQ-20261107-1740: one price read, with its basis named — a dated close is a permitted
+        # fallback for a level, but the card must not present it as tonight's quote.
+        price, price_basis = (
+            (sig["price"], "quote") if sig.get("price") is not None else price_for(symbol, quotes, bars)
+        )
         atr = atr14(bars)
         cov = stop_coverage(held[symbol], stops)
         cush = cushion(price, stops, atr)
@@ -1977,6 +2051,10 @@ def build_brief(
         source_ids += [f"sec:{f['id']}" for f in filings if f.get("id") is not None]
         if research.get("status") == "answered":
             source_ids.append(f"research:{research.get('lane')}")
+        # LQ-20261107-1740: a mutual fund cannot carry a stop at the broker, so a stop row for it is
+        # advice the operator cannot act on. The name is still briefed; it just has no stop advice.
+        if is_stopless_asset(held[symbol].get("asset_type")):
+            continue
         for account, acct_qty in sorted((held[symbol].get("per_account") or {}).items()):
             if acct_qty <= 0:
                 continue
@@ -1992,6 +2070,7 @@ def build_brief(
                     event=event,
                     source_ids=source_ids + [f"stop_last_known:{symbol}:{account}"],
                     as_of=as_of.isoformat(),
+                    price_basis=price_basis,
                     expired_stop=expired.get((symbol, account)),
                 )
             )
@@ -2006,6 +2085,10 @@ def build_brief(
         if symbol in briefed:
             continue
         pos = held[symbol]
+        # LQ-20261107-1740: no stop order exists for a mutual fund, so its "uncovered" shares are not
+        # a gap the operator can close — advising one would be advice that cannot be actioned.
+        if is_stopless_asset(pos.get("asset_type")):
+            continue
         quote = quotes.get(symbol) or {}
         if position_value(pos, quote) < MIN_POSITION_MARKET_VALUE:
             continue
@@ -2013,13 +2096,8 @@ def build_brief(
         gaps = stop_coverage(pos, stops).get("uncovered_by_account") or {}
         if not gaps:
             continue
-        price = _f(quote.get("price"))
         bars = list(bars_by_symbol.get(symbol) or [])
-        if price is None:
-            for b in reversed(bars):
-                price = _f(b.get("close"))
-                if price is not None:
-                    break
+        price, price_basis = price_for(symbol, quotes, bars)
         atr = atr14(bars)
         per_account = pos.get("per_account") or {}
         for account in sorted(gaps):
@@ -2040,6 +2118,7 @@ def build_brief(
                     event={},
                     source_ids=[f"stop_last_known:{symbol}:{account}"],
                     as_of=as_of.isoformat(),
+                    price_basis=price_basis,
                     expired_stop=expired.get((symbol, account)),
                 )
             )
@@ -2104,7 +2183,8 @@ def build_brief(
     uncovered_held = sorted(
         sym
         for sym, pos in held.items()
-        if position_value(pos, quotes.get(sym)) >= MIN_POSITION_MARKET_VALUE
+        if not is_stopless_asset(pos.get("asset_type"))
+        and position_value(pos, quotes.get(sym)) >= MIN_POSITION_MARKET_VALUE
         and not stop_coverage(pos, list(stops_by_symbol.get(sym) or [])).get("fully_covered")
     )
 
