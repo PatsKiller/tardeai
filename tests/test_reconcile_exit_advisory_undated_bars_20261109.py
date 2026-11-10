@@ -96,6 +96,10 @@ class FakeDB:
             return {"?column?": 1} if (params[0], params[1]) in self.outcomes else None
         if "SELECT 1 FROM alert_events" in s:
             return None
+        if "ticker_prices" in s:
+            # LQ-20261107-1777: the reconciler now falls back to ticker_prices before declaring the source
+            # unavailable. This fixture holds no prices, so a symbol has no dated row -> stays bars_unavailable.
+            return None if "SELECT 1" in s else []
         if "INSERT INTO exit_advisory_outcomes" in s:
             (advisory_id, symbol, advisory, advisory_at, horizon, price_at_advisory, price_at_horizon,
              symbol_return_pct, spy_return_pct, max_drawdown_atr, giveback_frac_then, operator_acted,
@@ -244,6 +248,7 @@ def test_a_partial_bar_failure_stays_green_and_names_what_it_skipped(monkeypatch
 
 def test_closes_since_returns_none_only_when_nothing_carries_a_date(monkeypatch, tmp_path):
     mod = _load(monkeypatch, tmp_path)
+    monkeypatch.setattr(mod, "_db_closes_since", lambda *a, **k: None)  # LQ-1777: no DB fallback in this unit
     since = (NOW - timedelta(days=60)).isoformat()
 
     monkeypatch.setitem(sys.modules, "holdings_gain_guardian", types.SimpleNamespace(
@@ -268,6 +273,7 @@ def test_closes_since_returns_none_only_when_nothing_carries_a_date(monkeypatch,
 def test_bar_failure_is_not_cached_as_a_timed_outcome(monkeypatch, tmp_path):
     """The cache keeps the raw bars, so one fetch per symbol per run still holds and the answer stays stable."""
     mod = _load(monkeypatch, tmp_path)
+    monkeypatch.setattr(mod, "_db_closes_since", lambda *a, **k: None)  # LQ-1777: no DB fallback in this unit
     calls: list[str] = []
 
     def bars(symbol, days=0):

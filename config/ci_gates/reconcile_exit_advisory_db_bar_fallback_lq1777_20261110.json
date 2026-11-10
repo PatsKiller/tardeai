@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "reconcile_exit_advisory_db_bar_fallback_lq1777_20261110",
+  "files": [
+    "tests/test_reconcile_exit_advisory_db_bar_fallback_lq1777_20261110.py"
+  ],
+  "comment": [
+    "LQ-1777: an n8n lane child runs env-scrubbed with no broker credentials, so the live bar transport returns nothing datable and every due pair became bars_unavailable -> exit 1 dependency_unavailable. The exit-advisory reconciler now falls back to the dated daily closes in ticker_prices before declaring the source unavailable; when the store also has no dated close the LQ-1706 bars_unavailable contract is preserved, and a store series that starts after the advisory stays NOT_EVALUABLE."
+  ]
+}

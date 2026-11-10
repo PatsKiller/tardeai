@@ -339,9 +339,62 @@ def _closes_since(symbol: str, since_iso: str, needed_days: int,
                     first = when.date()
                 out.append(c)
     if dated == 0:
-        return None          # no bar carries a date: the source cannot window any advisory (LQ-1706)
+        # LQ-20261107-1777: the live bar source (Schwab) needs broker credentials and returns nothing
+        # datable once they are dropped — every n8n lane child is env-scrubbed (measured 2026-11-08:
+        # SCHWAB_APP_KEY/… among 137 dropped names), and ``holding_protection_advisor._bars``' credential-free
+        # yfinance fallback carries OHLC with no datetime. Before the fallback, every due pair was
+        # ``bars_unavailable`` and the lane exited 1 in n8n every week. ``ticker_prices`` already holds dated
+        # daily closes, so read them before calling the source unavailable (LQ-1706 is preserved: a symbol with
+        # no dated row at all, or an unreadable store, still returns None -> bars_unavailable).
+        return _db_closes_since(symbol, since_iso, cover_by)
     if first is None or first > cover_by:
         return []            # the fetch did not reach the advisory date: no honest outcome for this window
+    return out
+
+
+def _db_closes_since(symbol: str, since_iso: str, cover_by: dt.date) -> list[float] | None:
+    """Dated closes on/after ``since_iso`` from ``ticker_prices``, the dated store of record (LQ-1777).
+
+    Three answers, matching :func:`_closes_since`: a list of closes (the window is measurable from the store);
+    ``[]`` when the symbol has a dated series but it does not reach this advisory's window (a fact about the
+    series, so the caller writes NOT_EVALUABLE); ``None`` when the store is unreadable or holds no dated row at
+    all for the symbol (there is no dated source, so the pair stays ``bars_unavailable`` — never a silent zero).
+    """
+    try:
+        from db_adapter import _execute as ex, USE_DB
+    except Exception:  # noqa: BLE001 -- no adapter means no dated source, not a green empty
+        return None
+    if not USE_DB:
+        return None
+    since = str(since_iso)[:10]
+    try:
+        rows = ex(
+            """SELECT price_date::text AS d, close_price FROM ticker_prices
+               WHERE upper(symbol)=upper(%s) AND price_date >= %s AND close_price > 0
+               ORDER BY price_date ASC""",
+            (symbol, since), fetch="all",
+        )
+    except Exception:  # noqa: BLE001 -- a store read failure is a source failure, held as bars_unavailable
+        return None
+    rows = rows or []
+    if not rows:
+        try:
+            any_row = ex("SELECT 1 FROM ticker_prices WHERE upper(symbol)=upper(%s) LIMIT 1",
+                         (symbol,), fetch="one")
+        except Exception:  # noqa: BLE001 -- as above
+            return None
+        return [] if any_row else None
+    try:
+        first = dt.date.fromisoformat(str(rows[0]["d"])[:10])
+    except (KeyError, TypeError, ValueError):
+        first = None
+    if first is None or first > cover_by:
+        return []
+    out: list[float] = []
+    for r in rows:
+        c = float(r.get("close_price") or 0)
+        if c > 0:
+            out.append(c)
     return out
 
 
