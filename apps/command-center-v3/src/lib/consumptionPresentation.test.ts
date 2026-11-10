@@ -12,12 +12,16 @@ function check(name: string, cond: boolean, got?: unknown) {
 }
 const eq = (name: string, got: unknown, want: unknown) => check(name, got === want, got)
 
+// LQ-20261107-1842 (carried from f594208fa, which is not an ancestor of base 277fafbda): the `;` matters. Without
+// it TypeScript reads `=> ({ … })` followed by the bare `{` block below as an arrow whose "(" opens a return TYPE,
+// so every property decodes as a type member (TS1003/TS1005) — and one syntax error suppresses the whole semantic
+// pass, hiding real errors in every other file. Node ran the file either way.
 const log = (id: number, success: boolean, extra: Record<string, unknown> = {}) => ({
   id, created_at: '2026-11-04T10:20:13-05:00', model_lane: 'deepseek-flash',
   process_id: 'local_llm_compat', process_name: 'Local-LLM compatibility shim (Flash)',
   task_summary: 'You are an institutional prop desk analyst. Analyze this paper trade proposal.',
   trigger_mode: 'automated', success, ...extra,
-})
+});
 
 // --- LQ-241: budget refusals are their own class, not provider failures -------------------
 {

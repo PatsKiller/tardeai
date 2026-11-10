@@ -5,7 +5,7 @@
 /** The tones this module uses (a subset both designTokens and the Jobs & n8n tiles accept). */
 export type Tone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
 
-export type QualityGrade = 'GOOD' | 'DEGRADED' | 'EMPTY' | 'FAILED' | 'NOT_LIVE' | 'UNPROVEN'
+export type QualityGrade = 'GOOD' | 'IDLE' | 'DEGRADED' | 'EMPTY' | 'FAILED' | 'NOT_LIVE' | 'UNPROVEN'
 export type CheckResult = 'pass' | 'fail' | 'unknown'
 export interface QualityCheck { result: CheckResult; value?: unknown; detail?: string | null }
 export interface RunQuality {
@@ -15,11 +15,12 @@ export interface RunQuality {
   count?: number | null
 }
 
-/** The six grades in the mockup's order, with the tile label, tone, `?quality=` key and the one-line definition. */
+/** The seven grades in the mockup's order, with the tile label, tone, `?quality=` key and the one-line definition. */
 export const QUALITY_GRADES: ReadonlyArray<{ grade: QualityGrade; key: string; label: string; tone: Tone; means: string }> = [
-  { grade: 'GOOD', key: 'good', label: 'Good', tone: 'success', means: 'Ran live, exited ok, wrote its output this run, item count in its normal range, no partial or gap flags, inputs fresh. Also a run that stated it had nothing to do (market closed, nothing due, no new input) with fresh inputs: "Good · nothing due".' },
+  { grade: 'GOOD', key: 'good', label: 'Good', tone: 'success', means: 'Ran live, exited ok, wrote its output this run, item count in its normal range, no partial or gap flags, inputs fresh. The only grade the page shows green.' },
+  { grade: 'IDLE', key: 'idle', label: 'Idle', tone: 'info', means: 'Ran live and exited ok, produced nothing, and its own receipt stated a reviewed no-work reason (nothing due, no new input, every item already settled, below trigger, …): it correctly had nothing to do. Not Good (it produced nothing), not Empty (nothing is wrong) — and not green (LQ-20261107-1842).' },
   { grade: 'DEGRADED', key: 'degraded', label: 'Degraded', tone: 'warning', means: 'Ran and wrote output, but something is off: partial or fallback receipt, count far below its own median, runtime far outside history, or a stale or implausible input (garbage in).' },
-  { grade: 'EMPTY', key: 'empty', label: 'Empty', tone: 'warning', means: 'Said ok but produced nothing and did not state a known idle reason: zero items, or its output was not touched by this run (garbage out).' },
+  { grade: 'EMPTY', key: 'empty', label: 'Empty', tone: 'warning', means: 'Said ok but produced nothing and did not state a reviewed no-work reason: zero items, or its output was not touched by this run (garbage out).' },
   { grade: 'FAILED', key: 'failed', label: 'Failed', tone: 'danger', means: 'Errored, lost its executor, or exited 0 while its own receipt says it failed.' },
   { grade: 'NOT_LIVE', key: 'not_live', label: 'Not live', tone: 'neutral', means: 'The last run was a dry run, a shadow or a skip, or the job is paused or retired. Never shown as OK.' },
   { grade: 'UNPROVEN', key: 'unproven', label: 'Unproven', tone: 'info', means: 'It ran, but nothing can check its output. The reason names what is missing.' },
@@ -33,11 +34,11 @@ export const qualityMeans = (g: QualityGrade): string => BY_GRADE[g]?.means ?? '
 
 const SUB_WORD: Record<string, string> = { inactive: 'paused or retired', dry_run: 'dry run', shadow: 'shadow', skipped: 'skipped', idle: 'nothing due' }
 
-/** "Not live · skipped", "Good · nothing due", "Degraded", …; null quality → null (never a made-up grade). */
+/** "Not live · skipped", "Idle", "Degraded", …; null quality → null (never a made-up grade). */
 export function gradeChip(q: RunQuality | null | undefined): { label: string; tone: Tone } | null {
   if (!q || !BY_GRADE[q.grade]) return null
   const g = BY_GRADE[q.grade]
-  const sub = q.sub && (q.grade === 'NOT_LIVE' || (q.grade === 'GOOD' && q.sub === 'idle')) ? SUB_WORD[q.sub] ?? q.sub.replace(/_/g, ' ') : null
+  const sub = q.sub && q.grade === 'NOT_LIVE' ? SUB_WORD[q.sub] ?? q.sub.replace(/_/g, ' ') : null
   return { label: sub ? `${g.label} · ${sub}` : g.label, tone: g.tone }
 }
 

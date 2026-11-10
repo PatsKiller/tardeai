@@ -263,7 +263,10 @@ def test_the_health_contract_reads_a_prefix_receipt_through_the_same_reconciliat
 
 def test_catalog_mix_and_filters_cover_the_new_statuses():
     from scripts.lib import n8n_catalog as N
-    for status in ("blocked", "degraded"):
+    # LQ-20261107-1842: the degraded-VERDICT status is `subject_degraded` (the run reports a degraded subject); the
+    # quality grade DEGRADED owns the bare word, so no row status, filter or mix key may be called "degraded".
+    for status in ("blocked", "subject_degraded"):
         assert status in J.STATUS_FILTERS and status in J._ORDER and status in J._MIX
         assert J._MIX[status] == status and status in N.MIX_KEYS and N.STATUS_MIX[status] == status
+    assert "degraded" not in J.STATUS_FILTERS and "degraded" not in J._MIX and "degraded" not in N.MIX_KEYS
     assert "blocked" in J._ATTENTION

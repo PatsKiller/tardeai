@@ -1,6 +1,6 @@
 {
   "schema": "RunQualityIdleReasons@v1",
-  "about": "Reasons a live run may produce nothing and still be a correct run (graded GOOD, sub idle) when its own receipt STATES the reason (empty_reason / skip_reason / no_op_reason, top level or summary). Read by scripts/lib/run_quality.py. A zero-output run with no stated reason, or a reason not listed here, stays EMPTY. An idle run with a stale or implausible input is DEGRADED. Tokens follow the expected_output closed enum in scripts/check_n8n_workflow_framework.py; deferred_to_batch, credit_cap_reached and data_blocked are deliberately not idle.",
+  "about": "Reasons a live run may produce nothing and still be a correct run, graded IDLE (sub = the stated token) when its own receipt STATES the reason (empty_reason / skip_reason / no_op_reason, top level or summary). Read by scripts/lib/run_quality.py. LQ-20261107-1842: IDLE is its own grade — not GOOD (nothing was produced), not EMPTY (nothing is wrong), never green. A zero-output run with no stated reason, or a reason not listed here, stays EMPTY. An idle run with a stale or implausible input is DEGRADED. Every token below was observed in a real lane receipt (2026-11-10 scan of data/runtime/*_last.json plus the audit-revalidation evidence rows); none is invented. deferred_to_batch, credit_cap_reached, data_blocked and dependency_unavailable are deliberately not idle: they name work that could not be done, not work there was none of.",
   "reasons": {
     "market_closed": "the market was closed",
     "not_trading_day": "it was not a trading day",
@@ -12,6 +12,11 @@
     "all_duplicate": "every candidate had already been ingested",
     "no_new_events": "there were no new events",
     "no_tracked_threads": "there were no tracked threads",
-    "no_due_threads": "no thread was due for a check"
+    "no_due_threads": "no thread was due for a check",
+    "no_pending_events": "there were no pending events",
+    "all_already_settled": "every item had already settled",
+    "no_outcomes_written": "there were no outcomes to write",
+    "below_trigger": "the pressure was below its trigger",
+    "no pending proposal needed an alert this run": "no pending proposal needed an alert"
   }
 }

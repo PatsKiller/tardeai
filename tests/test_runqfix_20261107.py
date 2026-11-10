@@ -3,8 +3,9 @@
 1. last run / status read the lane's own run receipt as a run source ("lane receipt"), so the card agrees with the grade;
 2. a runtime is never judged "far above" a median under the floor or with too few samples;
 3. an output file time alone is never written up as "Ran live";
-4. a run whose receipt states a reviewed idle reason (config/run_quality_idle_reasons.json) is GOOD · idle, unless an
-   input is stale (DEGRADED). Synthetic lanes and receipts only.
+4. a run whose receipt states a reviewed idle reason (config/run_quality_idle_reasons.json) is IDLE, unless an
+   input is stale (DEGRADED). IDLE is its own grade since LQ-20261107-1842 (GOOD · idle before it, which showed a
+   correctly idle run green). Synthetic lanes and receipts only.
 """
 from datetime import datetime, timedelta, timezone
 import json
@@ -206,7 +207,7 @@ def test_receipt_without_success_does_not_say_exited_ok():
     assert "exited ok" not in q["headline"]
 
 
-# ── defect 4: a stated idle reason is GOOD · idle ──────────────────────────────────────────────────────────────────
+# ── defect 4: a stated idle reason is IDLE (GOOD · idle before LQ-20261107-1842) ───────────────────────────────────
 
 def test_idle_reasons_live_in_config():
     reasons = Q.idle_reasons()
@@ -216,16 +217,16 @@ def test_idle_reasons_live_in_config():
         assert not_idle not in reasons
 
 
-def test_market_closed_idle_run_is_good_and_names_the_reason():
+def test_market_closed_idle_run_is_idle_and_names_the_reason():
     q = g(row(run()), lane(), ev(receipt=receipt(produced_count=0, empty_reason="market_closed")))
-    assert (q["grade"], q["sub"]) == ("GOOD", "idle")
+    assert (q["grade"], q["sub"]) == ("IDLE", "market_closed")
     assert "nothing to do: the market was closed" in q["headline"]
     assert q["checks"]["item_count"]["result"] == "pass"
 
 
 def test_idle_reason_in_summary_counts():
     q = g(row(run()), lane(), ev(receipt=receipt(produced_count=0, summary={"empty_reason": "no_new_events"})))
-    assert (q["grade"], q["sub"]) == ("GOOD", "idle") and "no new events" in q["headline"]
+    assert (q["grade"], q["sub"]) == ("IDLE", "no_new_events") and "no new events" in q["headline"]
 
 
 def test_idle_run_with_a_stale_input_is_degraded():
@@ -239,10 +240,13 @@ def test_zero_output_without_a_stated_or_known_reason_stays_empty():
     assert g(row(run()), lane(), ev(receipt=receipt(produced_count=0)))["grade"] == "EMPTY"
     q = g(row(run()), lane(), ev(receipt=receipt(produced_count=0, empty_reason="because")))
     assert (q["grade"], q["sub"]) == ("EMPTY", "unexpected")
-    # output not written by the run is EMPTY even with an idle reason
+    # LQ-20261107-1842: a reviewed idle reason now wins over "output not written", because a run with nothing to do
+    # is exactly the run that does not touch its output file. Unreviewed reasons still grade EMPTY.
     q = g(row(run()), lane(), ev(output_at=NOW - timedelta(days=2),
                                   receipt=receipt(produced_count=0, empty_reason="market_closed")))
-    assert (q["grade"], q["sub"]) == ("EMPTY", "not_written")
+    assert (q["grade"], q["sub"]) == ("IDLE", "market_closed")
+    assert q["checks"]["output_written"]["result"] == "pass"
+    assert "nothing to write" in q["checks"]["output_written"]["detail"]
 
 
 def test_idle_config_path_is_read_from_file(tmp_path):

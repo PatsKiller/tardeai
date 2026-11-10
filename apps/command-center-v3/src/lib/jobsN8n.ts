@@ -37,6 +37,10 @@ export function tabLabel(label: string, count: number | null | undefined): strin
 export type Tile = { label: string; value: number | null; tone: Tone; key?: string }
 export function historyTiles(s: HistoryListWire['summary'] | null | undefined, tab: 'needs' | 'all' | 'fixes'): Tile[] {
   const v = (k: string): number | null => (s && typeof s[k] === 'number' ? s[k] : null)
+  // LQ-20261107-1842: "Ran OK" counted every status-ok row, including the 100+ whose quality was not GOOD — the tile
+  // contradicted the cards. Green is the backend's display decision (ok AND GOOD); amber is ok with any other grade.
+  const dc = (s && typeof s.display_counts === 'object' ? s.display_counts : null) as { green?: unknown; amber?: unknown } | null
+  const display = (k: 'green' | 'amber'): number | null => (dc && typeof dc[k] === 'number' ? dc[k] as number : null)
   if (tab === 'fixes') {
     return [
       { label: 'Fixed · 14 d', value: v('fixed_14d'), tone: 'success', key: 'fixed' },
@@ -48,8 +52,8 @@ export function historyTiles(s: HistoryListWire['summary'] | null | undefined, t
     { label: 'Failed', value: v('failed'), tone: 'danger', key: 'failed' },
     { label: 'Missed a run', value: v('with_missed'), tone: 'warning', key: 'missed' },
     { label: 'Late', value: v('late'), tone: 'warning', key: 'late' },
-    { label: 'Ran OK', value: v('ok'), tone: 'success', key: 'ok' },
-    { label: 'Ran, unproven', value: v('ok_unverified'), tone: 'neutral', key: 'ok_unverified' },
+    { label: 'Green · ran OK', value: display('green'), tone: 'success', key: 'green' },
+    { label: 'Amber · result not GOOD', value: display('amber'), tone: 'warning', key: 'amber' },
     { label: 'Fixed · 14 d', value: v('fixed_14d'), tone: 'success', key: 'fixed' },
   ]
 }

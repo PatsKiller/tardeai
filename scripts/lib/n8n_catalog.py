@@ -255,9 +255,11 @@ def build(snapshot: Mapping[str, Any], relay: Optional[frozenset], relay_meta: M
 
 
 #: Mirrors jobs_history._MIX (GET /api/v2/jobs-catalog status_mix); a test pins the two together.
-MIX_KEYS = ("failed", "blocked", "degraded", "missed", "late", "running", "ok", "ok_unverified", "not_measured",
-            "inactive")
-STATUS_MIX = {"failed": "failed", "blocked": "blocked", "degraded": "degraded", "missed": "missed", "late": "late",
+#: LQ-20261107-1842: the row status is ``subject_degraded`` (the last run reports a degraded SUBJECT); the quality
+#: grade DEGRADED keeps that word. Without this key every subject_degraded row fell into "not_measured".
+MIX_KEYS = ("failed", "blocked", "subject_degraded", "missed", "late", "running", "ok", "ok_unverified",
+            "not_measured", "inactive")
+STATUS_MIX = {"failed": "failed", "blocked": "blocked", "subject_degraded": "subject_degraded", "missed": "missed", "late": "late",
               "running": "running", "ok": "ok",
               "ok_unverified": "ok_unverified", "not_measured": "not_measured", "paused": "inactive",
               "retired": "inactive", "never_scheduled": "inactive", "inactive": "inactive"}

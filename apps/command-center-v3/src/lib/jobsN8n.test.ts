@@ -33,10 +33,15 @@ t('a tab count shows only once it was read', () => {
   eq(tabLabel('Needs you', undefined), 'Needs you')
 })
 t('history tiles never invent a zero', () => {
+  // LQ-20261107-1842: "Ran OK" counted every status-ok row (ok=4 here) including the ones whose quality was not GOOD.
+  // Green and amber are the backend's own display_counts; a payload without them shows "—", never the old ok count.
   const s = { jobs: 10, active: 9, with_missed: 2, missed_not_measured: 1, fixed_14d: 5, no_run_history: 3, failed: 1, ok: 4 }
   const tiles = historyTiles(s, 'needs')
-  eq(tiles.map(x => x.label), ['Failed', 'Missed a run', 'Late', 'Ran OK', 'Ran, unproven', 'Fixed · 14 d'])
-  eq(tiles.map(x => x.value), [1, 2, null, 4, null, 5])
+  eq(tiles.map(x => x.label), ['Failed', 'Missed a run', 'Late', 'Green · ran OK', 'Amber · result not GOOD', 'Fixed · 14 d'])
+  eq(tiles.map(x => x.value), [1, 2, null, null, null, 5])
+  eq(tiles.map(x => x.key), ['failed', 'missed', 'late', 'green', 'amber', 'fixed'])
+  const counted = historyTiles({ ...s, display_counts: { green: 3, amber: 1, other: 6 } }, 'needs')
+  eq(counted.map(x => x.value), [1, 2, null, 3, 1, 5])
   eq(historyTiles(null, 'needs').every(x => x.value === null), true)
   eq(historyTiles(s, 'fixes')[0], { label: 'Fixed · 14 d', value: 5, tone: 'success', key: 'fixed' })
 })

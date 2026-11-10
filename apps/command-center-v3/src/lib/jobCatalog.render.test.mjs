@@ -63,7 +63,10 @@ check((tiles.match(/<button/g) || []).length === 6, 'six tile buttons')
 check((tiles.match(/aria-pressed="true"/g) || []).length === 1 && /data-status="failed" aria-pressed="true"/.test(tiles), 'only Failed is pressed')
 check((flat(tiles).match(/min-height:44px/g) || []).length === 6, 'every tile is a 44 px target')
 check(tiles.includes('✓ <!-- -->Failed') || tiles.includes('✓ Failed'), 'active tile is ticked')
-check(tiles.includes('tap to clear') && tiles.includes('tap to filter the list'), 'tiles say what a tap does')
+// The copy lives on each tile's own aria-label now that the filter is a toggle (JobsN8nViews TileGrid): a pressed
+// tile offers "tap to remove", a plain one "tap to add to the filter". Pre-existing red on base 277fafbda — the
+// fix is f594208fa's, which is not an ancestor of that fold; carried here so LQ-1842's pass-after is a green suite.
+check(tiles.includes('tap to add to the filter') && tiles.includes('tap to remove'), 'tiles say what a tap does')
 const still = h(React.createElement(TileGrid, { tiles: n8nTiles(null, []), label: 'x' }))
 check(!/<button/.test(still), 'without onPick the tiles stay plain (other pages unchanged)')
 

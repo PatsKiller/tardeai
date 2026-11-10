@@ -17,7 +17,9 @@ export interface DescribedListWire extends Omit<HistoryListWire, 'rows'> {
   rows: DescribedRow[]; categories?: Category[]; status?: string | null; category?: string | null
 }
 
-export type StatusMix = Record<'failed' | 'blocked' | 'degraded' | 'missed' | 'late' | 'running' | 'ok' | 'ok_unverified' | 'not_measured' | 'inactive', number>
+// LQ-20261107-1842: the row status is `subject_degraded` (the last run reports a degraded SUBJECT); the quality grade
+// DEGRADED owns the word `degraded` and is counted on the Quality tab, never here.
+export type StatusMix = Record<'failed' | 'blocked' | 'subject_degraded' | 'missed' | 'late' | 'running' | 'ok' | 'ok_unverified' | 'not_measured' | 'inactive', number>
 export interface CatalogCategory extends Category {
   jobs: number; described: number; with_missed: number; fixed_14d: number; status_mix: StatusMix
 }
@@ -46,7 +48,7 @@ export function descriptionLines(r: Pick<DescribedRow, 'does' | 'breaks'>): { do
 
 // ── status mix ("3 failed · 40 ok · 12 not measured") ───────────────────────────────────────────────────────────
 const MIX_ORDER: Array<[keyof StatusMix, string]> = [
-  ['failed', 'failed'], ['blocked', 'blocked'], ['degraded', 'degraded'], ['missed', 'missed a run'], ['late', 'late'],
+  ['failed', 'failed'], ['blocked', 'blocked'], ['subject_degraded', 'degraded subject'], ['missed', 'missed a run'], ['late', 'late'],
   ['running', 'running'], ['ok', 'ok'],
   ['ok_unverified', 'ok, unproven'], ['not_measured', 'not measured'], ['inactive', 'paused or retired'],
 ]
@@ -58,7 +60,7 @@ export function mixText(mix: Partial<StatusMix> | null | undefined): string {
   return parts.length ? parts.map(p => p.text).join(' · ') : 'No jobs'
 }
 export const mixTone = (k: keyof StatusMix): 'danger' | 'warning' | 'success' | 'info' | 'neutral' =>
-  k === 'failed' || k === 'blocked' ? 'danger' : k === 'missed' || k === 'late' || k === 'degraded' ? 'warning'
+  k === 'failed' || k === 'blocked' ? 'danger' : k === 'missed' || k === 'late' || k === 'subject_degraded' ? 'warning'
     : k === 'ok' ? 'success' : k === 'running' || k === 'ok_unverified' ? 'info' : 'neutral'
 
 /** Catalog search: a category matches on its label or blurb (job matches come from the jobs-history search). */
@@ -68,8 +70,8 @@ export function matchesCategory(c: Category, q: string): boolean {
 }
 
 // ── jobs-history query with the new filters ─────────────────────────────────────────────────────────────────────
-export const HISTORY_STATUS_KEYS = ['failed', 'blocked', 'degraded', 'missed', 'late', 'ok', 'ok_unverified', 'fixed',
-  'running', 'not_measured', 'paused', 'retired', 'never_scheduled'] as const
+export const HISTORY_STATUS_KEYS = ['failed', 'blocked', 'subject_degraded', 'missed', 'late', 'ok', 'ok_unverified', 'fixed',
+  'running', 'not_measured', 'paused', 'retired', 'never_scheduled', 'green', 'amber'] as const
 export type HistoryStatusKey = typeof HISTORY_STATUS_KEYS[number]
 export const isHistoryStatus = (s: string | null | undefined): s is HistoryStatusKey => !!s && (HISTORY_STATUS_KEYS as readonly string[]).includes(s)
 
@@ -100,7 +102,7 @@ export const MIX_MEANING: Record<keyof StatusMix, string> = {
   // LQ-20261107-1833 (REVIEW-LQ1829 M1): the third exhaustive map over the widened unions. The compiler named it
   // (TS2739 at this line) even though the review listed only STATUS_MEANING and RESULT_MEANING.
   blocked: 'The last run of these jobs finished, but its verdict said the subject is not fit for use: the work is blocked.',
-  degraded: 'The last run of these jobs finished but reports a degraded subject — it ran, with warnings.',
+  subject_degraded: 'The last run of these jobs finished but reports a degraded subject — it ran, with warnings.',
   missed: 'These jobs were due to run on schedule and no run started.',
   late: 'These jobs have not run as recently as their schedule expects, but are not yet counted as missed.',
   running: 'These jobs are running right now.',
@@ -109,13 +111,14 @@ export const MIX_MEANING: Record<keyof StatusMix, string> = {
   not_measured: 'No schedule or run record exists to judge these jobs against, so their health is unknown, not good.',
   inactive: 'These jobs are paused, retired or were never scheduled, so no run is expected.',
 }
-/** What each status badge on a job card means. */
-export const STATUS_MEANING: Record<HistoryStatus, string> = {
+/** What each status badge on a job card means. `green`/`amber` are not row statuses: they are the two display
+ *  filters (LQ-20261107-1842) the run-history tiles open, and they carry a meaning so a tile tip explains itself. */
+export const STATUS_MEANING: Record<HistoryStatus | 'green' | 'amber', string> = {
   ok: 'Running on schedule: the last run succeeded and the output arrived on time.',
   ok_unverified: 'Output on time, success unproven: the job ran and wrote on time, but no check confirms the work was right.',
   failed: 'Last run failed: the most recent run ended in an error, timeout or refusal.',
   blocked: 'Blocked: the last run finished, but its own verdict said the subject is not fit for use, so the work did not succeed.',
-  degraded: 'Degraded: the last run finished, but its own verdict reports a degraded subject — it ran, but not cleanly.',
+  subject_degraded: 'Degraded subject: the last run finished, but its own verdict reports a degraded subject — it ran, but not cleanly. The quality column grades the OUTPUT, not this subject verdict.',
   missed: 'Missed a run: a scheduled run never started.',
   late: 'Late: the job has not run as recently as its schedule expects.',
   running: 'Running now.',
@@ -123,6 +126,8 @@ export const STATUS_MEANING: Record<HistoryStatus, string> = {
   paused: 'Paused: the job is switched off on purpose, so no run is expected.',
   retired: 'Retired: the job was replaced or removed, so no run is expected.',
   never_scheduled: 'Never scheduled: the job exists but has no schedule, so no run is expected.',
+  green: 'Green: the last run ran on schedule AND its quality grade was GOOD — the only combination the page shows green.',
+  amber: 'Amber: the last run ran on time but its result was not GOOD; the card names the quality reason (unproven, empty, a degraded subject verdict, or idle).',
 }
 export const RESULT_MEANING: Record<RunResult, string> = {
   succeeded: 'The last run finished and reported success.',

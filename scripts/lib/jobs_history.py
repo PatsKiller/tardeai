@@ -66,7 +66,10 @@ _LEDGER_RESULT = {"RUN_DONE": "succeeded", "RUN_FAILED": "failed", "RUN_TIMEOUT"
                   "RUNNING": "running"}
 _FAILED = {"failed", "timed_out", "refused"}
 #: LQ-20261107-1803: a ``blocked`` receipt (the run did its work and its subject is not fit for use) is red on
-#: the page, and a ``degraded`` one (the subject is not healthy but the run is) is its own row status.
+#: the page, and a degraded subject (the subject is not healthy but the run is) is its own row status.
+#: LQ-20261107-1842: that row status is ``subject_degraded``, not ``degraded`` — the quality column already owns the
+#: word DEGRADED (a run whose output is flawed), and two different counts under one word is what made the summary
+#: say "degraded 0" beside quality "DEGRADED 19".
 _BLOCKED = {"blocked", "block"}
 _DEGRADED = {"degraded", "warn", "warning", "partial"}
 LOG = logging.getLogger(__name__)
@@ -540,7 +543,8 @@ def lane_history(lane: dict, *, now: datetime, trading_day, ledger: list[dict], 
     elif last and last["result"] == "degraded" and (not last_success or (_at(last["finished_at"]) or last["_start"]) >= last_success):
         # LQ-20261107-1803: the run produced its output and its own receipt says the subject is not healthy. The
         # file may not carry "verdict: DEGRADED" next to a healthy status, and neither may the page.
-        status, why = "degraded", last.get("reason") or "Last run's receipt reports a degraded subject"
+        # LQ-20261107-1842: the row status is ``subject_degraded`` so it is never confused with the quality grade.
+        status, why = "subject_degraded", last.get("reason") or "Last run's receipt reports a degraded subject"
     elif judged and measured_slots and judged[-1]["status"] == "missed" or (
             missed and judged and judged[-1]["status"] == "pending" and len(judged) > 1 and judged[-2]["status"] == "missed"):
         status = "missed"
@@ -640,7 +644,7 @@ def build(registry: dict, inputs: dict, *, now: datetime, trading_day, guard_win
         row.update(describe(lane, (inputs.get("descriptions") or {}).get(lane_id), category_keys))
         rows.append(row)
     # Every status key is present (a counted 0 is a real 0), so the page never has to default a missing count.
-    counts = {k: 0 for k in ("ok", "ok_unverified", "failed", "blocked", "degraded", "missed", "late", "running",
+    counts = {k: 0 for k in ("ok", "ok_unverified", "failed", "blocked", "subject_degraded", "missed", "late", "running",
                              "not_measured", "paused", "retired", "never_scheduled")}
     for row in rows:
         counts.setdefault(row["status"], 0)
@@ -999,7 +1003,9 @@ def _load(root: Path, registry_path: Path, now: datetime, descriptions_dir: Path
     result = build(registry, inputs, now=now, trading_day=is_trading_day,
                    guard_window=load_guard_window(crontab_text=crontab))
     from scripts.lib.run_quality import attach  # per-row run QUALITY grade (RUNQ 2026-11-06); read-only
-    return attach(result, registry, root, now=now)
+    # The display status is computed HERE, once, from the row status and its quality grade (LQ-20261107-1842);
+    # the page renders it and never recomputes it.
+    return annotate_display(attach(result, registry, root, now=now))
 
 
 # ── API with a stale-while-revalidate cache ───────────────────────────────────────────────────────────────────────
@@ -1009,7 +1015,64 @@ _REFRESHING: set = set()
 
 #: Row statuses that put a job in "Needs attention". LQ-20261107-1803: a blocking verdict and a degraded subject
 #: both belong here — they were previously invisible (the row said ok).
-_ATTENTION = {"failed", "blocked", "degraded", "missed", "late", "not_measured"}
+_ATTENTION = {"failed", "blocked", "subject_degraded", "missed", "late", "not_measured"}
+
+# ── the display status: computed HERE, rendered by the page (LQ-20261107-1842) ───────────────────────────────────
+#: Operator 2026-11-10 (CC v3 due diligence #5/#15/#16): 113 active jobs showed status ok (UI: green "Running on
+#: schedule") while their own quality grade was not GOOD. The page may not contradict reality: the backend decides
+#: green/amber ONCE and the page renders the field. No frontend recomputation.
+DISPLAY_SCHEMA = "JobDisplayStatus@v1"
+#: The plain words for a row status (moved here from the page so there is one copy the UI renders).
+STATUS_LABEL = {
+    "ok": "Running on schedule", "ok_unverified": "Output on time, success unproven", "failed": "Last run failed",
+    "blocked": "Last run blocked (verdict BLOCK)", "subject_degraded": "Last run reports degraded",
+    "missed": "Missed a run", "late": "Late", "running": "Running now", "not_measured": "Not measured",
+    "paused": "Paused", "retired": "Retired", "never_scheduled": "Never scheduled",
+}
+STATUS_TONE = {
+    "ok": "success", "ok_unverified": "info", "failed": "danger", "blocked": "danger",
+    "subject_degraded": "warning", "missed": "warning", "late": "warning", "not_measured": "warning",
+    "running": "info", "paused": "neutral", "retired": "neutral", "never_scheduled": "neutral",
+}
+#: The short quality word in "Ran on time, result <word>".
+_RESULT_WORD = {"IDLE": "nothing to do", "UNPROVEN": "unproven", "NOT_LIVE": "not live", "EMPTY": "empty",
+                "DEGRADED": "degraded", "FAILED": "failed"}
+
+
+def display_status(row: dict) -> dict:
+    """The one display decision for a jobs row: green only when status is ``ok`` AND quality is ``GOOD``.
+
+    Every other ``ok`` row is amber and names the quality reason ("Ran on time, result unproven" + the grader's
+    headline), so "running on schedule" can never again stand in for "the run produced what it should". A row that
+    is not ``ok`` keeps its own status tone — its schedule problem is the finding, and the status reason says it.
+    An ``ok`` row with no quality grade is amber, never green: an unmeasured result is not a good result.
+    """
+    status = str(row.get("status") or "")
+    quality = row.get("quality") or {}
+    grade = quality.get("grade")
+    if status == "ok" and grade == "GOOD":
+        return {"schema": DISPLAY_SCHEMA, "green": True, "tone": "success", "label": STATUS_LABEL["ok"],
+                "reason": None, "quality": grade}
+    if status == "ok":
+        why = quality.get("headline") or next((r for r in quality.get("reasons") or [] if r), None)
+        word = _RESULT_WORD.get(grade, (grade or "not graded").lower().replace("_", " "))
+        return {"schema": DISPLAY_SCHEMA, "green": False, "tone": "warning",
+                "label": f"Ran on time, result {word}",
+                "reason": _text(why, 240) if why else "no quality grade was computed for this run",
+                "quality": grade}
+    return {"schema": DISPLAY_SCHEMA, "green": False, "tone": STATUS_TONE.get(status, "neutral"),
+            "label": STATUS_LABEL.get(status, status.replace("_", " ") or "Not measured"),
+            "reason": row.get("status_reason"), "quality": grade}
+
+
+def annotate_display(result: dict) -> dict:
+    """Add ``display`` to every row and ``display_counts`` to the summary (in place; returns it)."""
+    counts = {"green": 0, "amber": 0, "other": 0}
+    for row in result.get("rows") or []:
+        row["display"] = display_status(row)
+        counts["green" if row["display"]["green"] else ("amber" if row.get("status") == "ok" else "other")] += 1
+    result.setdefault("summary", {})["display_counts"] = counts
+    return result
 
 
 def _refresh(key, root, registry, extra):
@@ -1047,7 +1110,7 @@ def snapshot(*, state_root=None, registry_path=None, now=None, descriptions_dir=
 
 
 def _list_row(row: dict) -> dict:
-    keep = ("lane_id", "job", "scheduler", "state", "status", "status_reason", "last_run", "last_success_at",
+    keep = ("lane_id", "job", "scheduler", "state", "status", "status_reason", "display", "last_run", "last_success_at",
             "missed_count", "missed_gap", "fix_count", "last_fix", "history_sources", "history_gap",
             "title", "category", "does", "breaks", "owner", "category_fallback", "category_key", "quality")
     out = {k: row.get(k) for k in keep}
@@ -1060,10 +1123,16 @@ def _list_row(row: dict) -> dict:
 STATUS_FILTERS = {
     "failed": lambda r: r["status"] == "failed",
     "blocked": lambda r: r["status"] == "blocked",  # LQ-20261107-1803: a BLOCK verdict is its own red status
-    "degraded": lambda r: r["status"] == "degraded",
+    # LQ-20261107-1842: the row status says the last run reported a degraded SUBJECT; the quality grade DEGRADED is
+    # a different judgement and lives under ``?quality=degraded``. One word, one meaning.
+    "subject_degraded": lambda r: r["status"] == "subject_degraded",
     "missed": lambda r: r["state"] == "ACTIVE" and bool(r["missed_count"]),  # = summary.with_missed
     "late": lambda r: r["status"] == "late",
     "ok": lambda r: r["status"] == "ok",
+    # LQ-20261107-1842: the display decision (computed once by the backend, rendered by the page). ``green`` is the
+    # old "Ran OK" tile's set: status ok AND quality GOOD; ``amber`` is every ok row that is not green.
+    "green": lambda r: bool((r.get("display") or {}).get("green")),
+    "amber": lambda r: r["status"] == "ok" and not (r.get("display") or {}).get("green"),
     "ok_unverified": lambda r: r["status"] == "ok_unverified",
     "running": lambda r: r["status"] == "running",
     "not_measured": lambda r: r["status"] == "not_measured",
@@ -1073,8 +1142,8 @@ STATUS_FILTERS = {
     "fixed": lambda r: bool(r["fix_count"]),  # = summary.fixed_14d
 }
 #: ``?quality=`` values: the run-quality grades of scripts/lib/run_quality.py (= summary.quality_counts keys).
-QUALITY_GRADES = ("GOOD", "DEGRADED", "EMPTY", "FAILED", "NOT_LIVE", "UNPROVEN")
-_ORDER = {"failed": 0, "blocked": 0, "missed": 1, "degraded": 2, "late": 2, "running": 3, "not_measured": 4,
+QUALITY_GRADES = ("GOOD", "IDLE", "DEGRADED", "EMPTY", "FAILED", "NOT_LIVE", "UNPROVEN")
+_ORDER = {"failed": 0, "blocked": 0, "missed": 1, "subject_degraded": 2, "late": 2, "running": 3, "not_measured": 4,
           "ok_unverified": 5, "ok": 6}
 #: ``?ran=`` last-run windows (operator 2026-11-06: "filter by last run"). ``older`` = last run more than 7 days ago,
 #: ``never`` = no run on record. The age is measured against the snapshot's ``computed_at``, not the wall clock.
@@ -1082,8 +1151,9 @@ RAN_WINDOWS = {"1h": timedelta(hours=1), "24h": timedelta(hours=24), "7d": timed
 RAN_FILTERS = (*RAN_WINDOWS, "older", "never")
 #: ``?sort=`` orders. ``attention`` is the original worst-first order and stays the default.
 SORTS = ("attention", "last_run_desc", "last_run_asc", "name", "quality", "missed")
-#: Worst grade first for ``sort=quality``; a row with no grade sorts last.
-_QUALITY_ORDER = {"FAILED": 0, "EMPTY": 1, "DEGRADED": 2, "UNPROVEN": 3, "NOT_LIVE": 4, "GOOD": 5}
+#: Worst grade first for ``sort=quality``; a row with no grade sorts last. IDLE sorts after GOOD: a run that
+#: correctly had nothing to do needs no more attention than a good run (LQ-20261107-1842).
+_QUALITY_ORDER = {"FAILED": 0, "EMPTY": 1, "DEGRADED": 2, "UNPROVEN": 3, "NOT_LIVE": 4, "GOOD": 5, "IDLE": 6}
 
 
 def _multi(value) -> list[str]:
@@ -1198,7 +1268,7 @@ def get_jobs_history(query=None, **kwargs) -> dict:
 
 
 #: How the catalog buckets a job's status (the card's "3 failed · 40 ok · 12 not measured").
-_MIX = {"failed": "failed", "blocked": "blocked", "degraded": "degraded",
+_MIX = {"failed": "failed", "blocked": "blocked", "subject_degraded": "subject_degraded",
         "missed": "missed", "late": "late", "running": "running", "ok": "ok",
         "ok_unverified": "ok_unverified", "not_measured": "not_measured", "paused": "inactive", "retired": "inactive",
         "never_scheduled": "inactive"}
@@ -1216,7 +1286,7 @@ def get_jobs_catalog(query=None, **kwargs) -> dict:
     out = []
     for c in cats:
         members = [r for r in rows if r["category_key"] == c["key"]]
-        mix = {k: 0 for k in ("failed", "blocked", "degraded", "missed", "late", "running", "ok", "ok_unverified",
+        mix = {k: 0 for k in ("failed", "blocked", "subject_degraded", "missed", "late", "running", "ok", "ok_unverified",
                               "not_measured", "inactive")}
         for r in members:
             mix[_MIX.get(r["status"], "not_measured")] += 1

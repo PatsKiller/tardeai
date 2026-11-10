@@ -5,8 +5,8 @@ import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import DetailHeader from './DetailHeader'
 import {
-  HISTORY_FILTERS, RESULT_LABEL, SLOT_LABEL, STATUS_LABEL, ago, cadenceText, detailQuery, duration, etTime, fixLabel,
-  fixTone, historyQuery, missedText, resultTone, schedulerLabel, slotTone, statusTone,
+  HISTORY_FILTERS, RESULT_LABEL, SLOT_LABEL, STATUS_LABEL, ago, cadenceText, detailQuery, displayOf, duration, etTime,
+  fixLabel, fixTone, historyQuery, missedText, resultTone, schedulerLabel, slotTone,
   type FixEvent, type HistoryDetailRow, type HistoryDetailWire, type HistoryListRow, type HistoryListWire,
 } from '../lib/jobRunHistory'
 
@@ -22,18 +22,20 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   return <div style={{ minWidth: 0 }}><div style={muted}>{label}</div><div style={{ ...wrap, fontSize: TYPE.base }}>{children}</div></div>
 }
 
-/** One job in the list. Pure: renders from the wire row and the projection's computed_at. */
+/** One job in the list. Pure: renders from the wire row and the projection's computed_at. The status chip is the
+ *  backend's display decision (LQ-20261107-1842) — green only when the run was on time AND its result was GOOD. */
 export function HistoryCard({ row, computedAt, onOpen }: { row: HistoryListRow; computedAt: string; onOpen: (id: string) => void }) {
   const last = row.last_run
+  const display = displayOf(row)
   return <article aria-label={row.job} data-testid="history-card" className="job-history-card" style={{ ...panel, display: 'grid', gap: 10 }}>
     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' }}>
       <div style={{ minWidth: 0, flex: '1 1 200px' }}>
         <strong style={{ ...wrap, fontSize: TYPE.base, display: 'block' }}>{row.job}</strong>
         <span style={muted}>{schedulerLabel(row.scheduler)} · {cadenceText(row.cadence)}</span>
       </div>
-      <span style={chip(statusTone(row.status))}>{STATUS_LABEL[row.status]}</span>
+      <span style={chip(display.tone)} data-testid="history-display-status" data-green={display.green ? 'true' : 'false'}>{display.label}</span>
     </div>
-    {row.status_reason && <div style={{ ...wrap, color: TOKENS.text[1], fontSize: TYPE.sm }}>{row.status_reason}</div>}
+    {display.reason && <div style={{ ...wrap, color: TOKENS.text[1], fontSize: TYPE.sm }}>{display.reason}</div>}
     <div className="job-history-facts">
       <Fact label="Last run">{last ? <>{etTime(last.started_at || last.finished_at)} <span style={chip(resultTone(last.result))}>{RESULT_LABEL[last.result]}</span></> : 'No run recorded'}</Fact>
       <Fact label="Last success">{row.last_success_at ? `${etTime(row.last_success_at)} (${ago(row.last_success_at, computedAt)})` : 'None recorded'}</Fact>
@@ -60,12 +62,13 @@ function FixList({ fixes }: { fixes: FixEvent[] }) {
 
 /** Full detail body: runs (newest first), expected slots, fixes, evidence. Pure. */
 export function HistoryDetail({ row, computedAt }: { row: HistoryDetailRow; computedAt: string }) {
+  const display = displayOf(row)
   return <div style={{ display: 'grid', gap: 14, maxWidth: 760, width: '100%', minWidth: 0 }} data-testid="history-detail">
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-      <span style={chip(statusTone(row.status))}>{STATUS_LABEL[row.status]}</span>
+      <span style={chip(display.tone)} data-testid="history-display-status" data-green={display.green ? 'true' : 'false'}>{display.label}</span>
       <span style={muted}>{schedulerLabel(row.scheduler)} · registry state {row.state.toLowerCase().replace(/_/g, ' ')}</span>
     </div>
-    {row.status_reason && <p style={{ ...wrap, margin: 0 }}>{row.status_reason}</p>}
+    {display.reason && <p style={{ ...wrap, margin: 0 }}>{display.reason}</p>}
     <QualityDetail q={row.quality} statusLabel={STATUS_LABEL[row.status]} />
     <div className="job-history-facts">
       <Fact label="Expected">{cadenceText(row.cadence)}</Fact>
@@ -120,9 +123,11 @@ export function HistoryListView({ data, loading, error, filter, onFilter, query,
   query: string; onQuery: (q: string) => void; onOpen: (id: string) => void; onPage: (offset: number) => void
 }) {
   const s = data?.summary
-  const tiles: [string, number | null | undefined, Tone][] = [
-    ['Failed', s?.failed, 'danger'], ['Missed a run', s?.with_missed, 'warning'], ['Late', s?.late, 'warning'],
-    ['Fixed in 14 days', s?.fixed_14d, 'info'], ['No per-run history', s?.no_run_history, 'neutral'],
+  // The summary also carries display_counts (an object), so a count is read only when it is a number — never coerced.
+  const n = (v: unknown): number | null => (typeof v === 'number' ? v : null)
+  const tiles: [string, number | null, Tone][] = [
+    ['Failed', n(s?.failed), 'danger'], ['Missed a run', n(s?.with_missed), 'warning'], ['Late', n(s?.late), 'warning'],
+    ['Fixed in 14 days', n(s?.fixed_14d), 'info'], ['No per-run history', n(s?.no_run_history), 'neutral'],
   ]
   return <section aria-label="Job run history" data-testid="job-run-history" style={{ display: 'grid', gap: 12, color: TOKENS.text[0], fontFamily: FONT.sans, minWidth: 0 }}>
     <style>{`.job-history-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.job-history-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr));gap:10px}@media(max-width:820px){.job-history-facts{grid-template-columns:1fr 1fr}}@media(max-width:420px){.job-history-facts{grid-template-columns:1fr}}`}</style>

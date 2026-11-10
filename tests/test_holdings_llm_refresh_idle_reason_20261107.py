@@ -5,7 +5,8 @@ Live evidence (2026-11-07): the lane's receipt read
 graded it EMPTY, "Ran live 22 h ago and exited ok but produced nothing (summary.candidates = 0; the
 receipt does not say why)". The receipt was not wrong about the count — it was silent about the reason,
 so an idle run and a broken one were indistinguishable (lib/run_quality.py: a zero run with no stated
-reason stays EMPTY; a reviewed idle token makes it GOOD/idle).
+reason stays EMPTY; a reviewed idle token makes it IDLE — GOOD/idle before LQ-20261107-1842 split the
+grade out, so a correctly idle run was never shown green).
 
 The fix gives the receipt a LaneRunReceipt@v2 output block, and computes ``empty_reason`` from the
 selection itself: ``nothing_due`` (the reviewed token in config/run_quality_idle_reasons.json) only when
@@ -165,8 +166,8 @@ def _grade(receipt_doc):
     return Q.grade(row, LANE, evidence, now=NOW)
 
 
-def test_the_old_receipt_grades_empty_and_the_new_one_grades_good():
-    """Exactly the live symptom and its fix: same counts, one states the reason."""
+def test_the_old_receipt_grades_empty_and_the_new_one_grades_idle():
+    """Exactly the live symptom and its fix: same counts, one states the reason (IDLE since LQ-20261107-1842)."""
     old = LR.build_receipt("holdings_llm_refresh", ok=True, started_at=START, finished_at=FINISH.isoformat(),
                            summary={"holdings": 27, "candidates": 0, "refreshed": 0, "errors": 0, "statuses": {}})
     new = LR.build_receipt("holdings_llm_refresh", ok=True, started_at=START, finished_at=FINISH.isoformat(),
@@ -178,4 +179,4 @@ def test_the_old_receipt_grades_empty_and_the_new_one_grades_good():
     old_q, new_q = _grade(old), _grade(new)
     assert (old_q["grade"], old_q["sub"]) == ("EMPTY", "unexpected")
     assert "does not say why" in old_q["reasons"][0]
-    assert (new_q["grade"], new_q["sub"]) == ("GOOD", "idle"), new_q["reasons"]
+    assert (new_q["grade"], new_q["sub"]) == ("IDLE", "nothing_due"), new_q["reasons"]

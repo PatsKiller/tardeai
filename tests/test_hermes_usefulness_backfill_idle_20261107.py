@@ -4,10 +4,11 @@ The lane is the only writer of ``hermes_external_research.usefulness_score`` (se
 hourly. Most hours there is nothing new to score, so it exits 0 having produced nothing. The Jobs page graded
 that EMPTY — "the receipt does not say why" — because the receipt carried only counts. ``run_quality`` already has
 the designed answer: a receipt that STATES a reviewed idle reason (``empty_reason``, top level or summary, one of
-``config/run_quality_idle_reasons.json``) grades GOOD sub ``idle`` in plain words.
+``config/run_quality_idle_reasons.json``) grades IDLE, sub = the token, in plain words (GOOD sub ``idle`` before
+LQ-20261107-1842 gave the stated-no-work run its own grade — and its own, non-green, display).
 
 These tests pin both halves: the lane writes ``produced_count`` / ``attempted_count`` and, when it selected nothing,
-``empty_reason = "no_new_input"``; and the receipt built that way grades GOOD (idle) rather than EMPTY.
+``empty_reason = "no_new_input"``; and the receipt built that way grades IDLE rather than EMPTY.
 
 Hermetic: a fake DB cursor, a fake receipt writer, synthetic receipts. The repo is PUBLIC.
 """
@@ -139,7 +140,7 @@ def test_main_hands_the_reason_and_the_counts_to_the_receipt(monkeypatch, no_kil
     assert kw["empty_reason"] == "no_new_input"
 
 
-# ── the page: the same receipt grades GOOD (idle), not EMPTY ────────────────────────────────────────────────
+# ── the page: the same receipt grades IDLE, not EMPTY ───────────────────────────────────────────────────────
 LANE = {"lane_id": "hermes-usefulness-backfill", "state": "ACTIVE",
         "output_signal": {"kind": "json_key", "path": "data/runtime/hermes-usefulness-backfill_last.json",
                           "key": "ok_at"},
@@ -172,10 +173,11 @@ def receipt_with(*, empty_reason):
         produced_count=0, attempted_count=0, empty_reason=empty_reason)
 
 
-def test_a_receipt_that_states_the_idle_reason_grades_good(  ):
+def test_a_receipt_that_states_the_idle_reason_grades_idle(  ):
     rec = receipt_with(empty_reason="no_new_input")
     out = Q.grade(row(), LANE, evidence(rec), now=NOW)
-    assert out["grade"] == "GOOD", (out["grade"], out["headline"])
+    assert out["grade"] == "IDLE", (out["grade"], out["headline"])
+    assert out["sub"] == "no_new_input", out["sub"]
     assert out["count"]["value"] == 0 and out["count"]["key"] == "produced_count"
     assert "nothing to do: there was no new input" in out["headline"], out["headline"]
 

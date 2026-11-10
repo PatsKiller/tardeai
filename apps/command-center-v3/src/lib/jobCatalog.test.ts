@@ -63,7 +63,8 @@ t('every job tile has a status key the API accepts', () => {
   for (const tab of ['needs', 'all', 'fixes'] as const) for (const tile of historyTiles(null, tab)) {
     if (!tile.key || !isHistoryStatus(tile.key)) fail(`${tab} tile ${tile.label} has no valid key`)
   }
-  eq(historyTiles(null, 'needs').map(x => x.key), ['failed', 'missed', 'late', 'ok', 'ok_unverified', 'fixed'])
+  // LQ-20261107-1842: the two tiles that used to say "Ran OK" / "Ran, unproven" are the backend's display sets.
+  eq(historyTiles(null, 'needs').map(x => x.key), ['failed', 'missed', 'late', 'green', 'amber', 'fixed'])
   eq(isHistoryStatus('nope'), false)
   eq(HISTORY_STATUS_KEYS.includes('fixed'), true)
 })
@@ -85,7 +86,9 @@ t('n8n tiles are keyed and a tile filters exactly the lanes it counts', () => {
 t('chip state maps to the status the API filters on, and every chip has a meaning', () => {
   eq(mixStatusParam('failed'), 'failed')
   eq(mixStatusParam('inactive'), 'paused,retired,never_scheduled')
-  for (const k of ['failed', 'blocked', 'degraded', 'missed', 'late', 'running', 'ok', 'ok_unverified', 'not_measured', 'inactive'] as const) {
+  // LQ-20261107-1842: the mix key is subject_degraded (the last run reports a degraded SUBJECT); "degraded" now
+  // names only the quality grade, never a row status.
+  for (const k of ['failed', 'blocked', 'subject_degraded', 'missed', 'late', 'running', 'ok', 'ok_unverified', 'not_measured', 'inactive'] as const) {
     if (!MIX_MEANING[k] || MIX_MEANING[k].length < 20) fail(`no meaning for ${k}`)
   }
   for (const k of HISTORY_STATUS_KEYS) if (k !== 'fixed' && !STATUS_MEANING[k as keyof typeof STATUS_MEANING]) fail(`no badge meaning for ${k}`)

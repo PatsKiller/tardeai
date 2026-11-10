@@ -10,12 +10,18 @@ behind it (``quality.checks``: each ``{"result": "pass" | "fail" | "unknown", "v
 * ``FAILED``   — the last run errored or exited non-zero.
 * ``NOT_LIVE`` — the last run was a dry run, shadow, rehearsal or skip (``sub`` says which and why), or the lane is not
                  active. Never OK.
-* ``EMPTY``    — ran live and ok but produced nothing: its output was not written by this run, or its item count is 0.
+* ``EMPTY``    — ran live and ok but produced nothing and did NOT state a reviewed no-work reason: its output was not
+                 written by this run, or its item count is 0, with no idle token (LQ-20261107-1842).
+* ``IDLE``     — ran live and ok and produced nothing, and its own receipt STATES a reviewed no-work reason
+                 (``config/run_quality_idle_reasons.json``: no_new_input, nothing_due, all_already_settled,
+                 below_trigger, …). It correctly had nothing to do. LQ-20261107-1842: IDLE is its own grade — not
+                 GOOD (it produced nothing), not EMPTY (nothing is wrong), and never a green "ran on schedule".
 * ``DEGRADED`` — ran live and wrote output, but its receipt reports partial/fallback/gaps/errors, its item count fell
                  more than half below its own median, its duration is far outside its history, or an input freshness /
                  data plausibility check that maps to it is failing.
 * ``UNPROVEN`` — ran live and ok but nothing lets us check its output (say what is missing), or no run is recorded.
-* ``GOOD``     — live, ok, output written by this run, count within its band, no degradation flags.
+* ``GOOD``     — live, ok, output written by this run, count within its band, no degradation flags. The ONLY grade
+                 the jobs page may show green (LQ-20261107-1842).
 
 Separately, ``quality.as_designed`` (``False`` + ``design_issues``) flags a lane whose claimed state disagrees with what
 ran: registry stage cutover / n8n live but the last n8n run was a dry run or a skip, contract stage ≠ registry stage, a
@@ -42,7 +48,7 @@ import re
 import sqlite3
 import statistics
 
-GRADES = ("GOOD", "DEGRADED", "EMPTY", "FAILED", "NOT_LIVE", "UNPROVEN")
+GRADES = ("GOOD", "IDLE", "DEGRADED", "EMPTY", "FAILED", "NOT_LIVE", "UNPROVEN")
 HISTORY_FILE = "data/runtime/run_quality_history.jsonl"
 HISTORY_SCHEMA = "RunQualitySample@v1"
 LEDGER_DAYS = 10
@@ -58,7 +64,8 @@ MIN_COUNT_HISTORY = 3
 MIN_DURATION_HISTORY = 5
 #: A runtime median below this is too short to judge a slow run against ("far above its median 0 s" is noise).
 MIN_DURATION_MEDIAN_S = 5.0
-#: Reasons a receipt may state for a correct zero-output run (GOOD, sub idle). Config, not code.
+#: Reasons a receipt may state for a correct zero-output run (graded IDLE, sub = the token; LQ-20261107-1842).
+#: Config, not code.
 IDLE_REASONS_FILE = "config/run_quality_idle_reasons.json"
 COUNT_DROP = 0.5
 DRY_MODES = {"dry_run", "dry-run", "dryrun", "preflight", "rehearsal", "plan"}
@@ -698,29 +705,35 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
     empty_reason = (receipt or {}).get("empty_reason") if same_receipt else None
     checks["item_count"] = _check("unknown" if count is None else ("fail" if count == 0 else "pass"), count, count_key)
 
+    # LQ-20261107-1842: a run whose own receipt STATES a reviewed no-work reason is IDLE, not GOOD and not EMPTY.
+    # This is judged before the written/not-written branch, because "nothing to do" is exactly when a job writes
+    # nothing: a lane that finds no new input does not touch its output file, and grading that EMPTY-not_written
+    # read as a defect. The receipt must state the reason AND the reason must be reviewed (config, not code), and
+    # the run must have succeeded; upstream starvation still shows (a stale or implausible input makes it DEGRADED).
+    stated = (empty_reason or stated_idle_reason(receipt)) if same_receipt else None
+    no_work = written is False or count == 0
+    idle_words = idle_reasons().get(str(stated or "").strip().lower()) if no_work else None
+    if idle_words and graded["result"] == "succeeded" and not (count is not None and count > 0):
+        fresh, plaus = evidence.get("freshness") or [], evidence.get("plausibility") or []
+        checks["item_count"] = _check("pass", count, f"{count_key or 'output not written'}; idle: {stated}")
+        if written is False:
+            checks["output_written"] = _check("pass", False, f"{written_detail}; idle — nothing to write (receipt says {stated})")
+        checks["input_freshness"] = _check("fail" if fresh else "unknown" if not evidence.get("freshness_known") else "pass",
+                                           len(fresh), "; ".join(fresh) or None)
+        checks["data_plausibility"] = _check("fail" if plaus else ("pass" if evidence.get("plausibility_known") else "unknown"),
+                                             len(plaus), "; ".join(plaus) or None)
+        if fresh or plaus:
+            bad = fresh + plaus
+            reasons.append(f"Ran live {_ago(when, now)} and had nothing to do ({idle_words}), but: {bad[0]}")
+            reasons += [f"Also: {d}" for d in bad[1:]]
+            return result("DEGRADED", None, graded=graded, count=count_info)
+        reasons.append(f"Ran live {_ago(when, now)}{exited}; nothing to do: {idle_words} (receipt says {stated})")
+        return result("IDLE", str(stated or "idle").strip(), graded=graded, count=count_info)
     if written is False:
         reasons.append(f"Ran live {_ago(when, now)}{exited}, but its output was not written by that run"
                        + (f" ({written_detail})" if written_detail else ""))
         return result("EMPTY", "not_written", graded=graded, count=count_info)
     if count == 0:
-        stated = (empty_reason or stated_idle_reason(receipt)) if same_receipt else None
-        idle_words = idle_reasons().get(str(stated or "").lower())
-        if idle_words and graded["result"] == "succeeded":
-            # A correct idle run: its own receipt states a reviewed idle reason (config/run_quality_idle_reasons.json).
-            # Upstream starvation still shows: a stale or implausible input makes it DEGRADED, never GOOD.
-            fresh, plaus = evidence.get("freshness") or [], evidence.get("plausibility") or []
-            checks["item_count"] = _check("pass", 0, f"{count_key}; idle: {stated}")
-            checks["input_freshness"] = _check("fail" if fresh else "unknown" if not evidence.get("freshness_known") else "pass",
-                                               len(fresh), "; ".join(fresh) or None)
-            checks["data_plausibility"] = _check("fail" if plaus else ("pass" if evidence.get("plausibility_known") else "unknown"),
-                                                 len(plaus), "; ".join(plaus) or None)
-            if fresh or plaus:
-                bad = fresh + plaus
-                reasons.append(f"Ran live {_ago(when, now)} and had nothing to do ({idle_words}), but: {bad[0]}")
-                reasons += [f"Also: {d}" for d in bad[1:]]
-                return result("DEGRADED", None, graded=graded, count=count_info)
-            reasons.append(f"Ran live {_ago(when, now)}{exited}; nothing to do: {idle_words} (receipt says {stated})")
-            return result("GOOD", "idle", graded=graded, count=count_info)
         idle = bool(empty_reason) and empty_reason in allowed
         reasons.append(f"Ran live {_ago(when, now)}{exited} but produced nothing ({count_key} = 0"
                        + (f"; receipt says: {stated}" if stated else "; the receipt does not say why") + ")")

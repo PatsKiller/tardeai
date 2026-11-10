@@ -2,10 +2,11 @@
 // be fixed"). Wire types for GET /api/v2/jobs-history (JobRunHistory@v1) and the pure helpers the view uses.
 // Every time on the wire is the writer's own time; `computed_at` is when the page projection was computed.
 
-// `blocked` (the run finished and its verdict is BLOCK — the subject is not fit for use) and `degraded` (it finished
-// and reports a degraded subject) are LQ-20261107-1803: a verdict/status/display that disagree are the silent failure.
-export type HistoryStatus = 'ok' | 'ok_unverified' | 'failed' | 'blocked' | 'degraded' | 'missed' | 'late' | 'running'
-  | 'not_measured' | 'paused' | 'retired' | 'never_scheduled'
+// `blocked` (the run finished and its verdict is BLOCK — the subject is not fit for use) and `subject_degraded` (it
+// finished and reports a degraded subject) are LQ-20261107-1803 / LQ-20261107-1842: a verdict/status/display that
+// disagree are the silent failure. `subject_degraded` is NOT the quality grade DEGRADED — that grade owns the word.
+export type HistoryStatus = 'ok' | 'ok_unverified' | 'failed' | 'blocked' | 'subject_degraded' | 'missed' | 'late'
+  | 'running' | 'not_measured' | 'paused' | 'retired' | 'never_scheduled'
 export type RunResult = 'succeeded' | 'failed' | 'blocked' | 'degraded' | 'timed_out' | 'refused' | 'skipped_lock'
   | 'running' | 'requested' | 'unknown'
 export type SlotStatus = 'ran' | 'ran_failed' | 'ran_dry_run' | 'missed' | 'pending' | 'not_measured'
@@ -23,11 +24,19 @@ export interface Cadence {
   expressions: string[]; timezone: string; every_hours: number | null; market_days_only: boolean; schedule_gap?: string | null
 }
 import type { RunQuality } from './runQuality.ts'
+/** The backend's ONE display decision per row (JobDisplayStatus@v1, LQ-20261107-1842): green only when the row status
+ *  is `ok` AND its quality grade is GOOD; otherwise amber naming the quality reason. The page renders this field and
+ *  never recomputes green/amber from `status` + `quality`. */
+export interface DisplayStatus {
+  schema?: string; green: boolean; tone: Tone; label: string; reason: string | null; quality: string | null
+}
 export interface HistoryListRow {
   lane_id: string; job: string; scheduler: string; state: string; status: HistoryStatus; status_reason: string | null
   cadence: Cadence; last_run: HistoryRun | null; last_success_at: string | null
   missed_count: number | null; missed_gap: string | null; fix_count: number; last_fix: FixEvent | null
   history_sources: string[]; history_gap: string | null; output_written_at?: string | null
+  /** The display decision, computed by scripts/lib/jobs_history.py. Absent only on a payload from before LQ-1842. */
+  display?: DisplayStatus | null
   /** Run-quality grade (scripts/lib/run_quality.py, design pages/jobs v003); absent on older payloads. */
   quality?: RunQuality | null
 }
@@ -36,9 +45,12 @@ export interface HistoryDetailRow extends Omit<HistoryListRow, 'output_written_a
   output: { path_kind: string | null; written_at: string | null; note: string } | null
 }
 export interface SourceClock { name: string; newest_record_at: string | null; covers_from: string | null; note: string | null }
+export interface DisplayCounts { green: number; amber: number; other: number }
 export interface HistorySummary {
   jobs: number; active: number; with_missed: number; missed_not_measured: number; fixed_14d: number; no_run_history: number
-  [status: string]: number
+  /** Rows whose backend display decision is green / amber (status ok, not GOOD) / neither (LQ-20261107-1842). */
+  display_counts?: DisplayCounts | null
+  [status: string]: number | DisplayCounts | null | undefined
 }
 interface HistoryBase { schema: string; computed_at: string; summary: HistorySummary; sources: SourceClock[]; gaps: string[]; note: string }
 export interface HistoryListWire extends HistoryBase {
@@ -54,14 +66,19 @@ export type HistoryFilter = typeof HISTORY_FILTERS[number][0]
 
 export const STATUS_LABEL: Record<HistoryStatus, string> = {
   ok: 'Running on schedule', ok_unverified: 'Output on time, success unproven', failed: 'Last run failed',
-  blocked: 'Last run blocked (verdict BLOCK)', degraded: 'Last run reports degraded',
+  blocked: 'Last run blocked (verdict BLOCK)', subject_degraded: 'Last run reports degraded',
   missed: 'Missed a run', late: 'Late', running: 'Running now', not_measured: 'Not measured',
   paused: 'Paused', retired: 'Retired', never_scheduled: 'Never scheduled',
 }
 export const statusTone = (s: HistoryStatus): Tone =>
   s === 'ok' ? 'success' : s === 'failed' || s === 'blocked' ? 'danger'
-    : s === 'missed' || s === 'late' || s === 'not_measured' || s === 'degraded' ? 'warning'
+    : s === 'missed' || s === 'late' || s === 'not_measured' || s === 'subject_degraded' ? 'warning'
       : s === 'running' || s === 'ok_unverified' ? 'info' : 'neutral'
+
+/** The row's display status — the backend's decision, rendered as-is (LQ-20261107-1842). A payload from before the
+ *  field existed has no decision: it renders its status words with no green, which is honest (unknown never green). */
+export const displayOf = (row: Pick<HistoryListRow, 'display' | 'status'> & { status_reason?: string | null }): DisplayStatus =>
+  row.display ?? { green: false, tone: statusTone(row.status), label: STATUS_LABEL[row.status] ?? row.status, reason: row.status_reason ?? null, quality: null }
 
 export const RESULT_LABEL: Record<RunResult, string> = {
   succeeded: 'Succeeded', failed: 'Failed', blocked: 'Blocked (verdict BLOCK)', degraded: 'Degraded',

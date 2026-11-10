@@ -6,7 +6,7 @@ import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import DetailHeader from './DetailHeader'
 import {
-  RESULT_LABEL, STATUS_LABEL, ago, cadenceText, etTime, fixLabel, missedText, resultTone, schedulerLabel, statusTone,
+  RESULT_LABEL, ago, cadenceText, displayOf, etTime, fixLabel, missedText, resultTone, schedulerLabel,
 } from '../lib/jobRunHistory'
 import {
   JOBS_CATALOG_API, MIX_MEANING, RESULT_MEANING, STATUS_MEANING, catalogFilterHref, chipTipText, filterBarText, mixStatusParam,
@@ -65,7 +65,7 @@ export function JobCard({ row, computedAt, categories, onOpen, href, showCategor
         <span style={{ ...muted, ...wrap, display: 'block' }}>{row.title ? <span style={{ fontFamily: FONT.mono }}>{row.lane_id} · </span> : null}{schedulerLabel(row.scheduler)} · {cadenceText(row.cadence)}</span>
       </div>
       <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-        <TapTip align="right" tip={STATUS_MEANING[row.status] ?? 'Status not described.'}><span style={chip(statusTone(row.status))} data-testid="job-status-badge">{STATUS_LABEL[row.status] ?? row.status}</span></TapTip>
+        <TapTip align="right" tip={STATUS_MEANING[row.status] ?? 'Status not described.'}><span style={chip(displayOf(row).tone)} data-testid="job-status-badge" data-green={displayOf(row).green ? 'true' : 'false'}>{displayOf(row).label}</span></TapTip>
         <QualityChips q={row.quality} />
         <AuditBadge laneId={row.lane_id} />
       </span>
@@ -73,7 +73,7 @@ export function JobCard({ row, computedAt, categories, onOpen, href, showCategor
     <QualityReason q={row.quality} />
     <JobDescription row={row} categories={categories} />
     {showCategory && <span style={{ ...muted }}>Category: {categoryLabel(categoryKeyOf(row), categories)}</span>}
-    {row.status_reason && <div style={{ ...wrap, color: TOKENS.text[1], fontSize: TYPE.sm }}>{row.status_reason}</div>}
+    {displayOf(row).reason && <div style={{ ...wrap, color: TOKENS.text[1], fontSize: TYPE.sm }}>{displayOf(row).reason}</div>}
     <div className="job-history-facts">
       <Fact label="Last run" tip="When this job last started, and how that run ended.">{last ? <>{etTime(last.started_at || last.finished_at)} <TapTip tip={RESULT_MEANING[last.result] ?? 'How the last run ended.'}><span style={chip(resultTone(last.result))}>{RESULT_LABEL[last.result]}</span></TapTip></> : 'No run recorded'}</Fact>
       <Fact label="Last success" tip="The last run that finished OK, and how long ago.">{row.last_success_at ? `${etTime(row.last_success_at)} (${ago(row.last_success_at, computedAt)})` : 'None recorded'}</Fact>
