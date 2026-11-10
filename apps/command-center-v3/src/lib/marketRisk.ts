@@ -130,6 +130,34 @@ export interface ReentryDetail { exit_account_label?: string | null; held_elsewh
 
 export const ACTIONABLE: readonly Tier[] = ['ORANGE', 'RED'] as const
 
+/** min_score floors from config/market_risk_policy.yaml `tiers` (blue 25, yellow 40, orange 60, red 75).
+ *  Display only: the engine may keep a higher tier through the completed-session hold. The word beside the
+ *  score is the highest floor the score still meets, never a higher tier than the engine published. A portfolio
+ *  uplift keeps the engine tier. A missing score keeps it too. GREEN is not minted from a score. */
+export const SCORE_FLOOR: readonly { tier: Tier; min: number }[] = [
+  { tier: 'RED', min: 75 },
+  { tier: 'ORANGE', min: 60 },
+  { tier: 'YELLOW', min: 40 },
+  { tier: 'BLUE', min: 25 },
+]
+const TIER_RANK: Record<string, number> = { NONE: 0, GREEN: 1, BLUE: 2, YELLOW: 3, ORANGE: 4, RED: 5 }
+
+export function renderedTier(
+  engineTier: string | null | undefined,
+  score: number | null | undefined,
+  uplift?: { market_score?: number | null; vulnerability?: number | null; note?: string | null } | null,
+): string {
+  const engine = String(engineTier ?? '').toUpperCase()
+  if (uplift && (uplift.note || uplift.vulnerability != null || uplift.market_score != null)) return engine
+  if (typeof score !== 'number' || !Number.isFinite(score)) return engine
+  const cap = TIER_RANK[engine]
+  if (cap == null || engine === 'GREEN' || engine === 'NONE' || engine === 'NOT_EVALUATED') return engine
+  for (const floor of SCORE_FLOOR) {
+    if (score >= floor.min && TIER_RANK[floor.tier] <= cap) return floor.tier
+  }
+  return 'NONE'
+}
+
 /** Unwrap the API envelope ({ok, data}) or a bare projection; null when nothing usable arrived. */
 export function unwrapMarketRisk(resp: unknown): MarketRisk | null {
   const raw: any = resp && typeof resp === 'object' && 'data' in (resp as any) ? (resp as any).data : resp
@@ -182,7 +210,7 @@ export function bannerVisible(mr: MarketRisk | null): boolean {
 export function tierWord(mr: MarketRisk | null): string {
   if (!mr) return 'unavailable'
   if (mr.state === 'not_evaluated') return 'NOT EVALUATED'
-  return mr.tier
+  return renderedTier(mr.tier, mr.score, mr.uplift)
 }
 
 /** The marker every surface shows beside a shadow tier: the engine evaluated it, nobody was alerted. '' when live. */
@@ -213,10 +241,11 @@ export function factLine(mr: MarketRisk | null): { value: string; sub: string; t
     return { value: 'NOT EVALUATED', sub: f ? `options flow ${f.state.toLowerCase()}: ${f.symbol} put/call vol ${fmtNum(f.pc_vol_ratio)}` : 'engine not live yet', tone: f?.state === 'STRESS' ? 'warning' : 'neutral' }
   }
   const top = mr.contributors[0]
+  const shown = renderedTier(mr.tier, mr.score, mr.uplift)
   const score = mr.score != null ? ` ${Math.round(mr.score)}` : ''
   const sub = mr.state === 'stale' ? `stale — last evaluation ${shortTime(mr.as_of)}` : top ? `${top.name.toLowerCase()}${top.detail ? ` · ${top.detail}` : ''}` : (mr.confirming ? `${mr.confirming.n} of ${mr.confirming.of} categories` : '')
   const sh = shadowMarker(mr)
-  return { value: `${mr.tier}${score}`, sub: sh ? `${sh}${sub ? ` · ${sub}` : ''}` : sub, tone: mr.state === 'stale' ? 'neutral' : tierTone(mr.tier) }
+  return { value: `${shown}${score}`, sub: sh ? `${sh}${sub ? ` · ${sub}` : ''}` : sub, tone: mr.state === 'stale' ? 'neutral' : tierTone(shown) }
 }
 
 export function contributorsLine(mr: MarketRisk | null): string {

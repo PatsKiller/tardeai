@@ -11,7 +11,7 @@ import { Explain, GlossaryProvider } from './home/MarketRiskActions'
 import { RecoveryListView } from './recovery/RecoveryViews'
 import { useCaseGates } from './recovery/RecoveryCaseCard'
 import { byImpact, recoveryProjection } from '../lib/recoveryCases'
-import { plainEngineReason, shadowMarker, bannerVisible, budgetLabel, episodeLine, fmtPct, pointsSum, pointsToScore, shortTime, tierTone, unwrapMarketRisk, type MarketRisk } from '../lib/marketRisk'
+import { plainEngineReason, shadowMarker, bannerVisible, budgetLabel, episodeLine, fmtPct, pointsSum, pointsToScore, renderedTier, shortTime, tierTone, unwrapMarketRisk, type MarketRisk } from '../lib/marketRisk'
 import { isDeadCusipHolding } from '../lib/deadCusipHolding'
 
 const stateLabel: Record<string, string> = { active: 'Active', pending_activation: 'Pending activation', pending: 'Pending activation', filled: 'Filled', none: 'None' }
@@ -166,7 +166,8 @@ export function W7RiskStyles() { return <style>{`.w7-position-head{display:grid}
 export function W7RiskMarketRisk({ data, mr: resp, error }: { data: any, mr: any, error?: unknown }) {
   const mr: MarketRisk | null = unwrapMarketRisk(resp)
   const [ack, setAck] = useState<string | null>(null)
-  const tone = mr ? (mr.state === 'not_evaluated' ? 'neutral' : tierTone(mr.tier)) : 'neutral'
+  const shown = mr && mr.state !== 'not_evaluated' ? renderedTier(mr.tier, mr.score, mr.uplift) : mr?.tier
+  const tone = mr ? (mr.state === 'not_evaluated' ? 'neutral' : tierTone(shown)) : 'neutral'
   const tv = toneVars(tone)
   const chip = (state: string) => {
     const t = state === 'STRESS' ? 'danger' : state === 'WARN' ? 'warning' : state === 'CALM' ? 'success' : 'neutral'
@@ -187,7 +188,7 @@ export function W7RiskMarketRisk({ data, mr: resp, error }: { data: any, mr: any
       {!mr && !error && <p style={{ color: TOKENS.text[2] }}>Loading…</p>}
       {mr && <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12, borderRadius: RADIUS.lg, background: tv.bg, border: `1px solid ${tv.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span data-testid="risk-market-risk-tier" style={{ fontSize: TYPE.base, fontWeight: 800, letterSpacing: '0.04em', color: TOKENS.bg[0], background: tone === 'neutral' ? TOKENS.text[3] : tv.color, borderRadius: RADIUS.pill, padding: '4px 10px' }}>{mr.state === 'not_evaluated' ? 'NOT EVALUATED' : mr.tier}</span>
+          <span data-testid="risk-market-risk-tier" style={{ fontSize: TYPE.base, fontWeight: 800, letterSpacing: '0.04em', color: TOKENS.bg[0], background: tone === 'neutral' ? TOKENS.text[3] : tv.color, borderRadius: RADIUS.pill, padding: '4px 10px' }}>{mr.state === 'not_evaluated' ? 'NOT EVALUATED' : shown}</span>
           <ShadowTag mr={mr} testid="risk-market-risk-shadow" />
           <span style={{ ...mono, fontSize: TYPE.xl, fontWeight: 700, color: TOKENS.text[0] }}>{mr.score != null ? Math.round(mr.score) : '—'}<span style={{ fontSize: TYPE.md, color: TOKENS.text[2] }}>/100</span></span>
           {mr.confirming && <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>{mr.confirming.n} of {mr.confirming.of} categories confirm</span>}

@@ -6,7 +6,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars } from '../../lib/designTokens'
-import { SHADOW_MARKER, SUMMARY_PHONE_MAX_PX, markerRest, actionableModel, bannerVisible, contributorsLine, episodeLine, factLine, fmtPct, pointsSum, pointsToScore, shadowMarker, shortTime, tierTone, type MarketRisk } from '../../lib/marketRisk'
+import { SHADOW_MARKER, SUMMARY_PHONE_MAX_PX, markerRest, actionableModel, bannerVisible, contributorsLine, episodeLine, factLine, fmtPct, pointsSum, pointsToScore, renderedTier, shadowMarker, shortTime, tierTone, type MarketRisk } from '../../lib/marketRisk'
 import { ActionableBody, ActionableHead, TopReview } from './MarketRiskActionable'
 import { ActionsTop, Explain, GlossaryProvider } from './MarketRiskActions'
 
@@ -41,7 +41,8 @@ export function MarketRiskFact({ mr, loading }: { mr: MarketRisk | null; loading
 /** Compact block for the "Market in one look" card: tier pill + score + the five contributors. */
 export function MarketRiskCompact({ mr }: { mr: MarketRisk | null }) {
   if (!mr) return <div data-testid="home-market-risk-compact" style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>Market risk unavailable.</div>
-  const tv = toneVars(tierTone(mr.tier))
+  const shown = renderedTier(mr.tier, mr.score, mr.uplift)
+  const tv = toneVars(tierTone(shown))
   if (mr.state === 'not_evaluated') {
     const flow = mr.sources?.options_flow
     return (
@@ -54,7 +55,7 @@ export function MarketRiskCompact({ mr }: { mr: MarketRisk | null }) {
   return (
     <div data-testid="home-market-risk-compact" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: TYPE.sm, fontWeight: 800, letterSpacing: '0.04em', color: TOKENS.bg[0], background: tv.color, borderRadius: RADIUS.pill, padding: '3px 8px' }}>{mr.tier}</span>
+        <span style={{ fontSize: TYPE.sm, fontWeight: 800, letterSpacing: '0.04em', color: TOKENS.bg[0], background: tv.color, borderRadius: RADIUS.pill, padding: '3px 8px' }}>{shown}</span>
         <ShadowTag mr={mr} testid="home-market-risk-compact-shadow" />
         <span style={{ ...numStyle, fontSize: TYPE.md, fontWeight: 700, color: TOKENS.text[0] }}>{mr.score != null ? `${Math.round(mr.score)}/100` : '—'}</span>
         {mr.confirming && <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>· {mr.confirming.n} of {mr.confirming.of} categories confirm</span>}
@@ -74,13 +75,14 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
   let phone = false
   try { phone = window.matchMedia(`(max-width: ${SUMMARY_PHONE_MAX_PX}px)`).matches } catch { /* no matchMedia: desktop */ }
   const open = detailsOpen ?? !phone
-  const tv = toneVars(tierTone(mr.tier))
+  const shown = renderedTier(mr.tier, mr.score, mr.uplift)
+  const tv = toneVars(tierTone(shown))
   const sum = pointsSum(mr)
   return (
     <section data-testid="home-market-risk-banner" aria-label="Market risk banner" aria-live="polite"
       style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 14, borderRadius: RADIUS.lg, background: tv.bg, border: `1px solid ${tv.border}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span data-testid="home-market-risk-tier" style={{ fontSize: TYPE.base, fontWeight: 800, letterSpacing: '0.04em', color: TOKENS.bg[0], background: tv.color, borderRadius: RADIUS.pill, padding: '4px 10px' }}>{mr.tier}</span>
+        <span data-testid="home-market-risk-tier" style={{ fontSize: TYPE.base, fontWeight: 800, letterSpacing: '0.04em', color: TOKENS.bg[0], background: tv.color, borderRadius: RADIUS.pill, padding: '4px 10px' }}>{shown}</span>
         <ShadowTag mr={mr} testid="home-market-risk-banner-shadow" />
         <span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 700, color: TOKENS.text[0] }}>MARKET RISK {mr.score != null ? Math.round(mr.score) : '—'}<span style={{ fontSize: TYPE.md, color: TOKENS.text[2] }}>/100</span></span>
       </div>

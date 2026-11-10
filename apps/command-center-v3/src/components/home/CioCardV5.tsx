@@ -7,6 +7,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react'
 import '../../styles/cioCard.css'
 import { toneVars } from '../../lib/designTokens'
 import { actionVerb, accountText, calDay, daysUntil, etDay, etTime, fv, meterParts, TIER_CUTOFFS, usd, usdShort, tierToneOf, type CioCard } from '../../lib/cioCard'
+import { renderedTier } from '../../lib/marketRisk'
 
 /** "DEFENSIVE — HOLD CASH" → "Hold cash." (the part after the dash, sentence case). */
 function postureLine(p: string | undefined): string | null {
@@ -27,8 +28,9 @@ export default function CioCardV5({ card, adviceOk, adviceReason, nowMs, actions
   card: CioCard; adviceOk: boolean; adviceReason?: string | null; nowMs: number; actions?: ReactNode
 }) {
   const [why, setWhy] = useState(false)
-  const tier = fv(card.tier)
   const score = fv(card.score)
+  // The engine tier can stay RED through the session hold. The label matches the score floor.
+  const tier = renderedTier(fv(card.tier), score ?? null, null)
   const gate = fv(card.buys_gate)
   const until = fv(card.buys_until)
   const untilShort = fv(card.buys_until_short)

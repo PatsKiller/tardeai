@@ -40,15 +40,25 @@ import { MobileDetailSheet, useMobilePageDetail } from '../components/MobileDeta
 import { readableTime, readableTimesInText } from '../lib/readableTime'
 import { MarketRiskBanner, MarketRiskCompact, MarketRiskFact } from '../components/home/MarketRiskBanner'
 import { MarketRiskSummary } from '../components/home/MarketRiskSummary'
-import { unwrapMarketRisk } from '../lib/marketRisk'
+import { renderedTier, unwrapMarketRisk } from '../lib/marketRisk'
 import { vixFreshness } from '../lib/vixFreshness'
 import { deriveTodayPnlState } from '../lib/todayPnlState'
 import { RecoveryHomeCard } from '../components/recovery/RecoveryViews'
 import MarketRiskPanelV5 from '../components/home/MarketRiskPanelV5'
-import { CIO_CARD_API, panelVisible, type CioCardWire } from '../lib/cioCard'
+import { CIO_CARD_API, panelVisible, type CioCardWire, type CioPanel } from '../lib/cioCard'
 
 const unwrap = (d: any) => (d?.data && typeof d.data === 'object' && !Array.isArray(d.data) ? d.data : d)
 const signTone = (v: number | null | undefined): string => (v == null ? TOKENS.text[2] : v < 0 ? TOKENS.danger : v > 0 ? TOKENS.success : TOKENS.text[2])
+
+/** The panel still opens from the engine tier. The pill word follows the score floor, same as the CIO card. */
+function panelForLabel(panel: CioPanel): CioPanel {
+  const fact = panel.header?.tier
+  const engine = fact?.value
+  const score = panel.header?.score?.value
+  const shown = renderedTier(engine, typeof score === 'number' ? score : null, null)
+  if (!fact || !engine || shown === String(engine).toUpperCase()) return panel
+  return { ...panel, header: { ...panel.header, tier: { ...fact, value: shown } } }
+}
 
 function useNow(ms: number): number {
   const [now, setNow] = useState(() => Date.now())
@@ -249,7 +259,7 @@ export default function HomeDoNow() {
       <NeedsYouCard surface="home" />
       {/* LQ-1352 design v5: at YELLOW/ORANGE/RED the Market Risk panel takes the banner/summary slot; otherwise (or with
           no cio-card projection) the banner and summary draw exactly as before. */}
-      {panelVisible(cio5) ? <MarketRiskPanelV5 panel={cio5.panel} notes={cio5.notes} mr={mr} /> : (<>
+      {panelVisible(cio5) ? <MarketRiskPanelV5 panel={panelForLabel(cio5.panel)} notes={cio5.notes} mr={mr} /> : (<>
         {/* Design home/v002 §2: the market-risk banner, only while ORANGE or RED is evaluated; never sticky. */}
         <MarketRiskBanner mr={mr} />
         {/* Design home/v004: at YELLOW the same slot holds the calm, collapsible summary card (no Acknowledge). */}
