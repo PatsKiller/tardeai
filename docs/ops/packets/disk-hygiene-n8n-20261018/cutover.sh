@@ -5,8 +5,9 @@
 #
 # Lanes (n8n-native, fired by the already-active tradeai-dispatcher; no cron line or unit ever existed):
 #   disk-usage-monitor  */15        scripts/disk_usage_monitor.py --apply  (bands; one host comms intent per band change)
-#   disk-hygiene        hourly :17  scripts/disk_hygiene.py --standing --apply --scheduled  (2026-10-31 operator activation:
-#                                   daily full run 04 ET + pressure >80% -> 75%; reviewed standing rules S/T/W/C/R)
+#   disk-hygiene        nightly 03:45 scripts/disk_hygiene.py --standing --apply --scheduled (2026-10-31 operator activation:
+#                                   daily full run + pressure >80% -> 75%; reviewed standing rules S/T/W/C/R; hourly :17 until
+#                                   2026-11-10, moved to 03:45 ET by the operator's "Yes to all the 03:45 ET disk-cleaning time")
 #   tmp-hygiene         daily 05:00 scripts/tmp_hygiene.py --plan          (/tmp manifest with inodes: DELETES NOTHING)
 # 2026-10-19 (operator, after /tmp, a tmpfs, hit 97% INODES with 20G bytes free and tools failed with ENOSPC): the
 # monitor also bands inode use per mount (/ and /tmp), and tmp-hygiene plans the /tmp reclaim (ended Claude session
@@ -97,7 +98,8 @@ reg = {r["lane_id"]: r for r in j("config/lane_registry.json")["lanes"]}
 allow = {e["lane_id"]: e for e in j("config/n8n_run_allowlist.json")["lanes"]}
 hc = {c["id"]: c for c in j("config/n8n_health_contracts.json")["contracts"]}
 routes = {(r["domain"], r["kind"]) for r in j("config/host_comms_intent_routes.json")["routes"]}
-want = {"disk-usage-monitor": (["*/15 * * * *"], ["--apply"]), "disk-hygiene": (["17 * * * *"], ["--standing", "--apply", "--scheduled"]),
+want = {"disk-usage-monitor": (["*/15 * * * *"], ["--apply"]), "disk-hygiene": (["45 3 * * *"], ["--standing", "--apply", "--scheduled"]),
+        # 2026-11-10 (operator 15:22 ET, LQ-1838): disk-hygiene moved 17 * * * * -> 45 3 * * *, nightly 03:45 ET.
         "tmp-hygiene": (["0 5 * * *"], ["--plan"])}
 checks = {}
 for lane, (cron, live_arg) in want.items():

@@ -599,8 +599,8 @@
       "target_pct": 75,
       "max_passes": 5,
       "alert_pct": 85,
-      "daily_hour_et": 4,
-      "_schedule": "2026-10-31: one n8n lane `disk-hygiene` fires hourly with --standing --apply --scheduled. The day's full run happens at the first fire at/after daily_hour_et (ET) and is recorded in <state>/data/runtime/disk_hygiene/disk_hygiene_daily_latest.json whatever its outcome; every other fire plans nothing unless used% > trigger_pct. Both re-run to target_pct. Every run's report reaches the operator through disk_usage_monitor (disk_hygiene_digest; disk_hygiene_alert on refusal or >85% after)."
+      "daily_hour_et": 3,
+      "_schedule": "2026-10-31: one n8n lane `disk-hygiene` fires with --standing --apply --scheduled. The day's full run happens at the first fire at/after daily_hour_et (ET) and is recorded in <state>/data/runtime/disk_hygiene/disk_hygiene_daily_latest.json whatever its outcome; any other fire plans nothing unless used% > trigger_pct. Both re-run to target_pct. Every run's report reaches the operator through disk_usage_monitor (disk_hygiene_digest; disk_hygiene_alert on refusal or >85% after). 2026-11-10 (operator 15:22 ET, 'Yes to all the 03:45 ET disk-cleaning time', LQ-20261107-1838): the lane's single fire moved from hourly :17 to 03:45 ET (45 3 * * *), so daily_hour_et moved 4 -> 3. With one fire a day, _daily_due returns False whenever the ET hour is below daily_hour_et, so a 4 would have made the 03:45 fire a pressure-only fire and the day's full run would never happen. 3 keeps the operator's approved daily full run at the new time."
     },
     "coordination_root": "~/trade-ai-releases/persistent-state/data/coordination",
     "github_repo": "PatsKiller/tardeai",

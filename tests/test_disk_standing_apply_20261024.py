@@ -453,7 +453,7 @@ def test_committed_configuration_is_the_operator_activation_and_the_old_packet_c
         doc = json.loads((ROOT / "config" / filename).read_text())
         collection = doc["contracts"] if key == "id" else doc["lanes"]
         row = next(r for r in collection if r.get(key) == "disk-hygiene")
-        if filename == "lane_registry.json": assert row["dispatch"]["cron"] == ["17 * * * *"] and row["dispatch"]["retry_policy"] == "none"
+        if filename == "lane_registry.json": assert row["dispatch"]["cron"] == ["45 3 * * *"] and row["dispatch"]["retry_policy"] == "none"
         if filename == "n8n_run_allowlist.json": assert row["live_arg"] == ["--standing", "--apply", "--scheduled"]
         if filename == "n8n_health_contracts.json": assert row["status"] == "REVIEWED" and row["previous_plan_review"]["purpose"]["text"].startswith("Weekly")
         assert "disk-hygiene-standing-apply-20261024" not in doc.get("pending_changes", {})

@@ -338,7 +338,7 @@ def test_committed_config_is_operator_approved_and_enabled_without_rule_a():
     assert set(sa["rules"]) == {"S", "T", "W", "C", "R"} and sa["enabled"] is True  # A: backup_enforcer owns db_backups
     assert sa["approval"]["status"] == "APPROVED" and sa["approved_by"] == sa["approval"]["approved_by"]
     assert "goes live complete" in sa["approval"]["source"]  # the operator's words, verbatim (§20)
-    assert sa["pressure"] == {**P_CFG, "daily_hour_et": 4, "_why": sa["pressure"]["_why"], "_schedule": sa["pressure"]["_schedule"]}
+    assert sa["pressure"] == {**P_CFG, "daily_hour_et": 3, "_why": sa["pressure"]["_why"], "_schedule": sa["pressure"]["_schedule"]}
     assert sa["abandoned_worktree"]["archive_ns"] == NS
 
 

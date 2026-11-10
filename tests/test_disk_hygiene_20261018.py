@@ -876,7 +876,7 @@ def test_the_committed_rules_hold_the_operator_numbers_and_the_hard_list():
 
 def test_registry_rows_are_dispatch_live_n8n_lanes_at_canary():
     rows = {r["lane_id"]: r for r in _load("lane_registry.json")["lanes"]}
-    want = {"disk-usage-monitor": ("*/15 * * * *", "monitor", 0.25), "disk-hygiene": ("17 * * * *", "hygiene", 1.0)}  # 2026-10-31 standing activation
+    want = {"disk-usage-monitor": ("*/15 * * * *", "monitor", 0.25), "disk-hygiene": ("45 3 * * *", "hygiene", 24.0)}  # 2026-10-31 standing activation; 2026-11-10 nightly 03:45 (LQ-1838)
     for lane, (cron, klass, hours) in want.items():
         row = rows[lane]
         assert (row["scheduler"]["kind"], row["scheduler"]["expression"], row["scheduler"]["stage"]) == (

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_hygiene_offhours_1838_20261110",
+  "files": [
+    "tests/test_disk_hygiene_offhours_1838_20261110.py"
+  ],
+  "anchor": "LQ-20261107-1838",
+  "comment": [
+    "LQ-1838: disk-hygiene fires nightly at 03:45 ET inside a 50-minute wall (allowlist timeout_s 3000, single attempt). The gate pins the registry cadence/cron/retry_policy, the executor argv, the retry policy's one attempt, daily_hour_et 3 with _daily_due at 03:45, and the contract prose."
+  ]
+}

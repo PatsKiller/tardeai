@@ -30155,9 +30155,9 @@
       "target_reason": "stage:canary",
       "stage": "canary",
       "purpose": {
-        "text": "Hourly (:17 ET) n8n fire with --standing --apply --scheduled: the day's full run at/after 04:00 ET and a pressure run whenever used% > 80, both re-running to <= 75% (max 5 passes). Collects fresh evidence, plans and applies only the reviewed rules S/T/W/C/R (worktrees archived before removal), <=40GiB and <=150 items per pass, <=2h exact rules/manifest SHA binding. Every run is digested to the operator.",
+        "text": "Nightly 03:45 ET (45 3 * * *, operator 2026-11-10) n8n fire with --standing --apply --scheduled: the day's full run at that fire (standing_apply.pressure.daily_hour_et 3) and a pressure run whenever used% > 80, both re-running to <= 75% (max 5 passes). Hard 50-min wall (allowlist timeout_s 3000, wrapper `timeout -k 30 3000`; registry retry_policy none, single attempt), so the fire ends by 04:35 ET worst case. Collects fresh evidence, plans and applies only the reviewed rules S/T/W/C/R (worktrees archived before removal), <=40GiB and <=150 items per pass, <=2h exact rules/manifest SHA binding. Every run is digested to the operator.",
         "business_function": "platform-ops",
-        "source": "scripts/disk_hygiene.py; config/disk_hygiene_rules.json; operator 2026-10-18 and 2026-10-31"
+        "source": "scripts/disk_hygiene.py; config/disk_hygiene_rules.json; operator 2026-10-18, 2026-10-31 and 2026-11-10"
       },
       "owner": "platform",
       "connects_to": [
@@ -30231,7 +30231,7 @@
         },
         {
           "check": "output_produced",
-          "text": "every live fire's LaneRunReceipt@v2 has produced_count >= 1 (a standing result report) or empty_reason nothing_due (an hourly fire at or below pressure.trigger_pct outside the day's full run); any other empty output is RUN_FAILED (expected_output)"
+          "text": "every live fire's LaneRunReceipt@v2 has produced_count >= 1 (a standing result report) or empty_reason nothing_due (a fire at or below pressure.trigger_pct after the day's full run is already recorded); any other empty output is RUN_FAILED (expected_output)"
         }
       ],
       "degraded": [
@@ -30258,13 +30258,13 @@
         "freshness_degraded_after_h": 48.0,
         "freshness_failed_after_h": 72.0,
         "freshness_rule": "the full run is daily; below-threshold fires also write the receipt, so a receipt older than 2 days is degraded, 3 days failed",
-        "timeout_s": 3600,
+        "timeout_s": 3000,
         "class": "hygiene",
-        "computed_on": "2026-10-31",
+        "computed_on": "2026-11-10",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
-        "source": "PROPOSED 2x/3x of max48h native ET cadence; duration1440s/timeout1800s retained provisionally. No empirical acceptance asserted.",
+        "source": "PROPOSED 2x/3x of the 24 h nightly cadence (2026-11-10, LQ-1838); duration_degraded_above_s = 80% of the 3000 s hard wall. No empirical acceptance asserted.",
         "runs_considered": 0,
-        "duration_degraded_above_s": 1440.0
+        "duration_degraded_above_s": 2400.0
       },
       "alerting": {
         "lane_severity": "Medium",
