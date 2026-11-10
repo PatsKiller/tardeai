@@ -265,9 +265,13 @@ def main(argv=None) -> int:
         RECEIPT.parent.mkdir(parents=True, exist_ok=True)
         RECEIPT.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     # The lane's job is the check. A BLOCK is a data-integrity FINDING the check exists to produce, not a lane
-    # failure: the receipt is ok (ok_at advances) and carries the verdict; exit 1 keeps the systemd contract
-    # (SuccessExitStatus=0 1) unless --exit-zero-on-block. Before 2026-10-15 a BLOCK wrote status "failed", so
-    # the lane read as broken on the scheduler board whenever it found what it is for.
+    # failure: the RUN succeeded (ok_at advances) and the receipt carries the verdict; exit 1 keeps the systemd
+    # contract (SuccessExitStatus=0 1) unless --exit-zero-on-block. Before 2026-10-15 a BLOCK wrote status "failed",
+    # so the lane read as broken on the scheduler board whenever it found what it is for.
+    # 2026-11-10 (LQ-1803): "the run succeeded" is NOT "status: ok". The shared reconcile in
+    # scripts/lib/lane_last_receipt.build_receipt writes status/outcome "blocked" when this verdict is BLOCK
+    # ("degraded" for WARN), so the receipt no longer says status ok beside its own verdict. Nothing to do here:
+    # the verdict is the claim, and the writer is the one place that decides how a claim becomes a status.
     verdict = "BLOCK" if result["block"] else ("WARN" if result["warn"] else "PASS")
     code = 1 if result["block"] and not args.exit_zero_on_block else 0
     skipped: dict = {}

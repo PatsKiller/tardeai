@@ -190,7 +190,8 @@ def test_live_verdicts_file_shape_if_present():
 def test_status_mix_matches_the_jobs_catalog_rule(tmp_path):
     from scripts.lib import jobs_history as JH
 
-    assert N.MIX_KEYS == ("failed", "missed", "late", "running", "ok", "ok_unverified", "not_measured", "inactive")
+    assert N.MIX_KEYS == ("failed", "blocked", "degraded", "missed", "late", "running", "ok", "ok_unverified",
+                          "not_measured", "inactive")
     for status, key in JH._MIX.items():
         assert N.STATUS_MIX[status] == key, status
     snap = {**SNAP, "rows": [dict(ROWS[0], status="failed"), dict(ROWS[1], status="paused"), ROWS[2],
@@ -198,8 +199,8 @@ def test_status_mix_matches_the_jobs_catalog_rule(tmp_path):
     out = N.build(snap, RELAY, {"paused": []}, {}, {})
     research = next(c for c in out["categories"] if c["key"] == "research")
     assert research["jobs"] == 4 and research["inactive"] == 2
-    assert research["status_mix"] == {"failed": 1, "missed": 0, "late": 0, "running": 0, "ok": 1,
-                                      "ok_unverified": 0, "not_measured": 0, "inactive": 2}
+    assert research["status_mix"] == {"failed": 1, "blocked": 0, "degraded": 0, "missed": 0, "late": 0, "running": 0,
+                                      "ok": 1, "ok_unverified": 0, "not_measured": 0, "inactive": 2}
     mystery = next(c for c in out["categories"] if c["key"] == "mystery")
     assert mystery["status_mix"]["not_measured"] == 1  # an unknown status is never counted as ok
 

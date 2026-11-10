@@ -17,7 +17,7 @@ export interface DescribedListWire extends Omit<HistoryListWire, 'rows'> {
   rows: DescribedRow[]; categories?: Category[]; status?: string | null; category?: string | null
 }
 
-export type StatusMix = Record<'failed' | 'missed' | 'late' | 'running' | 'ok' | 'ok_unverified' | 'not_measured' | 'inactive', number>
+export type StatusMix = Record<'failed' | 'blocked' | 'degraded' | 'missed' | 'late' | 'running' | 'ok' | 'ok_unverified' | 'not_measured' | 'inactive', number>
 export interface CatalogCategory extends Category {
   jobs: number; described: number; with_missed: number; fixed_14d: number; status_mix: StatusMix
 }
@@ -46,7 +46,8 @@ export function descriptionLines(r: Pick<DescribedRow, 'does' | 'breaks'>): { do
 
 // ── status mix ("3 failed · 40 ok · 12 not measured") ───────────────────────────────────────────────────────────
 const MIX_ORDER: Array<[keyof StatusMix, string]> = [
-  ['failed', 'failed'], ['missed', 'missed a run'], ['late', 'late'], ['running', 'running'], ['ok', 'ok'],
+  ['failed', 'failed'], ['blocked', 'blocked'], ['degraded', 'degraded'], ['missed', 'missed a run'], ['late', 'late'],
+  ['running', 'running'], ['ok', 'ok'],
   ['ok_unverified', 'ok, unproven'], ['not_measured', 'not measured'], ['inactive', 'paused or retired'],
 ]
 export function mixParts(mix: Partial<StatusMix> | null | undefined): Array<{ key: keyof StatusMix; count: number; text: string }> {
@@ -57,7 +58,8 @@ export function mixText(mix: Partial<StatusMix> | null | undefined): string {
   return parts.length ? parts.map(p => p.text).join(' · ') : 'No jobs'
 }
 export const mixTone = (k: keyof StatusMix): 'danger' | 'warning' | 'success' | 'info' | 'neutral' =>
-  k === 'failed' ? 'danger' : k === 'missed' || k === 'late' ? 'warning' : k === 'ok' ? 'success' : k === 'running' || k === 'ok_unverified' ? 'info' : 'neutral'
+  k === 'failed' || k === 'blocked' ? 'danger' : k === 'missed' || k === 'late' || k === 'degraded' ? 'warning'
+    : k === 'ok' ? 'success' : k === 'running' || k === 'ok_unverified' ? 'info' : 'neutral'
 
 /** Catalog search: a category matches on its label or blurb (job matches come from the jobs-history search). */
 export function matchesCategory(c: Category, q: string): boolean {
@@ -66,8 +68,8 @@ export function matchesCategory(c: Category, q: string): boolean {
 }
 
 // ── jobs-history query with the new filters ─────────────────────────────────────────────────────────────────────
-export const HISTORY_STATUS_KEYS = ['failed', 'missed', 'late', 'ok', 'ok_unverified', 'fixed', 'running', 'not_measured',
-  'paused', 'retired', 'never_scheduled'] as const
+export const HISTORY_STATUS_KEYS = ['failed', 'blocked', 'degraded', 'missed', 'late', 'ok', 'ok_unverified', 'fixed',
+  'running', 'not_measured', 'paused', 'retired', 'never_scheduled'] as const
 export type HistoryStatusKey = typeof HISTORY_STATUS_KEYS[number]
 export const isHistoryStatus = (s: string | null | undefined): s is HistoryStatusKey => !!s && (HISTORY_STATUS_KEYS as readonly string[]).includes(s)
 

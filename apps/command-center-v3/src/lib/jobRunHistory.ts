@@ -2,9 +2,12 @@
 // be fixed"). Wire types for GET /api/v2/jobs-history (JobRunHistory@v1) and the pure helpers the view uses.
 // Every time on the wire is the writer's own time; `computed_at` is when the page projection was computed.
 
-export type HistoryStatus = 'ok' | 'ok_unverified' | 'failed' | 'missed' | 'late' | 'running' | 'not_measured'
-  | 'paused' | 'retired' | 'never_scheduled'
-export type RunResult = 'succeeded' | 'failed' | 'timed_out' | 'refused' | 'skipped_lock' | 'running' | 'requested' | 'unknown'
+// `blocked` (the run finished and its verdict is BLOCK — the subject is not fit for use) and `degraded` (it finished
+// and reports a degraded subject) are LQ-20261107-1803: a verdict/status/display that disagree are the silent failure.
+export type HistoryStatus = 'ok' | 'ok_unverified' | 'failed' | 'blocked' | 'degraded' | 'missed' | 'late' | 'running'
+  | 'not_measured' | 'paused' | 'retired' | 'never_scheduled'
+export type RunResult = 'succeeded' | 'failed' | 'blocked' | 'degraded' | 'timed_out' | 'refused' | 'skipped_lock'
+  | 'running' | 'requested' | 'unknown'
 export type SlotStatus = 'ran' | 'ran_failed' | 'ran_dry_run' | 'missed' | 'pending' | 'not_measured'
 export type Tone = 'success' | 'danger' | 'warning' | 'info' | 'neutral'
 
@@ -51,20 +54,23 @@ export type HistoryFilter = typeof HISTORY_FILTERS[number][0]
 
 export const STATUS_LABEL: Record<HistoryStatus, string> = {
   ok: 'Running on schedule', ok_unverified: 'Output on time, success unproven', failed: 'Last run failed',
+  blocked: 'Last run blocked (verdict BLOCK)', degraded: 'Last run reports degraded',
   missed: 'Missed a run', late: 'Late', running: 'Running now', not_measured: 'Not measured',
   paused: 'Paused', retired: 'Retired', never_scheduled: 'Never scheduled',
 }
 export const statusTone = (s: HistoryStatus): Tone =>
-  s === 'ok' ? 'success' : s === 'failed' ? 'danger' : s === 'missed' || s === 'late' || s === 'not_measured' ? 'warning'
-    : s === 'running' || s === 'ok_unverified' ? 'info' : 'neutral'
+  s === 'ok' ? 'success' : s === 'failed' || s === 'blocked' ? 'danger'
+    : s === 'missed' || s === 'late' || s === 'not_measured' || s === 'degraded' ? 'warning'
+      : s === 'running' || s === 'ok_unverified' ? 'info' : 'neutral'
 
 export const RESULT_LABEL: Record<RunResult, string> = {
-  succeeded: 'Succeeded', failed: 'Failed', timed_out: 'Timed out', refused: 'Refused', skipped_lock: 'Skipped (still running)',
+  succeeded: 'Succeeded', failed: 'Failed', blocked: 'Blocked (verdict BLOCK)', degraded: 'Degraded',
+  timed_out: 'Timed out', refused: 'Refused', skipped_lock: 'Skipped (still running)',
   running: 'Running', requested: 'Queued', unknown: 'Result not stated',
 }
 export const resultTone = (r: RunResult): Tone =>
-  r === 'succeeded' ? 'success' : r === 'failed' || r === 'timed_out' || r === 'refused' ? 'danger'
-    : r === 'skipped_lock' || r === 'unknown' ? 'warning' : 'info'
+  r === 'succeeded' ? 'success' : r === 'failed' || r === 'blocked' || r === 'timed_out' || r === 'refused' ? 'danger'
+    : r === 'skipped_lock' || r === 'unknown' || r === 'degraded' ? 'warning' : 'info'
 
 export const SLOT_LABEL: Record<SlotStatus, string> = {
   ran: 'Ran', ran_failed: 'Ran, failed', ran_dry_run: 'Dry run only', missed: 'No run', pending: 'Due now', not_measured: 'Not measured',

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "STATUS_CONSISTENCY_LQ1803_20261110",
+  "files": [
+    "tests/test_status_consistency_lq1803_20261110.py"
+  ],
+  "anchor": "STATUS_CONSISTENCY_LQ1803_20261110",
+  "comment": [
+    "ANCHOR: STATUS_CONSISTENCY_LQ1803_20261110 — LQ-20261107-1803: one document may not say two things about one run's health. BLOCK/DEGRADED/FAIL and a non-zero exit are downgraded through scripts/lib/status_consistency.py before any receipt is written, the Jobs projection and the quality column read the same decision, and scripts/sweep_status_contradictions.py lists any file that still disagrees."
+  ]
+}

@@ -11,6 +11,10 @@ a dispatcher or the registry reads instead, as a ``json_key`` signal on ``ok_at`
 * ``ok_at`` advances only on a successful run; a failed run still writes the file
   (``status: failed``) but carries the previous ``ok_at`` forward, so a failing lane goes stale
   instead of green;
+* every document passes through :mod:`scripts.lib.status_consistency` before it is written (2026-11-10,
+  LQ-1803): a ``verdict``/``health`` the run itself produced, or a non-zero exit code, may never sit next to
+  ``status: ok``. The worse claim wins (``degraded`` / ``blocked`` / ``failed``), downgrade only, and the
+  disagreement is recorded under ``status_consistency`` — see that module for the rank ladder and the exclusions;
 * resolved against the persistent state root (explicit root -> ``TRADEAI_STATE_ROOT`` ->
   ``persistent_state_root.resolve_durable_dir("data/runtime")``), never the release dir or the
   checkout the code happens to run from (§9.4);
@@ -58,9 +62,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+try:
+    from scripts.lib import status_consistency
+except ImportError:  # scripts/ on sys.path, repo root not
+    from lib import status_consistency  # type: ignore[no-redef]
+
 #: 2026-11-07 (LQ-192): what the run's RESULT was. ``empty`` = the source answered and had nothing; ``error`` = the
 #: source call or the work failed, so the zero is unknown, not "nothing to do". ``ok`` = produced work (or no count).
-OUTCOMES = ("ok", "empty", "error")
+#: 2026-11-10 (LQ-1803): ``blocked`` = the run did its work and the thing it guards is not fit for use (a BLOCK
+#: verdict); ``degraded`` = it finished but the subject it reports on is not healthy (a DEGRADED/DRIFT/STALE verdict).
+#: Both are set by the status reconcile below and never by hand on a healthy run.
+OUTCOMES = ("ok", "empty", "error", "blocked", "degraded")
 SCHEMA = "LaneRunReceipt@v1"
 SCHEMA_V2 = "LaneRunReceipt@v2"
 #: Attempt identity the n8n executor sets on the lane's env (scripts/n8n_run_executor.py RUN_ID_ENV ...).
@@ -230,7 +242,7 @@ def build_receipt(
         "exit": int(exit_code) if exit_code is not None else None,
         "started_at": _iso(started_at),
         "finished_at": finished,
-        "ok_at": finished if ok else previous_ok_at,
+        "ok_at": previous_ok_at,  # advanced below, once the status reconcile has decided the run's result
         "pid": os.getpid(),
         "summary": _scrub_summary(summary),
     }
@@ -247,9 +259,20 @@ def build_receipt(
     reason = outcome_reason or (empty_reason if derived == "empty" else None) or (output or {}).get("empty_reason") \
         if derived != "error" else (outcome_reason or (_scrub_error(str(error)) if error else None))
     doc["outcome_reason"] = str(reason)[:120] if reason else None
+    # LQ-20261107-1803 (2026-11-10): ONE place decides what the document may claim. A verdict the run itself
+    # produced (BLOCK / DEGRADED / FAIL, under ``verdict`` or ``summary.verdict``) or a non-zero exit code may not
+    # sit next to ``status: ok``; the worse claim wins, downgrade only, and the disagreement is recorded in the
+    # additive ``status_consistency`` block. This is why source-litmus-vs-yahoo no longer writes
+    # ``status: ok, outcome: ok`` while its summary says BLOCK (the Jobs page renders status, not the verdict).
+    doc, _ = status_consistency.reconcile(doc, lane_id=lane_id)
+    # ok_at is the RUN's own success marker (what the registry's json_key signal and the outage watchdog read), so
+    # it follows the run, not its subject: a BLOCKed or degraded finding still advances it — the lane ran and wrote
+    # its report — while a run the reconcile calls ``failed`` does not (the pre-2026-10-15 behaviour).
+    run_ok = ok and doc["status"] != "failed"
+    doc["ok_at"] = finished if run_ok else previous_ok_at
     if previous_consecutive_failures is not None:
         # additive (v1 readers ignore unknown keys): 0 after a success, previous + 1 after a failure
-        doc["consecutive_failures"] = 0 if ok else int(previous_consecutive_failures) + 1
+        doc["consecutive_failures"] = 0 if run_ok else int(previous_consecutive_failures) + 1
     if error:
         doc["error"] = _scrub_error(str(error))
     klass = _validated_error_class(error_class)

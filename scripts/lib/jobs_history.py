@@ -37,6 +37,7 @@ import time
 from zoneinfo import ZoneInfo
 
 from scripts.lib import cron_outage_watchdog as W
+from scripts.lib import status_consistency
 from scripts.lib.cron_schedule import fires_between
 from scripts.lib.jobs_health import plain_reason
 from scripts.lib.llm_priority_guard import AUTO, guard_defers, load_guard_window, resolve_guard_window
@@ -64,6 +65,10 @@ _LEDGER_RESULT = {"RUN_DONE": "succeeded", "RUN_FAILED": "failed", "RUN_TIMEOUT"
                   "RUN_REFUSED": "refused", "RUN_SKIPPED_LOCK": "skipped_lock", "REQUESTED": "requested",
                   "RUNNING": "running"}
 _FAILED = {"failed", "timed_out", "refused"}
+#: LQ-20261107-1803: a ``blocked`` receipt (the run did its work and its subject is not fit for use) is red on
+#: the page, and a ``degraded`` one (the subject is not healthy but the run is) is its own row status.
+_BLOCKED = {"blocked", "block"}
+_DEGRADED = {"degraded", "warn", "warning", "partial"}
 LOG = logging.getLogger(__name__)
 
 # ── plain-English job descriptions + categories (operator 2026-11-06: "at least a line or two of normalization of what
@@ -281,21 +286,43 @@ def names_a_run(run: dict | None) -> bool:
 
 
 def receipt_run(receipt: dict, key: str | None) -> dict | None:
-    """The single last run a lane's own receipt describes (it keeps no history)."""
+    """The single last run a lane's own receipt describes (it keeps no history).
+
+    LQ-20261107-1803 (2026-11-10): the receipt's OWN status and exit code decide its result, and they are read
+    BEFORE ``receipt_success``. That order was the silent failure: ``ok_at`` is carried forward on a run that did
+    not succeed (``lane_last_receipt`` keeps the previous success time), so ``receipt_success`` answered "yes, a
+    success at <the previous run>" and a failed receipt rendered as ``succeeded`` — the run's result was set
+    independently of its own status and exit code. A ``blocked`` receipt (the run did its work and the thing it
+    guards is not fit for use — source-litmus's BLOCK) is not a success and not a run failure: it carries the
+    verdict as its reason so the page shows red with a cause.
+    """
     if not receipt or receipt.get("dry_run") is True or receipt.get("mode") in {"dry_run", "dry-run", "shadow", "preflight"}:
         return None
+    # A receipt written before LQ-20261107-1803 may still contradict itself (status ok + verdict BLOCK). The
+    # projection applies the same single decision as the writer, so the page tells the truth about the file that
+    # is on disk now — not only about the next one written. Silent: the downgrade was logged when it was written.
+    receipt, _ = status_consistency.reconcile(receipt, lane_id=key, log=False)
     started = _at(receipt.get("started_at"))
     finished = next((t for t in (_at(receipt.get(k)) for k in ("finished_at", "ended_at", "completed_at")) if t), None)
     from scripts.cron_outage_watchdog import receipt_success
     success = receipt_success(receipt, key)
     code = receipt.get("exit_code", receipt.get("exit"))
     status = str(receipt.get("status") or receipt.get("state") or "").lower()
-    if success:
-        result = "succeeded"
+    if status in _BLOCKED:
+        result = "blocked"
+    elif status in _DEGRADED:
+        result = "degraded"
     elif (type(code) is int and code != 0) or receipt.get("ok") is False or status in {"failed", "error", "run_failed"}:
         result = "failed"
+    elif success:
+        result = "succeeded"
     else:
         result = "unknown"
+    reason = None
+    if result == "failed":
+        reason = _text(receipt.get("error") or receipt.get("reason"))
+    elif result in {"blocked", "degraded"}:
+        reason = _verdict_reason(receipt)
     when = started or finished or (success[0] if success else None) or _at(receipt.get("as_of"))
     if when is None:
         return None
@@ -303,8 +330,18 @@ def receipt_run(receipt: dict, key: str | None) -> dict | None:
             "requested_at": None, "started_at": _iso(started), "finished_at": _iso(finished or (success[0] if success else None)),
             "exit_code": code if type(code) is int else None, "duration_s": None, "attempt": None, "retry_of": None,
             "requested_by": None, "inline_attempts": None,
-            "reason": _text(receipt.get("error") or receipt.get("reason")) if result == "failed" else None,
-            "_start": when, "_success_at": success[0] if success else None}
+            "reason": reason, "_start": when, "_success_at": success[0] if success else None}
+
+
+def _verdict_reason(receipt: dict) -> str:
+    """``verdict BLOCK (1 blocked source)`` — the run's own word for why its subject is not healthy."""
+    summary = receipt.get("summary") if isinstance(receipt.get("summary"), dict) else {}
+    verdict = summary.get("verdict") or receipt.get("verdict")
+    text = f"verdict {verdict}" if verdict else "subject not healthy"
+    n = summary.get("blocked_sources")
+    if isinstance(n, int) and not isinstance(n, bool):
+        text += f" ({n} blocked source{'s' if n != 1 else ''})"
+    return _text(text)
 
 
 # ── fixed events ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -446,8 +483,12 @@ def lane_history(lane: dict, *, now: datetime, trading_day, ledger: list[dict], 
             history_gap = "only the last run is known (from its own receipt); " + history_gap
     # The lane's own run receipt (write_lane_receipt) is a run source: a run it records that no ledger row or journal
     # entry already holds is added, so last run, last success and status agree with the run the grade is about.
+    # Only a LIVE run can be the same run: a receipt names a live run, and an n8n dry-run dispatch of the same lane
+    # two minutes earlier is a different run. Without this, source-litmus-vs-yahoo's dry-run ledger row (12:46:02)
+    # swallowed the live systemd receipt (12:46:34) as "the same run" and the page showed the dry run's ok
+    # (LQ-20261107-1803).
     if lane_receipt and lane_receipt.get("_start") and lane_receipt["_start"] <= now and not any(
-            _same_run(r, lane_receipt["_start"]) for r in runs):
+            _same_run(r, lane_receipt["_start"]) for r in runs if r.get("mode") == "live"):
         runs = sorted(runs + [lane_receipt], key=lambda r: r["_start"] or datetime.min.replace(tzinfo=timezone.utc))
         sources = list(dict.fromkeys(sources + ["lane receipt"]))
         if history_gap and len(runs) == 1:
@@ -459,6 +500,13 @@ def lane_history(lane: dict, *, now: datetime, trading_day, ledger: list[dict], 
         twin = [r for r in live if r.get("source") == "lane receipt" and r["result"] not in _SKIPS and r.get("_start")
                 and abs(r["_start"] - last["_start"]) <= SAME_RUN]
         last = twin[-1] if twin else last
+    # The ledger row and the lane's own receipt can describe the SAME run: the executor reports exit 0 and "succeeded",
+    # the receipt carries the run's verdict. When they match, the worse word wins (LQ-20261107-1803): a BLOCK or a
+    # DEGRADED verdict may not render as ok just because the process exited 0. Never the other way round.
+    if last and last["result"] == "succeeded" and lane_receipt and lane_receipt.get("_start") \
+            and lane_receipt.get("result") in {"failed", "timed_out", "refused", "blocked", "degraded"} \
+            and _same_run(last, lane_receipt["_start"]):
+        last = {**last, "result": lane_receipt["result"], "reason": lane_receipt.get("reason") or last.get("reason")}
     success_times = [t for t in [last_live_success, *(_at(r["finished_at"]) for r in live if r["result"] == "succeeded"),
                                  receipt.get("_success_at") if receipt else None,
                                  lane_receipt.get("_success_at") if lane_receipt else None] if t and t <= now]
@@ -483,6 +531,16 @@ def lane_history(lane: dict, *, now: datetime, trading_day, ledger: list[dict], 
     elif last and last["result"] in _FAILED and (not last_success or (_at(last["finished_at"]) or last["_start"]) > last_success):
         status, why = "failed", last.get("reason") or (f"Exit code {last['exit_code']}" if last.get("exit_code") is not None
                                                        else f"Last run {last['result'].replace('_', ' ')}")
+    elif last and last["result"] == "blocked" and (not last_success or (_at(last["finished_at"]) or last["_start"]) >= last_success):
+        # LQ-20261107-1803: the run did its work and its own receipt says the thing it guards is not fit for use
+        # (source-litmus's BLOCK). The row is red with the verdict as its reason; "ok" beside a BLOCK was the file's
+        # silent failure, and the page may not repeat it. ``>=`` because such a run carries ``ok_at`` equal to its own
+        # finish (the script passed ok=True): that marker proves nothing about a later healthy run.
+        status, why = "blocked", last.get("reason") or "Last run's receipt reports a blocking verdict"
+    elif last and last["result"] == "degraded" and (not last_success or (_at(last["finished_at"]) or last["_start"]) >= last_success):
+        # LQ-20261107-1803: the run produced its output and its own receipt says the subject is not healthy. The
+        # file may not carry "verdict: DEGRADED" next to a healthy status, and neither may the page.
+        status, why = "degraded", last.get("reason") or "Last run's receipt reports a degraded subject"
     elif judged and measured_slots and judged[-1]["status"] == "missed" or (
             missed and judged and judged[-1]["status"] == "pending" and len(judged) > 1 and judged[-2]["status"] == "missed"):
         status = "missed"
@@ -582,8 +640,8 @@ def build(registry: dict, inputs: dict, *, now: datetime, trading_day, guard_win
         row.update(describe(lane, (inputs.get("descriptions") or {}).get(lane_id), category_keys))
         rows.append(row)
     # Every status key is present (a counted 0 is a real 0), so the page never has to default a missing count.
-    counts = {k: 0 for k in ("ok", "ok_unverified", "failed", "missed", "late", "running", "not_measured", "paused",
-                             "retired", "never_scheduled")}
+    counts = {k: 0 for k in ("ok", "ok_unverified", "failed", "blocked", "degraded", "missed", "late", "running",
+                             "not_measured", "paused", "retired", "never_scheduled")}
     for row in rows:
         counts.setdefault(row["status"], 0)
         counts[row["status"]] += 1
@@ -949,7 +1007,9 @@ _CACHE: dict = {}
 _LOCK = threading.Lock()
 _REFRESHING: set = set()
 
-_ATTENTION = {"failed", "missed", "late", "not_measured"}
+#: Row statuses that put a job in "Needs attention". LQ-20261107-1803: a blocking verdict and a degraded subject
+#: both belong here — they were previously invisible (the row said ok).
+_ATTENTION = {"failed", "blocked", "degraded", "missed", "late", "not_measured"}
 
 
 def _refresh(key, root, registry, extra):
@@ -999,6 +1059,8 @@ def _list_row(row: dict) -> dict:
 #: ``?status=`` values. Each matches the summary tile of the same meaning, so a tapped tile's count is the list's total.
 STATUS_FILTERS = {
     "failed": lambda r: r["status"] == "failed",
+    "blocked": lambda r: r["status"] == "blocked",  # LQ-20261107-1803: a BLOCK verdict is its own red status
+    "degraded": lambda r: r["status"] == "degraded",
     "missed": lambda r: r["state"] == "ACTIVE" and bool(r["missed_count"]),  # = summary.with_missed
     "late": lambda r: r["status"] == "late",
     "ok": lambda r: r["status"] == "ok",
@@ -1012,7 +1074,8 @@ STATUS_FILTERS = {
 }
 #: ``?quality=`` values: the run-quality grades of scripts/lib/run_quality.py (= summary.quality_counts keys).
 QUALITY_GRADES = ("GOOD", "DEGRADED", "EMPTY", "FAILED", "NOT_LIVE", "UNPROVEN")
-_ORDER = {"failed": 0, "missed": 1, "late": 2, "running": 3, "not_measured": 4, "ok_unverified": 5, "ok": 6}
+_ORDER = {"failed": 0, "blocked": 0, "missed": 1, "degraded": 2, "late": 2, "running": 3, "not_measured": 4,
+          "ok_unverified": 5, "ok": 6}
 #: ``?ran=`` last-run windows (operator 2026-11-06: "filter by last run"). ``older`` = last run more than 7 days ago,
 #: ``never`` = no run on record. The age is measured against the snapshot's ``computed_at``, not the wall clock.
 RAN_WINDOWS = {"1h": timedelta(hours=1), "24h": timedelta(hours=24), "7d": timedelta(days=7)}
@@ -1135,7 +1198,8 @@ def get_jobs_history(query=None, **kwargs) -> dict:
 
 
 #: How the catalog buckets a job's status (the card's "3 failed · 40 ok · 12 not measured").
-_MIX = {"failed": "failed", "missed": "missed", "late": "late", "running": "running", "ok": "ok",
+_MIX = {"failed": "failed", "blocked": "blocked", "degraded": "degraded",
+        "missed": "missed", "late": "late", "running": "running", "ok": "ok",
         "ok_unverified": "ok_unverified", "not_measured": "not_measured", "paused": "inactive", "retired": "inactive",
         "never_scheduled": "inactive"}
 
@@ -1152,7 +1216,8 @@ def get_jobs_catalog(query=None, **kwargs) -> dict:
     out = []
     for c in cats:
         members = [r for r in rows if r["category_key"] == c["key"]]
-        mix = {k: 0 for k in ("failed", "missed", "late", "running", "ok", "ok_unverified", "not_measured", "inactive")}
+        mix = {k: 0 for k in ("failed", "blocked", "degraded", "missed", "late", "running", "ok", "ok_unverified",
+                              "not_measured", "inactive")}
         for r in members:
             mix[_MIX.get(r["status"], "not_measured")] += 1
         out.append({**c, "jobs": len(members), "described": sum(1 for r in members if r["does"]),

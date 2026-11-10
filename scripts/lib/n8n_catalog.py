@@ -255,8 +255,10 @@ def build(snapshot: Mapping[str, Any], relay: Optional[frozenset], relay_meta: M
 
 
 #: Mirrors jobs_history._MIX (GET /api/v2/jobs-catalog status_mix); a test pins the two together.
-MIX_KEYS = ("failed", "missed", "late", "running", "ok", "ok_unverified", "not_measured", "inactive")
-STATUS_MIX = {"failed": "failed", "missed": "missed", "late": "late", "running": "running", "ok": "ok",
+MIX_KEYS = ("failed", "blocked", "degraded", "missed", "late", "running", "ok", "ok_unverified", "not_measured",
+            "inactive")
+STATUS_MIX = {"failed": "failed", "blocked": "blocked", "degraded": "degraded", "missed": "missed", "late": "late",
+              "running": "running", "ok": "ok",
               "ok_unverified": "ok_unverified", "not_measured": "not_measured", "paused": "inactive",
               "retired": "inactive", "never_scheduled": "inactive", "inactive": "inactive"}
 LEDGER_DIR_REL = "data/coordination/coordinator"

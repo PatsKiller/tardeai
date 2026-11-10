@@ -64,8 +64,15 @@ COUNT_DROP = 0.5
 DRY_MODES = {"dry_run", "dry-run", "dryrun", "preflight", "rehearsal", "plan"}
 SHADOW_MODES = {"shadow", "shadow_only", "shadow-only"}
 SKIP_STATUSES = {"skipped", "skip", "noop", "no_op", "no-op", "not_due", "market_closed", "closed"}
+#: LQ-20261107-1803: a BLOCK verdict is read before the exit code and before ``ok_at``, because a blocking lane
+#: exits non-zero *by design* and carries its previous success time. The run did its work; what it guards is not
+#: fit for use. Graded FAILED (the quality column has no BLOCKED grade) with the verdict as the reason.
+BLOCKED_STATUSES = {"blocked", "block", "blocking"}
 FAIL_STATUSES = {"failed", "fail", "error", "run_failed", "crashed", "timeout", "timed_out"}
-PARTIAL_STATUSES = {"partial", "degraded", "warn", "warning", "fallback", "incomplete", "unhealthy", "stale"}
+#: A run that finished but reports its subject unhealthy must not grade GOOD (LQ-20261107-1803: ``PARTIAL_STATUSES``
+#: was folded into "ok" — a DEGRADED verdict next to a GOOD grade is the same contradiction as BLOCK + ok).
+DEGRADED_STATUSES = {"partial", "degraded", "warn", "warning", "fallback", "incomplete", "unhealthy", "stale"}
+PARTIAL_STATUSES = DEGRADED_STATUSES
 _FAILED_RESULTS = {"failed", "timed_out", "refused"}
 _INACTIVE = {"PAUSED", "RETIRED", "NEVER_SCHEDULED", "DISABLED"}
 #: Ordered: the first numeric key present in the receipt (top level, then summary) is the lane's item count.
@@ -144,16 +151,29 @@ def receipt_finish(receipt: dict):
 
 
 def receipt_status(receipt: dict) -> str:
-    """ok | failed | skipped | unknown, from the receipt's own words."""
+    """ok | failed | blocked | degraded | skipped | unknown, from the receipt's own words.
+
+    LQ-20261107-1803 (2026-11-10): the receipt's stated status is read BEFORE its exit code, its ``ok`` flag and
+    its carried-forward ``ok_at``. In the other order a BLOCK verdict (which exits non-zero by design and keeps
+    the previous success time) graded as a success, and a degraded subject graded as ok.
+    """
     summary = receipt.get("summary") if isinstance(receipt.get("summary"), dict) else {}
+    # A receipt written before LQ-20261107-1803 may still contradict itself (status ok beside verdict BLOCK, which
+    # also carried ok_at and exit 1). Grade the file that is on disk with the same single decision as the writer.
+    from scripts.lib import status_consistency
+    receipt, _ = status_consistency.reconcile(receipt, lane_id=receipt.get("lane_id"), log=False)
     status = str(receipt.get("status") or receipt.get("overall_status") or receipt.get("state") or "").lower()
     code = receipt.get("exit", receipt.get("exit_code"))
+    if status in BLOCKED_STATUSES:
+        return "blocked"
     if status in FAIL_STATUSES or receipt.get("ok") is False or (type(code) is int and code not in (0, 75)):
         return "failed"
     if status in SKIP_STATUSES or (type(code) is int and code == 75) or str(summary.get("status") or "").lower() in SKIP_STATUSES:
         return "skipped"
+    if status in DEGRADED_STATUSES:
+        return "degraded"
     if status in {"ok", "success", "succeeded", "done", "run_done", "reconciled", "green"} or receipt.get("ok") is True \
-            or code == 0 or receipt.get("ok_at") or receipt.get("last_ok_at") or status in PARTIAL_STATUSES:
+            or code == 0 or receipt.get("ok_at") or receipt.get("last_ok_at"):
         return "ok"
     return "unknown"
 
@@ -477,7 +497,8 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
                   "mode": "live", "result": run.get("result"), "run_id": run.get("run_id")}
     elif use_receipt:
         status = receipt_status(receipt)
-        res = {"ok": "succeeded", "failed": "failed", "skipped": "skipped", "unknown": "unknown"}[status]
+        res = {"ok": "succeeded", "failed": "failed", "skipped": "skipped", "unknown": "unknown",
+               "blocked": "blocked", "degraded": "degraded"}[status]
         graded = {"source": "lane receipt", "started_at": _iso(r_start), "finished_at": _iso(r_finish), "mode": "live",
                   "result": res, "run_id": receipt.get("run_id")}
         run_start = r_when
@@ -539,6 +560,17 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
                        f"(output_unverifiable: {led.get('why') or 'no reason given'})")
         checks["output_written"] = _check("unknown", None, led.get("why"))
         return result("UNPROVEN", "output_unverifiable", graded=graded)
+    # 3. blocked: the run finished and its verdict is BLOCK. Before the failure rule, because a blocking lane exits
+    # non-zero by design and the verdict — not the exit code — is the cause (LQ-20261107-1803).
+    if graded["result"] == "blocked" or (same_receipt and receipt_status(receipt) == "blocked"):
+        why = None
+        if use_receipt or same_receipt:
+            why = (receipt or {}).get("outcome_reason") or (receipt or {}).get("error") or (receipt or {}).get("reason")
+        why = why or (run or {}).get("reason")
+        reasons.append(f"Last live run {_ago(when, now)} produced a blocking verdict (BLOCK): the check ran and its "
+                       f"subject is not fit for use" + (f" — {str(why)[:200]}" if why else ""))
+        checks["run_result"] = _check("fail", "blocked", why)
+        return result("FAILED", "blocked_verdict", graded=graded)
     # 3. failed
     if graded["result"] in _FAILED_RESULTS or graded["result"] == "failed" or (
             same_receipt and receipt_status(receipt) == "failed"):
@@ -560,6 +592,16 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
         checks["run_result"] = _check("fail", detail, f"step {step['name']}")
         reasons.append(f"Ran live {_ago(when, now)}, but {step['name']} failed ({detail})")
         return result("FAILED", "step_failed")
+    # 3c. degraded: the run finished and reports its subject unhealthy. After the step rule, because a failed step
+    # is the run's own outcome however the receipt summarises it (DATA TRUTH defect 4, 2026-11-07).
+    if graded["result"] == "degraded" or (same_receipt and receipt_status(receipt) == "degraded"):
+        why = None
+        if use_receipt or same_receipt:
+            why = (receipt or {}).get("outcome_reason") or (receipt or {}).get("reason")
+        reasons.append(f"Last live run {_ago(when, now)} finished but reports a degraded subject"
+                       + (f": {str(why)[:200]}" if why else ""))
+        checks["run_result"] = _check("fail", "degraded", why)
+        return result("DEGRADED", "degraded_subject", graded=graded)
     # 4. skipped / shadow inside a live slot
     receipt_skip = same_receipt and receipt_status(receipt) == "skipped"
     if graded["result"] in {"skipped_lock", "skipped"} or receipt_skip:

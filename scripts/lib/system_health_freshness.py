@@ -130,7 +130,7 @@ def lane_receipt_freshness(
         return dict(base, status="ERROR", reason="receipt_not_live")
     if (
         not isinstance(doc.get("status"), str)
-        or doc["status"] not in {"ok", "failed"}
+        or doc["status"] not in {"ok", "failed", "blocked", "degraded"}
         or type(doc.get("exit")) is not int
     ):
         return dict(base, status="ERROR", reason="receipt_outcome_invalid")
@@ -145,6 +145,18 @@ def lane_receipt_freshness(
         return dict(base, status="ERROR", reason="receipt_success_timestamp_invalid")
     base.update(latest_attempt_at=finished.isoformat(), latest_attempt_status=doc["status"])
     history = freshness_at(success, now=now, max_age_min=max_age_min, prev_fire=prev_fire, grace_min=grace_min)
+    if doc["status"] in {"blocked", "degraded"}:
+        # LQ-20261107-1803: the run itself succeeded (ok_at advanced, the attempt is fresh) and its receipt says the
+        # SUBJECT is not fit for use. Never OK — the health check's job is to shout when the subject is blocked — and
+        # never ERROR, which said the receipt was malformed and sent the reader to the wrong place. A stale/absent
+        # success is still worse than the verdict: the lane did not run, so that reason stands.
+        summary = doc.get("summary") if isinstance(doc.get("summary"), dict) else {}
+        out = dict(base, **history, subject_status=doc["status"],
+                   subject_reason=doc.get("outcome_reason") or summary.get("verdict"))
+        if history.get("status") == "OK":
+            out.update(status="BLOCKED" if doc["status"] == "blocked" else "DEGRADED",
+                       reason="latest_receipt_blocked" if doc["status"] == "blocked" else "latest_receipt_degraded")
+        return out
     if doc["status"] == "failed":
         consecutive = doc.get("consecutive_failures")
         consecutive = consecutive if type(consecutive) is int and consecutive >= 0 else None
