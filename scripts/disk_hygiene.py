@@ -1512,7 +1512,9 @@ def nested_repos(path: Path, reference_repo: Path, *, max_entries: int = 250000,
             if not target:
                 return [], "nested_repo_unreadable"
             if os.path.lexists(target if os.path.isabs(target) else repo / target):
-                # A proof worktree an agent made inside its scratch: archived (ref) then removed with the dir (2026-10-31).
+                # A proof worktree an agent made inside its scratch: its commits are preserved by bundle_nested before
+                # the dir goes (2026-10-31). The `.git`-file spelling covers three shapes that outlive the dir
+                # differently, so how they are preserved is decided there, not here.
                 bundles.append(NESTED_WORKTREE + str(repo.relative_to(path)))
             continue
         rc, status = _nested_git(repo, "status", "--porcelain", "--untracked-files=normal")
@@ -1535,22 +1537,151 @@ def nested_repos(path: Path, reference_repo: Path, *, max_entries: int = 250000,
     return bundles, None
 
 
+def _objects_present(objects: Path) -> bool:
+    """True when the ``objects`` dir holds any object (an empty ``info``/``pack`` is what ``git init`` leaves)."""
+    try:
+        with os.scandir(objects) as entries:
+            for e in entries:
+                if e.name not in ("info", "pack"):
+                    return True
+                try:
+                    with os.scandir(e.path) as inner:
+                        if any(True for _ in inner):
+                            return True
+                except OSError:
+                    return True
+    except OSError:
+        return False
+    return False
+
+
+def _tree_has_file(root: Path) -> bool:
+    """True when any FILE lives under ``root`` (bounded; an unreadable or oversized tree counts as TRUE)."""
+    pending, seen = [root], 0
+    while pending:
+        d = pending.pop()
+        try:
+            with os.scandir(d) as entries:
+                for e in entries:
+                    seen += 1
+                    if seen > 10000:
+                        return True
+                    if e.is_symlink() or e.is_file(follow_symlinks=False):
+                        return True
+                    if e.is_dir(follow_symlinks=False):
+                        pending.append(Path(e.path))
+        except FileNotFoundError:
+            continue  # absent is not unreadable
+        except OSError:
+            return True
+    return False
+
+
+def _gitdir_stores_objects(gitdir: Path) -> bool:
+    """True when a git dir holds ANY commit-bearing store (objects, refs, packed-refs, a reflog).
+
+    ``HEAD`` is deliberately not one: an unborn ``HEAD`` (``ref: refs/heads/main`` with no such ref) is what a fresh
+    ``git init`` leaves. A dir with no store cannot hold a commit, so nothing can be lost with it. Empty ref
+    directories are not refs, and an empty ``objects/{info,pack}`` is not an object.
+    """
+    packed = gitdir / "packed-refs"
+    try:
+        if packed.is_symlink() or (packed.is_file() and packed.stat().st_size):
+            return True
+    except OSError:
+        return True
+    return _tree_has_file(gitdir / "logs") or _tree_has_file(gitdir / "refs") or _objects_present(gitdir / "objects")
+
+
+def _worktree_names_no_commit(wt: Path) -> bool:
+    """A ``.git`` file whose git dir AND common dir store no object, ref or reflog: an inert registration.
+
+    This is the shape a test fixture leaves behind when it creates ``common.git/worktrees/<name>/commondir`` and
+    stops: git answers 128 on every command, but there is nothing in either dir to archive. It is not "unreadable"
+    in the sense that matters -- unreadable must fail closed, and it does when any store is present.
+    """
+    try:
+        target = (wt / DOT_GIT).read_text().strip().removeprefix("gitdir:").strip()
+    except OSError:
+        return False
+    if not target:
+        return False
+    gitdir = Path(target if os.path.isabs(target) else wt / target)
+    try:
+        common = (gitdir / "commondir").read_text().strip()
+    except OSError:
+        return False  # no commondir: not a registration we can prove empty
+    commondir = Path(common if os.path.isabs(common) else gitdir / common)
+    return not _gitdir_stores_objects(gitdir) and not _gitdir_stores_objects(commondir)
+
+
+def _bundle_worktree(wt: Path, rel: str, root: Path, bdir: Path, archive_ns: str) -> Optional[str]:
+    """Preserve what a ``.git``-file repo inside scratch holds, or say why it is held. None when all held.
+
+    Three shapes share the ``.git``-file spelling and each outlives the removed dir differently:
+
+    * **a linked worktree whose main repo still exists** -- an archive ref written into the common dir survives the
+      worktree, so archive-then-``git worktree remove`` (the 2026-10-31 path) is right and also clears the admin entry;
+    * **a standalone repo whose git dir is its own** (git-dir == common-dir) -- ``archive_worktree`` would write the
+      ref *inside the very dir rule T then removes*, so the archive would die with it. A verified bundle outside the
+      dir is the only archive that survives;
+    * **a registration that names no commit at all** -- a fixture's half-built worktree: nothing to archive, so the
+      dir is plain files to rule T. Any store present keeps the old fail-closed ``nested_worktree_unreadable``.
+    """
+    rc, gd = _nested_git(wt, "rev-parse", "--path-format=absolute", "--git-dir")
+    rc2, cd = _nested_git(wt, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    if rc != 0 or rc2 != 0 or not gd.strip() or not cd.strip():
+        return None if _worktree_names_no_commit(wt) else f"nested_worktree_unreadable:{rel}"
+    gitdir, commondir = Path(gd.strip()), Path(cd.strip())
+    linked = os.path.realpath(gitdir) != os.path.realpath(commondir)
+    main_rc = _nested_git(commondir.parent, "rev-parse", "--git-dir")[0] if linked else 1
+    if linked and main_rc == 0:
+        arc, err = WC.archive_worktree(wt, archive_ns, "disk_hygiene rule T (AGENTS.md §24.13): proof worktree "
+                                       f"inside agent scratch {root.name}, archived before removal")
+        if err:
+            return f"nested_worktree_archive_failed:{rel}:{err}"
+        ok, how = WC.remove_worktree(wt, commondir.parent)
+        if not ok:
+            return f"nested_worktree_remove_failed:{rel}:{how}"
+        return None
+    # No main repo can run `git worktree remove` (standalone, or its main worktree is gone): bundle, verified.
+    rc, status = _nested_git(wt, "status", "--porcelain", "--untracked-files=normal", timeout=300)
+    if rc != 0:
+        return f"nested_worktree_unreadable:{rel}"
+    if status.strip():
+        return f"nested_worktree_dirty:{rel}"
+    hrc, _ = _nested_git(wt, "rev-parse", "--verify", "-q", "HEAD")
+    rrc, refs = _nested_git(wt, "for-each-ref", "--format=%(refname)")
+    if rrc != 0:
+        return f"nested_worktree_unreadable:{rel}"
+    if hrc != 0 and not refs.strip() and not _gitdir_stores_objects(gitdir) and not _gitdir_stores_objects(commondir):
+        return None  # an empty repo: no commit exists to preserve
+    # The stem alone repeats: two scratch roots with the same basename (`.../a/separate`, `.../b/separate`) would
+    # write ONE bundle, and the second would overwrite the first after the first dir was already removed. The path
+    # hash gives every archive a name of its own.
+    local = rel.removeprefix(NESTED_WORKTREE)
+    stem = root.name if local in (".", "") else local.replace("/", "__")
+    digest = hashlib.sha256(os.path.abspath(str(wt)).encode()).hexdigest()[:10]
+    out = bdir / root.name / (stem.replace(":", "-") + f"-{digest}.bundle")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    create = ["bundle", "create", str(out), "--all"] + (["HEAD"] if hrc == 0 else [])
+    rc, _ = _nested_git(wt, *create, timeout=600)
+    if rc != 0 or not out.is_file():
+        return f"nested_worktree_bundle_failed:{rel}"
+    vrc, _ = _nested_git(wt, "bundle", "verify", str(out), timeout=600)
+    if vrc != 0:
+        return f"nested_worktree_bundle_verify_failed:{rel}"
+    return None
+
+
 def bundle_nested(item: Mapping[str, Any]) -> Optional[str]:
     """Before rule T removes a dir: bundle each nested repo holding unique commits, verified; None when all held."""
     root, bdir = Path(item["path"]), Path(item["bundle_dir"])
     for rel in item.get("bundles") or []:
         if rel.startswith(NESTED_WORKTREE):
-            wt = root / rel.removeprefix(NESTED_WORKTREE)
-            rc, common = _nested_git(wt, "rev-parse", "--path-format=absolute", "--git-common-dir")
-            if rc != 0:
-                return f"nested_worktree_unreadable:{rel}"
-            arc, err = WC.archive_worktree(wt, item["archive_ns"], "disk_hygiene rule T (AGENTS.md §24.13): proof worktree "
-                                           f"inside agent scratch {root.name}, archived before removal")
-            if err:
-                return f"nested_worktree_archive_failed:{rel}:{err}"
-            ok, how = WC.remove_worktree(wt, Path(common.strip()).parent)
-            if not ok:
-                return f"nested_worktree_remove_failed:{rel}:{how}"
+            how = _bundle_worktree(root / rel.removeprefix(NESTED_WORKTREE), rel, root, bdir, item["archive_ns"])
+            if how:
+                return how
             continue
         out = bdir / root.name / (rel.replace("/", "__") + ".bundle")
         out.parent.mkdir(parents=True, exist_ok=True)
