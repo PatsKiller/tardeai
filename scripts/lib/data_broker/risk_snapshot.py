@@ -13,9 +13,15 @@ Data sources:
   - stop_confirmations DB (operator-confirmed stop levels)
 
 W1: stop state/source are projected read-only through cio_truth from persisted
-observations. Pending/planned/filled levels are not active protection. A reader
-must not overwrite this source with another live-stop lookup. The endpoint
-adapter exposes positions_basis and positions_as_of with the same snapshot.
+observations. Planned and filled levels are not protection. LQ-20261107-1390: the
+protection aggregates count an ACTIVE stop and a RESTING broker order (Schwab
+``AWAITING_STOP_CONDITION``, carried as ``pending_activation``) alike — outside the
+session every GTC stop rests, and calling that money unprotected is the defect this
+module used to publish. ``broker_protected`` keeps its armed-only meaning on each
+row for loss-at-stop; the dollars that protection moves are published separately so
+the change is visible rather than silent. A reader must not overwrite this source
+with another live-stop lookup. The endpoint adapter exposes positions_basis and
+positions_as_of with the same snapshot.
 """
 from __future__ import annotations
 
@@ -120,7 +126,7 @@ def _mtime(path: Path) -> float | None:
 def _overlay_broker_stops(positions: list[dict], errors: list[str], db_query=None) -> None:
     """Resting broker stops (stop_last_known, the source Open Trades reads) win over the planned stops in
     stops.json for the same account + symbol; each position says which one it carries."""
-    from ..cio_truth import stop_for, _query_rows
+    from ..cio_truth import stop_for, stop_protects, _query_rows
     try:
         if db_query is not None:
             broker = _query_rows(db_query, "SELECT account,symbol,order_id,stop_price,qty,status,captured_at FROM stop_last_known")
@@ -147,7 +153,9 @@ def _overlay_broker_stops(positions: list[dict], errors: list[str], db_query=Non
         sp = stop.get("stop_price")
         if px > 0 and sp:
             p["dist_pct"] = round((px - sp) / px * 100, 2)
-        p["protected"] = stop["broker_protected"]
+        # LQ-20261107-1390: ``protected`` on the row means "an order at the broker protects this
+        # position" — resting GTC included. ``broker_protected`` above keeps the armed-only meaning.
+        p["protected"] = stop_protects(stop)
 
 def _live_risk_basis(rm: dict[str, Any], holdings: dict[str, Any], errors: list[str]) -> tuple[dict[str, Any], str, float | None]:
     """risk_management.json is written once a weekday before the open (portfolio_orchestrator 07:15), so a buy or
@@ -182,7 +190,7 @@ def build_risk_snapshot(db_query=None) -> dict[str, Any]:
     holdings = _load_json(STATE_DIR / "holdings.json") or {}
     rm, positions_basis, positions_at = _live_risk_basis(rm, holdings, errors)
 
-    from ..cio_truth import portfolio_for
+    from ..cio_truth import portfolio_for, stop_protects
     portfolio_truth = portfolio_for(holdings)
     positions = rm.get("positions", [])
     _overlay_broker_stops(positions, errors, db_query=db_query)
@@ -227,6 +235,9 @@ def build_risk_snapshot(db_query=None) -> dict[str, Any]:
             "stop_state": p.get("stop_state"),
             "stop_captured_at": p.get("stop_captured_at"),
             "broker_protected": bool(p.get("broker_protected")),
+            # LQ-20261107-1390: armed OR resting at the broker. ``broker_protected`` above still drives
+            # loss-at-stop and heat; this is the protection answer the aggregates below use.
+            "stop_protects": stop_protects(p),
             "distance_to_stop_pct": distance_pct,
             "max_loss_dollar": max_loss,
             "status": p.get("status", ""),
@@ -245,11 +256,18 @@ def build_risk_snapshot(db_query=None) -> dict[str, Any]:
     ), 2)
     protected_mv = round(sum(
         pr["market_value"] for pr in position_risk
-        if not pr["risk_excluded"] and pr["broker_protected"]
+        if not pr["risk_excluded"] and pr["stop_protects"]
     ), 2)
     unprotected_mv = round(sum(
         pr["market_value"] for pr in position_risk
-        if not pr["risk_excluded"] and not pr["broker_protected"]
+        if not pr["risk_excluded"] and not pr["stop_protects"]
+    ), 2)
+    # LQ-20261107-1390: the dollars this change moves out of "unprotected" are the ones backed by a
+    # RESTING order rather than an armed stop. Published beside the total so a reader sees 84 % where
+    # 0 % used to be and can tell why, instead of finding the movement unexplained.
+    resting_protected_mv = round(sum(
+        pr["market_value"] for pr in position_risk
+        if not pr["risk_excluded"] and pr["stop_protects"] and not pr["broker_protected"]
     ), 2)
 
     # ---- Beta and VaR approximations ----
@@ -285,11 +303,14 @@ def build_risk_snapshot(db_query=None) -> dict[str, Any]:
     triggered_count = sum(1 for pr in position_risk
                           if pr.get("triggered") and not pr.get("risk_excluded"))
     protected_count = sum(1 for pr in position_risk
-                          if pr.get("broker_protected") and not pr.get("risk_excluded"))
+                          if pr.get("stop_protects") and not pr.get("risk_excluded"))
+    resting_protected_count = sum(1 for pr in position_risk
+                                  if pr.get("stop_protects") and not pr.get("broker_protected")
+                                  and not pr.get("risk_excluded"))
     unprotected_positions = [{"symbol": pr["symbol"], "market_value": pr["market_value"],
                               "account": pr["account"]}
                              for pr in position_risk
-                             if not pr.get("risk_excluded") and not pr.get("broker_protected")]
+                             if not pr.get("risk_excluded") and not pr.get("stop_protects")]
 
     # ---- Correlation data ----
     correlation_pairs = []
@@ -332,6 +353,8 @@ def build_risk_snapshot(db_query=None) -> dict[str, Any]:
             "pct_protected": round(100 * protected_mv / total_value, 2) if total_value else None,
             "total_protected_mv": protected_mv,
             "total_unprotected_mv": unprotected_mv,
+            # Part of total_protected_mv that a RESTING (not armed) order backs — LQ-20261107-1390.
+            "total_resting_protected_mv": resting_protected_mv,
             "total_value": total_value or rm.get("portfolio_total_value", 0),
             "total_at_risk": total_at_risk,
             "position_count_real": portfolio_truth["position_count"],
@@ -342,6 +365,7 @@ def build_risk_snapshot(db_query=None) -> dict[str, Any]:
         "stop_health": {
             "triggered_count": triggered_count,
             "protected_count": protected_count,
+            "resting_protected_count": resting_protected_count,
             "pending_count": sum(pr.get("stop_state") == "pending_activation" for pr in position_risk
                                  if not pr.get("risk_excluded")),
             "filled_count": sum(pr.get("stop_state") == "filled" for pr in position_risk

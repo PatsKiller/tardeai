@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "risk_snapshot_resting_protection_lq1390_20261109",
+  "files": [
+    "tests/test_risk_snapshot_resting_protection_lq1390_20261109.py"
+  ],
+  "anchor": "RISK_SNAPSHOT_RESTING_PROTECTION_LQ1390_20261109",
+  "comment": [
+    "ANCHOR: RISK_SNAPSHOT_RESTING_PROTECTION_LQ1390_20261109 — LQ-20261107-1390, the Risk half. risk_snapshot's pct_protected, total_protected_mv, total_unprotected_mv and stop_health counts use cio_truth.stop_protects (armed OR a resting broker order), not broker_protected (armed only), so Risk and Home state one protection answer. broker_protected keeps its armed-only meaning per row; the dollars a resting order backs are published separately, and a stale or planned level stays unprotected."
+  ]
+}
