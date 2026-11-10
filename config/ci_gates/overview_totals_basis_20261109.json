@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overview_totals_basis_20261109",
+  "files": [
+    "tests/test_overview_totals_basis_lq1732_20261109.py"
+  ],
+  "anchor": "OVERVIEW_TOTALS_BASIS_20261109",
+  "comment": [
+    "ANCHOR: OVERVIEW_TOTALS_BASIS_20261109 — the served account and portfolio totals are the positions",
+    "store's own figures, and the live re-mark is published beside each one by name with its delta",
+    "(LQ-20261107-1732). Measured 2026-11-09 19:03 ET: the page's totals were the holdings rows re-marked",
+    "on the read, 336.88 above positions_current, 295.10 of it one 1000x mis-scaled SRNE mark. A document",
+    "whose rows carry no broker value degrades to the re-marked total and says which basis it is showing.",
+    "Synthetic rows only."
+  ]
+}

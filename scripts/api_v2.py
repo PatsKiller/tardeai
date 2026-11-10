@@ -5506,7 +5506,22 @@ def _overview_with_today_move():
     figure) with its mark session and coverage census; it never adds a new sum.
     """
     truth = _cio_truth_readers()
-    out = truth.overview_payload(overview(), db_query=_db_query)
+    # LQ-20261107-1732: the account and portfolio totals are the positions store's own figures (the
+    # custodian's statement, and the basis numbers-truth grades against). The live re-mark is
+    # published beside them, by name and with its delta — see lib/portfolio_value_basis.
+    doc = truth.resolve(db_query=_db_query)
+    out = truth.overview_payload(overview(), document=doc)
+    try:
+        from lib import portfolio_value_basis
+    except ImportError:  # pragma: no cover - imported as scripts.<module>
+        from scripts.lib import portfolio_value_basis
+    try:
+        portfolio_value_basis.publish_store_totals(out, doc.get("portfolio") or {})
+    except Exception as exc:  # noqa: BLE001 -- the live re-mark stays the total, and says why
+        out.setdefault("totals_basis", {}).update(
+            basis="live_mark",
+            reason=f"store totals unavailable: {type(exc).__name__}: {exc}"[:200],
+        )
     try:
         from portfolio_snapshot_sanity import account_market_days, portfolio_market_day
 
