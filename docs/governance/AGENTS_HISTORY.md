@@ -12,6 +12,14 @@ rule exists is in `LESSONS_LEARNED.md`; what is still open is in `OPEN_ITEMS.md`
 The complete AGENTS.md 25.0.1 text is preserved byte-exact at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`
 (sha256 pinned in `tests/support/agents_policy_frozen.py`), and every earlier version is in git history.
 
+## 2026-11-10 — 32.1.0: Engineering Constitution v1.1
+
+The operator issued the Command Center Engineering Constitution v1.1 (Trust, Quality, Auditability, and Production
+Excellence) and directed that it appear in AGENTS.md, runbooks, coding/deployment/review standards, audit procedures,
+PR templates and operational playbooks. 32.1.0 adds the full text at `docs/governance/ENGINEERING_CONSTITUTION.md`, a
+summary under §8 "What counts as verified", a banner, and an Evidence section in the PR template. It adds evidence
+duties only; §0, §2, §17 and the tool adapters are unchanged. Committed locally while git pushes are suspended.
+
 ## 2026-11-02 — coherent 30.0.0 preparation
 
 The operator directly authorized Codex to prepare standing pushes, delegated uploads, release-coordinator merges,

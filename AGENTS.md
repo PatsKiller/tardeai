@@ -1,17 +1,22 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      32.0.0
+Policy-Version:      32.1.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
-Effective-Date:      2026-11-09
-Last-Reviewed:       2026-11-05T20:07:49Z
+Effective-Date:      2026-11-10
+Last-Reviewed:       2026-11-10T17:05:00Z
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          31.0.0
+Supersedes:          32.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**32.1.0 is ACTIVE (MINOR)**: the operator's **Engineering Constitution v1.1** (2026-11-10) is foundational doctrine for every
+agent: `docs/governance/ENGINEERING_CONSTITUTION.md`. *Trust is a feature. A feature is not complete until it is observable,
+measurable, auditable, and proven in production.* See §8 "What counts as verified". It adds evidence duties only; it lifts
+no rail, grants nothing, and leaves §0, §2, §17 and the adapters unchanged.
 
 **32.0.0 is ACTIVE (MAJOR)** — one named exception for one broker MARKET-DATA quote lane on the n8n dispatcher
 (§23.20a): `vix-index-quotes-schwab` may be dispatched as an R1 `ingest` lane although its name and argv carry `schwab`
@@ -844,6 +849,16 @@ Status table of `docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md`
 are `AI_WORK_POLICY.md` §5.** `scripts/ai_work_status.sh` reports status and never contacts GitHub.
 
 ## What counts as verified
+
+**Engineering Constitution v1.1 (operator 2026-11-10, binding):** `docs/governance/ENGINEERING_CONSTITUTION.md`.
+In short: activation ≠ validation (a fix needs BEFORE and AFTER production evidence, measured the same way); exit 0 is
+not evidence (a run needs a receipt, an artifact, a measurable output and a verification); no self-certification (the
+implementer never verifies); undefined freshness = stale; every displayed number carries value, source, timestamp,
+confidence and freshness; contradictions are defects; silent failure is SEV-1; the UI may not contradict reality, green
+needs evidence, unknown beats wrong, unavailable data shows its last known good value with its age. The only verdicts are FIXED, FIXED BUT
+UNPROVEN OVER TIME, PARTIALLY FIXED, UNVERIFIED, FAILED and REGRESSED; nothing moves FAILED→FIXED directly; observation
+windows are 6 h minimum, 24 h standard, 7 days for critical or high-risk changes. Acceptance criteria are written before
+work begins. Capital-readiness answers are YES / YES WITH RESTRICTIONS / NO only.
 
 Descending strength. **Only the first two settle a claim about runtime.**
 
@@ -2707,6 +2722,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 32.1.0 | 2026-11-10 | ACTIVE | MINOR | Supersedes 32.0.0. Adopts the operator's Engineering Constitution v1.1 (`docs/governance/ENGINEERING_CONSTITUTION.md`) as foundational doctrine; summary added under §8 "What counts as verified". Evidence duties only: no rail lifted, no grant, §0/§2/§17 and adapters unchanged. | Operator directive 2026-11-10 ~11:55 ET ("make these golden rules for all agents … These should appear in: Agent.md, Runbooks, …"), relayed in-session to the lead; local commit only, pending operator ratification on the next push window. |
 | 32.0.0 | 2026-11-09 | ACTIVE | MAJOR | Supersedes 31.0.0. §23.20a: ONE named exception for one broker market-data quote lane on the n8n dispatcher — `vix-index-quotes-schwab` (R1 `ingest`, `$VIX`/`$VIX9D`/`$VIX3M` into `market_quotes`) may carry the `schwab` token and reach `schwab_token_manager` only, in a code-pinned shape (`lane_dispatch.SCHWAB_QUOTE_READ_*`); no trade context, account read, send or credential in n8n. §0, §2, §2A, §7A, §17, §23.14 and §27.1 unchanged. | `APPROVE_AGENTS_POLICY_32_0_0 <pr> <head_sha>` |
 | 31.0.0 | 2026-11-03 | ACTIVE | MAJOR | Supersedes 30.0.1. §24.16: ONE named exception to §24.5 for the `self-heal-fixer` lane only — it may push one `self-heal-fix/…` branch and open one draft PR per fix job (labelled `self-heal-fix`), within the push budget and never with an override; never main/release, never force-push, never broker/credential/order/execution/policy paths, the diff guard still refuses them; every fix PR needs two independent reviews and the fixer never merges; armed only by an active `git-push` grant naming `self-heal-fixer`. Nothing else in §24.5 loosens. | `APPROVE_AGENTS_POLICY_31_0_0 2538 331e39d303f2af7c948306f8475b4aa1fc43438e` (operator, https://github.com/PatsKiller/tardeai/pull/2538#issuecomment-6618462233). Provenance: issued at 331e39d3, whose `AGENTS.md` is byte-identical (blob `c6dac5f08`) to the 31.0.0 text merged in this PR at its tip; later commits are the `origin/main` merge and this repair, with no rule-text change. |
 | 30.0.1 | 2026-11-03 | ACTIVE | PATCH | Documents the standing merge route's checkout coupling: the canonical checkout's HEAD must equal `origin/main` and GitHub `main`, so each merge needs a checkout refresh before the next, and nothing invokes the helper on a schedule. No authority change. | PATCH — rides APPROVE_AGENTS_POLICY_30_0_0; no authority change; operator ratifies at merge |
