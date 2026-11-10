@@ -43241,7 +43241,7 @@
       "id": "header-market-freshness-health",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "lq_noon_registry_20261110",
       "stage": "canary",
       "purpose": {
@@ -43393,12 +43393,12 @@
       "review_by": "2026-11-24",
       "review": {
         "prepared_by": "agent draft (cc-deepseek-7, noon registry batch, 2026-11-10)",
-        "status": "DRAFT",
-        "reviewed_by": null,
-        "reviewed_on": null,
+        "status": "REVIEWED",
+        "reviewed_by": "cc-deepseek-9 (non-author reviewer), 2026-11-10",
+        "reviewed_on": "2026-11-10",
         "requested_of": "cc-deepseek-9",
         "requested_on": "2026-11-10",
-        "note": "cc-deepseek-9 is the batch reviewer (ASSIGN-20261110T1425Z-NOON-registry); the REVIEWED sign-off is theirs to write in the 11:40 review. "
+        "note": "Signed by cc-deepseek-9 (non-author reviewer) on 2026-11-10 after re-reading the script, the registry row and the allowlist entry, not the READY. Verified: the OK line's 'FRESH <= 26 h' is config/market_regime_vix_complex.yaml fresh_after_hours 26; the run verdict is the worst of the two contracts (RANK, header_market_freshness_health.py:47,229) and a BROKEN contract still exits 0, with one system_health warning per contract per ESCALATION_COOLDOWN_H under --apply only and sends 0 (:185,219,239-244); allowlist timeout_s 120 == baseline.timeout_s, duration_degraded_above_s 96.0 = 0.8 x 120; cadence hourly ('0 * * * *') against freshness 2 h / 4 h = 2x / 4x cadence; expected_output empty_allowed on produced_count with empty_allowed_reasons nothing_due, which is what a live run that judged both contracts and escalated nothing writes. The two authored corrections re-checked here: evidence[0].kind was 'file', not a member of EVIDENCE_KINDS (scripts/lib/n8n_output_verdict.py:41), and duration_degraded_above_s was 2 x timeout_s, a line the executor bound can never reach; both fixed in c2deb9294 and re-measured (FW-M6 pass)."
       }
     },
     {
@@ -43406,7 +43406,7 @@
       "id": "frozen-output-monitor",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "lq_noon_registry_20261110",
       "stage": "shadow",
       "purpose": {
@@ -43550,12 +43550,12 @@
       "review_by": "2026-11-24",
       "review": {
         "prepared_by": "agent draft (cc-deepseek-7, noon registry batch, 2026-11-10)",
-        "status": "DRAFT",
-        "reviewed_by": null,
-        "reviewed_on": null,
+        "status": "REVIEWED",
+        "reviewed_by": "cc-deepseek-9 (non-author reviewer), 2026-11-10",
+        "reviewed_on": "2026-11-10",
         "requested_of": "cc-deepseek-9",
         "requested_on": "2026-11-10",
-        "note": "cc-deepseek-9 is the batch reviewer (ASSIGN-20261110T1425Z-NOON-registry); the REVIEWED sign-off is theirs to write in the 11:40 review. Shadow registration: dispatch.mode dry_run, so only the read-only detector can fire."
+        "note": "Signed by cc-deepseek-9 (non-author reviewer) on 2026-11-10. Shadow registration: the registry row is scheduler.stage shadow with dispatch.mode dry_run, so only the read-only detector can fire, and the contract's escalation writes exist under --apply only (frozen_output_monitor.py:225-240). Verified: ESCALATION_COOLDOWN_H = 6 (:37) is the cooldown the purpose and the degraded line name; a dry run writes nothing and sends 0 (:220); cadence hourly ('7 * * * *') against freshness 2 h / 4 h; allowlist timeout_s 300 == baseline.timeout_s, duration_degraded_above_s 240.0 = 0.8 x 300; expected_output empty_allowed on produced_count with empty_allowed_reasons nothing_due; evidence is receipt_field naming produced_count (corrected in c2deb9294 from 'file', which is not in EVIDENCE_KINDS)."
       }
     },
     {
@@ -43563,7 +43563,7 @@
       "id": "cio-capital-plan-record",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "lq_noon_registry_20261110",
       "stage": "canary",
       "purpose": {
@@ -43703,12 +43703,12 @@
       "review_by": "2026-11-24",
       "review": {
         "prepared_by": "agent draft (cc-deepseek-7, noon registry batch, 2026-11-10)",
-        "status": "DRAFT",
-        "reviewed_by": null,
-        "reviewed_on": null,
+        "status": "REVIEWED",
+        "reviewed_by": "cc-deepseek-9 (non-author reviewer), 2026-11-10",
+        "reviewed_on": "2026-11-10",
         "requested_of": "cc-deepseek-9",
         "requested_on": "2026-11-10",
-        "note": "cc-deepseek-9 is the batch reviewer (ASSIGN-20261110T1425Z-NOON-registry); the REVIEWED sign-off is theirs to write in the 11:40 review. "
+        "note": "Signed by cc-deepseek-9 (non-author reviewer) on 2026-11-10, with one dependency stated deliberately. empty_allowed_reasons are no_position_decisions, nothing_due and already_recorded; the third is emitted only by LQ-20261107-1792 (cc-opus-1, 646a878b3), which changes cio_capital_plan_record.py:108-117 from empty_reason=None over a non-empty plan to already_recorded when the write is ok and appended 0. At c2deb9294 alone a steady-state 0-write run still carries no reason and grades empty_violation, so this contract is truthful only when 646a878b3 is folded together with it. Verified: produced_count = rows appended and attempted_count = decisions in the plan, an empty plan states no_position_decisions, a failed write states no reason and the run is not ok (write_error is fatal); cadence '0 9-16 * * 1-5' hourly against freshness 2 h / 4 h; allowlist timeout_s 300 == baseline.timeout_s, duration_degraded_above_s 240.0 = 0.8 x 300; evidence receipt_field naming produced_count (corrected from 'file' in c2deb9294)."
       }
     },
     {
@@ -43716,7 +43716,7 @@
       "id": "overview-projection",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "lq_noon_registry_20261110",
       "stage": "canary",
       "purpose": {
@@ -43873,12 +43873,12 @@
       "review_by": "2026-11-24",
       "review": {
         "prepared_by": "agent draft (cc-deepseek-7, noon registry batch, 2026-11-10)",
-        "status": "DRAFT",
-        "reviewed_by": null,
-        "reviewed_on": null,
+        "status": "REVIEWED",
+        "reviewed_by": "cc-deepseek-9 (non-author reviewer), 2026-11-10",
+        "reviewed_on": "2026-11-10",
         "requested_of": "cc-deepseek-9",
         "requested_on": "2026-11-10",
-        "note": "cc-deepseek-9 is the batch reviewer (ASSIGN-20261110T1425Z-NOON-registry); the REVIEWED sign-off is theirs to write in the 11:40 review. "
+        "note": "Signed by cc-deepseek-9 (non-author reviewer) on 2026-11-10. Verified: the 60 s market-window cadence ('*/1 4-20 * * 1-5') is what the OK line's 90 s is set against, and build_overview_projection.py:11-13 states the same OK/DEGRADED/BROKEN thresholds the baseline now carries (0.025 h / 0.0833 h = 90 s / 300 s, replacing 1.0 h / 2.0 h, which a 1-minute lane could never reach); a single-flight refusal is RUN_DONE with produced_count 0, attempted_count 1 and empty_reason build_in_flight (:81-87), now in empty_allowed_reasons; a failed build exits 1 with no empty reason (:105); allowlist timeout_s 300 == baseline.timeout_s, duration_degraded_above_s 240.0 = 0.8 x 300; evidence receipt_field naming produced_count (corrected from 'file' in c2deb9294)."
       }
     },
     {
