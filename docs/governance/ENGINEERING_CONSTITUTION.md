@@ -1,7 +1,7 @@
 # Command Center Engineering Constitution
 ## Trust, Quality, Auditability, and Production Excellence
 
-**Version:** 1.4 · **Status:** Foundational Doctrine · **Ratified by the operator:** v1.0 2026-11-10 ~12:00 ET; v1.1 amendments 2026-11-10 ~12:20 ET; v1.2 (Rule 15) 2026-11-10 ~12:30 ET; v1.3 (Principle 5, Rule 16, Documentation Drift, reference cases) 2026-11-10 ~12:32 ET; v1.4 (Principle 6, Article VI-A Documentation Drift, Reference Case B, audit cover page) 2026-11-10 ~12:41 ET
+**Version:** 1.5 · **Status:** Foundational Doctrine · **Ratified by the operator:** v1.0 2026-11-10 ~12:00 ET; v1.1 amendments 2026-11-10 ~12:20 ET; v1.2 (Rule 15) 2026-11-10 ~12:30 ET; v1.3 (Principle 5, Rule 16, Documentation Drift, reference cases) 2026-11-10 ~12:32 ET; v1.4 (Principle 6, Article VI-A Documentation Drift, Reference Case B, audit cover page) 2026-11-10 ~12:41 ET; v1.5 (Principle 7 Drift Must Be Measured, six canonical drift classes, trust maturity ladder, cover page risks) 2026-11-10 ~12:55 ET
 **Applies to:** all agents, engineers, auditors, reviewers, operators, workflows, services, releases and decision systems.
 **Precedence:** this Constitution is the top of the rule hierarchy. Where any other document (AGENTS.md, WORKERS.md, ONBOARDING.md,
 runbooks, lessons, queues) conflicts with it, the Constitution wins. The operational thresholds that implement it are in
@@ -41,6 +41,10 @@ database row, queue entry, deployment artifact, or status flag does not prove ex
 correctness. A queue row is not delivery. An embedding table is not working memory. A receipt is not useful output. A registered
 workflow is not a running one. A healthy flag is not health. A completed deployment is not a fixed issue. Only the measured
 outcome counts (Article II Rules 2, 15, 16; Reference Case B).
+
+**Principle 7 (v1.5). Drift must be measured.** Any difference between intended state, documented state, deployed state,
+executing state, displayed state, or observed state shall be measured as drift. Unmeasured drift is treated as unknown risk.
+Measured drift becomes a tracked defect. The six canonical drift classes are defined in Article VI-A.
 
 ---
 
@@ -158,13 +162,16 @@ They may rely only on production evidence, artifacts, measurements and receipts.
 9. Documentation Drift (v1.3): agent runtime rules version (session hook), agent documentation version (AGENTS.md the agents open),
    live release version, canonical checkout version, and the code each production service actually executes. Pass: all synchronized.
    Fail: any mismatch. Rules that are not in the checkout are eventually forgotten; code that runs outside a release is an unreviewed deploy.
-   Measured by the five drift types of Article VI-A (v1.4).
+   Measured by the six canonical drift classes of Article VI-A (v1.5).
 
 **Audit cover page (v1.4).** Every audit opens with four computed lines, each backed by the sections below it:
 System Status (capital readiness, item 7) · Audit Status (is the audit process itself working) · Governance Status (IMPROVING /
-STABLE / DEGRADING, from the trend of Trust Debt, Reality Drift and Documentation Drift) · Primary Risk (the largest open category).
+STABLE / DEGRADING, from the trend of Trust Debt, Reality Drift and Documentation Drift) · Primary Risk (the largest open category). v1.5 adds Secondary Risk (the next largest) and Most Important Achievement.
 2026-11-10 cover page: **System Status: NOT CAPITAL READY · Audit Status: WORKING AS INTENDED · Governance Status: IMPROVING ·
 Primary Risk: Reality Drift between reported state and actual state.**
+Updated 2026-11-10 ~12:55 ET (operator, v1.5): **System Status: NOT CAPITAL READY · Audit Status: WORKING AS INTENDED · Governance
+Status: SIGNIFICANTLY IMPROVED · Primary Risk: Reality Drift (6 of 12, LQ-1813) · Secondary Risk: Runtime Drift (4 processes on old
+code in memory) · Most Important Achievement: drift is now measured, classified, audited, and assigned ownership.**
 
 ---
 
@@ -186,9 +193,10 @@ to the UI is still untrustworthy. **Required: Reality Drift = 0.** Required tabl
 
 ---
 
-## Article VI-A: Documentation Drift, a core trust category (v1.4)
+## Article VI-A: Drift, the six canonical classes (v1.4 Documentation Drift; v1.5 six classes)
 Trust Debt (surface vs surface) and Reality Drift (surface vs truth) have a third sibling: **Documentation Drift**, where the
-authorities that govern and run the system disagree with each other. It is measured in every audit (Article V item 9). Five types:
+authorities that govern and run the system disagree with each other. It is measured in every audit (Article V item 9).
+v1.5 (Principle 7): drift is one family with **six canonical classes**, all measured in every audit:
 
 | Type | Definition | Measured by |
 |---|---|---|
@@ -196,9 +204,10 @@ authorities that govern and run the system disagree with each other. It is measu
 | Documentation Drift | the AGENTS.md version differs between the checkout agents open, the live release and main | `Policy-Version` of each |
 | Runtime Drift | services execute different code from the release (old checkout, or old code held in memory since before a sync) | each process's cwd + start time vs the sync/activation time |
 | Release Drift | release metadata (deployment log, BUILD_SHA, ledger "LIVE") differs from what is actually running | BUILD_SHA + process cwd vs the log |
+| Reality Drift | a surface's displayed state differs from the actual state (Article VI) | the Article VI Reality Drift table |
 | Source-of-Truth Drift | different authorities give different answers to the same question | the Article VI tables |
 
-**Required: all five = 0.** Any non-zero type is a finding with an owner. Reference: 2026-11-10 12:3x ET, four versions at once
+**Required: all six = 0.** Any non-zero type is a finding with an owner. Reference: 2026-11-10 12:3x ET, four versions at once
 (main 30.0.1, canonical 31.0.0, live 32.0.0, fold 32.1.0); canonical synced to the fold at 12:39 ET.
 
 ## Article VII: Intelligence Standards
@@ -236,14 +245,19 @@ Every audit answers, for real-capital use, **YES / YES WITH RESTRICTIONS / NO**.
 ---
 
 ## Article XI: Capital System Maturity Model
-| Level | Name |
-|---|---|
-| 1 | Operational |
-| 2 | Observable |
-| 3 | Measurable |
-| 4 | Auditable |
-| 5 | Trusted |
-| 6 | Capital Ready |
+Trust maturity ladder (v1.5, operator; replaces the v1.0 table):
+
+| Level | Name | Meaning |
+|---|---|---|
+| 0 | Unknown | no measurements |
+| 1 | Observable | problems are visible |
+| 2 | Measurable | problems are quantified |
+| 3 | Governed | acceptance criteria exist |
+| 4 | Auditable | independent verification exists |
+| 5 | Trustworthy | Trust Debt = 0 and Reality Drift = 0 |
+| 6 | Capital Ready | all critical systems proven |
+
+Rating 2026-11-10 ~12:55 ET (operator): audit program Level 4 (Auditable); platform Level 2 to 3 (Measurable / Governed); capital readiness not achieved.
 
 A system may not be classified Capital Ready unless Trust Debt = 0, **Reality Drift = 0** (v1.1), critical findings pass, intelligence is validated, alerting is
 validated and the observation windows are completed.
@@ -259,7 +273,7 @@ registration or freshness and mistakes it for successful completion (Principle 6
 | **source-litmus-vs-yahoo (canonical case)** | `status=ok`, `outcome=ok` in the same file as `summary.verdict=BLOCK` (2026-11-10 07:46 ET) | the check blocked | 9, 10, 11, 15, 16 |
 | Alert queue "clean" | queue depth 0; scorecard row passed | 655 rows abandoned in one update at 10:51:01 ET; 0 ever sent or delivered | 2, Art. VIII |
 | DeepSeek 79.8% vs 0 failures | route `deepseek_only`; records say `deepseek-flash`; usage log says 0 failures | the calls ran on Anthropic and 219 of 262 failed in 24 h (provider identity drift) | 7, 14, Reality Drift |
-| **Reference Case B: the scorecard (Outcome Substitution)** | scorecard rows PASS | per the operator's review of the 11-10 re-audit, 12 of 16 passes check only age or registration, not outcome (LQ-1811 re-measures) | Principle 6, 15, 16 |
+| **Reference Case B: the scorecard (Outcome Substitution)** | scorecard rows PASS | per the operator's review of the 11-10 re-audit, 12 of 16 passes check only age or registration, not outcome. LQ-1811 (cc-opus-1, 12:51 ET on 631cef93b) reports 16 of 16 passes measure existence, registration, freshness or a count, and all 4 outcome checks fail; lead reproduction pending | Principle 6, 15, 16 |
 | CIO memory | memory lanes running | `intelligence.embedding` = 0 rows; 0 decisions changed | Art. VII |
 
 ---
@@ -267,6 +281,6 @@ registration or freshness and mistakes it for successful completion (Principle 6
 ## Constitutional Statement
 Every agent, auditor, engineer, workflow, deployment process and operational system shall follow this doctrine:
 
-**Trust is a feature. Evidence is truth. Activation is not validation. Exit 0 is not evidence. Unknown beats wrong. Health and verdicts are computed, never declared. Registration is not execution.
+**Trust is a feature. Evidence is truth. Activation is not validation. Exit 0 is not evidence. Unknown beats wrong. Health and verdicts are computed, never declared. Registration is not execution. Drift is measured, never assumed.
 If it cannot be measured, it cannot be trusted. If it cannot be audited, it cannot influence decisions.
 If it cannot be proven in production, it is not complete.**
