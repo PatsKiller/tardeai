@@ -1437,6 +1437,19 @@ def render(rep: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def run_strike_lane(summary: Mapping[str, Any], *, state_root: Path, now: datetime) -> dict[str, Any]:
+    """Feed the findings list M to the strike/heal/ticket engine (LQ-20261107-1726).
+
+    The engine's own durable write is its state file under this lane's state root. The only page it can make is the
+    D34 hub, and only for the codes named in ``config/numbers_truth_heal.json`` ``page_codes``; every other code is a
+    strike/ticket/FINDING record with no Telegram, text or email. Imported here rather than at module scope so an
+    engine that cannot load never stops the audit from producing the receipt it has already earned.
+    """
+    from scripts.lib import numbers_truth_strikes as S  # noqa: PLC0415 — the engine is this caller's opt-in
+
+    return S.run(findings=summary.get("findings") or [], state_path_=S.state_path(state_root), apply=True, now=now)
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     g = ap.add_mutually_exclusive_group()
@@ -1515,10 +1528,23 @@ def main(argv: Optional[list[str]] = None) -> int:
                                    path=R.receipt_path(LANE, a.state_root),
                                    produced_count=1 if global_ok else 0, attempted_count=1,
                                    skipped_reasons={} if global_ok else {DEP: 1}, empty_reason=None)
+    # LQ-20261107-1726: the receipt is written above; the findings now feed the strike/heal/ticket engine, which is
+    # the only caller of the D34 critical page. A failure here is reported (stderr + the apply JSON), never hidden,
+    # and never turns a written receipt into a failed run — the next hourly run re-plans from the same state file.
+    strikes: Optional[dict[str, Any]] = None
+    strikes_error: Optional[str] = None
+    try:
+        got = run_strike_lane(summary, state_root=state_root, now=now)
+        strikes = {k: got.get(k) for k in ("counts", "state_path", "heals", "tickets", "cleared",
+                                           "not_measured", "malformed", "known_disagreements")}
+    except Exception as exc:  # noqa: BLE001 — a struck-out engine is an outcome of this run, not a reason to lose it
+        strikes_error = f"{type(exc).__name__}: {exc}"[:400]
+        print(f"[{LANE}] strike lane failed: {strikes_error}", file=sys.stderr)
     print(json.dumps({"mode": "apply", "ok": global_ok, "receipt": str(written) if written else None,
                       "finding_count": rep.get("finding_count"),
                       "by_status": (rep.get("counts") or {}).get("by_status"),
-                      "error": rep.get("error")}, default=str))
+                      "error": rep.get("error"), "strikes": strikes, "strikes_error": strikes_error},
+                     default=str))
     return 0 if global_ok and written is not None else 1
 
 

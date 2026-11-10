@@ -4,11 +4,19 @@
     "Self-fix allowlist for the numbers-truth audit (DSN-20261109 REV 2 section D, REV 3 section G). Changed only by reviewed PR.",
     "A heal is ONE run request of the PRODUCER lane through the sanctioned host path (scripts/lib/n8n_cc_wave_c.enqueue_host_run -> n8n_coordination_gateway.host_run_request), rate-limited to one per lane per hour, recorded in the audit receipt.",
     "It is never a broker write, an order, a DB write, a code edit, a cron edit or a systemd edit. Authority findings (REV 3 G) never heal: a source change is operator-only (AGENTS.md section 17), so they ticket at strike 3.",
-    "Only ACTIVE n8n lanes are healable (REV 2 D). The KEEP_ON_CRON producers are not: strike 3 for their figures tickets directly."
+    "Only ACTIVE n8n lanes are healable (REV 2 D). The KEEP_ON_CRON producers are not: strike 3 for their figures tickets directly.",
+    "page_codes is the ONLY list that reaches the D34 critical page (Telegram + email + Fi text). Every other code is a strike/ticket/FINDING file only: no Telegram, no text, no email. Operator 2026-11-09 19:00 ET (LQ-20261107-1726).",
+    "known_disagreement lists measured FAILs the operator has accepted as known source disagreements. Each entry needs check, reason, approved_by and expires (YYYY-MM-DD, default 30 days); symbol/account narrow it (absent = any). An entry suppresses its own strike, never a heal/clear/page/pass, and an expired entry changes nothing. The list ships EMPTY; entries are operator-approved (AGENTS.md section 17)."
   ],
   "rate_limit": {
     "per_lane_per_hour": 1
   },
+  "page_codes": [
+    "NT_STOP_PRICE_MISMATCH",
+    "NT_STOP_QTY_MISMATCH",
+    "NT_UNPROTECTED"
+  ],
+  "known_disagreement": [],
   "healable": {
     "vix-index-quotes-schwab": {
       "mode": "dry_run",

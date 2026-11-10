@@ -81,6 +81,9 @@ def state_with(*rows, fails=1):
 
 CONFIG = {
     "rate_limit": {"per_lane_per_hour": 1},
+    # Only a page code reaches the D34 hub and the escalation intent (LQ-20261107-1726). The tests that assert a page
+    # give their row one of these as its check; the tests that assert silence deliberately do not.
+    "page_codes": ["NT_STOP_PRICE_MISMATCH", "NT_STOP_QTY_MISMATCH", "NT_UNPROTECTED"],
     "healable": {"vix-index-quotes-schwab": {"mode": "dry_run"},
                  "cio-overnight-brief": {"mode": "live"},
                  "holdings-drift-monitor": {"mode": "dry_run"},
@@ -191,7 +194,7 @@ def test_a_refused_heal_tickets_in_the_same_run(tmp_path):
         return {"ok": False, "accepted": False, "state": "REFUSED", "reason": "mode_unavailable:live", "run_id": "r1"}
 
     escalations = []
-    row = fail_row()
+    row = fail_row(check="NT_UNPROTECTED")
     state_path = tmp_path / "state.json"
     write_state(state_path, {
         S.fingerprint("risk", "vix_tile"): {"consecutive_fails": 2, "page": "risk", "figure_id": "vix_tile",
@@ -370,7 +373,7 @@ def test_a_dry_run_writes_nothing_and_calls_nothing(tmp_path):
 
 
 def test_apply_writes_the_state_atomically_and_escalates_both_sides_with_timestamps(tmp_path):
-    row = fail_row(page="holdings", figure_id="qty", symbol="XLV", account="acct1",
+    row = fail_row(page="holdings", figure_id="qty", symbol="XLV", account="acct1", check="NT_UNPROTECTED",
                    served=0, truth=100, severity="P0",
                    detail="row renders 0 shares; positions_current says 100")
     state_path = tmp_path / "state.json"
@@ -479,8 +482,8 @@ def test_a_new_ticket_at_2300_et_pages_email_telegram_and_fi_text_promptly(tmp_p
     monkeypatch.setenv("TRADEAI_CRITICAL_ALERT_CHAT_ID", "chat-fixture")
     assert NIGHT.astimezone(ET).hour == 23
 
-    row = fail_row(page="holdings", figure_id="qty", symbol="XLV", account="acct1", served=0, truth=100,
-                   detail="row renders 0 shares; positions_current says 100")
+    row = fail_row(page="holdings", figure_id="qty", symbol="XLV", account="acct1", check="NT_UNPROTECTED",
+                   served=0, truth=100, detail="row renders 0 shares; positions_current says 100")
     fp = S.fingerprint("holdings", "qty", "acct1", "XLV")
     state_path = tmp_path / "state.json"
     write_state(state_path, {fp: {"consecutive_fails": 2, "page": "holdings", "figure_id": "qty",
@@ -533,7 +536,8 @@ def test_a_cleared_line_never_pages_and_rides_the_intent_only(tmp_path):
     write_state(state_path, {fp: {
         "consecutive_fails": 4, "status": "ticketed", "page": "holdings", "figure_id": "qty", "account": "acct1",
         "symbol": "xlv", "severity": "P0",
-        "ticket": {"id": S.ticket_id(fp), "at": "2026-11-09T20:00:00+00:00"}}})
+        # paged=True: the operator was told about this ticket, so its clear intent may reach Telegram/email too.
+        "ticket": {"id": S.ticket_id(fp), "at": "2026-11-09T20:00:00+00:00", "paged": True}}})
 
     def boom(**kw):  # pragma: no cover - it must never run
         raise AssertionError("a cleared line must never page")
@@ -551,7 +555,8 @@ def test_a_cleared_line_never_pages_and_rides_the_intent_only(tmp_path):
 def test_a_page_callable_that_raises_still_lets_the_run_save_its_state(tmp_path):
     """Belt and braces around `deliver_critical`'s own guard: whatever a page callable does, the run must reach
     save_state. Otherwise the next hourly run re-opens the same ticket and pages the operator again, every hour."""
-    row = fail_row(page="holdings", figure_id="qty", symbol="XLV", account="acct1", served=0, truth=100)
+    row = fail_row(page="holdings", figure_id="qty", symbol="XLV", account="acct1", check="NT_UNPROTECTED",
+                   served=0, truth=100)
     fp = S.fingerprint("holdings", "qty", "acct1", "XLV")
     state_path = tmp_path / "state.json"
     write_state(state_path, {fp: {"consecutive_fails": 2, "page": "holdings", "figure_id": "qty",
@@ -573,7 +578,8 @@ def test_a_page_callable_that_raises_still_lets_the_run_save_its_state(tmp_path)
 def test_a_page_the_hub_cannot_send_is_a_named_outcome_not_a_crash(tmp_path):
     """A hub that cannot be reached (the class removed from the allowlist, the module missing) must not take the
     audit down: the run still records the state and the intent, and the failure is visible as a count."""
-    row = fail_row(page="holdings", figure_id="qty", symbol="XLV", account="acct1", served=0, truth=100)
+    row = fail_row(page="holdings", figure_id="qty", symbol="XLV", account="acct1", check="NT_UNPROTECTED",
+                   served=0, truth=100)
     fp = S.fingerprint("holdings", "qty", "acct1", "XLV")
     state_path = tmp_path / "state.json"
     write_state(state_path, {fp: {"consecutive_fails": 2, "page": "holdings", "figure_id": "qty",

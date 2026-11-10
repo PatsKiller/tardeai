@@ -74,6 +74,9 @@ VERDICTS = (FAIL, NOT_MEASURED, PASS)
 #: The core (LQ-1701) spells a failure `MISMATCH`; it is the same strike. Accept both, never translate silently.
 _VERDICT_ALIASES = {"MISMATCH": FAIL}
 ACTION_RECORD, ACTION_HEAL, ACTION_TICKET, ACTION_CLEAR = "record", "heal", "ticket", "clear"
+#: A measured FAIL the operator has accepted as a known source disagreement: no strike, no heal, no clear, no page,
+#: and never counted as a pass. The entry that matched, with its reason, travels on the decision so it stays visible.
+ACTION_KNOWN = "known_disagreement"
 _FP_RE = re.compile(r"^[^|]*\|[^|]*\|[^|]*\|[^|]*$")
 
 
@@ -144,7 +147,12 @@ def normalise(row: Mapping[str, Any]) -> dict[str, Any]:
             raise StrikesError("a FAIL needs both the served side (served/shown) and the truth side")
         missing_as_of = any(side.get("as_of") is None for side in (served, truth))
     if verdict == NOT_MEASURED and served is None and truth is None:
-        raise StrikesError("NOT_MEASURED needs the side that could not be read")
+        # The core (LQ-1701) records "nothing was readable here" as ``shown: {}``/``truth: {}`` plus a TYPED reason
+        # (``no_such_field``, ``source_unreadable``). The reason is that row's whole evidence: refusing it graded
+        # every healthy NOT_MEASURED finding of the audit malformed, which reads as a wiring fault and drops the hold
+        # from the counts. A row that names neither a side nor a reason is still refused.
+        if not str(row.get("reason") or "").strip():
+            raise StrikesError("NOT_MEASURED needs the side that could not be read")
     return {
         "fingerprint": computed,
         "page": str(row.get("page") or "").strip().lower(),
@@ -281,6 +289,83 @@ def load_config(path: Optional[Path] = None) -> dict[str, Any]:
     return dict(doc)
 
 
+def page_codes(config: Mapping[str, Any]) -> frozenset[str]:
+    """The codes allowed to reach the D34 page. Everything else is record/ticket/FINDING only.
+
+    Read from the config (never hardcoded), because turning a page on or off is the operator's call. An absent key is
+    the safe direction: no code pages. A malformed list is refused rather than guessed at.
+    """
+    raw = config.get("page_codes")
+    if raw is None:
+        return frozenset()
+    if not isinstance(raw, list) or any(not isinstance(c, str) or not c.strip() for c in raw):
+        raise StrikesError("page_codes must be a list of non-empty code strings")
+    return frozenset(c.strip().upper() for c in raw)
+
+
+def known_disagreements(config: Mapping[str, Any], now: Optional[datetime] = None) -> list[dict[str, Any]]:
+    """The validated known-disagreement table. An entry is a measured FAIL the operator has accepted.
+
+    Every entry carries the operator's name, a stated reason and an expiry; a malformed entry refuses the whole
+    table (fail-closed: a suppression list that cannot be read must not run). The list ships empty.
+    """
+    raw = config.get("known_disagreement")
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise StrikesError("known_disagreement must be a list")
+    out: list[dict[str, Any]] = []
+    for i, row in enumerate(raw):
+        if not isinstance(row, Mapping):
+            raise StrikesError(f"known_disagreement[{i}] is not an object")
+        check = str(row.get("check") or "").strip().upper()
+        reason = str(row.get("reason") or "").strip()
+        approved_by = str(row.get("approved_by") or "").strip()
+        if not check:
+            raise StrikesError(f"known_disagreement[{i}] has no check code")
+        if not reason:
+            # A suppression with no written reason is exactly the silent failure the table must not become.
+            raise StrikesError(f"known_disagreement[{i}] ({check}) has no reason")
+        if not approved_by:
+            raise StrikesError(f"known_disagreement[{i}] ({check}) has no approved_by")
+        try:
+            expires = datetime.strptime(str(row.get("expires")), "%Y-%m-%d").date()
+        except (TypeError, ValueError) as exc:
+            raise StrikesError(f"known_disagreement[{i}] ({check}) needs expires as YYYY-MM-DD") from exc
+        symbol = row.get("symbol")
+        account = row.get("account")
+        out.append({
+            "check": check,
+            "symbol": str(symbol).strip().upper() if symbol not in (None, "") else None,
+            "account": _clean(account),
+            "reason": reason,
+            "approved_by": approved_by,
+            "approved_at": row.get("approved_at"),
+            "expires": expires,
+        })
+    return out
+
+
+def match_known_disagreement(finding: Mapping[str, Any], entries: Iterable[Mapping[str, Any]],
+                             now: Optional[datetime] = None) -> Optional[dict[str, Any]]:
+    """The entry this measured FAIL is accepted by, or None. An expired entry matches nothing (fail-closed)."""
+    moment = _now(now)
+    check = str(finding.get("check") or "").strip().upper()
+    symbol = str(finding.get("symbol") or "").strip().upper()
+    account = _clean(finding.get("account"))
+    for entry in entries:
+        if moment.date() > entry["expires"]:
+            continue
+        if check != entry["check"]:
+            continue
+        if entry.get("symbol") is not None and symbol != entry["symbol"]:
+            continue
+        if entry.get("account") is not None and account != entry["account"]:
+            continue
+        return dict(entry)
+    return None
+
+
 def heal_lane(finding: Mapping[str, Any], config: Mapping[str, Any]) -> tuple[Optional[str], str]:
     """The producer lane that owns this figure. Returns (lane, reason-when-no-lane)."""
     if finding.get("family") == "authority":
@@ -350,6 +435,8 @@ def plan(
     figures = {fp: dict(row) for fp, row in (state.get("figures") or {}).items()}
     observed, malformed = split_findings(findings)
     audited_set = {str(x).strip().lower() for x in audited} if audited is not None else None
+    pages_for = page_codes(config)
+    accepted = known_disagreements(config, now=moment)
     decisions: list[dict[str, Any]] = []
 
     for fp in sorted(observed):
@@ -381,8 +468,23 @@ def plan(
             figures[fp] = row
             continue
 
+        # FAIL — unless the operator has accepted this exact measured disagreement for this figure. The entry must be
+        # unexpired, and it changes nothing else: no strike, no heal, no clear, no page, no "pass". Expiry is
+        # fail-closed — an expired entry matches nothing, so the row is an ordinary strike again the same run.
+        accepted_entry = match_known_disagreement(finding, accepted, now=moment)
+        if accepted_entry is not None:
+            row["last_seen_at"] = _iso(moment)
+            row.setdefault("first_seen_at", row["last_seen_at"])
+            row["status"] = ACTION_KNOWN
+            decisions.append({**finding, "action": ACTION_KNOWN, "fails": fails,
+                              "reason": f"known_disagreement:{accepted_entry['reason']}",
+                              "known_disagreement": accepted_entry})
+            figures[fp] = row
+            continue
+
         # FAIL
         fails += 1
+        paged = finding["check"].strip().upper() in pages_for
         row["consecutive_fails"] = fails
         row["last_seen_at"] = _iso(moment)
         row.setdefault("first_seen_at", row["last_seen_at"])
@@ -406,13 +508,17 @@ def plan(
             if used >= limit:
                 decisions.append({**finding, "action": ACTION_TICKET, "fails": fails,
                                   "reason": f"heal_rate_limited:{lane}", "lane": lane,
-                                  "mode": (config["healable"][lane] or {}).get("mode", "live")})
-                row.update({"status": "ticketed", "ticket": {"id": ticket_id(fp), "at": _iso(moment)}})
+                                  "mode": (config["healable"][lane] or {}).get("mode", "live"),
+                                  "paged": paged})
+                row.update({"status": "ticketed", "ticket": {"id": ticket_id(fp), "at": _iso(moment),
+                                                             "paged": paged}})
                 figures[fp] = row
                 continue
             mode = ((config.get("healable") or {}).get(lane) or {}).get("mode") or "live"
+            # paged travels on the heal too: a REFUSED heal becomes a ticket in the same run, and that ticket is the
+            # operator's first word about the figure — a page code must page on it.
             decision = {**finding, "action": ACTION_HEAL, "fails": fails, "lane": lane, "mode": mode,
-                        "reason": "strike_3_self_fix"}
+                        "reason": "strike_3_self_fix", "paged": paged}
             decisions.append(decision)
             row.update({"status": "healing",
                         "heal": {"lane": lane, "mode": mode, "requested_at": _iso(moment), "strike": fails,
@@ -424,8 +530,9 @@ def plan(
         reason = why or "strike_4"
         if fails == HEAL_STRIKE and not lane:
             reason = why or "no_heal_mapped"
-        decisions.append({**finding, "action": ACTION_TICKET, "fails": fails, "reason": reason, "lane": lane})
-        row.update({"status": "ticketed", "ticket": {"id": ticket_id(fp), "at": _iso(moment)}})
+        decisions.append({**finding, "action": ACTION_TICKET, "fails": fails, "reason": reason, "lane": lane,
+                          "paged": paged})
+        row.update({"status": "ticketed", "ticket": {"id": ticket_id(fp), "at": _iso(moment), "paged": paged}})
         figures[fp] = row
 
     # PASS by absence: a fingerprint that was failing and is no longer in M cleared — unless the caller told us which
@@ -468,6 +575,8 @@ def plan(
         "heals": sum(1 for d in decisions if d["action"] == ACTION_HEAL),
         "tickets": sum(1 for d in decisions if d["action"] == ACTION_TICKET),
         "cleared": sum(1 for d in decisions if d["action"] == ACTION_CLEAR),
+        # Visible every run; an accepted disagreement is never folded into "pass" or into silence.
+        "known_disagreement": sum(1 for d in decisions if d["action"] == ACTION_KNOWN),
     }
     return {"decisions": decisions, "malformed": malformed, "counts": counts, "figures": figures}
 
@@ -713,7 +822,9 @@ def run(
             if not healed.get("accepted"):
                 # a refused heal is strike 3 with nothing healed: ticket now, not after another failing run
                 decision = {**decision, "action": ACTION_TICKET, "reason": f"heal_refused:{healed.get('reason')}"}
-                row.update({"status": "ticketed", "ticket": {"id": ticket_id(decision["fingerprint"]), "at": _iso(moment)}})
+                row.update({"status": "ticketed", "ticket": {"id": ticket_id(decision["fingerprint"]),
+                                                             "at": _iso(moment),
+                                                             "paged": bool(decision.get("paged"))}})
                 figures[decision["fingerprint"]] = row
                 action = ACTION_TICKET
         if action == ACTION_TICKET and apply:
@@ -723,27 +834,37 @@ def run(
             elif inbox is not None or esc_cfg:
                 taken = {**taken, "ticket": write_finding(
                     decision=decision, inbox=Path(inbox) if inbox is not None else default_inbox(), now=moment)}
-            esc = dict(escalate_fn(domain=esc_cfg.get("domain") or "data",
-                                   kind=esc_cfg.get("kind_ticket") or "numbers_truth_ticket",
-                                   subject=ticket_subject(decision), summary=ticket_summary(decision),
-                                   fingerprint_=decision["fingerprint"], now=moment) or {})
-            taken["escalation"] = esc
-            # the operator's contract is a PROMPT page (REV 3 H), not a digest slot: the intent above is the durable
-            # record, and this is the three-channel delivery that does not wait for a batch or for 07:00. Guarded
-            # here as well as inside deliver_critical: a page that raises must not abort the run before the state is
-            # saved, because the next hourly run would then open the same ticket and page again.
-            try:
-                taken["critical"] = dict(critical_fn(decision=decision, now=moment) or {})
-            except Exception as exc:  # noqa: BLE001 — a failed page is a recorded outcome, never a lost audit run
-                taken["critical"] = {"ok": False, "delivered": False,
-                                     "reason": f"critical_call_error:{type(exc).__name__}"}
+            # The operator's page is turned on for the config's page_codes and NOTHING else (LQ-20261107-1726):
+            # a code outside that list is a ticket + FINDING + state record, with no Telegram, no text and no email.
+            # The escalation intent is itself a Telegram delivery, so it is gated with the page.
+            if not decision.get("paged"):
+                taken["page_suppressed"] = "code_not_in_page_codes"
+            else:
+                esc = dict(escalate_fn(domain=esc_cfg.get("domain") or "data",
+                                       kind=esc_cfg.get("kind_ticket") or "numbers_truth_ticket",
+                                       subject=ticket_subject(decision), summary=ticket_summary(decision),
+                                       fingerprint_=decision["fingerprint"], now=moment) or {})
+                taken["escalation"] = esc
+                # the operator's contract is a PROMPT page (REV 3 H), not a digest slot: the intent above is the
+                # durable record, and this is the three-channel delivery that does not wait for a batch or 07:00.
+                # Guarded here as well as inside deliver_critical: a page that raises must not abort the run before
+                # the state is saved, because the next hourly run would open the same ticket and page again.
+                try:
+                    taken["critical"] = dict(critical_fn(decision=decision, now=moment) or {})
+                except Exception as exc:  # noqa: BLE001 — a failed page is a recorded outcome, never a lost audit run
+                    taken["critical"] = {"ok": False, "delivered": False,
+                                         "reason": f"critical_call_error:{type(exc).__name__}"}
         if action == ACTION_CLEAR and apply and decision.get("ticket"):
-            # recovery is ONE line (REV 3 H) and only for a fingerprint the operator was told about.
-            taken = dict(escalate_fn(domain=esc_cfg.get("domain") or "data",
-                                     kind=esc_cfg.get("kind_cleared") or "numbers_truth_cleared",
-                                     subject=f"numbers-truth cleared: {ticket_id(decision['fingerprint'])}",
-                                     summary=cleared_line(decision),
-                                     fingerprint_=decision["fingerprint"], now=moment) or {})
+            # recovery is ONE line (REV 3 H) and only for a fingerprint the operator was told about. A ticket that
+            # was never paged gets no Telegram clear either — the intent is a Telegram route (LQ-20261107-1726).
+            if not (decision.get("ticket") or {}).get("paged"):
+                taken["clear_suppressed"] = "ticket_was_not_paged"
+            else:
+                taken = dict(escalate_fn(domain=esc_cfg.get("domain") or "data",
+                                         kind=esc_cfg.get("kind_cleared") or "numbers_truth_cleared",
+                                         subject=f"numbers-truth cleared: {ticket_id(decision['fingerprint'])}",
+                                         summary=cleared_line(decision),
+                                         fingerprint_=decision["fingerprint"], now=moment) or {})
             action = ACTION_CLEAR
         if apply:
             actions.append({"fingerprint": decision["fingerprint"], "action": action, "taken": taken})
@@ -778,6 +899,12 @@ def run(
         "tickets": [d for d in plan_["decisions"] if d["action"] == ACTION_TICKET],
         "cleared": [cleared_line(d) for d in plan_["decisions"] if d["action"] == ACTION_CLEAR],
         "not_measured": [d["fingerprint"] for d in plan_["decisions"] if d["action"] == "hold"],
+        # The accepted disagreements of this run, with the operator's reason — never a silent drop.
+        "known_disagreements": [{"fingerprint": d["fingerprint"], "check": d.get("check"),
+                                 "reason": (d.get("known_disagreement") or {}).get("reason"),
+                                 "expires": str((d.get("known_disagreement") or {}).get("expires")),
+                                 "approved_by": (d.get("known_disagreement") or {}).get("approved_by")}
+                                for d in plan_["decisions"] if d["action"] == ACTION_KNOWN],
     }
 
 

@@ -1,0 +1,21 @@
+{
+  "schema": "CiGate@v1",
+  "name": "NUMBERS_TRUTH_WIRING_20261110",
+  "files": [
+    "tests/test_numbers_truth_wiring_20261110.py"
+  ],
+  "anchor": "NUMBERS_TRUTH_WIRING_20261110",
+  "comment": [
+    "ANCHOR: NUMBERS_TRUTH_WIRING_20261110 — LQ-20261107-1726, the operator's 2026-11-09 19:00 ET instruction to",
+    "promote the numbers-truth lane live 'and make sure the alerting is turned on'. scripts/numbers_truth_audit.py",
+    "now feeds its own findings (list M) to scripts/lib/numbers_truth_strikes.run() on --apply, after the receipt,",
+    "with the engine's state file under the lane's state root; a dry run never calls the engine. The D34 critical",
+    "page (Telegram + email + every Google Fi text line) is reached ONLY by the codes named in",
+    "config/numbers_truth_heal.json page_codes — a config list, not a literal — and every other code is a",
+    "strike/ticket/FINDING record with no text, Telegram or email (the escalation intent is gated with the page).",
+    "A clear reaches a channel only for a ticket that was paged. known_disagreement is shipped EMPTY: an entry is",
+    "operator-approved, carries its reason and expires fail-closed on its own date. Hermetic: a synthetic",
+    "39-finding replay over four simulated hours, a throwaway state root, injected senders; the 1713 guard would",
+    "raise if a real sender were reached."
+  ]
+}
