@@ -28,6 +28,17 @@ except ImportError:  # monitor path loads this file as a top-level module on scr
         _classify_refusal = None
 
 AUTHORITY = "READ_ONLY_ADVISORY"
+
+
+class RowsUnreadable(RuntimeError):
+    """The lane's raw rows could not be read — never `[]`.
+
+    `_db_rows` returned `[]` on every exception, so a failed read was indistinguishable from a quiet
+    lane and fired `zero_non_error_24h`: the alert accused the lane of silence while the monitor was
+    blind (Constitution Rules 8 and 11). The message always begins `cannot be read: ` and carries
+    the reason, so every surface that quotes a firing string says what actually happened.
+    """
+
 SCHEMA = "ResearchLaneHealth@v1"
 
 # Auto-dispatched writer lanes in hermes_external_research.
@@ -241,6 +252,84 @@ def evaluate_lane(
     }
 
 
+def read_failure_reason(exc: BaseException) -> str:
+    """`cannot be read: <type>: <bounded message>` — the one spelling of a failed read."""
+    if isinstance(exc, RowsUnreadable):
+        text = str(exc).strip()
+        if text.startswith("cannot be read:"):
+            return text
+    text = " ".join(str(exc).split())
+    if not text:
+        return f"cannot be read: {type(exc).__name__} (no message)"
+    return f"cannot be read: {type(exc).__name__}: {text[:200]}"
+
+
+def unreadable_lane(lane: str, exc: BaseException, *, now: Optional[datetime] = None) -> dict[str, Any]:
+    """A lane whose rows could not be read. NOT_MEASURED: counters are None, never zero.
+
+    It still fires — a monitor that cannot look is not a healthy lane — but it says so in the firing
+    string (`cannot be read: …`) instead of accusing the lane of `zero_non_error_24h`.
+    """
+    now = now or datetime.now(timezone.utc)
+    reason = read_failure_reason(exc)
+    return {
+        "lane": lane,
+        "ok": False,
+        "measured": False,
+        "firing": [reason],
+        "error_streak": None,
+        "streak_threshold": error_streak_n(),
+        "non_error_24h": None,
+        "attempts_24h": None,
+        "error_24h": None,
+        "skipped_budget_24h": None,
+        "refused_24h": None,
+        "error_rate_24h": None,
+        "last_any": None,
+        "authority": AUTHORITY,
+        "as_of": now.replace(microsecond=0).isoformat(),
+    }
+
+
+def _evaluated_lane(loader, lane: str, *, since: datetime, silence: bool,
+                    now: datetime) -> dict[str, Any]:
+    """Evaluate one DB-backed lane, or state why it could not be read. Never returns a zero row."""
+    try:
+        newest, last_24h = loader(lane, since=since)
+    except Exception as exc:  # noqa: BLE001 -- ANY failure to read is named; none becomes a zero row
+        return unreadable_lane(lane, exc, now=now)
+    return evaluate_lane(lane, newest_first=newest, last_24h=last_24h, silence=silence, now=now)
+
+
+def _overnight_row(*, since: datetime, now: datetime) -> dict[str, Any]:
+    """The overnight lane's row, its provider verdict, or the reason its rows could not be read."""
+    try:
+        newest, last_24h = load_overnight_rows(since=since)
+    except Exception as exc:  # noqa: BLE001 -- any failure to read is named; none becomes a quiet lane
+        return unreadable_lane(OVERNIGHT_LANE, exc, now=now)
+    row = evaluate_lane(
+        OVERNIGHT_LANE,
+        newest_first=newest,
+        last_24h=last_24h,
+        silence=True,
+        now=now,
+    )
+    # LQ-20261107-1659: this lane writes no row when its provider refuses a target, so the RAW
+    # store alone can only say "silence". The prober's verdict says WHY (a quota/rate wall is
+    # not a broken scheduler and no re-run clears it). Attach it to the row the alert renders.
+    verdict = oauth_lane_verdict()
+    if verdict and verdict.get("ok") is False:
+        row["provider_verdict"] = {
+            "lane": verdict.get("lane") or OVERNIGHT_PROVIDER_LANE,
+            "kind": verdict.get("kind"),
+            "detail": verdict.get("detail"),
+            "consec_fail": verdict.get("consec_fail"),
+            "last_ok": verdict.get("last_ok"),
+            "quota_exhausted": verdict.get("quota_exhausted"),
+        }
+    return row
+
+
 def _project_root():
     from pathlib import Path
     return Path(__file__).resolve().parents[2]
@@ -267,12 +356,17 @@ def oauth_lane_verdict(lane: str = OVERNIGHT_PROVIDER_LANE, *, path: Any = None)
 
 
 def _db_rows(sql: str, params: tuple = ()) -> list[dict[str, Any]]:
+    """Rows, or `RowsUnreadable` — never `[]` for a failure.
+
+    An empty list is a fact about the lane (it wrote nothing); it must never also mean "the monitor
+    could not look". The two produce opposite operator actions.
+    """
     try:
         from db_adapter import _execute
         rows = _execute(sql, params, fetch="all") or []
         return [dict(r) for r in rows]
-    except Exception:
-        return []
+    except Exception as exc:  # noqa: BLE001 -- every failure is named, none swallowed
+        raise RowsUnreadable(read_failure_reason(exc)) from exc
 
 
 def load_external_rows(lane: str, *, since: datetime, limit: int = 50) -> tuple[list[dict], list[dict]]:
@@ -489,34 +583,11 @@ def collect_report(*, now: Optional[datetime] = None, cio_ask_health_reader=None
     since = now - timedelta(hours=silence_hours())
     lanes: list[dict[str, Any]] = []
     for lane in EXTERNAL_AUTO_LANES:
-        newest, last_24h = load_external_rows(lane, since=since)
-        lanes.append(evaluate_lane(lane, newest_first=newest, last_24h=last_24h, silence=True, now=now))
+        lanes.append(_evaluated_lane(load_external_rows, lane, since=since, silence=True, now=now))
     for lane in EXTERNAL_MANUAL_LANES:
-        newest, last_24h = load_external_rows(lane, since=since)
-        lanes.append(evaluate_lane(lane, newest_first=newest, last_24h=last_24h, silence=False, now=now))
+        lanes.append(_evaluated_lane(load_external_rows, lane, since=since, silence=False, now=now))
     if os.getenv("RESEARCH_LANE_HEALTH_OVERNIGHT", "1").strip().lower() not in {"0", "false", "off", "no"}:
-        newest, last_24h = load_overnight_rows(since=since)
-        row = evaluate_lane(
-            OVERNIGHT_LANE,
-            newest_first=newest,
-            last_24h=last_24h,
-            silence=True,
-            now=now,
-        )
-        # LQ-20261107-1659: this lane writes no row when its provider refuses a target, so the RAW
-        # store alone can only say "silence". The prober's verdict says WHY (a quota/rate wall is
-        # not a broken scheduler and no re-run clears it). Attach it to the row the alert renders.
-        verdict = oauth_lane_verdict()
-        if verdict and verdict.get("ok") is False:
-            row["provider_verdict"] = {
-                "lane": verdict.get("lane") or OVERNIGHT_PROVIDER_LANE,
-                "kind": verdict.get("kind"),
-                "detail": verdict.get("detail"),
-                "consec_fail": verdict.get("consec_fail"),
-                "last_ok": verdict.get("last_ok"),
-                "quota_exhausted": verdict.get("quota_exhausted"),
-            }
-        lanes.append(row)
+        lanes.append(_overnight_row(since=since, now=now))
     if os.getenv("RESEARCH_LANE_HEALTH_PIN", "1").strip().lower() not in {"0", "false", "off", "no"}:
         try:
             from scripts.lib.current_pin_integrity import collect_pin_report, collect_process_freshness

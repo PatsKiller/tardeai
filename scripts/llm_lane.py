@@ -297,13 +297,16 @@ def generate(
             raise RuntimeError(
                 "BRIDGE_ROUTE_REFUSED: TRADEAI_LLM_VIA_BRIDGE is on and this call has no process_id"
             )
-        from lib.llm_bridge_route import text_via_bridge
+        from lib.llm_bridge_route import text_and_provenance_via_bridge
 
-        text = text_via_bridge(str(process_id), str(prompt), timeout_s=float(timeout or 60))
+        text, bridge_meta = text_and_provenance_via_bridge(
+            str(process_id), str(prompt), timeout_s=float(timeout or 60))
         if text is None:
             raise RuntimeError("BRIDGE_ROUTE_REFUSED: governed bridge returned no text")
         if return_provenance:
-            return text, {"via": "cio-governed-bridge", "process_id": str(process_id)}
+            # The bridge's own block says which provider and model ran (LQ-1808); a caller storing provenance
+            # must be able to record the executor, not the request. `via` keeps the previous shape.
+            return text, {**bridge_meta, "via": "cio-governed-bridge", "process_id": str(process_id)}
         return text
 
     if process_id and not _skip_consumption and (
@@ -317,6 +320,9 @@ def generate(
             operator_confirmed=operator_confirmed,
             response_json=response_json,
             max_tokens=max_tokens,
+            # Forwarded since LQ-1808: this call dropped the flag, so a caller asking for the executed
+            # provider silently received a bare string and had to guess what ran.
+            return_provenance=return_provenance,
         )
 
     # ── DeepSeek lanes (paid API key, exact V4 models) ──

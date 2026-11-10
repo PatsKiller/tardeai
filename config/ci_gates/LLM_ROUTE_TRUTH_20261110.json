@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "LLM_ROUTE_TRUTH_20261110",
+  "files": [
+    "tests/test_llm_process_registry_routes_20261110.py",
+    "tests/test_research_lane_rows_unreadable_20261110.py"
+  ],
+  "anchor": "LLM_ROUTE_TRUTH_20261110",
+  "comment": [
+    "ANCHOR: LLM_ROUTE_TRUTH_20261110 — LQ-20261107-1808: a process may not declare deepseek_only AND anthropic_first (the deepseek lane ran on claude-haiku-5-5; 219/24h ANTHROPIC_INPUT_LIMIT_EXCEEDED), and a failed lane read renders 'cannot be read: <reason>', never []."
+  ]
+}

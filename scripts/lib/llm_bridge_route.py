@@ -92,15 +92,29 @@ def text_via_bridge(process_id: str, prompt: str, *, timeout_s: float = 60.0,
     None is not a silent fallback to a provider. The caller decides. ``max_tokens`` (default: the transport's
     2048) is a request; the bridge still clamps it to the registry row's max_output_tokens.
     """
-    return _text_and_error(process_id, prompt, timeout_s=timeout_s, max_tokens=max_tokens,
-                           manual_trigger=manual_trigger)[0]
+    return _text_and_meta(process_id, prompt, timeout_s=timeout_s, max_tokens=max_tokens,
+                          manual_trigger=manual_trigger)[0]
 
 
-def _text_and_error(process_id: str, prompt: str, *, timeout_s: float, max_tokens: Optional[int],
-                    manual_trigger: bool) -> tuple[Optional[str], dict[str, Any]]:
-    """The bridge text (or None) and, when there is no text, the bridge's ``error`` dict ({} when it sent none)."""
+def text_and_provenance_via_bridge(process_id: str, prompt: str, *, timeout_s: float = 60.0,
+                                   max_tokens: Optional[int] = None,
+                                   manual_trigger: bool = False) -> tuple[Optional[str], dict[str, Any]]:
+    """The bridge text (or None) and the bridge's own ``_tradeai`` provenance block ({} when there is no text).
+
+    A caller that stores which provider and model actually ran needs the bridge's answer, not its request
+    (LQ-1808). The block is returned as sent — ``provider``, ``model_id``, ``requested_policy``,
+    ``route_receipts`` — so the row records the executor rather than the caller's intent.
+    """
+    text, _err, governance = _text_and_meta(process_id, prompt, timeout_s=timeout_s, max_tokens=max_tokens,
+                                            manual_trigger=manual_trigger)
+    return text, (governance if text is not None else {})
+
+
+def _text_and_meta(process_id: str, prompt: str, *, timeout_s: float, max_tokens: Optional[int],
+                   manual_trigger: bool) -> tuple[Optional[str], dict[str, Any], dict[str, Any]]:
+    """The bridge text (or None), the bridge's ``error`` dict ({} when it sent none), and its ``_tradeai`` block."""
     if not process_admitted(process_id):
-        return None, {"code": "PROCESS_NOT_ADMITTED"}
+        return None, {"code": "PROCESS_NOT_ADMITTED"}, {}
     kw: dict[str, Any] = {"process_id": process_id, "timeout_s": timeout_s}
     if max_tokens is not None:
         kw["max_tokens"] = int(max_tokens)
@@ -108,22 +122,22 @@ def _text_and_error(process_id: str, prompt: str, *, timeout_s: float, max_token
         kw["manual_trigger"] = True
     result = _call_bridge([{"role": "user", "content": prompt}], **kw)
     if not isinstance(result, dict):
-        return None, {}
+        return None, {}, {}
     if result.get("error"):
         err = result.get("error")
-        return None, (dict(err) if isinstance(err, dict) else {"message": str(err)})
+        return None, (dict(err) if isinstance(err, dict) else {"message": str(err)}), {}
     governance = result.get("_tradeai")
     if not isinstance(governance, dict):
-        return None, {}
+        return None, {}, {}
     if governance.get("governance_pass") is not True or governance.get("process_id") != process_id:
-        return None, {}
+        return None, {}, {}
     if not governance.get("reservation_id") and governance.get("mock") is not True:
-        return None, {}
+        return None, {}, {}
     try:
         content = result["choices"][0]["message"]["content"]
-        return (content if isinstance(content, str) else None), {}
+        return (content if isinstance(content, str) else None), {}, dict(governance)
     except (KeyError, IndexError, TypeError):
-        return None, {}
+        return None, {}, {}
 
 
 def require_text_via_bridge(process_id: str, prompt: str, *, timeout_s: float = 60.0,
@@ -132,8 +146,8 @@ def require_text_via_bridge(process_id: str, prompt: str, *, timeout_s: float = 
 
     The refusal is raised, never swallowed into a fallback: a lane on the bridge path that catches it records the
     row as failed (no output), it does not try a provider client, another lane or a local model."""
-    text, err = _text_and_error(process_id, prompt, timeout_s=timeout_s, max_tokens=max_tokens,
-                                manual_trigger=manual_trigger is True)
+    text, err, _governance = _text_and_meta(process_id, prompt, timeout_s=timeout_s, max_tokens=max_tokens,
+                                            manual_trigger=manual_trigger is True)
     if text is None or not str(text).strip():
         code = err.get("code")
         raise BridgeRouteRefused(

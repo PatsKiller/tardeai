@@ -93,6 +93,15 @@ def fix_hint(row: dict) -> str:
     """Per-lane operator hint. Do not keep the #440 import line as the only Fix."""
     lane = str(row.get("lane") or "")
     firing = " ".join(str(x) for x in (row.get("firing") or []))
+    if row.get("measured") is False:
+        # LQ-1808: the cause IS known — the read failed — so this must not fall through to
+        # "CAUSE NOT DIAGNOSED" or to a lane hint that blames the lane's own behaviour.
+        return (
+            "The lane's rows could not be read, so nothing about the lane is measured: "
+            f"{'; '.join(str(x) for x in (row.get('firing') or [])) or 'no reason recorded'}. "
+            "This is a monitor/DB problem (connection, credential, schema), not silence from the "
+            "lane. Restore the read; do not re-run the lane on the strength of this row."
+        )
     if lane == "deepseek":
         if "budget_throttled" in firing:
             return (
@@ -406,10 +415,17 @@ def _alert(report: dict) -> int:
                 dur = f"  (state held {hours:.0f}h)" if hours >= 1 else "  (new)"
             except (TypeError, ValueError):
                 dur = ""
+        if row.get("measured") is False:
+            # Never `streak=None ok_24h=None`: an unmeasured lane must not look like a measured
+            # lane whose counters happen to be missing (LQ-1808, Rules 11/12).
+            counts = "  NOT MEASURED (the rows could not be read)"
+        else:
+            counts = (
+                f"  streak={row.get('error_streak')}  "
+                f"ok_24h={row.get('non_error_24h')} attempts_24h={row.get('attempts_24h')}"
+            )
         lines.append(
-            f"  • {lane}: {reasons}  streak={row.get('error_streak')}  "
-            f"ok_24h={row.get('non_error_24h')} attempts_24h={row.get('attempts_24h')}"
-            + extra + extra2 + dur
+            f"  • {lane}: {reasons}" + counts + extra + extra2 + dur
         )
         hints.append(f"  {lane}: {fix_hint(row)}")
         state[lane] = {**row, "last_alert": now, "suppressed": False,
