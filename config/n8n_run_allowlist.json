@@ -6263,6 +6263,38 @@
       "env_report_reason": "New lane: inventory/confirm the env NAMES from the first dry-run receipt before enforce (the read-only DB_* five, the state root for the artifact reads and the receipt). No broker credential name, no sender, no model: the lane reads a read-only session and writes one receipt.",
       "env_evidence": "scripts/numbers_truth_audit.py connect() reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD from os.environ; _state_root() reads TRADEAI_STATE_ROOT (executor base name) and defaults to $HOME/trade-ai-releases/persistent-state; scripts/lib/lane_last_receipt.py and lib/persistent_overlay.py read TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT for the receipt path. The G1 subprocess is scripts/check_data_source_authority.py run with sys.executable, which reads no env of its own beyond the executor base names. --base-url defaults to 127.0.0.1:7777 and TRADEAI_API_BASE, used only outside the 28.8 window; no secret, no broker name.",
       "source": "LQ-20261107-1703 (P0, operator 2026-11-09 17:10 ET; ASSIGN 20261109T2220Z-claude-lead): register the numbers-truth-audit lane hourly at :07, 24x7. DSN-20261109 section 2. SHADOW: live_arg null; dry_run_arg --dry-run prints the report and writes nothing. lock_kind flock with exit 75 on contention; no host cron line runs this script. timeout_s 120 is the design's runtime ceiling (DSN F) and the script's own MAX_RUNTIME_S: a run that cannot finish is reported, not killed mid-flight by a longer leash."
+    },
+    {
+      "lane_id": "warm-caches",
+      "command": [
+        "$PY",
+        "scripts/warm_caches.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/warm_caches.lock",
+      "lock_kind": "flock",
+      "timeout_s": 420,
+      "market_gate": false,
+      "output_signal": "data/runtime/warm-caches_last.json",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Shadow-only registration (LQ-1790): a dry run returns before api_v2 and rotation_autopilot are imported, so the live env closure is not yet audited; report mode keeps the pre-P7 env and records only the NAMES enforce would drop. Tighten to an audited list before any live promotion.",
+      "env_evidence": "scripts/warm_caches.py reads no env of its own; lib/persistent_state_root resolves data/runtime from TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT for the receipt. The real run imports api_v2 (its DB loader reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD) and rotation_autopilot; the cron line loads $PROJ/.env into the process, so n8n supplies the same NAMES from this list. The dry run returns before any of those imports.",
+      "source": "LQ-1790 (P2, ASSIGN-20261110T1454Z-claude-lead-LQ1790-1789): INC-261110-nymhys is a NO_OUTPUT on warm-caches because the lane has no dispatch entry in lane_registry.json and no allowlist entry, so the executor can never run it (config/n8n_remediation_catalogue.json: allowlisted false, default_action suggest_only, 'the executor cannot run it; regenerate after its allowlist PR'). SHADOW ONLY: dry_run_arg ['--dry-run'] prints the plan and writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists and lane_stage_clamp keeps it dry whatever a caller requests. lock = the live cron line's own flock lock (flock -n /tmp/warm_caches.lock), so a future canary fire could never double-run with cron. Promotion to canary waits on the catalogue's 'Requires Refactoring Before Migration' item (the script still runs rotation_autopilot.run_autopilot_tick, a second autopilot entrypoint) and is the lead's decision."
     }
   ],
   "blocked_reasons": {

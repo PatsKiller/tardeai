@@ -44089,6 +44089,148 @@
           "notifier_priority": "P2"
         }
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "warm-caches",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "lq_1790_warm_caches_dispatch_20261110",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Pre-compute the three heavy dashboard caches out of the single-threaded portfolio server's request path: rotation_summary (the rotation engine subprocess), trade_ai (the scanner compute) and the rotation autopilot tick, each rewriting its data/runtime cache so a request never runs them. A dry run prints one line per step with that cache's current age and returns before api_v2 or rotation_autopilot is imported: nothing is computed, written, proposed or sent. The real run exits 1 when any step failed and writes data/runtime/warm-caches_last.json (ok_at only when every step succeeded).",
+        "business_function": "dashboard cache maintenance",
+        "source": "scripts/warm_caches.py; crontab cron:L516; config/n8n_remediation_catalogue.json"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/warm_caches.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/warm_caches.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock; the live cron line takes the same lock with flock -n, so the two can never run together"
+        },
+        {
+          "name": "Postgres through api_v2 / rotation_autopilot (dashboard read path)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/warm_caches.py STEPS (rotation_summary, trade_ai, rotation_autopilot)"
+        },
+        {
+          "name": "data/runtime/rotation_summary_cache.json, trade_ai_cache.json, rotation_autopilot_latest.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/warm_caches.py STEPS (real run only)"
+        },
+        {
+          "name": "Telegram alert raised by rotation_autopilot.run_autopilot_tick through the host chokepoint",
+          "kind": "service",
+          "direction": "calls",
+          "source": "scripts/warm_caches.py step rotation_autopilot; config/n8n_remediation_catalogue.json known_issues"
+        },
+        {
+          "name": "data/runtime/warm-caches_last.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/lane_last_receipt.write_lane_receipt"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "plan_printed",
+          "text": "a shadow dry run prints one line per step with each cache's current age and exits 0 without importing api_v2 or rotation_autopilot"
+        },
+        {
+          "check": "caches_rewritten",
+          "text": "a live run rewrites all three caches inside one expected cadence"
+        },
+        {
+          "check": "receipt_written",
+          "text": "a live run writes data/runtime/warm-caches_last.json with ok_at set when every step succeeded"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "one_step_slow",
+          "text": "a live step exceeds 336 s: the trade_ai warm peaked at 318-330 s per the remediation catalogue, so a run at that length is a duty-cycle warning, not a failure"
+        },
+        {
+          "check": "receipt_not_advanced",
+          "text": "no receipt refresh for more than 30 min while the cron fires every 8 min"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "any step fails: exit 1, the receipt records the failed step names and ok_at is not advanced"
+        },
+        {
+          "check": "run_timeout",
+          "text": "the run is killed at timeout_s 420"
+        }
+      ],
+      "baseline": {
+        "timeout_s": 420,
+        "class": "pipeline",
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 1.0,
+        "freshness_rule": "cron fires every 8 min: degraded beyond 30 min without a receipt refresh, failed beyond 60 min (the row's expected_cadence_hours 1)",
+        "computed_on": "2026-11-10",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED for the dispatcher: the lane has never been dispatched (0 rows in the coordination ledger for warm-caches). Measured on the cron path: data/runtime/warm-caches_last.json at 2026-11-10T14:56:49Z recorded steps_s {rotation_summary 4.3, trade_ai 40.3, rotation_autopilot 3.9}; config/n8n_remediation_catalogue.json records a historical peak of 318-330 s per trade_ai warm, so timeout_s 420 keeps the bound above the worst observed run.",
+        "runs_considered": 1,
+        "duration_degraded_above_s": 336.0,
+        "duration_rule": "0.8x timeout_s (0.8 x 420 = 336 s): the class rule the registry applies to a 120 s monitor lane (0.8 x 120 = 96 s), scaled to this bound"
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "config/n8n_remediation_catalogue.json severity Medium (cron:L516 maintenance, migration_risk Medium)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity, else the fan-in priority. Wiring the bridge, notifier and diagnoser to this contract is the next build item."
+      },
+      "remediation": {
+        "catalogue_entry": true,
+        "diagnosis_excluded": false,
+        "note": "config/n8n_remediation_catalogue.json already carries warm-caches (cron:L516, classification Requires Refactoring Before Migration, default_action suggest_only, allowlisted false). Regenerate it with scripts/build_remediation_catalogue.py --write after this entry merges, so allowlisted flips to true and suggest_only_reason stops saying the executor cannot run it."
+      },
+      "evidence": {
+        "receipt": "data/runtime/warm-caches_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, verdict FROM runs WHERE lane_id='warm-caches' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.status, .ok_at, .summary.steps_s, .summary.failed' $STATE_ROOT/data/runtime/warm-caches_last.json"
+        ]
+      },
+      "review_by": "2026-11-24",
+      "review": {
+        "prepared_by": "agent draft (cc-deepseek-7, LQ-1790, 2026-11-10)",
+        "status": "REVIEWED",
+        "reviewed_by": "cc-deepseek-9 (non-author reviewer), 2026-11-10",
+        "reviewed_on": "2026-11-10",
+        "requested_of": "cc-deepseek-9",
+        "requested_on": "2026-11-10",
+        "note": "verified against code and the live cron line, not the READY. Dry run measured exit 0: one line per step with that cache's age, then 'nothing computed, written, proposed or sent; no receipt', returning before api_v2 / rotation_autopilot are imported (scripts/warm_caches.py:108-118). Cron L521 fires */8 with flock -n /tmp/warm_caches.lock, the same lock this allowlist entry names, so cron and a future dispatcher fire cannot double-run. Shadow is enforced twice: registry scheduler.stage shadow (lane_stage_clamp -> dry_run whatever the caller requests) and allowlist live_arg null (n8n_relay_live_lanes excludes it). Baseline honesty checked: the coordination ledger holds 0 runs for warm-caches, and the live receipt exists (steps_s rotation_summary 4.6 / trade_ai 28.8 / rotation_autopilot 4.0, ok_at set), so timeout_s 420 sits above the catalogue's 318-330 s historical peak and 0.8 x 420 = 336 s is the degraded bound. No expected_output block: the lane grades no_rule until one is added, acceptable at shadow and required before any canary promotion, which the catalogue's 'Requires Refactoring Before Migration' item gates anyway."
+      }
     }
   ],
   "pending_changes": {
