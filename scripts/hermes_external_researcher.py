@@ -242,8 +242,13 @@ def canonical_prompt_context(symbol, question):
     return _redact_struct(context)
 
 
-def reconcile_accepted_research(symbol, rid, parsed, prompt_context, args):
-    """Bridge a stored, accepted external result into delta/thesis/product review."""
+def reconcile_accepted_research(symbol, rid, parsed, prompt_context, args, model_executed=None):
+    """Bridge a stored, accepted external result into delta/thesis/product review.
+
+    ``model_executed`` (LQ-20261107-1808 item 3) is the lane's own record of what ran; this payload used to
+    repeat ``args.model``, the request, so a downstream reader saw ``deepseek-flash`` for a call that ran on
+    ``claude-haiku-5-5``. ``args.model`` remains the fallback when the lane recorded nothing.
+    """
     if str(parsed.get("classification") or "").upper() not in {
         "CONFIRMS", "STRENGTHENS", "WEAKENS", "INVALIDATES", "NO_NEW_INFO",
         "CONFLICTED", "INSUFFICIENT_DATA",
@@ -264,7 +269,7 @@ def reconcile_accepted_research(symbol, rid, parsed, prompt_context, args):
         "symbol": symbol,
         "status": "completed",
         "provider": args.lane,
-        "model": args.model,
+        "model": model_executed or args.model,
         "prompt_context": prompt_context,
     })
     try:
@@ -523,11 +528,17 @@ def _import_llm_generate():
         return generate
 
 
-def call_governed_deepseek(model, prompt, max_tokens=1500):
+def call_governed_deepseek(model, prompt, max_tokens=1500, *, return_provenance=False):
     """DeepSeek V4 Flash via llm_lane.generate → gate_and_generate.
 
     This is the SCHEDULER path (research_scheduler subprocesses this file).
     Cost-governed, circuit-breakered, fail-closed (no silent local fallback).
+
+    ``return_provenance=True`` returns ``(text, provenance)``, the gate's own record of what RAN
+    (``returned_model`` / ``executed_policy`` / ``request_id``, plus the bridge block's ``provider`` and
+    ``model_id`` on that route). LQ-20261107-1808 item 3: the stored row must name the executor, not the
+    request — 236 of the last 24 h's rows said ``deepseek-flash`` while all of them had run on
+    ``claude-haiku-5-5``.
     """
     generate = _import_llm_generate()
     accounting_meta = {
@@ -546,7 +557,13 @@ def call_governed_deepseek(model, prompt, max_tokens=1500):
         timeout=120,
         max_tokens=int(max_tokens or 2048),
         metadata={k: v for k, v in accounting_meta.items() if v},
+        return_provenance=return_provenance,
     )
+    if return_provenance:
+        text, provenance = text if isinstance(text, tuple) and len(text) == 2 else (text, {})
+        return str(text or "").strip(), (provenance if isinstance(provenance, dict) else {})
+    if isinstance(text, tuple):
+        text = text[0]  # a lane that answers with a pair does not make this a triple
     return str(text or "").strip()
 
 
@@ -555,24 +572,78 @@ BRIDGE_PROCESS_ID = "hermes_external_research"
 BRIDGE_LANE = "bridge"
 
 
+def executed_model(provenance, requested):
+    """The model that RAN, from the lane's own provenance; the requested model only when nothing recorded it.
+
+    One spelling of "which model executed this call" (LQ-20261107-1808 item 3). Precedence follows the
+    evidence: the bridge block's ``model_id``, then the gate's ``returned_model``, then the
+    ``requested_model_id`` it actually asked the provider for. A ``provider`` field is prefixed when the model
+    name does not already carry it, so ``anthropic`` + ``claude-haiku-5-5`` stores
+    ``anthropic:claude-haiku-5-5`` while ``deepseek`` + ``deepseek-flash`` stays ``deepseek-flash``.
+
+    Policy names (``requested_policy`` / ``executed_policy``) are deliberately NOT used as a provider: they
+    name a routing rule, not an executor, and a composite like ``deepseek_only:claude-haiku-5-5`` would be a
+    worse lie than the model id alone.
+
+    The one case this cannot reach is a call that RAISED: the gate keeps its provenance inside the exception
+    it throws, so nothing is in hand and the requested model stands. Read the column together with ``status``
+    — for any row that produced output it names the executor, and for a row that produced none (``error``,
+    ``unavailable``, ``auth_pending``) it names the model that was attempted, which after item 1 closes the
+    promotion route is the same provider. Carrying the gate's block out on the exception would close it
+    completely; ``scripts/lib/llm_consumption.py`` is outside this claim and is filed as a follow-up.
+    """
+    if not isinstance(provenance, dict) or not provenance:
+        return requested
+    model = (provenance.get("model_id") or provenance.get("returned_model")
+             or provenance.get("requested_model_id"))
+    provider = provenance.get("provider")
+    if not model:
+        return requested
+    if provider and not str(model).lower().startswith(str(provider).lower()):
+        return f"{provider}:{model}"
+    return str(model)
+
+
 def via_bridge() -> bool:
     """The flag the n8n run executor binds from the allowlist llm_route; read directly."""
     return os.environ.get("TRADEAI_LLM_VIA_BRIDGE", "off").strip().lower() in {"1", "on", "bridge"}
 
 
-def call_external(lane, model, prompt, max_tokens=1500):
+def call_external(lane, model, prompt, max_tokens=1500, *, return_provenance=False):
+    """The lane's text; with ``return_provenance=True`` a ``(text, provenance|None)`` pair.
+
+    Only the governed paths can say what executed them (the DeepSeek gate and the CIO bridge). A direct
+    provider client returns ``None`` provenance: its model is the one this file named, and claiming more
+    would be an invention.
+    """
     if via_bridge():
+        if return_provenance:
+            from lib.llm_bridge_route import text_and_provenance_via_bridge
+
+            _account_from_env("ATTEMPTED", reason="governed_bridge", attempt_no=1)
+            text, meta = text_and_provenance_via_bridge(
+                BRIDGE_PROCESS_ID, prompt, timeout_s=240, max_tokens=max_tokens)
+            if text is None:
+                raise RuntimeError(f"BRIDGE_ROUTE_REFUSED: governed bridge returned no text for {BRIDGE_PROCESS_ID}")
+            return str(text), meta
         from lib.llm_bridge_route import require_text_via_bridge
 
         _account_from_env("ATTEMPTED", reason="governed_bridge", attempt_no=1)
         return require_text_via_bridge(BRIDGE_PROCESS_ID, prompt, timeout_s=240, max_tokens=max_tokens)
     cfg = LANE_CFG[lane]
+    if cfg["kind"] == "governed_deepseek":
+        return call_governed_deepseek(model, prompt, max_tokens=max_tokens,
+                                      return_provenance=return_provenance)
+    text = _call_direct(cfg, model, prompt, max_tokens)
+    return (text, None) if return_provenance else text
+
+
+def _call_direct(cfg, model, prompt, max_tokens):
+    """A direct provider client (codex CLI, xAI proxy, Anthropic, openai-compatible)."""
     if cfg["kind"] == "codex_cli":
         return call_codex_cli(model, prompt)
     if cfg["kind"] == "xai_proxy":
         return call_xai_proxy(cfg["url"], model, prompt)
-    if cfg["kind"] == "governed_deepseek":
-        return call_governed_deepseek(model, prompt, max_tokens=max_tokens)
     key = _get_key(cfg["key_env"])
     if cfg["kind"] == "anthropic":
         body = json.dumps({"model": model, "max_tokens": max_tokens,
@@ -898,8 +969,10 @@ def main():
 
     # COGX W1 shadow: retrieval ladder before the external lane (receipt only)
     status, parsed, raw = "sent", {}, ""
+    provenance = None  # LQ-1808 item 3: what the lane says actually RAN, for the model column
     try:
-        raw = call_external(args.lane, args.model, prompt, max_tokens=max_out or 4096)
+        raw, provenance = call_external(args.lane, args.model, prompt, max_tokens=max_out or 4096,
+                                        return_provenance=True)
         parsed = parse_external_research_result(raw) or {}
         from lib.research_data_quality import validate_research_output
         output_quality = validate_research_output(
@@ -947,6 +1020,8 @@ def main():
             "sandbox": True,
             "status": status,
             "symbol": args.symbol,
+            "model_requested": args.model,
+            "model_executed": executed_model(provenance, args.model),
             "max_output_tokens": max_out,
             "recommendation": (parsed.get("recommendation") or "")[:4000],
             "dissent": parsed.get("dissent"),
@@ -972,7 +1047,8 @@ def main():
          recommendation, evidence_json, dissent, confidence, risk_flags, learning_candidate, operator_action,
          trigger_source, budget_decision, lane_used, raw_response, research_guid, prior_research_guid)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-        (args.lane, args.trigger, args.priority, args.symbol, question, json.dumps(ctx, default=str), args.model, status,
+        (args.lane, args.trigger, args.priority, args.symbol, question, json.dumps(ctx, default=str),
+         executed_model(provenance, args.model), status,
          parsed.get("recommendation"), json.dumps(parsed.get("evidence", []), default=str), parsed.get("dissent"),
          parsed.get("confidence"), json.dumps(parsed.get("risk_flags")), parsed.get("learning_candidate"),
          parsed.get("operator_action"),
@@ -1003,7 +1079,8 @@ def main():
         account("COMPLETED", reason="accepted", attempt_no=1, metadata={"research_id": rid})
         print("recommendation:", (parsed.get("recommendation") or "")[:200])
         try:
-            reconciliation = reconcile_accepted_research(args.symbol, rid, parsed, ctx, args)
+            reconciliation = reconcile_accepted_research(
+                args.symbol, rid, parsed, ctx, args, executed_model(provenance, args.model))
             print("research_thesis_reconciliation:", json.dumps(reconciliation, default=str)[:1200])
         except Exception as exc:
             print(f"research_thesis_reconciliation: ERROR {type(exc).__name__}:{exc}")
