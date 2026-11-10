@@ -83,7 +83,7 @@ _WEEKDAYS = {"mon": 0, "monday": 0, "tue": 1, "tues": 1, "tuesday": 1, "wed": 2,
              "sun": 6, "sunday": 6}
 _TYPED_EMPTY = frozenset({"source_unreadable", "truth_unreadable", "stale_truth", "in_window_artifact_only",
                           "no_such_field", "no_weekday_named", "deadline_exceeded", "checker_unsupported",
-                          "audit_error", "authority_gate_unavailable", "no_rows"})
+                          "audit_error", "authority_gate_unavailable", "no_rows", "not_a_quoted_instrument"})
 
 
 # ── small helpers ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -1119,6 +1119,10 @@ def row_quote(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[st
     closed_min = 240.0 if closed_min is None else closed_min
     bound = timedelta(minutes=fresh_min if session else closed_min)
     where = (Path(str(spec.get("path") or "")).name if str(spec.get("kind")) == "artifact" else "the page")
+    # Instrument classes the quote stores cannot carry a price for. A fund NAV is administered, not traded, so
+    # a quote store's silence says nothing about it: for these rows an old quote-provider row for the same symbol
+    # is not the page's provenance, and asserting a MISMATCH against it fails a figure nothing contradicts.
+    unquotable = {str(t).upper() for t in (spec.get("unquotable_asset_types") or ())}
     out: list[dict[str, Any]] = []
     for s in srows:
         if not isinstance(s, Mapping):
@@ -1217,6 +1221,17 @@ def row_quote(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[st
                                     account=acct, symbol=sym, shown=shown_side))
             continue
         if rsym in retired:
+            if str(s.get("asset_type") or "").upper() in unquotable:
+                # Live 2026-11-09: a mutual fund's displayed NAV, whose only same-symbol quote row was a retired
+                # provider. The quote stores do not carry this class, so that row is not the figure's truth and
+                # nothing contradicts the page: unverifiable is NOT_MEASURED with a reason, never a MISMATCH with
+                # no readable truth side (LQ-1745).
+                out.append(not_measured(row, "not_a_quoted_instrument",
+                                        f"{acct} {sym}: {where} shows {_fmt(shown)} from {label_field} "
+                                        f"{label_source!r}; the quote stores do not carry this instrument class "
+                                        f"({s.get('asset_type')}), so the {retired[rsym]!r} row for it is not its "
+                                        f"truth", account=acct, symbol=sym, shown=shown_side))
+                continue
             # REV 2 A: a page number backed only by a retired provider is a FAIL, never a pass.
             out.append(finding(row, "NT_QUOTE_SOURCE", "MISMATCH",
                                f"{acct} {sym}: {where} shows {_fmt(shown)}; no allowed store has a row, only "

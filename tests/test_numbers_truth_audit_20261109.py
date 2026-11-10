@@ -908,3 +908,55 @@ def test_a_mark_that_names_no_allowed_quote_store_stays_a_provenance_finding(tmp
     assert codes(rep) == ["NT_QUOTE_SOURCE"]
     d = rep["findings"][0]["detail"]
     assert "canonical_mark_source 'price_cache_nav'" in d and "no allowed store" in d
+
+
+# ── LQ-20261107-1745: a fund NAV cannot be graded by a quote store's silence ──────────────────────────────────
+
+
+def fund_row(**kw) -> dict:
+    """A mutual fund holding as the producer publishes it: the displayed figure is the fund's NAV, whose own
+    provenance is a NAV cache, and there is no quote-store row for it. Synthetic values only."""
+    row = mark_row(price=100.0, current_price=100.0, quote_source="unavailable")
+    row.update({"asset_type": "MUTUAL_FUND", "canonical_mark_source": "price_cache_nav"})
+    return row
+
+
+def retired_only(b) -> T.Bundle:
+    """The symbol's only quote row belongs to a retired provider."""
+    b.put("quotes", rows=[], as_of=T._ts(QUOTE_AS_OF), retired_by_symbol={"ZQAA": "yfinance"})
+    return b
+
+
+def test_a_fund_nav_backed_only_by_a_retired_provider_is_not_measured_with_a_reason(tmp_path):
+    """Live 2026-11-09: a mutual fund's displayed NAV had no quote row at all and only a retired provider's row
+    for the symbol, so the audit emitted NT_QUOTE_SOURCE/MISMATCH with `truth.value: null` — a verdict with no
+    readable truth side, which the strike engine holds as malformed. The quote stores do not carry fund NAVs:
+    nothing contradicts the page, and unverifiable is NOT_MEASURED with a typed reason."""
+    root = write_state(tmp_path, holdings=[fund_row()])
+    rep = run(root, "holdings.price", b=retired_only(bundle(quotes=[], quotes_extended=[])))
+    assert codes(rep) == ["NT_NOT_MEASURED"]
+    f = rep["findings"][0]
+    assert f["reason"] == "not_a_quoted_instrument"
+    assert f["shown"]["value"]["value"] == 100.0 and f["shown"]["value"]["source"] == "price_cache_nav"
+    assert not f.get("truth") or f["truth"].get("value") is not None  # no null truth side on a finding
+
+
+def test_a_traded_instrument_backed_only_by_a_retired_provider_is_still_a_fail(tmp_path):
+    """Scope guard: REV 2 A still binds for every class the contract does not name. Same retired-only situation,
+    a traded instrument — the page number is backed only by a retired provider, and that is a FAIL, never a pass."""
+    row = H(price=100.0, current_price=100.0, quote_source="market_quotes")
+    row["asset_type"] = "EQUITY"
+    root = write_state(tmp_path, holdings=[row])
+    rep = run(root, "holdings.price", b=retired_only(bundle(quotes=[], quotes_extended=[])))
+    assert codes(rep) == ["NT_QUOTE_SOURCE"]
+    assert "retired" in rep["findings"][0]["detail"]
+
+
+def test_a_fund_with_a_stale_quote_row_is_still_not_measured_as_stale(tmp_path):
+    """Placement guard: the new branch answers only the retired-only case. A fund whose quote store holds a
+    stale row keeps the existing stale_truth NOT_MEASURED path."""
+    root = write_state(tmp_path, holdings=[fund_row()])
+    b = bundle(quotes=[dict(Q_AA, price=100.0, fetched_at=_iso(20))], quotes_extended=[])
+    rep = run(root, "holdings.price", b=b)
+    assert codes(rep) == ["NT_NOT_MEASURED"]
+    assert rep["findings"][0]["reason"] == "stale_truth"

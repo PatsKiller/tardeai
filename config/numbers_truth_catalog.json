@@ -443,7 +443,11 @@
           "finviz": "market_quotes",
           "finviz_elite": "market_quotes"
         },
-        "_display_source_note": "The displayed current_price is an alias of canonical_mark; canonical_mark_source names WHERE it came from (finviz/finviz_elite = a regular-session mark), and the row's quote_source/quote_session describe the separate, before-close quote_price. Grading the mark against the extended store compared a regular-session close to an after-hours print (live 2026-11-09: two NT_PRICE_MISMATCH findings with one side stamped at the 16:30 close and the other at an 18:38 extended print). The mapping only names the store that can grade each display source; an unmapped display source is still graded and still labelled, and a stale regular store is NOT_MEASURED, never a pass."
+        "_display_source_note": "The displayed current_price is an alias of canonical_mark; canonical_mark_source names WHERE it came from (finviz/finviz_elite = a regular-session mark), and the row's quote_source/quote_session describe the separate, before-close quote_price. Grading the mark against the extended store compared a regular-session close to an after-hours print (live 2026-11-09: two NT_PRICE_MISMATCH findings with one side stamped at the 16:30 close and the other at an 18:38 extended print). The mapping only names the store that can grade each display source; an unmapped display source is still graded and still labelled, and a stale regular store is NOT_MEASURED, never a pass.",
+        "unquotable_asset_types": [
+          "MUTUAL_FUND"
+        ],
+        "_unquotable_note": "LQ-1745: market_quotes/market_quotes_extended are quote feeds for traded instruments; a mutual fund's NAV is administered, not quoted, so a quote row for the symbol (fresh, stale or retired) is not the displayed figure's truth. When such a row exists only as a retired provider, the figure is NOT_MEASURED with reason not_a_quoted_instrument -- never a MISMATCH whose truth side is null. Listed by instrument class, not by symbol; the REV 2 A retired-provider FAIL still binds for every class not named here."
       },
       "tolerance": {
         "kind": "pct",
