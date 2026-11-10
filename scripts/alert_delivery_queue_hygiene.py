@@ -12,6 +12,10 @@ HEAL      deterministic and send-free. A 'queued' row is closed as 'abandoned' w
               no longer an interruption worth sending, it is history.
           The table's CHECK constraint has no 'expired' status, so 'abandoned' + an ``expired:`` reason is the
           vocabulary (same rule as scripts/lib/critical_receipts.py).
+        LQ-20261107-1815: a queued row whose reason starts ``shadow_legacy_undelivered:`` is NOT shadow work. It is a
+        CRITICAL alert the legacy router suppressed and the normalized plane queued because nobody received it; it is
+        classified like ACTIVE work (fresh / stuck / stale), so the lane can never abandon it at 10 min before its
+        consumer has had a chance, and a consumer that stops draining it still raises BROKEN.
 ESCALATE  BROKEN raises ONE system_health CRITICAL row in alert_events (the path that delivers today), at most one per
           hour. The lane may NOT fix a dead consumer itself: it never sends an operator alert and never re-queues.
           That goes to the ops owner via the system_health alert.
@@ -43,10 +47,21 @@ ESCALATION_COOLDOWN_MIN = 60
 REASON_SHADOW = "expired:shadow_legacy_owned_delivery"
 REASON_STALE = "expired:stale_beyond_ttl"
 
-# One query classifies every queued row; the occurrence's own runtime_mode says who owned delivery when it was written.
+#: LQ-20261107-1815: a SHADOW row is terminal work-that-nobody-owns ONLY when the legacy path delivered it. A row the
+#: occurrence store queued because the legacy send reached nobody (``shadow_legacy_undelivered:``) is real work with a
+#: real consumer (``alert_outbox.deliver_critical``), so it must age out like ACTIVE work, never be abandoned at 10 min.
+UNDELIVERED_PREFIX = "shadow_legacy_undelivered:"
+
+# One query classifies every queued row; the occurrence's own runtime_mode says who owned delivery when it was written,
+# and the row's reason says whether that owner actually delivered.
 CLASSIFY_SQL = f"""
 SELECT d.id,
        CASE
+         WHEN d.delivery_reason LIKE '{UNDELIVERED_PREFIX}%'
+              AND d.created_at < now() - interval '{STALE_TTL_H} hours' THEN 'stale'
+         WHEN d.delivery_reason LIKE '{UNDELIVERED_PREFIX}%'
+              AND d.created_at < now() - interval '{QUEUE_MAX_AGE_MIN} minutes' THEN 'stuck'
+         WHEN d.delivery_reason LIKE '{UNDELIVERED_PREFIX}%' THEN 'fresh'
          WHEN COALESCE(o.runtime_mode, '') <> 'ACTIVE' THEN 'shadow'
          WHEN d.created_at < now() - interval '{STALE_TTL_H} hours' THEN 'stale'
          WHEN d.created_at < now() - interval '{QUEUE_MAX_AGE_MIN} minutes' THEN 'stuck'

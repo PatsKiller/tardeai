@@ -11,7 +11,9 @@ transaction that appends the occurrence, so two publishers observing the same
 condition simultaneously serialise — one sees the other's occurrence as prior state
 and correctly suppresses. The partial unique index on open incidents is the backstop.
 
-Nothing here sends. Delivery rows are written in 'queued' state for the worker.
+Nothing here sends. A delivery row is written as work for the worker ('queued') only when something will drain it:
+under ACTIVE, and under SHADOW only for a CRITICAL immediate decision the legacy sender reports it did NOT deliver
+(LQ-20261107-1815). Everything else stays a terminal row, so the queue never holds work nobody owns.
 """
 from __future__ import annotations
 
@@ -23,8 +25,20 @@ from typing import Any
 from alert_dedupe import PriorState, should_notify
 
 #: delivery_reason prefix of the terminal row a non-ACTIVE (SHADOW/OFF) IMMEDIATE decision records: the legacy sender
-#: owned delivery, so the row is evidence of the decision, never work for a consumer (LQ-20261107-1607).
+#: owned delivery AND reports it delivered, so the row is evidence of the decision, never work for a consumer
+#: (LQ-20261107-1607).
 SHADOW_DELIVERY_REASON_PREFIX = "shadow_legacy_owns_delivery:"
+
+#: delivery_reason prefix of the WORK row a non-ACTIVE IMMEDIATE decision records when the legacy sender reports it did
+#: NOT deliver and the alert is critical: the operator has received nothing, so the normalized plane owns this one.
+#: Measured 2026-11-10 (audit-revalidation-20261110 §C1): 55 % of critical immediate decisions since 11-07 were
+#: suppressed by the legacy router and 0 % were delivered by the normalized outbox, because this row said "the legacy
+#: sender owns it" whether or not it had actually sent (LQ-20261107-1815).
+SHADOW_UNDELIVERED_REASON_PREFIX = "shadow_legacy_undelivered:"
+
+#: Severity whose failure to reach the operator is itself an incident. Matched case-insensitively against the
+#: occurrence's own severity; the routing decision has already decided this alert is worth interrupting for.
+CRITICAL_SEVERITY = "critical"
 
 MATERIAL_REASONS = {
     "severity_increased", "operator_action_now_required", "state_version_changed",
@@ -120,6 +134,33 @@ def load_prior_state(cur, dedupe_key: str, *, correlation_key: str | None = None
     return rec, prior
 
 
+def immediate_delivery_row(*, runtime_mode: str, notify: bool, route_mode: str | None,
+                           suppression_reason: str | None, severity: str | None,
+                           decision_reason: str, legacy_delivered: bool | None = None) -> dict[str, Any] | None:
+    """The delivery row one occurrence writes, or None when it writes no IMMEDIATE row at all.
+
+    Pure, so the ownership rule is testable without a database. Three outcomes:
+
+      ACTIVE                                   -> 'queued'      (the normalized outbox owns delivery)
+      SHADOW/OFF, critical, NOT delivered      -> 'queued'      (handover: the legacy send reached nobody)
+      SHADOW/OFF, anything else                -> 'suppressed'  (terminal evidence of the legacy decision)
+
+    ``legacy_delivered`` is what the legacy sender OBSERVED (``telegram_alert._legacy_send`` returns it). ``None``
+    means nobody asked it, and for a critical alert that is NOT a reason to call the alert delivered: the safe
+    direction for a critical is one possible duplicate, never a silent loss. A non-critical row keeps the old
+    behaviour exactly, so the shadow history is not re-sent.
+    """
+    if not (notify and route_mode == "IMMEDIATE" and not suppression_reason):
+        return None
+    if str(runtime_mode or "").upper() == "ACTIVE":
+        return {"status": "queued", "reason": decision_reason, "queued": True, "handover": False}
+    if str(severity or "").strip().lower() == CRITICAL_SEVERITY and legacy_delivered is not True:
+        return {"status": "queued", "reason": f"{SHADOW_UNDELIVERED_REASON_PREFIX}{decision_reason}",
+                "queued": True, "handover": True}
+    return {"status": "suppressed", "reason": f"{SHADOW_DELIVERY_REASON_PREFIX}{decision_reason}",
+            "queued": False, "handover": False}
+
+
 def record_occurrence(
     conn,
     *,
@@ -132,6 +173,7 @@ def record_occurrence(
     correlation_key: str | None = None,
     resolving: bool = False,
     runtime_mode: str = "OFF",
+    legacy_delivered: bool | None = None,
 ) -> dict[str, Any]:
     """Append one occurrence, applying should_notify() against persisted prior state.
 
@@ -258,14 +300,16 @@ def record_occurrence(
 
         queued = delivered = False
         delivery_id = None
-        if decision.notify and route.route_mode == "IMMEDIATE" and not route.suppression_reason:
-            # LQ-20261107-1607: only ACTIVE hands the row to a delivery worker. In SHADOW (and OFF) the legacy sender
-            # has ALREADY delivered (or legacy-suppressed) this message before this transaction ran, and the
-            # normalized consumer must never send it. Writing 'queued' here built a work queue nobody may drain:
-            # every row from 2026-09-16 on was SHADOW, read by the CC v3 audit as a dead CRITICAL_OPERATIONS
-            # queue, and one deliver_immediate() call away from re-sending all of them. The shadow decision is
-            # still recorded (that is SHADOW's purpose), as a terminal row that says who owned delivery.
-            active = str(runtime_mode or "").upper() == "ACTIVE"
+        row = immediate_delivery_row(runtime_mode=runtime_mode, notify=decision.notify,
+                                     route_mode=route.route_mode, suppression_reason=route.suppression_reason,
+                                     severity=event.severity, decision_reason=decision.reason,
+                                     legacy_delivered=legacy_delivered)
+        if row is not None:
+            # LQ-20261107-1607 measured the old rule's cost: every SHADOW row said "the legacy sender owns delivery"
+            # whether or not it had sent, and one deliver_immediate() call would have re-sent the whole history.
+            # LQ-20261107-1815 keeps that guard for what the legacy path delivered and adds the one case it got
+            # wrong: a CRITICAL alert the legacy router suppressed reached nobody, so it is queued for the worker
+            # that now exists (alert_outbox.deliver_critical) instead of being recorded as delivered.
             cur.execute(
                 """
                 INSERT INTO alert_notification_deliveries
@@ -275,12 +319,10 @@ def record_occurrence(
                 RETURNING id
                 """,
                 (occurrence_id, alert_id, incident_id, route.logical_destination,
-                 "queued" if active else "suppressed",
-                 decision.reason if active else f"{SHADOW_DELIVERY_REASON_PREFIX}{decision.reason}",
-                 active),
+                 row["status"], row["reason"], row["queued"]),
             )
             delivery_id = cur.fetchone()[0]
-            queued = active
+            queued = row["queued"]
         elif decision.notify and route.route_mode == "DIGEST" and route.digest_bucket:
             cur.execute(
                 """

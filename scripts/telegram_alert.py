@@ -728,17 +728,37 @@ def publish_operator_message(message: str, *, bypass_router: bool = False,
                 shadow = publish_legacy_message(
                     message, source_producer=source_producer,
                     bypass_router=outbox_bypass, resolving=resolving,
-                    **({"intent_priority": priority} if priority else {}))
+                    **({"intent_priority": priority} if priority else {}),
+                    # LQ-20261107-1815: what the legacy path OBSERVED, not an assumption. SHADOW's premise was that
+                    # the legacy sender had already delivered every message; measured 2026-11-10, 55 % of critical
+                    # immediate decisions were router-suppressed and reached nobody while the shadow row recorded
+                    # "the legacy sender owns delivery" (REPORT.md §C1).
+                    legacy_delivered=bool(delivered))
                 shadow["persisted"] = True
         except Exception as e:
             # Never let shadow bookkeeping affect the operator's alert.
             print(f"[telegram] shadow persist skipped: {type(e).__name__}: {str(e)[:120]}")
+        # A CRITICAL alert the legacy path did not deliver is still owed to the operator. The occurrence store wrote
+        # it 'queued' (immediate_delivery_row), and this is the consumer that claims the row and sends it through the
+        # chokepoint. Best effort like the shadow write itself: a delivery failure is reported, never raised, so the
+        # legacy send's own outcome is unchanged for all 182 callers of send_telegram.
+        critical_delivery: dict | None = None
+        if shadow.get("persisted") and shadow.get("send_immediate") and shadow.get("occurrence_id") is not None:
+            try:
+                from alert_outbox import deliver_critical
+                critical_delivery = deliver_critical(occurrence_id=shadow.get("occurrence_id"), limit=1)
+            except Exception as e:
+                critical_delivery = {"ok": False, "outcome": f"delivery_failed:{type(e).__name__}"}
+                print(f"[telegram] critical delivery skipped: {type(e).__name__}: {str(e)[:120]}")
         return {
+            # `delivered`/`suppressed` keep their pre-LQ-1815 meaning — the LEGACY outcome — because callers use them
+            # to settle the communications ledger for the message they themselves sent. The handover is reported
+            # separately, on its own delivery row (telegram_message_id + completed_at).
             "accepted": True, "route_mode": "LEGACY_SHADOWED", "runtime_mode": MODE_SHADOW,
             "queued": False, "delivered": bool(delivered), "suppressed": not delivered,
             "reason": "legacy_delivery_with_shadow_evaluation",
             "alert_id": shadow.get("alert_id"), "incident_id": shadow.get("incident_id"),
-            "shadow": shadow,
+            "shadow": shadow, "critical_delivery": critical_delivery,
         }
 
     # ACTIVE — missing tables raise rather than silently dropping the alert.

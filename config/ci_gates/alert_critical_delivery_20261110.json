@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "alert_critical_delivery_20261110",
+  "files": [
+    "tests/test_alert_critical_delivery_20261110.py"
+  ],
+  "anchor": "ALERT_CRITICAL_DELIVERY_20261110",
+  "comment": [
+    "ANCHOR: ALERT_CRITICAL_DELIVERY_20261110 — LQ-20261107-1815 (SEV-1): critical alerts were recorded as delivered and never reached the operator. Measured 2026-11-10: 676 delivery rows, 0 ever 'sent', 0 with a claimant, 0 with a telegram_message_id; 55 % of critical IMMEDIATE decisions since 11-07 were suppressed by the legacy router. SHADOW's premise (the legacy sender already delivered this) was assumed rather than observed. This gate holds the four seams: the occurrence store queues a critical row only when the legacy send reports it did NOT deliver (and treats an unobserved outcome as undelivered — one possible duplicate beats a silent loss, while non-criticals keep the LQ-1607 rule exactly); the consumer claims (claimed_by/claimed_at, SKIP LOCKED, TTL), sends through the Telegram chokepoint as a declared P1 intent with dedupe_minutes=0, and records the provider message id, never sending an occurrence twice; the producer triggers the consumer for the occurrence it just wrote without changing the legacy outcome the 182 send_telegram callers see; and the hygiene lane classes a 'shadow_legacy_undelivered:' row as real work, so it can never be abandoned at 10 minutes."
+  ]
+}

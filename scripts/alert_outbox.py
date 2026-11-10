@@ -122,7 +122,8 @@ def _delivery_fingerprint(message: str) -> str:
 def publish_legacy_message(message: str, *, source_producer: str = "legacy_send_telegram",
                            bypass_router: bool = False,
                            resolving: bool = False,
-                           intent_priority: str | None = None) -> dict[str, Any]:
+                           intent_priority: str | None = None,
+                           legacy_delivered: bool | None = None) -> dict[str, Any]:
     """Publish one legacy message as an observation.
 
     ``resolving`` says this observation reports the condition ENDING, not
@@ -138,6 +139,10 @@ def publish_legacy_message(message: str, *, source_producer: str = "legacy_send_
     plane, called ``publish_event(event)`` bare. So every incident could open and
     none could ever close: 41 open, 41 distinct dedupe keys, 0 resolved, oldest
     2026-09-16.
+
+    ``legacy_delivered`` is what the legacy sender OBSERVED for this message (True/False from
+    ``telegram_alert._legacy_send``); None means the caller did not ask. It is what tells the occurrence store whether a
+    CRITICAL decision the legacy path suppressed is still owed to the operator (LQ-20261107-1815).
     """
     event = classify_legacy_message(message, source_producer=source_producer)
     payload = dict(event.payload)
@@ -146,8 +151,14 @@ def publish_legacy_message(message: str, *, source_producer: str = "legacy_send_
         # The sender's declared notification-intent priority (telegram_alert_router.route_intent), kept beside
         # the observation so the normalized plane can see what the producer asked for.
         payload["intent_priority"] = str(intent_priority)
+    if legacy_delivered is not None:
+        payload["legacy_delivered"] = bool(legacy_delivered)
     event = AlertEvent(**{**event.__dict__, "payload": payload})
-    return publish_event(event, resolving=resolving)
+    # Only a caller that observed the legacy outcome passes the kwarg, so every other caller keeps its exact
+    # pre-LQ-1815 call shape (same rule as the intent kwargs above).
+    if legacy_delivered is None:
+        return publish_event(event, resolving=resolving)
+    return publish_event(event, resolving=resolving, legacy_delivered=legacy_delivered)
 
 
 def occurrence_alert_id(fingerprint: str, observed_at: datetime) -> str:
@@ -170,7 +181,8 @@ def _aware_utc(dt: datetime | None) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def publish_event(event: AlertEvent, *, resolving: bool = False) -> dict[str, Any]:
+def publish_event(event: AlertEvent, *, resolving: bool = False,
+                  legacy_delivered: bool | None = None) -> dict[str, Any]:
     """Publish one observation through the occurrence model.
 
     Rewritten 2026-07-29. The previous version wrote a single row per fingerprint:
@@ -239,6 +251,7 @@ def publish_event(event: AlertEvent, *, resolving: bool = False) -> dict[str, An
             correlation_key=None,
             resolving=resolving,
             runtime_mode=get_mode(),
+            legacy_delivered=legacy_delivered,
         )
     except Exception:
         try:
@@ -478,6 +491,255 @@ def deliver_immediate(send_func=None, limit: int = 50, *, mode: str | None = Non
         sent += 1 if status == "sent" else 0
         suppressed += 1 if status == "suppressed" else 0
     return {"ok": True, "sent": sent, "suppressed": suppressed}
+
+
+# ── the missing consumer (LQ-20261107-1815) ──────────────────────────────────────────────────────────────────────
+#
+# The migration designed this queue with claim semantics (claimed_by / claimed_at / retry_count, and the partial index
+# alert_deliveries_claimable_idx over status IN ('queued','failed')), but no code ever claimed a row: deliver_immediate()
+# above has no production caller and refuses outside ACTIVE, the occurrence store wrote terminal rows, and the hygiene
+# lane closed the rest. Measured 2026-11-10 (audit-revalidation-20261110 §C1): 676 rows, 0 with a telegram_message_id,
+# 0 with a claimant, 0 ever 'sent'. These functions are the consumer: claim, send through the Telegram chokepoint,
+# record what the transport actually returned.
+
+#: claimed_by for a row this process takes. Rule 11's shape: who, on which host, in which process.
+CRITICAL_CLAIM_OWNER_PREFIX = "alert_outbox.critical"
+#: Attempts after which a critical row is given up and left 'failed' for the hygiene lane and a human, never retried
+#: forever. 3 = the transport gets two more chances after the first.
+CRITICAL_MAX_ATTEMPTS = 3
+#: A claim older than this belongs to a worker that died mid-send. Re-claimable, so a crash cannot orphan an alert.
+CRITICAL_CLAIM_TTL_MIN = 15
+#: Rows older than this are history, not an interruption: the same bound the hygiene lane uses for its stale class.
+CRITICAL_MAX_AGE_H = 6
+
+#: First line of a handover message. It tells the operator this alert was suppressed upstream, and it changes the
+#: text so the Communications Editor's duplicate hash cannot HOLD the re-delivery as a repeat of a message it saw.
+HANDOVER_MARK = "[critical alert re-delivered — the legacy sender suppressed the original]"
+
+_CRITICAL_DUE_WHERE = """
+       d.route_mode = 'IMMEDIATE'
+   AND o.severity = 'critical'
+   AND o.notify
+   AND d.retry_count < %(max_attempts)s
+   AND d.created_at >= now() - make_interval(hours => %(max_age_h)s)
+   AND d.created_at <= now() - make_interval(secs => %(min_age_s)s)
+   AND (
+         d.delivery_status IN ('queued', 'failed')
+      OR (d.delivery_status = 'claimed'
+          AND (d.claimed_at IS NULL OR d.claimed_at < now() - make_interval(mins => %(ttl_min)s)))
+       )
+   -- One SENT row per occurrence is the table's own invariant; a second delivery would duplicate it.
+   AND NOT EXISTS (SELECT 1 FROM alert_notification_deliveries s
+                    WHERE s.occurrence_id = d.occurrence_id AND s.delivery_status = 'sent')
+   AND (%(occurrence_id)s::bigint IS NULL OR d.occurrence_id = %(occurrence_id)s::bigint)
+"""
+
+_CRITICAL_SELECT_SQL = f"""
+SELECT d.id, d.occurrence_id, d.alert_id, d.logical_destination, d.attempt_seq, d.retry_count,
+       d.delivery_status, d.delivery_reason, o.alert_type, o.source_producer, o.symbol, o.severity,
+       o.payload, o.observed_at
+  FROM alert_notification_deliveries d
+  JOIN alert_occurrences o ON o.occurrence_id = d.occurrence_id
+ WHERE {_CRITICAL_DUE_WHERE}
+ ORDER BY d.created_at ASC
+ LIMIT %(limit)s
+"""
+
+_CRITICAL_CLAIM_SQL = f"""
+WITH due AS (
+    SELECT d.id
+      FROM alert_notification_deliveries d
+      JOIN alert_occurrences o ON o.occurrence_id = d.occurrence_id
+     WHERE {_CRITICAL_DUE_WHERE}
+     ORDER BY d.created_at ASC
+     LIMIT %(limit)s
+     FOR UPDATE OF d SKIP LOCKED
+)
+UPDATE alert_notification_deliveries d
+   SET delivery_status = 'claimed', claimed_by = %(owner)s, claimed_at = now()
+  FROM due
+ WHERE d.id = due.id
+RETURNING d.id
+"""
+
+_CRITICAL_DETAIL_SQL = """
+SELECT d.id, d.occurrence_id, d.alert_id, d.logical_destination, d.attempt_seq, d.retry_count,
+       d.delivery_status, d.delivery_reason, o.alert_type, o.source_producer, o.symbol, o.severity,
+       o.payload, o.observed_at
+  FROM alert_notification_deliveries d
+  JOIN alert_occurrences o ON o.occurrence_id = d.occurrence_id
+ WHERE d.id = ANY(%s)
+ ORDER BY d.created_at ASC
+"""
+
+
+def claim_owner() -> str:
+    """Who claims: module@host:pid. Never a secret, always enough to find the process that took the row."""
+    import socket
+    return f"{CRITICAL_CLAIM_OWNER_PREFIX}@{socket.gethostname()[:40]}:{os.getpid()}"
+
+
+def _critical_params(*, occurrence_id: int | None, limit: int, min_age_s: int) -> dict[str, Any]:
+    return {"occurrence_id": occurrence_id, "limit": int(limit), "min_age_s": int(min_age_s),
+            "max_age_h": CRITICAL_MAX_AGE_H, "max_attempts": CRITICAL_MAX_ATTEMPTS,
+            "ttl_min": CRITICAL_CLAIM_TTL_MIN, "owner": claim_owner()}
+
+
+def critical_due(*, conn=None, occurrence_id: int | None = None, limit: int = 5, min_age_s: int = 0) -> list[dict[str, Any]]:
+    """The CRITICAL rows a worker would claim right now. Read-only; the dry run and the apply share this shape."""
+    own = conn is None
+    conn = conn or _db()
+    if conn is None:
+        return []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(_CRITICAL_SELECT_SQL, _critical_params(occurrence_id=occurrence_id, limit=limit, min_age_s=min_age_s))
+            cols = [c.name if hasattr(c, "name") else c[0] for c in (cur.description or [])]
+            rows = [dict(zip(cols, r)) for r in (cur.fetchall() or [])]
+    finally:
+        if own:
+            try:
+                conn.rollback()  # a read holds no lock worth keeping
+            except Exception:
+                pass
+    return rows
+
+
+def _handover_message(row: dict[str, Any]) -> str:
+    """The message for one claimed row: the operator rendering, marked when the legacy path suppressed the original."""
+    payload = row.get("payload") or {}
+    event = payload.get("payload") if isinstance(payload, dict) else None
+    if isinstance(payload, dict) and "alert_type" in payload:
+        event = payload
+    if isinstance(event, dict):
+        alert_event = AlertEvent(**{k: event.get(k) for k in AlertEvent.__dataclass_fields__.keys() if k in event})
+    else:
+        alert_event = AlertEvent(alert_type=row.get("alert_type") or "operator_alert", source_system="unknown",
+                                 source_producer=row.get("source_producer") or "unknown",
+                                 severity=row.get("severity") or "critical")
+    message = render_operator_message(alert_event, row.get("alert_id"))
+    if str(row.get("delivery_reason") or "").startswith("shadow_legacy_undelivered:"):
+        return f"{HANDOVER_MARK}\n{message}"
+    return message
+
+
+def _send_critical_default(message: str, logical_destination: str | None) -> dict[str, Any]:
+    """The Telegram chokepoint for one handover, addressed to an explicit chat id.
+
+    Not ``telegram_transport`` directly: ``telegram_alert.send_telegram_with_id`` is the approved chokepoint (it
+    normalizes links, writes the communications ledger row and returns the provider message id), and it is what
+    ``check_telegram_chokepoint.py`` allows. The Communications Editor still applies inside it, so an editor hold is
+    reported as such rather than as a delivery.
+
+    It is a declared P1 intent (AGENTS.md §24.1) with ``dedupe_minutes=0``: a critical handover is never quiet-held,
+    never digested, and never deduped -- the original reached nobody, and this process already bounds its own retries
+    (``CRITICAL_MAX_ATTEMPTS``). The handover marker also changes the body, so the intent dedupe key cannot collide
+    with the suppressed original in any case.
+    """
+    chat_id, thread_id = resolve_channel_secret(logical_destination)
+    if not chat_id:
+        return {"status": "failed", "reason": "telegram_channel_not_configured", "message_id": None}
+    from telegram_alert import delivery_outcome, send_telegram_with_id
+    out = send_telegram_with_id(message, False, chat_ids=[chat_id], thread_id=thread_id or None,
+                                message_class="operator_alert", priority="P1", dedupe_minutes=0,
+                                producer=CRITICAL_CLAIM_OWNER_PREFIX)
+    ids = [str(x) for x in (out.get("message_ids") or []) if str(x).strip()]
+    if ids:
+        return {"status": "sent", "reason": None, "message_id": ids[0]}
+    # Nothing came back. ``delivery_outcome`` is this CALL's typed result (``send_telegram`` resets the attempt
+    # bucket on entry), so it distinguishes an editor hold from a failed or unconfigured transport. ``last_held_chunks``
+    # would not: that bucket is process-wide and not cleared per send, so it can report an EARLIER message's hold.
+    outcome = delivery_outcome(bool(out.get("accepted")))
+    if outcome["status"] == "HELD":
+        return {"status": "suppressed", "reason": "editor_held", "message_id": None}
+    return {"status": "failed", "reason": f"telegram_{str(outcome['status']).lower()}", "message_id": None}
+
+
+def deliver_critical(*, occurrence_id: int | None = None, limit: int = 5, min_age_s: int = 0,
+                     send_func=None, conn=None, dry_run: bool = False) -> dict[str, Any]:
+    """Claim CRITICAL IMMEDIATE rows and send them. The consumer this queue never had.
+
+    ``dry_run`` claims nothing and sends nothing; it returns exactly the rows an apply would take. Production callers
+    pass no ``send_func`` (the Telegram chokepoint); tests inject one.
+
+    Every state change is recorded on the row itself, so a reader can answer "who sent it, when, with what receipt"
+    without a log file: claimed_by/claimed_at at claim time, telegram_message_id + completed_at on success, a retry
+    count and a reason on failure. A row is never sent twice: the claim excludes any occurrence that already has a
+    'sent' row.
+    """
+    params = _critical_params(occurrence_id=occurrence_id, limit=limit, min_age_s=min_age_s)
+    own = conn is None
+    conn = conn or _db()
+    if conn is None:
+        return {"ok": False, "outcome": "durable_store_unavailable", "claimed": 0, "sent": 0, "failed": 0,
+                "rows": []}
+    if dry_run:
+        rows = critical_due(conn=conn, occurrence_id=occurrence_id, limit=limit, min_age_s=min_age_s)
+        if own:
+            conn.close()
+        return {"ok": True, "outcome": "dry_run", "would_claim": len(rows), "claimed": 0, "sent": 0, "failed": 0,
+                "rows": [{k: r.get(k) for k in ("id", "occurrence_id", "alert_id", "logical_destination",
+                                                "delivery_status", "delivery_reason", "alert_type", "severity",
+                                                "retry_count", "observed_at")} for r in rows]}
+
+    owner = params["owner"]
+    try:
+        with conn.cursor() as cur:
+            cur.execute(_CRITICAL_CLAIM_SQL, params)
+            claimed_ids = [r[0] for r in (cur.fetchall() or [])]
+            rows = []
+            if claimed_ids:
+                cur.execute(_CRITICAL_DETAIL_SQL, (claimed_ids,))
+                cols = [c.name if hasattr(c, "name") else c[0] for c in (cur.description or [])]
+                rows = [dict(zip(cols, r)) for r in (cur.fetchall() or [])]
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        # Nothing below needs the claim transaction; the claim is durable on its own so a crash mid-send leaves a
+        # 'claimed' row with claimed_by set, which the TTL makes re-claimable instead of lost.
+        pass
+
+    send_func = send_func or _send_critical_default
+    sent = failed = suppressed = 0
+    results = []
+    for row in rows:
+        message = _handover_message(row)
+        try:
+            outcome = send_func(message, row.get("logical_destination"))
+        except Exception as exc:  # noqa: BLE001 — a sender failure is a failed ATTEMPT, never a lost claim
+            outcome = {"status": "failed", "reason": type(exc).__name__[:60], "message_id": None}
+        status = str(outcome.get("status") or "failed")
+        reason = outcome.get("reason")
+        message_id = outcome.get("message_id")
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE alert_notification_deliveries
+                   SET delivery_status = %s,
+                       delivery_reason = %s,
+                       telegram_message_id = %s,
+                       rendered_message = COALESCE(rendered_message, %s),
+                       retry_count = retry_count + CASE WHEN %s = 'failed' THEN 1 ELSE 0 END,
+                       completed_at = CASE WHEN %s IN ('sent','suppressed') THEN now() ELSE completed_at END
+                 WHERE id = %s
+                """,
+                (status, reason, message_id, message, status, status, row.get("id")),
+            )
+        conn.commit()
+        sent += 1 if status == "sent" else 0
+        failed += 1 if status == "failed" else 0
+        suppressed += 1 if status == "suppressed" else 0
+        results.append({"id": row.get("id"), "occurrence_id": row.get("occurrence_id"), "alert_id": row.get("alert_id"),
+                        "status": status, "reason": reason, "telegram_message_id": message_id})
+    if own:
+        conn.close()
+    return {"ok": failed == 0, "outcome": "applied", "claimed": len(rows), "sent": sent, "failed": failed,
+            "suppressed": suppressed, "claimed_by": owner, "rows": results}
 
 
 def build_digest(bucket: str, *, now: datetime | None = None) -> dict[str, Any]:
