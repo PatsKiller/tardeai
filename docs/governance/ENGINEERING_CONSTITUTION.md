@@ -1,7 +1,7 @@
 # Command Center Engineering Constitution
 ## Trust, Quality, Auditability, and Production Excellence
 
-**Version:** 1.1 · **Status:** Foundational Doctrine · **Ratified by the operator:** v1.0 2026-11-10 ~12:00 ET; v1.1 amendments 2026-11-10 ~12:20 ET
+**Version:** 1.3 · **Status:** Foundational Doctrine · **Ratified by the operator:** v1.0 2026-11-10 ~12:00 ET; v1.1 amendments 2026-11-10 ~12:20 ET; v1.2 (Rule 15) 2026-11-10 ~12:30 ET; v1.3 (Principle 5, Rule 16, Documentation Drift, reference cases) 2026-11-10 ~12:32 ET
 **Applies to:** all agents, engineers, auditors, reviewers, operators, workflows, services, releases and decision systems.
 **Precedence:** this Constitution is the top of the rule hierarchy. Where any other document (AGENTS.md, WORKERS.md, ONBOARDING.md,
 runbooks, lessons, queues) conflicts with it, the Constitution wins. The operational thresholds that implement it are in
@@ -32,6 +32,9 @@ Evidence consists of production measurements, receipts, artifacts, logs, screens
 **Principle 4. Users experience outcomes.** Users do not experience tickets, source code or deployment logs. They experience
 screens, alerts, recommendations, decisions and outcomes. **The user experience is the final authority**: when logs, the database and
 the screen disagree, what the operator sees is the judged result, and the disagreement is itself a defect (Article II, Rule 7).
+
+**Principle 5 (v1.3). Health and verdicts are computed, never declared.** Every health state (Rule 15) and every verdict (Rule 16) is a
+function of measurable evidence. A person, agent, report, ledger row or ticket may supply evidence; none may supply the state.
 
 ---
 
@@ -76,6 +79,16 @@ without an authority cannot ship.
 
 **Rule 14. One source of truth registry.** Every critical metric (portfolio value, positions, VIX, regime, P&L, alert count, health count,
 failed-job count) has exactly one authoritative producer, recorded in a registry; every surface consumes it and none recomputes it.
+
+**Rule 15 (v1.2). Every health state must be computed.** Health, OK, VERIFIED and FIXED are never stored by hand: no worker, report, ledger row
+or ticket may set `healthy=true` or `VERIFIED`. Every such state is `health = f(evidence)`, computed from measurable inputs (for example:
+10 successful runs, 0 failures, 24-hour window complete, acceptance criteria passed), and the computation and its inputs are shown with it.
+A state whose evidence cannot be computed is UNKNOWN (Rule 11).
+
+**Rule 16 (v1.3). Computed verdict.** A verdict is not an opinion; it is a computed result derived from evidence. No FIXED, VERIFIED,
+HEALTHY, PASS or READY state may exist without measurable inputs that reproduce that determination: acceptance criteria passed, observation
+window complete, independent validation complete, trust-debt impact assessed. If any input changes, the verdict is recomputed automatically
+(a regression flips FIXED back without anyone deciding to). A stored verdict with no reproducible inputs is UNVERIFIED.
 
 **Severity of metric disagreement.** A disagreement between two values for the same metric in a **health, risk, alert or decision** system is
 a **high-severity trust defect**: one of the two is lying, which means either the alerting or the logging is wrong. It is triaged before
@@ -136,6 +149,9 @@ They may rely only on production evidence, artifacts, measurements and receipts.
 6. Regression Risk: recently fixed but not yet proven.
 7. Capital Readiness: YES / YES WITH RESTRICTIONS / NO, with evidence.
 8. Reality Drift (v1.1): the drift table of Article VI, measured on Jobs, Health, Alerts, Regime, VIX, Memory and Portfolio.
+9. Documentation Drift (v1.3): agent runtime rules version (session hook), agent documentation version (AGENTS.md the agents open),
+   live release version, canonical checkout version, and the code each production service actually executes. Pass: all synchronized.
+   Fail: any mismatch. Rules that are not in the checkout are eventually forgotten; code that runs outside a release is an unreviewed deploy.
 
 ---
 
@@ -206,9 +222,19 @@ validated and the observation windows are completed.
 
 ---
 
+## Appendix A: Reference cases (v1.3; used to train every auditor)
+| Case | What the system said | What was true | Rules violated |
+|---|---|---|---|
+| **source-litmus-vs-yahoo (canonical case)** | `status=ok`, `outcome=ok` in the same file as `summary.verdict=BLOCK` (2026-11-10 07:46 ET) | the check blocked | 9, 10, 11, 15, 16 |
+| Alert queue "clean" | queue depth 0; scorecard row passed | 655 rows abandoned in one update at 10:51:01 ET; 0 ever sent or delivered | 2, Art. VIII |
+| DeepSeek 79.8% vs 0 failures | route `deepseek_only`; records say `deepseek-flash`; usage log says 0 failures | the calls ran on Anthropic and 219 of 262 failed in 24 h (provider identity drift) | 7, 14, Reality Drift |
+| CIO memory | memory lanes running | `intelligence.embedding` = 0 rows; 0 decisions changed | Art. VII |
+
+---
+
 ## Constitutional Statement
 Every agent, auditor, engineer, workflow, deployment process and operational system shall follow this doctrine:
 
-**Trust is a feature. Evidence is truth. Activation is not validation. Exit 0 is not evidence. Unknown beats wrong.
+**Trust is a feature. Evidence is truth. Activation is not validation. Exit 0 is not evidence. Unknown beats wrong. Health and verdicts are computed, never declared.
 If it cannot be measured, it cannot be trusted. If it cannot be audited, it cannot influence decisions.
 If it cannot be proven in production, it is not complete.**
