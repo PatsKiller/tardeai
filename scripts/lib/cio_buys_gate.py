@@ -8,8 +8,12 @@ decides it. Advisory only: it sizes nothing and places nothing.
 """
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from typing import Any, Mapping, Optional, Sequence
+from zoneinfo import ZoneInfo
+
+ET = ZoneInfo("America/New_York")
 
 #: Macro releases that move the whole tape at 08:30/14:00 ET. A buy gate waits for the first one.
 MARKET_MOVING = ("consumer price index", "cpi", "producer price index", "ppi", "fomc", "federal funds",
@@ -37,8 +41,34 @@ def _when(d: str, t: Optional[str]) -> str:
     return f"{label} {t} ET" if t else label
 
 
-def first_gating_event(macro: Sequence[Mapping[str, Any]], today: date) -> Optional[Mapping[str, Any]]:
-    """The earliest market-moving release from ``today`` within the horizon, or None."""
+def event_passed(d: Any, time_et: Any, now: datetime | None) -> bool:
+    """Whether a calendar row's release time is already behind ``now`` (LQ-20261107-1784).
+
+    A gate that says "nothing new before CPI Tue 11-10 08:30 ET" is false at 08:31 the same morning: the print has
+    happened, and the card must state the gate's CURRENT state instead of an event that is over. Date-only rows
+    (no time_et) count as passed only once the whole day is behind ``now``; a naive ``now`` cannot be placed on the
+    clock, so it never marks a same-day row passed."""
+    if now is None or now.tzinfo is None:
+        return False
+    try:
+        rd = date.fromisoformat(str(d or "")[:10])
+    except ValueError:
+        return False
+    nd = now.astimezone(ET).date()
+    if rd != nd:
+        return rd < nd
+    m = re.match(r"^\s*(\d{1,2}):(\d{2})", str(time_et or ""))
+    if not m:
+        return False
+    return (now.astimezone(ET).hour, now.astimezone(ET).minute) >= (int(m.group(1)), int(m.group(2)))
+
+
+def first_gating_event(macro: Sequence[Mapping[str, Any]], today: date,
+                       now: datetime | None = None) -> Optional[Mapping[str, Any]]:
+    """The earliest market-moving release from ``today`` within the horizon that is still ahead, or None.
+
+    ``now`` (an aware instant) makes the horizon time-aware: an 08:30 ET print that has already happened is not a
+    reason to hold buys for the rest of the day (LQ-20261107-1784). Without it the old date-only behaviour holds."""
     best = None
     for e in macro or []:
         name = str(e.get("event") or "").lower()
@@ -50,6 +80,8 @@ def first_gating_event(macro: Sequence[Mapping[str, Any]], today: date) -> Optio
             continue
         if not (0 <= (d - today).days <= GATE_HORIZON_DAYS):
             continue
+        if event_passed(e.get("date"), e.get("time_et"), now):
+            continue
         if best is None or (d, str(e.get("time_et") or "")) < (best[0], str(best[1].get("time_et") or "")):
             best = (d, e)
     return best[1] if best else None
@@ -58,7 +90,7 @@ def first_gating_event(macro: Sequence[Mapping[str, Any]], today: date) -> Optio
 def buys_block(tier: Optional[str], macro: Sequence[Mapping[str, Any]], as_of: datetime) -> dict[str, Any]:
     """{line, gate, until, source_ids}. ``gate`` is NONE / SMALL_ONLY / OPEN / UNKNOWN."""
     tier = (tier or "").upper()
-    ev = first_gating_event(macro, as_of.date())
+    ev = first_gating_event(macro, as_of.date(), now=as_of)
     ev_txt = f"{_short(str(ev.get('event')))} {_when(str(ev.get('date')), ev.get('time_et'))}" if ev else None
     # "CPI Tue": the short form the one-line verdict carries.
     ev_short = " ".join(ev_txt.split()[:2]) if ev_txt else None

@@ -389,9 +389,10 @@ def test_rotation_stocks_under_the_etf_row():
     # the same proposed rule and tranche-1 dollars the ETF row carries, expressed in this name's shares
     assert held["tranche1_usd"] == 1200.0 and held["tranche1_shares"] == int(1200.0 // 30.0)
     assert held["proposed"] is True
-    # the one-line stock-vs-ETF reading: descriptive, and it names the ETF and both sides
-    assert "XLV" in held["compare"] and "trails the ETF" in held["compare"]
-    assert "XLV" in rows[1]["compare"] and "leads the ETF" in rows[1]["compare"]
+    # the one-line stock-vs-ETF reading (LQ-20261107-1784): one relational phrase, the ETF's own ticker, no
+    # repeated RS pair and no two-close comparison
+    assert held["compare"] == "weaker than XLV by 18.1 pts"
+    assert rows[1]["compare"].startswith("stronger than XLV by ")
     # every row carries its own provenance
     for r in rows:
         assert r["source_id"] and r["as_of"]

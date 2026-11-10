@@ -1,9 +1,9 @@
 // LQ-20261107-1654 — the rotation card's whole-share sizing, rendered for real at phone widths.
 // Renders the actual MarketRiskPanelV5 with a synthetic HomeCioCard@v1 `panel` and proves, in a browser:
-//   priced    every tranche row shows floor-shares + leftover cash at the LIVE quote, and the card states
-//             "Prices as of <ET>" from the oldest quote in the batch;
-//   unpriced  with no quote every tranche says "needs a live price" (never a count off yesterday's close) and the
-//             card says there is no current quote;
+//   priced    the action line shows floor-shares at the LIVE quote, and the card states "Prices as of <ET>" from
+//             the oldest quote in the batch;
+//   unpriced  with no quote the action line says the share count needs a live price (never a count off yesterday's
+//             close) and the card says there is no current quote;
 //   at 390 / 412 / 1440 px nothing overflows the viewport (no sideways page scroll).
 //   node e2e/rotation-whole-shares.fixture.mjs <outdir>
 import assert from 'node:assert/strict'
@@ -98,24 +98,21 @@ try {
         return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
       })
       await page.goto('http://fixture.invalid/')
-      await page.waitForSelector('[data-testid="mr5-tranches"]')
+      await page.waitForSelector('[data-testid="mr5-action"]')
 
-      const rows = await page.$$eval('[data-testid="mr5-tranches"] span', els => els.map(e => e.textContent.trim()))
+      const actions = await page.$$eval('[data-testid="mr5-action"]', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()))
       const asof = (await page.textContent('[data-testid="mr5-prices-asof"]')).replace(/\s+/g, ' ')
-      const live = await page.$$eval('[data-testid="mr5-price"]', els => els.map(e => e.textContent.trim()))
 
       if (priced) {
-        assert.deepEqual(rows, ['Tranche 1', '$4,520 · 24 sh + $84.80 cash', 'Tranche 2', '$4,520 · 24 sh + $84.80 cash',
-                                'Tranche 3', '$6,026 · 32 sh + $112.40 cash', 'Tranche 1', '$4,520 · 52 sh + $79.20 cash',
-                                'Tranche 2', '$4,520 · 52 sh + $79.20 cash', 'Tranche 3', '$6,026 · 70 sh + $48.00 cash'],
-                     `tranche rows (${width}px)`)
-        assert.match(live[0], /Live 184\.80/)
+        assert.deepEqual(actions, [
+          '▶ PROPOSED. Tranche 1 $45,195 ≈ 24 sh at $184.80. Needs your OK.',
+          '▶ PROPOSED. Tranche 1 $45,195 ≈ 52 sh at $85.40. Needs your OK.',
+        ], `action lines (${width}px)`)
         assert.match(asof, /Prices as of 10:45 AM ET\./)
       } else {
         // The dollars still show — only the share count refuses, and it says why.
-        const values = await page.$$eval('[data-testid="mr5-tranches"] span:nth-child(even)', els => els.map(e => e.textContent.trim()))
-        assert.ok(values.length > 0 && values.every(v => v.endsWith('needs a live price')), `unpriced values (${width}px): ${JSON.stringify(values)}`)
-        assert.match(live[0], /No current price/)
+        assert.ok(actions.length > 0 && actions.every(a => /\$45,195/.test(a) && /share count needs a live price/.test(a)),
+                  `unpriced action lines (${width}px): ${JSON.stringify(actions)}`)
         assert.match(asof, /No current quote: share counts need a live price\./)
         assert.match(asof, /Not priced: XLV, XLP\./)
       }
@@ -132,7 +129,7 @@ try {
       const shot = path.join(out, `rotation-${variant}-${width}.png`)
       await page.screenshot({ path: shot, fullPage: true })
       receipt.screenshots.push(shot)
-      receipt.checks.push({ width, variant, rows: rows.length, overflow, ok: true })
+      receipt.checks.push({ width, variant, actions, overflow, ok: true })
       receipt.viewports.push(width)
       await page.close()
     }
