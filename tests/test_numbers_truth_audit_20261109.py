@@ -828,3 +828,83 @@ def test_the_audit_never_reaches_for_a_broker_a_credential_or_an_llm():
     assert not (mods & {"yfinance", "alpaca", "data_broker", "schwab", "moomoo", "anthropic", "openai"}), mods
     for banned in ("place_order", "TRADEAI_CLAIM_OVERRIDE", "auth/login", "submit_order"):
         assert banned not in src
+# ── LQ-20261107-1733: a republished canonical mark is graded in its own session ───────────────────────────────
+
+
+def mark_row(**kw) -> dict:
+    """A holdings row shaped as the producer republishes it: `current_price` is an alias of `canonical_mark`, whose
+    own provenance is `canonical_mark_source`; `quote_source`/`quote_session` describe the separate, before-close
+    `quote_price`. Synthetic numbers only."""
+    row = H(**kw)
+    row.update({"current_price_is_alias_of": "canonical_mark",
+                "canonical_mark_source": "finviz_elite",
+                "quote_price": 101.9,
+                "quote_session": "afterhours"})
+    return row
+
+
+def test_a_canonical_mark_is_graded_against_its_own_source_store_not_the_quote_sources(tmp_path):
+    """The 19:03 ET dry run's two NT_PRICE_MISMATCH findings: the displayed close was compared with a fresher
+    print from the store the row's `quote_source` names. Same row shape, synthetic values — the mark's own store
+    agrees with it, and the extended print (0.9 % away) answers a different question."""
+    root = write_state(tmp_path, holdings=[mark_row(price=100.0, current_price=100.0,
+                                                    quote_source="market_quotes_extended")])
+    b = bundle(quotes=[dict(Q_AA, price=100.0)],
+               quotes_extended=[{"symbol": "ZQAA", "source": "schwab", "price": 100.9,
+                                 "fetched_at": QUOTE_AS_OF}])
+    assert run(root, "holdings.price", b=b)["findings"] == []
+
+
+def test_a_canonical_mark_that_disagrees_with_its_own_store_is_still_a_mismatch(tmp_path):
+    """The patch never hides a real mismatch: the mark is still graded at 0.5 % against the store that can
+    answer for it, and both sides keep their timestamps."""
+    root = write_state(tmp_path, holdings=[mark_row(price=100.0, current_price=100.0,
+                                                    quote_source="market_quotes_extended")])
+    b = bundle(quotes=[dict(Q_AA, price=101.0)],
+               quotes_extended=[{"symbol": "ZQAA", "source": "schwab", "price": 100.0,
+                                 "fetched_at": QUOTE_AS_OF}])
+    rep = run(root, "holdings.price", b=b)
+    assert codes(rep) == ["NT_PRICE_MISMATCH"]
+    f = rep["findings"][0]
+    assert f["shown"]["value"] == 100.0 and f["truth"]["value"] == 101.0
+    assert f["truth"]["provider"] == "market_quotes" and f["truth"]["as_of"]
+
+
+def test_a_canonical_mark_whose_own_store_is_stale_is_not_measured_never_a_pass(tmp_path):
+    """A store that cannot have produced a fresh number is not evidence, and another session's print is not a
+    substitute: the row is NOT_MEASURED with the ages of both stores, never silently clean."""
+    root = write_state(tmp_path, holdings=[mark_row(price=100.0, current_price=100.0,
+                                                    quote_source="market_quotes_extended")])
+    b = bundle(quotes=[dict(Q_AA, price=100.0, fetched_at=_iso(20))],  # in-session bound is 15 min
+               quotes_extended=[{"symbol": "ZQAA", "source": "schwab", "price": 100.9,
+                                 "fetched_at": QUOTE_AS_OF}])
+    rep = run(root, "holdings.price", b=b)
+    assert codes(rep) == ["NT_NOT_MEASURED"]
+    f = rep["findings"][0]
+    assert f["reason"] == "stale_truth"
+    assert "market_quotes" in f["detail"] and "market_quotes_extended" in f["detail"]  # both ages named
+
+
+def test_a_row_without_the_mark_alias_keeps_the_quote_source_contract(tmp_path):
+    """Scope guard: a row that does not declare the alias is graded exactly as before — the row's own
+    `quote_source` store wins when it can answer freshly, and its disagreement is a mismatch."""
+    root = write_state(tmp_path, holdings=[H(price=100.0, current_price=100.0,
+                                             quote_source="market_quotes_extended")])
+    b = bundle(quotes=[dict(Q_AA, price=100.0)],
+               quotes_extended=[{"symbol": "ZQAA", "source": "schwab", "price": 100.9,
+                                 "fetched_at": QUOTE_AS_OF}])
+    rep = run(root, "holdings.price", b=b)
+    assert codes(rep) == ["NT_PRICE_MISMATCH"]  # graded against market_quotes_extended, as the row says
+    assert rep["findings"][0]["truth"]["provider"] == "market_quotes_extended"
+
+
+def test_a_mark_that_names_no_allowed_quote_store_stays_a_provenance_finding(tmp_path):
+    """A fund NAV or a broker mark is not a quote store: the row keeps its NT_QUOTE_SOURCE finding (now naming
+    the displayed value's own source), and a fresh quote-store row does not rescue it into a pass."""
+    row = mark_row(price=100.0, current_price=100.0, quote_source="unavailable")
+    row.update({"canonical_mark_source": "price_cache_nav"})
+    root = write_state(tmp_path, holdings=[row])
+    rep = run(root, "holdings.price", b=bundle(quotes=[dict(Q_AA, price=100.0)]))
+    assert codes(rep) == ["NT_QUOTE_SOURCE"]
+    d = rep["findings"][0]["detail"]
+    assert "canonical_mark_source 'price_cache_nav'" in d and "no allowed store" in d

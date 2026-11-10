@@ -1132,7 +1132,25 @@ def row_quote(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[st
             continue  # a cash balance is a dollar amount, not a quoted instrument
         rsym = str(sym or "").upper()
         source = str(_one(s, src_field)[0] or "")
-        shown_side = {"value": shown, "field": sp, "source": source, "page": spec.get("path")}
+        # A displayed value is not always the field its source label describes. A republished canonical mark
+        # (`current_price_is_alias_of: canonical_mark`) carries its own provenance in `canonical_mark_source`,
+        # while the row's `quote_source` describes the separate before-close `quote_price`. Grading the mark
+        # against the store that label names compares a regular-session close to an after-hours print (live
+        # 2026-11-09: two NT_PRICE_MISMATCH findings whose two sides were a 16:30 close and an 18:38 print).
+        # The catalog names the display field and the store that can grade it, so the mark is compared with its
+        # own session's store and never with another session's print.
+        display_alias = str(spec.get("display_alias_of") or "")
+        display_field = str(spec.get("display_source_field") or "")
+        display_stores = {str(k).lower(): str(v) for k, v in (spec.get("display_source_stores") or {}).items()}
+        label_field, label_source, source_store = src_field, source, source
+        is_display = False
+        if display_field and display_alias and str(s.get("current_price_is_alias_of") or "") == display_alias:
+            mark = str(s.get(display_field) or "")
+            if mark:
+                label_field, label_source = display_field, mark
+                source_store = display_stores.get(mark.lower(), mark)
+                is_display = True
+        shown_side = {"value": shown, "field": sp, "source": label_source, "page": spec.get("path")}
         retired: dict[str, str] = {}
         candidates: list[tuple[str, Mapping[str, Any], datetime]] = []
         unreadable: list[str] = []
@@ -1149,13 +1167,17 @@ def row_quote(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[st
                 candidates.append((name, trow, seen))
                 seen_by_store[name] = seen
         fresh = [c for c in candidates if (now - c[2]) <= bound]
+        if is_display and source_store in QUOTE_STORES:
+            # A mark whose own store is stale is NOT_MEASURED below: another session's print is a different
+            # question, and grading the close against it is exactly the defect this row shape exists to prevent.
+            fresh = [c for c in fresh if c[0] == source_store]
         if fresh:
             # The store the row names is the truth when it can answer freshly; only a stale or absent
             # named store lets another allowed store supply the number (and then the label is wrong).
-            name, trow, seen = next((c for c in fresh if c[0] == source), max(fresh, key=lambda c: c[2]))
+            name, trow, seen = next((c for c in fresh if c[0] == source_store), max(fresh, key=lambda c: c[2]))
             truth = _num(trow.get("price"))
             sf = _num(shown)
-            label_ok = source == name
+            label_ok = source_store == name or source == name
             if truth is None or sf is None or not _tolerance(tol, sf, truth):
                 out.append(finding(row, "NT_PRICE_MISMATCH", "MISMATCH",
                                    f"{acct} {sym}: {where} shows {_fmt(sf)}; truth {_fmt(truth)} ({name}, "
@@ -1165,16 +1187,17 @@ def row_quote(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[st
                 # REV 3 G3: the figure's source field must name the store the number actually comes from.
                 # The evidence is the labeled store's OWN clock: if it cannot have produced a number this
                 # fresh, the label is wrong whatever the number is.
-                own = seen_by_store.get(source)
+                own = seen_by_store.get(source_store)
                 if own is not None:
                     why = (f"its own newest row is {own.isoformat()} "
                            f"({(now - own).total_seconds() / 3600:.1f} h old)")
-                elif source in QUOTE_STORES:
+                elif source_store in QUOTE_STORES:
                     why = "its own store has no row for it"
                 else:
                     why = "it names no allowed store at all"
                 out.append(finding(row, "NT_QUOTE_SOURCE", "MISMATCH",
-                                   f"{acct} {sym}: {where} shows {_fmt(sf)} with {src_field} {source!r}, but {why}; "
+                                   f"{acct} {sym}: {where} shows {_fmt(sf)} with {label_field} "
+                                   f"{label_source!r}, but {why}; "
                                    f"the value is {name}'s ({seen.isoformat()})", account=acct, symbol=sym,
                                    shown=shown_side,
                                    truth={"value": truth, "provider": name, "as_of": seen.isoformat()}))

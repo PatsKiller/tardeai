@@ -436,7 +436,14 @@
         ],
         "code": "NT_PRICE_MISMATCH",
         "source_field": "quote_source",
-        "truth_fresh_min_in_session": 15
+        "truth_fresh_min_in_session": 15,
+        "display_alias_of": "canonical_mark",
+        "display_source_field": "canonical_mark_source",
+        "display_source_stores": {
+          "finviz": "market_quotes",
+          "finviz_elite": "market_quotes"
+        },
+        "_display_source_note": "The displayed current_price is an alias of canonical_mark; canonical_mark_source names WHERE it came from (finviz/finviz_elite = a regular-session mark), and the row's quote_source/quote_session describe the separate, before-close quote_price. Grading the mark against the extended store compared a regular-session close to an after-hours print (live 2026-11-09: two NT_PRICE_MISMATCH findings with one side stamped at the 16:30 close and the other at an 18:38 extended print). The mapping only names the store that can grade each display source; an unmapped display source is still graded and still labelled, and a stale regular store is NOT_MEASURED, never a pass."
       },
       "tolerance": {
         "kind": "pct",
