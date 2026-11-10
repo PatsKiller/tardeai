@@ -219,7 +219,8 @@ def test_failed_attempt_never_promotes_carried_ok_at_even_within_grace(exit_code
         {"status": "running"},
         {"exit": None},
         {"exit": False},
-        {"exit": 1},
+        # {"exit": 1} moved out: LQ-20261107-1833 (REVIEW-LQ1829 S1) reads it through status_consistency first, so
+        # it is the known worse state FAILED, not the malformed-receipt ERROR -- see the test below.
         {"ok_at": None},
         {"ok_at": "2026-10-12T14:10:00"},
         {"started_at": None},
@@ -231,6 +232,19 @@ def test_failed_attempt_never_promotes_carried_ok_at_even_within_grace(exit_code
 def test_receipt_identity_outcome_and_time_refusals_are_typed(over):
     report = lane_receipt_freshness(receipt(**over), lane_id=LANE, script=SCRIPT, now=NOW, max_age_min=60)
     assert report["status"] == "ERROR" and report["business_output_acceptance"] == "NOT_MEASURED"
+
+
+def test_a_non_zero_exit_beside_status_ok_reads_as_the_failure_the_writer_now_writes():
+    """LQ-20261107-1833 (REVIEW-LQ1829 S1). BEFORE the reconcile, this pre-fix document took a second calculation and
+    read ERROR ``receipt_success_outcome_inconsistent`` -- the receipt called malformed for a contradiction that has a
+    known worse state. ``status_consistency`` is downgrade-only and maps exit 1 beside status ok to ``failed``, which is
+    exactly what the post-fix writer records for the same run (``build_receipt(ok=True, exit_code=1)`` writes
+    ``status: failed`` and no ``ok_at``). Never OK; the carried ``ok_at`` stays history and is reported with its age.
+    """
+    report = lane_receipt_freshness(receipt(exit=1), lane_id=LANE, script=SCRIPT, now=NOW, max_age_min=60)
+    assert report["status"] == "FAILED" and report["reason"] == "latest_receipt_failed", report
+    assert report["latest_attempt_status"] == "failed" and report["age_min"] == 5
+    assert report["business_output_acceptance"] == "NOT_MEASURED"
 
 
 @pytest.mark.parametrize("document", [None, [], "wrong"])

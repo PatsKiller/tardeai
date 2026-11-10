@@ -85,11 +85,13 @@ t('n8n tiles are keyed and a tile filters exactly the lanes it counts', () => {
 t('chip state maps to the status the API filters on, and every chip has a meaning', () => {
   eq(mixStatusParam('failed'), 'failed')
   eq(mixStatusParam('inactive'), 'paused,retired,never_scheduled')
-  for (const k of ['failed', 'missed', 'late', 'running', 'ok', 'ok_unverified', 'not_measured', 'inactive'] as const) {
+  for (const k of ['failed', 'blocked', 'degraded', 'missed', 'late', 'running', 'ok', 'ok_unverified', 'not_measured', 'inactive'] as const) {
     if (!MIX_MEANING[k] || MIX_MEANING[k].length < 20) fail(`no meaning for ${k}`)
   }
   for (const k of HISTORY_STATUS_KEYS) if (k !== 'fixed' && !STATUS_MEANING[k as keyof typeof STATUS_MEANING]) fail(`no badge meaning for ${k}`)
-  for (const r of ['succeeded', 'failed', 'timed_out', 'refused', 'skipped_lock', 'running', 'requested', 'unknown'] as const) if (!RESULT_MEANING[r]) fail(`no result meaning ${r}`)
+  // LQ-20261107-1833 (REVIEW-LQ1829 M1): the unions widened to blocked/degraded; these two maps are exhaustive over
+  // them (tsc proves it), and this loop names them so a missing sentence fails the test too, not only the type check.
+  for (const r of ['succeeded', 'failed', 'blocked', 'degraded', 'timed_out', 'refused', 'skipped_lock', 'running', 'requested', 'unknown'] as const) if (!RESULT_MEANING[r]) fail(`no result meaning ${r}`)
 })
 t('a chip opens the category page filtered to that state', () => {
   eq(catalogFilterHref('market_data', 'failed'), '/ops/jobs-catalog?category=market_data&status=failed')

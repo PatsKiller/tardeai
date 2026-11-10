@@ -122,6 +122,21 @@ def lane_receipt_freshness(
         "last_line": None,
         "age_min": None,
     }
+    # LQ-20261107-1833 (REVIEW-LQ1829 S1): read the document through the SAME reconciliation every other consumer
+    # uses. A pre-fix receipt still on disk says ``status: ok`` beside a BLOCK/DEGRADED verdict; branching on that
+    # stale word made this check call the canonical 12:46:37Z file malformed (ERROR) -- and a WARN verdict green --
+    # while the Jobs projection said blocked/degraded. One document, one calculation. ``reconcile`` is downgrade-only,
+    # so a document already in the post-fix shape is returned unchanged, and any failure here falls back to the raw
+    # document rather than changing the health verdict path.
+    if isinstance(doc, Mapping):
+        try:
+            try:
+                from scripts.lib import status_consistency as _status_consistency
+            except ImportError:  # scripts/ on sys.path, repo root not
+                from lib import status_consistency as _status_consistency  # type: ignore[no-redef]
+            doc, _contradictions = _status_consistency.reconcile(doc, lane_id=lane_id, log=False)
+        except Exception:  # noqa: BLE001 -- a consistency check must never change what the health agent reports
+            pass
     if not isinstance(doc, Mapping) or doc.get("schema") != "LaneRunReceipt@v1":
         return dict(base, status="ERROR", reason="receipt_schema_invalid")
     if doc.get("lane_id") != lane_id or doc.get("script") != script:

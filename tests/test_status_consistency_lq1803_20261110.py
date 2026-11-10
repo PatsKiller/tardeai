@@ -210,6 +210,21 @@ def test_sweep_lists_every_contradiction_and_nothing_else(tmp_path):
     assert SWEEP.main(["--state-root", str(tmp_path)]) == 0
 
 
+def test_an_unreadable_document_says_cannot_be_read_and_is_never_ok(tmp_path):
+    """REVIEW-LQ1829 S2: acceptance 4's literal phrase. The substance (an UNREADABLE section, never ``ok``) was
+    already met; this pins the wording so a reader is told the cause instead of a file that was quietly skipped."""
+    runtime = tmp_path / "data/runtime"
+    runtime.mkdir(parents=True)
+    (runtime / "synthetic-bad_last.json").write_text("{bad json", encoding="utf-8")
+    (runtime / "synthetic-list_last.json").write_text("[1, 2]", encoding="utf-8")
+    out = SWEEP.sweep(tmp_path)
+    assert out["read"] == 2 and out["clean"] == 0
+    assert out["contradictions"] == [] and out["advisories"] == []
+    text = SWEEP._render(out)
+    assert "synthetic-bad_last.json  cannot be read: JSONDecodeError" in text, text
+    assert "synthetic-list_last.json  cannot be read: top level is list, not an object" in text, text
+
+
 def test_the_health_contract_calls_a_block_known_never_malformed():
     """BEFORE: a blocked receipt failed `status in {ok, failed}` and read as ERROR "receipt_outcome_invalid"."""
     from scripts.lib import system_health_freshness as F
@@ -221,6 +236,29 @@ def test_the_health_contract_calls_a_block_known_never_malformed():
     bad = dict(doc, status="something_else")
     assert F.lane_receipt_freshness(bad, lane_id="synthetic-litmus", script="synthetic-litmus", now=NOW,
                                     max_age_min=60)["reason"] == "receipt_outcome_invalid"
+
+
+def test_the_health_contract_reads_a_prefix_receipt_through_the_same_reconciliation():
+    """LQ-20261107-1833 (REVIEW-LQ1829 S1). BEFORE, the freshness check branched on the document's own stale word, so
+    a pre-fix file still on disk disagreed with the Jobs projection: the canonical 12:46:37Z receipt read ERROR
+    "receipt_success_outcome_inconsistent" (BLOCK verdict) and a WARN verdict read OK (green). Every consumer must
+    read one calculation; the reconcile is downgrade-only, so a post-fix document is unchanged."""
+    from scripts.lib import system_health_freshness as F
+    blocked = _litmus_receipt(script="synthetic-litmus")  # status/outcome ok, exit 1, summary.verdict BLOCK
+    out = F.lane_receipt_freshness(blocked, lane_id="synthetic-litmus", script="synthetic-litmus", now=NOW,
+                                   max_age_min=600)
+    assert out["status"] == "BLOCKED" and out["reason"] == "latest_receipt_blocked", out
+    assert out["latest_attempt_status"] == "blocked" and out["subject_reason"] == "BLOCK"
+    degraded = _litmus_receipt(verdict="WARN", exit=0, script="synthetic-litmus")
+    out = F.lane_receipt_freshness(degraded, lane_id="synthetic-litmus", script="synthetic-litmus", now=NOW,
+                                   max_age_min=600)
+    assert out["status"] == "DEGRADED" and out["reason"] == "latest_receipt_degraded", out
+    assert out["latest_attempt_status"] == "degraded"
+    post_fix = L.build_receipt("synthetic-litmus", ok=True, exit_code=1, summary={"verdict": "BLOCK"},
+                               started_at="2026-11-10T16:57:00+00:00", finished_at="2026-11-10T17:00:00+00:00")
+    again = F.lane_receipt_freshness(post_fix, lane_id="synthetic-litmus", script="synthetic-litmus", now=NOW,
+                                     max_age_min=60)
+    assert again["status"] == "BLOCKED" and again["latest_attempt_status"] == "blocked", again
 
 
 def test_catalog_mix_and_filters_cover_the_new_statuses():

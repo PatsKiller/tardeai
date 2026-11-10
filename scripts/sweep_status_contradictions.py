@@ -107,7 +107,8 @@ def _render(result: dict) -> str:
         lines.append("")
         lines.append("UNREADABLE (not judged, listed so the sweep cannot look clean by skipping a file):")
         for u in result["unreadable"]:
-            lines.append(f"  {u['path']}  {u['error']}")
+            # REVIEW-LQ1829 S2: acceptance 4's literal phrase, so a reader sees the cause beside the path.
+            lines.append(f"  {u['path']}  cannot be read: {u['error']}")
     return "\n".join(lines)
 
 

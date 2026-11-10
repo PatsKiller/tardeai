@@ -97,6 +97,10 @@ export const runHistoryHref = (laneId: string) => `/ops/jobs-n8n?tab=all&history
 /** What each catalog chip means, in plain words (tap/hover tooltip head). */
 export const MIX_MEANING: Record<keyof StatusMix, string> = {
   failed: 'The last run of these jobs ended in an error, a timeout or a refusal.',
+  // LQ-20261107-1833 (REVIEW-LQ1829 M1): the third exhaustive map over the widened unions. The compiler named it
+  // (TS2739 at this line) even though the review listed only STATUS_MEANING and RESULT_MEANING.
+  blocked: 'The last run of these jobs finished, but its verdict said the subject is not fit for use: the work is blocked.',
+  degraded: 'The last run of these jobs finished but reports a degraded subject — it ran, with warnings.',
   missed: 'These jobs were due to run on schedule and no run started.',
   late: 'These jobs have not run as recently as their schedule expects, but are not yet counted as missed.',
   running: 'These jobs are running right now.',
@@ -110,6 +114,8 @@ export const STATUS_MEANING: Record<HistoryStatus, string> = {
   ok: 'Running on schedule: the last run succeeded and the output arrived on time.',
   ok_unverified: 'Output on time, success unproven: the job ran and wrote on time, but no check confirms the work was right.',
   failed: 'Last run failed: the most recent run ended in an error, timeout or refusal.',
+  blocked: 'Blocked: the last run finished, but its own verdict said the subject is not fit for use, so the work did not succeed.',
+  degraded: 'Degraded: the last run finished, but its own verdict reports a degraded subject — it ran, but not cleanly.',
   missed: 'Missed a run: a scheduled run never started.',
   late: 'Late: the job has not run as recently as its schedule expects.',
   running: 'Running now.',
@@ -121,6 +127,8 @@ export const STATUS_MEANING: Record<HistoryStatus, string> = {
 export const RESULT_MEANING: Record<RunResult, string> = {
   succeeded: 'The last run finished and reported success.',
   failed: 'The last run ended in an error.',
+  blocked: 'The last run finished and its verdict blocked it: the subject is not fit for use.',
+  degraded: 'The last run finished and reported a degraded subject — the run worked, with warnings.',
   timed_out: 'The last run was stopped because it took longer than allowed.',
   refused: 'The last run was refused by a safety rule and did not do its work.',
   skipped_lock: 'The last run did not start because the previous run was still going.',
