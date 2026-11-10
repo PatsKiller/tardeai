@@ -24,12 +24,15 @@ def realized_scope(
         priced_out = None
     else:
         priced_out = round(float(priced), 2)
-    if not unpriced_known:
+    # A member that was not read stays unknown even when the caller says the
+    # aggregate was attempted. Only an actual number, including a measured 0,
+    # is published.
+    if not unpriced_known or unpriced_count is None or unpriced_proceeds is None:
         count_out = None
         proceeds_out = None
     else:
-        count_out = int(unpriced_count or 0)
-        proceeds_out = round(float(unpriced_proceeds or 0), 2)
+        count_out = int(unpriced_count)
+        proceeds_out = round(float(unpriced_proceeds), 2)
         if count_out < 0:
             raise ValueError("unpriced_count")
     return {

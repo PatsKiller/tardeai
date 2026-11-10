@@ -26,6 +26,13 @@ def test_a_failed_unpriced_read_is_not_reported_as_zero():
     assert out["unpriced_proceeds"] is None
 
 
+def test_a_known_read_with_a_missing_member_stays_unknown():
+    out = realized_scope(priced=40, unpriced_count=None, unpriced_proceeds=15, unpriced_known=True)
+    assert out["priced_realized"] == 40.0
+    assert out["unpriced_count"] is None
+    assert out["unpriced_proceeds"] is None
+
+
 def test_a_measured_zero_stays_zero():
     out = realized_scope(priced=0, unpriced_count=0, unpriced_proceeds=0, unpriced_known=True)
     assert out == {"priced_realized": 0.0, "unpriced_count": 0, "unpriced_proceeds": 0.0}
