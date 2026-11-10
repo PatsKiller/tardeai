@@ -71,7 +71,9 @@ and v2 paths unless stated:
   once, immutably, per attempt.
 * **Output verdict (DD07).** After an exit-0 LIVE run of a lane whose health contract declares ``expected_output``,
   the per-attempt receipt is evaluated (scripts/lib/n8n_output_verdict.py): ``empty_violation`` -> RUN_FAILED
-  ``empty_output``, ``unverifiable`` -> RUN_FAILED ``output_unverifiable``. No block = ``output_verdict.verdict
+  ``empty_output``, ``unverifiable`` -> RUN_FAILED ``output_unverifiable``. A receipt whose own ``status`` says
+  ``failed`` is RUN_FAILED ``receipt_status_failed`` (LQ-20261107-1855); ``status`` ``degraded``/``blocked`` is a
+  downgraded SUBJECT verdict and judges against its produced rule like ``ok``. No block = ``output_verdict.verdict
   no_rule`` and the run is unchanged. v2 receipts that carry an evaluated verdict are ``RunReceipt@v3``.
   ENFORCEMENT IS PER-LANE OPT-IN (2026-10-15): the verdict is applied only when the lane's allowlist entry declares
   ``"output_receipt": "v2"`` -- set together with the lane code that writes ``produced_count``. A declared rule on a
@@ -134,7 +136,8 @@ from scripts.lib.n8n_retry_policy import (  # noqa: E402
 )
 from scripts.lib.n8n_coordination_ledger import SINGLE_ATTEMPT_CLASSES  # noqa: E402
 from scripts.lib.n8n_policy_reload import PolicyFile  # noqa: E402
-from scripts.lib.n8n_output_verdict import FAILING as OUTPUT_FAILING, evaluate as evaluate_output  # noqa: E402
+from scripts.lib.n8n_output_verdict import FAILING as OUTPUT_FAILING, FAILING_WHY as OUTPUT_FAILING_WHY  # noqa: E402
+from scripts.lib.n8n_output_verdict import evaluate as evaluate_output  # noqa: E402
 from scripts.lib import n8n_error_class as EC  # noqa: E402
 from scripts.lib.lane_last_receipt import (  # noqa: E402
     CODE_SHA_ENV,
@@ -911,7 +914,9 @@ def apply_output_verdict(
     entry: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """DD07: stamp ``output_verdict`` and turn an exit-0 run that produced nothing (or cannot prove it did) into
-    RUN_FAILED ``empty_output`` / ``output_unverifiable``. No rule for the lane = ``no_rule``, state unchanged.
+    RUN_FAILED ``empty_output`` / ``output_unverifiable``. A receipt whose own ``status`` says ``failed`` fails as
+    ``receipt_status_failed``: the run did fail, but not for producing nothing (LQ-20261107-1855). No rule for the
+    lane = ``no_rule``, state unchanged.
 
     Per-lane opt-in (2026-10-15): a declared rule is enforced only when the allowlist ``entry`` has
     ``output_receipt: "v2"``; otherwise the verdict is ``declared_not_enforced`` and the state is unchanged."""
@@ -950,7 +955,7 @@ def apply_output_verdict(
     failed_reason = OUTPUT_FAILING.get(verdict.get("verdict"))
     if failed_reason is not None:
         receipt["state"] = "RUN_FAILED"
-        receipt["reason"] = failed_reason
+        receipt["reason"] = OUTPUT_FAILING_WHY.get(verdict.get("why"), failed_reason)
     return receipt
 
 

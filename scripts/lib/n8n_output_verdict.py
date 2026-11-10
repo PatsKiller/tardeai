@@ -15,7 +15,9 @@ verdict                meaning / run outcome
 ``dry_run_exempt``     a dry run writes no receipt (AGENTS.md §6); not checked (captured dry evidence is (P))
 ``produced``           ``produced_count >= min_produced`` on a receipt bound to THIS attempt
 ``empty_allowed``      zero produced with a typed, contract-listed ``empty_reason`` and no fatal skip
-``empty_violation``    -> RUN_FAILED ``empty_output`` (fatal skip reasons win over allowed empty reasons)
+``empty_violation``    -> RUN_FAILED ``empty_output`` (fatal skip reasons win over allowed empty reasons); a receipt
+                       whose own ``status`` says ``failed`` also fails here, with ``why``
+                       ``receipt_status_failed`` and the run reason that same word (never ``empty_output``)
 ``unverifiable``       -> RUN_FAILED ``output_unverifiable``: no attempt receipt, not v2, another run's / lane's
                        receipt, or malformed / inconsistent counts. Missing evidence is never success.
 =====================  ======================================================================================
@@ -63,6 +65,15 @@ VERDICTS = (
     "unverifiable",
 )
 FAILING = {"empty_violation": "empty_output", "unverifiable": "output_unverifiable"}
+#: A verdict ``why`` whose failure names its own reason instead of :data:`FAILING`'s per-verdict default. The default
+#: describes the empty-output rule; a receipt that failed for its own reason is not an empty output (LQ-20261107-1855).
+FAILING_WHY = {"receipt_status_failed": "receipt_status_failed"}
+#: The receipt-status words that do not, by themselves, fail the run. ``lane_last_receipt`` writes ``ok``/``failed``
+#: and ``status_consistency.reconcile`` lowers that to ``degraded`` or ``blocked`` (its ``CANONICAL`` words); the
+#: receipt writer's own rule is ``run_ok = ok and status != "failed"``, and a downgraded word describes the SUBJECT
+#: the lane judged, not the run. Closed on purpose: any other word — including a missing status — still fails, so a
+#: receipt that cannot say how it went never passes as produced.
+NON_FAILING_STATUSES = ("ok", "degraded", "blocked")
 _REASON_RE = re.compile(r"^[a-z][a-z0-9_]{1,47}$")
 _FIELD_RE = re.compile(r"^[a-z][a-z0-9_]{1,47}$")
 #: a receipt field or a dotted path into it (``summary.checked_count``): many lanes already count their input in the
@@ -210,8 +221,8 @@ def evaluate(
     if not isinstance(skipped, Mapping) or not all(_int(v) and v >= 0 for v in skipped.values()):
         return unverifiable("skipped_reasons_invalid")
     base.update({"produced_count": produced, "attempted_count": attempted, "skipped_reasons": dict(skipped)})
-    if doc.get("status") != "ok":
-        return {**base, "verdict": "empty_violation", "why": "receipt_status_failed"}
+    if doc.get("status") not in NON_FAILING_STATUSES:
+        return {**base, "verdict": "empty_violation", "why": "receipt_status_failed", "status": doc.get("status")}
     if doc.get("outcome") == "error":
         return {**base, "verdict": "empty_violation", "why": "receipt_outcome_error", "reason": doc.get("outcome_reason")}
     fatal = sorted(r for r, c in skipped.items() if c > 0 and r in (set(rule["fatal_skip_reasons"]) | NO_WORK_FAILURES))

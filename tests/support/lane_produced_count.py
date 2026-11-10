@@ -76,7 +76,13 @@ def check(tmp_path: Path, lane: str, run_id: str, *, produced: int, expect: str)
     assert doc["produced_count"] == produced, (lane, doc)
     out = verdict(tmp_path, lane, run_id)
     if expect == "empty_output":
-        assert out["state"] == "RUN_FAILED" and out["reason"] == "empty_output", (lane, out)
+        # LQ-20261107-1855: a receipt whose own status says "failed" fails as receipt_status_failed; the
+        # empty-output word is reserved for the produced-count rule itself. The run reason must name the cause the
+        # verdict names, never a word that describes a different failure.
+        failed = out.get("output_verdict") or {}
+        want = "receipt_status_failed" if failed.get("why") == "receipt_status_failed" else "empty_output"
+        assert out["state"] == "RUN_FAILED" and failed.get("verdict") == "empty_violation", (lane, out)
+        assert out["reason"] == want, (lane, out)
     else:
         assert out["state"] == "RUN_DONE", (lane, out)
         assert out["output_verdict"]["verdict"] == expect, (lane, out)
