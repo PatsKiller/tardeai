@@ -76,9 +76,11 @@ export const statusTone = (s: HistoryStatus): Tone =>
       : s === 'running' || s === 'ok_unverified' ? 'info' : 'neutral'
 
 /** The row's display status — the backend's decision, rendered as-is (LQ-20261107-1842). A payload from before the
- *  field existed has no decision: it renders its status words with no green, which is honest (unknown never green). */
+ *  field existed has no decision: it renders its status words **with no colour of its own** — neutral, never green
+ *  (REWORK 1 / M2: `statusTone('ok')` is `success`, so tinting the fallback painted a non-GOOD row green; the label
+ *  still says what the status said, and unknown never reads as good). */
 export const displayOf = (row: Pick<HistoryListRow, 'display' | 'status'> & { status_reason?: string | null }): DisplayStatus =>
-  row.display ?? { green: false, tone: statusTone(row.status), label: STATUS_LABEL[row.status] ?? row.status, reason: row.status_reason ?? null, quality: null }
+  row.display ?? { green: false, tone: 'neutral', label: STATUS_LABEL[row.status] ?? row.status, reason: row.status_reason ?? null, quality: null }
 
 export const RESULT_LABEL: Record<RunResult, string> = {
   succeeded: 'Succeeded', failed: 'Failed', blocked: 'Blocked (verdict BLOCK)', degraded: 'Degraded',

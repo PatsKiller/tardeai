@@ -2,7 +2,7 @@
 //   node --experimental-strip-types src/lib/jobCatalog.test.ts
 import {
   HISTORY_STATUS_KEYS, JOB_CATALOG_PATH, categoryKeyOf, categoryLabel, describedHistoryQuery, descriptionLines, effectiveHistoryFilter,
-  isHistoryStatus, jobTitle, matchesCategory, mixParts, mixText, runHistoryHref, toggleStatus,
+  isHistoryStatus, jobTitle, matchesCategory, mixParts, mixText, mixTone, runHistoryHref, toggleStatus,
   MIX_MEANING, STATUS_MEANING, RESULT_MEANING, catalogFilterHref, chipTipText, mixStatusParam, parseStatusFilter, toggleStatusFilter, filterBarText,
 } from './jobCatalog.ts'
 import { N8N_STATUS_KEYS, historyTiles, isN8nStatus, matchesN8nStatus, n8nTiles } from './jobsN8n.ts'
@@ -38,6 +38,15 @@ t('status mix reads "3 failed · 40 ok · 12 not measured" and omits zeros', () 
   eq(mixText({}), 'No jobs')
   eq(mixParts({ inactive: 2 }).map(p => p.text), ['2 paused or retired'])
 })
+t('REWORK 1 (M1): no chip is green from row status alone', () => {
+  // The mix carries ROW STATUS, not the quality decision: on the live capture 245 rows sat under a green chip
+  // with 104 of them not GOOD. A green chip must mean ok AND GOOD, so until the mix carries display_counts it
+  // must never be green. The words are unchanged ("40 ok"); only the colour stops making a quality claim.
+  eq(mixTone('ok'), 'neutral', 'status ok is a status, not a green')
+  const keys: Array<Parameters<typeof mixTone>[0]> = ['failed', 'blocked', 'subject_degraded', 'missed', 'late', 'running', 'ok', 'ok_unverified', 'not_measured', 'inactive']
+  eq(keys.filter(k => (mixTone(k) as string) === 'success'), [], 'no status key paints a chip green')
+  eq([mixTone('failed'), mixTone('late'), mixTone('ok_unverified')], ['danger', 'warning', 'info'], 'the other tones are unchanged')
+})
 t('category search matches label, blurb or key', () => {
   eq(matchesCategory(CATS[0], 'quotes'), true)
   eq(matchesCategory(CATS[0], 'MARKET'), true)
@@ -64,7 +73,8 @@ t('every job tile has a status key the API accepts', () => {
     if (!tile.key || !isHistoryStatus(tile.key)) fail(`${tab} tile ${tile.label} has no valid key`)
   }
   // LQ-20261107-1842: the two tiles that used to say "Ran OK" / "Ran, unproven" are the backend's display sets.
-  eq(historyTiles(null, 'needs').map(x => x.key), ['failed', 'missed', 'late', 'green', 'amber', 'fixed'])
+  // REWORK 1 (M3): "Ran, unproven" is back beside them — display_counts.other counted those rows on no tile.
+  eq(historyTiles(null, 'needs').map(x => x.key), ['failed', 'missed', 'late', 'green', 'amber', 'ok_unverified', 'fixed'])
   eq(isHistoryStatus('nope'), false)
   eq(HISTORY_STATUS_KEYS.includes('fixed'), true)
 })

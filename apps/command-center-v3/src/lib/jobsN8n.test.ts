@@ -35,13 +35,16 @@ t('a tab count shows only once it was read', () => {
 t('history tiles never invent a zero', () => {
   // LQ-20261107-1842: "Ran OK" counted every status-ok row (ok=4 here) including the ones whose quality was not GOOD.
   // Green and amber are the backend's own display_counts; a payload without them shows "—", never the old ok count.
-  const s = { jobs: 10, active: 9, with_missed: 2, missed_not_measured: 1, fixed_14d: 5, no_run_history: 3, failed: 1, ok: 4 }
+  const s = { jobs: 10, active: 9, with_missed: 2, missed_not_measured: 1, fixed_14d: 5, no_run_history: 3, failed: 1, ok: 4, ok_unverified: 6 }
   const tiles = historyTiles(s, 'needs')
-  eq(tiles.map(x => x.label), ['Failed', 'Missed a run', 'Late', 'Green · ran OK', 'Amber · result not GOOD', 'Fixed · 14 d'])
-  eq(tiles.map(x => x.value), [1, 2, null, null, null, 5])
-  eq(tiles.map(x => x.key), ['failed', 'missed', 'late', 'green', 'amber', 'fixed'])
+  eq(tiles.map(x => x.label), ['Failed', 'Missed a run', 'Late', 'Green · ran OK', 'Amber · result not GOOD', 'Ran, unproven', 'Fixed · 14 d'])
+  eq(tiles.map(x => x.value), [1, 2, null, null, null, 6, 5])
+  eq(tiles.map(x => x.key), ['failed', 'missed', 'late', 'green', 'amber', 'ok_unverified', 'fixed'])
+  // REWORK 1 (M3): ok_unverified rows are counted by no display tile, so they keep a tile of their own — the
+  // biggest non-green population must not be invisible on the tab whose job is counting.
+  eq(tiles.find(x => x.key === 'ok_unverified'), { label: 'Ran, unproven', value: 6, tone: 'neutral', key: 'ok_unverified' })
   const counted = historyTiles({ ...s, display_counts: { green: 3, amber: 1, other: 6 } }, 'needs')
-  eq(counted.map(x => x.value), [1, 2, null, 3, 1, 5])
+  eq(counted.map(x => x.value), [1, 2, null, 3, 1, 6, 5])
   eq(historyTiles(null, 'needs').every(x => x.value === null), true)
   eq(historyTiles(s, 'fixes')[0], { label: 'Fixed · 14 d', value: 5, tone: 'success', key: 'fixed' })
 })

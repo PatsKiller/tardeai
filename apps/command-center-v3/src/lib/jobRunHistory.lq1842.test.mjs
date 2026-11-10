@@ -104,8 +104,12 @@ const field = display()
 check(displayOf({ status: 'ok', display: field }) === field, 'displayOf returns the backend field untouched')
 const fallback = displayOf({ status: 'ok' })
 check(fallback.green === false && fallback.label === 'Running on schedule', 'displayOf fallback is non-green with the status words')
+// REWORK 1 (M2): green is the backend's decision — a payload with no decision has no green to give, and a
+// status-only 'ok' must not paint the chip green either. The words say what the status said; the colour says nothing.
+check(fallback.tone === 'neutral', 'M2: the no-decision fallback is neutral, never success on status ok')
 const legacyFailed = displayOf({ status: 'failed', status_reason: 'Exit code 2' })
 check(legacyFailed.green === false && legacyFailed.reason === 'Exit code 2', 'a legacy non-ok row keeps its status reason')
+check(legacyFailed.tone === 'neutral', 'M2: a no-decision row is neutral whatever its status; the label carries the status')
 
 if (failed) { console.error(`jobRunHistory.lq1842: ${failed} failed`); process.exit(1) }
 console.log('jobRunHistory.lq1842: all checks passed')

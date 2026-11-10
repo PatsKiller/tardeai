@@ -59,9 +59,11 @@ const flat = s => s.replace(/\s/g, '')
 // 1. Status tiles are tappable 44 px toggles; the active one is pressed and ticked.
 const summary = { jobs: 9, active: 9, failed: 2, with_missed: 1, late: 0, ok: 4, ok_unverified: 1, fixed_14d: 3, missed_not_measured: 0, no_run_history: 0 }
 const tiles = h(React.createElement(TileGrid, { tiles: historyTiles(summary, 'needs'), label: 'x', active: 'failed', onPick: () => {} }))
-check((tiles.match(/<button/g) || []).length === 6, 'six tile buttons')
+check((tiles.match(/<button/g) || []).length === 7, 'seven tile buttons')
 check((tiles.match(/aria-pressed="true"/g) || []).length === 1 && /data-status="failed" aria-pressed="true"/.test(tiles), 'only Failed is pressed')
-check((flat(tiles).match(/min-height:44px/g) || []).length === 6, 'every tile is a 44 px target')
+check((flat(tiles).match(/min-height:44px/g) || []).length === 7, 'every tile is a 44 px target')
+// REWORK 1 (M3): "Ran, unproven" is a tile again, so the ok_unverified rows are counted on the counting tab.
+check(/Ran, unproven/.test(tiles), 'the unproven tile is rendered')
 check(tiles.includes('✓ <!-- -->Failed') || tiles.includes('✓ Failed'), 'active tile is ticked')
 // The copy lives on each tile's own aria-label now that the filter is a toggle (JobsN8nViews TileGrid): a pressed
 // tile offers "tap to remove", a plain one "tap to add to the filter". Pre-existing red on base 277fafbda — the

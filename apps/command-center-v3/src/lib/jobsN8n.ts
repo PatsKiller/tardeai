@@ -54,6 +54,9 @@ export function historyTiles(s: HistoryListWire['summary'] | null | undefined, t
     { label: 'Late', value: v('late'), tone: 'warning', key: 'late' },
     { label: 'Green · ran OK', value: display('green'), tone: 'success', key: 'green' },
     { label: 'Amber · result not GOOD', value: display('amber'), tone: 'warning', key: 'amber' },
+    // REWORK 1 (M3): ok_unverified rows are counted by neither display tile — 173 of them on the live capture, the
+    // biggest non-green population. It keeps its own tile (neutral: ran, unproven) so the counting tab still counts.
+    { label: 'Ran, unproven', value: v('ok_unverified'), tone: 'neutral', key: 'ok_unverified' },
     { label: 'Fixed · 14 d', value: v('fixed_14d'), tone: 'success', key: 'fixed' },
   ]
 }

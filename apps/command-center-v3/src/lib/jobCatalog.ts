@@ -59,9 +59,12 @@ export function mixText(mix: Partial<StatusMix> | null | undefined): string {
   const parts = mixParts(mix)
   return parts.length ? parts.map(p => p.text).join(' · ') : 'No jobs'
 }
-export const mixTone = (k: keyof StatusMix): 'danger' | 'warning' | 'success' | 'info' | 'neutral' =>
+// REWORK 1 (M1): the mix counts ROW STATUS, never the quality decision — on the live capture 245 rows sat under a
+// green chip with 104 of them not GOOD. A green chip must mean ok AND GOOD, so no status key is green until the mix
+// carries display_counts (its own ticket). The chip's words are unchanged; only the colour stops claiming green.
+export const mixTone = (k: keyof StatusMix): 'danger' | 'warning' | 'info' | 'neutral' =>
   k === 'failed' || k === 'blocked' ? 'danger' : k === 'missed' || k === 'late' || k === 'subject_degraded' ? 'warning'
-    : k === 'ok' ? 'success' : k === 'running' || k === 'ok_unverified' ? 'info' : 'neutral'
+    : k === 'running' || k === 'ok_unverified' ? 'info' : 'neutral'
 
 /** Catalog search: a category matches on its label or blurb (job matches come from the jobs-history search). */
 export function matchesCategory(c: Category, q: string): boolean {
