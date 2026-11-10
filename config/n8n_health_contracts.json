@@ -43206,9 +43206,9 @@
       "review": {
         "prepared_by": "agent draft (cc-opus-1, LQ-20261107-1607, 2026-11-09)",
         "status": "REVIEWED",
-        "reviewed_by": "cc-deepseek-2 (LQ-20261107-1697; reviewer id and session differ from the author's, AGENTS §23.19)",
-        "reviewed_on": "2026-11-09",
-        "note": "checked field by field: scripts/alert_delivery_queue_hygiene.py (QUEUE_MAX_AGE_MIN 10, STALE_TTL_H 6, ESCALATION_COOLDOWN_MIN 60, one critical system_health row, dry run read-only and receipt-free, sends always 0, empty_reason nothing_due), config/n8n_run_allowlist.json (command, flock lock, timeout_s 120, output_signal = receipt, DB_*/state-root env_names) and config/lane_registry.json (stage shadow, dispatch.mode dry_run). Corrected in the same review: duration_degraded_above_s was 240.0, above this lane's own timeout_s 120 (a threshold no run can reach); set to the class rule 0.8 x timeout_s = 96.0, as every other 120 s monitor lane."
+        "reviewed_by": "cc-deepseek-9 (non-author reviewer), 2026-11-10",
+        "reviewed_on": "2026-11-10",
+        "note": "Signed for the canary/live version per REVIEW-LQ-20261107-1785-contract-cc-deepseek-9.md: stage canary, healthy check rewritten for live apply, expected-output armed with output_receipt v2, purpose reworded to ownership-not-delivery, duration rule stated. Re-read against the net diff 9536419e6..760a005d1, the registry row (scheduler.stage canary, dispatch.mode live) and the allowlist entry (live_arg --apply, output_receipt v2), and against scripts/alert_delivery_queue_hygiene.py:193-205: produced_count = summary.expired and empty_reason nothing_due exactly when nothing expires, ok unless the verdict is BROKEN or UNVERIFIABLE, sends always 0 with the CRITICAL system_health row capped at one per ESCALATION_COOLDOWN_MIN 60. Corrected in the same review, inherited from 2026-11-09: evidence[0].kind was 'file', which is not a member of EVIDENCE_KINDS (scripts/lib/n8n_output_verdict.py:41), so validate_expected_output() rejected the whole expected-output rule; it is now receipt_field naming produced_count. duration_degraded_above_s stays 96.0 (0.8 x timeout_s 120), the correction cc-deepseek-2 made on 2026-11-09."
       },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
@@ -43225,8 +43225,8 @@
         ],
         "evidence": [
           {
-            "kind": "file",
-            "ref": "data/runtime/alert-delivery-queue-hygiene_last.json summary.expired (written under --apply only)"
+            "kind": "receipt_field",
+            "ref": "data/runtime/alert-delivery-queue-hygiene_last.json produced_count (LaneRunReceipt@v2 top-level field, written under --apply only; summary.expired carries the same count)"
           }
         ],
         "on_violation": {
