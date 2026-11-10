@@ -5,8 +5,8 @@ import { DeskPanels, type DeskProjection } from '../../components/DeskBoard'
 import W7DetailSheet, { useW7Detail } from '../../components/W7DetailSheet'
 import DefenseEngineView, { EngineSheetBody, SHEET_TITLES } from '../../components/defense/engine/DefenseEngine'
 import { useApi } from '../../hooks/useApi'
-import { unwrapProjection } from '../../lib/defenseEngine'
-
+import { unwrapProjection, type LiveAuthority } from '../../lib/defenseEngine'
+import { marketRiskFact, unprotectedFact } from '../../lib/metricAuthority'
 /**
  * Approved board 3, redesigned per design defense/v001. Sector momentum is owned by Watch › Sectors
  * (board 13): linked, not repeated. The engine view (GET /api/v2/defense/engine) leads "Where to act";
@@ -25,6 +25,15 @@ const ENGINE_PREFIX = 'engine:'
 export default function DefenseDesk() {
   const desk = useApi<DeskProjection>('/api/v2/desks/defense', 300_000)
   const engine = useApi<unknown>('/api/v2/defense/engine', 300_000)
+  // LQ-20261107-1837 (C4): the projection embeds a frozen copy of the market-risk tier/score and of the
+  // unprotected count. Those two numbers have their own authorities (MarketRiskSnapshot@v1, cio_truth); this
+  // desk reads them live from the same routes Home and Risk use, so all four surfaces print one figure.
+  const marketRisk = useApi<any>('/api/v2/market-risk/latest', 60_000)
+  const cio = useApi<any>('/api/v2/cio/pages', 60_000)
+  const live: LiveAuthority = {
+    marketRisk: marketRisk.data ? marketRiskFact(marketRisk.data) : null,
+    unprotected: cio.data ? unprotectedFact(cio.data) : null,
+  }
   const { selected, open, close } = useW7Detail()
   const projection = desk.data && typeof desk.data === 'object' && 'tabs' in desk.data ? desk.data : null
   const ep = unwrapProjection(engine.data)
@@ -33,6 +42,8 @@ export default function DefenseDesk() {
     // defense-engine-build lane id when that n8n lane is promoted past dry-run (config/n8n_run_allowlist.json).
     ...(ep ? [{ id: 'defense-engine', label: 'Defense engine', asOf: ep.generated_at, laneIds: ['defense-inverse-stoplights'], gap: ep.served?.stale ? ep.served.fallback_reason ?? 'served stale' : undefined }]
       : [{ id: 'defense-engine', label: 'Defense engine', gap: engine.loading ? 'Loading the defense projection.' : 'The defense projection has not answered.' }]),
+    // LQ-20261107-1837 (C4): the tier and score printed above come from this read, not from the projection.
+    ...(live.marketRisk ? [{ id: 'market-risk', label: 'Market risk (engine)', asOf: live.marketRisk.asOf ?? undefined, laneIds: ['market-risk-evaluate'] }] : []),
     ...(projection
       ? projection.sources.map(s => ({ id: s.id, label: s.label, asOf: s.as_of, laneIds: s.lane_ids, maxAgeHours: s.max_age_hours, gap: s.gap ?? undefined, writerNote: s.writer_note ?? undefined }))
       : [{ id: 'projection', label: 'Defense desk projection', gap: desk.loading ? 'Loading the desk projection.' : 'The desk projection has not answered.' }]),
@@ -51,7 +62,7 @@ export default function DefenseDesk() {
       decisionGap={projection ? projection.decision_gap ?? 'No open decisions on file for this desk.' : 'The desk projection has not answered.'}>
       {(active: string) => <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
         {active === 'where-to-act' && (ep
-          ? <DefenseEngineView p={ep} onOpen={openEngine} />
+          ? <DefenseEngineView p={ep} onOpen={openEngine} live={live} />
           : <DeskGap title="Defense engine unavailable" reason={engine.error ? 'The defense projection could not be read. The desk panels below are unchanged.' : 'Loading the defense projection.'}>
             {engine.error && <button type="button" onClick={engine.refetch} style={{ minHeight: 44, width: '100%', marginTop: 8 }}>Retry</button>}
           </DeskGap>)}
@@ -67,7 +78,7 @@ export default function DefenseDesk() {
       </div>}
     </DeskPage>
     {engineSheet && <W7DetailSheet title={SHEET_TITLES[engineSheet] ?? 'Detail unavailable'} onClose={close}>
-      {ep ? <EngineSheetBody p={ep} sheet={engineSheet} /> : <p>The defense projection has not answered.</p>}
+      {ep ? <EngineSheetBody p={ep} sheet={engineSheet} live={live} /> : <p>The defense projection has not answered.</p>}
     </W7DetailSheet>}
     {!engineSheet && selected && detailRow?.detail && <W7DetailSheet title={detailRow.detail.title} onClose={close}>
       <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 8 }}>

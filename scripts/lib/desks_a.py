@@ -599,17 +599,23 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     cash = cash if isinstance(cash, dict) else {}
     review, v_gap = _read_json(root / "config" / "promote_criteria.json")
     review = review if isinstance(review, dict) else {}
-    # D1 (design defense/v001): the Market Risk engine is the desk's headline read, via the defense projection
-    # (scripts/defense_engine_build.py); the raw engine snapshot is the fallback. The CIO regime row stays below it.
+    # D1 (design defense/v001): the Market Risk engine is the desk's headline read. LQ-20261107-1837 (C4): the ONE
+    # authority for that tier and score is the MarketRiskSnapshot@v1 (data/runtime/market_risk_latest.json), which
+    # /api/v2/market-risk/latest serves and Home prints. The defense projection (scripts/defense_engine_build.py)
+    # embeds a FROZEN copy of those two fields in `tier`, so reading the projection first made Defense print a
+    # score from the last build while Home printed the live one (audit: YELLOW 44 vs YELLOW 50.2). Read the snapshot
+    # first; the projection is the fallback when the snapshot is not on file. The CIO regime row stays below it.
     engine, e_gap = _read_json(rt / "defense_engine_latest.json")
     engine = engine if isinstance(engine, dict) else {}
-    mr_snap, mr_gap = ({}, None) if engine else _read_json(rt / "market_risk_latest.json")
+    mr_snap, mr_gap = _read_json(rt / "market_risk_latest.json")
     mr_snap = mr_snap if isinstance(mr_snap, dict) else {}
     etier = engine.get("tier") if isinstance(engine.get("tier"), dict) else {}
-    tier_label = etier.get("tier") or mr_snap.get("tier")
-    tier_score = etier.get("score") if etier else mr_snap.get("score")
-    shock = (etier.get("shock") or {}).get("class") if etier else (mr_snap.get("shock_type") or {}).get("class")
-    engine_as_of = etier.get("as_of") or mr_snap.get("as_of")
+    tier_label = mr_snap.get("tier") or etier.get("tier")
+    tier_score = mr_snap.get("score") if mr_snap.get("score") is not None else etier.get("score")
+    _shock_snap = mr_snap.get("shock_type") if isinstance(mr_snap.get("shock_type"), dict) else {}
+    _shock_engine = etier.get("shock") if isinstance(etier.get("shock"), dict) else {}
+    shock = _shock_snap.get("class") or _shock_engine.get("class")
+    engine_as_of = mr_snap.get("as_of") or etier.get("as_of")
 
     regime = truth.get("regime") or {}
     groups = recs.get("groups") if isinstance(recs.get("groups"), dict) else {}
@@ -620,14 +626,16 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     transitions = [t for t in momentum.get("transitions_today") or [] if isinstance(t, dict)]
     act = [
         _row("act-engine", "Market risk (engine)",
-             (f"{tier_label} {round(tier_score)}" if isinstance(tier_score, (int, float)) else str(tier_label))
+             (f"{tier_label} {tier_score:.1f}" if isinstance(tier_score, (int, float)) else str(tier_label))
              + (f" · {str(shock).lower()} shock" if shock else "") if tier_label else GAP_NOT_ON_FILE,
              "bad" if tier_label in ("RED", "ORANGE") else "warn" if tier_label == "YELLOW" else None,
              href="/defense",
              detail=_detail("Market risk (engine)", [("Tier", tier_label), ("Score", tier_score), ("Shock type", shock),
                             ("As of", _date(engine_as_of))],
-                            "data/runtime/defense_engine_latest.json tier (Market Risk engine)" if engine
-                            else "data/runtime/market_risk_latest.json (engine snapshot; defense projection not on file)")),
+                            # LQ-20261107-1837 (C4): name the authority that was actually read.
+                            "data/runtime/market_risk_latest.json (MarketRiskSnapshot@v1 — the score "
+                            "/api/v2/market-risk/latest serves)" if mr_snap else
+                            "data/runtime/defense_engine_latest.json tier (frozen copy; engine snapshot not on file)")),
         _row("act-regime", "Market regime (CIO)", str(regime.get("label") or "not on file"),
              detail=_detail("Market regime (CIO record)", [("Regime", regime.get("label")), ("VIX", regime.get("vix")),
                             ("Confidence", regime.get("confidence")), ("As of", _date(regime.get("as_of")))],

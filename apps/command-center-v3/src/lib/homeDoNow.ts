@@ -9,6 +9,7 @@
 import { accountName as accountLabelName, canonicalAccountKey, rowAccountKey } from './accountLabels.ts'
 import { STOP_CATEGORY_LABEL, stopCategory } from './stopDisplay.ts'
 import { readableTimesInText } from './readableTime.ts'
+import { heatFact } from './metricAuthority.ts'
 
 export type Severity = 'P0' | 'P1' | 'P2' | 'P3'
 export type Category = 'protect' | 'decide' | 'fix'
@@ -49,6 +50,7 @@ export interface DoNowNumbers {
   heatPct: number | null
   heatLimitPct: number
   heatBasis: string
+  heatAsOf: string | null
   positionsSource: string
   asOf: string | null
   stale: boolean
@@ -106,6 +108,7 @@ function numbersFrom(n: any): DoNowNumbers {
     heatPct: ok ? num(n.heat_pct) : null,
     heatLimitPct: (ok && num(n.heat_limit_pct)) || 5,
     heatBasis: (ok && str(n.heat_basis)) || 'unavailable',
+    heatAsOf: null,
     positionsSource: (ok && str(n.positions_source)) || 'unavailable',
     asOf: ok ? str(n.as_of) : null,
     stale: !!(ok && n.stale),
@@ -261,6 +264,13 @@ export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: an
         ? num(pages?.positions?.unprotected_counted_value_usd ?? pages?.positions?.unprotected_value_usd) : null,
       unprotectedBasis: 'CIO categorized positions · same as Risk; counts and value cover positions worth $100 or more, as of the last broker stop read',
       positionsSource: answered ? str(pages.positions.source) ?? 'CIO positions' : 'Current CIO positions unavailable',
+      // LQ-20261107-1837 (C4): the same cio_truth number Health and Risk print. `/api/v2/home/do-now` still
+      // carries risk_management.json's daily heat (all configured stops over the invested book) under the same
+      // name; that is a different calculation, so Home no longer prints it. An unanswered authority reads
+      // "—", never the legacy number (unknown beats wrong).
+      heatPct: heatFact(pages).pct,
+      heatBasis: heatFact(pages).basis ?? 'cio_truth: loss to observed active broker stops over the portfolio total',
+      heatAsOf: heatFact(pages).asOf,
       stale: model.numbers.stale || positionsStale } }
 }
 

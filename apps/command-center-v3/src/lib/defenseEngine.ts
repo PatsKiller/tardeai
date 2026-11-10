@@ -10,6 +10,14 @@
 export type Tone = 'good' | 'warn' | 'bad' | 'info' | 'muted'
 export type Section = { as_of?: string | null; stale_reason?: string | null }
 
+/** LQ-20261107-1837 (C4): what the Defense page may take from the live authorities instead of the projection's
+ *  frozen copy. Both come from functions in `metricAuthority.ts`; absent means the surface falls back to the
+ *  projection's own field (and keeps saying where it came from). */
+export type LiveAuthority = {
+  marketRisk?: { tier: string; score: number | null; asOf: string | null } | null
+  unprotected?: { count: number | null; valueUsd: number | null; asOf: string | null } | null
+}
+
 export type LadderStep = { tier: string; min_score: number | null; current: boolean }
 export type TierSection = Section & {
   tier?: string | null
@@ -193,10 +201,16 @@ export function scorePosition(score: unknown): number | null {
 
 export type Line = { id: string; sheet: string; label: string; sub: string; value: string; valueSub?: string; tone: Tone; asOf?: string | null; staleReason?: string | null }
 
-/** "The defense, line by line": one row per sheet, every value from one projection field. */
-export function defenseLines(p: DefenseProjection, now: Date = new Date()): Line[] {
+/** "The defense, line by line": one row per sheet, every value from one projection field. `live`, when given,
+ *  carries the two figures LQ-20261107-1837 mapped to an authority OUTSIDE the projection: the market-risk
+ *  score (MarketRiskSnapshot@v1) and the unprotected-position count (cio_truth). The projection's copies are
+ *  frozen at build time, so the live one wins where it is present. */
+export function defenseLines(p: DefenseProjection, now: Date = new Date(), live?: LiveAuthority): Line[] {
   const e = p.exposure ?? {}, s = p.stops ?? {}, h = p.hedge_readiness ?? {}, sec = p.sector_posture ?? {}
   const c = p.cash_alternatives ?? {}, b = p.base_rates ?? {}, w = p.watch_next ?? {}
+  const unprot = live?.unprotected
+  const unprotCount = unprot?.count ?? s.no_stop?.count ?? null
+  const unprotValue = unprot?.valueUsd ?? s.no_stop?.value_usd ?? null
   const topNames = [...new Set((e.rows ?? []).map(r => r.symbol))].slice(0, 2).join(' · ')
   const brSpy = (b.rows ?? [])[0]
   return [
@@ -204,8 +218,9 @@ export function defenseLines(p: DefenseProjection, now: Date = new Date()): Line
       value: money(e.stressed_usd), valueSub: e.stressed_pct_invested != null ? `${pct(e.stressed_pct_invested)} of invested` : undefined,
       tone: (num(e.stressed_pct_invested) ?? 0) >= 10 ? 'warn' : 'muted', asOf: e.as_of, staleReason: e.stale_reason },
     { id: 'stops', sheet: 'stops', label: 'Stop coverage',
-      sub: `${s.no_stop?.count ?? GAP} without a broker stop · ${s.pending?.count ?? GAP} pending`,
-      value: money(s.no_stop?.value_usd), valueSub: 'unprotected', tone: (s.no_stop?.count ?? 0) > 0 ? 'warn' : 'good', asOf: s.as_of, staleReason: s.stale_reason },
+      sub: `${unprotCount ?? GAP} without a broker stop · ${s.pending?.count ?? GAP} pending`,
+      value: money(unprotValue), valueSub: 'unprotected', tone: (num(unprotCount) ?? 0) > 0 ? 'warn' : 'good',
+      asOf: unprot?.asOf ?? s.as_of, staleReason: s.stale_reason },
     { id: 'hedge', sheet: 'hedge', label: 'Hedge readiness',
       sub: h.met_count != null && h.of != null ? `${h.met_count} of ${h.of} triggers met` : (h.stale_reason ?? GAP),
       value: h.readiness ?? 'UNKNOWN', valueSub: h.shock_class ? `${h.shock_class.toLowerCase()} shock` : undefined,

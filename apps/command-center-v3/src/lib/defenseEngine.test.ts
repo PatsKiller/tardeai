@@ -92,8 +92,28 @@ test('defense lines carry one value per projection field', () => {
   assert.equal(by.sources.sub, 'Cash alternatives no writer', 'sources sub')
 })
 
-test('a bare projection still renders every line with gaps, never a crash', () => {
-  const bare = { schema: 'DefenseProjection@v1', generated_at: '2030-01-07T20:00:00+00:00', narrative: {}, tier: {}, exposure: {}, stops: {},
+// LQ-20261107-1837 (C4): the projection's stops section is a FROZEN copy of a cio_truth count. When the live
+// authority answered, the line prints its count and the value over the same rows — the number Home and Risk print.
+test('the live cio_truth count replaces the projection\'s frozen stops copy', () => {
+  const live = { unprotected: { count: 4, valueUsd: 49_089.02, asOf: '2026-11-10T20:54:00Z' } }
+  const by = Object.fromEntries(defenseLines(P, new Date('2030-01-07T21:00:00Z'), live).map(l => [l.id, l]))
+  assert.equal(by.stops.sub, '4 without a broker stop · 1 pending', 'live count, projection pending')
+  assert.equal(by.stops.value, '$49.1K', 'live counted value')
+  assert.equal(by.stops.asOf, '2026-11-10T20:54:00Z', 'live as_of')
+  assert.equal(by.stops.tone, 'warn', 'a non-zero count warns')
+  const zero = { unprotected: { count: 0, valueUsd: 0, asOf: null } }
+  const z = Object.fromEntries(defenseLines(P, new Date('2030-01-07T21:00:00Z'), zero).map(l => [l.id, l]))
+  assert.equal(z.stops.sub, '0 without a broker stop · 1 pending', 'zero is a measurement')
+  assert.equal(z.stops.tone, 'good', 'zero unprotected is good, not a gap')
+})
+
+test('a live authority that did not answer leaves the projection copy, never a zero', () => {
+  const by = Object.fromEntries(defenseLines(P, new Date('2030-01-07T21:00:00Z'), { unprotected: { count: null, valueUsd: null, asOf: null } }).map(l => [l.id, l]))
+  assert.equal(by.stops.sub, '2 without a broker stop · 1 pending', 'projection fallback')
+  assert.equal(by.stops.value, '$3.0K', 'projection value')
+})
+
+test('a bare projection still renders every line with gaps, never a crash', () => {  const bare = { schema: 'DefenseProjection@v1', generated_at: '2030-01-07T20:00:00+00:00', narrative: {}, tier: {}, exposure: {}, stops: {},
     hedge_readiness: {}, playbook: {}, base_rates: {}, cash_alternatives: {}, sector_posture: {}, recommendations: {}, watch_next: {}, sources: [] } as unknown as DefenseProjection
   const lines = defenseLines(bare)
   assert.equal(lines.length, 8, 'eight lines')

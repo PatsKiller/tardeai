@@ -2,6 +2,7 @@
  *  Pure: shapes GET /api/v2/market-risk/latest into what the UI renders. No scoring here — a tier the engine did not
  *  compute is shown as NOT EVALUATED, never inferred from one source. */
 import type { Tone } from './designTokens'
+import { scoreText } from './metricAuthority.ts'
 
 export type Tier = 'GREEN' | 'NONE' | 'BLUE' | 'YELLOW' | 'ORANGE' | 'RED' | 'NOT_EVALUATED'
 export type MarketRiskState = 'not_evaluated' | 'evaluated' | 'stale'
@@ -242,7 +243,9 @@ export function factLine(mr: MarketRisk | null): { value: string; sub: string; t
   }
   const top = mr.contributors[0]
   const shown = renderedTier(mr.tier, mr.score, mr.uplift)
-  const score = mr.score != null ? ` ${Math.round(mr.score)}` : ''
+  // LQ-20261107-1837 (C4): one precision for the score — the banner's "YELLOW 44" read a round of 44.1813
+  // while Home's card printed 44.2 from the same snapshot.
+  const score = mr.score != null ? ` ${scoreText(mr.score)}` : ''
   const sub = mr.state === 'stale' ? `stale — last evaluation ${shortTime(mr.as_of)}` : top ? `${top.name.toLowerCase()}${top.detail ? ` · ${top.detail}` : ''}` : (mr.confirming ? `${mr.confirming.n} of ${mr.confirming.of} categories` : '')
   const sh = shadowMarker(mr)
   return { value: `${shown}${score}`, sub: sh ? `${sh}${sub ? ` · ${sub}` : ''}` : sub, tone: mr.state === 'stale' ? 'neutral' : tierTone(shown) }
@@ -256,6 +259,15 @@ export function contributorsLine(mr: MarketRisk | null): string {
 export function pointsSum(mr: MarketRisk | null): number | null {
   if (!mr?.contributors?.length) return null
   return mr.contributors.reduce((a, c) => a + (Number(c.points) || 0), 0)
+}
+
+/** LQ-20261107-1837: the "the engine owes an explanation line" rule, in one place. True when the contributor
+ *  points and the score disagree by a whole point (the engine itself rounds them together) and no uplift
+ *  row explains the difference. Home's banner and the Risk page used to carry separate copies of this test. */
+export function contributorsDisagreeWithScore(mr: MarketRisk | null): boolean {
+  const sum = pointsSum(mr)
+  if (sum == null || mr?.score == null || mr.uplift) return false
+  return Math.round(sum) !== Math.round(mr.score)
 }
 
 export function episodeLine(mr: MarketRisk | null): string {
@@ -436,7 +448,7 @@ export function summaryModel(mr: MarketRisk | null): SummaryModel | null {
   const uplift = mr.uplift ? (mr.uplift.note ?? `Market ${mr.uplift.market_score ?? '—'} → ${mr.tier} after portfolio vulnerability ${mr.uplift.vulnerability ?? '—'}`) : null
   return {
     stale: false,
-    score: mr.score != null ? String(Math.round(mr.score)) : null,
+    score: mr.score != null ? scoreText(mr.score) : null,
     line, evaluated, confirm, contributors, uplift,
     notMeasured: parts.join(' '), missingDetail,
     book: summaryBook(mr),

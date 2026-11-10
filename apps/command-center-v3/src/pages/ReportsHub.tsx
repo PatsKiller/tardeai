@@ -18,6 +18,7 @@ import type { ReaderRef } from '../components/reports/ReportReader'
 import '../components/reports/reportsRedesign.css'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, BB, T } from '../lib/watchTokens'
+import { unprotectedFromRisk } from '../lib/metricAuthority'
 
 // v3 Reports — Reports redesign v001 (operator-approved 2026-11-06; mockup in persistent-state
 // data/design/pages/reports/v001/mockups/ReportsRedesign.html). Home = ReportsHome: one search, the newest
@@ -279,7 +280,9 @@ function BriefMode({ categories }: { categories: any[] }) {
     cap: 8,
   }), [todayBriefActions, positions, briefBody])
   const triggeredN = positions.filter((p: any) => p.triggered).length
-  const unprotN = positions.filter((p: any) => !p.stop_price && !p.triggered).length
+  // LQ-20261107-1837 (C4): no second count over `positions[]`. cio_truth's stop_health block behind
+  // /api/v2/risk is the authority the Risk and Home pages read (`!stop_price` counted rows with no working stop).
+  const unprotN = unprotectedFromRisk(risk).count
   const stripCells = buildStripCells({
     portfolioValue: overview?.portfolio_value,
     todayChange: overview?.today_change,

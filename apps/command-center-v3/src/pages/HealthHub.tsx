@@ -9,6 +9,7 @@ import { StatusBadge } from '../components/StatusBadge'
 import CoderDispatchLedger from '../components/health/CoderDispatchLedger'
 import RiskHealthStrip, { healthVerdictTone } from '../components/risk/RiskHealthStrip'
 import { TOKENS, toneVars } from '../lib/designTokens'
+import { unprotectedFromRisk } from '../lib/metricAuthority'
 import RemediationDashboard from './RemediationDashboard'
 import OpsAutonomyDashboard from './OpsAutonomyDashboard'
 import { AutonomyLoopPanel, DailyIntelligencePanel, MemoryPanel } from './MaturityPanels'
@@ -157,11 +158,15 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
 
       {tab === 'overview' && health && (
         <>
+          {/* LQ-20261107-1837 (C4): `positions[].has_stop` was a second calculation over every row — it counted
+              the sub-$100 residuals and read a planned level as a stop, so Health printed a wider number than
+              Risk and Home. `unprotectedFromRisk` reads the cio_truth stop_health block behind /api/v2/risk:
+              the same field, the same counted rows (working broker stop only). */}
           <RiskHealthStrip
             heatPct={riskData?.portfolio_heat_pct ?? null}
             healthScore={overall}
             healthStatus={health?.status}
-            unprotected={Array.isArray(riskData?.positions) ? riskData.positions.filter((p: any) => !p.has_stop).length : null}
+            unprotected={unprotectedFromRisk(riskData).count}
             brokerStale={propHealth?.broker?.stale_count ?? null}
             optionsAlerts={propHealth?.options?.needs_action ?? null}
           />

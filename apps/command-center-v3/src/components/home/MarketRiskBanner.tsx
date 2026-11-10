@@ -6,9 +6,10 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars } from '../../lib/designTokens'
-import { SHADOW_MARKER, SUMMARY_PHONE_MAX_PX, markerRest, actionableModel, bannerVisible, contributorsLine, episodeLine, factLine, fmtPct, pointsSum, pointsToScore, renderedTier, shadowMarker, shortTime, tierTone, type MarketRisk } from '../../lib/marketRisk'
+import { SHADOW_MARKER, SUMMARY_PHONE_MAX_PX, markerRest, actionableModel, bannerVisible, contributorsDisagreeWithScore, contributorsLine, episodeLine, factLine, fmtPct, pointsSum, pointsToScore, renderedTier, shadowMarker, shortTime, tierTone, type MarketRisk } from '../../lib/marketRisk'
 import { ActionableBody, ActionableHead, TopReview } from './MarketRiskActionable'
 import { ActionsTop, Explain, GlossaryProvider } from './MarketRiskActions'
+import { scoreText } from '../../lib/metricAuthority'
 
 const tap = { minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' as const, textDecoration: 'none', fontWeight: 600, fontSize: TYPE.md, borderRadius: RADIUS.md, padding: '0 14px' }
 
@@ -57,7 +58,7 @@ export function MarketRiskCompact({ mr }: { mr: MarketRisk | null }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span style={{ fontSize: TYPE.sm, fontWeight: 800, letterSpacing: '0.04em', color: TOKENS.bg[0], background: tv.color, borderRadius: RADIUS.pill, padding: '3px 8px' }}>{shown}</span>
         <ShadowTag mr={mr} testid="home-market-risk-compact-shadow" />
-        <span style={{ ...numStyle, fontSize: TYPE.md, fontWeight: 700, color: TOKENS.text[0] }}>{mr.score != null ? `${Math.round(mr.score)}/100` : '—'}</span>
+        <span style={{ ...numStyle, fontSize: TYPE.md, fontWeight: 700, color: TOKENS.text[0] }}>{scoreText(mr.score)}/100</span>
         {mr.confirming && <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>· {mr.confirming.n} of {mr.confirming.of} categories confirm</span>}
         {mr.state === 'stale' && <span style={{ fontSize: TYPE.base, color: toneVars('warning').color }}>· stale, last evaluation {shortTime(mr.as_of)}</span>}
       </div>
@@ -84,7 +85,7 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span data-testid="home-market-risk-tier" style={{ fontSize: TYPE.base, fontWeight: 800, letterSpacing: '0.04em', color: TOKENS.bg[0], background: tv.color, borderRadius: RADIUS.pill, padding: '4px 10px' }}>{shown}</span>
         <ShadowTag mr={mr} testid="home-market-risk-banner-shadow" />
-        <span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 700, color: TOKENS.text[0] }}>MARKET RISK {mr.score != null ? Math.round(mr.score) : '—'}<span style={{ fontSize: TYPE.md, color: TOKENS.text[2] }}>/100</span></span>
+        <span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 700, color: TOKENS.text[0] }}>MARKET RISK {scoreText(mr.score)}<span style={{ fontSize: TYPE.md, color: TOKENS.text[2] }}>/100</span></span>
       </div>
       <div style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>
         {episodeLine(mr) || `evaluated ${shortTime(mr.as_of)}`}{mr.confirming ? ` · ${mr.confirming.n} of ${mr.confirming.of} categories confirm` : ''} · evaluated {shortTime(mr.as_of)}
@@ -109,11 +110,11 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
         {mr.uplift && (
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8, borderTop: `1px solid ${tv.border}`, paddingTop: 6, color: TOKENS.text[2] }}>
             <span>{mr.uplift.note ?? `Market ${mr.uplift.market_score ?? '—'} → ${mr.tier} after portfolio vulnerability ${mr.uplift.vulnerability ?? '—'}`}</span>
-            <span style={{ ...numStyle, textAlign: 'right', color: TOKENS.text[0] }}>= {mr.score != null ? Math.round(mr.score) : '—'}</span>
+            <span style={{ ...numStyle, textAlign: 'right', color: TOKENS.text[0] }}>= {scoreText(mr.score)}</span>
           </div>
         )}
-        {sum != null && mr.score != null && Math.round(sum) !== Math.round(mr.score) && !mr.uplift && (
-          <div style={{ fontSize: TYPE.sm, color: toneVars('warning').color }}>Contributors sum to {Math.round(sum)}, score is {Math.round(mr.score)} — the engine owes an explanation line.</div>
+        {contributorsDisagreeWithScore(mr) && (
+          <div style={{ fontSize: TYPE.sm, color: toneVars('warning').color }}>Contributors sum to {scoreText(sum)}, score is {scoreText(mr.score)} — the engine owes an explanation line.</div>
         )}
       </div>
       </GlossaryProvider>

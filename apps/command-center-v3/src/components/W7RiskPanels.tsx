@@ -11,8 +11,9 @@ import { Explain, GlossaryProvider } from './home/MarketRiskActions'
 import { RecoveryListView } from './recovery/RecoveryViews'
 import { useCaseGates } from './recovery/RecoveryCaseCard'
 import { byImpact, recoveryProjection } from '../lib/recoveryCases'
-import { plainEngineReason, shadowMarker, bannerVisible, budgetLabel, episodeLine, fmtPct, pointsSum, pointsToScore, renderedTier, shortTime, tierTone, unwrapMarketRisk, type MarketRisk } from '../lib/marketRisk'
+import { plainEngineReason, shadowMarker, bannerVisible, budgetLabel, contributorsDisagreeWithScore, episodeLine, fmtPct, pointsSum, pointsToScore, renderedTier, shortTime, tierTone, unwrapMarketRisk, type MarketRisk } from '../lib/marketRisk'
 import { isDeadCusipHolding } from '../lib/deadCusipHolding'
+import { heatText, scoreText, unprotectedFact } from '../lib/metricAuthority'
 
 const stateLabel: Record<string, string> = { active: 'Active', pending_activation: 'Pending activation', pending: 'Pending activation', filled: 'Filled', none: 'None' }
 const sourceLabel: Record<string, string> = { broker: 'Broker resting', broker_resting: 'Broker resting', planned: 'Planned', none: 'None', confirmed: 'Operator confirmed' }
@@ -22,6 +23,9 @@ const money = (v: number | null) => v == null ? 'Not available' : usd(v)
 /** operator 2026-11-06: a missing percentage says why, never a bare "Not measured" (W7PagePanels.pct is shared, so the
  *  reason is supplied here). */
 const pctWhy = (v: unknown, why: string) => typeof v === 'number' && Number.isFinite(v) ? pct(v) : why
+/** LQ-20261107-1837 (C4): portfolio heat has ONE precision everywhere — this page used `pct` (2 dp, "1.27%")
+ *  while Home and Health showed 1 dp ("1.3%"). Same authority field, same face. */
+const heatWhy = (v: unknown, why: string) => typeof v === 'number' && Number.isFinite(v) ? heatText(v) : why
 /** Correlation (i) when the API sent no glossary (this panel is outside the market-risk card). The 20-return floor is
  *  scripts/portfolio_correlation.py's; the text names it so a blank cell is explained, not hidden. */
 const CORR_NO_VALUE = { label: 'Why no correlation value?', text: 'A pair gets a value only when both symbols have at least 20 shared daily returns and neither price series is flat. A newer holding or a pair with gaps in its price history has no value yet.' }
@@ -45,8 +49,10 @@ export function W7RiskExposure({ data, onDrill: _onDrill }: { data: any, onDrill
   const selected = allRows.find(p => key(p) === detail.selected)
   const bd = summary.stop_breakdown || null
   const n = (cat: string) => bd?.[cat]?.count ?? counted.filter(p => stopCategory(p) === cat).length
-  const noStop = bd ? [bd.none, bd.planned] : null
-  const noStopValue = noStop ? (noStop.every((g: any) => typeof g?.value_usd === 'number') ? noStop.reduce((a: number, g: any) => a + g.value_usd, 0) : null) : null
+  // LQ-20261107-1837 (C4): the headline unprotected count is cio_truth's `stops.unprotected_count`, and its value
+  // is the one summed over the SAME rows (`positions.unprotected_counted_value_usd`). Re-adding `none + planned`
+  // here was a second calculation of the same figure that could drift from the number Home and Health print.
+  const unprotected = unprotectedFact(data)
   const filledRows: any[] = stops.filled_awaiting_sync || counted.filter(p => stopCategory(p) === 'filled')
   const crossed: any[] = stops.awaiting_fill || []
   const awaiting = [...filledRows, ...crossed]
@@ -56,10 +62,8 @@ export function W7RiskExposure({ data, onDrill: _onDrill }: { data: any, onDrill
     <div style={grid} data-testid="risk-kpis">
       {restingLoss != null
         ? <W7Metric label="Loss if every resting stop fills" value={usd(restingLoss)} detail={<span data-testid="risk-kpi-loss">{pctWhy(summary.resting_heat_pct, 'share of book not sent')} of book · {n('active')} active, {n('pending_activation')} pending activation · active stops only {usd(summary.loss_at_stop_usd)} · price gaps can increase losses</span>} />
-        : <W7Metric label="Loss if every active stop fills" value={usd(summary.loss_at_stop_usd)} detail={`${pctWhy(summary.portfolio_heat_pct, 'share of portfolio not sent')} of portfolio · price gaps can increase losses`} />}
-      {bd
-        ? <W7Metric label="Value with no broker stop" value={money(noStopValue)} detail={<span data-testid="risk-kpi-nostop">{n('none') + n('planned')} positions{n('planned') ? ` · ${n('planned')} with a planned level only` : ''}</span>} />
-        : <W7Metric label="Value without active protection" value={usd(summary.unprotected_value_usd)} detail={stops.unprotected_count == null ? 'Position count unavailable' : `${stops.unprotected_count} positions`} />}
+        : <W7Metric label="Loss if every active stop fills" value={usd(summary.loss_at_stop_usd)} detail={`${heatWhy(summary.portfolio_heat_pct, 'share of portfolio not sent')} of portfolio · price gaps can increase losses`} />}
+      <W7Metric label="Value with no broker stop" value={money(unprotected.valueUsd)} detail={<span data-testid="risk-kpi-nostop">{unprotected.count == null ? 'Position count unavailable' : `${unprotected.count} counted ${unprotected.count === 1 ? 'position' : 'positions'}`}{n('planned') ? ` · ${n('planned')} with a planned level only` : ''}</span>} />
       <W7Metric label="Largest position" value={summary.largest_name ? `${summary.largest_name.symbol} ${pctWhy(summary.largest_name.pct, '(weight not sent)')}` : 'Not available'} detail={summary.largest_name?.classification_label && summary.largest_name?.limit_pct != null ? `${summary.largest_name.classification_label} · limit ${pct(summary.largest_name.limit_pct)}` : 'Classification and limit not published'} />
       <W7Metric label="Awaiting fill" value={<span data-testid="risk-kpi-awaiting">{awaiting.length}</span>} detail={awaiting.length ? `${symbolList(awaiting)} · ${filledRows.length ? (filledRows.find((p: any) => p.reason)?.reason || 'stop filled · awaiting holdings sync') : 'mark at or below the stop · fill not confirmed'}` : 'No stop has filled or been crossed.'} />
     </div>
@@ -190,7 +194,8 @@ export function W7RiskMarketRisk({ data, mr: resp, error }: { data: any, mr: any
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span data-testid="risk-market-risk-tier" style={{ fontSize: TYPE.base, fontWeight: 800, letterSpacing: '0.04em', color: TOKENS.bg[0], background: tone === 'neutral' ? TOKENS.text[3] : tv.color, borderRadius: RADIUS.pill, padding: '4px 10px' }}>{mr.state === 'not_evaluated' ? 'NOT EVALUATED' : shown}</span>
           <ShadowTag mr={mr} testid="risk-market-risk-shadow" />
-          <span style={{ ...mono, fontSize: TYPE.xl, fontWeight: 700, color: TOKENS.text[0] }}>{mr.score != null ? Math.round(mr.score) : '—'}<span style={{ fontSize: TYPE.md, color: TOKENS.text[2] }}>/100</span></span>
+          {/* LQ-20261107-1837 (C4): one precision for the market-risk score, the same as Home's ("44.2", not 44). */}
+          <span style={{ ...mono, fontSize: TYPE.xl, fontWeight: 700, color: TOKENS.text[0] }}>{scoreText(mr.score)}<span style={{ fontSize: TYPE.md, color: TOKENS.text[2] }}>/100</span></span>
           {mr.confirming && <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>{mr.confirming.n} of {mr.confirming.of} categories confirm</span>}
         </div>
         <p style={{ margin: 0, color: TOKENS.text[2], fontSize: TYPE.base }}>
@@ -208,8 +213,8 @@ export function W7RiskMarketRisk({ data, mr: resp, error }: { data: any, mr: any
 
     {mr && mr.contributors.length > 0 && <W7Panel title="Contributors" testId="risk-market-risk-contributors">
       {mr.contributors.slice(0, 5).map((c, i) => <div key={i} style={row}><span>{c.name}{c.detail ? <span style={{ color: TOKENS.text[2] }}> · {c.detail}{c.as_of ? ` · ${shortTime(c.as_of)}` : ''}</span> : null}</span><span style={{ ...mono, color: tv.color, whiteSpace: 'nowrap' }}>{pointsToScore(c.points)} <Explain term="pts_to_score" /></span></div>)}
-      {mr.uplift && <div style={{ ...row, color: TOKENS.text[2] }}><span>{mr.uplift.note ?? `Market ${mr.uplift.market_score ?? '—'} → ${mr.tier} after portfolio vulnerability ${mr.uplift.vulnerability ?? '—'}`}</span><span style={{ ...mono, color: TOKENS.text[0] }}>= {mr.score != null ? Math.round(mr.score) : '—'}</span></div>}
-      {!mr.uplift && pointsSum(mr) != null && mr.score != null && Math.round(pointsSum(mr)!) !== Math.round(mr.score) && <p style={{ margin: '6px 0 0', fontSize: TYPE.sm, color: toneVars('warning').color }}>Contributors sum to {Math.round(pointsSum(mr)!)}, score is {Math.round(mr.score)} — the engine owes an explanation line.</p>}
+      {mr.uplift && <div style={{ ...row, color: TOKENS.text[2] }}><span>{mr.uplift.note ?? `Market ${mr.uplift.market_score ?? '—'} → ${mr.tier} after portfolio vulnerability ${mr.uplift.vulnerability ?? '—'}`}</span><span style={{ ...mono, color: TOKENS.text[0] }}>= {scoreText(mr.score)}</span></div>}
+      {contributorsDisagreeWithScore(mr) && <p style={{ margin: '6px 0 0', fontSize: TYPE.sm, color: toneVars('warning').color }}>Contributors sum to {scoreText(pointsSum(mr))}, score is {scoreText(mr.score)} — the engine owes an explanation line.</p>}
     </W7Panel>}
 
     {mr && mr.categories.length > 0 && <W7Panel title="Nine categories" testId="risk-market-risk-categories">

@@ -313,5 +313,19 @@ const mhLate = moversHeading(mvOv('2026-11-06T03:30:00Z'), Date.parse('2026-11-0
 check('FU-006: the day boundary is New York, not UTC', mhLate.when === 'today')
 check('FU-006: an unreadable time claims no day', moversHeading(mvOv('not a time'), preOpen).when === 'unknown')
 
+// LQ-20261107-1837 (C4): Home's heat tile reads cio_truth's positions.portfolio_heat_pct through the authority
+// module, not do-now's numbers.heat_pct (risk_management.json over every configured stop — a different
+// calculation: it read 0.4% on the audit's book where cio_truth read 1.3% for the same name).
+const heatCurrent = { positions: { source: 'fixture CIO', as_of: ok.as_of, portfolio_heat_pct: 1.438, rows: [] }, stops: { unprotected_count: 0 } }
+const heatHome = homeWithCurrentTruth(doNowFrom({ ...ok, items: [] }, { nowMs: now }), heatCurrent, { pending_approvals: 0 })
+check('heat: Home prints cio_truth heat, never the legacy do-now number',
+  heatHome.numbers.heatPct === 1.438 && m.numbers.heatPct === 0.1)
+check('heat: the tile carries the cio_truth as_of and a basis that names what it measures',
+  heatHome.numbers.heatAsOf === ok.as_of && /observed active/.test(heatHome.numbers.heatBasis ?? ''))
+const noHeat = homeWithCurrentTruth(doNowFrom({ ...ok, items: [] }, { nowMs: now }),
+  { positions: { source: 'fixture CIO', rows: [] }, stops: {} }, { pending_approvals: 0 })
+check('heat: unanswered cio_truth heat is null, never the legacy number',
+  noHeat.numbers.heatPct === null && noHeat.numbers.heatAsOf === null)
+
 console.log(`homeDoNow: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

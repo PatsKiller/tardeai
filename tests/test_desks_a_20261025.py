@@ -492,7 +492,7 @@ def test_defense_reads_the_market_risk_engine_and_drops_unheld_cards_d1_d4(tmp_p
     out = desk.defense_payload(root=tmp_path, now=NOW, truth=truth, states=REG)
     act = panel(out, "where-to-act", "act")
     eng = row(act, "act-engine")
-    assert eng["value"] == "ORANGE 61 · sector shock" and eng["tone"] == "bad"
+    assert eng["value"] == "ORANGE 61.4 · sector shock" and eng["tone"] == "bad"
     assert act["rows"][0]["id"] == "act-engine"
     recs = row(act, "act-recs")
     assert recs["value"] == "protect 1"
@@ -504,5 +504,22 @@ def test_defense_engine_row_falls_back_to_the_raw_engine_snapshot(tmp_path):
     write(tmp_path / "data/runtime/market_risk_latest.json", {"as_of": NOW.isoformat(), "tier": "YELLOW", "score": 44.0})
     out = desk.defense_payload(root=tmp_path, now=NOW, truth={}, states=REG)
     eng = row(panel(out, "where-to-act", "act"), "act-engine")
-    assert eng["value"] == "YELLOW 44" and eng["tone"] == "warn"
-    assert "engine snapshot" in json.dumps(eng["detail"])
+    assert eng["value"] == "YELLOW 44.0" and eng["tone"] == "warn"
+    assert "MarketRiskSnapshot@v1" in json.dumps(eng["detail"])
+
+
+def test_defense_engine_row_reads_the_live_snapshot_not_the_frozen_projection(tmp_path):
+    """LQ-20261107-1837 (C4): the DefenseProjection embeds a copy of the market-risk tier/score taken at build time.
+    On the audit's book that printed YELLOW 44 while Home printed YELLOW 50.2 from the same engine. The snapshot is
+    the authority the /api/v2/market-risk/latest route serves; the projection's copy is only the fallback."""
+    defense_tree(tmp_path)
+    write(tmp_path / "data/runtime/market_risk_latest.json",
+          {"as_of": NOW.isoformat(), "tier": "YELLOW", "score": 50.2157})
+    write(tmp_path / "data/runtime/defense_engine_latest.json", {"schema": "DefenseProjection@v1",
+          "generated_at": NOW.isoformat(),
+          "tier": {"tier": "YELLOW", "score": 44.1813, "as_of": NOW.isoformat(), "shock": {"class": "SECTOR"}}})
+    out = desk.defense_payload(root=tmp_path, now=NOW, truth={}, states=REG)
+    eng = row(panel(out, "where-to-act", "act"), "act-engine")
+    # One precision everywhere (Home's card prints 50.2 from the same field).
+    assert eng["value"] == "YELLOW 50.2 · sector shock"
+    assert "MarketRiskSnapshot@v1" in json.dumps(eng["detail"])

@@ -1,11 +1,20 @@
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { createContext, useContext, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { BB, T, TYPE } from '../../../lib/watchTokens'
 import { RADIUS } from '../../../lib/designTokens'
+import { scoreText } from '../../../lib/metricAuthority'
 import {
   clockET, defenseLines, GAP, GLOSSARY, ladder, money, pct, readinessTone, scorePosition, signed, sourceSummaryText,
-  sourceTone, tierTone, type DefenseProjection, type Tone,
+  sourceTone, tierTone, type DefenseProjection, type LiveAuthority, type Tone,
 } from '../../../lib/defenseEngine'
+
+/**
+ * LQ-20261107-1837 (C4): the projection embeds a FROZEN copy of the market-risk tier and score and of the
+ * unprotected-position count. Those two numbers have one authority outside it (MarketRiskSnapshot@v1 and
+ * cio_truth); the desk hands them down here so every surface on this page prints the same figure Home and
+ * Risk print. Without them the projection's own copy is shown, and the sheet says so.
+ */
+const LiveCtx = createContext<LiveAuthority | null>(null)
 
 /**
  * Design defense/v001: the engine view on the v3 Defense desk. Every sentence and number comes from
@@ -43,15 +52,23 @@ function Chip({ tone, children }: { tone: Tone; children: ReactNode }) {
 }
 
 function Hero({ p, onOpen }: { p: DefenseProjection; onOpen: (k: string) => void }) {
-  const t = p.tier ?? {}, tone = tierTone(t.tier)
+  const t = p.tier ?? {}
+  const auth = useContext(LiveCtx)?.marketRisk ?? null
+  // LQ-20261107-1837 (C4): tier and score are the live snapshot's when it answered; the projection's copy is
+  // frozen at build time and used to print a different score than Home for the same engine.
+  const tierLabel = auth?.tier ?? t.tier
+  const score = auth?.score ?? t.score
+  const tone = tierTone(tierLabel)
+  const scoreDiffers = auth?.score != null && t.score != null && Math.abs(auth.score - Number(t.score)) >= 0.05
   return <section aria-label="Defense headline" data-testid="defense-engine-hero" style={{ ...card, borderLeft: `3px solid ${TONE[tone]}` }}>
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
       <button type="button" onClick={() => onOpen('tier')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', minHeight: 44 }} aria-label="Open the tier ladder">
-        <Chip tone={tone}><Term k="tier">{t.tier ?? 'TIER ' + GAP}</Term> · {t.score != null ? Number(t.score).toFixed(1) : GAP}</Chip>
+        <Chip tone={tone}><Term k="tier">{tierLabel ?? 'TIER ' + GAP}</Term> · {score != null ? scoreText(score) : GAP}</Chip>
       </button>
       {t.shock?.label && <span style={small}>{t.shock.label}</span>}
       {t.confirming?.n != null && <span style={small}>{t.confirming.n} of {t.confirming.of} categories confirming</span>}
     </div>
+    {scoreDiffers && <p data-testid="defense-tier-authority-note" style={small}>Live market risk is {scoreText(auth?.score)}; this projection was built with {scoreText(t.score)} at {clockET(p.generated_at)}. The live snapshot is shown.</p>}
     <h2 style={{ margin: 0, fontSize: TYPE.lg, color: BB.text0, lineHeight: 1.3 }}>{p.narrative?.headline ?? 'The defense projection has no headline on file.'}</h2>
     {p.stale_reason && <div role="note" style={{ padding: '8px 10px', borderRadius: RADIUS.md, border: `1px dashed ${BB.amber}`, color: BB.amber, fontSize: TYPE.base }}>{p.stale_reason}</div>}
     <h3 style={{ ...h3, marginTop: 6 }}>Where we stand</h3>
@@ -84,16 +101,20 @@ function WhatToDo({ p, onOpen }: { p: DefenseProjection; onOpen: (k: string) => 
 }
 
 export function Ladder({ p }: { p: DefenseProjection }) {
-  const t = p.tier ?? {}, pos = scorePosition(t.score)
+  const t = p.tier ?? {}
+  const auth = useContext(LiveCtx)?.marketRisk ?? null
+  const tierLabel = auth?.tier ?? t.tier
+  const score = auth?.score ?? t.score
+  const pos = scorePosition(score)
   return <section aria-label="Tier ladder" data-testid="defense-engine-ladder" style={card}>
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
       <h3 style={h3}>Tier ladder</h3><Stamp asOf={t.as_of} why={t.stale_reason} />
     </div>
     <div style={{ position: 'relative', height: 10, borderRadius: RADIUS.md, background: BB.bgShift, border: `1px solid ${BB.border}` }}>
-      {pos != null && <span aria-label={`score ${pos}`} style={{ position: 'absolute', left: `calc(${pos}% - 2px)`, top: -3, width: 4, height: 14, background: TONE[tierTone(t.tier)], borderRadius: RADIUS.sm }} />}
+      {pos != null && <span aria-label={`score ${pos}`} style={{ position: 'absolute', left: `calc(${pos}% - 2px)`, top: -3, width: 4, height: 14, background: TONE[tierTone(tierLabel)], borderRadius: RADIUS.sm }} />}
     </div>
     <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 4 }}>
-      {ladder(t).map(s => <li key={s.tier} aria-current={s.current ? 'step' : undefined} style={{ textAlign: 'center', padding: '6px 2px', borderRadius: RADIUS.md, border: `1px solid ${s.current ? TONE[tierTone(s.tier)] : BB.border}`, color: s.current ? TONE[tierTone(s.tier)] : BB.text2, fontSize: TYPE.sm, minWidth: 0 }}>
+      {ladder({ ...t, tier: tierLabel }).map(s => <li key={s.tier} aria-current={s.current ? 'step' : undefined} style={{ textAlign: 'center', padding: '6px 2px', borderRadius: RADIUS.md, border: `1px solid ${s.current ? TONE[tierTone(s.tier)] : BB.border}`, color: s.current ? TONE[tierTone(s.tier)] : BB.text2, fontSize: TYPE.sm, minWidth: 0 }}>
         <div style={{ fontWeight: s.current ? 700 : 400 }}>{s.tier}</div>
         <div style={{ ...mono, color: BB.text3 }}>{s.min_score != null ? `≥${s.min_score}` : '—'}</div>
       </li>)}
@@ -104,9 +125,10 @@ export function Ladder({ p }: { p: DefenseProjection }) {
 }
 
 function Lines({ p, onOpen }: { p: DefenseProjection; onOpen: (k: string) => void }) {
+  const live = useContext(LiveCtx)
   return <section aria-label="The defense, line by line" data-testid="defense-engine-lines" style={card}>
     <h3 style={h3}>The defense, line by line</h3>
-    {defenseLines(p).map(l => <button key={l.id} type="button" data-testid={`defense-line-${l.id}`} onClick={() => onOpen(l.sheet)} style={rowBtn}>
+    {defenseLines(p, new Date(), live ?? undefined).map(l => <button key={l.id} type="button" data-testid={`defense-line-${l.id}`} onClick={() => onOpen(l.sheet)} style={rowBtn}>
       <span style={{ minWidth: 0 }}>
         <span style={{ display: 'block', color: BB.text0 }}>{l.label}</span>
         <span style={{ display: 'block', ...small }}>{l.staleReason ?? l.sub}</span>
@@ -129,9 +151,11 @@ export function SourceStrip({ p, onOpen }: { p: DefenseProjection; onOpen: (k: s
   </button>
 }
 
-/** The engine view: three columns from 980px, one column on a phone. */
-export default function DefenseEngineView({ p, onOpen }: { p: DefenseProjection; onOpen: (k: string) => void }) {
-  return <div data-testid="defense-engine" style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+/** The engine view: three columns from 980px, one column on a phone. `live` carries the two figures whose
+ *  authority is outside the projection (market-risk score, unprotected count); see the file header. */
+export default function DefenseEngineView({ p, onOpen, live }: { p: DefenseProjection; onOpen: (k: string) => void; live?: LiveAuthority | null }) {
+  return <LiveCtx.Provider value={live ?? null}>
+  <div data-testid="defense-engine" style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
     <style>{`.def-engine-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;align-items:start}.def-engine-col{display:flex;flex-direction:column;gap:12px;min-width:0}@media(min-width:980px){.def-engine-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}`}</style>
     <div className="def-engine-grid">
       <div className="def-engine-col"><Hero p={p} onOpen={onOpen} /></div>
@@ -140,6 +164,7 @@ export default function DefenseEngineView({ p, onOpen }: { p: DefenseProjection;
     </div>
     <SourceStrip p={p} onOpen={onOpen} />
   </div>
+  </LiveCtx.Provider>
 }
 
 // ── full-screen sheets ───────────────────────────────────────────────────────
@@ -162,13 +187,24 @@ export const SHEET_TITLES: Record<string, string> = {
   sector: 'Sector posture', cash: 'Cash alternatives', base: 'What usually happens next', watch: 'Watch next session', sources: 'Sources',
 }
 
-export function EngineSheetBody({ p, sheet }: { p: DefenseProjection; sheet: string }) {
+export function EngineSheetBody({ p, sheet, live }: { p: DefenseProjection; sheet: string; live?: LiveAuthority | null }) {
   const stamp = (s: { as_of?: string | null; stale_reason?: string | null }) => <Note>{s.stale_reason ? `Gap: ${s.stale_reason}` : `As of ${clockET(s.as_of)}`}</Note>
+  return <LiveCtx.Provider value={live ?? null}>{sheetBody(p, sheet, stamp)}</LiveCtx.Provider>
+}
+
+function sheetBody(p: DefenseProjection, sheet: string, stamp: (s: { as_of?: string | null; stale_reason?: string | null }) => ReactNode) {
+  const live = useContext(LiveCtx)
+  const auth = live?.marketRisk ?? null
+  const unprot = live?.unprotected ?? null
   switch (sheet) {
     case 'tier': {
       const t = p.tier ?? {}
+      const score = auth?.score ?? t.score
       return <List><Ladder p={p} />
-        <Field label="Score">{t.score != null ? Number(t.score).toFixed(1) : GAP}</Field>
+        {/* LQ-20261107-1837 (C4): the live snapshot's score, with the projection's frozen copy named when it differs. */}
+        <Field label="Score">{score != null ? scoreText(score) : GAP}</Field>
+        {auth?.score != null && t.score != null && Math.abs(auth.score - Number(t.score)) >= 0.05 &&
+          <Note>Live market risk is {scoreText(auth.score)} ({clockET(auth.asOf)}); this projection was built with {scoreText(t.score)} at {clockET(p.generated_at)}.</Note>}
         <Field label="Shock">{t.shock?.label ?? GAP}</Field>
         <Field label="Since">{clockET(t.since)}</Field>
         <Field label="Acknowledged">{t.acknowledged_at ? clockET(t.acknowledged_at) : 'not acknowledged'}</Field>
@@ -196,7 +232,9 @@ export function EngineSheetBody({ p, sheet }: { p: DefenseProjection; sheet: str
     case 'stops': {
       const s = p.stops ?? {}
       return <List>
-        <Field label="No broker stop">{s.no_stop?.count ?? GAP} · {money(s.no_stop?.value_usd)}</Field>
+        {/* LQ-20261107-1837 (C4): cio_truth's counted stop_health is the unprotected authority; the projection's
+            own slice (none + planned over its build-time rows) is the fallback, named when it is what is shown. */}
+        <Field label="No broker stop">{unprot?.count ?? s.no_stop?.count ?? GAP} · {money(unprot?.valueUsd ?? s.no_stop?.value_usd)}</Field>
         <Field label="Pending">{s.pending?.count ?? GAP} · {money(s.pending?.value_usd)}</Field>
         <Field label="Planned only">{s.planned_only ?? GAP}</Field>
         <Field label="Active">{s.active ?? GAP}</Field>

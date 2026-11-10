@@ -62,7 +62,9 @@ export function MarketRiskSummary({ mr }: { mr: MarketRisk | null }) {
         style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 6, minHeight: 44, width: '100%', boxSizing: 'border-box',
           padding: '8px 0', background: 'transparent', border: 0, color: 'inherit', font: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: '6px 10px', flexWrap: 'wrap', width: '100%' }}>
-          <span data-testid="home-market-risk-summary-tier" style={chipStyle('warning', 'soft', 'md')}>YELLOW</span>
+          {/* LQ-20261107-1837 (C4): the tier is the engine's field, not a literal in the card. `summaryVisible`
+              admits YELLOW only, so the tone stays the calm warning surface. */}
+          <span data-testid="home-market-risk-summary-tier" style={chipStyle('warning', 'soft', 'md')}>{mr.tier}</span>
           <span style={{ fontSize: TYPE.md, fontWeight: 700, color: TOKENS.text[0] }}>
             Market risk{m.score != null && <> <span style={{ ...numStyle }}>{m.score}</span><span style={{ ...numStyle, fontWeight: 400, color: TOKENS.text[2] }}>/100</span></>}
           </span>

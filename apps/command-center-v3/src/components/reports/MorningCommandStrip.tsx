@@ -1,3 +1,5 @@
+import { heatText } from '../../lib/metricAuthority'
+
 export interface StripCell {
   label: string
   val: string
@@ -9,9 +11,9 @@ export interface StripCell {
 export function buildStripCells(opts: {
   portfolioValue?: number
   todayChange?: number
-  heatPct?: number
+  heatPct?: number | null
   triggeredCount?: number
-  unprotectedCount?: number
+  unprotectedCount?: number | null
   regimeLabel?: string
   vix?: number
   onRisk?: () => void
@@ -23,8 +25,10 @@ export function buildStripCells(opts: {
   const chStr = ch == null ? '—' : `${ch >= 0 ? '+' : ''}$${Math.abs(Math.round(ch)).toLocaleString()}`
   return [
     { label: 'Portfolio', val: fmt$(opts.portfolioValue), sub: 'click for holdings', onClick: opts.onPortfolio },
-    { label: 'Today', val: chStr, sub: opts.heatPct != null ? `heat ${opts.heatPct.toFixed?.(1) ?? opts.heatPct}%` : undefined, color: chColor },
-    { label: 'Stops', val: String(opts.triggeredCount ?? 0), sub: `${opts.unprotectedCount ?? 0} unprotected`, color: (opts.triggeredCount ?? 0) > 0 ? '#ef4444' : '#22c55e', onClick: opts.onRisk },
+    { label: 'Today', val: chStr, sub: opts.heatPct != null ? `heat ${heatText(opts.heatPct)}` : undefined, color: chColor },
+    // LQ-20261107-1837 (C4): the caller passes cio_truth's stops.unprotected_count. A count that did not
+    // answer says so; it never renders as a confident 0.
+    { label: 'Stops', val: String(opts.triggeredCount ?? 0), sub: opts.unprotectedCount == null ? 'unprotected count unavailable' : `${opts.unprotectedCount} unprotected`, color: (opts.triggeredCount ?? 0) > 0 ? '#ef4444' : '#22c55e', onClick: opts.onRisk },
     { label: 'Regime', val: opts.regimeLabel ?? '—', sub: opts.vix != null ? `VIX ${opts.vix}` : undefined, color: '#60a5fa' },
   ]
 }

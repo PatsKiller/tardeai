@@ -41,6 +41,7 @@ import { readableTime, readableTimesInText } from '../lib/readableTime'
 import { MarketRiskBanner, MarketRiskCompact, MarketRiskFact } from '../components/home/MarketRiskBanner'
 import { MarketRiskSummary } from '../components/home/MarketRiskSummary'
 import { renderedTier, unwrapMarketRisk } from '../lib/marketRisk'
+import { heatText } from '../lib/metricAuthority'
 import { vixFreshness } from '../lib/vixFreshness'
 import { deriveTodayPnlState } from '../lib/todayPnlState'
 import { RecoveryHomeCard } from '../components/recovery/RecoveryViews'
@@ -379,9 +380,11 @@ export default function HomeDoNow() {
               <span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 600, color: n.unprotected ? TOKENS.danger : TOKENS.text[0] }}>{n.unprotected ?? '—'}</span>
               <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>unprotected positions</span>
             </div>
-            <div title={n.available ? `Portfolio heat ${n.heatPct ?? '—'}%: ${n.heatBasis}. Limit ${n.heatLimitPct}%.${n.stale ? ' STALE.' : ''}` : 'Unavailable: the do-now risk source did not answer.'}
+            {/* LQ-20261107-1837 (C4): the same cio_truth heat the Risk and Health pages print — the do-now
+                payload still carries risk_management.json's different daily calculation and is not used. */}
+            <div title={n.heatPct != null ? `Portfolio heat ${n.heatPct.toFixed(1)}%: ${n.heatBasis}${n.heatAsOf ? `, as of ${readableTime(n.heatAsOf) ?? n.heatAsOf}` : ''}. Limit ${n.heatLimitPct}%.${n.stale ? ' STALE.' : ''}` : 'Unavailable: the CIO truth (positions.portfolio_heat_pct) did not answer.'}
               style={{ display: 'flex', flexDirection: 'column', gap: 2, cursor: 'help' }} data-testid="num-heat">
-              <span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 600, color: n.heatPct != null && n.heatPct > n.heatLimitPct ? TOKENS.warning : TOKENS.text[0] }}>{n.heatPct != null ? `${n.heatPct.toFixed(1)}%` : '—'}</span>
+              <span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 600, color: n.heatPct != null && n.heatPct > n.heatLimitPct ? TOKENS.warning : TOKENS.text[0] }}>{heatText(n.heatPct)}</span>
               <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>portfolio heat (limit {n.heatLimitPct}%)</span>
             </div>
             <div title={cash != null ? `Cash ${money(overview?.total_cash)} of ${money(pv)} (the published portfolio total — ${pt.basisLabel ?? 'portfolio_total'}).` : 'Unavailable: /api/v2/overview has no total_cash or published portfolio total.'}

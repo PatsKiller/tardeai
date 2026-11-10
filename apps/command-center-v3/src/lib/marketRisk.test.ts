@@ -21,20 +21,20 @@ const red = unwrapMarketRisk({ state: 'evaluated', tier: 'RED', score: 83, as_of
   categories: [], episode: { id: 'EP-1', tier: 'RED', opened_at: '2026-10-29T22:15:00Z', repeats: 3, max_repeats: 12, acknowledged_at: null } })
 assert.equal(bannerVisible(red), true)
 assert.equal(tierTone(red!.tier), 'danger')
-assert.equal(factLine(red).value, 'RED 83')
+assert.equal(factLine(red).value, 'RED 83.0')
 assert.equal(factLine(red).sub, 'futures / extended hours · NQ −1.6%')
 // A held RED whose score is under red's min_score (75) must not paint RED beside that score.
 // Floors are config/market_risk_policy.yaml tiers: red 75, orange 60, yellow 40, blue 25.
 const heldLow = unwrapMarketRisk({ state: 'evaluated', tier: 'RED', score: 36.7, as_of: '2026-11-02T21:30:00Z', age_hours: 0.2, stale: false,
   contributors: [{ name: 'Breadth', points: 12 }], categories: [], uplift: null })
 assert.equal(heldLow?.tier, 'RED', 'the payload keeps the engine tier')
-assert.equal(factLine(heldLow).value, 'BLUE 37', '36.7 is below yellow 40, so the label is BLUE')
+assert.equal(factLine(heldLow).value, 'BLUE 36.7', '36.7 is below yellow 40, so the label is BLUE')
 assert.equal(factLine(heldLow).tone, 'info')
 const heldOrange = unwrapMarketRisk({ state: 'evaluated', tier: 'RED', score: 70, as_of: '2026-11-02T21:30:00Z', age_hours: 0.2, stale: false, contributors: [], categories: [], uplift: null })
-assert.equal(factLine(heldOrange).value, 'ORANGE 70', 'a score in [60, 75) renders ORANGE')
+assert.equal(factLine(heldOrange).value, 'ORANGE 70.0', 'a score in [60, 75) renders ORANGE')
 const upliftRed = unwrapMarketRisk({ state: 'evaluated', tier: 'RED', score: 68, as_of: '2026-11-02T21:30:00Z', age_hours: 0.2, stale: false, contributors: [], categories: [],
   uplift: { market_score: 68, vulnerability: 80, note: 'Market ORANGE -> RED after portfolio vulnerability high' } })
-assert.equal(factLine(upliftRed).value, 'RED 68', 'a portfolio uplift keeps the engine tier')
+assert.equal(factLine(upliftRed).value, 'RED 68.0', 'a portfolio uplift keeps the engine tier')
 assert.equal(renderedTier('RED', null, null), 'RED', 'no score: keep the engine tier')
 assert.equal(renderedTier('YELLOW', 59.7, null), 'YELLOW')
 assert.equal(renderedTier('GREEN', 18, null), 'GREEN', 'GREEN is not re-derived from the score')
@@ -58,7 +58,9 @@ const sh = unwrapMarketRisk({ state: 'evaluated', tier: 'YELLOW', score: 59.7, a
 assert.equal(sh?.mode, 'shadow')
 assert.equal(shadowMarker(sh), SHADOW_MARKER)
 assert.match(factLine(sh).sub, /^SHADOW · not alerting · options flow/)
-assert.equal(factLine(sh).value, 'YELLOW 60')
+// LQ-20261107-1837 (C4): banner and card print ONE precision for the score. This rounded to a whole number
+// while Home's card printed 44.2 from the same snapshot, so the same number looked like two.
+assert.equal(factLine(sh).value, 'YELLOW 59.7')
 const live = unwrapMarketRisk({ state: 'evaluated', tier: 'YELLOW', score: 59.7, as_of: null, age_hours: 0.1, stale: false, contributors: [], categories: [], mode: 'live' })
 assert.equal(live?.mode, 'live'); assert.equal(shadowMarker(live), ''); assert.ok(!factLine(live).sub.includes('SHADOW'))
 assert.equal(unwrapMarketRisk({ state: 'evaluated', tier: 'BLUE', score: 30, contributors: [], categories: [], mode: 'bogus' })?.mode, null)
@@ -105,7 +107,7 @@ t(summaryDefaultOpen({ phone: false, stale: true, stored: true }) === false, 'st
 t(summaryDefaultOpen({ phone: true, stale: false, stored: true }) === true && summaryDefaultOpen({ phone: false, stale: false, stored: false }) === false, 'the remembered choice applies')
 // YELLOW live
 const ml = summaryModel(yLive)!
-t(ml.score === '60' && !ml.stale, 'score rounds to 60')
+t(ml.score === '59.7' && !ml.stale, 'score keeps one decimal, never a second rounding')
 assert.equal(ml.contributors.length, 2, 'only categories with points above 0'); n++
 assert.deepEqual(ml.contributors.map(c => c.points), ['+34.4', '+25.3'], 'points with one decimal'); n++
 t(ml.contributors[0].detail.includes('QQQ P/C OI 3.97') && / ET$/.test(ml.contributors[0].detail), 'contributor line: the number behind it and its ET time')
