@@ -17516,7 +17516,7 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "tests/test_disk_hygiene_20261018.py; docs/ops/packets/disk-hygiene-n8n-20261018/01_dry_run_20261019.txt",
       "review_by": "2026-10-25",
-      "note": "Writes <state root>/data/runtime/disk_hygiene/ manifests, per-pass and per-run standing apply reports, disk_hygiene_daily_latest.json, the pressure check receipt and the LaneRunReceipt. Removes only what the reviewed standing rules select, after per-item re-validation (worktrees archived to refs/archive/closeout* first; agent scratch nested repos bundled, proof worktrees archived). Every run is digested to the operator by disk_usage_monitor (host/disk_hygiene_digest, P2: Telegram + email, quiet hours 22-07 ET); a refusal or >85% after the run is host/disk_hygiene_alert. Exit 0 ran (including below_threshold); 1 refused/failed.",
+      "note": "Writes <state root>/data/runtime/disk_hygiene/ manifests, per-pass and per-run standing apply reports, disk_hygiene_daily_latest.json, the pressure check receipt and the LaneRunReceipt. Removes only what the reviewed standing rules select, after per-item re-validation (worktrees archived to refs/archive/closeout* first; agent scratch nested repos bundled, proof worktrees archived). Every completing run is digested to the operator by disk_usage_monitor (host/disk_hygiene_digest, P2: Telegram + email, quiet hours 22-07 ET); a run killed at the 3000 s wall writes no receipt and is visible as RUN_TIMEOUT in the jobs page and the ledger, not in the digest. A refusal or >85% after the run is host/disk_hygiene_alert. Exit 0 ran (including below_threshold); 1 refused/failed.",
       "severity": "Low",
       "dispatch": {
         "mode": "live",
