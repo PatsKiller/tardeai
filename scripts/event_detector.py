@@ -2,7 +2,7 @@
 """event_detector.py — Level 3 autonomous agent event triggering (10 event types).
 
 Polls the database every 15 minutes for actionable events:
-  1. SEC_INSIDER_BUY   — Form 4 purchase filings (24h)           → Maria, Risk    [urgent]
+  1. SEC_INSIDER_BUY   — Form 4 purchase, filing date within the configured age, once per accession → Maria, Risk [urgent]
   2. RSI_EXTREME       — holdings RSI <25 or >75                  → Risk           [normal]
   3. FRED_RATE_CHANGE  — DFF moved >0.25%                        → all agents     [urgent]
   4. DIVIDEND_CUT      — yield dropped >20% vs prior             → Steph, Tax     [urgent]
@@ -22,9 +22,11 @@ Cron: */15 * * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild &
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timedelta, date, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -35,6 +37,12 @@ COOLDOWN_HOURS = 4
 #: refuses to fire on it. The shipped config carries 0 (the last completed session's close or nothing); an
 #: operator who wants to tolerate a publication lag widens it in config/event_detector_policy.json, never in code.
 POLICY_PATH = PROJECT_ROOT / "config" / "event_detector_policy.json"
+#: LQ-20261107-1625. Used only when the policy file has no usable sec_insider_buy.max_filing_age_days.
+#: 7 calendar days still covers a Friday filing read on Tuesday, and it refuses the months-old
+#: Form 4s a backfill was paging as urgent. An unusable value falls back here, which refuses those
+#: filings; it does not open the check.
+FILING_MAX_AGE_DAYS_DEFAULT = 7
+_ACCESSION_RE = re.compile(r"(?<!\d)(\d{10}-\d{2}-\d{6}|\d{18})(?!\d)")
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -83,6 +91,64 @@ def _already_fired(conn, event_type: str, symbol: str = None, cooldown_hours: in
             (event_type, cutoff),
         )
     return cur.fetchone() is not None
+
+
+def _already_fired_identity(conn, event_type: str, symbol: str, accession: str) -> bool:
+    """True when this filing's accession was already queued for this symbol, at any time.
+
+    The 4h cooldown is (event type, symbol). The live slots are further apart than that, so the
+    same Form 4 fired urgent again at the next slot. The accession does not expire.
+    """
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        """SELECT id FROM agent_event_queue
+           WHERE event_type=%s AND symbol=%s AND trigger_data->>'accession' = %s
+           LIMIT 1""",
+        (event_type, symbol, accession),
+    )
+    return cur.fetchone() is not None
+
+
+def filing_accession(sec_url: str) -> str:
+    """Accession from an EDGAR URL, rendered 10-2-6. Empty when the URL names none.
+
+    ``sec_form4`` has no accession column. The stored ``sec_url`` carries one:
+    ``.../data/999999/000099999926000001/ownership.xml`` -> ``0000999999-26-000001``.
+    """
+    match = _ACCESSION_RE.search(str(sec_url or ""))
+    if not match:
+        return ""
+    digits = match.group(1).replace("-", "")
+    if len(digits) != 18 or not digits.isdigit():
+        return ""
+    return f"{digits[:10]}-{digits[10:12]}-{digits[12:]}"
+
+
+def insider_buy_policy() -> dict:
+    """Filing-age ceiling from ``config/event_detector_policy.json``.
+
+    A missing or unusable value uses ``FILING_MAX_AGE_DAYS_DEFAULT`` and says so. That default
+    still refuses an old filing. It does not fall open.
+    """
+    doc = _load_json(POLICY_PATH)
+    raw = None
+    if isinstance(doc, dict):
+        block = doc.get("sec_insider_buy")
+        if isinstance(block, dict):
+            raw = block.get("max_filing_age_days")
+    if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
+        return {"max_filing_age_days": raw}
+    if doc:
+        _log(
+            f"SEC_INSIDER_BUY: {POLICY_PATH.name} sec_insider_buy.max_filing_age_days "
+            f"is not a non-negative integer ({raw!r}) — using {FILING_MAX_AGE_DAYS_DEFAULT}"
+        )
+    return {"max_filing_age_days": FILING_MAX_AGE_DAYS_DEFAULT}
+
+
+def _today_et() -> date:
+    return datetime.now(ZoneInfo("America/New_York")).date()
 
 
 def _load_json(path: Path) -> dict:
@@ -176,42 +242,82 @@ def _fire_event(conn, event_type: str, symbol: str, trigger_data: dict,
 # ── Event Detectors ──────────────────────────────────────────────────────
 
 def check_sec_insider_buy(conn, dry_run: bool = False) -> int:
-    """SEC_INSIDER_BUY: any new Form 4 with transaction_type containing 'P' (Purchase) in last 24h."""
+    """SEC_INSIDER_BUY: a Form 4 purchase whose filing date is inside the ceiling, once per accession.
+
+    The old check selected on ``created_at`` and deduped on (event type, symbol) for 4 hours. A
+    backfill inserted months-old filings during that window, and the next slot fired them again.
+    Age is the filing date. Identity is the accession in ``sec_url``, stored on the event so the
+    next run can see it. A row with no filing date or no accession is not urgent.
+    """
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cutoff = datetime.now() - timedelta(hours=24)
+    max_age_days = insider_buy_policy()["max_filing_age_days"]
+    today = _today_et()
+    fresh_since = today - timedelta(days=max_age_days)
+    ingest_cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     cur.execute(
         """SELECT symbol, filer_name, filer_relation, transaction_type,
-                  shares, price, total_value, filing_date
+                  shares, price, total_value, filing_date, sec_url
            FROM sec_form4
-           WHERE created_at > %s
+           WHERE (filing_date >= %s OR created_at > %s)
              AND (transaction_type ILIKE '%%P%%' OR transaction_type ILIKE '%%purchase%%'
                   OR transaction_type ILIKE '%%buy%%')
-           ORDER BY created_at DESC""",
-        (cutoff,),
+           ORDER BY filing_date DESC NULLS LAST""",
+        (fresh_since, ingest_cutoff),
     )
     rows = cur.fetchall()
     fired = 0
+    skipped_stale = 0
+    skipped_unkeyed = 0
+    skipped_duplicate = 0
+    seen: set[tuple[str, str]] = set()
 
     for row in rows:
         sym = row.get("symbol", "")
         if not sym:
             continue
+        filing_date = row.get("filing_date")
+        if isinstance(filing_date, datetime):
+            filing_date = filing_date.date()
+        if not isinstance(filing_date, date) or filing_date < fresh_since or filing_date > today:
+            skipped_stale += 1
+            _log(
+                f"  SKIP SEC_INSIDER_BUY {sym} — filing dated {filing_date} is outside "
+                f"0..{max_age_days}d of {today}"
+            )
+            continue
+        accession = filing_accession(row.get("sec_url") or "")
+        if not accession:
+            skipped_unkeyed += 1
+            _log(f"  SKIP SEC_INSIDER_BUY {sym} — filing URL names no accession")
+            continue
+        identity = (sym, accession)
+        if identity in seen or _already_fired_identity(conn, "SEC_INSIDER_BUY", sym, accession):
+            skipped_duplicate += 1
+            _log(f"  SKIP SEC_INSIDER_BUY {sym} — filing {accession} already queued")
+            continue
+        seen.add(identity)
         trigger_data = {
             "filer_name": row.get("filer_name", ""),
             "filer_relation": row.get("filer_relation", ""),
             "shares": float(row.get("shares", 0)),
             "price": float(row.get("price", 0)),
             "total_value": float(row.get("total_value", 0)),
-            "filing_date": str(row.get("filing_date", "")),
+            "filing_date": str(filing_date),
+            "accession": accession,
             "source": "sec_form4",
         }
         if _fire_event(conn, "SEC_INSIDER_BUY", sym, trigger_data,
                        ["Maria", "Risk"], priority="urgent", dry_run=dry_run):
             fired += 1
 
-    _log(f"SEC_INSIDER_BUY: {len(rows)} purchase filings in 24h, fired {fired} events")
+    _log(
+        f"SEC_INSIDER_BUY: {len(rows)} purchase filings selected "
+        f"(filing date >= {fresh_since} or ingested in 24h), fired {fired}, "
+        f"skipped_stale={skipped_stale}, skipped_unkeyed={skipped_unkeyed}, "
+        f"skipped_duplicate={skipped_duplicate}"
+    )
     return fired
 
 

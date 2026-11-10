@@ -4,6 +4,10 @@
     "max_observation_lag_sessions": 0,
     "_why": "LQ-20261107-1511. MARKET_REGIME_CHANGE may fire only on a close the lane can call CURRENT: the newest source close must be no older than the last COMPLETED trading session (NYSE calendar), minus this lag in sessions. 0 = strictest. On 2026-11-09 the detector fired an urgent VIX_25 event from a VIXCLS close dated 2026-11-05, read on a Monday whose last completed session was 2026-11-06, while live VIX was ~24.1 — the FRED ingest had stopped on 2026-11-07 and the lane never checked. A regime crossing is a STATE, not a stop: refusing a stale close delays the alert to the next published close and never sends a false urgent one. A positive lag tolerates a publication delay at the cost of exactly that many sessions of blindness; widen only with the operator's word."
   },
+  "sec_insider_buy": {
+    "max_filing_age_days": 7,
+    "_why": "LQ-20261107-1625. SEC_INSIDER_BUY may fire urgent only when the Form 4 filing_date is within this many calendar days of today ET, and only once per accession. The check used to select on created_at (ingest time) and dedupe on (event type, symbol) for 4 hours, so a backfill of months-old filings paged urgent at every slot after the cooldown. 7 still covers a Friday filing read on Tuesday. Widen only with the operator's word."
+  },
   "_provenance": {
     "author": "cc-deepseek-7 (LQ-20261107-1511), 2026-11-09",
     "review": "folded by claude-lead; the value is a tightening (0), not a widening of any existing behaviour"

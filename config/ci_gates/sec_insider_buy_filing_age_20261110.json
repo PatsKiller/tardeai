@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "sec_insider_buy_filing_age_20261110",
+  "files": [
+    "tests/test_sec_insider_buy_filing_age_20261110.py"
+  ],
+  "comment": [
+    "LQ-20261107-1625. SEC_INSIDER_BUY used to select Form 4 rows by ingest time and",
+    "dedupe on (event type, symbol) for 4 hours, so a backfill of an old filing paged",
+    "urgent again after the cooldown. These tests pin the config-owned filing-age ceiling,",
+    "the accession parsed from the filing URL, and the refusal when the date or the",
+    "accession is missing. Fixtures are synthetic. The regime lag in the same policy file stays 0."
+  ]
+}
