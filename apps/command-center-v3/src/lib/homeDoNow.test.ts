@@ -215,6 +215,15 @@ const splitCurrent = { positions: { source: 'fixture CIO', as_of: ok.as_of, unpr
   unprotected_counted_value_usd: 49_000, rows: [] }, stops: { unprotected_count: 6, stale: false } }
 const split = homeWithCurrentTruth(doNowFrom({ ...ok, items: [] }, { nowMs: now }), splitCurrent, { pending_approvals: 0 })
 check('numbers: the tile value names the same rows as the count', split.numbers.unprotected === 6 && split.numbers.unprotectedValue === 49_000)
+// LQ-20261107-1837 REWORK 2 (must-fix F2): a counted split the producer PUBLISHED as null is a split that failed
+// to compute — not an absent field. `??` read it as absent and printed the wide sum beside the counted count, so
+// Home read "6 · $50K" while the Defence sheet (through `unprotectedFact`) read "6 · not on file" from the same
+// payload. The value is a gap; the count stands.
+const nullSplitCurrent = { positions: { source: 'fixture CIO', as_of: ok.as_of, unprotected_value_usd: 50_000,
+  unprotected_counted_value_usd: null, rows: [] }, stops: { unprotected_count: 6, stale: false } }
+const nullSplit2 = homeWithCurrentTruth(doNowFrom({ ...ok, items: [] }, { nowMs: now }), nullSplitCurrent, { pending_approvals: 0 })
+check('numbers: a counted split that failed to compute is a gap, never the wide sum',
+  nullSplit2.numbers.unprotected === 6 && nullSplit2.numbers.unprotectedValue === null)
 const wideOnly = homeWithCurrentTruth(doNowFrom({ ...ok, items: [] }, { nowMs: now }),
   { positions: { source: 'fixture CIO', rows: [], unprotected_value_usd: 120 }, stops: { unprotected_count: 3 } }, { pending_approvals: 0 })
 check('numbers: an older payload without the split still shows its value', wideOnly.numbers.unprotectedValue === 120)

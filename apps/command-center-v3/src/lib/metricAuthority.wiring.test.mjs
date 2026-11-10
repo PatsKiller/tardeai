@@ -52,15 +52,29 @@ check(!/>YELLOW</.test(summary), 'the YELLOW card still hardcodes its tier inste
 check(/\{mr\.tier\}/.test(summary), 'the YELLOW card does not render the engine tier')
 const desk = codeOnly(read('scripts/lib/desks_a.py'))
 // The authority is the MarketRiskSnapshot@v1; the defense projection embeds a frozen copy of tier/score.
-check(/tier_label = mr_snap\.get\("tier"\) or etier\.get\("tier"\)/.test(desk), 'the Defense desk still prefers the frozen projection tier')
-check(/tier_score = mr_snap\.get\("score"\) if mr_snap\.get\("score"\) is not None else etier\.get\("score"\)/.test(desk),
-  'the Defense desk still prefers the frozen projection score')
+// REWORK 2 (F4): the three fields come from ONE record — no per-field `or` / `if is not None` fallback between them.
+check(/if mr_snap\.get\("tier"\) is not None or mr_snap\.get\("score"\) is not None:/.test(desk),
+  'the Defense desk does not choose ONE record for tier + score + as_of')
+check(/tier_label, tier_score, engine_as_of = mr_snap\.get\("tier"\), mr_snap\.get\("score"\), mr_snap\.get\("as_of"\)/.test(desk),
+  'the Defense desk does not take tier, score and as_of from the snapshot together')
+check(!/tier_label = mr_snap\.get\("tier"\) or etier\.get\("tier"\)/.test(desk),
+  'the Defense desk still pairs the snapshot tier with a per-field fallback (F4)')
 check(/f"\{tier_label\} \{tier_score:\.1f\}"/.test(desk), 'the Defense desk does not print the score at the one shared precision')
 const defenseDesk = app('pages/desks/DefenseDesk.tsx')
 check(/marketRiskFact\(marketRisk\.data\)/.test(defenseDesk), 'the Defense page does not pass the live market-risk fact to the engine view')
 check(/unprotectedFact\(cio\.data\)/.test(defenseDesk), 'the Defense page does not pass the live unprotected fact to the engine view')
 const engine = app('components/defense/engine/DefenseEngine.tsx')
-check(/scoreText\(score\)/.test(engine), 'the Defense engine hero does not print the score through scoreText')
+check(/scoreText\(tp\.score\)/.test(engine), 'the Defense engine hero does not print the score through scoreText')
+// REWORK 2 (F1/F4): the sheets and the ladder take the whole record; no per-field `??` between the live
+// authority and the projection's frozen copy may come back.
+check(/unprotectedPair\(p, live\)/.test(engine), 'the stops sheet does not take the count and value from one source (F1)')
+check(!/unprot\?\.count \?\? s\.no_stop/.test(codeOnly(engine)), 'the stops sheet still pairs the unprotected figure per field (F1)')
+check(/tierPair\(p, live\)/.test(engine), 'the ladder/tier sheet does not take tier, score and clock from one record (F4)')
+check(!/auth\?\.score \?\? t\.score/.test(codeOnly(engine)), 'the Defense engine still falls back per field for the score (F4)')
+const homeLib = codeOnly(app('lib/homeDoNow.ts'))
+check(/unprotectedFact\(answered \? pages : null\)/.test(homeLib), 'Home does not take the unprotected pair from one accessor (F2)')
+check(!/unprotected_counted_value_usd \?\? pages\?\.positions\?\.unprotected_value_usd/.test(homeLib),
+  'Home still re-derives the counted/wide rule with `??` (F2)')
 
 if (failed) { console.error(`metricAuthority wiring: ${failed} failure(s)`); process.exit(1) }
 console.log('metricAuthority wiring: ok')

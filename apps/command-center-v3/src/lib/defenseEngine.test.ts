@@ -1,7 +1,7 @@
 // DefenseProjection@v1 display helpers (design defense/v001). Synthetic values only (public repo).
 // Run: node --experimental-strip-types src/lib/defenseEngine.test.ts
 // No node:assert / node:fs: CI's tsc has no @types/node (same local check as designTokens.test.ts).
-import { clockET, defenseLines, GAP, isProjection, unwrapProjection, ladder, money, pct, readinessTone, scorePosition, signed, sourceSummaryText, tierTone, type DefenseProjection } from './defenseEngine.ts'
+import { clockET, defenseLines, GAP, isProjection, unwrapProjection, ladder, money, pct, readinessTone, scorePosition, signed, sourceSummaryText, tierPair, tierTone, unprotectedPair, type DefenseProjection } from './defenseEngine.ts'
 
 function fail(msg: string): never { throw new Error(msg) }
 const assert = {
@@ -111,6 +111,45 @@ test('a live authority that did not answer leaves the projection copy, never a z
   const by = Object.fromEntries(defenseLines(P, new Date('2030-01-07T21:00:00Z'), { unprotected: { count: null, valueUsd: null, asOf: null } }).map(l => [l.id, l]))
   assert.equal(by.stops.sub, '2 without a broker stop · 1 pending', 'projection fallback')
   assert.equal(by.stops.value, '$3.0K', 'projection value')
+})
+
+// LQ-20261107-1837 REWORK 2 (must-fix F1): cio_truth answers with a count and NO counted value whenever any
+// counted row is unpriced (`_sum_known` returns None) or the book is empty (count 0, value None). A per-field
+// `??` then printed the projection's no_stop value beside cio_truth's count — two populations, two build times,
+// one label. The value must read as a gap, and the clock must be the answering record's.
+test('a live count with no counted value is a gap, never the projection\'s value', () => {
+  const live = { unprotected: { count: 4, valueUsd: null, asOf: '2026-11-10T20:54:00Z' } }
+  const by = Object.fromEntries(defenseLines(P, new Date('2030-01-07T21:00:00Z'), live).map(l => [l.id, l]))
+  assert.equal(by.stops.sub, '4 without a broker stop · 1 pending', 'the live count')
+  assert.equal(by.stops.value, GAP, 'the projection\'s $3.0K must never sit beside cio_truth\'s 4')
+  assert.equal(by.stops.asOf, '2026-11-10T20:54:00Z', 'the answering record\'s clock')
+  assert.equal(by.stops.staleReason, null, 'the projection\'s stale reason does not date the live pair')
+})
+
+test('the unprotected pair never mixes sources, in either direction', () => {
+  const onlyValue = unprotectedPair(P, { unprotected: { count: null, valueUsd: 4_000, asOf: null } })
+  assert.equal(onlyValue.count, null, 'a count cio_truth did not publish is a gap, never the projection\'s 2')
+  assert.equal(onlyValue.valueUsd, 4_000, 'the value it did publish is shown')
+  assert.equal(onlyValue.source, 'cio_truth', 'named')
+  const none = unprotectedPair(P, null)
+  assert.equal(none.count, 2, 'projection count when nothing answered')
+  assert.equal(none.valueUsd, 3_000, 'projection value, the SAME source')
+  assert.equal(none.source, 'projection', 'named')
+})
+
+// REWORK 2 (F4): the tier, score and clock are one record. A snapshot with a tier and no score (state
+// not_evaluated) used to print "NOT_EVALUATED · 62" — the live tier with the projection's frozen score — and
+// the ladder dated it with the projection's as_of.
+test('a snapshot with a tier and no score prints a gap, never the frozen score', () => {
+  const tp = tierPair(P, { marketRisk: { tier: 'NOT_EVALUATED', score: null, asOf: '2026-11-10T20:55:00Z' } })
+  assert.equal(tp.tier, 'NOT_EVALUATED', 'the live tier')
+  assert.equal(tp.score, null, 'no frozen score beside the live tier')
+  assert.equal(tp.asOf, '2026-11-10T20:55:00Z', 'the snapshot\'s clock')
+  assert.equal(tp.source, 'snapshot', 'named')
+  const proj = tierPair(P, null)
+  assert.equal(proj.tier, 'ORANGE', 'projection tier when no snapshot')
+  assert.equal(proj.score, 62, 'projection score, the same record')
+  assert.equal(proj.source, 'projection', 'named')
 })
 
 test('a bare projection still renders every line with gaps, never a crash', () => {  const bare = { schema: 'DefenseProjection@v1', generated_at: '2030-01-07T20:00:00+00:00', narrative: {}, tier: {}, exposure: {}, stops: {},

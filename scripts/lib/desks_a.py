@@ -610,12 +610,21 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     mr_snap, mr_gap = _read_json(rt / "market_risk_latest.json")
     mr_snap = mr_snap if isinstance(mr_snap, dict) else {}
     etier = engine.get("tier") if isinstance(engine.get("tier"), dict) else {}
-    tier_label = mr_snap.get("tier") or etier.get("tier")
-    tier_score = mr_snap.get("score") if mr_snap.get("score") is not None else etier.get("score")
+    # REWORK 2 (F4): one record supplies the tier, the score and the clock. A per-field fallback pairs the
+    # snapshot's tier with the projection's frozen score and dates it with the projection's `as_of` — three
+    # fields from two records. The snapshot answers when it carries a tier or a score; then a missing score
+    # prints as a gap, never as the projection's number.
+    if mr_snap.get("tier") is not None or mr_snap.get("score") is not None:
+        tier_label, tier_score, engine_as_of = mr_snap.get("tier"), mr_snap.get("score"), mr_snap.get("as_of")
+        _tier_source = "market-risk snapshot"
+    else:
+        tier_label, tier_score, engine_as_of = etier.get("tier"), etier.get("score"), etier.get("as_of")
+        _tier_source = "defense projection"
     _shock_snap = mr_snap.get("shock_type") if isinstance(mr_snap.get("shock_type"), dict) else {}
     _shock_engine = etier.get("shock") if isinstance(etier.get("shock"), dict) else {}
-    shock = _shock_snap.get("class") or _shock_engine.get("class")
-    engine_as_of = mr_snap.get("as_of") or etier.get("as_of")
+    # The shock class follows the same record as the tier (a snapshot reading paired with the projection's frozen
+    # shock would be the same mixing one field over).
+    shock = _shock_snap.get("class") if _tier_source == "market-risk snapshot" else _shock_engine.get("class")
 
     regime = truth.get("regime") or {}
     groups = recs.get("groups") if isinstance(recs.get("groups"), dict) else {}
@@ -632,9 +641,9 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
              href="/defense",
              detail=_detail("Market risk (engine)", [("Tier", tier_label), ("Score", tier_score), ("Shock type", shock),
                             ("As of", _date(engine_as_of))],
-                            # LQ-20261107-1837 (C4): name the authority that was actually read.
+                            # LQ-20261107-1837 (C4, REWORK 2 F4): name the record that supplied these three fields.
                             "data/runtime/market_risk_latest.json (MarketRiskSnapshot@v1 — the score "
-                            "/api/v2/market-risk/latest serves)" if mr_snap else
+                            "/api/v2/market-risk/latest serves)" if _tier_source == "market-risk snapshot" else
                             "data/runtime/defense_engine_latest.json tier (frozen copy; engine snapshot not on file)")),
         _row("act-regime", "Market regime (CIO)", str(regime.get("label") or "not on file"),
              detail=_detail("Market regime (CIO record)", [("Regime", regime.get("label")), ("VIX", regime.get("vix")),
@@ -756,7 +765,11 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     ]
 
     sources = [
-        _source("engine", "Market Risk engine", engine.get("generated_at") or mr_snap.get("as_of"), DEFENSE_LANES["engine"],
+        # REWORK 2 (F4): the strip dates the same record the row above read — the snapshot's clock when the
+        # snapshot answered, the projection's build clock only when it did not.
+        _source("engine", "Market Risk engine",
+                (mr_snap.get("as_of") if _tier_source == "market-risk snapshot" else engine.get("generated_at")),
+                DEFENSE_LANES["engine"],
                 gap=None if (engine or mr_snap) else (e_gap or mr_gap), max_age_hours=2),
         _source("posture", "Sector posture", momentum.get("generated_at"), DEFENSE_LANES["posture"], gap=m_gap, max_age_hours=26),
         _source("industries", f"Industries · {len(industries.get('industries') or [])}" if industries else "Industries",

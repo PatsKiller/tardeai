@@ -201,16 +201,49 @@ export function scorePosition(score: unknown): number | null {
 
 export type Line = { id: string; sheet: string; label: string; sub: string; value: string; valueSub?: string; tone: Tone; asOf?: string | null; staleReason?: string | null }
 
+export interface UnprotectedPair { count: number | null; valueUsd: number | null; asOf: string | null; staleReason: string | null; source: 'cio_truth' | 'projection' }
+
+/** The unprotected count and value from ONE source (LQ-20261107-1837 REWORK 2, must-fix F1).
+ *
+ *  cio_truth's `stops.unprotected_count` counts positions worth $100 or more; the projection's
+ *  `stops.no_stop` slice was built over its own rows. Pairing a count from one with a value from the other
+ *  prints two populations as one figure — the defect LQ-20261107-1390 removed, reintroduced by a per-field
+ *  `??`. So: when cio_truth published either figure it is the source, both fields come from it, and a null
+ *  value prints as a gap ("unknown beats wrong"). The projection supplies the pair only when cio_truth
+ *  published neither figure, and then it supplies BOTH. */
+export function unprotectedPair(p: DefenseProjection, live?: LiveAuthority | null): UnprotectedPair {
+  const a = live?.unprotected ?? null
+  if (a && (num(a.count) !== null || num(a.valueUsd) !== null)) {
+    return { count: num(a.count), valueUsd: num(a.valueUsd), asOf: a.asOf ?? null, staleReason: null, source: 'cio_truth' }
+  }
+  const s = p.stops ?? {}
+  return { count: num(s.no_stop?.count), valueUsd: num(s.no_stop?.value_usd), asOf: s.as_of ?? null, staleReason: s.stale_reason ?? null, source: 'projection' }
+}
+
+export interface TierPair { tier: string | null; score: number | null; asOf: string | null; source: 'snapshot' | 'projection' }
+
+/** The market-risk tier, score and clock from ONE record (LQ-20261107-1837 REWORK 2, F4).
+ *
+ *  A snapshot that answered with a tier but no score prints a gap for the score; it never borrows the
+ *  projection's frozen number, and the clock shown is the answered record's own — dating the snapshot's
+ *  figure with the projection's `as_of` names the wrong record. */
+export function tierPair(p: DefenseProjection, live?: LiveAuthority | null): TierPair {
+  const a = live?.marketRisk ?? null
+  if (a && (a.tier != null || num(a.score) !== null)) {
+    return { tier: a.tier ?? null, score: num(a.score), asOf: a.asOf ?? null, source: 'snapshot' }
+  }
+  const t = p.tier ?? {}
+  return { tier: t.tier ?? null, score: num(t.score), asOf: t.as_of ?? null, source: 'projection' }
+}
+
 /** "The defense, line by line": one row per sheet, every value from one projection field. `live`, when given,
  *  carries the two figures LQ-20261107-1837 mapped to an authority OUTSIDE the projection: the market-risk
  *  score (MarketRiskSnapshot@v1) and the unprotected-position count (cio_truth). The projection's copies are
- *  frozen at build time, so the live one wins where it is present. */
+ *  frozen at build time, so the live one wins where it is present — as a whole record, never field by field. */
 export function defenseLines(p: DefenseProjection, now: Date = new Date(), live?: LiveAuthority): Line[] {
   const e = p.exposure ?? {}, s = p.stops ?? {}, h = p.hedge_readiness ?? {}, sec = p.sector_posture ?? {}
   const c = p.cash_alternatives ?? {}, b = p.base_rates ?? {}, w = p.watch_next ?? {}
-  const unprot = live?.unprotected
-  const unprotCount = unprot?.count ?? s.no_stop?.count ?? null
-  const unprotValue = unprot?.valueUsd ?? s.no_stop?.value_usd ?? null
+  const unprot = unprotectedPair(p, live)
   const topNames = [...new Set((e.rows ?? []).map(r => r.symbol))].slice(0, 2).join(' · ')
   const brSpy = (b.rows ?? [])[0]
   return [
@@ -218,9 +251,9 @@ export function defenseLines(p: DefenseProjection, now: Date = new Date(), live?
       value: money(e.stressed_usd), valueSub: e.stressed_pct_invested != null ? `${pct(e.stressed_pct_invested)} of invested` : undefined,
       tone: (num(e.stressed_pct_invested) ?? 0) >= 10 ? 'warn' : 'muted', asOf: e.as_of, staleReason: e.stale_reason },
     { id: 'stops', sheet: 'stops', label: 'Stop coverage',
-      sub: `${unprotCount ?? GAP} without a broker stop · ${s.pending?.count ?? GAP} pending`,
-      value: money(unprotValue), valueSub: 'unprotected', tone: (num(unprotCount) ?? 0) > 0 ? 'warn' : 'good',
-      asOf: unprot?.asOf ?? s.as_of, staleReason: s.stale_reason },
+      sub: `${unprot.count ?? GAP} without a broker stop · ${s.pending?.count ?? GAP} pending`,
+      value: money(unprot.valueUsd), valueSub: 'unprotected', tone: (num(unprot.count) ?? 0) > 0 ? 'warn' : 'good',
+      asOf: unprot.asOf, staleReason: unprot.staleReason },
     { id: 'hedge', sheet: 'hedge', label: 'Hedge readiness',
       sub: h.met_count != null && h.of != null ? `${h.met_count} of ${h.of} triggers met` : (h.stale_reason ?? GAP),
       value: h.readiness ?? 'UNKNOWN', valueSub: h.shock_class ? `${h.shock_class.toLowerCase()} shock` : undefined,

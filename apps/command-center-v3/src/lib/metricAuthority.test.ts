@@ -53,10 +53,13 @@ check('unprotected fact: a counted split that failed to compute never falls back
   unprotectedFact(nullSplit).valueUsd === null, unprotectedFact(nullSplit).valueUsd)
 check('unprotected fact: an absent count is null, never 0', unprotectedFact({}).count === null)
 
-// /api/v2/risk serves the same cio_truth projection under `stop_health`; both routes must resolve the same count.
+// /api/v2/risk's `stop_health.unprotected_count` is a SEPARATE calculation over risk_management.json positions
+// (risk_snapshot.py, no $100 threshold). It agreed 4 = 4 on the 2026-11-10 payload; this pins the parse and the
+// clock only, and never claims one calculation (REWORK 2 R3 — the route is a named residual in the READY).
 const risk = { stop_health: { unprotected_count: 4, active_count: 6, pending_count: 2, filled_count: 0 }, truth: { as_of: '2026-11-10T20:54:00Z' } }
 const fromRisk = unprotectedFromRisk(risk)
-check('the Risk route and the CIO pages route resolve the SAME count', fromRisk.count === unprot.count, `${fromRisk.count} vs ${unprot.count}`)
+check('the Risk route block parses to the count it publishes (agreed with cio_truth on the 2026-11-10 payload)',
+  fromRisk.count === 4 && fromRisk.count === unprot.count, `${fromRisk.count} vs ${unprot.count}`)
 check('the Risk route carries the projection as_of', fromRisk.asOf === '2026-11-10T20:54:00Z')
 check('the Risk route with no stop_health block is unknown, never 0', unprotectedFromRisk({}).count === null)
 

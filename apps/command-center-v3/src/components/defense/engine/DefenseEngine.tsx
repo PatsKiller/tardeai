@@ -5,7 +5,7 @@ import { RADIUS } from '../../../lib/designTokens'
 import { scoreText } from '../../../lib/metricAuthority'
 import {
   clockET, defenseLines, GAP, GLOSSARY, ladder, money, pct, readinessTone, scorePosition, signed, sourceSummaryText,
-  sourceTone, tierTone, type DefenseProjection, type LiveAuthority, type Tone,
+  sourceTone, tierPair, tierTone, unprotectedPair, type DefenseProjection, type LiveAuthority, type Tone,
 } from '../../../lib/defenseEngine'
 
 /**
@@ -53,17 +53,18 @@ function Chip({ tone, children }: { tone: Tone; children: ReactNode }) {
 
 function Hero({ p, onOpen }: { p: DefenseProjection; onOpen: (k: string) => void }) {
   const t = p.tier ?? {}
-  const auth = useContext(LiveCtx)?.marketRisk ?? null
-  // LQ-20261107-1837 (C4): tier and score are the live snapshot's when it answered; the projection's copy is
-  // frozen at build time and used to print a different score than Home for the same engine.
-  const tierLabel = auth?.tier ?? t.tier
-  const score = auth?.score ?? t.score
-  const tone = tierTone(tierLabel)
+  const live = useContext(LiveCtx)
+  const auth = live?.marketRisk ?? null
+  // LQ-20261107-1837 (C4, REWORK 2 F4): tier and score are ONE record — the live snapshot's when it answered,
+  // the projection's frozen copy only when it did not. A per-field fallback pairs the live tier with a frozen
+  // score; `tierPair` cannot.
+  const tp = tierPair(p, live)
+  const tone = tierTone(tp.tier)
   const scoreDiffers = auth?.score != null && t.score != null && Math.abs(auth.score - Number(t.score)) >= 0.05
   return <section aria-label="Defense headline" data-testid="defense-engine-hero" style={{ ...card, borderLeft: `3px solid ${TONE[tone]}` }}>
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
       <button type="button" onClick={() => onOpen('tier')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', minHeight: 44 }} aria-label="Open the tier ladder">
-        <Chip tone={tone}><Term k="tier">{tierLabel ?? 'TIER ' + GAP}</Term> · {score != null ? scoreText(score) : GAP}</Chip>
+        <Chip tone={tone}><Term k="tier">{tp.tier ?? 'TIER ' + GAP}</Term> · {tp.score != null ? scoreText(tp.score) : GAP}</Chip>
       </button>
       {t.shock?.label && <span style={small}>{t.shock.label}</span>}
       {t.confirming?.n != null && <span style={small}>{t.confirming.n} of {t.confirming.of} categories confirming</span>}
@@ -102,19 +103,20 @@ function WhatToDo({ p, onOpen }: { p: DefenseProjection; onOpen: (k: string) => 
 
 export function Ladder({ p }: { p: DefenseProjection }) {
   const t = p.tier ?? {}
-  const auth = useContext(LiveCtx)?.marketRisk ?? null
-  const tierLabel = auth?.tier ?? t.tier
-  const score = auth?.score ?? t.score
-  const pos = scorePosition(score)
+  const live = useContext(LiveCtx)
+  // REWORK 2 F4: the clock is the answered record's own — the snapshot's `as_of` when it supplied the figure,
+  // the projection's only when it supplied all three. Never the live tier dated by the frozen build.
+  const tp = tierPair(p, live)
+  const pos = scorePosition(tp.score)
   return <section aria-label="Tier ladder" data-testid="defense-engine-ladder" style={card}>
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-      <h3 style={h3}>Tier ladder</h3><Stamp asOf={t.as_of} why={t.stale_reason} />
+      <h3 style={h3}>Tier ladder</h3><Stamp asOf={tp.asOf} why={tp.source === 'projection' ? t.stale_reason : null} />
     </div>
     <div style={{ position: 'relative', height: 10, borderRadius: RADIUS.md, background: BB.bgShift, border: `1px solid ${BB.border}` }}>
-      {pos != null && <span aria-label={`score ${pos}`} style={{ position: 'absolute', left: `calc(${pos}% - 2px)`, top: -3, width: 4, height: 14, background: TONE[tierTone(tierLabel)], borderRadius: RADIUS.sm }} />}
+      {pos != null && <span aria-label={`score ${pos}`} style={{ position: 'absolute', left: `calc(${pos}% - 2px)`, top: -3, width: 4, height: 14, background: TONE[tierTone(tp.tier)], borderRadius: RADIUS.sm }} />}
     </div>
     <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 4 }}>
-      {ladder({ ...t, tier: tierLabel }).map(s => <li key={s.tier} aria-current={s.current ? 'step' : undefined} style={{ textAlign: 'center', padding: '6px 2px', borderRadius: RADIUS.md, border: `1px solid ${s.current ? TONE[tierTone(s.tier)] : BB.border}`, color: s.current ? TONE[tierTone(s.tier)] : BB.text2, fontSize: TYPE.sm, minWidth: 0 }}>
+      {ladder({ ...t, tier: tp.tier }).map(s => <li key={s.tier} aria-current={s.current ? 'step' : undefined} style={{ textAlign: 'center', padding: '6px 2px', borderRadius: RADIUS.md, border: `1px solid ${s.current ? TONE[tierTone(s.tier)] : BB.border}`, color: s.current ? TONE[tierTone(s.tier)] : BB.text2, fontSize: TYPE.sm, minWidth: 0 }}>
         <div style={{ fontWeight: s.current ? 700 : 400 }}>{s.tier}</div>
         <div style={{ ...mono, color: BB.text3 }}>{s.min_score != null ? `≥${s.min_score}` : '—'}</div>
       </li>)}
@@ -195,14 +197,15 @@ export function EngineSheetBody({ p, sheet, live }: { p: DefenseProjection; shee
 function sheetBody(p: DefenseProjection, sheet: string, stamp: (s: { as_of?: string | null; stale_reason?: string | null }) => ReactNode) {
   const live = useContext(LiveCtx)
   const auth = live?.marketRisk ?? null
-  const unprot = live?.unprotected ?? null
   switch (sheet) {
     case 'tier': {
       const t = p.tier ?? {}
-      const score = auth?.score ?? t.score
+      // REWORK 2 F4: one record supplies the score and its clock (see `tierPair`).
+      const tp = tierPair(p, live)
       return <List><Ladder p={p} />
         {/* LQ-20261107-1837 (C4): the live snapshot's score, with the projection's frozen copy named when it differs. */}
-        <Field label="Score">{score != null ? scoreText(score) : GAP}</Field>
+        <Field label="Score">{tp.score != null ? scoreText(tp.score) : GAP}</Field>
+        <Field label="Measured">{tp.source === 'snapshot' ? `live snapshot · ${clockET(tp.asOf)}` : `this projection · ${clockET(tp.asOf)}`}</Field>
         {auth?.score != null && t.score != null && Math.abs(auth.score - Number(t.score)) >= 0.05 &&
           <Note>Live market risk is {scoreText(auth.score)} ({clockET(auth.asOf)}); this projection was built with {scoreText(t.score)} at {clockET(p.generated_at)}.</Note>}
         <Field label="Shock">{t.shock?.label ?? GAP}</Field>
@@ -231,10 +234,15 @@ function sheetBody(p: DefenseProjection, sheet: string, stamp: (s: { as_of?: str
     }
     case 'stops': {
       const s = p.stops ?? {}
+      // LQ-20261107-1837 (C4, REWORK 2 F1): the count and the value are one pair from one source. cio_truth's
+      // counted stop_health when it answered — its null value prints as a gap, never the projection's figure —
+      // and the projection's build-time slice only when cio_truth supplied neither.
+      const unp = unprotectedPair(p, live)
       return <List>
-        {/* LQ-20261107-1837 (C4): cio_truth's counted stop_health is the unprotected authority; the projection's
-            own slice (none + planned over its build-time rows) is the fallback, named when it is what is shown. */}
-        <Field label="No broker stop">{unprot?.count ?? s.no_stop?.count ?? GAP} · {money(unprot?.valueUsd ?? s.no_stop?.value_usd)}</Field>
+        <Field label="No broker stop">{unp.count ?? GAP} · {money(unp.valueUsd)}</Field>
+        <Note>{unp.source === 'cio_truth'
+          ? `Pair above: live cio_truth${unp.asOf ? `, as of ${clockET(unp.asOf)}` : ', no clock published'}.`
+          : 'Pair above: this projection\'s build-time slice — cio_truth answered neither figure.'}</Note>
         <Field label="Pending">{s.pending?.count ?? GAP} · {money(s.pending?.value_usd)}</Field>
         <Field label="Planned only">{s.planned_only ?? GAP}</Field>
         <Field label="Active">{s.active ?? GAP}</Field>

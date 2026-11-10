@@ -7,8 +7,15 @@
 //   portfolio heat        cio_truth.resolve      /api/v2/cio/pages            positions.portfolio_heat_pct
 //   unprotected positions cio_truth.resolve      /api/v2/cio/pages            stops.unprotected_count
 //
-// /api/v2/risk serves the same cio_truth projection (portfolio_heat_pct, stop_health.unprotected_count);
-// it is the same calculation behind a second route, not a second definition.
+// /api/v2/risk is NOT a second route to these two numbers, and this file used to say it was (REWORK 2, R3):
+//   · its `portfolio_heat_pct` is risk_management.json's daily heat, computed in
+//     scripts/lib/data_broker/risk_snapshot.py (`rm.get("portfolio_heat_pct")`) — the legacy calculation
+//     named in the first bullet below, never cio_truth's `positions.portfolio_heat_pct`.
+//   · its `stop_health.unprotected_count` is re-counted there over risk_management.json positions with no
+//     $100 counted threshold. It shares cio_truth's `stop_protects` predicate but not its row population;
+//     it agreed (4 = 4) on the 2026-11-10 payload and is not guaranteed to. Health and Reports still read
+//     it through `unprotectedFromRisk`; aligning that route is a named residual in the READY, not a claim
+//     this file makes.
 //
 // Genuinely different numbers that are NOT this metric keep a distinct name where they are shown:
 //   · risk_management.json's daily heat (all configured stops, invested book) is not the portfolio heat
@@ -84,7 +91,10 @@ export function unprotectedFact(cio: any): UnprotectedFact {
   }
 }
 
-/** The same cio_truth projection behind /api/v2/risk (`stop_health` block). Same calculation, one accessor. */
+/** The `stop_health.unprotected_count` block of /api/v2/risk, for the two surfaces that only fetch that route
+ *  (Health, Reports). It is a SECOND calculation over risk_management.json positions, not a second route to
+ *  cio_truth's counted figure (REWORK 2, R3 — see the file header). Kept where it is so the divergence is one
+ *  named read rather than an ad-hoc one; the residual and its fix are in the READY. */
 export function unprotectedFromRisk(risk: any): { count: number | null; asOf: string | null } {
   const h = risk?.stop_health && typeof risk.stop_health === 'object' ? risk.stop_health : null
   return { count: num(h?.unprotected_count), asOf: str(risk?.truth?.as_of) ?? str(risk?.positions_as_of) }

@@ -9,7 +9,7 @@
 import { accountName as accountLabelName, canonicalAccountKey, rowAccountKey } from './accountLabels.ts'
 import { STOP_CATEGORY_LABEL, stopCategory } from './stopDisplay.ts'
 import { readableTimesInText } from './readableTime.ts'
-import { heatFact } from './metricAuthority.ts'
+import { heatFact, unprotectedFact } from './metricAuthority.ts'
 
 export type Severity = 'P0' | 'P1' | 'P2' | 'P3'
 export type Category = 'protect' | 'decide' | 'fix'
@@ -250,18 +250,21 @@ export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: an
     ...(retained.approvalsStale ? ['approvals'] : [])])]
   const state = model.state === 'STALE' || staleSources.length > 0 ? 'STALE'
     : items.length ? 'ITEMS' : allSourcesAnswered ? 'CLEAR' : model.state === 'LOADING' ? 'LOADING' : 'UNAVAILABLE'
+  // REWORK 2 F2: one accessor supplies both the count and the value. An unanswered source supplies neither.
+  const unp = unprotectedFact(answered ? pages : null)
   return { ...model, items, counts, sources, unavailableSources: missing, allSourcesAnswered, state,
     staleSources,
     reason: stops?.stale ? 'Stop counts are from the last broker read'
       : retained.positionsStale ? 'Current positions refresh failed; showing the last answer'
       : retained.approvalsStale ? 'Approval count refresh failed; showing the last answer'
       : missing.length ? `Source gaps: ${missing.join(', ')}` : model.reason,
-    numbers: { ...model.numbers, unprotected: answered ? num(stops?.unprotected_count) : null,
-      // The count and the value must name the same rows. `unprotected_count` counts positions worth $100 or more;
-      // `unprotected_value_usd` sums every position, so pairing the two overstated the pair by the sub-$100
-      // residuals ($474.65 on the live 2026-11-09 book). LQ-20261107-1390.
-      unprotectedValue: answered
-        ? num(pages?.positions?.unprotected_counted_value_usd ?? pages?.positions?.unprotected_value_usd) : null,
+    numbers: { ...model.numbers,
+      // LQ-20261107-1837 (C4, REWORK 2 must-fix F2): the count and the value are ONE pair from ONE accessor.
+      // The old line picked the counted value with `??`, which reads a published null (a split that failed to
+      // compute) as an absent field and pairs the counted count with the WIDE sum — the pairing LQ-20261107-1390
+      // removed, reintroduced one indirection up. `unprotectedFact` already owns the rule; do not re-derive it.
+      unprotected: unp.count,
+      unprotectedValue: unp.valueUsd,
       unprotectedBasis: 'CIO categorized positions · same as Risk; counts and value cover positions worth $100 or more, as of the last broker stop read',
       positionsSource: answered ? str(pages.positions.source) ?? 'CIO positions' : 'Current CIO positions unavailable',
       // LQ-20261107-1837 (C4): the same cio_truth number Health and Risk print. `/api/v2/home/do-now` still

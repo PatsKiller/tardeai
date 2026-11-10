@@ -233,6 +233,40 @@ def test_defense_book_comes_from_cio_truth_and_unmeasured_fields_say_so(tmp_path
     assert any("Review console last locked" in t for t in titles)
 
 
+def test_engine_tier_score_and_clock_come_from_one_record(tmp_path):
+    """LQ-20261107-1837 REWORK 2 (must-fix F4 pairing): a per-field fallback published the snapshot's tier
+    beside the projection's frozen score and dated both with the projection's `as_of` — three fields, two
+    records. The snapshot answers when it carries a tier OR a score; a figure it did not publish is a gap."""
+    defense_tree(tmp_path)
+    rt = tmp_path / "data/runtime"
+    # The snapshot answered with a tier and no score (state not_evaluated); the projection holds a frozen score.
+    write(rt / "market_risk_latest.json", {"tier": "YELLOW", "score": None, "as_of": "2026-10-25T13:55:00+00:00"})
+    write(rt / "defense_engine_latest.json", {"generated_at": NOW.isoformat(),
+                                              "tier": {"tier": "ORANGE", "score": 62.0, "as_of": "2026-10-24T20:00:00+00:00"}})
+    out = desk.defense_payload(root=tmp_path, now=NOW, truth={"regime": {}, "positions": {"rows": []}}, states=REG)
+    engine = row(panel(out, "where-to-act", "act"), "act-engine")
+    assert engine["value"] == "YELLOW", "the live tier, with no frozen score printed beside it"
+    fields = {f["label"]: f["value"] for f in engine["detail"]["fields"]}
+    assert fields["Tier"] == "YELLOW"
+    assert fields["Score"] == "not on file", "a published null score is a gap, never the projection's 62"
+    assert fields["As of"].endswith("9:55 ET"), "the clock is the snapshot's own, not the projection's"
+    assert "MarketRiskSnapshot" in engine["detail"]["source"]
+
+
+def test_engine_tier_from_the_projection_names_itself_when_the_snapshot_is_absent(tmp_path):
+    """The whole pair, from the projection, with the clock from the same record — and the detail says so."""
+    defense_tree(tmp_path)
+    write(tmp_path / "data/runtime/defense_engine_latest.json", {
+        "generated_at": NOW.isoformat(),
+        "tier": {"tier": "ORANGE", "score": 62.0, "as_of": "2026-10-24T20:00:00+00:00"}})
+    out = desk.defense_payload(root=tmp_path, now=NOW, truth={"regime": {}, "positions": {"rows": []}}, states=REG)
+    engine = row(panel(out, "where-to-act", "act"), "act-engine")
+    fields = {f["label"]: f["value"] for f in engine["detail"]["fields"]}
+    assert engine["value"] == "ORANGE 62.0"
+    assert fields["As of"].endswith("16:00 ET"), "the projection's own clock"
+    assert "frozen copy" in engine["detail"]["source"]
+
+
 def test_projection_code_never_imports_execution_or_side_effecting_helpers():
     import ast
 
@@ -513,13 +547,16 @@ def test_defense_engine_row_reads_the_live_snapshot_not_the_frozen_projection(tm
     On the audit's book that printed YELLOW 44 while Home printed YELLOW 50.2 from the same engine. The snapshot is
     the authority the /api/v2/market-risk/latest route serves; the projection's copy is only the fallback."""
     defense_tree(tmp_path)
+    # REWORK 2 (F4): the row's three fields come from ONE record, so the fixture carries the snapshot's own
+    # shock_type — the live snapshot does (MarketRiskShockType@v1, class SECTOR on 2026-11-10). The projection's
+    # frozen shock label is no longer borrowed for a live reading.
     write(tmp_path / "data/runtime/market_risk_latest.json",
-          {"as_of": NOW.isoformat(), "tier": "YELLOW", "score": 50.2157})
+          {"as_of": NOW.isoformat(), "tier": "YELLOW", "score": 50.2157, "shock_type": {"class": "SECTOR"}})
     write(tmp_path / "data/runtime/defense_engine_latest.json", {"schema": "DefenseProjection@v1",
           "generated_at": NOW.isoformat(),
-          "tier": {"tier": "YELLOW", "score": 44.1813, "as_of": NOW.isoformat(), "shock": {"class": "SECTOR"}}})
+          "tier": {"tier": "YELLOW", "score": 44.1813, "as_of": NOW.isoformat(), "shock": {"class": "SYSTEMIC"}}})
     out = desk.defense_payload(root=tmp_path, now=NOW, truth={}, states=REG)
     eng = row(panel(out, "where-to-act", "act"), "act-engine")
-    # One precision everywhere (Home's card prints 50.2 from the same field).
+    # One precision everywhere (Home's card prints 50.2 from the same field), and the shock is the snapshot's.
     assert eng["value"] == "YELLOW 50.2 · sector shock"
     assert "MarketRiskSnapshot@v1" in json.dumps(eng["detail"])
