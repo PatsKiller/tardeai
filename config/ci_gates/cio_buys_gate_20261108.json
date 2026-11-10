@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_buys_gate_20261108",
+  "files": [
+    "tests/test_cio_buys_gate_20261108.py"
+  ],
+  "anchor": "CIO_BUYS_GATE_20261108",
+  "comment": [
+    "ANCHOR: CIO_BUYS_GATE_20261108 - the CIO synopsis states the buy gate (LQ-20261107-1311) and the one",
+    "has-it-printed test (LQ-20261107-1784): event_passed compares an AWARE now on the ET clock, never marks a",
+    "same-day row passed for a naive now, and passes a date-only row only once the whole day is behind. Hermetic:",
+    "a synthetic calendar, no live store."
+  ]
+}
