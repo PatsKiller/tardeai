@@ -20,15 +20,20 @@ function stateBadge(c: RotateCandidate) {
 }
 
 /** LQ-20261107-1655 / -1784 — the individual names under a defensive ETF row. The server ordered them (held names
- *  first, then the group's best RS20 constituents) and already dropped every name that fails the price, liquidity,
- *  split or RS-sanity floor. Each name is ONE line: symbol, held flag, price, and the server's relational phrase
- *  ("weaker than XLV by 6.5 pts"). A HELD name that fails a floor is still listed with its plain flag — the holding
- *  is a fact about the book, not a rank. The date and source ride in the title, never in the line. */
+ *  first, then the group's best RS20 constituents) and never ranks a name that fails any floor (price, dollar
+ *  volume, split, RS-sanity), nor one whose dollar volume it could not measure — an unmeasured floor is not a
+ *  passed floor. Each name is ONE line: symbol, held flag, price, and
+ *  the server's relational phrase ("weaker than XLV by 6.5 pts"). A HELD name is still listed whatever its numbers
+ *  — the holding is a fact about the book, not a rank — so the caption names the held rows as held and calls only
+ *  the ranked rows liquid. The date and source ride in the title, never in the line. */
 function StockRows({ c }: { c: RotateCandidate }) {
   const rows = c.stocks ?? []
   if (!rows.length) return c.stocks_gap ? <div className="sub sgap" data-testid="mr5-stock-gap">{c.stocks_gap}</div> : null
   const floor = c.stocks_min_price
-  const cap = floor != null && Number.isFinite(floor) ? `Stocks (liquid, ≥$${floor})` : 'Stocks (liquid)'
+  const liquid = floor != null && Number.isFinite(floor) ? `liquid ≥$${floor}` : 'liquid'
+  // LQ-1784 r2 (grok-a review): a held name can be flagged (below the price floor, an untrustworthy print), so
+  // the caption may not call every drawn row liquid. With held rows it says what selected them, in order.
+  const cap = rows.some(s => s.held) ? `Stocks: held first, then ${liquid}` : `Stocks (${liquid})`
   return (
     <div className="sk" data-testid="mr5-rotate-stocks">
       <div className="cap">{cap}</div>

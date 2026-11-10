@@ -20,13 +20,14 @@ incomplete, and an incomplete horizon is not a rank). A held name is listed on t
 holding even when its RS20 cannot be measured, but it still needs a dated close.
 
 LQ-20261107-1784 (operator 2026-11-10, "not clear what to do"): the rank showed penny/microcap data
-accidents at the top (BDRX +636 %, ENHA +589 %) because it had no floor. Before a name may be RANKED it
-must now also pass the floors in ``config/market_risk_policy.yaml`` ``sectors.constituents``:
+accidents at the top because it had no floor. Before a name may be RANKED it must now also pass the floors
+in ``config/market_risk_policy.yaml`` ``sectors.constituents``:
 
 * ``min_price`` — the latest ``ticker_prices`` close is at least this;
 * ``min_avg_dollar_volume_usd`` — the 20-session average of ``market_ohlcv_bars`` close × volume is at
   least this (the only volume owner in the DB). A name whose dollar volume cannot be measured (no bars)
-  is kept and counted as unmeasured, never mistaken for proof of illiquidity;
+  is counted as unmeasured and is NOT ranked — an unmeasured floor is not a passed floor — though a HELD
+  name is still listed;
 * ``max_abs_rs20`` — a |RS20| above it is a data error (unadjusted history), dropped and counted, never
   ranked;
 * ``max_split_diff_pct`` — the ``ticker_prices`` close and the ``market_ohlcv_bars`` close for the same
@@ -266,13 +267,14 @@ def _held_flag(failed: Iterable[str], min_price: float) -> str | None:
 
 
 def _filter_note(excluded: Mapping[str, int], unmeasured: int, labels: Mapping[str, str]) -> str | None:
-    """The one-line count of names the floors removed, and of names kept with unmeasured volume."""
+    """The one-line count of names the floors removed, and of names not ranked for want of a measurement."""
     parts = [f"{n} {labels[k]}" for k, n in excluded.items() if n]
     if not parts and not unmeasured:
         return None
     note = f"Excluded: {', '.join(parts)}." if parts else ""
     if unmeasured:
-        note = (note + f" {unmeasured} kept with unmeasured dollar volume.").strip()
+        # LQ-1784 r2: not kept as a ranked row — counted, and named as unmeasured rather than illiquid
+        note = (note + f" {unmeasured} not ranked: dollar volume unmeasured.").strip()
     return note or None
 
 
@@ -406,6 +408,9 @@ def read(db_query: Callable[..., Any], *, held: Iterable[Mapping] | None = None,
                 for key in failed:
                     excluded[key] += 1
                 continue
+            # LQ-1784 r2 (grok-a review): an UNMEASURED dollar volume is not a passed floor. It is counted
+            # in the group note and it is never ranked — a name the liquidity floor cannot vouch for must not
+            # take a top-N slot the caption calls liquid. A HELD name is still listed (a fact about the book).
             if adv is None:
                 unmeasured_liquidity += 1
             rank_trusted = not ({"rs_sanity", "split_mismatch"} & set(failed))
@@ -421,6 +426,8 @@ def read(db_query: Callable[..., Any], *, held: Iterable[Mapping] | None = None,
                 # a split / RS-sanity failure means the rank itself is untrustworthy: do not carry it
                 "rs20": signal.get("rs20") if rank_trusted else None,
                 "rs20_as_of": signal.get("as_of") if rank_trusted else None,
+                # the liquidity floor could not be measured: never liquid, so never a ranked slot
+                "liquidity_measured": adv is not None,
             }
             if is_held and failed:
                 # the holding is a fact about the book: still listed, plainly flagged
@@ -433,7 +440,7 @@ def read(db_query: Callable[..., Any], *, held: Iterable[Mapping] | None = None,
                        key=lambda r: (-r["held_value_usd"], r["symbol"]))
         unknown = sorted((r for r in kept if r["held_value_usd"] is None), key=lambda r: r["symbol"])
         kept = known + unknown
-        ranked = [r for r in rows if not r["held"] and r["rs20"] is not None]
+        ranked = [r for r in rows if not r["held"] and r["rs20"] is not None and r["liquidity_measured"]]
         ranked.sort(key=lambda r: (-r["rs20"], r["symbol"]))
         picked = kept + ranked[:max(0, int(limit))]
         filter_note = _filter_note(excluded, unmeasured_liquidity, labels_for)

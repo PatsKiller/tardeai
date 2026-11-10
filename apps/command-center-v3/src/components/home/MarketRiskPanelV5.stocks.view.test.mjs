@@ -162,7 +162,12 @@ check('a held name that fails a floor shows its plain flag instead of a rank', (
 })
 
 check('the stocks caption and the drop count are the operator\'s numbers, not a copy', () => {
-  assert.match(text(block('XLV')), /Stocks \(liquid, ≥\$5\)/)
+  // LQ-1784 r2 (grok-a review): DEMOSUB is HELD and below the price floor, so this block may not be captioned
+  // "liquid" wholesale. The caption names what selected the rows, in order.
+  assert.match(text(block('XLV')), /Stocks: held first, then liquid ≥\$5/)
+  assert.ok(!/Stocks \(liquid/.test(text(block('XLV'))), 'the caption calls a flagged held name liquid')
+  // a group with no held row keeps the plain caption: nothing is mislabelled either way
+  assert.match(text(block('XLU')), /Stocks \(liquid\)/)
   assert.match(text(block('XLV')), /3 dropped: 2 under \$5\.00, 1 under \$10\.0M\/day/)
 })
 

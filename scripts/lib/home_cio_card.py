@@ -483,8 +483,8 @@ def _stock_line(one: Mapping, cand: Mapping, rs: Mapping | None) -> str | None:
     """One relational phrase: this name against the group's ETF, on the same 20-session RS (LQ-20261107-1784).
 
     The operator asked for one line per stock: symbol, held flag, price, and "stronger/weaker than <ETF> by N pts".
-    The old line repeated the two RS numbers and compared two closes the operator cannot act on ("close 2.51 vs
-    XLV 188.33"); the numbers stay on the record as facts, this is the only reading drawn from them. Descriptive
+    The old line repeated the two RS numbers and compared two closes the operator cannot act on; the numbers stay
+    on the record as facts, this is the only reading drawn from them. Descriptive
     only, never "buy"/"sell". Unmeasurable on either side means no phrase, not an invented comparison.
     """
     etf = cand.get("symbol")

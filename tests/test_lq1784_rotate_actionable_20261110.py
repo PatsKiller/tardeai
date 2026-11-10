@@ -1,14 +1,15 @@
 """LQ-20261107-1784 (P0) — the Home CIO rotate column must not rank false positives.
 
-The operator pasted the live card: "this is not clear what to do and formatting not actionable." The rank
-under each defensive ETF named penny/microcap data accidents (BDRX +636 %, ENHA +589 %, ONCO, STKH, REVB,
-PPCB, IVF +282 %) because ``rotation_stocks.read`` had no price, liquidity, split or RS-sanity floor.
+The operator: "this is not clear what to do and formatting not actionable." The rank under each defensive
+ETF named penny/microcap data accidents because ``rotation_stocks.read`` had no price, liquidity, split or
+RS-sanity floor.
 
 This file pins D1: a name must clear the operator's floors before it may be RANKED.
 
 * penny — a sub-$5 close is never a candidate;
 * illiquid — a 20-session dollar volume under the floor is never a candidate (measured from market_ohlcv_bars,
-  the only volume owner); an UNMEASURED dollar volume is kept and counted, never called illiquid;
+  the only volume owner); an UNMEASURED dollar volume is counted and NOT ranked (an unmeasured floor is not a
+  passed floor), never called illiquid, and a held name is still listed;
 * split artifact — ticker_prices and market_ohlcv_bars disagree by more than the tolerance for the same
   session inside the RS window, so the stored close is not trustworthy;
 * data error — |RS20| over the sanity cap is unadjusted history, dropped and counted in the group note.
@@ -16,8 +17,9 @@ This file pins D1: a name must clear the operator's floors before it may be RANK
 A HELD name is a fact about the book and is still listed; it carries a plain flag and, when its price is
 unreliable, no RS20 fact.
 
-Synthetic fixtures only (public repo): DEMO symbols, round prices, no live symbol, no live dollar amount, no
-database. Fail-before: at the livefold revision the module has no bars read and no floors, so every name below
+Synthetic fixtures only (public repo): the sector ETFs the product already ranks, DEMO constituent names, round
+prices, no operator holding, no operator share count, no operator dollar amount, no database. Fail-before: at the
+livefold revision the module has no bars read and no floors, so every name below
 is ranked (and the ``excluded`` / ``unmeasured_liquidity`` keys do not exist) — the assertions fail on absence.
 """
 from __future__ import annotations
@@ -158,12 +160,13 @@ def test_the_rs_sanity_cap_counts_a_data_error_in_the_group_note():
     assert "|RS20| > 100" in block["filter_note"]
 
 
-def test_unmeasured_liquidity_is_kept_and_counted_not_called_illiquid():
+def test_an_unmeasured_name_is_counted_but_never_ranked_and_never_called_illiquid():
+    """LQ-1784 r2 (grok-a review): an unmeasured dollar volume cannot take a top-N slot under a liquid caption."""
     block = _health()
-    row = _by(block)["DEMOUNMEAS"]
-    assert row["held"] is False and row["close"] > rs.MIN_PRICE
-    assert block["unmeasured_liquidity"] >= 1
-    assert "unmeasured" in (block["filter_note"] or "")
+    assert "DEMOUNMEAS" not in _by(block), "a name the liquidity floor could not measure was ranked"
+    assert block["unmeasured_liquidity"] >= 1, "the unmeasured name vanished from the group note"
+    assert "not ranked: dollar volume unmeasured" in (block["filter_note"] or "")
+    assert "illiquid" not in (block["filter_note"] or "").lower(), "an unmeasured name was called illiquid"
 
 
 # ── held names are facts about the book ─────────────────────────────────────────────────────────────────────────
@@ -214,9 +217,9 @@ def test_a_flagged_held_name_never_becomes_an_instruction():
 # ── D2: the column says what to do, once ────────────────────────────────────────────────────────────────────────
 #
 # The operator's second complaint: "not clear what to do and formatting not actionable". The stock line repeated the
-# RS pair and compared two closes ("close 2.51 vs XLV 188.33"); the event line could not tell that an 08:30 ET print
-# had already happened; a filled tranche had no next step. These pin the reading, not a new verdict: the CIO owns
-# the verdict, and every phrase below is drawn from a fact the projection already carries.
+# RS pair and compared two closes; the event line could not tell that an 08:30 ET print had already happened; a
+# filled tranche had no next step. These pin the reading, not a new verdict: the CIO owns the verdict, and every
+# phrase below is drawn from a fact the projection already carries. Round synthetic figures only.
 
 def _fact(value, as_of="2031-03-10T02:00:00+00:00", source_id="synthetic"):
     return {"value": value, "source_id": source_id, "as_of": as_of}
@@ -252,41 +255,42 @@ def test_the_buys_gate_stops_naming_a_release_that_already_printed():
 
 
 def test_the_stock_line_is_one_relational_phrase():
-    one = {"close": {"value": 29.25}}
-    cand = {"symbol": "XLV", "rs20": 13.8, "close": {"value": 188.33}}
-    assert hc._stock_line(one, cand, {"value": 7.3}) == "weaker than XLV by 6.5 pts"
-    assert hc._stock_line(one, cand, {"value": 20.0}) == "stronger than XLV by 6.2 pts"
+    one = {"close": {"value": 50.0}}
+    cand = {"symbol": "XLV", "rs20": 10.0, "close": {"value": 100.0}}
+    assert hc._stock_line(one, cand, {"value": 7.0}) == "weaker than XLV by 3.0 pts"
+    assert hc._stock_line(one, cand, {"value": 20.0}) == "stronger than XLV by 10.0 pts"
+    assert hc._stock_line(one, cand, {"value": 10.0}) == "matches XLV"
     assert hc._stock_line(one, cand, None) is None
     assert hc._stock_line(one, {"symbol": "XLV"}, {"value": 7.3}) is None
     # the duplicated RS sentence and the meaningless two-close comparison are gone
-    line = hc._stock_line(one, cand, {"value": 7.3})
-    for gone in ("RS", "close", "188.33", "vs SPY", "+"):
+    line = hc._stock_line(one, cand, {"value": 7.0})
+    for gone in ("RS", "close", "100.0", "vs SPY", "+"):
         assert gone not in line
 
 
 MR = {
     "as_of": "2031-03-10T02:00:00+00:00",
     "sectors": {"as_of": "2031-03-07", "groups": [
-        {"key": "healthcare", "label": "Healthcare", "symbols": ["XLV"], "state": "RESILIENT", "rs20": 13.8, "dd20": -2.6},
+        {"key": "healthcare", "label": "Healthcare", "symbols": ["XLV"], "state": "RESILIENT", "rs20": 10.0, "dd20": -2.0},
         {"key": "staples", "label": "Staples", "symbols": ["XLP"], "state": "NEUTRAL", "rs20": 4.0},
         {"key": "utilities", "label": "Utilities", "symbols": ["XLU"], "state": "NEUTRAL", "rs20": 2.0},
     ]},
     "heatmap": [{"key": "healthcare", "state": "RESILIENT"}, {"key": "staples", "state": "NEUTRAL"},
                 {"key": "utilities", "state": "NEUTRAL"}],
     "leadership": {"groups": {"healthcare": {"class": "LEADERSHIP_CONFIRMED"}}},
-    # $1.25M book: the 4% healthcare target is $50K, so tranche 1 and 2 are $15K each — the operator's own example
-    "book_exposure": {"as_of": "2031-03-10", "total_usd": 1_250_000.0, "cash_usd": 500_000.0},
+    # a round $1M synthetic book: the 4% healthcare target is $40K, so tranche 1 and 2 are $12K each
+    "book_exposure": {"as_of": "2031-03-10", "total_usd": 1_000_000.0, "cash_usd": 400_000.0},
 }
-BARS = ([{"symbol": "XLV", "session": f"2031-02-{d:02d}", "close": 170.0 + 0.5 * i}
+BARS = ([{"symbol": "XLV", "session": f"2031-02-{d:02d}", "close": 100.0 + 1.0 * i}
          for i, d in enumerate(range(1, 26))]
-        + [{"symbol": "XLP", "session": f"2031-02-{d:02d}", "close": 85.0 + 0.2 * i}
+        + [{"symbol": "XLP", "session": f"2031-02-{d:02d}", "close": 100.0 + 0.5 * i}
            for i, d in enumerate(range(1, 26))]
-        + [{"symbol": "XLU", "session": f"2031-02-{d:02d}", "close": 41.0 + 0.1 * i}
+        + [{"symbol": "XLU", "session": f"2031-02-{d:02d}", "close": 50.0 + 0.25 * i}
            for i, d in enumerate(range(1, 26))])
-QUOTES = {"XLV": {"price": 188.40, "as_of": "2031-03-10T02:09:00+00:00", "source": "synthetic_quote"},
-          "XLP": {"price": 91.58, "as_of": "2031-03-10T02:09:00+00:00", "source": "synthetic_quote"}}
-D2_HELD = {"XLV": {"shares": 79.0, "avg_cost": 188.42, "as_of": "2031-03-09T20:00:00+00:00",
-                "source_id": "positions_current:sync_run_1"}}
+QUOTES = {"XLV": {"price": 100.00, "as_of": "2031-03-10T02:09:00+00:00", "source": "synthetic_quote"},
+          "XLP": {"price": 100.00, "as_of": "2031-03-10T02:09:00+00:00", "source": "synthetic_quote"}}
+D2_HELD = {"XLV": {"shares": 120.0, "avg_cost": 100.00, "as_of": "2031-03-09T20:00:00+00:00",
+                "source_id": "synthetic_book:fixture_1"}}
 BUYS = {"gate": _fact("SMALL_ONLY"), "until": _fact("CPI Tue 03-11 08:30 ET"),
         "until_short": _fact("CPI Tue"),
         "line": _fact("Small sizes only, and nothing new before CPI Tue 03-11 08:30 ET")}
@@ -303,9 +307,9 @@ def _cand(rot, sym):
 def test_a_filled_tranche_states_the_next_one_even_under_the_gate():
     rot = _rotate()
     c = _cand(rot, "XLV")
-    assert c["held"]["filled"] is True and c["held"]["shares"] == 79
+    assert c["held"]["filled"] is True and c["held"]["shares"] == 120
     # the next step: tranche 2's size at the CURRENT price, and the event it waits on
-    assert c["next_tranche"]["usd"] == 15_000.0 and c["next_tranche"]["shares"] == 79
+    assert c["next_tranche"]["usd"] == 12_000.0 and c["next_tranche"]["shares"] == 120
     # the gate withholds tranche 1's dollars, not the fact of the fill
     assert c["proposed"]["tranche1_usd"] is None and rot["gated"]
     # and the CIO's own line rides out so the column can state TODAY without a second read
@@ -316,7 +320,7 @@ def test_a_watch_group_owes_a_target_and_no_tranche():
     rot = _rotate()
     xlp = _cand(rot, "XLP")
     assert xlp["qualifies"] is False and "held" not in xlp and "next_tranche" not in xlp
-    assert xlp["proposed"]["target_pct"] == 2.0 and xlp["proposed"]["target_usd"] == 25_000.0
+    assert xlp["proposed"]["target_pct"] == 2.0 and xlp["proposed"]["target_usd"] == 20_000.0
 
 
 def test_a_held_flag_and_the_drop_count_reach_the_column():
