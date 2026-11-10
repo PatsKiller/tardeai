@@ -6,11 +6,13 @@
     "tests/test_research_lane_rows_unreadable_20261110.py",
     "tests/test_hermes_executed_model_20261110.py",
     "tests/test_hermes_lane_admission_20261110.py",
-    "tests/test_llm_ledger_model_name_20261110.py"
+    "tests/test_llm_ledger_model_name_20261110.py",
+    "tests/test_hermes_curate_lane_allowlist_20261110.py"
   ],
   "anchor": "LLM_ROUTE_TRUTH_20261110",
   "comment": [
     "ANCHOR: LLM_ROUTE_TRUTH_20261110 — LQ-20261107-1808: a process may not declare deepseek_only AND anthropic_first (the deepseek lane ran on claude-haiku-5-5; 219/24h ANTHROPIC_INPUT_LIMIT_EXCEEDED), a failed lane read renders 'cannot be read: <reason>', never [], and the stored hermes_external_research.model names the executor from the lane's provenance, not the CLI's requested default.",
+    "r3 (LQ-1834, REVIEW-LQ1831 M1): the two manual curate endpoints no longer offer a lane the admission gate refuses — /hermes/curate-symbol refuses lane=claude with the gate's own reason instead of answering ok/started for a child that exits 75 and writes no research row, and /hermes/curate-top20 names the lane it did not start instead of silently substituting chatgpt. The offer is the gate's decision (hermes_external_researcher.admission_for), not a second hardcoded tuple. Pins: tests/test_hermes_curate_lane_allowlist_20261110.py.",
     "r2 (25152d18b review): the lane no longer has an ungated door — --lane defaults to deepseek and a lane whose name/provider/default model is not on the process row's allowed_lanes is refused (LaneNotAdmitted / EXIT_LANE_GATED) before any credential read, .env load or socket; llm_consumption_log names the resolved provider model id on a RAISING call instead of NULL (34 rows/7d); and the coverage-stall alarm reads an uncounted deepseek flow as None (held, held_by=research_ok_unmeasured) instead of 0, so it cannot charge a flat thesis count to research nobody counted. Pins: tests/test_hermes_lane_admission_20261110.py, tests/test_llm_ledger_model_name_20261110.py, tests/test_research_lane_rows_unreadable_20261110.py."
   ]
 }

@@ -46459,6 +46459,51 @@ def _hermes_curate_running():
         return False
 
 
+#: The lanes these manual endpoints have offered since 2026-07. A candidate list only: whether a lane may run is
+#: decided by the admission gate ``hermes_external_researcher.admission_for`` — the same gate the spawned child
+#: enforces before any credential read, .env load or provider socket — never by a second tuple here (LQ-1834 M1).
+_HERMES_CHALLENGER_LANES = ("deepseek", "grok", "chatgpt", "claude")
+
+
+def _hermes_challenger_lane_admissions():
+    """``{lane: {"admitted": bool, "reason": str}}`` for every lane these endpoints may offer.
+
+    LQ-1831 M1: the endpoint advertised ``lane="claude"`` and answered ``{"ok": True, "status": "started"}`` for a
+    child that always exits 75 at the admission gate (``LaneNotAdmitted``) and writes no ``hermes_external_research``
+    row — so the endpoint's own "lane_status_summary will show why" could show nothing. Reading the gate here makes
+    the offer and the refusal one decision.
+
+    A gate we cannot load or read admits nothing and says why: an unreadable allowlist is not an admission."""
+    try:
+        _ensure_scripts_path()
+        try:
+            from hermes_external_researcher import admission_for  # noqa: PLC0415
+        except ImportError:  # pragma: no cover - imported as scripts.<module>
+            from scripts.hermes_external_researcher import admission_for  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001 -- a gate we cannot load admits nothing
+        why = f"admission_unreadable:{type(exc).__name__}"
+        return {lane: {"admitted": False, "reason": why} for lane in _HERMES_CHALLENGER_LANES}
+    out = {}
+    for lane in _HERMES_CHALLENGER_LANES:
+        try:
+            admitted, reason = admission_for(lane)
+        except Exception as exc:  # noqa: BLE001 -- same rule: an error is a refusal, and names itself
+            admitted, reason = False, f"admission_unreadable:{type(exc).__name__}"
+        out[lane] = {"admitted": bool(admitted), "reason": str(reason or "")}
+    return out
+
+
+def _hermes_lane_refusal_reason(admissions, lane):
+    """Why ``lane`` is not offered: the gate's own reason when it names one, else that we do not know the lane.
+
+    A lane outside the candidate tuple was never a lane these endpoints could run — saying ``unknown_lane`` keeps
+    "we checked and the gate refuses it" distinct from "this is not a lane we know"."""
+    reason = str(((admissions.get(lane) or {}).get("reason")) or "")
+    if reason:
+        return reason
+    return "unknown_lane" if lane not in _HERMES_CHALLENGER_LANES else "lane_not_admitted"
+
+
 def _hermes_curate_top20_status(query=None):
     """GET /api/v2/hermes/curate-top20 — is a manual top-20 curation running + ChatGPT coverage of the top 20."""
     done = (
@@ -46482,10 +46527,30 @@ def _hermes_curate_top20_trigger(body=None):
 
     if _hermes_curate_running():
         return {"ok": True, "status": "already_running", "message": "A top-20 curation run is already in progress."}
-    lanes = (body or {}).get("lanes", "chatgpt")
-    # deepseek allowed for on-demand / held challenger runs — not the default cron set
-    allowed = ("chatgpt", "grok", "claude", "deepseek")
-    lanes = ",".join(x for x in str(lanes).split(",") if x.strip() in allowed) or "chatgpt"
+    raw_lanes = (body or {}).get("lanes") or "chatgpt"
+    if isinstance(raw_lanes, (list, tuple)):
+        requested = [str(x).strip().lower() for x in raw_lanes if str(x).strip()]
+    else:
+        requested = [x.strip().lower() for x in str(raw_lanes).split(",") if x.strip()]
+    admissions = _hermes_challenger_lane_admissions()
+    allowed = [lane for lane in _HERMES_CHALLENGER_LANES if admissions[lane]["admitted"]]
+    kept = [lane for lane in requested if lane in allowed]
+    refused = {lane: _hermes_lane_refusal_reason(admissions, lane) for lane in requested if lane not in allowed}
+    if not kept:
+        # A lane the gate refuses runs nothing; starting the default instead would answer for work the caller
+        # did not ask for (LQ-1834 M1). Refuse and name every lane that was refused, and why.
+        return {
+            "ok": False,
+            "error": "lane_not_allowed",
+            "requested": requested,
+            "allowed": allowed,
+            "refused": refused,
+            "message": (
+                "No requested lane is admitted for hermes_external_research, so nothing was started: "
+                + "; ".join(f"{lane}: {why}" for lane, why in refused.items())
+            ),
+        }
+    lanes = ",".join(kept)
     cmd = (
         f"cd {PROJECT_ROOT} && flock -n /tmp/hermes_top20_manual.lock "
         f"{sys.executable} scripts/hermes_top20_external_intel.py --top 20 --lanes {lanes} --apply "
@@ -46502,7 +46567,18 @@ def _hermes_curate_top20_trigger(body=None):
         "ok": True,
         "status": "started",
         "lanes": lanes,
-        "message": f"{lanes} curation started on the top 20 — badges appear as each name finishes (~20-40 min).",
+        "requested": requested,
+        "refused": refused,
+        "message": (
+            f"{lanes} curation started on the top 20 — badges appear as each name finishes (~20-40 min)."
+            + (
+                ""
+                if not refused
+                else " Not started (not an admitted lane): "
+                + "; ".join(f"{lane}: {why}" for lane, why in refused.items())
+                + "."
+            )
+        ),
     }
 
 
@@ -46534,8 +46610,24 @@ def _hermes_curate_symbol_challenger(body=None):
     if not syms or any(not _re.fullmatch(r"[A-Z]{1,5}", s) for s in syms):
         return {"ok": False, "error": "symbols_required", "hint": "pass {symbols: ['SPCX','SCHD']}"}
     lane = str(body.get("lane") or "deepseek").strip().lower()
-    if lane not in ("deepseek", "grok", "chatgpt", "claude"):
-        return {"ok": False, "error": "lane_not_allowed", "allowed": ["deepseek", "grok", "chatgpt", "claude"]}
+    admissions = _hermes_challenger_lane_admissions()
+    allowed = [x for x in _HERMES_CHALLENGER_LANES if admissions[x]["admitted"]]
+    if lane not in allowed:
+        # LQ-1834 M1: an offered lane the admission gate refuses would spawn a child that exits 75 and writes no
+        # research row, while this endpoint answered ok/started. The gate is the authority; say the reason.
+        why = _hermes_lane_refusal_reason(admissions, lane)
+        return {
+            "ok": False,
+            "error": "lane_not_allowed",
+            "requested": lane,
+            "allowed": allowed,
+            "refused": {lane: why},
+            "message": (
+                f"{lane} is not an admitted lane for hermes_external_research ({why}): the run would exit 75 at "
+                "the admission gate before any credential read, .env load or provider socket, and would write no "
+                "research row. Pick one of the allowed lanes."
+            ),
+        }
     if _hermes_curate_running():
         return {"ok": True, "status": "already_running", "message": "An external curation run is already in progress."}
 
