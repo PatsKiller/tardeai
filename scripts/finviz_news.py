@@ -25,6 +25,7 @@ import os
 import time
 from datetime import datetime, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
@@ -63,6 +64,10 @@ def _now_ts() -> int:
     return int(datetime.now(timezone.utc).timestamp())
 
 
+#: Finviz prints news times in US Eastern (it is a New York site); DST-aware, never a fixed offset.
+FINVIZ_TZ = ZoneInfo("America/New_York")
+
+
 def _is_fresh(pub_ts: int, lookback_hours: int) -> bool:
     cutoff = _now_ts() - (lookback_hours * 3600)
     return pub_ts >= cutoff
@@ -90,8 +95,9 @@ def _parse_finviz_news_response(data: list, ticker: str, lookback_hours: int) ->
         for fmt in ("%b-%d-%y %I:%M%p", "%b-%d-%Y %I:%M%p", "%Y-%m-%d %H:%M:%S"):
             try:
                 dt = datetime.strptime(date_str, fmt)
-                # Finviz dates are US Eastern — store as naive UTC approx
-                pub_ts = int(dt.replace(tzinfo=timezone.utc).timestamp())
+                # Finviz dates are US Eastern wall-clock times. Reading them as UTC put every finviz
+                # published_at 4-5 h early, which read as 4-5 h of extra catalyst lag (CC v3 audit, 11-10).
+                pub_ts = int(dt.replace(tzinfo=FINVIZ_TZ).timestamp())
                 break
             except ValueError:
                 continue
