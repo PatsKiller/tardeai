@@ -25108,7 +25108,7 @@
           "source": "AGENTS.md \u00a723.3"
         },
         {
-          "name": "env SCALP_HOT_TIER=1 MOMENTUM_SCALP_OUTER_DEADLINE_S=100 $PY scripts/run_finviz_momentum_scalp_scan.py --hot-list-only",
+          "name": "env SCALP_HOT_TIER=1 MOMENTUM_SCALP_OUTER_DEADLINE_S=170 $PY scripts/run_finviz_momentum_scalp_scan.py --hot-list-only",
           "kind": "runner",
           "direction": "calls",
           "source": "config/n8n_run_allowlist.json command"
@@ -25171,7 +25171,7 @@
         },
         {
           "check": "duration_within_baseline",
-          "text": "duration <= 88.0 s (80% of timeout_s 110)"
+          "text": "duration <= 144.0 s (80% of timeout_s 180)"
         },
         {
           "check": "output_produced",

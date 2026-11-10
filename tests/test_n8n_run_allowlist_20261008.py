@@ -219,7 +219,8 @@ def test_an_inline_env_value_matches_the_registry_cron_line():
         assert line, f"{lane_id} sets inline env but has no registry command_text to check against"
         i = 1
         while i < len(cmd) and "=" in cmd[i] and not cmd[i].startswith("-"):
-            if cmd[i] not in line:
+            # A substring match would accept SCALP_HOT_TIER=1 inside SCALP_HOT_TIER=10, or 170 inside 1700.
+            if re.search(r"(?<![\w.])" + re.escape(cmd[i]) + r"(?![\w.])", line) is None:
                 drifted.append((lane_id, cmd[i]))
             i += 1
     assert drifted == [], drifted
