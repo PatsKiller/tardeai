@@ -105,6 +105,17 @@ def main(argv=None) -> int:
             result["write_error"] = written["error"]
         ok = "error" not in written
         result["ok"] = ok
+        # An empty run is only allowed when it names why it was empty (health contract, `empty_allowed`).
+        # Nothing left to append is this job's normal steady state: every decision the plan produced is already
+        # in the journal. Naming it `already_recorded` is what stops idle runs grading RUN_FAILED and opening
+        # the breaker (LQ-20261107-1822). Nothing written while decisions ARE pending is not named: that is an
+        # anomaly, and it stays a failure rather than borrowing a reason that would excuse it.
+        empty_reason = None
+        if not result["written"]:
+            if not decisions:
+                empty_reason = "no_position_decisions"
+            elif not pending:
+                empty_reason = "already_recorded"
         receipt = write_lane_receipt(
             LANE_ID,
             ok=ok,
@@ -114,7 +125,7 @@ def main(argv=None) -> int:
             produced_count=result["written"],
             attempted_count=len(decisions),
             summary={"decisions": len(decisions), "pending": len(pending), "written": result["written"]},
-            empty_reason=None if decisions else "no_position_decisions",
+            empty_reason=empty_reason,
             error=written.get("error"),
         )
         result["receipt"] = str(receipt) if receipt else None

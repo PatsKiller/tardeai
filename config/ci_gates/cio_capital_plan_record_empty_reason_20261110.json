@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_capital_plan_record_empty_reason_20261110",
+  "files": [
+    "tests/test_cio_capital_plan_record_empty_reason_20261110.py"
+  ],
+  "anchor": "CIO_CAPITAL_PLAN_RECORD_EMPTY_REASON_20261110",
+  "comment": [
+    "ANCHOR: CIO_CAPITAL_PLAN_RECORD_EMPTY_REASON_20261110 — LQ-20261107-1822.",
+    "Production 2026-11-10 11:00/12:00/13:00 ET: cio-capital-plan-record exited 0 with 23 decisions, all",
+    "already in the journal (written 0, pending 0), and an empty_reason of null. The dispatcher's output",
+    "verdict graded empty_reason_not_allowed -> RUN_FAILED and the breaker opened on a job that had done its",
+    "work. The producer now names `already_recorded` when the journal already holds every decision the plan",
+    "produced, and names nothing when decisions were pending but none was appended (that stays a failure).",
+    "Pins the producer's reason against the shipped contract's empty_allowed_reasons, so a reason the contract",
+    "does not list cannot be added silently. Hermetic: synthetic plan, journal and receipt writer, no DB."
+  ]
+}
