@@ -22,6 +22,7 @@ guard would raise if a real sender were reached anyway.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -67,9 +68,16 @@ def _no_authority_subprocess(monkeypatch):
     monkeypatch.setattr(A, "authority_static", lambda **kw: [])
 
 
+def _write_json(path, doc):
+    """The engine's own durable-write shape: temp file in the same directory, then os.replace."""
+    tmp = path.with_name(path.name + ".fixture-tmp")
+    tmp.write_text(json.dumps(doc), encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def _config(tmp_path, **overrides):
     path = tmp_path / "heal.json"
-    path.write_text(json.dumps({**CONFIG, **overrides}), encoding="utf-8")
+    _write_json(path, {**CONFIG, **overrides})
     return path
 
 
@@ -112,7 +120,7 @@ def _seed_state(path, findings):
         figures[f["fingerprint"]] = {"consecutive_fails": 3, "status": "healing", "page": f["page"],
                                      "figure_id": f["figure_id"], "account": f["account"],
                                      "symbol": f["symbol"].lower(), "check": f["code"]}
-    path.write_text(json.dumps({"schema": S.STATE_SCHEMA, "figures": figures}), encoding="utf-8")
+    _write_json(path, {"schema": S.STATE_SCHEMA, "figures": figures})
 
 
 def test_only_the_page_codes_page_across_four_replayed_hours(tmp_path):
@@ -196,11 +204,10 @@ def test_a_clear_reaches_no_channel_for_a_ticket_that_was_never_paged(tmp_path):
     row = _finding("NT_QUOTE_SOURCE", 0)
     fp = row["fingerprint"]
     state_path = tmp_path / "state.json"
-    state_path.write_text(json.dumps({"schema": S.STATE_SCHEMA, "figures": {fp: {
+    _write_json(state_path, {"schema": S.STATE_SCHEMA, "figures": {fp: {
         "consecutive_fails": 4, "status": "ticketed", "page": "holdings", "figure_id": "qty",
         "symbol": "syn00", "check": "NT_QUOTE_SOURCE",
-        "ticket": {"id": S.ticket_id(fp), "at": "2026-11-09T20:00:00+00:00", "paged": False}}}}),
-        encoding="utf-8")
+        "ticket": {"id": S.ticket_id(fp), "at": "2026-11-09T20:00:00+00:00", "paged": False}}}})
 
     def boom(**kw):  # pragma: no cover - it must never run
         raise AssertionError("an unpaged ticket's clear must not reach a channel")
