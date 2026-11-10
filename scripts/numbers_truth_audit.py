@@ -911,31 +911,42 @@ def mark_stale_artifacts(found: Iterable[dict[str, Any]], meta: Mapping[str, Any
             f["reason"] = "stale_artifact"
 
 
+def _stop_key(r: Mapping[str, Any]) -> tuple[str, str, str]:
+    return (str(r.get("account")), str(r.get("symbol") or "").upper(), str(r.get("order_id") or ""))
+
+
 def cross_source(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[str, Any], *,
                  now: datetime, session: bool) -> list[dict[str, Any]]:
-    """stop_lifecycle (canonical) vs stop_last_known (retiring copy): a disagreement is itself a finding."""
+    """stop_lifecycle (canonical) vs stop_last_known (retiring copy): a disagreement is itself a finding.
+
+    Each working stop_last_known order is compared with ITS OWN lifecycle row, keyed by order_id
+    (LQ-20261107-1796). Keyed by (account, symbol), a symbol with replaced/cancelled history kept whichever
+    row iterated last and graded a cancelled order against the working one. Rows without an order_id key
+    as "" and keep the symbol-level comparison. The fingerprint stays page|figure|account|symbol.
+    """
     life, slk = bundle.get("stops"), bundle.get("stop_last_known")
     if life["status"] != "ok" or slk["status"] != "ok":
         return [not_measured(row, "truth_unreadable", "stop_lifecycle or stop_last_known unavailable")]
     working = {str(x) for x in row.get("working_lifecycles") or ["working", "near_trigger"]}
-    lm = {(str(r.get("account")), str(r.get("symbol") or "").upper()): r for r in life["rows"] or []}
-    km = {(str(r.get("account")), str(r.get("symbol") or "").upper()): r for r in slk["rows"] or []
+    lm = {_stop_key(r): r for r in life["rows"] or []}
+    km = {_stop_key(r): r for r in slk["rows"] or []
           if str(r.get("status") or "").lower() in {"working", "active", "open", "new", "accepted"}}
+    life_as_of = life.get("as_of").isoformat() if life.get("as_of") else None
     out: list[dict[str, Any]] = []
-    for key in sorted(set(lm) | set(km)):
-        acct, sym = (key[0], key[1]) if len(key) == 2 else (None, None)
-        l, k = lm.get(key), km.get(key)
-        shown = {"value": k.get("stop_price") if k is not None else None,
-                 "status": k.get("status") if k is not None else None, "source": "stop_last_known",
-                 "as_of": k.get("captured_at") if k is not None else None}
+    for key in sorted(km):
+        acct, sym, oid = key
+        k = km[key]
+        # exact order first; a legacy lifecycle row without an order_id is the only fallback
+        l = lm.get(key) if key in lm else (lm.get((acct, sym, "")) if oid else None)
+        who = f"{acct} {sym}" + (f" order {oid}" if oid else "")
+        shown = {"value": k.get("stop_price"), "status": k.get("status"), "source": "stop_last_known",
+                 "as_of": k.get("captured_at"), "order_id": oid or None}
         truth = {"value": l.get("stop_price") if l is not None else None,
                  "lifecycle": l.get("lifecycle") if l is not None else None, "provider": "stop_lifecycle",
-                 "as_of": life.get("as_of").isoformat() if life.get("as_of") else None}
-        if k is None:
-            continue
+                 "as_of": life_as_of, "order_id": (str(l.get("order_id") or "") or None) if l is not None else None}
         if l is None:
             out.append(finding(row, "NT_STOP_CROSS_CHECK", "MISMATCH",
-                               f"{acct} {sym}: stop_last_known still shows a {k.get('status')} stop; "
+                               f"{who}: stop_last_known still shows a {k.get('status')} stop; "
                                "stop_lifecycle has no row (expired or cancelled at the broker)",
                                account=acct, symbol=sym, shown=shown, truth=truth))
             continue
@@ -943,12 +954,12 @@ def cross_source(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping
         lp, kp = _num(l.get("stop_price")), _num(k.get("stop_price"))
         if lifecycle not in working and lifecycle != "filled":
             out.append(finding(row, "NT_STOP_CROSS_CHECK", "MISMATCH",
-                               f"{acct} {sym}: stop_last_known still shows a {k.get('status')} stop; "
+                               f"{who}: stop_last_known still shows a {k.get('status')} stop; "
                                f"stop_lifecycle says {lifecycle}", account=acct, symbol=sym,
                                shown=shown, truth=truth))
         elif lp is not None and kp is not None and abs(lp - kp) > 0.005:
             out.append(finding(row, "NT_STOP_CROSS_CHECK", "MISMATCH",
-                               f"{acct} {sym}: stop_lifecycle {_fmt(lp)} vs stop_last_known {_fmt(kp)}",
+                               f"{who}: stop_lifecycle {_fmt(lp)} vs stop_last_known {_fmt(kp)}",
                                account=acct, symbol=sym, shown=shown, truth=truth))
     return out
 
