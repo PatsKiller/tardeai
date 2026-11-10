@@ -59,7 +59,23 @@ SCOPE_DEFINITIONS = {
     "holdings.cash": "cash rows (CASH/SPAXX/FDRXX) in the holdings store",
 }
 CASH_SYMBOLS = frozenset({"CASH", "SPAXX", "FDRXX"})
-MIN_POSITION_USD = 100.0
+
+
+def _load_min_position_usd(default: float = 100.0) -> float:
+    """The over-floor threshold lives in config/position_count_authority.json (LQ-20261107-1820)."""
+    import json
+    from pathlib import Path
+
+    try:
+        raw = json.loads((Path(__file__).resolve().parents[2] / "config" / "position_count_authority.json")
+                         .read_text(encoding="utf-8"))
+        v = float(raw["min_position_usd"])
+        return v if v == v and v >= 0 else default
+    except (OSError, ValueError, KeyError, TypeError):
+        return default
+
+
+MIN_POSITION_USD = _load_min_position_usd()
 DEFAULT_TOLERANCE_USD = 1.0
 BASIS_STORE_FIELD = TOTAL_FIELD
 BASIS_ROW_SUM = "holdings[].market_value"

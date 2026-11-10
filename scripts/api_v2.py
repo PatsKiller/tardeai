@@ -3828,7 +3828,11 @@ def overview():
     holdings = h.get("holdings", [])
     totals = h.get("portfolio_totals", {})
     periods = perf.get("periods", {})
-    active_positions = [p for p in holdings if not p.get("is_cash") and (p.get("market_value") or 0) > 100]
+    try:
+        from lib.portfolio_total_contract import MIN_POSITION_USD as _min_pos_usd
+    except ImportError:  # pragma: no cover - imported as scripts.<module>
+        from scripts.lib.portfolio_total_contract import MIN_POSITION_USD as _min_pos_usd
+    active_positions = [p for p in holdings if not p.get("is_cash") and (p.get("market_value") or 0) > _min_pos_usd]
 
     # ── Data Broker Wave B: pre-computed snapshot replaces individual recomputes ──
     from lib.data_broker.portfolio_snapshot import get_portfolio_snapshot
@@ -5539,6 +5543,14 @@ def _overview_with_today_move():
             basis="live_mark",
             reason=f"store totals unavailable: {type(exc).__name__}: {exc}"[:200],
         )
+    try:  # LQ-20261107-1820: one authority for every position count on this response
+        try:
+            from lib import position_count_authority
+        except ImportError:  # pragma: no cover - imported as scripts.<module>
+            from scripts.lib import position_count_authority
+        position_count_authority.publish_position_counts(out, doc.get("portfolio") or {})
+    except Exception as exc:  # noqa: BLE001 -- say so; never headline a count with no named source
+        out["position_counts_authority_error"] = f"{type(exc).__name__}: {exc}"[:200]
     try:
         from portfolio_snapshot_sanity import account_market_days, portfolio_market_day
 

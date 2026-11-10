@@ -1,0 +1,4 @@
+{
+  "_comment": "LQ-20261107-1820: the one value floor for the 'over floor' position-count scope. Every surface reads it through scripts/lib/portfolio_total_contract.py; do not hardcode it.",
+  "min_position_usd": 100.0
+}

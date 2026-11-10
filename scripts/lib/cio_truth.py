@@ -258,7 +258,7 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
     at = aggregate_clock["as_of"]
     noncash = [r for r in rows if not r["is_cash"] and not r.get("is_loan")]
     held = [r for r in noncash if (_number(r.get("shares", r.get("quantity"))) or 0) > 0]
-    counted = [r for r in held if (_number(r.get("market_value")) or 0) >= 100]
+    counted = [r for r in held if (_number(r.get("market_value")) or 0) >= _min_position_usd()]
     keys = {(r["account_id"], str(r.get("symbol") or "").upper()) for r in counted}
     accounts = []
     summaries: dict[str, list[dict]] = {}
@@ -798,7 +798,7 @@ def broker_cannot_hold_stop(row: dict) -> bool:
 def security_inputs_for(security_guid, *, document, projection=None, db_query=None, now=None) -> dict:
     """Canonical facts for W10's Input/Subject adapters; no comparison rules."""
     stance = stance_for(security_guid, projection=projection, db_query=db_query, now=now)
-    positions = [r for r in document["positions"]["rows"] if (_number(r.get("market_value")) or 0) >= 100]
+    positions = [r for r in document["positions"]["rows"] if (_number(r.get("market_value")) or 0) >= _min_position_usd()]
     held_rows = [r for r in positions if r.get("security_guid") == security_guid]
     complete = bool(document["portfolio"]["holdings"]) and all(r.get("security_guid") for r in positions)
     held = True if held_rows else False if complete else None
@@ -1456,6 +1456,11 @@ def _portfolio_total_contract(p: dict) -> dict:
     return out
 
 
+def _min_position_usd() -> float:
+    from .portfolio_total_contract import MIN_POSITION_USD
+    return MIN_POSITION_USD
+
+
 def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None, document=None) -> dict:
     """Preserve unrelated Overview fields, replace shared financial/display facts."""
     doc = document or resolve(root, now, db_query=db_query, inputs=inputs)
@@ -2006,7 +2011,7 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
         p.update({k: v for k, v in stop.items() if k not in ("source", "as_of", "age_hours", "stale", "gap")})
         p["stop_evidence"] = {k: stop[k] for k in ("source", "as_of", "age_hours", "stale", "gap")}
         positions.append(p)
-    counted_positions = [p for p in positions if (_number(p.get("market_value")) or 0) >= 100]
+    counted_positions = [p for p in positions if (_number(p.get("market_value")) or 0) >= _min_position_usd()]
     unproven_positions = [p for p in counted_positions if _unproven_protection(p)]
     unproven_ids = {id(p) for p in unproven_positions}
     # Proven unprotected only: an unproven row is neither protected nor unprotected, so it never adds to the
