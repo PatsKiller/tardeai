@@ -25,6 +25,7 @@ import os
 import resource
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -97,7 +98,9 @@ def run(*, path: Path) -> dict:
         info.update(meta)
         return body
 
-    started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    # Full precision (LQ-20261107-1795): the executor binds the receipt start to its attempt window, and a start
+    # truncated to the second reads as before the attempt that launched it (receipt_outside_attempt_window).
+    started = datetime.now(timezone.utc).isoformat()
     try:
         out = op.build(compute, path=path, identity=lambda: info.get("identity") or "unknown",
                        state_dir=lambda: info.get("state_dir"))
