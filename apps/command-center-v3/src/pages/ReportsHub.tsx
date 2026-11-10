@@ -280,8 +280,10 @@ function BriefMode({ categories }: { categories: any[] }) {
     cap: 8,
   }), [todayBriefActions, positions, briefBody])
   const triggeredN = positions.filter((p: any) => p.triggered).length
-  // LQ-20261107-1837 (C4): no second count over `positions[]`. cio_truth's stop_health block behind
-  // /api/v2/risk is the authority the Risk and Home pages read (`!stop_price` counted rows with no working stop).
+  // LQ-20261107-1837 (C4): no second count over `positions[]`. This reads /api/v2/risk's
+  // `stop_health.unprotected_count` — a recount over risk_management.json positions with no $100 floor and no
+  // unproven exclusion, NOT cio_truth's counted figure (rows >= $100, unproven set excluded; metricAuthority.ts:95-98).
+  // The two agreed 5 = 5 live on 2026-11-10 and are not guaranteed to; the residual is READY §R2.7.
   const unprotN = unprotectedFromRisk(risk).count
   const stripCells = buildStripCells({
     portfolioValue: overview?.portfolio_value,

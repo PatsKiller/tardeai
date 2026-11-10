@@ -160,8 +160,10 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
         <>
           {/* LQ-20261107-1837 (C4): `positions[].has_stop` was a second calculation over every row — it counted
               the sub-$100 residuals and read a planned level as a stop, so Health printed a wider number than
-              Risk and Home. `unprotectedFromRisk` reads the cio_truth stop_health block behind /api/v2/risk:
-              the same field, the same counted rows (working broker stop only). */}
+              Risk and Home. `unprotectedFromRisk` reads /api/v2/risk's `stop_health.unprotected_count`, which is
+              itself a recount over risk_management.json positions with NO $100 floor and no unproven exclusion —
+              cio_truth counts rows >= $100 and leaves the unproven set out (metricAuthority.ts:95-98). It agreed
+              5 = 5 live on 2026-11-10 and is not guaranteed to; the residual is READY §R2.7. */}
           <RiskHealthStrip
             heatPct={riskData?.portfolio_heat_pct ?? null}
             healthScore={overall}

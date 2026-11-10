@@ -126,6 +126,18 @@ test('a live count with no counted value is a gap, never the projection\'s value
   assert.equal(by.stops.staleReason, null, 'the projection\'s stale reason does not date the live pair')
 })
 
+// REWORK 3 (N1): the mirror case — cio_truth publishes the counted VALUE but not the count. The pair rule makes
+// that a legitimate answer, so the stop line shows its real dollar figure with a count gap; `(count ?? 0) > 0`
+// then read the gap as zero and painted that figure GREEN. An unknown count is not a measurement of zero.
+test('a live value with no count is never painted green', () => {
+  const live = { unprotected: { count: null, valueUsd: 4_000, asOf: null } }
+  const by = Object.fromEntries(defenseLines(P, new Date('2030-01-07T21:00:00Z'), live).map(l => [l.id, l]))
+  assert.equal(by.stops.value, '$4.0K', 'the value it published is shown')
+  assert.equal(by.stops.sub, `${GAP} without a broker stop · 1 pending`, 'the count is a gap, not 2')
+  assert.ok(by.stops.tone !== 'good', 'an unknown count must not read as "nothing unprotected"')
+  assert.equal(by.stops.tone, 'muted', 'no reading, no colour claim')
+})
+
 test('the unprotected pair never mixes sources, in either direction', () => {
   const onlyValue = unprotectedPair(P, { unprotected: { count: null, valueUsd: 4_000, asOf: null } })
   assert.equal(onlyValue.count, null, 'a count cio_truth did not publish is a gap, never the projection\'s 2')

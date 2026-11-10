@@ -252,7 +252,10 @@ export function defenseLines(p: DefenseProjection, now: Date = new Date(), live?
       tone: (num(e.stressed_pct_invested) ?? 0) >= 10 ? 'warn' : 'muted', asOf: e.as_of, staleReason: e.stale_reason },
     { id: 'stops', sheet: 'stops', label: 'Stop coverage',
       sub: `${unprot.count ?? GAP} without a broker stop · ${s.pending?.count ?? GAP} pending`,
-      value: money(unprot.valueUsd), valueSub: 'unprotected', tone: (num(unprot.count) ?? 0) > 0 ? 'warn' : 'good',
+      // REWORK 3 (N1): an unknown count is not zero. `?? 0` painted a real cio_truth dollar figure green when the
+      // record published the value but not the count — the pair rule makes that a legitimate answer, so the tone
+      // must say "no reading", never "nothing unprotected". Unknown beats wrong.
+      value: money(unprot.valueUsd), valueSub: 'unprotected', tone: unprot.count == null ? 'muted' : unprot.count > 0 ? 'warn' : 'good',
       asOf: unprot.asOf, staleReason: unprot.staleReason },
     { id: 'hedge', sheet: 'hedge', label: 'Hedge readiness',
       sub: h.met_count != null && h.of != null ? `${h.met_count} of ${h.of} triggers met` : (h.stale_reason ?? GAP),
