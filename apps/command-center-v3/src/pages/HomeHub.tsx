@@ -131,7 +131,14 @@ function HomeClassic({ onDrill }: Props) {
   const journalPnl = journal?.total_pnl
   const positions = risk?.positions ?? []
   const triggered = positions.filter((p: any) => p.triggered)
-  const heat = risk?.portfolio_heat_pct ?? 0
+  // LQ-20261107-1837 REWORK 2 (F3): this deprecated page (reachable at /v3/?view=classic for one release) cannot
+  // read the ticket's two authorities without a new cio/pages fetch, and /api/v2/risk's heat is a DIFFERENT number
+  // (risk_management.json's daily heat over every configured stop, scripts/lib/data_broker/risk_snapshot.py) —
+  // so the gauge names that definition instead of pretending to be cio_truth's portfolio heat, and a missing
+  // reading is "Unknown", never 0%. Routing both gauges through the accessors is the deletion of this view.
+  const heat = typeof risk?.portfolio_heat_pct === 'number' && Number.isFinite(risk.portfolio_heat_pct)
+    ? risk.portfolio_heat_pct : null
+  const noStopCount = positions.filter((p: any) => !p.has_stop).length
   const pendingCount = proposals?.pending_count ?? 0
   const pipelineStatus = overview?.pipeline_status
   const deployRecent = (deployData?.recent_14d_count ?? deployData?.events?.length ?? 0) as number
@@ -522,14 +529,21 @@ function HomeClassic({ onDrill }: Props) {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 14 }}>
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
-              {riskLoading ? <SkelBlock h={100} /> : <RiskGauge value={heat} max={15} threshold={5} label="Portfolio heat" unit="%" height={100} />}
+              {riskLoading ? <SkelBlock h={100} /> : <RiskGauge value={heat} max={15} threshold={5} label="Daily heat · all stops" unit="%" height={100} />}
             </div>
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
               {riskLoading ? <SkelBlock h={100} /> : <RiskGauge value={triggered.length} max={Math.max(triggered.length, 5)} threshold={1} label="Stops triggered" unit="" height={100} />}
             </div>
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
-              {riskLoading ? <SkelBlock h={100} /> : <RiskGauge value={positions.filter((p: any) => !p.has_stop).length} max={Math.max(positions.length, 8)} threshold={2} label="Unprotected" unit="" height={100} />}
+              {riskLoading ? <SkelBlock h={100} /> : <RiskGauge value={noStopCount} max={Math.max(positions.length, 8)} threshold={2} label="No stop set · all rows" unit="" height={100} />}
             </div>
+          </div>
+          {/* LQ-20261107-1837 REWORK 2 (F3): the classic view's two risk gauges read a different store from Home's
+              cio_truth figures ("no broker stop" over counted rows), so the labels name their own definition and
+              this line says whose numbers these are. The default Home view carries the ticket's matched pairs. */}
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: -8, marginBottom: 14 }}>
+            Classic view · both gauges read /api/v2/risk (risk_management.json): daily heat across configured
+            stops, and every row with no stop. The cio_truth pair is on the default Home view.
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16, marginBottom: 16 }}>
@@ -587,8 +601,8 @@ function HomeClassic({ onDrill }: Props) {
                   </div>
                 </div>
               )}
-              {heat > 5 && (
-                <div onClick={() => onDrill({ title: 'Portfolio Heat', subtitle: thresholdSentence('Heat', heat, 5), endpoint: '/api/v2/risk', rows: [{ portfolio_heat_pct: heat, total_risk: risk?.total_risk_dollars }] })}
+              {heat != null && heat > 5 && (
+                <div onClick={() => onDrill({ title: 'Daily heat (all stops)', subtitle: thresholdSentence('Heat', heat, 5), endpoint: '/api/v2/risk', rows: [{ portfolio_heat_pct: heat, total_risk: risk?.total_risk_dollars }] })}
                   style={{ padding: '10px 12px', background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.25)', borderRadius: 8, cursor: 'pointer' }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: TOKENS.warning }}>Heat {heat}%</div>
                   <div style={{ fontSize: 10, color: TOKENS.warning, marginTop: 2 }}>{thresholdSentence('Heat', heat, 5).split('— ')[1]}</div>

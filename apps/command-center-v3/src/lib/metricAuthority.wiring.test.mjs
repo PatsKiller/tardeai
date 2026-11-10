@@ -75,6 +75,13 @@ const homeLib = codeOnly(app('lib/homeDoNow.ts'))
 check(/unprotectedFact\(answered \? pages : null\)/.test(homeLib), 'Home does not take the unprotected pair from one accessor (F2)')
 check(!/unprotected_counted_value_usd \?\? pages\?\.positions\?\.unprotected_value_usd/.test(homeLib),
   'Home still re-derives the counted/wide rule with `??` (F2)')
+// REWORK 2 (F3): the deprecated classic view cannot read cio_truth without a new cio/pages fetch, so it names
+// its own definitions instead of borrowing Home's words, and a missing heat reading stays Unknown, never 0%.
+const homeHub = codeOnly(app('pages/HomeHub.tsx'))
+check(!/portfolio_heat_pct \?\? 0/.test(homeHub), 'classic Home still reads a missing heat as 0% (F3)')
+check(/label="Daily heat · all stops"/.test(homeHub), 'classic Home does not name its heat gauge\'s own definition (F3)')
+check(/label="No stop set · all rows"/.test(homeHub), 'classic Home still labels a whole-book recount "Unprotected" (F3)')
+check(/Classic view · both gauges read \/api\/v2\/risk/.test(homeHub), 'classic Home does not say whose numbers its gauges are (F3)')
 
 if (failed) { console.error(`metricAuthority wiring: ${failed} failure(s)`); process.exit(1) }
 console.log('metricAuthority wiring: ok')
