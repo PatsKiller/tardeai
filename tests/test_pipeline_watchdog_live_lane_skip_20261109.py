@@ -37,8 +37,9 @@ def wd(monkeypatch):
     sys.modules.pop("pipeline_watchdog", None)
 
 
-def _lane(lane_id, match, *, mode="live", state="ACTIVE"):
+def _lane(lane_id, match, *, mode="live", state="ACTIVE", **extra):
     row = {"lane_id": lane_id, "state": state, "scheduler": {"match": match}}
+    row.update(extra)
     if mode is not None:
         # the full block `lane_dispatch.parse_dispatch_block` requires
         row["dispatch"] = {
@@ -236,3 +237,93 @@ def test_handle_pipeline_issues_fails_closed_without_a_registry(wd, monkeypatch,
         wd.handle_pipeline_issues(_Conn([]), [dict(issue)])
     assert ran == []
     assert any("fail closed" in r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR)
+
+
+# ── LQ-20261107-1736: the flag's VALUE, and the dispatcher's own refusal ──────
+#
+# cc-deepseek-8's review of 1722 (REVIEW-LQ-20261107-1722-cc-deepseek-8.md §6) found two edges where the
+# guard classified a row the dispatcher does not run as "the lane's job":
+#   6a  a flag was its NAME only, so `--mode weekly` and `--mode daily` were the same job;
+#   6b  the guard read `dispatch.mode` without `dispatch_eligible`, so a live-marked lane the dispatcher
+#       refuses (operator hold, stay_on_cron, a forbidden token) was skipped by the watchdog too — the job
+#       then runs nowhere with only an INFO line. 0 of 110 live lanes are ineligible today; latent.
+# Both err toward NOT running a job. 6c (registry copies unioned) and 6d (`--` parsed as a flag) stay open
+# and safe-direction; they are not in this ticket.
+
+
+def test_a_flag_value_is_part_of_the_lane_identity(wd, monkeypatch, tmp_path):
+    monkeypatch.setenv(
+        wd.LANE_REGISTRY_ENV,
+        str(_registry(tmp_path, _lane("gen-weekly", "scripts/gen_report.py --mode weekly"))),
+    )
+    issues = _issues(wd, [_row("gen_report", ".venv/bin/python scripts/gen_report.py --mode daily")])
+    assert [i["script"] for i in issues] == ["gen_report"]
+
+
+def test_the_same_flag_value_still_matches(wd, monkeypatch, tmp_path):
+    monkeypatch.setenv(
+        wd.LANE_REGISTRY_ENV,
+        str(_registry(tmp_path, _lane("gen-weekly", "scripts/gen_report.py --mode weekly"))),
+    )
+    assert _issues(wd, [_row("gen_report", ".venv/bin/python scripts/gen_report.py --mode weekly")]) == []
+
+
+def test_the_equals_form_of_a_flag_carries_the_same_value(wd, monkeypatch, tmp_path):
+    monkeypatch.setenv(
+        wd.LANE_REGISTRY_ENV,
+        str(_registry(tmp_path, _lane("gen-weekly", "scripts/gen_report.py --mode weekly"))),
+    )
+    assert _issues(wd, [_row("gen_report", ".venv/bin/python scripts/gen_report.py --mode=weekly")]) == []
+    issues = _issues(wd, [_row("gen_report", ".venv/bin/python scripts/gen_report.py --mode=daily")])
+    assert [i["script"] for i in issues] == ["gen_report"]
+
+
+def test_a_value_less_lane_flag_still_matches_a_row_that_passes_an_argument(wd, monkeypatch, tmp_path):
+    # the lane names the flag and no value: whatever the row passes is still the same job
+    monkeypatch.setenv(
+        wd.LANE_REGISTRY_ENV,
+        str(_registry(tmp_path, _lane("backfill", "scripts/backfill.py --run"))),
+    )
+    assert _issues(wd, [_row("backfill", ".venv/bin/python scripts/backfill.py --run 500")]) == []
+
+
+def test_a_live_lane_the_dispatcher_refuses_is_still_checked(wd, monkeypatch, tmp_path, caplog):
+    # stay_on_cron is a B1 reconcile marker: dispatch_eligible refuses it whatever the dispatch block says.
+    monkeypatch.setenv(
+        wd.LANE_REGISTRY_ENV,
+        str(_registry(tmp_path, _lane("kept-on-cron", "scripts/kept_job.py", stay_on_cron=True))),
+    )
+    with caplog.at_level(logging.INFO, logger=wd.log.name):
+        issues = _issues(wd, [_row("kept_job", ".venv/bin/python scripts/kept_job.py")])
+    assert [i["script"] for i in issues] == ["kept_job"]
+    assert any("dispatcher refuses it" in r.getMessage() for r in caplog.records)
+
+
+def test_a_forbidden_token_makes_the_lane_not_live_for_the_watchdog(wd, monkeypatch, tmp_path):
+    # the §23.20 ceiling: a lane whose match names a broker-execution token is never dispatched
+    monkeypatch.setenv(
+        wd.LANE_REGISTRY_ENV,
+        str(_registry(tmp_path, _lane("schwab-sync", "scripts/schwab_sync.py"))),
+    )
+    issues = _issues(wd, [_row("schwab_sync", ".venv/bin/python scripts/schwab_sync.py")])
+    assert [i["script"] for i in issues] == ["schwab_sync"]
+
+
+def test_an_eligibility_error_keeps_the_lane_live(wd, monkeypatch, tmp_path, caplog):
+    # the registry row parses and says live; only OUR eligibility call failed. The dispatcher may still run
+    # it, so the row must stay skipped (the original harm) and the failure must be said out loud.
+    from lib import lane_dispatch
+
+    monkeypatch.setenv(
+        wd.LANE_REGISTRY_ENV,
+        str(_registry(tmp_path, _lane("incubator-llm-screener", "scripts/incubator_llm_screener.py"))),
+    )
+
+    def _boom(_row, **_kw):
+        raise RuntimeError("policy unreadable")
+
+    monkeypatch.setattr(lane_dispatch, "dispatch_eligible", _boom)
+    with caplog.at_level(logging.ERROR, logger=wd.log.name):
+        assert _issues(wd, [_row("incubator_llm_screener",
+                                 "python3 scripts/incubator_llm_screener.py --run")]) == []
+    assert any("eligibility unreadable" in r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR)

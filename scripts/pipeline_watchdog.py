@@ -289,6 +289,15 @@ def _runs_today(run_days, now) -> bool:
 # ingestion, whose lane is not live). Matching on the script alone would silence a
 # job the dispatcher does not own, so every flag in the lane's match must also
 # appear in the row's command.
+#
+# A flag's VALUE is part of its identity (LQ-20261107-1736, review 6a): `--mode weekly` and
+# `--mode daily` are two jobs. A lane that names a value must see that value in the row; a lane
+# that names only the flag (`--tail-rotate`) accepts whatever value the row passes.
+#
+# And "dispatch.mode live" is not the same as "the dispatcher will run it" (review 6b): an operator
+# hold, a stay_on_cron / KEEP_ON_CRON marker, a stay-behind row or a forbidden token refuses the lane
+# whatever the block says (lane_dispatch.dispatch_eligible), so such a row stays checked here — the
+# watchdog is then the only scheduler it has.
 
 LANE_REGISTRY_ENV = "TRADEAI_LANE_REGISTRY"
 _SCRIPT_NAME_RE = re.compile(r"(?:^|/)([\w.+-]+\.(?:py|sh))$")
@@ -302,8 +311,42 @@ def _command_tokens(text) -> list:
     return [t for t in stripped.split() if ">&" not in t]
 
 
-def _flags(tokens) -> frozenset:
-    return frozenset(t.split("=", 1)[0] for t in tokens if _FLAG_RE.match(t))
+def _flag_pairs(tokens) -> dict:
+    """{name: value or None} for `--flag`, `--flag=value` and `--flag value`.
+
+    The value is what separates two jobs that share a script and a flag name (LQ-20261107-1736).
+    Only the token after a flag is read as its value, so the script path and a trailing argument of a
+    boolean flag (`--run 500`) behave as they did before: the lane that names no value accepts any.
+    """
+    out = {}
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if _FLAG_RE.match(tok):
+            if "=" in tok:
+                name, val = tok.split("=", 1)
+                out[name] = val
+            elif i + 1 < len(tokens) and not _FLAG_RE.match(tokens[i + 1]):
+                out[tok] = tokens[i + 1]
+                i += 1
+            else:
+                out[tok] = None
+        i += 1
+    return out
+
+
+def _flags_cover(lane_flags: dict, row_flags: dict) -> bool:
+    """True when the row runs every flag the lane's match names, with the value the lane names.
+
+    A lane value of None is name-only: the row may pass any argument. A named value must match
+    exactly (`--mode weekly` is not `--mode daily`).
+    """
+    for name, val in lane_flags.items():
+        if name not in row_flags:
+            return False
+        if val is not None and row_flags[name] != val:
+            return False
+    return True
 
 
 def _script_basenames(tokens) -> set:
@@ -341,17 +384,23 @@ def _lane_registry_paths():
 
 
 def _live_lane_index(paths=None):
-    """basename -> [(lane_id, flags, state)] for the lanes the dispatcher runs live.
+    """basename -> [(lane_id, {flag: value or None}, state)] for the lanes the dispatcher runs live.
 
     None means no registry copy could be read at all: callers must skip every job.
     A row with no well-formed dispatch block is not live (`dispatch_mode` fails
     closed to "off"), so a malformed row can never hide a live lane behind an
     exception, and can never be silently skipped either.
+
+    "Live" is the dispatcher's own predicate, not the block alone (LQ-20261107-1736, review 6b): a lane
+    `dispatch_eligible` refuses (operator hold, stay_on_cron / KEEP_ON_CRON, stay_behind, a forbidden
+    token) is not indexed, so its schedule row stays checked. An eligibility call that cannot be made
+    keeps the lane live — the dispatcher may still run it, and a second scheduler is the harm this
+    guard exists for — and says so at ERROR.
     """
     try:
-        from lib.lane_dispatch import dispatch_mode
+        from lib.lane_dispatch import dispatch_eligible, dispatch_mode
     except ImportError:  # imported as scripts.pipeline_watchdog
-        from scripts.lib.lane_dispatch import dispatch_mode
+        from scripts.lib.lane_dispatch import dispatch_eligible, dispatch_mode
 
     index = {}
     readable = 0
@@ -384,12 +433,24 @@ def _live_lane_index(paths=None):
                 mode = "off"
             if mode != "live":
                 continue
+            try:
+                eligible, why = dispatch_eligible(row)
+            except Exception as exc:
+                # The block says live and only our eligibility call failed: assume the dispatcher may
+                # still run it (skip the row, the harm this guard exists for) and say so.
+                log.error("[watchdog] lane %s eligibility unreadable (%s); keeping it live",
+                          row.get("lane_id"), type(exc).__name__)
+                eligible, why = True, f"eligibility unreadable: {type(exc).__name__}"
+            if not eligible:
+                log.info("[watchdog] lane %s is dispatch.mode live but the dispatcher refuses it (%s); "
+                         "the row stays checked", row.get("lane_id"), why)
+                continue
             sched = row.get("scheduler") or {}
             match = sched.get("match")
             if isinstance(match, (list, tuple)):
                 match = " ".join(str(m) for m in match)
             tokens = _command_tokens(f"{match or ''} {row.get('entrypoint') or ''}")
-            flags = _flags(tokens)
+            flags = _flag_pairs(tokens)
             for name in _script_basenames(tokens):
                 entry = (str(row.get("lane_id") or ""), flags, str(row.get("state") or "").upper())
                 bucket = index.setdefault(name, [])
@@ -410,10 +471,10 @@ def live_lane_for_job(script_name, command, index):
     """(lane_id, state) when a live-dispatched lane owns this schedule row, else None."""
     if not index:
         return None
-    flags = _flags(_command_tokens(command))
+    row_flags = _flag_pairs(_command_tokens(command))
     for name in sorted(_job_script_basenames(script_name, command)):
         for lane_id, lane_flags, state in index.get(name) or ():
-            if lane_flags <= flags:
+            if _flags_cover(lane_flags, row_flags):
                 return lane_id, state
     return None
 
