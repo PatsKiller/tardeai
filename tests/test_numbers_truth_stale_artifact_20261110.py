@@ -276,6 +276,36 @@ def test_the_shipped_config_pages_the_broker_truth_code():
     assert cfg["known_disagreement"] == []
 
 
+def test_the_shipped_page_set_is_exactly_the_expired_stop_code(tmp_path):
+    """LQ-1759: tonight only the genuine page pages. The page set is a config list, pinned at exactly one code."""
+    from scripts.lib import numbers_truth_strikes as strikes
+
+    cfg = json.loads((ROOT / "config/numbers_truth_heal.json").read_text(encoding="utf-8"))
+    assert strikes.page_codes(cfg) == frozenset({"NT_STOP_EXPIRED"})
+
+
+def test_the_unprotected_count_never_pages_even_at_strike_four(tmp_path):
+    """The 1749 proof's false positive: /cio uncovered_count counted a mutual fund and paged with a path.
+
+    The producer fix is LQ-1740; until it folds, this face must reach the operator as a FINDING and a ticket only.
+    """
+    f = _finding("NT_UNPROTECTED", figure="cio.uncovered_count", symbol=None, account=None,
+                 shown={"value": 2}, truth={"value": 3})
+    state = tmp_path / "state.json"
+    _write(state, {"schema": S.STATE_SCHEMA, "figures": {
+        f["fingerprint"]: {"consecutive_fails": 3, "status": "striking", "page": "/cio",
+                           "figure_id": f["figure_id"], "account": f["account"], "symbol": "",
+                           "check": f["code"]}}})
+    got = S.run(findings=[f], state_path_=state, config_path=ROOT / "config/numbers_truth_heal.json",
+                apply=True, now=NOW, heal=_boom, escalate=lambda **kw: {"ok": True, "queued": True},
+                critical=_boom, inbox=tmp_path / "inbox")
+    decision = got["decisions"][0]
+    assert decision["action"] == S.ACTION_TICKET
+    assert decision["paged"] is False
+    assert got["actions"][0]["taken"]["page_suppressed"] == "code_not_in_page_codes"
+    assert got["counts"]["paged"] == 0
+
+
 def test_the_heal_lane_resolves_a_route_page_with_its_leading_slash():
     f = _finding("NT_STOP_PRICE_MISMATCH")
     lane, why = S.heal_lane(f, {**CONFIG, "by_page": {"cio": "cio-overnight-brief"}})
