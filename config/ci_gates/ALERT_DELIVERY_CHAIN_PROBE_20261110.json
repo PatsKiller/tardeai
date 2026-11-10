@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ALERT_DELIVERY_CHAIN_PROBE_20261110",
+  "files": [
+    "tests/test_alert_delivery_chain_probe_1839_20261110.py"
+  ],
+  "anchor": "ALERT_DELIVERY_CHAIN_PROBE_20261110",
+  "comment": [
+    "ANCHOR: ALERT_DELIVERY_CHAIN_PROBE_20261110 — LQ-20261107-1839 (C1): the alert delivery chain is measured, not assumed. scripts/alert_delivery_chain_probe.py reads alert_occurrences -> alert_notification_deliveries / alert_digest_queue -> a provider message id (or the matched communication_events row the legacy sender wrote) and reports per alert the four timestamps or the link that is missing. A suppression reason that claims 'legacy owns delivery' is not a receipt: with legacy_delivered absent the chain is NOT OBSERVABLE, with false it is not_delivered, and only a Telegram/provider message id counts as received.",
+    "The test file is synthetic-only (the repo is public) and pins one case per break class: not_queued, stuck_in_queue, orphaned_claim, send_failed, legacy_undelivered_queued, held_by_editor, not_delivered, delivered_without_receipt, receipt_unobservable (both the unreported and the self-report variants), queue_stage_missing, digest_never_claimed, digest_claimed_never_included, no_push_route, plus the incident roll-up, the percentage arithmetic, and the UNVERIFIABLE verdict when there is no DB."
+  ]
+}
