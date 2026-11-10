@@ -387,7 +387,12 @@ def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, score
     relevance = scores.get("relevance_score", 0)
     catalyst_state = "skipped"          # no catalyst named: the default, and the honest one
 
-    if relevance > 0.3:
+    try:
+        from lib.catalyst_freshness import is_backfill
+        aged = is_backfill(article.get("published_at"))   # LQ-20261107-1817: backfill is news, not a new catalyst
+    except Exception:  # noqa: BLE001 -- a broken gate must not stop ingest; the row is then treated as fresh
+        aged = False
+    if relevance > 0.3 and not aged:
         try:
             from news_to_catalyst import _classify, _severity_from_weight
             ctype = _classify(title, summary)

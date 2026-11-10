@@ -30,6 +30,15 @@ PERIODIC = {"10-Q": ("filing_quarterly", "medium", "Quarterly report"),
 HIGH = {"high"}
 
 
+def _published(f: dict[str, Any], filed: date) -> str:
+    """EDGAR acceptance time when the submissions payload carries it (date-only filingDate is midnight UTC, which
+    made every filing look 5-29 h old at ingest -- LQ-20261107-1817); else the filing date."""
+    acc = str(f.get("accepted_at") or "").strip()
+    if acc and acc[:10] == filed.isoformat():
+        return acc if acc.endswith("Z") or "+" in acc[10:] else acc + "+00:00"
+    return filed.isoformat()
+
+
 def events_from_filings(symbol: str, filings: list[dict[str, Any]], *, since_days: int = 45,
                         today: Optional[date] = None) -> list[dict[str, Any]]:
     today = today or date.today()
@@ -55,7 +64,7 @@ def events_from_filings(symbol: str, filings: list[dict[str, Any]], *, since_day
                 "symbol": symbol.upper(), "catalyst_type": ctype, "severity": sev,
                 "headline": f"{symbol.upper()} {form}: {label} ({tag}) filed {filed.isoformat()}",
                 "description": f"SEC {form} {tag}: {label}. Accession {f.get('accession_number')}.",
-                "source": "sec_edgar", "source_url": f.get("sec_url") or "", "published_at": filed.isoformat(),
+                "source": "sec_edgar", "source_url": f.get("sec_url") or "", "published_at": _published(f, filed),
             })
     return out
 
@@ -76,7 +85,7 @@ def filings_from_submissions(cik: str, submissions: dict[str, Any]) -> list[dict
         acc = col("accessionNumber", i)
         doc = col("primaryDocument", i)
         out.append({"form": f, "filing_date": col("filingDate", i), "accession_number": acc,
-                    "items": col("items", i),
+                    "items": col("items", i), "accepted_at": col("acceptanceDateTime", i),
                     "sec_url": (f"https://www.sec.gov/Archives/edgar/data/{str(cik).lstrip('0')}/"
                                 f"{acc.replace('-', '')}/{doc}" if acc and doc else "")})
     return out

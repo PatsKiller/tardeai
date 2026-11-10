@@ -150,6 +150,12 @@ def _receipt_lib():
     return lr
 
 
+try:
+    from lib.catalyst_freshness import is_backfill as _is_backfill
+except Exception:  # noqa: BLE001
+    from scripts.lib.catalyst_freshness import is_backfill as _is_backfill  # type: ignore
+
+
 def _dry_report(lane_id, summary, *, would_write, json_stdout=False):
     """lane_last_receipt.dry_run_report, sent to stderr when stdout carries the script's JSON report."""
     import contextlib
@@ -219,9 +225,13 @@ def run(as_json: bool = False, *, single_symbol: str | None = None, dry_run: boo
     # the lane considered and did not write. Counting them together made a full run that created 80 rows grade
     # "skipped 420 items, more than it produced (80)" (WORK-QUEUE item 26).
     excluded = {"research_directive_slug": 0, "not_in_ticker_universe": 0, "acronym_not_issuer": 0}
-    skipped = {"already_present": 0}
+    skipped = {"already_present": 0, "backfill_aged": 0}
     attempted = 0
     for nid, symbol, strategy_type, title, summary, source, source_url, published_at in rows:
+        # LQ-20261107-1817: an article published long before ingest is a backfill, not a new catalyst.
+        if _is_backfill(published_at):
+            skipped["backfill_aged"] += 1
+            continue
         # Filter BEFORE classify/LLM spend — junk must not reach identity later.
         if is_research_directive_slug is not None and is_research_directive_slug(symbol):
             excluded["research_directive_slug"] += 1

@@ -1,0 +1,5 @@
+{
+  "schema": "CatalystIngestFreshness@v1",
+  "max_publish_age_hours": 72,
+  "_why": "LQ-20261107-1817. 7d publish-to-ingest P90 was 414 h: items published weeks to years earlier were minted as new catalyst_events rows (14.5% of 7d rows were >7 d old). An item older than this many hours at ingest is a backfill, not a new catalyst: it keeps its news_articles row and is counted, but no catalyst_events row is written. 0 disables the gate."
+}
