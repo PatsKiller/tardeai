@@ -400,12 +400,54 @@ def test_lane_dispatch_block_passes_the_platform_gate():
     assert not ld.validate_dispatch_block(row, known_lane_ids=ids)
 
 
-def test_lane_has_a_draft_contract_awaiting_a_non_author_reviewer():
+def _contract_gate(contracts_doc):
+    """The same join scripts/check_n8n_health_contracts.py runs, on a given contracts document."""
+    from scripts.lib import n8n_health_contracts as H
+
+    return H.check(contracts_doc, H.load_json(H.REGISTRY_PATH), H.load_json(H.GENERIC_INDEX_PATH),
+                   allowlist=_json("config/n8n_run_allowlist.json"))
+
+
+def _release_status_errors(res):
+    return [e for e in res["errors"] if "release-status" in e]
+
+
+def test_lane_contract_is_complete_and_never_self_signed():
+    """E6: the author never signs their own contract. DRAFT until a non-author reviewer signs; once signed, the signer
+    must be named and must not be the author. The test holds in both states, so signing does not break it."""
     c = _row(_json("config/n8n_health_contracts.json")["contracts"], "id")
-    assert c["status"] == "DRAFT" and c["review"]["status"] == "DRAFT"  # E6: the author never signs their own
-    assert c["review"]["reviewed_by"] is None and c["review"]["requested_of"]
+    r = c["review"]
     assert c["stage"] == "shadow" and c["baseline"]["timeout_s"] == 120
     assert any("DEPLOYED" in d["text"] for d in c["degraded"])
+    from scripts.lib import n8n_health_contracts as H
+
+    assert H.unknown_fields(c) == []  # nothing is left for the reviewer to fill in: only the signature
+    if c["status"] == "DRAFT":
+        assert r["status"] == "DRAFT" and r["reviewed_by"] is None and r["requested_of"]
+    else:
+        assert c["status"] == "REVIEWED" and r["status"] == "REVIEWED"
+        assert r["reviewed_by"] and r["reviewed_on"]
+        assert "sonnet-5" not in str(r["reviewed_by"]).lower()  # the author (prepared_by) cannot be the signer
+
+
+def test_the_signature_is_the_only_thing_between_this_lane_and_the_contract_gate():
+    """C1 (REVIEW-2027): unsigned the gate names this lane; with a non-author signature on a temp copy it names nothing
+    for this lane. Fail-before / pass-after for the signature, without signing anything in the repo."""
+    import copy
+
+    doc = _json("config/n8n_health_contracts.json")
+    c = _row(doc["contracts"], "id")
+    if c["status"] == "REVIEWED":  # already signed by someone else: the gate must already be clean for this lane
+        assert _release_status_errors(_contract_gate(doc)) == []
+        return
+    errs = _release_status_errors(_contract_gate(doc))
+    assert len(errs) == 1 and errs[0].startswith("DRAFT_NOT_GRANDFATHERED release-status")
+    signed = copy.deepcopy(doc)
+    sc = _row(signed["contracts"], "id")
+    sc["status"] = "REVIEWED"
+    sc["review"].update(status="REVIEWED", reviewed_by="SYNTHETIC non-author reviewer", reviewed_on="2026-11-11")
+    assert _release_status_errors(_contract_gate(signed)) == []
+    assert "release-status" not in signed.get("grandfathered_draft", [])  # never papered over by the grandfather list
 
 
 def test_lane_is_not_activated_anywhere():
