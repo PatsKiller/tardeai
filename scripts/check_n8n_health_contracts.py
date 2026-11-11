@@ -15,9 +15,15 @@ Gate for ``config/n8n_health_contracts.json`` (N8nHealthContract@v1; rules in
   a copy of the registry's; 36 unsynced copies made run_quality call those lanes "not as designed" on 2026-11-06);
 * a lane contract names no registry row (ORPHAN_CONTRACT).
 
-    python3 scripts/check_n8n_health_contracts.py [--json] [--contracts PATH] [--registry PATH]
+It warns when a contract's ``baseline.timeout_s`` disagrees with the lane's ``timeout_s`` in
+``config/n8n_run_allowlist.json`` (TIMEOUT_DRIFT): run_quality grades a run's duration against 80% of that copy, so a
+stale one flags a healthy long run DEGRADED while this gate reported clean (LQ-20261107-1863). A warning, not an
+error: the fix is a reviewed re-derive of the lane's baseline, and a hard failure would redden every drifted lane at
+once.
 
-Exit 0 = pass, 1 = a rule failed, 2 = a file could not be read. Reads three files; writes nothing.
+    python3 scripts/check_n8n_health_contracts.py [--json] [--contracts PATH] [--registry PATH] [--allowlist PATH]
+
+Exit 0 = pass, 1 = a rule failed, 2 = a file could not be read. Reads four files; writes nothing.
 Procedure: docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md §3.
 """
 
@@ -41,16 +47,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--contracts", default=str(H.CONTRACTS_PATH))
     ap.add_argument("--registry", default=str(H.REGISTRY_PATH))
     ap.add_argument("--index", default=str(H.GENERIC_INDEX_PATH))
+    ap.add_argument("--allowlist", default=str(ROOT / "config" / "n8n_run_allowlist.json"))
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
     try:
         doc = H.load_json(Path(args.contracts))
         reg = H.load_json(Path(args.registry))
         idx = H.load_json(Path(args.index))
+        allow = H.load_json(Path(args.allowlist))
     except (OSError, ValueError) as exc:
         print(f"check_n8n_health_contracts: cannot read: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
-    res = H.check(doc, reg, idx)
+    res = H.check(doc, reg, idx, allowlist=allow)
     if args.json:
         print(json.dumps(res, indent=1))
     else:

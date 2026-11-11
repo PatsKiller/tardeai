@@ -196,13 +196,26 @@ def unknown_fields(c: Mapping[str, Any]) -> list[str]:
     return found
 
 
+def allowlist_timeouts(allowlist: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    """lane_id -> ``timeout_s`` from config/n8n_run_allowlist.json (the bound the executor's ``timeout`` enforces)."""
+    if not isinstance(allowlist, Mapping):
+        return {}
+    out: dict[str, Any] = {}
+    for entry in allowlist.get("lanes") or []:
+        if isinstance(entry, Mapping) and entry.get("lane_id"):
+            out[str(entry["lane_id"])] = entry.get("timeout_s")
+    return out
+
+
 def check(
     contracts_doc: Mapping[str, Any],
     registry: Mapping[str, Any],
     index: Mapping[str, Any],
     today: Optional[date] = None,
+    allowlist: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
-    """Join contracts with the registry and the generic INDEX. Returns {errors, warnings, counts}.
+    """Join contracts with the registry, the generic INDEX and (optionally) the run allowlist.
+    Returns {errors, warnings, counts}.
 
     Errors (the gate fails):
       * MISSING_CONTRACT     a registry target (registry_targets) or a generic workflow has no contract;
@@ -212,10 +225,15 @@ def check(
       * DRAFT_AT_LIVE_STAGE  a lane at canary or cutover whose contract is not REVIEWED, or still has UNKNOWN fields;
       * STAGE_DRIFT          the contract's ``stage`` disagrees with ``scheduler.stage`` in the registry;
       * ORPHAN_CONTRACT      a lane contract whose lane_id is no registry row.
-    Warnings: a review_by date in the past (stale provisional baseline).
+    Warnings: a review_by date in the past (stale provisional baseline);
+      TIMEOUT_DRIFT — ``baseline.timeout_s`` disagrees with the allowlist's ``timeout_s`` (when the allowlist is
+      passed). ``duration_degraded_above_s`` is 80% of it, and run_quality grades a live run's duration against that
+      degraded limit, so a stale copy flags a healthy long run (generate-analyst-reports-autonomous-weekly kept 1800
+      after the bound moved to 21600 s and graded an 8722 s run DEGRADED on 2026-11-09 — LQ-20261107-1863).
     """
     today = today or date.today()
     rows = {str(r.get("lane_id")): r for r in registry.get("lanes") or []}
+    bounds = allowlist_timeouts(allowlist)
     contracts = {str(c.get("id")): c for c in contracts_doc.get("contracts") or []}
     grandfathered = set(contracts_doc.get("grandfathered_draft") or [])
     errors: list[str] = []
@@ -246,6 +264,22 @@ def check(
         if st and contract_stage and contract_stage != st:
             errors.append(f"STAGE_DRIFT {cid}: contract stage {contract_stage} but config/lane_registry.json says "
                           f"{st} — re-take the registry stage when the lane graduates")
+        # ``baseline.timeout_s`` is a COPY of the allowlist bound the executor's ``timeout`` enforces, and
+        # ``duration_degraded_above_s`` is 80% of it; run_quality grades a live run's duration against that limit.
+        # A copy not re-taken when the bound moves grades a healthy long run DEGRADED, so the disagreement is
+        # measured here rather than declared clean (LQ-20261107-1863).
+        contract_timeout = (c.get("baseline") or {}).get("timeout_s")
+        lane_timeout = bounds.get(cid)
+        if (
+            type(contract_timeout) in (int, float)
+            and math.isfinite(contract_timeout)
+            and type(lane_timeout) in (int, float)
+            and math.isfinite(lane_timeout)
+            and contract_timeout != lane_timeout
+        ):
+            warnings.append(f"TIMEOUT_DRIFT {cid}: contract baseline.timeout_s {contract_timeout:g} disagrees with "
+                            f"config/n8n_run_allowlist.json timeout_s {lane_timeout:g} — re-derive the baseline "
+                            "(duration_degraded_above_s is 80% of it) when the bound moves")
         rb = str(c.get("review_by") or "")
         if _DATE_RE.match(rb) and date.fromisoformat(rb) < today:
             warnings.append(f"REVIEW_OVERDUE {cid}: review_by {rb}")

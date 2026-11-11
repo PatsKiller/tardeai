@@ -40261,7 +40261,7 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "dispatch:dry_run",
+      "target_reason": "stage:cutover",
       "stage": "cutover",
       "purpose": {
         "text": "Autonomous prospectus pipeline, --mode weekly: regenerate living analyst prospectuses for eligible holdings/watchlist (Sun 21:15)",
@@ -40325,16 +40325,16 @@
           "text": "every dispatcher fire of this lane ends RUN_DONE in mode live (cron line retired: a RUN_SKIPPED_LOCK is a stray trigger, not the cron twin)"
         },
         {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+          "check": "output_advanced",
+          "text": "the live run advanced the registry output_signal logs/analyst_reports_autonomous.log (n8n receipt output_signal_mtime_after > before, or LaneRunReceipt ok_at moved)"
         },
         {
-          "check": "cron_twin_output_fresh",
-          "text": "the live cron line keeps the registry output_signal logs/analyst_reports_autonomous.log fresh within 336.0 h (2x cadence)"
+          "check": "fresh",
+          "text": "the registry output_signal logs/analyst_reports_autonomous.log is younger than 336.0 h (2x cadence); the dispatcher is its only writer since the cron line retired 2026-11-09, so a lock skip leaves it growing stale"
         },
         {
           "check": "duration_within_baseline",
-          "text": "duration <= 1440.0 s (80% of timeout_s 1800)"
+          "text": "duration <= 17280.0 s (80% of timeout_s 21600; the 2026-11-09 02:15-04:40Z measured run took 8722 s)"
         }
       ],
       "degraded": [
@@ -40344,11 +40344,11 @@
         },
         {
           "check": "slow",
-          "text": "duration above 1440.0 s"
+          "text": "duration above 17280.0 s (80% of timeout_s 21600; the measured run takes 8722 s)"
         },
         {
           "check": "retried",
-          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (a stray holder has the lock; the cron twin was retired 2026-11-09)"
         },
         {
           "check": "upstream_stale",
@@ -40381,13 +40381,13 @@
         "freshness_degraded_after_h": 336.0,
         "freshness_failed_after_h": 504.0,
         "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
-        "timeout_s": 1800,
+        "timeout_s": 21600,
         "class": "pipeline",
         "computed_on": "2026-11-07",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
-        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0 n8n live runs); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed. timeout_s re-taken from config/n8n_run_allowlist.json (21600 s, LQ-20261107-1413) after the 2026-11-09 02:15-04:40Z run measured 8722 s (LQ-20261107-1863)",
         "runs_considered": 0,
-        "duration_degraded_above_s": 1440.0
+        "duration_degraded_above_s": 17280.0
       },
       "alerting": {
         "lane_severity": "High",
@@ -40424,7 +40424,7 @@
         "reviewed_on": "2026-10-15",
         "prepared_by": "build_n8n_health_contracts.py DRAFT"
       },
-      "state_note": "CW0 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act. | nightly-20261109: stage cutover (nightly-cutover-controller); cron line retired | applied by cc-deepseek-7 LQ-20261107-1590 with nightly_cutover.dispatcher_row/cutover_contract (controller not run)"
+      "state_note": "CW0 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act. | nightly-20261109: stage cutover (nightly-cutover-controller); cron line retired | applied by cc-deepseek-7 LQ-20261107-1590 with nightly_cutover.dispatcher_row/cutover_contract (controller not run) | LQ-20261107-1863 2026-11-10: the 2026-11-09 02:15Z RUN_SKIPPED_LOCK was the retired cron twin (pid 3552391, 02:15:02-04:40:24Z, 8722 s); baseline re-derived to timeout_s 21600 / 17280 s and the shadow-only criteria (dry_run_writes_nothing, cron_twin_output_fresh) replaced with the live pair (output_advanced, fresh); target_reason stage:cutover"
     },
     {
       "schema": "N8nHealthContract@v1",
