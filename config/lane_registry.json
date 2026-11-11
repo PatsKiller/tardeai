@@ -20962,7 +20962,23 @@
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/atm.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "evidence": "CRON_LOG_REDIRECT",
+        "skip_line_vocabulary": [
+          "ATM cycle skipped",
+          "another instance holds"
+        ]
+      },
+      "progress_signal": {
+        "kind": "db_heartbeat",
+        "table": "atm_state",
+        "column": "last_evaluated_at",
+        "decision_table": "atm_decision_log",
+        "decision_column": "decided_at",
+        "receipt_fields": [
+          "evaluated",
+          "proposals_seen",
+          "decisions_written"
+        ]
       },
       "value_class": "Business Critical",
       "recommendation": "KEEP_ON_CRON",

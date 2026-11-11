@@ -677,6 +677,20 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
     else:
         checks["output_written"] = _check("pass" if written else "fail", written, written_detail)
 
+    # 5b. a log that says only "skipped" is not a run. The lane declares its own skip wording in the registry
+    # (config, not code). When every line its output received during this run says it skipped, the slot did no
+    # work — however recent the file's mtime is. LQ-20261107-1882: 770 "ATM cycle skipped" lines, graded GOOD.
+    skip_vocab = signal.get("skip_line_vocabulary") or []
+    if skip_vocab and kind == "file_mtime" and signal.get("path") and run_start is not None and evidence.get("root"):
+        log_path = (Path(evidence["root"]) / str(signal["path"])).resolve()
+        verdict = skip_only_run(log_path, run_start, skip_vocab)
+        if verdict and verdict[0]:
+            checks["ran_live"] = _check("fail", "skip_only")
+            checks["output_written"] = _check("fail", written, "the file grew because a skip was logged")
+            reasons.append(f"Its log records only a skip for this run ({_ago(when, now)}): "
+                           f"{(verdict[1] or 'skipped').strip()[:200]}. Nothing was evaluated")
+            return result("FAILED", "skip_only", graded=graded)
+
     # 6. item count
     count, count_key = None, None
     if same_receipt:
@@ -824,6 +838,42 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
         reasons.append(f"Ran live {_ago(when, now)}, but its record does not state success or failure, so the run is unproven"
                        + (f" (it reports {count_key} = {count:g})" if count is not None else ""))
         return result("UNPROVEN", "result_unknown", graded=graded, count=count_info)
+
+    # 8a. progress: a lane that declares a progress_signal is GOOD only when the state it is supposed to advance
+    # has actually advanced in its own store AND a receipt from this run states a real evaluation. A growing log
+    # proves neither (LQ-20261107-1882: the ATM's state table sat at 2026-10-23 while its log grew every 15 min).
+    prog_reader = evidence.get("progress")
+    if prog_reader is not None:
+        prog = prog_reader(run_start) if callable(prog_reader) else prog_reader
+        prog = prog if isinstance(prog, dict) else {}
+        if not prog.get("known"):
+            checks["progress"] = _check("unknown", None, prog.get("detail") or "its progress could not be read")
+            reasons.append(f"Ran live {_ago(when, now)}{exited}, but nothing proves it advanced its own state: "
+                           + str(prog.get("detail") or "its progress signal could not be read"))
+            return result("UNPROVEN", "progress_unverifiable", graded=graded, count=count_info)
+        state_at = _at(prog.get("state_at"))
+        if state_at is None or state_at < (run_start or now) - WRITE_TOLERANCE:
+            checks["progress"] = _check("fail", _iso(state_at), prog.get("detail"))
+            reasons.append(f"Ran live {_ago(when, now)}{exited}, but {prog.get('label') or 'its state table'} has not "
+                           f"advanced since {_iso(state_at) or 'never'}: what exists is a log line, not an evaluation")
+            return result("FAILED", "progress_stale", graded=graded, count=count_info)
+        fields = (receipt or {}).get("summary") if same_receipt and isinstance((receipt or {}).get("summary"), dict) else {}
+        missing_ = [k for k in prog.get("receipt_fields") or [] if k not in fields]
+        if not same_receipt or missing_:
+            checks["progress"] = _check("unknown", _iso(state_at),
+                                        "state advanced; no receipt from this run states "
+                                        + (", ".join(missing_) if missing_ else "what it evaluated"))
+            reasons.append(f"Ran live {_ago(when, now)} and advanced its state at {_iso(state_at)}, but no receipt "
+                           "from this run says what it evaluated")
+            return result("UNPROVEN", "no_run_receipt", graded=graded, count=count_info)
+        if not fields.get("evaluated"):
+            checks["progress"] = _check("fail", fields.get("outcome"), "the receipt says evaluated=false")
+            reasons.append(f"Ran live {_ago(when, now)} but its receipt says it did not evaluate "
+                           f"({fields.get('outcome') or 'no reason stated'})")
+            return result("DEGRADED", "not_evaluated", graded=graded, count=count_info)
+        checks["progress"] = _check("pass", fields.get("decisions_written"),
+                                    f"{prog.get('detail')}; receipt: {fields.get('proposals_seen')} proposals seen, "
+                                    f"{fields.get('decisions_written')} decision rows written")
     parts = [f"Ran live {_ago(when, now)}"]
     if written:
         parts.append("wrote its output")
@@ -867,6 +917,109 @@ def _tail_jsonl(path: Path, limit: int) -> list[dict]:
             continue
         if isinstance(row, dict):
             out.append(row)
+    return out
+
+
+def appended_lines(path: Path, since: datetime, *, limit: int = 512 * 1024) -> list[str] | None:
+    """The lines at the END of ``path`` that its own leading timestamp dates at/after ``since``, oldest first.
+
+    A bounded tail is read backwards, so a multi-megabyte log costs the same as a small one. ``None`` means "no
+    evidence": the file cannot be read, or not one line carries a timestamp we can compare. An undatable line is
+    kept with the run it probably belongs to (unknown is not evidence of work, but it is not evidence of a skip
+    either).
+    """
+    try:
+        with path.open("rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            size = stream.tell()
+            start = max(0, size - limit)
+            stream.seek(start)
+            raw = stream.read(limit)
+    except OSError:
+        return None
+    text = raw.decode("utf-8", "replace")
+    lines = text.splitlines()
+    if start:
+        lines = lines[1:]  # first line may be cut mid-way
+    dated, undated = [], []
+    for line in lines:
+        head = line[:23]
+        try:
+            when = datetime.strptime(head, "%Y-%m-%d %H:%M:%S,%f")
+        except ValueError:
+            undated.append(line)
+            continue
+        # logging's asctime is LOCAL time; the run clock we compare against is UTC.
+        if when.astimezone(timezone.utc) >= since - WRITE_TOLERANCE:
+            dated.append(line)
+    kept = dated + [ln for ln in undated if ln.strip()] if dated else []
+    return kept or None
+
+
+def skip_only_run(path: Path, since: datetime, vocabulary) -> tuple[bool, str, int] | None:
+    """(every line since ``since`` says it skipped, the last such line, how many lines) — or None without evidence.
+
+    ``vocabulary`` is the lane's own reviewed list (registry ``output_signal.skip_line_vocabulary``). A run whose
+    ONLY output for its slot is "skipped" did no work: its log grew, and nothing else happened (LQ-20261107-1882).
+    """
+    words = [str(w).strip().lower() for w in (vocabulary or []) if str(w).strip()]
+    if not words:
+        return None
+    lines = appended_lines(path, since)
+    if not lines:
+        return None
+    hits = [ln for ln in lines if any(w in ln.lower() for w in words)]
+    return (len(hits) == len(lines)), (hits[-1] if hits else ""), len(lines)
+
+
+_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
+
+
+def read_progress(sig: dict, since: datetime | None) -> dict:
+    """Objective progress for a lane whose registry entry declares ``progress_signal`` (kind ``db_heartbeat``).
+
+    Reads, read-only: the newest value of ``table.column`` and how many ``decision_table`` rows exist at/after
+    ``since`` (the graded run's start). This is the fact a log file cannot supply. Fail-closed: any read error is
+    ``known: False`` with a plain reason, and the caller must grade it UNPROVEN, never GOOD (LQ-20261107-1882).
+    """
+    out = {"known": False, "state_at": None, "decisions": None, "since": _iso(since), "label": None, "detail": None}
+    table, column = str(sig.get("table") or ""), str(sig.get("column") or "")
+    dtable, dcolumn = str(sig.get("decision_table") or ""), str(sig.get("decision_column") or "")
+    if not all(_IDENT.match(s) for s in (table, column, dtable, dcolumn)):
+        out["detail"] = "progress_signal must name table.column and decision_table.decision_column"
+        return out
+    out["label"] = f"{table}.{column}"
+    try:
+        from scripts import db_adapter as _db
+    except ImportError:
+        try:
+            import db_adapter as _db  # type: ignore[no-redef]
+        except Exception as exc:  # noqa: BLE001
+            out["detail"] = f"no database adapter ({type(exc).__name__})"
+            return out
+    window = since or (datetime.now(timezone.utc) - timedelta(hours=1))
+    conn = None
+    try:
+        conn = _db.get_connection()
+        if conn is None:
+            out["detail"] = "no database connection"
+            return out
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT max({column}) AS at FROM {table}")
+            row = cur.fetchone()
+            state_at = row[0] if row else None
+            cur.execute(f"SELECT count(*) FROM {dtable} WHERE {dcolumn} >= %s", (window - WRITE_TOLERANCE,))
+            decisions = int(cur.fetchone()[0] or 0)
+        conn.rollback()
+    except Exception as exc:  # noqa: BLE001 -- a page must not fail because a probe did
+        out["detail"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return out
+    out.update(known=True, state_at=_iso(state_at), decisions=decisions,
+               detail=f"{out['label']} = {_iso(state_at) or 'NULL'}; {decisions} {dtable} row(s) since {out['since']}")
     return out
 
 
@@ -1020,11 +1173,15 @@ def gather(registry: dict, root: Path, *, now: datetime, contracts_path: Path | 
                     output_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
                 except OSError:
                     output_at = None
+        prog_sig = lane.get("progress_signal") or {}
         out[lane_id] = {"receipt": receipt, "receipt_path": receipt_path, "output_at": output_at,
                         "ledger": ledger.get(lane_id, []), "history": history.get(lane_id, []),
                         "contract": contracts.get(lane_id), "freshness": breaches.get(lane_id, []),
                         "freshness_known": breach_path.is_file() and (lane_id in freshness_lanes or lane_id in breaches),
-                        "plausibility": plaus.get(lane_id, []), "plausibility_known": plaus_known}
+                        "plausibility": plaus.get(lane_id, []), "plausibility_known": plaus_known,
+                        "root": str(base),
+                        # Lazy: the graded run's start, which only grade() knows, decides the window.
+                        "progress": (lambda since, sig=prog_sig: read_progress(sig, since)) if prog_sig else None}
     return out
 
 

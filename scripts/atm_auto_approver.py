@@ -5,14 +5,30 @@ atm_auto_approver.py — ATM v1 auto-approval cron.
 Evaluates PENDING proposals against ATM gates and, if mode='active',
 calls the canonical approve_proposal() + submit_paper() chain.
 
-Cron: */15 9-15 * * 1-5
+Cron: */15 4-19 * * 1-5, wrapped by scripts/safe_flock.sh on ATM_CYCLE_LOCK.
+
+LOCK CONTRACT (LQ-20261107-1882, P0 SEV-1). The wrapper takes ATM_CYCLE_LOCK and passes its LOCKED descriptor to
+this script, so this script must never take that path again: a fresh descriptor can never win a flock the wrapper
+already holds. It did, unconditionally, from 2026-10-26 to 2026-11-11, and every cycle logged "skipped" (770
+lines) while /ops/jobs graded the lane GOOD on the log's mtime. Now the script adopts the wrapper's inherited
+descriptor when there is one and falls back to its own ATM_INNER_LOCK (a different path) only when started without
+the wrapper. Each cycle also writes data/runtime/atm-auto-approver_last.json, so "it ran" is a measured
+evaluation (atm_state.last_evaluated_at advanced, decision rows written), never a file timestamp.
+
 No hardcoded broker or account names.
 """
-import fcntl, json, logging, os, sys
+import fcntl, json, logging, os, sys, traceback
 from datetime import datetime, timezone, timedelta, date
 from pathlib import Path
 
-ATM_CYCLE_LOCK = "/tmp/tradeai_atm.lock"
+#: Held by scripts/safe_flock.sh around every scheduled / triggered run. This script never opens it itself.
+#: Relocatable (never disableable) so an isolated test or a future host layout can move the pair together.
+ATM_CYCLE_LOCK = os.environ.get("TRADEAI_ATM_CYCLE_LOCK") or "/tmp/tradeai_atm.lock"
+#: This script's own guard, used ONLY when it was not started under the wrapper (ad-hoc, or a future n8n trigger).
+#: A different path by contract: taking ATM_CYCLE_LOCK from here is exactly the self-lock this replaced.
+ATM_INNER_LOCK = os.environ.get("TRADEAI_ATM_INNER_LOCK") or "/tmp/tradeai_atm.inner.lock"
+#: Lane id of the receipt this cycle writes (config/lane_registry.json -> data/runtime/<id>_last.json).
+RECEIPT_LANE = "atm-auto-approver"
 # Per-symbol cooldown so repeat expiry Telegram batches don't fire for the same ticker all afternoon.
 _EXPIRY_TG_RECENT: dict[str, float] = {}
 _EXPIRY_TG_COOLDOWN_SEC = 24 * 3600
@@ -361,18 +377,83 @@ def resolve_atm_expiry(strategy_id, created_at, expires_at=None, now=None) -> di
             "age_minutes": age_min, "effective_expiry": eff_expiry}
 
 
-def _acquire_atm_cycle_lock():
-    """Non-blocking flock guard shared by cron (safe_flock) and enrichment immediate triggers."""
+def _inherited_cycle_lock_fd(path=None):
+    """The already-locked descriptor of `path` that an ancestor passed to us, or None.
+
+    scripts/safe_flock.sh flocks `path` and then runs us as a child WITHOUT exec, so its locked descriptor is still
+    open here. The kernel attaches a flock to the open file description, so taking LOCK_EX on the inherited fd
+    succeeds and proves the wrapper is serialising this cycle. Locking a FRESH descriptor for the same path fails
+    instead — that was the self-lock (LQ-20261107-1882). The lock is NOT released here: the wrapper owns it.
+    """
+    path = path or ATM_CYCLE_LOCK
     try:
-        fd = open(ATM_CYCLE_LOCK, "w")
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        return fd
-    except (IOError, OSError):
-        try:
-            fd.close()
-        except Exception:
-            pass
+        st = os.stat(path)
+    except OSError:
         return None
+    want = (st.st_dev, st.st_ino)
+    try:
+        names = os.listdir("/proc/self/fd")
+    except OSError:
+        return None
+    for name in names:
+        try:
+            fd = int(name)
+            fst = os.fstat(fd)
+            if (fst.st_dev, fst.st_ino) != want:
+                continue
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return fd
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def _another_process_holds(path):
+    """True when a fresh descriptor for `path` cannot take the lock — some other process holds it right now.
+
+    Used only when we were NOT started under the wrapper: a direct run must not race a wrapper run. The probe
+    releases immediately; it is a collision check, not our lock (small TOCTOU window, documented in the READY).
+    """
+    try:
+        fd = open(path, "w")
+    except OSError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return True
+    try:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    except OSError:
+        pass
+    try:
+        fd.close()
+    except OSError:
+        pass
+    return False
+
+
+def _acquire_atm_cycle_lock():
+    """(fd to release or None, holder, path that blocked us or None).
+
+    holder == "wrapper": safe_flock.sh already holds ATM_CYCLE_LOCK for this process. Take nothing, release nothing.
+    holder == "inner":   we took ATM_INNER_LOCK (no wrapper); release it when the cycle ends.
+    holder is None:      do not run this cycle; the third element names what holds the lock.
+    """
+    if _inherited_cycle_lock_fd() is not None:
+        return None, "wrapper", None
+    if _another_process_holds(ATM_CYCLE_LOCK):
+        return None, None, ATM_CYCLE_LOCK
+    try:
+        fd = open(ATM_INNER_LOCK, "w")
+    except OSError as e:
+        return None, None, f"{ATM_INNER_LOCK} (could not be opened: {e})"
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fd.close()
+        return None, None, ATM_INNER_LOCK
+    return fd, "inner", None
 
 
 def _release_atm_cycle_lock(lock_fd):
@@ -397,28 +478,165 @@ def _expire_proposal_atomic(cur, pid, expiry_code, expiry_lifecycle, expiry_mess
     return cur.rowcount > 0
 
 
-def run_cycle():
-    """Main ATM evaluation cycle."""
-    lock_fd = _acquire_atm_cycle_lock()
-    if lock_fd is None:
-        log.info("ATM cycle skipped — another instance holds tradeai_atm.lock")
-        return
+def _stamp(when):
     try:
-        _run_cycle_locked()
+        return when.isoformat() if when is not None else None
+    except AttributeError:
+        return str(when)
+
+
+def _state_advanced(before, after):
+    """True when atm_state.last_evaluated_at moved forward. None when a value could not be read."""
+    if after is None:
+        return None
+    if before is None:
+        return True
+    try:
+        return bool(after > before)
+    except TypeError:
+        return None
+
+
+def _read_last_evaluated_at(conn):
+    """atm_state.last_evaluated_at as the database has it now (None when unreadable)."""
+    try:
+        conn, cur = _live_conn_cursor(conn)
+        cur.execute("SELECT last_evaluated_at FROM atm_state WHERE id = 1")
+        row = cur.fetchone()
+        return row[0] if row else None
+    except Exception as e:  # noqa: BLE001 -- a marker must never take the cycle down
+        log.warning(f"ATM cycle: atm_state.last_evaluated_at unreadable: {e}")
+        return None
+
+
+def _cycle_decision_count(conn, started):
+    """Rows this cycle wrote to atm_decision_log (None when unreadable). The wrapper's exit 0 is not this."""
+    try:
+        conn, cur = _live_conn_cursor(conn)
+        cur.execute("SELECT count(*) FROM atm_decision_log WHERE decided_at >= %s",
+                    (started - timedelta(seconds=5),))
+        return int(cur.fetchone()[0] or 0)
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"ATM cycle: decision count unreadable: {e}")
+        return None
+
+
+def _write_cycle_receipt(markers, started):
+    """Write the lane's own last-run receipt: what THIS cycle did, in the grader's own vocabulary.
+
+    The receipt is the only place a reader can learn that the cycle reached an evaluation, how many proposals it
+    looked at and how many decision rows it wrote. Never raises: the cycle's result comes first.
+    """
+    try:
+        from lib.lane_last_receipt import write_lane_receipt
+    except ImportError:
+        try:
+            from scripts.lib.lane_last_receipt import write_lane_receipt  # type: ignore[no-redef]
+        except Exception as e:  # noqa: BLE001
+            log.warning(f"ATM cycle receipt not written (import): {e}")
+            return None
+    outcome = str(markers.get("outcome") or "incomplete")
+    # States in which the cycle deliberately does not evaluate. They must not look like a good run.
+    stopped = {"disabled", "paused", "outside_operating_hours", "no_enabled_accounts", "kill_switch_paused"}
+    ok = outcome not in {"error", "no_db_connection", "incomplete"}
+    evaluated = bool(markers.get("evaluated"))
+    proposals = markers.get("proposals_seen")
+    decisions = markers.get("decisions_written")
+    summary = {
+        "outcome": outcome,
+        "evaluated": evaluated,
+        "state_before": markers.get("state_before"),
+        "state_after": markers.get("state_after"),
+        "state_advanced": markers.get("state_advanced"),
+        "proposals_seen": proposals,
+        "decisions_written": decisions,
+        "lock_holder": markers.get("lock_holder"),
+        "atm_mode": markers.get("mode"),
+        "started_at": _stamp(started),
+        "finished_at": _stamp(datetime.now(timezone.utc)),
+    }
+    if outcome in stopped:
+        outcome_field, outcome_reason = "degraded", outcome
+    elif not ok:
+        outcome_field, outcome_reason = "error", outcome
+    elif decisions:
+        outcome_field, outcome_reason = "ok", None
+    else:
+        outcome_field, outcome_reason = "empty", ("nothing_due" if evaluated else outcome)
+    try:
+        return write_lane_receipt(
+            RECEIPT_LANE,
+            ok=ok,
+            exit_code=0 if ok else 1,
+            started_at=started,
+            script="scripts/atm_auto_approver.py",
+            summary=summary,
+            error=markers.get("error"),
+            produced_count=int(decisions or 0),
+            attempted_count=int(proposals or 0),
+            empty_reason="nothing_due" if (evaluated and proposals == 0) else None,
+            outcome=outcome_field,
+            outcome_reason=outcome_reason,
+        )
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"ATM cycle receipt not written: {e}")
+        return None
+
+
+def run_cycle(started=None):
+    """Main ATM evaluation cycle.
+
+    The lock: every scheduled fire arrives inside scripts/safe_flock.sh, which holds ATM_CYCLE_LOCK and passes its
+    locked descriptor to us; we adopt that instead of re-locking the same path (LQ-20261107-1882). Without the
+    wrapper we take ATM_INNER_LOCK, a different path, after checking that no wrapper run holds the outer lock.
+    """
+    started = started or datetime.now(timezone.utc)
+    lock_fd, holder, blocker = _acquire_atm_cycle_lock()
+    if lock_fd is None and holder != "wrapper":
+        # The only line this cycle writes. Readers must grade it as "did no work", never as a good run.
+        log.info(f"ATM cycle skipped — another instance holds {blocker}")
+        return {"outcome": "skipped", "blocker": blocker}
+    markers = {"outcome": "incomplete", "lock_holder": holder, "started_at": _stamp(started)}
+    try:
+        _run_cycle_locked(started=started, markers=markers)
+    except Exception:
+        markers["outcome"] = "error"
+        markers["error"] = traceback.format_exc()[-1200:]
+        log.error(f"ATM cycle failed: {sys.exc_info()[1]}")
+        raise
     finally:
         _release_atm_cycle_lock(lock_fd)
+        _write_cycle_receipt(markers, started)
+    return markers
 
 
-def _run_cycle_locked():
-    """Main ATM evaluation cycle (caller holds tradeai_atm.lock)."""
+def _run_cycle_locked(started=None, markers=None):
+    """Main ATM evaluation cycle (the caller holds the wrapper's cycle lock or ATM_INNER_LOCK).
+
+    Fills `markers` with what the cycle actually did — evaluated, proposals seen, decision rows written, whether
+    atm_state.last_evaluated_at advanced — so the lane receipt (and the jobs page) can say it without guessing
+    from a log timestamp. Every exit path states its outcome.
+    """
+    m = markers if markers is not None else {}
+    m.setdefault("outcome", "incomplete")
+    m.setdefault("evaluated", False)
+    m.setdefault("proposals_seen", 0)
+    m.setdefault("decisions_written", None)
+    m.setdefault("state_before", None)
+    m.setdefault("state_after", None)
+    m.setdefault("state_advanced", None)
+    started = started or datetime.now(timezone.utc)
     conn = get_connection()
     if not conn:
         log.error("No DB connection")
-        return
+        m["outcome"] = "no_db_connection"
+        return m
 
     # ── Pre-flight ──
     state = _get_atm_state(conn)
     mode = state.get("mode", "disabled")
+    m["mode"] = mode
+    m["state_before"] = _stamp(state.get("last_evaluated_at"))
 
     # Always update heartbeat + config_hash
     cur = conn.cursor()
@@ -429,10 +647,14 @@ def _run_cycle_locked():
         _ch = None
     cur.execute("UPDATE atm_state SET last_evaluated_at = NOW(), config_hash = COALESCE(%s, config_hash) WHERE id = 1", (_ch,))
     conn.commit()
+    _after = _read_last_evaluated_at(conn)
+    m["state_after"] = _stamp(_after)
+    m["state_advanced"] = _state_advanced(state.get("last_evaluated_at"), _after)
 
     if mode == "disabled":
         log.info("ATM mode=disabled, exiting")
-        return
+        m["outcome"] = "disabled"
+        return m
 
     if mode == "paused":
         pu = state.get("paused_until")
@@ -443,7 +665,8 @@ def _run_cycle_locked():
             mode = "active"
         else:
             log.info(f"ATM mode=paused until {pu}")
-            return
+            m["outcome"] = "paused"
+            return m
 
     # Load config
     from atm_config_manager import (load_config, get_enabled_accounts,
@@ -457,7 +680,8 @@ def _run_cycle_locked():
     try:
         if not _in_operating_hours(hours):
             log.info("Outside operating hours")
-            return
+            m["outcome"] = "outside_operating_hours"
+            return m
     except Exception as e:
         log.warning(f"Operating hours check failed (proceeding): {e}")
 
@@ -465,7 +689,8 @@ def _run_cycle_locked():
     enabled_accounts = get_enabled_accounts()
     if not enabled_accounts:
         log.info("No enabled accounts")
-        return
+        m["outcome"] = "no_enabled_accounts"
+        return m
 
     thresholds = get_kill_switch_thresholds()
     total_pnl_pct = 0
@@ -485,7 +710,8 @@ def _run_cycle_locked():
             log.info("[paper-mute] atm_auto_approver.aggregate_kill_switch: every enabled account is paper")
         else:
             _telegram_both(f"ATM KILL SWITCH FIRED: aggregate daily P&L {total_pnl_pct:.1f}% — ATM PAUSED")
-        return
+        m["outcome"] = "kill_switch_paused"
+        return m
 
     # ── Load pending proposals (exclude already-expired) ──
     cur = conn.cursor()
@@ -507,6 +733,9 @@ def _run_cycle_locked():
     # never reach submit_paper_bracket here.
     cols = [d[0] for d in cur.description]
     proposals = [dict(zip(cols, r)) for r in cur.fetchall()]
+    # From here the cycle really looked at the queue: that is what "evaluated" means on the receipt.
+    m["evaluated"] = True
+    m["proposals_seen"] = len(proposals)
 
     if not proposals:
         log.info(f"ATM cycle: 0 pending entry proposals (mode={mode}) — skipping entry path")
@@ -517,7 +746,9 @@ def _run_cycle_locked():
                      f"operator_pending={pr['operator_pending']} advisory={pr['skipped_action']} failed={pr['failed']}")
         except Exception as e:
             log.warning(f"ATM protection pass error: {e}")
-        return
+        m["decisions_written"] = 0
+        m["outcome"] = "evaluated_no_proposals"
+        return m
 
     log.info(f"ATM cycle: {len(proposals)} pending proposals (mode={mode})")
 
@@ -1028,6 +1259,11 @@ def _run_cycle_locked():
                  f"operator_pending={pr['operator_pending']} advisory={pr['skipped_action']} failed={pr['failed']}")
     except Exception as e:
         log.warning(f"ATM protection pass error: {e}")
+
+    # What the cycle actually wrote, read back from the decision log rather than inferred from the counts above.
+    m["decisions_written"] = _cycle_decision_count(conn, started)
+    m["outcome"] = "evaluated"
+    return m
 
 
 if __name__ == "__main__":

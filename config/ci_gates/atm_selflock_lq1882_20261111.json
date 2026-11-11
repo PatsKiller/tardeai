@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "atm_selflock_lq1882_20261111",
+  "files": [
+    "tests/test_atm_selflock_lq1882_20261111.py"
+  ],
+  "anchor": "ATM_SELFLOCK_LQ1882_20261111",
+  "comment": [
+    "ANCHOR: ATM_SELFLOCK_LQ1882_20261111 — the ATM cycle must adopt the cron wrapper's lock instead of",
+    "re-acquiring the same flock through its inherited fd (770 'cycle skipped' lines, last_evaluated_at",
+    "frozen at 2026-10-23), and its grade must come from the DB heartbeat plus same-run decision rows,",
+    "never from log mtime: a skip-only log is FAILED, a state that has not advanced is FAILED."
+  ]
+}
