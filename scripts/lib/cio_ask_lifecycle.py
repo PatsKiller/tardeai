@@ -715,6 +715,21 @@ def _fingerprint(evidence):
     return hashlib.sha256(json.dumps(evidence.get("facts", []), sort_keys=True, default=str).encode()).hexdigest()
 
 
+MEMORY_RETRY_BASE_S = 300
+MEMORY_RETRY_CAP_S = 6 * 3600
+
+
+def memory_retry_wait(attempts: int):
+    """Back-off before the next shared-memory retry after ``attempts`` unacknowledged writes (LQ-1935).
+
+    The first retry is immediate (the next tick); then 5 min, 10 min, 20 min ... capped at 6 h. A dead memory
+    service (connection refused) is therefore retried at most four times a day per answer, never every five
+    minutes, and the answer stays recoverable whenever the service returns."""
+    if attempts <= 1:
+        return timedelta(0)
+    return timedelta(seconds=min(MEMORY_RETRY_BASE_S * 2 ** (attempts - 2), MEMORY_RETRY_CAP_S))
+
+
 def _retry_publication(d, thread, events, *, now):
     """Retry only the failed sinks from persisted answer bytes; never recollect or call models."""
     from scripts.lib import cio_ask_runtime as core
@@ -729,9 +744,14 @@ def _retry_publication(d, thread, events, *, now):
     deliveries = [e for e in events if e.get("kind") == "ask.delivery_status" and e.get("answer_id") == aid]
     # Older answers with no acknowledgement are pending, never assumed synced.
     if not memories or memories[-1].get("memory_sync", {}).get("state") != "synced":
-        key = event_id_for("memory_retry", aid, minute_slot)
-        if not any(e.get("event_id") == key for e in events):
-            receipt = core.sync_answer_memory(AskAnswer.from_dict(answer), deps=d)
+        attempts = len(memories)
+        last = parsed(memories[-1].get("at")) if memories else None
+        due = last is None or clock(now) >= last + memory_retry_wait(attempts)
+        key = event_id_for("memory_retry", aid, attempts)
+        if due and not any(e.get("event_id") == key for e in events):
+            receipt = dict(core.sync_answer_memory(AskAnswer.from_dict(answer), deps=d))
+            receipt["attempts"] = attempts + 1
+            receipt["next_retry_after_s"] = int(memory_retry_wait(attempts + 1).total_seconds())
             d.store.append(
                 "ask.memory_synced",
                 {"thread_id": tid, "answer_id": aid, "at": stamp(now), "memory_sync": receipt},

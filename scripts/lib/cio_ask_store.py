@@ -46,6 +46,7 @@ EVENT_KINDS = (
     "ask.research_finished",
     "ask.memory_synced",
     "ask.delivery_status",
+    "ask.mirror_status",
     "ask.source_checkpoint",
 )
 

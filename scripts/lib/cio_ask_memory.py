@@ -107,6 +107,15 @@ class SpineAskMemory:
     # ── read ───────────────────────────────────────────────────────────────────────────────────────────────────────
     def recall(self, *, entity: EntityRef, limit: int = 6, exclude_refs: tuple[str, ...] = ()) -> list[dict]:
         """Prior ask memory on this entity, newest first: [{at, kind, summary, ref, source}]."""
+        return self.recall_checked(entity=entity, limit=limit, exclude_refs=exclude_refs)[0]
+
+    def recall_checked(
+        self, *, entity: EntityRef, limit: int = 6, exclude_refs: tuple[str, ...] = ()
+    ) -> tuple[list[dict], list[dict]]:
+        """(items, errors). An unreadable store is an error entry, never an empty recall (LQ-1935 F5).
+
+        errors: [{"store": "security_research_spine" | "cio_ask_events", "error": <ExceptionType>}]."""
+        errors: list[dict] = []
         items: list[dict] = []
         if entity.kind == "security" and entity.symbol:
             try:
@@ -127,16 +136,20 @@ class SpineAskMemory:
                             "source": "security_research_spine",
                         }
                     )
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 items = []
+                errors.append({"store": "security_research_spine", "error": type(exc).__name__})
         if self.ledger is not None:
             # The spine keeps the last 100 contributions per security; the ledger keeps every ask. Merge by ref.
             seen = {str(i.get("ref")) for i in items}
-            items += [i for i in self._recall_ledger(entity) if str(i.get("ref")) not in seen]
+            try:
+                items += [i for i in self._recall_ledger(entity) if str(i.get("ref")) not in seen]
+            except Exception as exc:  # noqa: BLE001
+                errors.append({"store": "cio_ask_events", "error": type(exc).__name__})
         items = [i for i in items if not any(str(i.get("ref") or "").startswith(x) for x in exclude_refs if x)]
         items = _collapse_duplicates(items)
         items.sort(key=lambda i: str(i.get("at") or ""), reverse=True)
-        return items[:limit]
+        return items[:limit], errors
 
     def _recall_ledger(self, entity: EntityRef) -> list[dict]:
         key = entity.memory_key
