@@ -386,7 +386,7 @@ def test_lane_allowlist_entry_runs_the_script_and_validates():
 
     entry = _row(_json("config/n8n_run_allowlist.json")["lanes"], "lane_id")
     assert entry["command"] == ["$PY", "scripts/release_status.py"]
-    assert entry["dry_run_arg"] == [] and entry["live_arg"] == ["--apply"]  # dry run is the default
+    assert entry["dry_run_arg"] == ["--report"] and entry["live_arg"] == ["--apply"]
     assert entry["market_gate"] is False and entry["output_receipt"] == "v2"
     assert ex.validate_entry(entry) is None
 
@@ -410,6 +410,26 @@ def test_lane_has_a_draft_contract_awaiting_a_non_author_reviewer():
 
 def test_lane_is_not_activated_anywhere():
     """No cron line, no relay live-set row, no dispatch.mode live: definition only."""
-    assert "release_status" not in (ROOT / "config" / "crontab_snapshot.txt").read_text()
+    cron = (ROOT / "config" / "crontab_snapshot.txt").read_text()
+    assert "release_status" not in cron and "release-status" not in cron
     assert LANE not in (ROOT / "config" / "n8n_relay_live_source.json").read_text()
     assert _row(_json("config/lane_registry.json")["lanes"], "lane_id")["dispatch"]["mode"] != "live"
+
+
+def _dispatcher_exit(monkeypatch, capsys, rs):
+    """Run main() with exactly the argv the dispatcher builds for a shadow dry run (allowlist command + dry_run_arg)."""
+    entry = _row(_json("config/n8n_run_allowlist.json")["lanes"], "lane_id")
+    argv = [a for a in entry["command"] if a != "$PY"][1:] + entry["dry_run_arg"]
+    monkeypatch.setattr(cli.rsl, "compute", lambda **kw: rs)
+    code = cli.main(argv)
+    capsys.readouterr()
+    return code
+
+
+def test_dispatcher_dry_run_exits_zero_when_judged_even_if_deployed(rel, monkeypatch, capsys):
+    """Executor maps non-zero to RUN_FAILED, so a judged DEPLOYED fleet must exit 0; UNDETERMINED must not."""
+    deployed = compute(rel, world(rel, lag={"tradeai-ops-applier.service"}))
+    assert deployed.status == rsl.DEPLOYED and cli.exit_code(deployed) == 2  # bare CLI unchanged for humans
+    assert _dispatcher_exit(monkeypatch, capsys, deployed) == 0
+    assert _dispatcher_exit(monkeypatch, capsys, compute(rel, world(rel))) == 0
+    assert _dispatcher_exit(monkeypatch, capsys, rsl.ReleaseStatus()) != 0

@@ -43653,7 +43653,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/release-status_last.json produced_count (written under --apply only)"
+            "ref": "data/runtime/release-status_last.json produced_count. This file is written under --apply (live) only; the shadow stage runs --report, writes no receipt file, so shadow proof is the run ledger row and the lane stdout, not this file"
           }
         ],
         "on_violation": {

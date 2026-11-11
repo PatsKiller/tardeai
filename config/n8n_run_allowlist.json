@@ -6156,7 +6156,7 @@
         "$PY",
         "scripts/release_status.py"
       ],
-      "dry_run_arg": [],
+      "dry_run_arg": ["--report"],
       "live_arg": [
         "--apply"
       ],

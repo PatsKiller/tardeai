@@ -116,6 +116,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--no-probes", action="store_true", help="skip the acceptance probes (status stops at LIVE)")
     ap.add_argument("--releases-base", default=None, help="override the releases directory (tests)")
     ap.add_argument("--apply", action="store_true", help="escalate when not LIVE and write the lane receipt")
+    ap.add_argument("--report", action="store_true",
+                    help="dry run for the n8n dispatcher: no writes, exit 0 whenever the release was judged "
+                         "(DEPLOYED included), non-zero only when it could not be (the --apply ok logic)")
     args = ap.parse_args(argv)
     started = datetime.now(timezone.utc).isoformat()
     kwargs: dict[str, Any] = {"run_probes": not args.no_probes}
@@ -150,6 +153,10 @@ def main(argv: Optional[list[str]] = None) -> int:
             empty_reason=None if rs.units else "no_bound_units",
         )
         return 0 if ok else 1
+    if args.report:
+        # The executor maps every non-zero exit to RUN_FAILED: a DEPLOYED-not-LIVE verdict is a judged result (the
+        # DEGRADED verdict is computed from the output), so only UNDETERMINED / an escalation error fails the run.
+        return 0 if rs.status != rsl.UNDETERMINED and not esc.get("error") else 1
     return exit_code(rs)
 
 
