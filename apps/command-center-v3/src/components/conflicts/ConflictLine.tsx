@@ -8,8 +8,8 @@ import { plainConflictGap } from '../../lib/auditPlainLanguage'
  * and how that limits the figures on screen; the producer's raw reason stays in a closed
  * technical-detail toggle instead of being the operator's only explanation.
  */
-export function ConflictGap({ reason }: { reason?: unknown }) {
-  const gap = plainConflictGap(reason)
+export function ConflictGap({ reason, total, shown }: { reason?: unknown; total?: unknown; shown?: unknown }) {
+  const gap = plainConflictGap(reason, { total, shown })
   return <div role="status" data-testid="conflict-gap" style={{ color: TOKENS.warning, fontSize: TYPE.base, lineHeight: 1.5 }}>
     <strong>Conflict check unavailable:</strong> <span>{gap.text}</span>
     {gap.raw ? <details style={{ marginTop: 2, color: TOKENS.text[3], fontSize: TYPE.sm }}>
@@ -24,7 +24,7 @@ export default function ConflictLine({section, onOpen}: {
   section: ConflictSection; onOpen: (key: string) => void
 }) {
   const headline = section.headline
-  const gap = section.gap ? <ConflictGap reason={section.gap.reason} /> : null
+  const gap = section.gap ? <ConflictGap reason={section.gap.reason} total={section.gap.total} shown={section.gap.shown ?? section.findings.length} /> : null
   if (!headline) return gap
   const first = section.findings[0]
   if (!first?.key) return <p role="status" style={{color: TOKENS.warning}}>Conflict check has no linked finding.</p>

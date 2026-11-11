@@ -29,7 +29,7 @@ def test_an_old_ledger_shows_its_age_as_stale(tmp_path):
 def test_missing_ledger_keeps_an_honest_gap_not_an_empty_all_clear(tmp_path):
     section = cio_truth._ledger_conflicts(tmp_path, NOW)
     assert section["findings"] == []
-    assert section["gap"]["reason"] == "conflict ledger not yet produced"
+    assert section["gap"]["reason"] == f"conflict ledger not found at {tmp_path / 'data/conflicts/conflict_events.jsonl'}"
 
 
 def test_unreadable_ledger_degrades_to_a_named_gap(tmp_path, monkeypatch):

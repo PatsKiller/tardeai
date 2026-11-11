@@ -80,7 +80,7 @@ def unavailable(reason: str) -> dict:
 def page_payload(root: Path | str, *, now: datetime | None = None,
                  resolver: Callable | None = None, inputs: dict | None = None, db_query: Callable | None = None,
                  concentration_resolver: Callable | None = None, concentration_inputs: dict | None = None,
-                 lookthrough_inputs: dict | None = None) -> dict:
+                 lookthrough_inputs: dict | None = None, ledger_root: Path | str | None = None) -> dict:
     """GET-only adapter. All state reads are cached artifacts, never providers.
 
     root contains data/. Config comes from the code checkout when a copied state
@@ -98,7 +98,9 @@ def page_payload(root: Path | str, *, now: datetime | None = None,
         truth = unavailable("The CIO shared record is not available yet")
     else:
         try:
-            truth = resolver(root=root, now=now, inputs=inputs, db_query=db_query)
+            # ledger_root only when named, so an injected resolver with the old signature is untouched.
+            extra = {} if ledger_root is None else {"ledger_root": ledger_root}
+            truth = resolver(root=root, now=now, inputs=inputs, db_query=db_query, **extra)
         except Exception as exc:
             truth = unavailable("The CIO shared record could not be read (" + type(exc).__name__ + ")")
     if "concentration_policy" not in truth:

@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 
 from ..policy_files import IPS, policy_label, policy_path
-from .ledger import ACTIVE, ConflictLedger
+from .ledger import ACTIVE, ConflictLedger, ledger_missing_gap
 
 SCHEMA = "ConflictRulebookView@v1"
 REPO = Path(__file__).resolve().parents[3]
@@ -174,7 +174,7 @@ def _live(root) -> dict:
                 "by_kind": {},
                 "by_state": {},
                 "open_total": None,
-                "gap": {"reason": "conflict ledger not yet produced"},
+                "gap": ledger_missing_gap(root),
             }
         records = list(ConflictLedger(root).records().values())
         by_kind: dict = {}

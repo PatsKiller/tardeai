@@ -132,4 +132,4 @@ def test_resolve_conflict_end_to_end_on_fixtures(tmp_path, monkeypatch, api):
 def test_missing_ledger_keeps_the_gap_fallback(tmp_path):
     """Before the shadow lane has produced anything the row says why; the transition flags stay (AGENTS.md 28.11)."""
     section = attach_conflict_sections([_watch_row()], root=tmp_path)[0]["conflict_section"]
-    assert section["headline"] is None and section["gap"]["reason"] == "conflict ledger not yet produced"
+    assert section["headline"] is None and section["gap"]["reason"] == f"conflict ledger not found at {tmp_path / 'data/conflicts/conflict_events.jsonl'}"

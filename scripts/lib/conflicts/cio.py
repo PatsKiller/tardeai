@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from .adapters import timestamp
-from .ledger import ACTIVE, ConflictLedger, list_records
+from .ledger import ACTIVE, ConflictLedger, ledger_missing_gap, list_records
 
 
 def memory_writer(root):
@@ -55,7 +55,7 @@ def digest(root, *, now=None):
     now = now or datetime.now(timezone.utc)
     if not (Path(root) / "data/conflicts/conflict_events.jsonl").exists():
         return {"waiting_on_operator": [], "decided": [], "groups": [],
-                "gap": {"reason": "conflict ledger not yet produced"}}
+                "gap": ledger_missing_gap(root)}
     try:
         records = list(ConflictLedger(root).records().values())
     except (OSError, ValueError):

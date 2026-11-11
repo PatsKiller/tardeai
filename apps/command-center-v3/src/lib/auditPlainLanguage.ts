@@ -26,9 +26,11 @@ const GAP_TEXT: Array<[RegExp, string]> = [
     /accepted source not yet integrated/i,
     'Cross-checks are incomplete: the comparison source is not connected yet, so overlapping positions and conflicting signals are not counted.',
   ],
+  // "more conflict records available" is a page cap, not a load failure (LQ-20261107-1907): the sentence
+  // with counts is built in plainConflictGap, which sees `total` and `shown`.
   [
-    /more conflict records available/i,
-    'Some conflict records could not be loaded. The findings shown are the ones that were read; more may exist.',
+    /^conflict ledger not found at /i,
+    'The conflict records could not be found where this screen reads them, so these figures may omit overlapping positions or conflicting signals. The ledger may exist elsewhere.',
   ],
   [
     /conflict section not supplied/i,
@@ -59,9 +61,17 @@ const COULD_NOT_READ =
  * was no reason). An unrecognised reason still gets the honest consequence sentence; the caller
  * keeps the raw text in a details toggle rather than in the sentence.
  */
-export function plainConflictGap(reason: unknown): PlainGap {
+export function plainConflictGap(reason: unknown, counts?: { total?: unknown; shown?: unknown }): PlainGap {
   const raw = typeof reason === 'string' && reason.trim() ? reason.trim() : null
   if (!raw) return { text: COULD_NOT_READ, raw: null }
+  if (/more conflict records available/i.test(raw)) {
+    const total = typeof counts?.total === 'number' && Number.isFinite(counts.total) ? counts.total : null
+    const shown = typeof counts?.shown === 'number' && Number.isFinite(counts.shown) ? counts.shown : null
+    const text = total !== null && shown !== null ? `Showing the newest ${shown} of ${total} conflict records.`
+      : total !== null ? `Showing the newest conflict records of ${total}; more exist.`
+      : 'Showing the newest conflict records; more exist.'
+    return { text, raw }
+  }
   const hit = GAP_TEXT.find(([pattern]) => pattern.test(raw))
   return { text: hit?.[1] ?? COULD_NOT_READ, raw }
 }

@@ -76,7 +76,7 @@ function SelectedConflict({selectedKey, section, onSelect, children}: {selectedK
   const finding = record ? {...record, schema: 'ConflictFinding@v1'} : snapshot
   const status = reviewPresentation(record)
   return <>
-    {section.gap && <ConflictGap reason={section.gap.reason} />}
+    {section.gap && <ConflictGap reason={section.gap.reason} total={section.gap.total} shown={section.gap.shown ?? section.findings.length} />}
     {finding ? <ConflictFacts finding={finding} /> : <h2 tabIndex={-1} data-detail-focus>What disagrees</h2>}
     {!record && <p role="status" data-testid="conflict-record-gap">{read.loading ? 'Loading the saved finding and review history…' : `Saved finding and review history unavailable${read.error ? `: ${read.error}` : ': the selected record was not supplied'}.`}
       {snapshot && ' Showing the last supplied engine finding; its review state is unknown.'}</p>}

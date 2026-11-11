@@ -8,7 +8,7 @@ import math
 from pathlib import Path
 from urllib.parse import quote, unquote
 
-from .ledger import ACTIVE, ConflictLedger, DECISION_SCHEMA, list_records
+from .ledger import ACTIVE, ConflictLedger, DECISION_SCHEMA, ledger_missing_gap, list_records
 
 PREFIX = "/api/v3/conflicts"
 
@@ -121,7 +121,7 @@ def approval_rows(root=None, *, limit=100):
     try:
         root = root or _root()
         if not (Path(root) / "data/conflicts/conflict_events.jsonl").exists():
-            return {"rows": [], "total": None, "gap": {"reason": "conflict ledger not yet produced"}}
+            return {"rows": [], "total": None, "gap": ledger_missing_gap(root)}
         collection = list_records(root, kind="NEEDS_OPERATOR", active_only=True, limit=min(max(limit, 1), 200))
         rows = []
         for record in collection["records"]:
@@ -146,13 +146,13 @@ def records_section(root=None, *, subject_kind=None, subject_id=None, kind=None)
     from .adapters import findings_section
     root = root or _root()
     if not (Path(root) / "data/conflicts/conflict_events.jsonl").exists():
-        return findings_section([], gap={"reason": "conflict ledger not yet produced"})
+        return findings_section([], gap=ledger_missing_gap(root))
     try:
         collection = list_records(root, subject_kind=subject_kind, subject_id=subject_id, kind=kind, limit=200, active_only=True)
         records = collection["records"]
         findings = [{**r, "schema": "ConflictFinding@v1", "history": r.get("history"),
                      "history_gap": "fetch conflict detail for lifecycle history"} for r in records]
-        section = findings_section(findings, gap={"reason": "more conflict records available", "total": collection["total"]}
+        section = findings_section(findings, gap={"reason": "more conflict records available", "total": collection["total"], "shown": len(records)}
                                    if collection["total"] > 200 else None)
         return {**section, "source": "conflict_events.jsonl", "as_of": max((r["updated_at"] for r in records), default=None),
                 "stale": None}
@@ -172,7 +172,7 @@ def sections_for_guids(root, security_guids):
         raise ValueError("conflict GUID batch exceeds 500")
     root = root or _root()
     if not (Path(root) / "data/conflicts/conflict_events.jsonl").exists():
-        return {g: findings_section([], gap={"reason": "conflict ledger not yet produced"}) for g in guids}
+        return {g: findings_section([], gap=ledger_missing_gap(root)) for g in guids}
     try:
         records = ConflictLedger(root).records().values()
         grouped = {g: [] for g in guids}

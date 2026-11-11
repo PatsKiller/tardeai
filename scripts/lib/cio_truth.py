@@ -1913,7 +1913,7 @@ def do_now_for(positions, approvals, *, now=None) -> dict:
                         reason="approval count unavailable" if approvals.get("total") is None else None)}
 
 
-def _ledger_conflicts(root, now) -> dict:
+def _ledger_conflicts(root, now, ledger_root=None) -> dict:
     """The conflict-check section, read from the engine's own ledger (conflict_events.jsonl).
 
     Until LQ-20261107-237 this was a constant gap ("accepted source not yet integrated") although the
@@ -1924,7 +1924,7 @@ def _ledger_conflicts(root, now) -> dict:
     """
     try:
         from .conflicts.api import records_section
-        section = records_section(root)
+        section = records_section(root if ledger_root is None else ledger_root)
     except Exception as exc:  # a broken ledger must degrade to a visible gap, never break the page
         return {"findings": [], **_evidence("conflict engine read projection", None, now,
                 reason=f"conflict ledger could not be read ({type(exc).__name__})")}
@@ -1941,13 +1941,15 @@ def _ledger_conflicts(root, now) -> dict:
     return section
 
 
-def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
+def resolve(root=None, now=None, *, db_query=None, inputs=None, ledger_root=None) -> dict:
     """Shared display document; root is a persistent state root containing data/.
 
     ``inputs`` injects already-read canonical projections for batching/fixtures:
     holdings, broker_stops, planned_stops, regime, approvals, paper_stats,
     capital_plan, policy, cio_status, do_now, companies, sectors, risk_snapshot.
-    An explicitly supplied root never falls back to another root or live DB.
+    An explicitly supplied root never falls back to another root or live DB. ``ledger_root`` is the one
+    explicit exception a caller may name: the durable root holding data/conflicts/ when ``root`` is a
+    release dir that does not (LQ-20261107-1907).
     No job runs, broker calls, store writes, new stores or execution imports.
     """
     now = now or datetime.now(timezone.utc)
@@ -2185,6 +2187,6 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
             "do_now": do_now,
             "companies": {"by_guid": companies, **_evidence("CIO InstrumentRecord research.company_facts", None, now,
                           reason="CIO company facts unavailable" if not companies else None)},
-            "conflicts": deepcopy(inputs["conflicts"]) if "conflicts" in inputs else _ledger_conflicts(root, now),
+            "conflicts": deepcopy(inputs["conflicts"]) if "conflicts" in inputs else _ledger_conflicts(root, now, ledger_root),
             "sectors": sectors or {"sectors": {}, **_evidence("sector_momentum.get_sector_signals", None, now,
                           reason="multi-horizon sector projection unavailable")}}

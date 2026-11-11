@@ -43,7 +43,7 @@ def test_native_missing_ledger_preserves_named_gap_without_creating_state(tmp_pa
     expected = API.data_error_section(root=root)
     result = C.get_data_errors(root)
     assert result["section"] == expected and result["unavailable_reason"] is None
-    assert result["section"]["gap"]["reason"] == "conflict ledger not yet produced"
+    assert result["section"]["gap"]["reason"] == f"conflict ledger not found at {root / 'data/conflicts/conflict_events.jsonl'}"
     assert result["section"]["headline"] is None
     assert not root.exists()
 

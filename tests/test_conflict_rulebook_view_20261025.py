@@ -39,7 +39,7 @@ def test_read_only_route_shape_and_no_writes(tmp_path):
     status, view = handle("/api/v3/conflicts/rulebook", "GET", root=tmp_path)
     assert status == 200 and view["schema"] == "ConflictRulebookView@v1"
     assert list(tmp_path.iterdir()) == []  # the read never creates a ledger
-    assert view["live"]["gap"] == {"reason": "conflict ledger not yet produced"} and view["live"]["open_total"] is None
+    assert view["live"]["gap"] == {"reason": f"conflict ledger not found at {tmp_path / 'data/conflicts/conflict_events.jsonl'}"} and view["live"]["open_total"] is None
     for method in ("POST", "PUT", "DELETE"):
         assert handle("/api/v3/conflicts/rulebook", method, {}, root=tmp_path) == (405, {"error": "METHOD_NOT_ALLOWED"})
 

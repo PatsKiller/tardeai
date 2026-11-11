@@ -107,6 +107,23 @@ check('a supplied reason is optional: no reason still explains the limit', () =>
   assert.match(visible(none), /Cross-check results are not available on this screen, so these figures may omit overlapping positions or conflicting signals\./)
   assert.doesNotMatch(none, /<details/)
 })
+// LQ-20261107-1907 (finding LQ-1905): the over-cap gap said "could not be loaded" though nothing failed; the
+// ledger had 4246 active records and the page shows the newest 200. It must say how many of how many.
+check('an over-cap gap says how many of how many records are shown, and never "could not be loaded"', () => {
+  const capped = visible(render({ findings: [], headline: null, gap: { reason: 'more conflict records available', total: 4246, shown: 200 } }))
+  assert.match(capped, /Showing the newest 200 of 4246 conflict records\./)
+  assert.doesNotMatch(capped, /could not be loaded/i, `nothing failed to load: ${capped}`)
+  const noCounts = visible(render({ findings: [], headline: null, gap: { reason: 'more conflict records available' } }))
+  assert.doesNotMatch(noCounts, /could not be loaded/i)
+  assert.match(noCounts, /Showing the newest conflict records; more exist\./)
+})
+check('a missing-ledger gap that names a path is shown with its path, not as "not yet produced"', () => {
+  const reason = 'conflict ledger not found at /srv/x/data/conflicts/conflict_events.jsonl'
+  const html2 = render({ findings: [], headline: null, gap: { reason } })
+  assert.match(visible(html2), /could not be found where this screen reads them/i)
+  assert.match(html2, /<details[^>]*>[\s\S]*\/srv\/x\/data\/conflicts\/conflict_events\.jsonl[\s\S]*?<\/details>/)
+  assert.doesNotMatch(visible(html2), /not yet produced/i)
+})
 
 const out = { results, passed: results.filter(x => x.passed).length, failed: results.filter(x => !x.passed).length }
 console.log(JSON.stringify(out, null, 2))

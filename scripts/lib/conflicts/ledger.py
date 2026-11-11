@@ -238,6 +238,16 @@ class ConflictLedger:
             return result
 
 
+LEDGER_REL = "data/conflicts/conflict_events.jsonl"
+
+
+def ledger_missing_gap(root) -> dict:
+    """A missing file proves only that THIS path has no ledger, not that none was produced (LQ-20261107-1907).
+
+    The live release dir has no data/conflicts/ while persistent-state does, so the gap names the path read."""
+    return {"reason": f"conflict ledger not found at {Path(root) / LEDGER_REL}"}
+
+
 def list_records(root, *, subject_kind=None, subject_id=None, state=None, kind=None, limit=100, offset=0,
                  include_history=False, active_only=False):
     rows = list(ConflictLedger(root).records().values())

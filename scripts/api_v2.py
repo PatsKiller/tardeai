@@ -48182,12 +48182,19 @@ def _shared_get_cached(key: str, ttl_s: float, build):
         return payload
 
 
+def _conflict_ledger_root():
+    """The durable root that holds data/conflicts/. The served release dir does not (LQ-20261107-1907)."""
+    from scripts.lib.conflicts.api import _root
+
+    return _root()
+
+
 def _w7_cio_pages():
     """Read-only W7 page projection over one CIO truth document. Cached 60 s, single-flight."""
     from scripts.lib.w7_pages import page_payload
 
     return _shared_get_cached(
-        "cio_pages", 60.0, lambda: page_payload(STATE_DIR.parents[2], db_query=_db_query)
+        "cio_pages", 60.0, lambda: page_payload(STATE_DIR.parents[2], db_query=_db_query, ledger_root=_conflict_ledger_root())
     )
 
 
@@ -48219,7 +48226,7 @@ def _desks_a_payload(desk: str):
     root = STATE_DIR.parents[2]
     kwargs: dict = {"root": root, "db_query": _db_query}
     if desk in ("reentry", "defense"):
-        kwargs["truth"] = _cio_truth_readers().resolve(root, db_query=_db_query)
+        kwargs["truth"] = _cio_truth_readers().resolve(root, db_query=_db_query, ledger_root=_conflict_ledger_root())
     if desk == "reentry":
         packets = _buy_ready_packets_index()
         kwargs["packets"] = packets

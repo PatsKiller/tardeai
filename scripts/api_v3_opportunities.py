@@ -100,7 +100,7 @@ def _link_conflict(
     except Exception as e:  # noqa: BLE001
         return {"recorded": False, "reason": f"conflict ledger root unavailable ({type(e).__name__})"}
     if ledger is None and not (root / "data/conflicts/conflict_events.jsonl").is_file():
-        return {"recorded": False, "reason": "conflict ledger not yet produced; the queue request stands"}
+        return {"recorded": False, "reason": f"conflict ledger not found at {root / 'data/conflicts/conflict_events.jsonl'}; the queue request stands"}
     if ledger is None:
         if memory_writer is None:
             try:

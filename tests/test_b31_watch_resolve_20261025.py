@@ -156,7 +156,7 @@ def test_conflict_key_without_ledger_is_a_named_noop(tmp_path, monkeypatch):
     code, out = api.request_review("FATN", {"conflict_key": "security:guid-FATN:U2:stance"},
                                    identity=lambda s, k: {"security_guid": "guid-FATN", "identity_status": "CONFIRMED"})
     assert code == 200 and out["conflict_ledger"] == {"recorded": False,
-                                                      "reason": "conflict ledger not yet produced; the queue request stands"}
+                                                      "reason": f"conflict ledger not found at {tmp_path / 'state' / 'data/conflicts/conflict_events.jsonl'}; the queue request stands"}
     saved = stp._rows(tmp_path.joinpath(*stp.RELPATH))[-1]
     assert saved["conflict_key"] == "security:guid-FATN:U2:stance" and saved["request_id"] == out["request_id"]
     assert saved["identity_status"] == "CONFIRMED" and saved["schema"] == "SymbolThesisPriorityRequest@v1"
