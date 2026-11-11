@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import zoneinfo
 
 import pytest
@@ -469,3 +470,69 @@ def test_1971_five_nights_verify(tmp_path):
 def test_1971_seed_registry_disk_hygiene_is_the_nightly_slot_with_five_nights():
     i = next(x for x in lm.load_registry(lm.DEFAULT_REGISTRY)["items"] if x["id"] == "disk-hygiene")
     assert i["cadence"]["cron"] == "45 3 * * *" and i["cycle_kind"] == "daily_lane" and i["N"] == 5
+
+
+# ---- LQ-1996: a release change must not hide the counter ---------------------------------------------------------
+
+def _git(repo, *args):
+    import subprocess
+    return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c",
+                           "commit.gpgsign=false", "-C", str(repo), *args], capture_output=True, text=True, check=True,
+                          env={"PATH": os.environ["PATH"], "HOME": str(repo), "GIT_CONFIG_NOSYSTEM": "1"}).stdout.strip()
+
+
+def _repo(tmp_path):
+    repo = tmp_path / "canon"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    (repo / "a").write_text("1")
+    _git(repo, "add", "a")
+    _git(repo, "commit", "-q", "-m", "fix")
+    fix = _git(repo, "rev-parse", "--short=9", "HEAD")
+    (repo / "a").write_text("2")
+    _git(repo, "commit", "-q", "-am", "later release")
+    return repo, fix, _git(repo, "rev-parse", "--short=9", "HEAD")
+
+
+def test_1996_ancestry_is_asked_of_a_git_repo_when_the_script_sits_in_a_release_dir(tmp_path, monkeypatch):
+    """The served release directory is not a git checkout: `git -C <release>` answers rc 128 for every fix, which made
+    portfolio-server UNKNOWN on every release. The canonical checkout (or $LIVE_MATURITY_GIT_DIR) must be asked."""
+    repo, fix, later = _repo(tmp_path)
+    release = tmp_path / "rel" / f"{later}-live-integration-20261111-172646"
+    (release / "scripts" / "ops").mkdir(parents=True)
+    monkeypatch.setattr(lm, "__file__", str(release / "scripts" / "ops" / "live_maturity.py"))
+    monkeypatch.delenv("LIVE_MATURITY_GIT_DIR", raising=False)
+    monkeypatch.setattr(lm, "CANONICAL_CHECKOUT", tmp_path / "does-not-exist")
+    assert lm.git_is_ancestor(fix, later) is None, "no repository anywhere: unknown, never a guess"
+    monkeypatch.setenv("LIVE_MATURITY_GIT_DIR", str(repo))
+    assert lm.git_is_ancestor(fix, later) is True
+    assert lm.git_is_ancestor(later, fix) is False
+    monkeypatch.delenv("LIVE_MATURITY_GIT_DIR")
+    monkeypatch.setattr(lm, "CANONICAL_CHECKOUT", repo)
+    assert lm.git_is_ancestor(fix, later) is True, "falls back to the canonical checkout"
+    assert lm.git_is_ancestor(fix, "0000000000") is None, "a commit no repository knows stays unknown"
+
+
+def test_1996_a_finished_receipt_counts_before_its_grace_has_passed(tmp_path):
+    """17:30 receipt finished at 17:30:09 overwrote the 17:15 one; polled at 17:30:56 (grace 10) the counter reported
+    'awaiting' because slot 17:30 was not yet past grace and slot 17:15 was gone. The finished receipt is evidence."""
+    s = Src(tmp_path)
+    item = _item(cadence={"cron": "*/15 * * * *", "grace_min": 10}, probe={"kind": "last_receipt", "lane": "cron-a"})
+    _last(s, "cron-a", _t(10, 30))
+    st, res = _run(item, {}, s, _t(10, 31))
+    assert st["n"] == 1 and res["state"] == "live" and res["verdict"].startswith("LIVE 1/5"), res
+
+
+def test_1996_a_release_change_does_not_reset_a_counted_streak(tmp_path):
+    """D1: only a failing, missed or unobserved slot resets n. With state kept, the 10:15 pass stays counted when the
+    10:30 receipt (finished, inside its grace) replaces the file, giving 2, not 'awaiting' and not 0."""
+    s = Src(tmp_path)
+    item = _item(cadence={"cron": "*/15 * * * *", "grace_min": 10}, probe={"kind": "last_receipt", "lane": "cron-a"})
+    _last(s, "cron-a", _t(10, 15))
+    st, _ = _run(item, {}, s, _t(10, 16))
+    assert st["n"] == 1
+    _last(s, "cron-a", _t(10, 30))
+    st, res = _run(item, st, s, _t(10, 31))
+    assert st["n"] == 2 and res["state"] == "live", res
+    st, res = _run(item, st, s, _t(10, 31))                      # polled again in the same minute: not double counted
+    assert st["n"] == 2

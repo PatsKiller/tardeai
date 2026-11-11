@@ -182,15 +182,33 @@ class Sources:
         self.ancestor_fn = ancestor_fn or git_is_ancestor
 
 
+CANONICAL_CHECKOUT = Path.home() / "trade-ai-v12-rebuild" / "trade-ai-v12-rebuild"
+
+
+def _git_repos():
+    """Repositories to ask, in order: $LIVE_MATURITY_GIT_DIR, this script's own checkout (only when it is one), then the
+    canonical checkout. A served release directory is NOT a git checkout, so asking it alone answers 'unknown' for every
+    fix on every release (LQ-1996). Read-only: only `git merge-base --is-ancestor` runs, in none of them is anything written."""
+    out = []
+    env = os.environ.get("LIVE_MATURITY_GIT_DIR")
+    for c in (Path(env) if env else None, Path(__file__).resolve().parents[2], CANONICAL_CHECKOUT):
+        if c and (c / ".git").exists() and c not in out:
+            out.append(c)
+    return out
+
+
 def git_is_ancestor(fix, release_sha):
-    """True/False from `git merge-base --is-ancestor fix release_sha` (read-only); None when it cannot be answered
-    (commit unknown to this repository, git missing)."""
-    try:
-        rc = subprocess.run(["git", "-C", str(Path(__file__).resolve().parents[2]), "merge-base", "--is-ancestor",
-                             fix, release_sha], capture_output=True, timeout=30).returncode
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return True if rc == 0 else False if rc == 1 else None
+    """True/False from `git merge-base --is-ancestor fix release_sha` (read-only). The first repository that knows both
+    commits answers; None when none can (commit unknown everywhere, no repository, git missing)."""
+    for repo in _git_repos():
+        try:
+            rc = subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor", fix, release_sha],
+                                capture_output=True, timeout=30).returncode
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if rc in (0, 1):
+            return rc == 0
+    return None
 
 
 def release_sha(path):
@@ -298,6 +316,8 @@ def _slot_lane(item, st, src, now):
             cand = cron_slots(cad["cron"], since, started + dt.timedelta(minutes=2))
             if cand:
                 newest, newest_r = cand[-1], r
+        if newest is not None and newest_r.get("finished_at") and newest not in slots and newest >= start:
+            slots = sorted(slots + [newest])                     # a finished receipt needs no grace: its evidence is in hand
         if cursor is None and newest is not None:
             slots = [s for s in slots if s >= newest]            # baseline: nothing earlier is observable
 
