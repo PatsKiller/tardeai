@@ -87,8 +87,9 @@ class SpineAskMemory:
                 except OSError as exc:  # no lock: still write (never lose memory), and say so
                     index, unavailable = None, "unavailable:" + type(exc).__name__
                 self._write_once(receipt, entity, kind, text, ref, fp, index, load_latest, upsert_research_memory)
-                if unavailable and isinstance(receipt.get("spine"), dict):
-                    receipt["spine"]["dedupe_index"] = unavailable
+                note = receipt.pop("_dedupe_note", None) or unavailable
+                if note and isinstance(receipt.get("spine"), dict):
+                    receipt["spine"]["dedupe_index"] = note
         else:
             receipt["spine"] = {"ok": False, "skipped": "no listed security — ledger is the memory (entity_guid)"}
         return receipt
@@ -101,10 +102,15 @@ class SpineAskMemory:
         3. Otherwise write, then record the fingerprint. An unreadable tip is visible as deduped="unreadable"."""
         if index is not None:
             try:
+                stale = index.verify()
+                if stale:  # the spine changed under the index: its claims are void — rebuild from the spine (LQ-1962)
+                    index.reseed()
+                    receipt["_dedupe_note"] = "reseeded:" + stale
                 if index.has(fp):
                     receipt["spine"] = {"ok": True, "deduped": True, "by": "index"}
                     return
-            except OSError:
+            except (OSError, ValueError) as exc:
+                receipt["_dedupe_note"] = "unverified:" + type(exc).__name__
                 index = None
         dedupe_unreadable = False
         try:

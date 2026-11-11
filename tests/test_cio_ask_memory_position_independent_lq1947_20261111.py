@@ -87,8 +87,14 @@ _CHILD = """
 import sys, time
 sys.path.insert(0, sys.argv[1])
 from pathlib import Path
+import scripts.lib.cross_asset.security_research_spine as sp
 from scripts.lib import cio_ask_contract as C
 from scripts.lib.cio_ask_memory import SpineAskMemory
+_real = sp.upsert_research_memory
+def _slow(*a, **k):          # force the children to overlap inside the critical section (LQ-1962 R-4)
+    time.sleep(0.3)
+    return _real(*a, **k)
+sp.upsert_research_memory = _slow
 e = C.EntityRef(name="Synthetic Corp", symbol="SYNTH", security_guid=sys.argv[3], issuer_guid="11111111-2222-4333-8444-666666666666")
 time.sleep(max(0.0, float(sys.argv[4]) - time.time()))
 SpineAskMemory(spine_path=Path(sys.argv[2])).append(entity=e, kind="ask.answer_version", summary="v1 final: synthetic answer", ref="ask_x:v1")
@@ -131,3 +137,61 @@ def test_unavailable_lock_still_writes_and_says_so(tmp_path, monkeypatch):
     r = SpineAskMemory(spine_path=tmp_path / "spine.jsonl").append(entity=ENT, **ANSWER)
     assert r["spine"]["ok"] is True and r["spine"]["dedupe_index"].startswith("unavailable:OSError")
     assert len(_lines(tmp_path / "spine.jsonl")) == 1     # memory never lost to an index fault
+
+
+# ── LQ-20261107-1962: the index must not outlive the spine it describes ────────────────────────────────────────────
+def test_r1_emptied_spine_is_not_answered_from_the_index(tmp_path):
+    p = tmp_path / "spine.jsonl"
+    mem = SpineAskMemory(spine_path=p)
+    mem.append(entity=ENT, **ANSWER)
+    p.write_text("")                                      # truncated / restored-empty
+    r = mem.append(entity=ENT, **ANSWER)
+    assert r["spine"]["ok"] is True and r["spine"].get("deduped") is not True
+    assert str(r["spine"]["dedupe_index"]).startswith("reseeded:")
+    assert _copies(p) == 1                                # the memory is back in the spine
+
+
+def test_r1_replaced_spine_from_backup_without_the_memory_is_rewritten(tmp_path):
+    p = tmp_path / "spine.jsonl"
+    mem = SpineAskMemory(spine_path=p)
+    mem.append(entity=ENT, kind="ask.source", summary="Src 0 (filing)", ref="ask_y:0")
+    backup = p.read_bytes()
+    mem.append(entity=ENT, **ANSWER)
+    p.unlink()
+    p.write_bytes(backup + b"")                           # restore: new inode, memory missing
+    r = mem.append(entity=ENT, **ANSWER)
+    assert r["spine"].get("deduped") is not True and _copies(p) == 1
+    assert list(tmp_path.glob("spine.jsonl.askidx.stale-*"))   # old index archived, never deleted
+
+
+def test_r1_unmodified_spine_still_dedupes_by_index_without_reseed(tmp_path):
+    p = tmp_path / "spine.jsonl"
+    mem = SpineAskMemory(spine_path=p)
+    mem.append(entity=ENT, **ANSWER)
+    r = mem.append(entity=ENT, **ANSWER)
+    assert r["spine"]["deduped"] is True and r["spine"]["by"] == "index" and "dedupe_index" not in r["spine"]
+    assert not list(tmp_path.glob("*.stale-*"))
+
+
+def test_r1_index_without_a_stamp_is_untrusted_and_rebuilt(tmp_path):
+    p = tmp_path / "spine.jsonl"
+    mem = SpineAskMemory(spine_path=p)
+    mem.append(entity=ENT, **ANSWER)
+    Path(str(p) + ".askidx.meta").unlink()                # legacy (LQ-1947) index: no record of its spine
+    r = mem.append(entity=ENT, **ANSWER)
+    assert r["spine"]["deduped"] is True and r["spine"]["dedupe_index"] == "reseeded:no_stamp"
+    assert _copies(p) == 1                                # rebuild found it in the spine: still one
+
+
+def test_r2_torn_index_line_does_not_swallow_the_next_fingerprint(tmp_path):
+    from scripts.lib import cio_ask_memory_index as I
+    p = tmp_path / "spine.jsonl"
+    mem = SpineAskMemory(spine_path=p)
+    mem.append(entity=ENT, kind="ask.source", summary="Src 0 (filing)", ref="ask_y:0")
+    with Path(str(p) + ".askidx").open("a") as fh:
+        fh.write("ab" * 20)                               # crash mid-write: no newline
+    mem.append(entity=ENT, **ANSWER)
+    I._CACHE.clear()
+    idx = I.MemoryIndex(p)
+    fp = I.fingerprint("SYNTH", GUID, "ask.answer_version", "ask_x:v1", "[ask.answer_version] v1 final: synthetic answer")
+    assert idx.has(fp)

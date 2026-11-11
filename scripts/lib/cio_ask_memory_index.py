@@ -16,6 +16,7 @@ import fcntl
 import hashlib
 import json
 import os
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Optional
@@ -30,7 +31,9 @@ def fingerprint(symbol: str, security_guid: Optional[str], kind: str, ref: str, 
 
 class MemoryIndex:
     def __init__(self, spine_path: Path):
+        self.spine_path = Path(spine_path)
         self.path = Path(str(spine_path) + ".askidx")
+        self.meta_path = Path(str(spine_path) + ".askidx.meta")
         self.lock_path = Path(str(spine_path) + ".askidx.lock")
 
     @contextmanager
@@ -72,15 +75,78 @@ class MemoryIndex:
     def add(self, fp: str) -> None:
         """Append one fingerprint durably. Call inside ``locked()``."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        lead = ""
+        try:  # a torn last line (crash mid-write) must not swallow this fingerprint (LQ-1962 R-2)
+            with self.path.open("rb") as rf:
+                rf.seek(-1, os.SEEK_END)
+                lead = "" if rf.read(1) == b"\n" else "\n"
+        except (FileNotFoundError, OSError):
+            lead = ""
         with self.path.open("a", encoding="ascii") as fh:
-            fh.write(fp + "\n")
+            fh.write(lead + fp + "\n")
             fh.flush()
             os.fsync(fh.fileno())
+        self._stamp()
+
+    # ── index <-> spine binding (LQ-1962 R-1) ─────────────────────────────────────────────────────────────────────
+    def _spine_id(self) -> Optional[dict]:
+        try:
+            st = self.spine_path.stat()
+        except OSError:
+            return None
+        return {"ino": st.st_ino, "size": st.st_size}
+
+    def _stamp(self) -> None:
+        """Record which spine (inode) and how large it was when the index last claimed to describe it."""
+        ident = self._spine_id()
+        if ident is None:
+            return
+        tmp = self.meta_path.with_name(self.meta_path.name + ".tmp")
+        tmp.write_text(json.dumps(ident), encoding="ascii")
+        os.replace(tmp, self.meta_path)
+
+    def verify(self) -> Optional[str]:
+        """None when the index may be trusted; else the reason it is stale. A fingerprint is a claim that the spine
+        holds the memory, so a replaced, shrunk or missing spine (restore, compaction, truncation), or an index with no
+        record of the spine it describes, voids every claim."""
+        try:
+            has_claims = self.path.exists() and self.path.stat().st_size > 0
+        except OSError:
+            return "index_unreadable"
+        if not has_claims:
+            return None
+        try:
+            rec = json.loads(self.meta_path.read_text(encoding="ascii"))
+        except (OSError, ValueError):
+            return "no_stamp"
+        now = self._spine_id()
+        if now is None:
+            return "spine_missing"
+        if rec.get("ino") != now["ino"]:
+            return "spine_replaced"
+        if now["size"] < int(rec.get("size") or 0):
+            return "spine_shrunk"
+        return None
+
+    def reseed(self) -> int:
+        """Archive the stale index (never delete), then rebuild it from what the spine really holds. Inside ``locked()``."""
+        stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        for src in (self.path, self.meta_path):
+            if src.exists():
+                src.rename(src.with_name(f"{src.name}.stale-{stamp}-{os.getpid()}"))
+        _CACHE.pop(str(self.path), None)
+        if self.spine_path.exists():
+            return self._rebuild_locked(self.spine_path)
+        return 0
 
     def rebuild(self, spine_path: Path, *, only_tag: str = "ask_the_cio") -> int:
         """Seed the index from an existing spine (READ-ONLY on the spine). Returns fingerprints added."""
-        added = 0
         with self.locked():
+            return self._rebuild_locked(spine_path, only_tag=only_tag)
+
+    def _rebuild_locked(self, spine_path: Path, *, only_tag: str = "ask_the_cio") -> int:
+        added = 0
+        if True:
             known = self._known()
             with Path(spine_path).open("rb") as fh:
                 for raw in fh:
@@ -99,4 +165,5 @@ class MemoryIndex:
                             self.add(fp)
                             known.add(fp)
                             added += 1
+        self._stamp()
         return added
