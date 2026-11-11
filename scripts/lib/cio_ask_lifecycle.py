@@ -573,9 +573,12 @@ def request_deep(
                 thread_id=thread_id,
                 entities=entities,
             )
-            recall = []
+            recall, recall_errors = [], []
             for entity in entities:
-                recall += research_context_for_model(d.memory.recall(entity=entity, limit=6, exclude_refs=()) or [])
+                got, errs = core.checked_recall(d.memory, entity, limit=6, exclude_refs=())
+                recall += research_context_for_model(got)
+                recall_errors += errs
+            recall_health = core.health_of(len(recall), recall_errors)  # unreadable != nothing remembered (M1)
             context = AskResearchContext(
                 request=req,
                 thread_id=thread_id,
@@ -596,6 +599,7 @@ def request_deep(
                 raw, findings = mbi_guard_payload(answer.to_dict(allow_size_suggestion=False))
                 answer = AskAnswer.from_dict(raw)
                 answer.ask_id, answer.thread_id, answer.version, answer.depth = ask_id, thread_id, version, "deep"
+                answer.provenance = {**(answer.provenance or {}), "recall_health": recall_health}
                 answer.status = "reanswer" if automated and answer.status != "failed" else answer.status
                 answer.mbi_guard = {
                     "stripped": len(findings) + int((answer.mbi_guard or {}).get("stripped") or 0),

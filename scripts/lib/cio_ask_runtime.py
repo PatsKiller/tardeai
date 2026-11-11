@@ -177,6 +177,25 @@ def _remember(d: AskDeps, e: EntityRef, kind: str, summary: str, ref: str) -> di
         return {"ok": False, "error": type(exc).__name__}
 
 
+def checked_recall(memory: Any, entity: Any, *, limit: int, exclude_refs: tuple = ()) -> tuple[list[dict], list[dict]]:
+    """Every live recall goes through here (quick and deep path): (items, errors). A store that cannot be read is an
+    error entry, never an empty list (LQ-1935 F5 / REVIEW-1942 M1)."""
+    key = entity.memory_key or entity.name
+    try:
+        checked = getattr(memory, "recall_checked", None)
+        if checked is not None:
+            items, errs = checked(entity=entity, limit=limit, exclude_refs=exclude_refs)
+            return list(items or []), [dict(x, entity=key) for x in errs or []]
+        return list(memory.recall(entity=entity, limit=limit, exclude_refs=exclude_refs) or []), []
+    except Exception as exc:  # noqa: BLE001
+        return [], [{"store": "memory", "error": type(exc).__name__, "entity": key}]
+
+
+def health_of(item_count: int, errors: list[dict]) -> dict:
+    state = "unreadable" if errors else ("ok" if item_count else "empty")
+    return {"state": state, "items": item_count, "errors": list(errors)}
+
+
 def record_answer(ans: AskAnswer, *, turn: Optional[Any] = None, deps: Optional[AskDeps] = None) -> None:
     d = _deps(deps)
     if d is None:

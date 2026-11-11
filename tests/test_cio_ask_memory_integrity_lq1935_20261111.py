@@ -136,3 +136,75 @@ def test_unconfirmed_mirror_is_recorded_and_sent_mirror_is_not_noise(tmp_path, _
     out2 = cc_ask(d2, _offline, "What is the view on TSLA?")
     assert out2["mirror"]["state"] == "sent"
     assert not [e for e in d2.store.events() if e.get("kind") == "ask.mirror_status"]
+
+
+# ── REVIEW-1942 M1: the deep-research recall path ─────────────────────────────────────────────────────────────────
+
+
+def _deep_answers(d):
+    return [e["answer"] for e in d.store.events(thread_id=TID) if e.get("kind") == "ask.answer_version"
+            and e["answer"].get("depth") == "deep" and (e["answer"].get("provenance") or {}).get("evidence_fingerprint") == "changed"]
+
+
+def test_deep_run_marks_the_answer_unreadable_when_recall_fails(tmp_path):
+    from tests.test_cio_ask_hourly_20261026 import evidence, provider, run
+
+    d = fixture(tmp_path, provider=provider([]))
+    d.memory.recall_checked = lambda **kw: ([], [{"store": "security_research_spine", "error": "OSError"}])
+    run(d, collect=lambda req: evidence(req, "changed"))
+    got = _deep_answers(d)
+    assert got, "the deep provider did not run"
+    h = got[-1]["provenance"]["recall_health"]
+    assert h["state"] == "unreadable" and h["errors"][0]["error"] == "OSError"
+
+
+def test_deep_run_marks_a_readable_empty_recall_empty(tmp_path):
+    from tests.test_cio_ask_hourly_20261026 import evidence, provider, run
+
+    d = fixture(tmp_path, provider=provider([]))
+    run(d, collect=lambda req: evidence(req, "changed"))
+    assert _deep_answers(d)[-1]["provenance"]["recall_health"]["state"] == "empty"
+
+
+def test_every_live_recall_uses_the_checked_path():
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "scripts" / "lib"
+    hits = []
+    for f in ("cio_ask_core.py", "cio_ask_lifecycle.py", "cio_ask_runtime.py", "cio_ask_reanswer.py"):
+        for n, line in enumerate((root / f).read_text().splitlines(), 1):
+            if re.search(r"\bmemory\.recall\(", line) and "getattr" not in line and "return list(memory.recall" not in line:
+                hits.append(f"{f}:{n}")
+    assert hits == [], hits
+
+
+# ── REVIEW-1942 M2: a delivered mirror is never reported as failed ────────────────────────────────────────────────
+
+
+def test_delivered_mirror_stays_sent_when_the_ledger_link_fails(tmp_path, _offline, monkeypatch):
+    d = make_deps(tmp_path)
+    sent = []
+    d.telegram_send = lambda text: (sent.append(text), {"ok": True, "message_id": 123})[1]
+
+    def refuse(*a, **k):
+        raise PermissionError("ledger refused")
+
+    monkeypatch.setattr(core, "link_channel", refuse)
+    out = cc_ask(d, _offline, "What is the view on TSLA?")
+    assert len(sent) == 1
+    assert out["mirror"]["state"] == "sent" and out["mirror"]["link_error"] == "PermissionError"
+    rows = [e["mirror"] for e in d.store.events() if e.get("kind") == "ask.mirror_status"]
+    assert rows and all(r["state"] == "sent" for r in rows)  # never a false 'failed' for a delivered message
+
+
+def test_a_later_successful_mirror_is_not_masked_by_an_earlier_failure(tmp_path, _offline):
+    d = make_deps(tmp_path)
+    d.telegram_send = lambda text: (_ for _ in ()).throw(ConnectionError("down"))
+    first = core.ask_from_cc("What is the view on TSLA?", deps=d, converse=__import__("tests.test_cio_ask_20261023", fromlist=["x"])._converse_cc(_offline), request_id="cc_same")
+    assert first["mirror"]["state"] == "failed"
+    ev = [e for e in d.store.events() if e.get("kind") == "ask.mirror_status"]
+    assert len(ev) == 1
+    from scripts.lib.cio_ask_store import event_id_for
+
+    assert ev[0]["event_id"] == event_id_for("ask.mirror_status", first["ask_id"], "cc_same", "failed")

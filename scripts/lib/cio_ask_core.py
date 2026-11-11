@@ -317,16 +317,8 @@ def begin_turn(
     recall_errors: list[dict] = []
     max_items = int((d.config.get("recall") or {}).get("max_items") or 4)
     for e in entities:
-        try:
-            checked = getattr(d.memory, "recall_checked", None)
-            if checked is not None:
-                items, errs = checked(entity=e, limit=max_items, exclude_refs=(req.ask_id,))
-                recall_errors += [dict(x, entity=e.memory_key or e.name) for x in errs]
-            else:
-                items = d.memory.recall(entity=e, limit=max_items, exclude_refs=(req.ask_id,))
-        except Exception as exc:  # noqa: BLE001
-            items = []
-            recall_errors.append({"store": "memory", "error": type(exc).__name__, "entity": e.memory_key or e.name})
+        items, errs = checked_recall(d.memory, e, limit=max_items, exclude_refs=(req.ask_id,))
+        recall_errors += errs
         if items:
             recall[e.memory_key or e.name] = items
     return AskTurn(
@@ -641,10 +633,7 @@ def finish_turn(
 def recall_health(turn: AskTurn) -> dict:
     """ok | empty | unreadable. 'empty' means the stores were read and held nothing; 'unreadable' means at least one
     store could not be read, so the answer must not be taken to prove there was nothing to remember."""
-    errs = list(getattr(turn, "recall_errors", None) or [])
-    n = sum(len(v) for v in turn.recall.values())
-    state = "unreadable" if errs else ("ok" if n else "empty")
-    return {"state": state, "items": n, "errors": errs}
+    return health_of(sum(len(v) for v in turn.recall.values()), list(getattr(turn, "recall_errors", None) or []))
 
 
 def record_answer(ans: AskAnswer, *, turn: Optional[AskTurn] = None, deps: Optional[AskDeps] = None) -> None:
@@ -653,6 +642,7 @@ def record_answer(ans: AskAnswer, *, turn: Optional[AskTurn] = None, deps: Optio
 
 
 from scripts.lib.cio_ask_runtime import _plain as _plain
+from scripts.lib.cio_ask_runtime import checked_recall as checked_recall, health_of as health_of
 
 
 def _latest_answer_for_ask(store: AskEventStore, ask_id: str) -> Optional[AskAnswer]:
@@ -766,18 +756,22 @@ def ask_from_cc(
         try:
             res = d.telegram_send(f"Asked in the Command Center: {q}\n\n{text}") or {}
             if res.get("message_id") is not None:
-                link_channel(d.store, thread_id=tid, channel="telegram", chat_id=cid, message_id=res["message_id"])
-                mirror = {"state": "sent", "message_id": str(res["message_id"])}
+                mirror = {"state": "sent", "message_id": str(res["message_id"])}  # delivered: nothing below may undo it
             else:
                 mirror = {"state": "unconfirmed", "reason": "NO_MESSAGE_ID"}
         except Exception as exc:  # noqa: BLE001 — F7: never swallowed; the ledger keeps a receipt
             mirror = {"state": "failed", "reason": type(exc).__name__}
-        if mirror["state"] != "sent":
+        if mirror["state"] == "sent":
+            try:
+                link_channel(d.store, thread_id=tid, channel="telegram", chat_id=cid, message_id=res["message_id"])
+            except Exception as exc:  # noqa: BLE001 — M2: a ledger link fault is not a delivery failure
+                mirror["link_error"] = type(exc).__name__
+        if mirror["state"] != "sent" or mirror.get("link_error"):
             try:
                 d.store.append(
                     "ask.mirror_status",
                     {"thread_id": tid, "ask_id": ask.get("ask_id"), "at": utc_now_iso(), "mirror": mirror},
-                    event_id=event_id_for("ask.mirror_status", ask.get("ask_id"), rid),
+                    event_id=event_id_for("ask.mirror_status", ask.get("ask_id"), rid, mirror["state"]),
                 )
             except Exception as exc:  # noqa: BLE001
                 mirror["receipt_error"] = type(exc).__name__
