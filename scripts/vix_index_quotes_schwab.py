@@ -27,7 +27,11 @@ fire while disabled is ok=false, exit 1.
 Receipt (stdout, one JSON object per fire): ``VixIndexQuoteRun@v1`` with the 15-min ``slot`` and, per symbol, one of
   written    -- a print newer than the stored one, no older than max_trade_age_minutes;
   unchanged  -- the print is already stored (the provider has not moved the index since);
-  stale_print -- the print is older than max_trade_age_minutes (Cboe is not calculating the index), not written;
+  written_stale -- a print NEWER than the stored one but older than max_trade_age_minutes: written once, with its
+                true print time, and labelled stale (LQ-20261107-1872). Last-known-good with its age: a real print
+                the store does not hold is never thrown away, and it is never called fresh either;
+  stale_print -- the print is older than max_trade_age_minutes AND not newer than the stored one (Cboe is not
+                calculating the index; nothing better to write), not written;
   refused:<reason> -- not an index, no price/time, a future timestamp, a provider error.
 
 AUTHORITY: READ_ONLY_ADVISORY. MBI_BEHAVIOR = 0.
@@ -134,12 +138,20 @@ def parse_payload(payload: Any, now: datetime, cfg: dict[str, Any],
             continue
         age = (now - at).total_seconds() / 60.0
         entry.update({"price": price, "print_at": at.isoformat(), "age_minutes": round(age, 1)})
+        stored = last_stored.get(sym)
         if age < -5:
             entry["status"] = "refused:future_timestamp"
+        elif stored is not None and at <= stored:
+            # The store already holds this print or a newer one. Never write backwards: a provider that lags is not
+            # news. The status still names why there is no write: the index has not moved since, or it is stale.
+            entry["status"] = "stale_print" if age > max_age else "unchanged"
         elif age > max_age:
-            entry["status"] = "stale_print"
-        elif last_stored.get(sym) is not None and at <= last_stored[sym]:
-            entry["status"] = "unchanged"
+            # A real print newer than anything stored, but past the freshness line (Cboe has stopped calculating).
+            # Last-known-good with its age: write it once with its TRUE print time and label it stale, so no surface
+            # can read it as current and the header can still say "16:15 ET" instead of an older overnight print
+            # (LQ-20261107-1872). Before this, a 16:15 print fetched at 20:00 was discarded and the store held none.
+            entry["status"] = "written_stale"
+            rows.append({"symbol": sym, "price": price, "fetched_at": at})
         else:
             entry["status"] = "written"
             rows.append({"symbol": sym, "price": price, "fetched_at": at})
@@ -175,7 +187,9 @@ def run(*, cfg: dict[str, Any], now: datetime, fetch: Callable[[list[str]], Any]
     elif dry_run:
         receipt["would_insert"] = len(rows)
     vix = next((e for e in entries if e["symbol"] == "$VIX"), {})
-    receipt["status"] = "ok" if vix.get("status") in ("written", "unchanged") else f"vix_{vix.get('status', 'absent')}"
+    # written_stale is a successful write: the $VIX print the store did not hold is now in it, labelled stale.
+    receipt["status"] = ("ok" if vix.get("status") in ("written", "unchanged", "written_stale")
+                         else f"vix_{vix.get('status', 'absent')}")
     return receipt
 
 
@@ -240,7 +254,7 @@ def _write_receipt(receipt: dict[str, Any], started_at: str) -> None:
                  "vix_print_at": vix.get("print_at"), "vix_price": vix.get("price"), "symbols": statuses},
         error=None if ok else str(receipt.get("status") or "unknown"),
         produced_count=int(receipt.get("inserted") or 0), attempted_count=len(receipt.get("symbols") or []),
-        skipped_reasons={k: v for k, v in statuses.items() if k != "written"} or None,
+        skipped_reasons={k: v for k, v in statuses.items() if k not in ("written", "written_stale")} or None,
         empty_reason=None if not ok else empty,
     )
 

@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "vix_index_quotes_stale_written_20261110",
+  "files": [
+    "tests/test_vix_index_quotes_stale_written_20261110.py"
+  ],
+  "anchor": "VIX_INDEX_QUOTES_STALE_WRITTEN_20261110",
+  "comment": [
+    "ANCHOR: VIX_INDEX_QUOTES_STALE_WRITTEN_20261110 — LQ-20261107-1872.",
+    "Production 2026-11-10 20:00 ET (d:vix-index-quotes-schwab:live:20261110T2000): Schwab returned $VIX 19.46,",
+    "$VIX9D 18.54 and $VIX3M 20.64 printed 16:15 ET, age 225 min. market_quotes held no row for any of the three,",
+    "and the lane graded all three stale_print -> inserted 0, so a real print newer than anything stored was",
+    "discarded and the headline kept reading the 03:45 ET overnight print. A print newer than the stored one is",
+    "now written once with its true print time and labelled written_stale -- never fresh, never re-written -- and",
+    "produced_count counts it. Pins the surface reading STALE with the real print time on an admissible source.",
+    "Hermetic: synthetic payloads, no DB, no network, no Schwab."
+  ]
+}

@@ -99,8 +99,11 @@ NOW = datetime(2026, 11, 10, 11, 0, 40, tzinfo=ET)
 @pytest.mark.parametrize("block, status", [
     ({"assetMainType": "INDEX", "quote": {"lastPrice": 18.0, "tradeTime": _ms(NOW - timedelta(seconds=15))}},
      "written"),
+    # The store is empty in this table, so a print past the age line is NEWER than anything stored: from
+    # LQ-20261107-1872 that is kept and labelled written_stale, never discarded. `stale_print` is the store already
+    # holding it (or something newer) case -- see tests/test_vix_index_quotes_stale_written_20261110.py.
     ({"assetMainType": "INDEX", "quote": {"lastPrice": 18.0, "tradeTime": _ms(NOW - timedelta(minutes=31))}},
-     "stale_print"),
+     "written_stale"),
     ({"assetMainType": "EQUITY", "quote": {"lastPrice": 18.0, "tradeTime": _ms(NOW)}},
      "refused:index_asset_type_equity"),
     ({"quote": {"lastPrice": 18.0, "tradeTime": _ms(NOW)}}, "refused:index_asset_type_missing"),
@@ -113,7 +116,7 @@ NOW = datetime(2026, 11, 10, 11, 0, 40, tzinfo=ET)
 def test_each_print_gets_one_named_status(block, status):
     rows, entries = lane.parse_payload({"$VIX": block}, NOW, CFG, {})
     assert entries[0]["status"] == status
-    assert len(rows) == (1 if status == "written" else 0)
+    assert len(rows) == (1 if status in ("written", "written_stale") else 0)
     assert {e["symbol"] for e in entries} == {"$VIX", "$VIX9D", "$VIX3M"}  # one entry per symbol, always
     assert [e["status"] for e in entries[1:]] == ["refused:not_in_payload"] * 2
 

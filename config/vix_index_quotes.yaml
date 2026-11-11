@@ -30,6 +30,8 @@ window:
   end_day: fri
   end: "20:00"
 cadence_minutes: 15
-# A print older than this when fetched is not written as new (Cboe is not calculating the index). The slot's receipt
-# still names the print and its age, so the timeline shows the gap as a fact, never as a missing run.
+# A print older than this when fetched is not written as FRESH (Cboe is not calculating the index). If the store
+# already holds it or something newer, nothing is written. If it is NEWER than the stored print, it is written once
+# with its true print time and labelled written_stale -- last-known-good with its age (LQ-20261107-1872). The slot's
+# receipt names the print and its age either way, so the timeline shows the gap as a fact, never as a missing run.
 max_trade_age_minutes: 30
