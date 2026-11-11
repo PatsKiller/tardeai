@@ -55,6 +55,30 @@ def _collapse_duplicates(items: list[dict]) -> list[dict]:
     return list(newest.values())
 
 
+QUESTION_KINDS = ("ask.asked", "ask.follow_up")
+QUESTION_SLOTS = 2  # F1c (LQ-2004): recall slots reserved for the operator's own question(s), whatever their age
+
+
+def select_recall(items: list[dict], limit: int) -> list[dict]:
+    """Newest-first, but never let a stream of newer answer versions / sources push out the question being answered.
+
+    A re-answered ask adds an answer version every few hours and a flood of ``ask.source`` rows, so by recency alone the
+    original question (the oldest item of its ask) falls below any small limit and is gone from the spine tip as well
+    (F1c). Reserve up to QUESTION_SLOTS slots for the newest questions; fill the rest by recency; return newest first."""
+    ranked = sorted(items, key=lambda i: str(i.get("at") or ""), reverse=True)
+    if limit <= 0:
+        return []
+    qs = [i for i in ranked if i.get("kind") in QUESTION_KINDS][: min(QUESTION_SLOTS, max(1, limit // 2))]
+    chosen = list(qs)
+    for i in ranked:
+        if len(chosen) >= limit:
+            break
+        if not any(i is q for q in qs):
+            chosen.append(i)
+    chosen.sort(key=lambda i: str(i.get("at") or ""), reverse=True)
+    return chosen
+
+
 class SpineAskMemory:
     """Default memory: research spine for securities, ask ledger for private entities."""
 
@@ -196,8 +220,7 @@ class SpineAskMemory:
                 errors.append({"store": "cio_ask_events", "error": type(exc).__name__})
         items = [i for i in items if not any(str(i.get("ref") or "").startswith(x) for x in exclude_refs if x)]
         items = _collapse_duplicates(items)
-        items.sort(key=lambda i: str(i.get("at") or ""), reverse=True)
-        return items[:limit], errors
+        return select_recall(items, limit), errors
 
     def _recall_ledger(self, entity: EntityRef) -> list[dict]:
         key = entity.memory_key
