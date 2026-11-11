@@ -347,6 +347,9 @@ def test_exit_pending_advisory_as_of_the_sunday_slot_is_scored(monkeypatch, rece
         },
     }
     inserts: list = []
+    # The real adapter returns None for a successful ``fetch="none"`` write, so the reconciler reads each row
+    # back (LQ-20261107-1892): this stub stores what it accepted, like the store does.
+    written: set = set()
 
     def execute(sql, params=None, fetch=None):
         s = " ".join(sql.split()).lower()
@@ -358,11 +361,12 @@ def test_exit_pending_advisory_as_of_the_sunday_slot_is_scored(monkeypatch, rece
         if s.startswith("select h.id, h.symbol"):
             return [advisory]
         if s.startswith("select 1 from exit_advisory_outcomes"):
-            return None
+            return {"?column?": 1} if params and tuple(params) in written else None
         if s.startswith("select 1 from alert_events"):
             return None
         if s.startswith("insert into exit_advisory_outcomes"):
             inserts.append(params)
+            written.add((params[0], params[4]))          # (advisory_id, horizon_days)
             return None
         raise AssertionError(f"unexpected SQL: {s[:70]}")
 

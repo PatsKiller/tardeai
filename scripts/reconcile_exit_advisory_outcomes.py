@@ -142,6 +142,10 @@ QUIET_SKIP_REASONS = frozenset({"not_due", "already_reconciled"})
 # an INSERT'd NOT_EVALUABLE is permanent under UNIQUE(advisory_id, horizon_days) + ON CONFLICT DO NOTHING, and
 # a run that filled the table with unmeasurable rows still reported produced=N and exit 0.
 BARS_UNAVAILABLE = "bars_unavailable"
+# LQ-20261107-1892: db_adapter._execute returns None for a swallowed SQL error *and* for a successful
+# ``fetch="none"`` write, so a run counted every attempted INSERT as produced. A row that cannot be read back
+# after the INSERT did not land; it is named here and makes the run red, never a green produced=N.
+WRITE_NOT_VISIBLE = "write_not_visible"
 
 
 def _num(v) -> float | None:
@@ -513,7 +517,28 @@ def reconcile() -> int:
                  m.get("giveback_frac"), acted, v),
                 fetch="none",
             )
+            # ``db_adapter._execute`` swallows every SQL error and returns None — and a successful
+            # ``fetch="none"`` write returns None too, so the call returning is not evidence that the row
+            # exists (AGENTS §0 rule 8). Read it back: only a row this run can see counts as produced, and a
+            # write that did not land makes the run red instead of green (LQ-20261107-1892).
+            landed = ex(
+                """SELECT 1 FROM exit_advisory_outcomes WHERE advisory_id=%s AND horizon_days=%s""",
+                (a["id"], horizon), fetch="one",
+            )
+            if not landed:
+                skipped[WRITE_NOT_VISIBLE] = skipped.get(WRITE_NOT_VISIBLE, 0) + 1
+                continue
             done += 1
+    if skipped.get(WRITE_NOT_VISIBLE):
+        # Some (possibly all) writes were refused by the store. A green run over rows that are not there is
+        # exactly the silent failure this lane exists to prevent, so name it and exit non-zero even when the
+        # rest landed: a partial green would hide the lost rows.
+        why = (f"{skipped[WRITE_NOT_VISIBLE]} of {attempted} outcome writes were not visible after INSERT —"
+               " the store refused them (db_adapter swallows the SQL error and returns None)")
+        print(f"[exit-outcomes] write_not_visible — {why}", file=sys.stderr)
+        _receipt(ok=False, produced=done, attempted=attempted, empty_reason=WRITE_NOT_VISIBLE,
+                 skipped=skipped, error=why)
+        return 1
     if done == 0:
         # The selector found work and none of it could be written: name it instead of reporting a green 0. A
         # quiet week (everything still inside its horizon, or already scored) is clean; anything else is not.
