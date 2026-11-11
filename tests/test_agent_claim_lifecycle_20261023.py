@@ -815,7 +815,29 @@ def _app_test_runner_list() -> set[str]:
     return set(json.loads(out.stdout)["run"])
 
 
-# ── cc-deepseek-9's F2 at #2302: the report-only cleanup must run BEFORE the release ───────────────────────
+# ── LQ-20261107-1883: the DONE path deletes the agent's own scratch, it does not just report ────────────────
+def test_the_cleanup_hook_is_armed_with_apply_not_dry_run(tmp_path):
+    """Operator WAR ROOM addendum 2026-11-11: DONE removes the agent's scratch, in the DONE path/hook itself."""
+    import agent_claim as A
+
+    seen: list[list[str]] = []
+
+    class _Proc:
+        returncode = 0
+        stdout = ""
+        stderr = "agent_scratch_cleanup apply  removed: 1"
+
+    original = A.subprocess.run
+    A.subprocess.run = lambda cmd, **kw: (seen.append(list(cmd)), _Proc())[1]  # noqa: E731
+    try:
+        A._agent_scratch_cleanup_hook("C1", str(tmp_path))
+    finally:
+        A.subprocess.run = original
+    assert len(seen) == 1 and "--apply" in seen[0] and "--dry-run" not in seen[0]
+    assert seen[0][2:] == ["--apply", "--claim", "C1", "--claims-dir", str(tmp_path)]
+
+
+# ── cc-deepseek-9's F2 at #2302: the cleanup must run BEFORE the release ────────────────────────────────────
 def test_release_reports_scratch_before_it_releases_the_claim(tmp_path, monkeypatch):
     """The tool refuses a claim that is no longer on the board, so a hook run after release reports nothing."""
     import argparse

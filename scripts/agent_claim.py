@@ -517,22 +517,27 @@ def _incident_warning(session: str) -> int:
 
 
 def _agent_scratch_cleanup_hook(claim_id: str | None = None, claims_dir: str | None = None) -> None:
-    """Agent self-cleanup at task end — REPORT-ONLY until AGENTS.md 27.0.0 is ACTIVE.
+    """Agent self-cleanup at task end — ARMED: DONE removes the agent's own scratch (LQ-20261107-1883).
 
-    Runs scripts/agent_scratch_cleanup.py --dry-run so the closing session sees what scratch it WOULD remove
-    and removes nothing. Call it while the claim is still active: the tool refuses a claim that is no longer on
-    the board. The plan is printed to stderr so "report-only" actually reports (and --json stdout stays clean).
+    Runs scripts/agent_scratch_cleanup.py --apply so the closing session deletes only the scratch it created in
+    its own task/session namespace. Call it while the claim is still active: the tool refuses a claim that is no
+    longer on the board, so this runs BEFORE the release (cc-deepseek-9 F2 at #2302). What was removed is
+    printed to stderr (--json stdout stays clean).
 
     This is the §0 rule-6 exception (c) "agent self-delete" enforcement point (design:
-    docs/designs/DSN-20261030-disk-governance-process.md). To ARM the actual deletion — operator-only, after
-    APPROVE_AGENTS_POLICY_27_0_0 — change ``--dry-run`` to ``--apply`` in the command below.
+    docs/designs/DSN-20261030-disk-governance-process.md). The operator precondition named by the design —
+    AGENTS.md 27.0.0 ACTIVE — is met (27.0.1 ACTIVE, carried into 29.0.0), and the operator's WAR ROOM
+    addendum of 2026-11-11 09:45 ET requires the DONE path itself, not a doc rule, to delete the agent's own
+    scratch. The script's own guards (own namespace only, protected names, git repos/worktrees, live
+    claims/worklogs, live process cwd/fd, unreadable board) are unchanged and still refuse.
 
-    Never raises and never blocks the claim operation: a cleanup problem must not fail release/takeover.
+    Never raises and never blocks the claim operation: a cleanup problem must not fail release/takeover. A
+    failed apply is reported, and the age-based rule T lane remains the backstop for whatever is left.
     """
     script = ROOT / "scripts" / "agent_scratch_cleanup.py"
     if not script.is_file():
         return
-    cmd = [sys.executable, str(script), "--dry-run"]  # flip to --apply only after 27.0.0 is ACTIVE
+    cmd = [sys.executable, str(script), "--apply"]
     if claim_id:
         cmd += ["--claim", claim_id]
     if claims_dir:
@@ -783,7 +788,7 @@ def cmd_takeover(a: argparse.Namespace) -> int:
     except (OSError, B.WL.WorklogError) as exc:
         print(f"WARN: worklog carry-forward failed ({type(exc).__name__}: {exc})", file=sys.stderr)
     print(f"\n{doc['claim_id']}  ({line})")
-    _agent_scratch_cleanup_hook(a.claim_id, a.claims_dir)  # self-cleanup (report-only until AGENTS.md 27.0.0 ACTIVE)
+    _agent_scratch_cleanup_hook(a.claim_id, a.claims_dir)  # self-cleanup: the DONE path deletes the agent's own scratch
     return 0
 
 
@@ -1151,8 +1156,8 @@ def cmd_next(a: argparse.Namespace) -> int:
 
 def cmd_release(a: argparse.Namespace) -> int:
     session = _session(a)
-    # Report-only cleanup plan BEFORE the release: the tool refuses a claim that is no longer on the board, so
-    # running it after release would compute nothing and report nothing (cc-deepseek-9 F2 at #2302).
+    # Self-cleanup BEFORE the release: the tool refuses a claim that is no longer on the board, so running it
+    # after release would compute nothing and remove nothing (cc-deepseek-9 F2 at #2302). Armed per LQ-1883.
     _agent_scratch_cleanup_hook(a.claim_id, a.claims_dir)
     try:
         doc = _board(a).release(

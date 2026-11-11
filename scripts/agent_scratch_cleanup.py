@@ -3,8 +3,9 @@
 
 Design: ``docs/designs/DSN-20261030-disk-governance-process.md``. This is the agent self-cleanup leg of the
 repeatable disk-governance process: the contract "if an agent writes caches, it cleans them up afterwards",
-enforced at claim-close / takeover / session-end (``scripts/agent_claim.py`` hooks this, report-only until the
-operator ratifies AGENTS.md 27.0.0 §0 rule-6 exception (c)).
+enforced at claim-close / takeover / session-end (``scripts/agent_claim.py`` hooks this with ``--apply``; the
+operator ratified AGENTS.md §0 rule-6 exception (c) as 27.0.1 ACTIVE, carried into 29.0.0, and the 2026-11-11
+WAR ROOM addendum requires the DONE path itself to delete the agent's own scratch).
 
 An agent's own scratch is, by construction (DELIVERY_LIFECYCLE.md "Build")::
 
@@ -766,7 +767,7 @@ def run(
         for r in refused:
             print(f"  refused: {r['path']}  ({'; '.join(r['reasons'])})")
         if would_remove:
-            print("  --apply would remove these (report-only until AGENTS.md 27.0.0 is ACTIVE)")
+            print("  --apply removes these (armed: AGENTS.md §0 rule 6 exception (c) is ACTIVE; claim DONE runs --apply)")
     return 0
 
 

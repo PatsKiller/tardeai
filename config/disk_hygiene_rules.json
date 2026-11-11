@@ -185,6 +185,29 @@
       }
     ]
   },
+  "disk_caps": {
+    "_why": "LQ-20261107-1883 (operator WAR ROOM 2026-11-11, addendum 09:45 ET): the boot drive / must not fill, and /data must never be treated as the only disk that matters. These are per-DISK caps, distinct from budgets.roots (per-path absolute caps): max_used_gb is an absolute ceiling on USED bytes, alert_pct/critical_pct band df-style used%, and min_free_gb is a floor that alerts before the percentage does. band = ok | alert | critical | unmeasured; an unmeasurable disk is treated as over its cap. action says what the cleaner does: 'sweep_this_disk_first' means this disk's eligible items lead the standing pass so the run's item/byte caps are spent where the disk is filling; 'sweep_then_page' (critical) names that the sweep happens and the monitor alert is forced, because a critical disk may not clear in one pass; max_free_per_run_gb bounds how much ONE run may reclaim from this disk so one disk's work cannot consume the whole budget. Values are measured, never assumed: the receipt carries declared_filesystem next to actual_filesystem, and a mismatch is drift. Operator-tunable (§17).",
+    "disks": [
+      {
+        "mount": "/",
+        "filesystem": "nvme0n1p2",
+        "max_used_gb": 420,
+        "alert_pct": 88.0,
+        "critical_pct": 94.0,
+        "min_free_gb": 30,
+        "max_free_per_run_gb": 20
+      },
+      {
+        "mount": "/data",
+        "filesystem": "nvme1n1p1",
+        "max_used_gb": 1500,
+        "alert_pct": 85.0,
+        "critical_pct": 92.0,
+        "min_free_gb": 150,
+        "max_free_per_run_gb": 20
+      }
+    ]
+  },
   "budgets": {
     "_why": "LQ-20261107-1638, operator 2026-11-09, verbatim: 'a new 2TB drive is going in this week; hygiene must NOT relax because there is more space — cache and scratch must not just grow.' Every cap here is ABSOLUTE BYTES, never a share of the mount, so df used% is irrelevant to it. Read by scripts/disk_hygiene.py (planning, oldest-orphaned-first reclaim, escalation) and scripts/disk_usage_monitor.py (alerting, independent of the used% bands). A root is measured and compared as a whole. When the protected floor alone exceeds a cap the pass reports floor_exceeds_cap for that root and NEVER evicts young or referenced work to reach the number: it escalates. Growth is GiB/day over a rolling window from the monitor's own samples, so a disk that is quiet at 20% but gaining 20 GiB/day still alerts. Values are operator-tunable (§17); changing one is a new ruling and must cite it here.",
     "enabled": true,
@@ -449,7 +472,8 @@
     "_why": "scripts/disk_usage_monitor.py, n8n lane disk-usage-monitor (*/15). Band = ok | warn | critical by df-style used% (used / (used + available)). Alerts are throttled on EVERY path by realert_minutes: the first thing ever said about a mount is immediate, and after that a band change (severity increase, recovery or repeat) and an unchanged bad band ALL wait for the interval. 2026-11-04: (/ sat critical 23 hours on one alert because only CHANGES alerted; the first repair then throttled only the unchanged path, and an ok<->critical flap every 15 min produced 96 alerts in 24h). Bound: one clock governs every alert, with ONE named exception - a WARN -> CRITICAL escalation is said at once, because a mount at 85% can reach 100% inside an interval and the ledger lives on that mount (cc-deepseek-2 block, 2026-11-04). Everything else (repeats and recoveries) waits for realert_minutes; the first thing ever said about a mount is immediate. Measured 24-hour ceilings at the 60-minute default and 15-minute polls: 24-25 alerts on two-band cycles (ok<->critical, warn<->critical) and on four-band cycles, and up to 33 on a three-band cycle (warn,critical,ok repeating every 45 minutes) - such a cycle carries a warn, an escalation and a recovery, and neither the escalation nor the recovery may be suppressed. A hard 25 on every shape would require dropping one of those two guarantees (cc-deepseek-5 re-read, 2026-11-04). Dedupe is by band and interval, never by raw percent. Inodes (operator 2026-10-19, after /tmp hit 97% inodes with bytes free): every mount is also banded by inode use% (statvfs f_files / f_ffree) with its own thresholds; dedupe is per (mount, metric) band.",
     "mounts": [
       "/",
-      "/tmp"
+      "/tmp",
+      "/data"
     ],
     "warn_pct": 80.0,
     "critical_pct": 90.0,

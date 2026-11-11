@@ -75,7 +75,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable, Mapping, NamedTuple, Optional
+from typing import Any, Iterable, Mapping, NamedTuple, Optional, Sequence
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -205,6 +205,45 @@ def load_rules(path: Optional[Path] = None, *, home: Optional[Path] = None) -> d
             if type(growth.get(key)) is not int or growth[key] <= 0:
                 raise RulesError(f"budgets_growth_{key}")
     doc["_budget_roots"] = budget_roots
+    # LQ-20261107-1883: per-DISK caps, distinct from the per-root budgets above. The boot drive filling is not
+    # a per-root question, so `/` (nvme0n1p2) and `/data` (nvme1n1p1) each carry an absolute used-GB ceiling, an
+    # alert and critical used%, and a minimum free floor. Validated fail closed: a cap that cannot be enforced
+    # is refused rather than silently measured.
+    caps = doc.get("disk_caps")
+    disk_caps: list[dict] = []
+    if caps is not None:
+        if not isinstance(caps, dict) or not isinstance(caps.get("disks"), list) or not caps["disks"]:
+            raise RulesError("disk_caps_shape")
+        seen_mounts: set[str] = set()
+        for d in caps["disks"]:
+            if not isinstance(d, dict):
+                raise RulesError("disk_caps_entry_shape")
+            for key in ("mount", "max_used_gb", "alert_pct", "critical_pct", "min_free_gb"):
+                if key not in d:
+                    raise RulesError(f"disk_caps_missing:{key}")
+            mount = d["mount"]
+            if not isinstance(mount, str) or not mount.startswith("/") or os.path.normpath(mount) != mount:
+                raise RulesError("disk_caps_mount")
+            if mount in seen_mounts:
+                raise RulesError("disk_caps_duplicate_mount")
+            seen_mounts.add(mount)
+            for key in ("max_used_gb", "min_free_gb"):
+                v = d[key]
+                if type(v) not in (int, float) or not math.isfinite(float(v)) or float(v) <= 0:
+                    raise RulesError(f"disk_caps_{key}")
+            for key in ("alert_pct", "critical_pct"):
+                v = d[key]
+                if type(v) not in (int, float) or not math.isfinite(float(v)) or not 0 < float(v) <= 100:
+                    raise RulesError(f"disk_caps_{key}")
+            if not float(d["alert_pct"]) < float(d["critical_pct"]):
+                raise RulesError("disk_caps_pct_order")
+            if float(d["min_free_gb"]) >= float(d["max_used_gb"]):
+                raise RulesError("disk_caps_min_free_vs_cap")
+            per_run = d.get("max_free_per_run_gb")
+            if per_run is not None and (type(per_run) not in (int, float) or not math.isfinite(float(per_run)) or float(per_run) <= 0):
+                raise RulesError("disk_caps_max_free_per_run_gb")
+            disk_caps.append({**d, "mount": os.path.normpath(mount)})
+    doc["_disk_caps"] = disk_caps
     ref = doc["references"]
     doc["_unit_dirs"] = [x(s) for s in ref.get("systemd_unit_dirs") or []]
     doc["_proc_root"] = Path(ref.get("proc_root") or "/proc")
@@ -3122,6 +3161,103 @@ def disk_usage_sample(home: Path) -> dict:
         return {"used_pct": None, "measured_at": ts, "reason": "statvfs_unavailable"}
 
 
+DISK_CAPS_SCHEMA = "DiskHygieneDiskCaps@v1"
+
+
+def _gb2(n: float) -> float:
+    return round(n / 1024**3, 2)
+
+
+def _mount_source(mount: str) -> Optional[str]:
+    """The device currently mounted at ``mount`` from /proc/mounts, or None when it cannot be read.
+
+    Reported, never trusted: a declared ``filesystem`` that disagrees with this is drift (a disk replaced or a
+    mount moved), and the receipt must show both values rather than assume the narrower one.
+    """
+    try:
+        with open("/proc/mounts", encoding="utf-8") as fh:
+            source = None
+            for line in fh:
+                parts = line.split()
+                if len(parts) >= 2 and parts[1] == mount:
+                    source = parts[0]  # last match wins: a later mount shadows an earlier one
+            return source
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def disk_caps_status(rules: Mapping[str, Any], when: Optional[datetime] = None) -> dict[str, Any]:
+    """Measure every configured disk cap (LQ-20261107-1883): / (boot) and /data are both always reported.
+
+    A disk that cannot be measured is banded ``unmeasured`` and treated as over its cap: an alert is cheaper
+    than a silent full boot drive. ``action`` names what the cleaner does, so the receipt is the instruction:
+    ``sweep_this_disk_first`` (its eligible items lead the pass), ``sweep_then_page`` (critical: sweep, and the
+    monitor alert is forced because a critical disk may not clear in one pass), ``none`` (under cap and alert).
+    """
+    ts = (when or datetime.now(timezone.utc)).isoformat()
+    disks: list[dict] = []
+    for d in rules.get("_disk_caps") or []:
+        mount = d["mount"]
+        entry: dict[str, Any] = {
+            "mount": mount,
+            "declared_filesystem": d.get("filesystem"),
+            "actual_filesystem": _mount_source(mount),
+            "max_used_gb": d.get("max_used_gb"),
+            "alert_pct": d.get("alert_pct"),
+            "critical_pct": d.get("critical_pct"),
+            "min_free_gb": d.get("min_free_gb"),
+            "max_free_per_run_gb": d.get("max_free_per_run_gb"),
+            "measured_at": ts,
+        }
+        try:
+            st = os.statvfs(mount)
+            total = st.f_blocks * st.f_frsize
+            free = st.f_bavail * st.f_frsize
+            used = (st.f_blocks - st.f_bfree) * st.f_frsize
+            pct = 100 * used / (used + free) if used + free else None
+        except OSError:
+            entry |= {"used_gb": None, "free_gb": None, "total_gb": None, "used_pct": None,
+                      "band": "unmeasured", "over_alert": True, "over_cap": None, "action": "sweep_then_page"}
+            disks.append(entry)
+            continue
+        over_cap = used > float(d["max_used_gb"]) * 1024**3
+        low_free = free < float(d["min_free_gb"]) * 1024**3
+        over_alert = pct >= float(d["alert_pct"]) or over_cap or low_free
+        over_critical = pct >= float(d["critical_pct"])
+        band = "critical" if over_critical else "alert" if over_alert else "ok"
+        entry |= {
+            "used_gb": _gb2(used), "free_gb": _gb2(free), "total_gb": _gb2(total), "used_pct": pct,
+            "over_cap": over_cap, "below_min_free": low_free, "over_alert": over_alert,
+            "band": band,
+            "action": {"critical": "sweep_then_page", "alert": "sweep_this_disk_first", "ok": "none"}[band],
+        }
+        disks.append(entry)
+    return {"schema": DISK_CAPS_SCHEMA, "measured_at": ts, "disks": disks}
+
+
+def disk_for_path(path: str, disks: Sequence[Mapping[str, Any]]) -> Optional[str]:
+    """The configured mount whose filesystem holds ``path``, matched by device (a bind mount is its target disk)."""
+    try:
+        dev = None
+        for anc in (Path(path), *Path(path).parents):
+            try:
+                dev = os.stat(anc).st_dev
+                break
+            except OSError:
+                continue
+        if dev is None:
+            return None
+        for d in disks:
+            try:
+                if os.stat(d["mount"]).st_dev == dev:
+                    return str(d["mount"])
+            except OSError:
+                continue
+    except OSError:
+        return None
+    return None
+
+
 #: The standing path re-captures the whole evidence set before EVERY removal, and one transient capture
 #: failure aborts the pass and re-holds every item not yet removed. Measured 2026-11-02 on this host:
 #: `evidence_opaque_processes` appeared in 1 capture in 40 (2.5%) — a short-lived process whose cwd/fds the
@@ -3317,7 +3453,23 @@ def apply(
         max_bytes = int(rules["apply"]["max_bytes_per_run"])
     done_bytes = 0
     attempt_clock = time.monotonic()
-    for item in m.get("items") or []:
+    items = list(m.get("items") or [])
+    # LQ-20261107-1883: per-disk caps. Measured BEFORE the first removal and after the last, so the receipt
+    # shows both states; a disk in the alert/critical band leads the pass, because the run's item and byte
+    # caps must be spent where the disk is actually filling, not on a quieter disk that merely sorts first.
+    disk_status = disk_caps_status(rules, now)
+    disk_list = disk_status["disks"]
+    rep["disk_caps_before"] = disk_status
+    disk_run_cap: dict[str, float] = {
+        str(d["mount"]): float(d["max_free_per_run_gb"]) * 1024**3
+        for d in disk_list if isinstance(d.get("max_free_per_run_gb"), (int, float)) and not isinstance(d.get("max_free_per_run_gb"), bool)
+    }
+    if standing and disk_list:
+        rank = {str(d["mount"]): (0 if d["band"] in ("alert", "critical", "unmeasured") else 1) for d in disk_list}
+        if 0 in rank.values():
+            items.sort(key=lambda it: rank.get(disk_for_path(str(it.get("path")), disk_list) or "", 1))
+    done_bytes_by_disk: dict[str, int] = {}
+    for item in items:
         effective_now = now + timedelta(seconds=time.monotonic() - attempt_clock)
         if (effective_now - gen).total_seconds() > age_limit * 3600:
             rep["refused"] = "manifest_stale_during_apply"
@@ -3342,6 +3494,12 @@ def apply(
             continue
         if done_bytes + size > max_bytes:
             rep["skipped"].append({"path": item["path"], "why": "byte_cap"})
+            continue
+        item_disk = disk_for_path(str(item.get("path")), disk_list) if disk_list else None
+        if item_disk in disk_run_cap and done_bytes_by_disk.get(item_disk, 0) + size > disk_run_cap[item_disk]:
+            # The per-disk reclaim cap decomposes the run's byte cap: one disk's eligible work may not consume
+            # the whole budget and starve the disk that is above its alert band.
+            rep["skipped"].append({"path": item["path"], "why": "disk_byte_cap:" + str(item_disk)})
             continue
         try:
             claim_hold = DR.live_claim_hold(Path(item["path"]), rules["_home"], DR.live_claims(
@@ -3421,6 +3579,8 @@ def apply(
             ok, how = False, f"error:{type(exc).__name__}"
         if ok:
             done_bytes += size
+            if item_disk is not None:
+                done_bytes_by_disk[item_disk] = done_bytes_by_disk.get(item_disk, 0) + size
             rep["removed"].append({"path": item["path"], "kind": item["kind"], "rule": item.get("rule"), "bytes": size, "how": how,
                                    "revalidation_evidence_sha256": ctx.get("evidence_sha256")} | extra)
             if standing:
@@ -3434,10 +3594,26 @@ def apply(
                     rep["refused"] = "worktree_prune_failed"
                     break
         else:
+            # LQ-20261107-1883 (WAR ROOM, operator 2026-11-11): a failed removal on an otherwise-eligible item
+            # is a per-item outcome, not a reason to abandon the other eligible items. Measured live 2026-11-10
+            # 22:17Z: one bad path set refused=removal_failed and stopped the pass at removed 3 / skipped 11 /
+            # reclaimed 0.01 GB, so every later eligible item stayed held and the lane then recorded no runs.
+            # The item stays named in `skipped` with the remover's own reason, `held_bytes`/`per_rule` keep
+            # accounting for it, and the pass continues to the next item. Every safety refusal (evidence,
+            # rules, manifest, progress writer, approval, remover-never-applies) still ends the run.
             rep["skipped"].append({"path": item["path"], "why": how} | extra)
+            rep["removal_failures"] = int(rep.get("removal_failures") or 0) + 1
+            rep.setdefault("removal_failed", []).append({"path": item["path"], "kind": item["kind"],
+                                                         "rule": item.get("rule"), "why": how} | extra)
             if standing:
-                rep["refused"] = "removal_failed"
-                break
+                # This removal is no longer in flight; a leftover PENDING_NOT_PROVEN_REMOVED marker would make
+                # the next reader believe a deletion is still pending at this path while the loop moved on.
+                rep["pending_removal"] = None
+                try:
+                    progress_sink(rep)
+                except OSError:
+                    rep["refused"] = "progress_write_failed_after_skip"
+                    break
     if standing:
         rep["per_rule"] = SR.per_rule(m.get("items") or [], rep["removed"])
         rep["planned_bytes"] = sum(r["planned_bytes"] for r in rep["per_rule"].values())
@@ -3445,6 +3621,8 @@ def apply(
         rep["held_bytes"] = max(0, rep["planned_bytes"] - done_bytes)
         rep["held_gb"] = rep["held_bytes"] / 1024**3
         rep["post_apply_usage"] = disk_usage_sample(rules["_home"])
+        rep["disk_caps"] = disk_caps_status(rules, now + timedelta(seconds=time.monotonic() - attempt_clock))
+        rep["reclaimed_by_disk_gb"] = {k: _gb2(v) for k, v in sorted(done_bytes_by_disk.items())}
         rep["operator_digest"] = SR.operator_digest(rep)
     rep["reclaimed_bytes"] = done_bytes
     rep["reclaimed_gb"] = _gb(done_bytes)
@@ -3612,11 +3790,15 @@ def _apply_main(a: argparse.Namespace, rules: Mapping[str, Any], now: datetime, 
         return 1
     if a.standing:
         final_pct = (passes[-1]["usage_after"] if passes else {}).get("used_pct")
+        # LQ-20261107-1883: the alert is banded on EVERY capped disk, not only the home filesystem. `/data`
+        # filling is a cleanup failure even while `/` is quiet, and `/` filling is the one that stops the host.
+        capped_over_alert = any(d.get("over_alert") for d in (rep.get("disk_caps") or {}).get("disks") or [])
         rep["pressure"] = {"until_target_pct": a.until_target, "max_passes": max_passes, "alert_pct": alert_pct,
                            "passes": passes, "stopped_because": stopped, "total_removed": total_removed,
                            "total_reclaimed_bytes": total_bytes, "final_used_pct": final_pct,
                            # unmeasured usage counts as above: an alert is cheaper than a silent full disk
-                           "ended_above_alert_pct": not isinstance(final_pct, (int, float)) or final_pct > alert_pct,
+                           "ended_above_alert_pct": (not isinstance(final_pct, (int, float))
+                                                     or final_pct > alert_pct or capped_over_alert),
                            "held_top_reasons": held_top_reasons(m_last)}
         rep["ended_above_alert_pct"] = rep["pressure"]["ended_above_alert_pct"]
         rep["held_top_reasons"] = rep["pressure"]["held_top_reasons"]
@@ -3639,8 +3821,13 @@ def _apply_main(a: argparse.Namespace, rules: Mapping[str, Any], now: datetime, 
             "removed": len(rep["removed"]),
             "skipped": len(rep["skipped"]),
             "reclaimed_bytes": rep.get("reclaimed_bytes"),
+            # LQ-20261107-1883: named in the lane receipt so a skip-and-continue run is never read as a clean
+            # sweep. `ok` stays true only because the run completed; these items were held, not removed.
+            "removal_failures": int(rep.get("removal_failures") or 0),
+            "removal_failed": rep.get("removal_failed"),
             "per_rule": rep.get("per_rule"), "operator_digest": rep.get("operator_digest"),
             "pressure": {k: v for k, v in (rep.get("pressure") or {}).items() if k != "passes"} or None,
+            "disk_caps": rep.get("disk_caps"),
         },
         path=R.receipt_path(receipt_lane, state_root),
         output={"produced_count": 1 if not rep.get("refused") else 0, "attempted_count": 1,
@@ -3648,7 +3835,12 @@ def _apply_main(a: argparse.Namespace, rules: Mapping[str, Any], now: datetime, 
                 "empty_reason": None, "output_evidence": [{"kind": "file", "ref": str(manifest_dir(rules, state_root) / "disk_hygiene_standing_apply_latest.json")}]} if a.standing else None,
     )
     print(json.dumps({k: rep.get(k) for k in ("refused", "manifest_age_h", "reclaimed_gb", "ended_above_alert_pct")}
-                     | {"removed": len(rep["removed"]), "skipped": len(rep["skipped"]), "passes": len(passes)}))
+                     | {"removed": len(rep["removed"]), "skipped": len(rep["skipped"]), "passes": len(passes),
+                        "removal_failures": int(rep.get("removal_failures") or 0),
+                        # A skip-and-continue run must be legible in the lane's stdout tail alone: the operator
+                        # reads that tail first, and "refused: null, removed: 0" without this line reads as a
+                        # quiet no-op sweep rather than "every removal attempt failed".
+                        "removal_failed": rep.get("removal_failed")}))
     return 1 if rep.get("refused") else 0
 
 

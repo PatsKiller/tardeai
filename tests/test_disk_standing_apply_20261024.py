@@ -51,6 +51,15 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr(DH, "discover_git_dirs", lambda *_: [])
     monkeypatch.setattr(DH, "du_bytes", lambda p, *_: p.stat().st_size)
     monkeypatch.setattr(DH, "disk_usage_sample", lambda *_: {"used_pct": 70, "measured_at": NOW.isoformat(), "filesystem_path": str(home)})
+    # Per-disk caps are measured for real in production; in these tests the host's own / and /data must not
+    # decide a verdict, so the fixture pins an under-cap status (LQ-20261107-1883). The real measurement has
+    # its own tests below.
+    monkeypatch.setattr(DH, "disk_caps_status", lambda *_a, **_kw: {
+        "schema": DH.DISK_CAPS_SCHEMA, "measured_at": NOW.isoformat(),
+        "disks": [{"mount": "/", "band": "ok", "over_alert": False, "max_free_per_run_gb": None,
+                   "used_pct": 10.0, "used_gb": 1.0, "free_gb": 9.0, "total_gb": 10.0},
+                  {"mount": "/data", "band": "ok", "over_alert": False, "max_free_per_run_gb": None,
+                   "used_pct": 10.0, "used_gb": 1.0, "free_gb": 9.0, "total_gb": 10.0}]})
     monkeypatch.setattr(DH, "remove_item", lambda *_: pytest.fail("no real cleanup is allowed in these tests"))
     return home, rules, rules_path, cfg
 
@@ -581,12 +590,108 @@ def test_native_disabled_apply_still_writes_failed_receipt_without_collection(wo
     assert receipts[0][1]["output"]["produced_count"] == 0
 
 
-def test_simulated_removal_failure_is_failed_not_zero_removal_success(world, monkeypatch):
-    path, _, doc, calls = planned(world, monkeypatch)
-    monkeypatch.setattr(DH, "remove_item", lambda *_: (False, "error:PermissionError"))
+def test_removal_failure_skips_and_continues_instead_of_aborting(world, monkeypatch):
+    """LQ-20261107-1883: one bad path must not abort the run (live 2026-11-10: removed 3 / skipped 11,
+    refused=removal_failed, the remaining eligible items never attempted)."""
+    path, manifest, doc, _ = planned(world, monkeypatch)
+    attempts = []
+
+    def failing_remover(item):
+        attempts.append(item["path"])
+        return False, "error:PermissionError"
+
+    monkeypatch.setattr(DH, "remove_item", failing_remover)
     result = do_apply(path, world[1], doc)
-    assert result["refused"] == "removal_failed" and result["held_bytes"] == result["planned_bytes"] > 0
-    assert not result["removed"] and result["skipped"][0]["why"] == "error:PermissionError"
+    # The loop attempted EVERY eligible item, not just the first one.
+    assert len(attempts) == len(manifest["items"]) and result["refused"] is None
+    assert result["removal_failures"] == len(manifest["items"])
+    assert result["held_bytes"] == result["planned_bytes"] > 0
+    assert not result["removed"]
+    assert {s["why"] for s in result["skipped"]} == {"error:PermissionError"}
+    assert {r["path"] for r in result["removal_failed"]} == {i["path"] for i in manifest["items"]}
+
+
+def test_real_unremovable_path_is_skipped_and_every_other_item_is_removed(world, monkeypatch):
+    """The assignment's shape: 1 unremovable + N deletable -> N removed, 1 skipped, run succeeds (rc 0)."""
+    path, manifest, doc, _ = planned(world, monkeypatch)
+    bad = Path(manifest["items"][0]["path"])
+    real_remove = DH.remove_item
+    attempts = []
+
+    def remover(item):
+        attempts.append(item["path"])
+        if Path(item["path"]) == bad:
+            raise PermissionError(13, "Permission denied", item["path"])  # what rmtree raises on a chmod-000 parent
+        return real_remove(item)
+
+    monkeypatch.setattr(DH, "remove_item", remover)
+    result = do_apply(path, world[1], doc)
+    total = len(manifest["items"])
+    assert result["refused"] is None and result["removal_failures"] == 1
+    assert len(result["removed"]) == total - 1 and len(attempts) == total  # continued past the failure
+    assert [s for s in result["skipped"] if s["path"] == str(bad) and s["why"] == "error:PermissionError"]
+    assert bad.exists()  # the failed item is held, named, and untouched
+    # held_bytes accounts for exactly the item that could not be removed.
+    assert result["held_bytes"] == sum(i["size_bytes"] for i in manifest["items"] if i["path"] == str(bad))
+    assert result["reclaimed_bytes"] == sum(r["bytes"] for r in result["removed"]) > 0
+
+
+def test_disk_caps_measure_each_disk_and_name_the_action(monkeypatch):
+    """LQ-20261107-1883: / and /data are both measured; unmeasured counts as over cap, never as ok."""
+    from collections import namedtuple
+
+    class Stat(namedtuple("Stat", "f_blocks f_bfree f_bavail f_frsize")):
+        pass
+
+    GiB = 1024**3
+    used_pct_by_mount = {"/": 92.0, "/data": 11.0}
+
+    def fake_statvfs(mount, *a, **kw):
+        total = 468 * GiB
+        used = total * used_pct_by_mount[mount] / 100
+        free = total - used
+        return Stat(total // 4096, (total - used) // 4096, free // 4096, 4096)
+
+    monkeypatch.setattr(DH, "_mount_source", lambda m: {"/": "nvme0n1p2", "/data": "nvme1n1p1"}.get(m))
+    rules = {"_disk_caps": [
+        {"mount": "/", "filesystem": "nvme0n1p2", "max_used_gb": 420, "alert_pct": 88.0, "critical_pct": 94.0,
+         "min_free_gb": 30, "max_free_per_run_gb": 20},
+        {"mount": "/data", "filesystem": "nvme1n1p1", "max_used_gb": 1500, "alert_pct": 85.0, "critical_pct": 92.0,
+         "min_free_gb": 150, "max_free_per_run_gb": 20},
+        {"mount": "/mnt/gone", "filesystem": "nvme9", "max_used_gb": 10, "alert_pct": 80.0, "critical_pct": 90.0,
+         "min_free_gb": 1},
+    ]}
+    used_pct_by_mount["/mnt/gone"] = 0.0
+
+    def statvfs_or_fail(mount, *a, **kw):
+        if mount == "/mnt/gone":
+            raise OSError(2, "No such file or directory")
+        return fake_statvfs(mount, *a, **kw)
+
+    monkeypatch.setattr(DH.os, "statvfs", statvfs_or_fail)
+    status = DH.disk_caps_status(rules, NOW)
+    by_mount = {d["mount"]: d for d in status["disks"]}
+    assert by_mount["/"]["band"] == "alert" and by_mount["/"]["action"] == "sweep_this_disk_first"
+    assert by_mount["/"]["over_alert"] is True and by_mount["/"]["used_pct"] == pytest.approx(92.0, abs=0.01)
+    assert by_mount["/data"]["band"] == "ok" and by_mount["/data"]["action"] == "none"
+    gone = by_mount["/mnt/gone"]
+    assert gone["band"] == "unmeasured" and gone["over_alert"] is True and gone["action"] == "sweep_then_page"
+
+
+def test_disk_caps_config_is_validated_fail_closed(tmp_path):
+    cfg = json.loads((ROOT / "config/disk_hygiene_rules.json").read_text())
+    for mutate, error in [
+        (lambda c: c["disk_caps"]["disks"][0].update(alert_pct=95.0, critical_pct=90.0), "disk_caps_pct_order"),
+        (lambda c: c["disk_caps"]["disks"][0].update(max_used_gb=0), "disk_caps_max_used_gb"),
+        (lambda c: c["disk_caps"]["disks"][0].update(mount="/usr/../"), "disk_caps_mount"),
+        (lambda c: c["disk_caps"]["disks"][0].pop("min_free_gb"), "disk_caps_missing:min_free_gb"),
+    ]:
+        bad = json.loads(json.dumps(cfg))
+        mutate(bad)
+        path = tmp_path / "rules.json"
+        path.write_text(json.dumps(bad))
+        with pytest.raises(DH.RulesError, match=error):
+            DH.load_rules(path, home=tmp_path / "home")
 
 
 def test_protected_backup_bytes_do_not_count_as_unapplied_eligible_work(world, monkeypatch):
