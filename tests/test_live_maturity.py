@@ -536,3 +536,21 @@ def test_1996_a_release_change_does_not_reset_a_counted_streak(tmp_path):
     assert st["n"] == 2 and res["state"] == "live", res
     st, res = _run(item, st, s, _t(10, 31))                      # polled again in the same minute: not double counted
     assert st["n"] == 2
+
+
+def test_2021_a_manual_run_before_the_slot_is_not_credited_to_the_slot(tmp_path):
+    """REVIEW-1997 N1: a finished run started 10:28:30 (manual, inside the 2 min jitter window before slot 10:30), polled
+    at 10:29, must NOT count slot 10:30: that slot has not happened. It stays awaiting until its own grace passes."""
+    s = Src(tmp_path)
+    item = _item(cadence={"cron": "*/15 * * * *", "grace_min": 10}, probe={"kind": "last_receipt", "lane": "cron-a"})
+    _last(s, "cron-a", _t(10, 28) + dt.timedelta(seconds=30))
+    st, res = _run(item, {}, s, _t(10, 29))
+    assert st["n"] == 0 and res["state"] != "live", res
+
+
+def test_2021_a_run_at_or_after_its_slot_still_counts_early(tmp_path):
+    s = Src(tmp_path)
+    item = _item(cadence={"cron": "*/15 * * * *", "grace_min": 10}, probe={"kind": "last_receipt", "lane": "cron-a"})
+    _last(s, "cron-a", _t(10, 30) + dt.timedelta(seconds=5))
+    st, res = _run(item, {}, s, _t(10, 31))
+    assert st["n"] == 1 and res["state"] == "live", res

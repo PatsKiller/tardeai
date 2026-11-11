@@ -317,8 +317,9 @@ def _slot_lane(item, st, src, now):
             cand = cron_slots(cad["cron"], since, started + dt.timedelta(minutes=2))
             if cand:
                 newest, newest_r = cand[-1], r
-        if newest is not None and newest_r.get("finished_at") and newest not in slots and newest >= start:
-            slots = sorted(slots + [newest])                     # a finished receipt needs no grace: its evidence is in hand
+        if (newest is not None and newest_r.get("finished_at") and newest not in slots and newest >= start
+                and started >= newest and newest <= now):
+            slots = sorted(slots + [newest])                     # a finished receipt of THIS slot (started at/after it, slot not in the future) needs no grace (LQ-2021)
         if cursor is None and newest is not None:
             slots = [s for s in slots if s >= newest]            # baseline: nothing earlier is observable
 
