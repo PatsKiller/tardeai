@@ -110,11 +110,18 @@ def main(argv=None) -> int:
         # in the journal. Naming it `already_recorded` is what stops idle runs grading RUN_FAILED and opening
         # the breaker (LQ-20261107-1822). Nothing written while decisions ARE pending is not named: that is an
         # anomaly, and it stays a failure rather than borrowing a reason that would excuse it.
+        #
+        # Two conditions the reason must meet, both from the LQ-20261107-1828 review of that fix:
+        # * only a run that SUCCEEDED may name a benign empty: a failed write stating `already_recorded` is a
+        #   success-shaped reason on a failed receipt (M2). `ok` guards it.
+        # * `pending` above is read BEFORE the write; the store re-checks under its own lock, so a concurrent
+        #   writer can leave `pending>0, written 0` on a run that is in fact fully recorded. Re-read after the
+        #   write (the journal index is stat-cached, so this is one parse at most) instead of failing it (S1).
         empty_reason = None
-        if not result["written"]:
+        if ok:
             if not decisions:
                 empty_reason = "no_position_decisions"
-            elif not pending:
+            elif result["written"] == 0 and not _pending(decisions):
                 empty_reason = "already_recorded"
         receipt = write_lane_receipt(
             LANE_ID,

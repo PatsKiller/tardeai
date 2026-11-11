@@ -38,10 +38,20 @@ def _contract_rule():
     raise AssertionError(f"no health contract for {LANE}")
 
 
-def _run(monkeypatch, *, decisions, pending, written, error=None):
-    """main(--apply) with the plan, the journal and the receipt writer all synthetic."""
+def _run(monkeypatch, *, decisions, pending, written, error=None, pending_after=None):
+    """main(--apply) with the plan, the journal and the receipt writer all synthetic.
+
+    ``pending_after`` models the journal as it reads AFTER the write: the store re-checks under its lock, so a
+    concurrent writer can leave the pre-write `pending` list stale (LQ-20261107-1871, review S1)."""
     monkeypatch.setattr(producer, "_build_plan", lambda: {"ok": True, "position_decisions": list(decisions)})
-    monkeypatch.setattr(producer, "_pending", lambda ds: list(pending))
+    calls = {"n": 0}
+    second = list(pending if pending_after is None else pending_after)
+
+    def fake_pending(ds):
+        calls["n"] += 1
+        return list(pending) if calls["n"] == 1 else list(second)
+
+    monkeypatch.setattr(producer, "_pending", fake_pending)
     monkeypatch.setattr(
         "scripts.lib.cio_capital_plan_decision_store.record_position_decisions",
         lambda ds: {"written": written, **({"error": error} if error else {})},
@@ -61,11 +71,15 @@ def _run(monkeypatch, *, decisions, pending, written, error=None):
 
 
 def _verdict(captured):
-    """The verdict the dispatcher computes for this receipt against the shipped contract."""
+    """The verdict the dispatcher computes for this receipt against the shipped contract.
+
+    ``ok`` and ``exit_code`` come from the captured call, not a hard-coded success: a failed receipt has to be
+    graded as one (LQ-20261107-1871, review S3)."""
+    ok = captured.get("ok", True)
     doc = lr.build_receipt(
         LANE,
-        ok=True,
-        exit_code=0,
+        ok=ok,
+        exit_code=0 if ok else 1,
         started_at=captured.get("started_at"),
         script=SCRIPT,
         summary=captured.get("summary"),
@@ -137,6 +151,38 @@ def test_a_write_error_is_a_failure_not_an_empty_reason(monkeypatch):
     assert cap["ok"] is False
     assert cap["empty_reason"] is None
     assert cap["error"] == "journal readonly"
+
+
+# --- LQ-20261107-1871: the two shapes the first fix did not cover --------------------------------
+
+
+def test_an_idle_run_that_failed_to_write_names_no_reason(monkeypatch):
+    """A failed run must not carry a success-shaped `already_recorded` (review M2)."""
+    rc, cap = _run(monkeypatch, decisions=_decisions(23), pending=[], written=0, error="journal readonly")
+    assert rc == 1 and cap["ok"] is False
+    assert cap["empty_reason"] is None
+    assert _verdict(cap)["verdict"] == "empty_violation"
+
+
+def test_an_idle_empty_plan_that_failed_to_write_names_no_reason(monkeypatch):
+    rc, cap = _run(monkeypatch, decisions=[], pending=[], written=0, error="journal readonly")
+    assert rc == 1 and cap["ok"] is False
+    assert cap["empty_reason"] is None
+
+
+def test_a_run_whose_pending_decisions_landed_meanwhile_is_still_already_recorded(monkeypatch):
+    """The pre-write `pending` list is stale if another writer appended first; the journal decides (review S1)."""
+    rc, cap = _run(monkeypatch, decisions=_decisions(3), pending=["D0"], pending_after=[], written=0)
+    assert rc == 0
+    assert cap["empty_reason"] == "already_recorded"
+    assert _verdict(cap)["verdict"] == "empty_allowed"
+
+
+def test_a_run_still_pending_after_the_write_is_not_called_already_recorded(monkeypatch):
+    rc, cap = _run(monkeypatch, decisions=_decisions(3), pending=["D0"], pending_after=["D0"], written=0)
+    assert rc == 0
+    assert cap["empty_reason"] is None
+    assert _verdict(cap)["verdict"] == "empty_violation"
 
 
 @pytest.mark.parametrize(
