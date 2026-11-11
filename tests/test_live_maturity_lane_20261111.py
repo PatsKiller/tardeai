@@ -136,9 +136,10 @@ def test_compute_due_emits_only_dry_run_one_per_ten_minute_slot(tmp_path, monkey
         ledger.close()
 
 
-def test_the_contract_is_a_draft_at_the_registry_stage():
+def test_the_contract_is_signed_by_a_non_author_at_the_registry_stage():
     c = contract()
-    assert c["status"] == "DRAFT" and c["review"]["status"] == "DRAFT" and c["review"]["reviewed_by"] is None
+    assert c["status"] == "REVIEWED" and c["review"]["status"] == "REVIEWED"
+    assert c["review"]["reviewed_by"] == "cc-sonnet-7" and c["review"]["reviewed_on"] == "2026-11-11"
     assert c["stage"] == row()["scheduler"]["stage"]
     assert c["baseline"]["timeout_s"] == entry()["timeout_s"]
     assert c["baseline"]["duration_degraded_above_s"] == 0.8 * entry()["timeout_s"]
