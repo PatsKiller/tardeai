@@ -195,3 +195,88 @@ def test_r2_torn_index_line_does_not_swallow_the_next_fingerprint(tmp_path):
     idx = I.MemoryIndex(p)
     fp = I.fingerprint("SYNTH", GUID, "ask.answer_version", "ask_x:v1", "[ask.answer_version] v1 final: synthetic answer")
     assert idx.has(fp)
+
+
+# ── LQ-20261107-1980: another process's reseed, same-inode restores, archive collisions ───────────────────────────────
+_SHRINK_REBUILD = """
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from scripts.lib import cio_ask_contract as C
+from scripts.lib.cio_ask_memory import SpineAskMemory
+p = Path(sys.argv[2]); p.write_text("")          # restore-to-empty by a different process
+e = C.EntityRef(name="Synthetic Corp", symbol="SYNTH", security_guid=sys.argv[3], issuer_guid="11111111-2222-4333-8444-666666666666")
+r = SpineAskMemory(spine_path=p).append(entity=e, kind="ask.source", summary="B src", ref="ask_b:1")
+print(r["spine"].get("dedupe_index"))
+"""
+
+
+def test_must_reseed_by_another_process_is_seen_by_a_long_lived_cache(tmp_path):
+    p = tmp_path / "spine.jsonl"
+    a = SpineAskMemory(spine_path=p)
+    a.append(entity=ENT, **ANSWER)
+    a.append(entity=ENT, kind="ask.source", summary="A src", ref="ask_a:1")   # A's in-process cache now holds ANSWER
+    out = subprocess.run([sys.executable, "-c", _SHRINK_REBUILD, str(ROOT), str(p), GUID],
+                         capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0 and out.stdout.strip().startswith("reseeded:"), out
+    assert _copies(p) == 0
+    r = a.append(entity=ENT, **ANSWER)                                          # A retries: the memory is gone
+    assert r["spine"].get("deduped") is not True
+    assert _copies(p) == 1
+
+
+def test_should_same_inode_restore_that_regrew_is_voided_by_content(tmp_path):
+    p = tmp_path / "spine.jsonl"
+    mem = SpineAskMemory(spine_path=p)
+    mem.append(entity=ENT, kind="ask.source", summary="Src 0 (filing)", ref="ask_y:0")
+    backup = p.read_bytes()
+    mem.append(entity=ENT, **ANSWER)
+    stamped = p.stat().st_size
+    other = tmp_path / "other.jsonl"
+    o = SpineAskMemory(spine_path=other)
+    for i in range(1, 12):
+        o.append(entity=ENT, kind="ask.source", summary=f"Other {i} (filing)", ref=f"ask_o:{i}")
+    ino = p.stat().st_ino
+    with p.open("r+b") as fh:                         # restore IN PLACE: same inode, regrown past the stamp
+        fh.truncate(0)
+        fh.write(backup + other.read_bytes())
+    assert p.stat().st_ino == ino and p.stat().st_size > stamped and _copies(p) == 0
+    r = mem.append(entity=ENT, **ANSWER)
+    assert r["spine"].get("deduped") is not True and r["spine"]["dedupe_index"] == "reseeded:spine_content_changed"
+    assert _copies(p) == 1
+
+
+def test_growth_by_another_writer_does_not_void_the_index(tmp_path):
+    p = tmp_path / "spine.jsonl"
+    mem = SpineAskMemory(spine_path=p)
+    mem.append(entity=ENT, **ANSWER)
+    sp.upsert_research_memory("OTHR", silo="cio", kind="note", summary="x", artifact_id="z:1", refs=["z:1"],
+                              tags=["t"], subject_guid="99999999-2222-4333-8444-555555555555", path=p)
+    r = mem.append(entity=ENT, **ANSWER)
+    assert r["spine"]["deduped"] is True and r["spine"]["by"] == "index" and "dedupe_index" not in r["spine"]
+
+
+def test_minor_two_reseeds_in_one_second_keep_both_archives(tmp_path):
+    from scripts.lib.cio_ask_memory_index import MemoryIndex
+    p = tmp_path / "spine.jsonl"
+    mem = SpineAskMemory(spine_path=p)
+    mem.append(entity=ENT, **ANSWER)
+    idx = MemoryIndex(p)
+    with idx.locked():
+        idx.reseed()
+        idx.reseed()
+    assert len(list(tmp_path.glob("spine.jsonl.askidx.stale-*"))) == 2
+
+
+def test_minor_rebuild_stamps_once(tmp_path, monkeypatch):
+    from scripts.lib.cio_ask_memory_index import MemoryIndex
+    p = tmp_path / "spine.jsonl"
+    mem = SpineAskMemory(spine_path=p)
+    for i in range(6):
+        mem.append(entity=ENT, kind="ask.source", summary=f"S{i}", ref=f"ask_s:{i}")
+    n = []
+    real = MemoryIndex._stamp
+    monkeypatch.setattr(MemoryIndex, "_stamp", lambda self: (n.append(1), real(self))[1])
+    with MemoryIndex(p).locked() as idx:
+        idx.reseed()
+    assert len(n) == 1

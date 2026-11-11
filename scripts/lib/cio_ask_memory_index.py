@@ -8,6 +8,13 @@ per (subject, kind, ref, summary) ever written by Ask-the-CIO. The check-and-wri
 
 The spine itself is never rewritten or read in full here. A memory written before this index existed is still caught
 by the tip comparison while it is inside the window; ``rebuild`` (read-only on the spine) seeds the index from it.
+
+Binding to the spine (LQ-1962/1980): a fingerprint claims "the spine holds this memory", so ``<spine>.askidx.meta``
+records the spine's inode, size and a hash of its last 4 KiB at the last ``add``. ``verify`` voids the index when the
+spine is missing, shrank, or the bytes at the stamped offset changed (a restore that regrew is caught by content, not
+by inode: filesystems reuse inodes). A void index is archived to ``.stale-*`` (never deleted) and rebuilt from the
+spine. A process-local cache of the index is keyed by the index file's inode, so another process's reseed is seen.
+A lost ``add`` after a successful spine write stays invisible to ``verify`` until a void event causes a reseed.
 """
 
 from __future__ import annotations
@@ -21,7 +28,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Optional
 
-_CACHE: dict[str, tuple[int, set[str]]] = {}  # index path -> (bytes consumed, fingerprints)
+_CACHE: dict[str, tuple[int, int, set[str]]] = {}  # index path -> (index inode, bytes consumed, fingerprints)
+_WINDOW = 4096
 
 
 def fingerprint(symbol: str, security_guid: Optional[str], kind: str, ref: str, summary: str) -> str:
@@ -52,27 +60,28 @@ class MemoryIndex:
 
     def _known(self) -> set[str]:
         key = str(self.path)
-        pos, seen = _CACHE.get(key, (0, set()))
+        ino, pos, seen = _CACHE.get(key, (0, 0, set()))
         try:
-            size = self.path.stat().st_size
+            st = self.path.stat()
         except FileNotFoundError:
-            return seen if pos == 0 else set()
-        if size < pos:  # truncated/replaced: start over
-            pos, seen = 0, set()
-        if size > pos:
+            _CACHE.pop(key, None)  # index gone (e.g. archived by another process's reseed): nothing is claimed
+            return set()
+        if st.st_ino != ino or st.st_size < pos:  # a different file, or truncated: start over (LQ-1980 MUST)
+            ino, pos, seen = st.st_ino, 0, set()
+        if st.st_size > pos:
             with self.path.open("rb") as fh:
                 fh.seek(pos)
                 chunk = fh.read()
             cut = chunk.rfind(b"\n") + 1  # only whole lines
             seen = set(seen) | {x for x in chunk[:cut].decode("ascii", "ignore").split() if len(x) == 64}
             pos += cut
-        _CACHE[key] = (pos, seen)
+        _CACHE[key] = (ino, pos, seen)
         return seen
 
     def has(self, fp: str) -> bool:
         return fp in self._known()
 
-    def add(self, fp: str) -> None:
+    def add(self, fp: str, *, stamp: bool = True) -> None:
         """Append one fingerprint durably. Call inside ``locked()``."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         lead = ""
@@ -86,18 +95,25 @@ class MemoryIndex:
             fh.write(lead + fp + "\n")
             fh.flush()
             os.fsync(fh.fileno())
-        self._stamp()
+        if stamp:
+            self._stamp()
 
     # ── index <-> spine binding (LQ-1962 R-1) ─────────────────────────────────────────────────────────────────────
     def _spine_id(self) -> Optional[dict]:
+        """inode, size and a hash of the last window, read through one descriptor so they describe one moment."""
         try:
-            st = self.spine_path.stat()
+            with self.spine_path.open("rb") as fh:
+                st = os.fstat(fh.fileno())
+                n = min(_WINDOW, st.st_size)
+                fh.seek(st.st_size - n)
+                tail = fh.read(n)
         except OSError:
             return None
-        return {"ino": st.st_ino, "size": st.st_size}
+        return {"ino": st.st_ino, "size": st.st_size, "tail_len": len(tail),
+                "tail_sha": hashlib.sha256(tail).hexdigest()}
 
     def _stamp(self) -> None:
-        """Record which spine (inode) and how large it was when the index last claimed to describe it."""
+        """Record which spine and what it looked like when the index last claimed to describe it."""
         ident = self._spine_id()
         if ident is None:
             return
@@ -126,14 +142,25 @@ class MemoryIndex:
             return "spine_replaced"
         if now["size"] < int(rec.get("size") or 0):
             return "spine_shrunk"
+        try:  # same inode and not smaller: the bytes at the stamped offset must still be the bytes we stamped
+            n, off = int(rec.get("tail_len") or 0), int(rec.get("size") or 0) - int(rec.get("tail_len") or 0)
+            if n > 0:
+                with self.spine_path.open("rb") as fh:
+                    fh.seek(off)
+                    if hashlib.sha256(fh.read(n)).hexdigest() != rec.get("tail_sha"):
+                        return "spine_content_changed"
+            elif rec.get("tail_sha") is None:
+                return "no_stamp"
+        except OSError:
+            return "spine_unreadable"
         return None
 
     def reseed(self) -> int:
         """Archive the stale index (never delete), then rebuild it from what the spine really holds. Inside ``locked()``."""
-        stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + str(os.getpid()) + "-" + os.urandom(3).hex()
         for src in (self.path, self.meta_path):
             if src.exists():
-                src.rename(src.with_name(f"{src.name}.stale-{stamp}-{os.getpid()}"))
+                src.rename(src.with_name(f"{src.name}.stale-{stamp}"))
         _CACHE.pop(str(self.path), None)
         if self.spine_path.exists():
             return self._rebuild_locked(self.spine_path)
@@ -146,24 +173,23 @@ class MemoryIndex:
 
     def _rebuild_locked(self, spine_path: Path, *, only_tag: str = "ask_the_cio") -> int:
         added = 0
-        if True:
-            known = self._known()
-            with Path(spine_path).open("rb") as fh:
-                for raw in fh:
-                    try:
-                        tip = json.loads(raw)
-                    except ValueError:
+        known = self._known()
+        with Path(spine_path).open("rb") as fh:
+            for raw in fh:
+                try:
+                    tip = json.loads(raw)
+                except ValueError:
+                    continue
+                if not isinstance(tip, dict):
+                    continue
+                for c in tip.get("contributions") or []:
+                    if not isinstance(c, dict) or only_tag not in (c.get("tags") or []):
                         continue
-                    if not isinstance(tip, dict):
-                        continue
-                    for c in tip.get("contributions") or []:
-                        if not isinstance(c, dict) or only_tag not in (c.get("tags") or []):
-                            continue
-                        fp = fingerprint(tip.get("symbol"), tip.get("subject_guid"), c.get("kind"),
-                                         c.get("artifact_id"), c.get("summary"))
-                        if fp not in known:
-                            self.add(fp)
-                            known.add(fp)
-                            added += 1
+                    fp = fingerprint(tip.get("symbol"), tip.get("subject_guid"), c.get("kind"),
+                                     c.get("artifact_id"), c.get("summary"))
+                    if fp not in known:
+                        self.add(fp, stamp=False)
+                        known.add(fp)
+                        added += 1
         self._stamp()
         return added
