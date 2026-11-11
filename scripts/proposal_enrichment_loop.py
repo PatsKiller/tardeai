@@ -42,6 +42,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 
 BATCH_SIZE = 15
 
+#: Lane id (and wrapper component) of the event-driven ATM evaluation this loop triggers on ENTRY_ZONE_VALID.
+#: It is a registry row of its own (config/lane_registry.json) with its own journal rows, receipt and output
+#: signal (logs/atm_immediate.log). The scheduled */15 lane is `atm-auto-approver` (component tradeai_atm) and
+#: must never be graded on one of these runs (LQ-1882, lead ruling 2026-11-11 10:46 ET).
+ATM_IMMEDIATE_COMPONENT = "atm-auto-approver-immediate"
+
 # Entry zone thresholds
 ZONE_TIGHT = {'valid': 3.0, 'marginal': 7.0}   # intraday, short_swing
 ZONE_WIDE = {'valid': 5.0, 'marginal': 12.0}    # swing, event_window, position
@@ -718,7 +724,10 @@ def enrich_one(conn, proposal, dry_run=False, no_llm=False, queue_llm_only=False
             actions.append('AUTO_EXPIRED')
             return {'id': pid, 'symbol': symbol, 'actions': actions, 'expired': True}
 
-        # Immediate ATM trigger when proposal reaches ENTRY_ZONE_VALID (safe_flock + in-process flock)
+        # Immediate ATM trigger when proposal reaches ENTRY_ZONE_VALID (safe_flock + in-process flock).
+        # It deliberately shares the scheduled lane's lock (the two must never evaluate at once) but it is NOT the
+        # scheduled lane: the two env vars below give it its own wrapper component and its own last-run receipt, so
+        # a trigger cycle cannot regrade or overwrite the */15 lane LQ-1882 fixed (lead ruling 2026-11-11 10:46 ET).
         if new_lifecycle == 'ENTRY_ZONE_VALID' and not dry_run:
             try:
                 import subprocess as _sp
@@ -726,6 +735,9 @@ def enrich_one(conn, proposal, dry_run=False, no_llm=False, queue_llm_only=False
                 _atm_log = _proj / "logs" / "atm_immediate.log"
                 _atm_log.parent.mkdir(parents=True, exist_ok=True)
                 _log_fh = open(_atm_log, "a")
+                _atm_env = dict(os.environ)
+                _atm_env["TRADEAI_SAFEFLOCK_COMPONENT"] = ATM_IMMEDIATE_COMPONENT
+                _atm_env["TRADEAI_ATM_LANE_ID"] = ATM_IMMEDIATE_COMPONENT
                 _sp.Popen(
                     [
                         "bash",
@@ -737,6 +749,7 @@ def enrich_one(conn, proposal, dry_run=False, no_llm=False, queue_llm_only=False
                     stdout=_log_fh,
                     stderr=_log_fh,
                     cwd=str(_proj),
+                    env=_atm_env,
                 )
                 log.info(f"  ⚡ Triggered immediate ATM evaluation for {symbol} (ENTRY_ZONE_VALID)")
                 actions.append('ATM_TRIGGERED')

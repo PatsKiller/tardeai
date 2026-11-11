@@ -21003,6 +21003,46 @@
       }
     },
     {
+      "lane_id": "atm-auto-approver-immediate",
+      "owner": "defense",
+      "watchdog_wrapper_component": "atm-auto-approver-immediate",
+      "scheduler": {
+        "kind": "event",
+        "expression": "ENTRY_ZONE_VALID in scripts/proposal_enrichment_loop.py (cron */10 4-19 * * 1-5)",
+        "match": "safe_flock.sh /tmp/tradeai_atm.lock <PY> scripts/atm_auto_approver.py",
+        "emitted_by": "proposal_enrichment_loop.py:735 — one run per proposal reaching ENTRY_ZONE_VALID"
+      },
+      "expected_cadence_hours": 24,
+      "cadence_basis": "event-driven: it fires only when a proposal reaches ENTRY_ZONE_VALID, so a quiet day has no runs by design; 24 h is a staleness bound, not a schedule",
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/atm_immediate.log",
+        "evidence": "CALLER_LOG_REDIRECT",
+        "skip_line_vocabulary": [
+          "ATM cycle skipped",
+          "another instance holds"
+        ]
+      },
+      "progress_signal": {
+        "kind": "db_heartbeat",
+        "table": "atm_state",
+        "column": "last_evaluated_at",
+        "decision_table": "atm_decision_log",
+        "decision_column": "decided_at",
+        "receipt_fields": [
+          "evaluated",
+          "proposals_seen",
+          "decisions_written"
+        ]
+      },
+      "value_class": "Business Critical",
+      "recommendation": "KEEP_ON_CRON",
+      "note": "LQ-1882 (lead ruling 2026-11-11 10:46 ET): proposal_enrichment_loop.py triggers an ATM evaluation per proposal reaching ENTRY_ZONE_VALID. It shares /tmp/tradeai_atm.lock with the */15 lane on purpose (one evaluation at a time) but is a lane of its own: safe_flock component and receipt id come from TRADEAI_SAFEFLOCK_COMPONENT / TRADEAI_ATM_LANE_ID = atm-auto-approver-immediate, its cycles log to logs/atm_immediate.log and its last-run receipt is data/runtime/atm-auto-approver-immediate_last.json. Before this split both execution paths wrote one component and one receipt, so a trigger run regraded the scheduled lane (10:30 slot: grade EMPTY because the last run wrote atm_immediate.log, not atm.log).",
+      "registered_by": "cc-deepseek-7",
+      "registered_on": "2026-11-11"
+    },
+    {
       "lane_id": "unified-stop-supervisor",
       "owner": "defense",
       "scheduler": {

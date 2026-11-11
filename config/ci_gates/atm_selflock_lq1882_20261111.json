@@ -9,6 +9,10 @@
     "ANCHOR: ATM_SELFLOCK_LQ1882_20261111 — the ATM cycle must adopt the cron wrapper's lock instead of",
     "re-acquiring the same flock through its inherited fd (770 'cycle skipped' lines, last_evaluated_at",
     "frozen at 2026-10-23), and its grade must come from the DB heartbeat plus same-run decision rows,",
-    "never from log mtime: a skip-only log is FAILED, a state that has not advanced is FAILED."
+    "never from log mtime: a skip-only log is FAILED, a state that has not advanced is FAILED.",
+    "Two execution paths share /tmp/tradeai_atm.lock by design (the */15 scheduled lane and the immediate",
+    "trigger from proposal_enrichment_loop); they must not share one lane id. The trigger names itself",
+    "atm-auto-approver-immediate (TRADEAI_SAFEFLOCK_COMPONENT + TRADEAI_ATM_LANE_ID), keeps its own journal",
+    "rows, output log and receipt, and can never overwrite the scheduled lane's receipt or regrade it."
   ]
 }

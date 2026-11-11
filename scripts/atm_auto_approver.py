@@ -28,7 +28,10 @@ ATM_CYCLE_LOCK = os.environ.get("TRADEAI_ATM_CYCLE_LOCK") or "/tmp/tradeai_atm.l
 #: A different path by contract: taking ATM_CYCLE_LOCK from here is exactly the self-lock this replaced.
 ATM_INNER_LOCK = os.environ.get("TRADEAI_ATM_INNER_LOCK") or "/tmp/tradeai_atm.inner.lock"
 #: Lane id of the receipt this cycle writes (config/lane_registry.json -> data/runtime/<id>_last.json).
-RECEIPT_LANE = "atm-auto-approver"
+#: The scheduled lane is the default. An event-driven caller names its own lane here, so a trigger cycle can
+#: never overwrite the scheduled lane's receipt (LQ-1882: proposal_enrichment_loop sets it to
+#: atm-auto-approver-immediate — same lock, same evaluation, separate truth).
+RECEIPT_LANE = os.environ.get("TRADEAI_ATM_LANE_ID") or "atm-auto-approver"
 # Per-symbol cooldown so repeat expiry Telegram batches don't fire for the same ticker all afternoon.
 _EXPIRY_TG_RECENT: dict[str, float] = {}
 _EXPIRY_TG_COOLDOWN_SEC = 24 * 3600

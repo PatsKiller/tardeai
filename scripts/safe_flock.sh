@@ -226,7 +226,11 @@ if ! python3 -I -c "$SAFE_FLOCK_PATH_PY" files "$SAFE_FLOCK_SELF_ROOT" "$LOCKFIL
   exit 1
 fi
 
-COMPONENT="$(basename "$LOCKFILE" .lock)"
+# Component = the lock's basename, unless the caller names itself. An event-driven caller that shares another
+# lane's lock on purpose (LQ-1882: proposal_enrichment_loop's immediate ATM trigger takes /tmp/tradeai_atm.lock so
+# the two can never evaluate concurrently) MUST set TRADEAI_SAFEFLOCK_COMPONENT, or its journal rows land on the
+# scheduled lane's component and that lane is graded on a run it did not schedule. Default is unchanged.
+COMPONENT="${TRADEAI_SAFEFLOCK_COMPONENT:-$(basename "$LOCKFILE" .lock)}"
 COMMAND="$*"
 
 now_iso() {

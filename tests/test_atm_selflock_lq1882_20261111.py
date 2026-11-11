@@ -556,3 +556,65 @@ def test_receipt_never_lands_in_the_production_state_root(tmp_path, monkeypatch)
                           cwd=str(project), env=_staging_env(project), capture_output=True, text=True, timeout=180)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert sorted(p.name for p in (project / "data/runtime").iterdir()) == ["atm-auto-approver_last.json"]
+
+
+# ── LQ-1882 follow-up (lead ruling 2026-11-11 10:46 ET): the immediate trigger is its own lane ──────────────
+# proposal_enrichment_loop.py runs `safe_flock.sh /tmp/tradeai_atm.lock <PY> atm_auto_approver.py` on every
+# ENTRY_ZONE_VALID proposal. Sharing the lock is deliberate (one evaluation at a time); sharing the lane's
+# IDENTITY was the defect: those runs landed on component tradeai_atm and overwrote
+# data/runtime/atm-auto-approver_last.json, so the scheduled */15 lane was graded on a run it did not schedule
+# (10:30 slot: EMPTY / not_written, because the last run wrote logs/atm_immediate.log).
+
+IMMEDIATE = "atm-auto-approver-immediate"
+
+
+def test_safe_flock_names_component_from_the_caller_when_it_says_so(tmp_path):
+    """The wrapper's component is the lock basename by default, and the caller's name when it sets
+    TRADEAI_SAFEFLOCK_COMPONENT. Before this, an event-driven caller could not be told apart from the lane whose
+    lock it holds."""
+    journal = REPO / "logs/safe_flock_events.jsonl"
+    start = journal.stat().st_size if journal.exists() else 0
+    lock = tmp_path / "atm_shared.lock"
+
+    for extra in ({}, {"TRADEAI_SAFEFLOCK_COMPONENT": IMMEDIATE}):
+        proc = subprocess.run(["bash", str(REPO / "scripts/safe_flock.sh"), str(lock), "true"],
+                              env=dict(os.environ, **extra), cwd=str(REPO),
+                              capture_output=True, text=True, timeout=120)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+
+    with journal.open("rb") as f:
+        f.seek(start)
+        lines = [json.loads(ln) for ln in f.read().decode("utf-8", "replace").splitlines() if ln.strip()]
+    started = [e["component"] for e in lines if e.get("event_type") == "started" and e.get("lock_file") == str(lock)]
+    assert started == ["atm_shared", IMMEDIATE], started
+
+
+def test_an_immediate_cycle_writes_its_own_receipt_not_the_scheduled_lanes(tmp_path):
+    """The same evaluation, run as the event-driven lane, must leave data/runtime/atm-auto-approver_last.json
+    alone. Before this, RECEIPT_LANE was a constant and the trigger overwrote the scheduled lane's receipt."""
+    project = _staging_project(tmp_path)
+    env = dict(_staging_env(project), TRADEAI_ATM_LANE_ID=IMMEDIATE)
+    log = project / "logs/atm.log"
+    with log.open("w") as stream:
+        proc = subprocess.run(
+            ["bash", str(REPO / "scripts/safe_flock.sh"), str(project / "outer.lock"),
+             sys.executable, "-I", str(project / "scripts/atm_auto_approver.py")],
+            cwd=str(project), env=env, stdout=stream, stderr=subprocess.STDOUT, timeout=180)
+    assert proc.returncode == 0, log.read_text()
+    receipts = sorted(p.name for p in (project / "data/runtime").iterdir())
+    assert receipts == [f"{IMMEDIATE}_last.json"], receipts
+    body = json.loads((project / "data/runtime" / f"{IMMEDIATE}_last.json").read_text())
+    assert body.get("lane_id") in (IMMEDIATE, None), body
+
+
+def test_the_registry_keeps_the_two_atm_lanes_apart():
+    """Two registry rows, two journal components, two output files — otherwise the split is cosmetic."""
+    from scripts.lib import cron_outage_watchdog as W
+
+    reg = json.loads((REPO / "config/lane_registry.json").read_text())
+    rows = {r["lane_id"]: r for r in reg["lanes"] if r["lane_id"].startswith("atm-auto-approver")}
+    assert set(rows) == {"atm-auto-approver", IMMEDIATE}, sorted(rows)
+    assert W.component(rows[IMMEDIATE]) == IMMEDIATE
+    assert rows["atm-auto-approver"]["output_signal"]["path"] == "logs/atm.log"
+    assert rows[IMMEDIATE]["output_signal"]["path"] == "logs/atm_immediate.log"
+    assert rows[IMMEDIATE]["progress_signal"]["table"] == "atm_state"
