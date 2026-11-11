@@ -279,12 +279,18 @@ def enqueue(root: Path | None = None, env: dict | None = None, *, apply: bool = 
     env = os.environ if env is None else env
     q = queue_path(root, env)
     existing = {r.get("procedure_id") for r in _read_jsonl(q)}
-    queued_keys = {_semantic_key(r) for r in state(root, env).values() if r.get("status") == "QUEUED"}
+    # A semantic key that already carries an operator decision is not re-queued. PROMOTED must be
+    # in this set: content-hash drift gives the SAME lesson several procedure_ids (the statement
+    # embeds a running average), so after promoting one sibling the next rebuild re-queued the
+    # other. Measured in production 2026-11-11T15:21:19Z: the NFLX OBSERVE lesson was promoted at
+    # 15:20:47Z and a duplicate QUEUED row appeared 32 s later (les_014849f7d4715f84).
+    decided_keys = {_semantic_key(r) for r in state(root, env).values()
+                    if r.get("status") in ("QUEUED", "PROMOTED", "REFUTED", "RETIRED")}
     cands = gather(root, env)
     new = [c for c in cands if c["procedure_id"] not in existing]
     new, coalesced = _coalesce(new)
-    already_queued = sum(1 for c in new if _semantic_key(c) in queued_keys)
-    new = [c for c in new if _semantic_key(c) not in queued_keys]
+    skipped_decided = sum(1 for c in new if _semantic_key(c) in decided_keys)
+    new = [c for c in new if _semantic_key(c) not in decided_keys]
     held: dict[str, int] = {}
     if outcome_rule and new:
         outcomes = outcome_index(root, env)
@@ -306,7 +312,7 @@ def enqueue(root: Path | None = None, env: dict | None = None, *, apply: bool = 
             for c in new:
                 fh.write(json.dumps({"schema": SCHEMA, "event": "QUEUED", "ts": _now_iso(), **c, "status": "QUEUED"}, sort_keys=True, default=str) + "\n")
     return {"candidates": len(cands), "already_queued": len(cands) - len(new) - sum(held.values()),
-            "coalesced": coalesced, "skipped_already_queued": already_queued,
+            "coalesced": coalesced, "skipped_decided": skipped_decided,
             "new": len(new), "held_by_policy": held, "by_source": by_src,
             "written": len(new) if apply else 0, "path": str(q)}
 

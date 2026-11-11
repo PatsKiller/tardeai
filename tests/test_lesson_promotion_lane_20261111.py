@@ -144,7 +144,7 @@ def test_enqueue_coalesces_statement_hashes_and_is_idempotent(store):
     assert first["written"] == 1, first
     second = lp.enqueue(store["root"], store["env"], apply=True,
                         price_on=store["price_on"], daily_vol=store["daily_vol"])
-    assert second["written"] == 0 and second["skipped_already_queued"] == 1, second
+    assert second["written"] == 0 and second["skipped_decided"] == 1, second
     assert sum(1 for r in lp.state(store["root"], store["env"]).values() if r["status"] == "QUEUED") == 1
 
 
@@ -198,3 +198,9 @@ def test_promote_one_requires_the_operator_and_promotes_top(store):
     assert any(r["status"] == "PROMOTED" for r in lp.state(store["root"], store["env"]).values())
     # the reader the façades call now returns the promoted procedure
     assert lp.promoted(store["root"], store["env"], symbol="SCHD")
+    # PRODUCTION REGRESSION (2026-11-11T15:21:19Z): after promoting one sibling, the next cycle
+    # re-queued the OTHER procedure_id of the same lesson, because PROMOTED rows were not part of
+    # the decided keys. The queue must not grow after a promotion.
+    again = lp.enqueue(store["root"], store["env"], apply=True,
+                       price_on=store["price_on"], daily_vol=store["daily_vol"])
+    assert again["written"] == 0 and again["skipped_decided"] >= 1, again
