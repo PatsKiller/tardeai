@@ -6297,6 +6297,41 @@
       "env_report_reason": "Shadow-only registration (LQ-1790): a dry run returns before api_v2 and rotation_autopilot are imported, so the live env closure is not yet audited; report mode keeps the pre-P7 env and records only the NAMES enforce would drop. Tighten to an audited list before any live promotion.",
       "env_evidence": "scripts/warm_caches.py reads no env of its own; lib/persistent_state_root resolves data/runtime from TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT for the receipt. The real run imports api_v2 (its DB loader reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD) and rotation_autopilot; the cron line loads $PROJ/.env into the process, so n8n supplies the same NAMES from this list. The dry run returns before any of those imports.",
       "source": "LQ-1790 (P2, ASSIGN-20261110T1454Z-claude-lead-LQ1790-1789): INC-261110-nymhys is a NO_OUTPUT on warm-caches because the lane has no dispatch entry in lane_registry.json and no allowlist entry, so the executor can never run it (config/n8n_remediation_catalogue.json: allowlisted false, default_action suggest_only, 'the executor cannot run it; regenerate after its allowlist PR'). SHADOW ONLY: dry_run_arg ['--dry-run'] prints the plan and writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists and lane_stage_clamp keeps it dry whatever a caller requests. lock = the live cron line's own flock lock (flock -n /tmp/warm_caches.lock), so a future canary fire could never double-run with cron. Promotion to canary waits on the catalogue's 'Requires Refactoring Before Migration' item (the script still runs rotation_autopilot.run_autopilot_tick, a second autopilot entrypoint) and is the lead's decision."
+    },
+    {
+      "lane_id": "lesson-queue-cycle",
+      "command": [
+        "$PY",
+        "scripts/lesson_queue_cycle.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "lock": "/tmp/tradeai_lesson_queue_cycle.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/lesson-queue-cycle_last.json",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "LQ-1884: the lane imports session13_db / env_bootstrap (its DB loader re-reads the rendered env file into the process), so the import closure is not bounded by literal reads; report mode keeps the unit env and records only the NAMES enforce would drop, exactly as the wire-advisory-lessons row does.",
+      "env_evidence": "scripts/lesson_queue_cycle.py reads data/cio and data/runtime through TRADEAI_STATE_ROOT / TRADEAI_CIO_DIR and writes learning_promotion_decisions through session13_db -> db_adapter (DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD). Nothing here reads a broker credential, an order route or a live flag (ruling 3); the lane never sizes, orders or writes a broker item (MBI_BEHAVIOR = 0).",
+      "source": "LQ-20261107-1884 (operator directive 2026-11-11 09:38/09:45 ET, P0 WAR ROOM): the promotion chain had a module and no writer - enqueue ran once by hand (2026-09-28), lesson_queue_hygiene --apply archived every QUEUED row once by hand (2026-10-04), and nothing scheduled either, so PROMOTED stayed 0 and learning_promotion_decisions stayed empty. This lane is the writer: one cycle links lessons to their plan's settled outcomes, enqueues P2-eligible lessons (coalesced), opens ONE ApprovalPackage for the operator, and consumes only items the OPERATOR approved. Scheduled through the dispatcher, never cron (operator rail)."
     }
   ],
   "blocked_reasons": {

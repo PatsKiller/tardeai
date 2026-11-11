@@ -138,13 +138,27 @@ def gather(root: Path | None = None, env: dict | None = None) -> list[dict]:
             out[p["procedure_id"]] = p
 
     # 1. LessonCandidate@v2 (outcome-derived, PROVISIONAL)
+    # Last-wins per lesson_id: lesson_candidates.jsonl is append-only and an amendment row
+    # repeats the lesson_id. The amended row is the one that carries the linked outcomes.
+    try:
+        from scripts.lib import lesson_outcome_linkage as _lol  # type: ignore
+    except ImportError:  # imported as scripts.lib.lesson_promotion
+        from lib import lesson_outcome_linkage as _lol  # type: ignore
+    links = _lol.linked_by_lesson(cio)
+    lesson_rows: dict[str, dict] = {}
     for r in _read_jsonl(cio / "lesson_candidates.jsonl"):
         if r.get("schema", "").startswith("LessonCandidate"):
-            add(_procedure(statement=r.get("statement") or "", source="lesson_candidates", source_id=r.get("lesson_id") or "",
-                           applies_to={"scope": r.get("scope"), "task_class": r.get("task_class")},
-                           evidence={"supporting_outcome_ids": list(r.get("supporting_outcome_ids") or [])[:20],
-                                     "counterexamples": list(r.get("counterexamples") or [])[:10]},
-                           symbols=r.get("symbols") or []))
+            lid = str(r.get("lesson_id") or "")
+            if lid:
+                lesson_rows[lid] = {**lesson_rows.get(lid, {}), **r}
+    for lid, r in lesson_rows.items():
+        add(_procedure(statement=r.get("statement") or "", source="lesson_candidates", source_id=lid,
+                       applies_to={"scope": r.get("scope"), "task_class": r.get("task_class")},
+                       evidence={"supporting_outcome_ids": list(r.get("supporting_outcome_ids") or [])[:20],
+                                 "counterexamples": list(r.get("counterexamples") or [])[:10],
+                                 "linked_outcome_ids": list(links.get(lid) or [])[:20],
+                                 "linked_outcome_basis": _lol.BASIS if links.get(lid) else None},
+                       symbols=r.get("symbols") or []))
     # 2. advisory KB: candidates + iris-ratified rows (ratified by a machine ≠ promoted by the operator)
     seen_kb: set[str] = set()
     for rows, src in ((_kb_lessons_latest_with_counters(runtime), "advisory_kb_ratified"),
@@ -221,18 +235,56 @@ def queue_verdict(proc: dict, outcomes: dict[str, dict], *, price_on=None, daily
     return {"eligible": True, "reason": "", "independent": n, "outcomes": res["independent"]}
 
 
+def _semantic_key(proc: dict) -> tuple[str, str, str, str, tuple[str, ...]]:
+    """What one operator decision is about: one source, one scope/task_class, one kind, one symbol set.
+
+    The procedure_id is content-hashed over the statement, and an outcome-derived statement embeds
+    the running average and sample count, so every rebuild mints a NEW procedure_id for the SAME
+    lesson. Without this key the queue grows one near-duplicate row per day (LQ-1884 measured 10
+    new candidates for 2 lessons on 2026-11-11)."""
+    a = proc.get("applies_to") or {}
+    return (str(proc.get("source") or ""), str(a.get("scope") or ""), str(a.get("task_class") or ""),
+            str(proc.get("kind") or ""), tuple(sorted(str(s) for s in (proc.get("symbols") or []))))
+
+
+def _evidence_size(proc: dict) -> tuple[int, int, str]:
+    ev = proc.get("evidence") or {}
+    return (len(ev.get("supporting_outcome_ids") or []) + len(ev.get("counterexamples") or []),
+            len(ev.get("linked_outcome_ids") or []), str(proc.get("procedure_id") or ""))
+
+
+def _coalesce(new: list[dict]) -> tuple[list[dict], int]:
+    """One candidate per semantic key, keeping the row with the most settled evidence."""
+    keep: dict[tuple, dict] = {}
+    for c in new:
+        k = _semantic_key(c)
+        cur = keep.get(k)
+        if cur is None or _evidence_size(c) > _evidence_size(cur):
+            keep[k] = c
+    return list(keep.values()), len(new) - len(keep)
+
+
 def enqueue(root: Path | None = None, env: dict | None = None, *, apply: bool = False,
             price_on=None, daily_vol=None, outcome_rule: bool = True) -> dict:
     """Append QUEUED rows for candidates not yet on the queue. Dry run by default.
 
     With ``outcome_rule`` (default) only lessons passing P2 are queued; without price
     lookups the quality check fails closed, so nothing outcome-less slips through.
+
+    2026-11-11 (LQ-1884): (a) a batch is coalesced to one row per semantic key so a rebuild's
+    drifted statement cannot multiply the operator queue; (b) a candidate whose semantic key is
+    already QUEUED is skipped, so yesterday's queued lesson is not re-queued under today's
+    statement hash.
     """
     env = os.environ if env is None else env
     q = queue_path(root, env)
     existing = {r.get("procedure_id") for r in _read_jsonl(q)}
+    queued_keys = {_semantic_key(r) for r in state(root, env).values() if r.get("status") == "QUEUED"}
     cands = gather(root, env)
     new = [c for c in cands if c["procedure_id"] not in existing]
+    new, coalesced = _coalesce(new)
+    already_queued = sum(1 for c in new if _semantic_key(c) in queued_keys)
+    new = [c for c in new if _semantic_key(c) not in queued_keys]
     held: dict[str, int] = {}
     if outcome_rule and new:
         outcomes = outcome_index(root, env)
@@ -253,8 +305,10 @@ def enqueue(root: Path | None = None, env: dict | None = None, *, apply: bool = 
         with q.open("a", encoding="utf-8") as fh:
             for c in new:
                 fh.write(json.dumps({"schema": SCHEMA, "event": "QUEUED", "ts": _now_iso(), **c, "status": "QUEUED"}, sort_keys=True, default=str) + "\n")
-    return {"candidates": len(cands), "already_queued": len(cands) - len(new) - sum(held.values()), "new": len(new),
-            "held_by_policy": held, "by_source": by_src, "written": len(new) if apply else 0, "path": str(q)}
+    return {"candidates": len(cands), "already_queued": len(cands) - len(new) - sum(held.values()),
+            "coalesced": coalesced, "skipped_already_queued": already_queued,
+            "new": len(new), "held_by_policy": held, "by_source": by_src,
+            "written": len(new) if apply else 0, "path": str(q)}
 
 
 def state(root: Path | None = None, env: dict | None = None) -> dict[str, dict]:
