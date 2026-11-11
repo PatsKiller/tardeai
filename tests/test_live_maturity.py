@@ -429,3 +429,43 @@ def test_b1_the_real_ancestry_check_answers_from_git():
     first = subprocess.run(["git", "rev-list", "--max-parents=0", "HEAD"], capture_output=True, text=True).stdout.split()[0]
     assert lm.git_is_ancestor(first, head) is True and lm.git_is_ancestor(head, first) in (False, None)
     assert lm.git_is_ancestor("0000000", head) is None
+
+
+# ---- LQ-1971: disk-hygiene is nightly 03:45; the old hourly receipts are not slots ----------------------------
+
+def _nightly(**kw):
+    return _item(N=5, cycle_kind="daily_lane", live_since="2026-11-11 14:51",
+                 cadence={"cron": "45 3 * * *", "grace_min": 60}, **kw)
+
+
+def test_1971_hourly_gaps_are_not_missed_slots_on_a_nightly_lane(tmp_path):
+    s = Src(tmp_path)
+    st, res = _run(_nightly(), {}, s, _t(17, 30))               # evening of the live day: no 03:45 slot yet
+    assert st["history"] == [] and res["state"] == "awaiting" and res["verdict"].startswith("UNKNOWN")
+    st, res = _run(_nightly(), st, s, _t(23, 59))               # hours of silence, still no slot due
+    assert st["history"] == [] and res["state"] == "awaiting"
+
+
+def test_1971_hourly_passes_do_not_count_and_the_nightly_slot_decides(tmp_path):
+    s = Src(tmp_path)
+    for h in (16, 17, 18, 19):                                  # old-cadence style hourly :17 passes, off-slot
+        _receipt(s.receipts_dir, "lane-a", f"20261111T{h}17", _t(h, 17))
+    st, res = _run(_nightly(), {}, s, _t(5, 0, day=12))         # the 11-12 03:45 slot is due at 04:45
+    assert st["n"] == 0 and [h["kind"] for h in st["history"]] == ["missed"] and res["state"] == "silent"
+    _receipt(s.receipts_dir, "lane-a", "20261112T0345", _t(3, 45, 12))
+    s2 = Src(tmp_path)
+    st, res = _run(_nightly(), {}, s2, _t(5, 0, day=12))
+    assert st["n"] == 1 and res["verdict"] == "LIVE 1/5"
+
+
+def test_1971_five_nights_verify(tmp_path):
+    s = Src(tmp_path)
+    for d in (12, 13, 14, 15, 16):
+        _receipt(s.receipts_dir, "lane-a", f"202611{d}T0345", _t(3, 45, d))
+    st, res = _run(_nightly(), {}, s, _t(5, 0, day=16))
+    assert st["n"] == 5 and res["verdict"] == "PRODUCTION VERIFIED"
+
+
+def test_1971_seed_registry_disk_hygiene_is_the_nightly_slot_with_five_nights():
+    i = next(x for x in lm.load_registry(lm.DEFAULT_REGISTRY)["items"] if x["id"] == "disk-hygiene")
+    assert i["cadence"]["cron"] == "45 3 * * *" and i["cycle_kind"] == "daily_lane" and i["N"] == 5
