@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_status_1902_20261111",
+  "files": [
+    "tests/test_release_status_20261111.py"
+  ],
+  "anchor": "LQ-20261107-1902",
+  "comment": [
+    "LQ-1902 / QA-GOLDEN-RULES E15: DEPLOYED / LIVE / VERIFIED computed from /proc/<pid>/cwd against the CURRENT release, restart lines per lagging unit, the nightly alert, and the promote wiring (report only)."
+  ]
+}

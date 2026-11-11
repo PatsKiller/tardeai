@@ -924,6 +924,25 @@ staged_units_step() {
   return 0
 }
 
+# QA-GOLDEN-RULES E15 (LQ-20261107-1902): deploy success is not release success. After the restart step, ask the
+# release-status gate whether every intended service runs $dir. REPORT ONLY: it reads /proc, restarts nothing, and
+# can never fail a promote that has already activated. Sets RELEASE_STATUS to DEPLOYED, LIVE or UNKNOWN (VERIFIED,
+# which needs the acceptance probes, is the nightly 20:05 ET lane's word; --no-probes keeps loopback out of here).
+RELEASE_STATUS="UNKNOWN"
+release_status_step() {
+  local dir="$1" line=""
+  RELEASE_STATUS="UNKNOWN"
+  if [[ -n "${VENV_PYTHON:-}" && -x "${VENV_PYTHON}" && -f "${ROOT}/scripts/release_status.py" ]]; then
+    line="$("$VENV_PYTHON" "${ROOT}/scripts/release_status.py" --log-line --no-probes 2>&1 || true)"
+  fi
+  case "$line" in
+    *"is DEPLOYED"*) RELEASE_STATUS="DEPLOYED" ;;
+    *"is LIVE"*) RELEASE_STATUS="LIVE" ;;
+  esac
+  [[ -n "$line" ]] && log "  ${line}"
+  return 0
+}
+
 cmd_promote() {
   # A real deploy, never a test: the bound-unit verify strips leaked CI/harness variables only under this marker.
   local +x CBU_DEPLOY_CONTEXT=1  # +x: a non-exported marker even if the env leaked an exported one
@@ -977,10 +996,12 @@ cmd_promote() {
     promote_note="${promote_note}_bound_units_stale"
     log "WARN bound units not all on $dir — paged P1 by verify; promote continues (pins, receipt, ff)"
   fi
+  release_status_step "$dir"
+  [[ "$RELEASE_STATUS" == "DEPLOYED" ]] && promote_note="${promote_note}_release_deployed_units_lag"
   staged_units_step promote "$dir"
   write_expected_release_pin "$dir"
   write_deploy_receipt true promote ok false "$promote_note"
-  log "PROMOTE OK live=$sha"
+  log "PROMOTE OK release_status=${RELEASE_STATUS} sha=$sha (DEPLOYED = some intended unit still runs another release; LIVE = every one runs this; scripts/release_status.py lists them with the restart lines)"
   if [[ -n "$EMERGENCY_SHA" ]]; then
     log "EMERGENCY release PENDING_RECONCILIATION — when GitHub recovers run: scripts/ci_outage_emergency_release.py reconcile --apply"
   fi

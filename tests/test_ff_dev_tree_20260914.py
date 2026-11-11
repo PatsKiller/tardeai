@@ -165,7 +165,7 @@ def test_promote_fast_forwards_the_dev_tree_after_promote_ok_and_fails_loudly():
     text = DEPLOY.read_text()
     promote = text[text.index("cmd_promote() {") :]
     promote = promote[: promote.index("\n}\n")]
-    assert promote.index('log "PROMOTE OK live=$sha"') < promote.index('ff_dev_tree_after_promote "$sha"')
+    assert promote.index('log "PROMOTE OK release_status=') < promote.index('ff_dev_tree_after_promote "$sha"')
     helper = text[text.index("ff_dev_tree_after_promote() {") :]
     helper = helper[: helper.index("\n}\n")]
     assert 'source "${ROOT}/scripts/lib/ff_dev_tree.sh"' in helper
