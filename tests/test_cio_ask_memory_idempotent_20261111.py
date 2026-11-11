@@ -100,3 +100,27 @@ def test_compaction_dry_run_reports_pure_retry_lines_and_never_writes(tmp_path):
     assert 0 < out["would_drop_bytes"] < out["size_bytes"]
     assert hashlib.sha256(p.read_bytes()).hexdigest() == before               # byte-identical: read-only
     assert D.main(["--path", str(p), "--report", str(p)]) == 2                # refuses to overwrite the spine
+
+
+def test_unreadable_dedupe_read_is_visible_in_the_receipt_and_still_writes(tmp_path, monkeypatch):
+    """LQ-1943 N3 (E22): 'could not check' must not look like 'checked, not a duplicate'."""
+    import scripts.lib.cross_asset.security_research_spine as sp
+
+    p = tmp_path / "spine.jsonl"
+    mem = SpineAskMemory(spine_path=p)
+    mem.append(entity=ENT, kind="ask.answer_version", summary="v1 final", ref="ask_x:v1")
+    real, calls = sp.load_latest, {"n": 0}
+
+    def flaky(*a, **k):                                   # the dedupe read fails once; the upsert's own read works
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("transient")
+        return real(*a, **k)
+
+    monkeypatch.setattr(sp, "load_latest", flaky)
+    r = mem.append(entity=ENT, kind="ask.answer_version", summary="v1 final", ref="ask_x:v1")
+    assert r["spine"]["ok"] is True and r["spine"]["deduped"] == "unreadable"
+    assert len(_lines(p)) == 2                            # unreadable tip must not block the write
+    monkeypatch.setattr(sp, "load_latest", real)
+    ok = mem.append(entity=ENT, kind="ask.answer_version", summary="v1 final", ref="ask_x:v1")
+    assert ok["spine"] == {"ok": True, "deduped": True}   # readable again: a true dedupe

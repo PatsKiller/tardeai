@@ -71,9 +71,11 @@ class SpineAskMemory:
             from scripts.lib.cross_asset.security_research_spine import load_latest, upsert_research_memory  # noqa: PLC0415
 
             text = f"[{kind}] {_excerpt(summary, 700)}"
-            # Idempotent on (kind, ref, summary) against the spine itself (LQ-1929): a retry of
-            # sync_answer_memory re-sends what the spine already holds. Append nothing (no tip rewrite, no
-            # "accepted_into_spine" lifecycle row) and acknowledge it, so retries cannot evict older memory.
+            # Idempotent on (kind, ref, summary) against the spine TIP, i.e. its last 100 contributions (LQ-1929):
+            # a retry of sync_answer_memory re-sends what the tip already holds. Append nothing (no tip rewrite, no
+            # "accepted_into_spine" lifecycle row) and acknowledge it, so retries cannot evict older memory. This is
+            # tip-window idempotency, not whole-file: a retry after >100 intervening contributions re-appends.
+            dedupe_unreadable = False
             try:
                 tip = load_latest(entity.symbol, path=self.spine_path) or {}
                 if not (entity.security_guid and tip.get("subject_guid") and tip["subject_guid"] != entity.security_guid):
@@ -82,8 +84,8 @@ class SpineAskMemory:
                            for c in tip.get("contributions") or []):
                         receipt["spine"] = {"ok": True, "deduped": True}
                         return receipt
-            except Exception:  # noqa: BLE001 - an unreadable tip must not block the write
-                pass
+            except Exception:  # noqa: BLE001 - an unreadable tip must not block the write ...
+                dedupe_unreadable = True  # ... but "could not check" is never reported as "checked" (E22, LQ-1943 N3)
             res = upsert_research_memory(
                 entity.symbol,
                 silo="cio",
@@ -100,6 +102,8 @@ class SpineAskMemory:
                 path=self.spine_path,
             )
             receipt["spine"] = {k: res.get(k) for k in ("ok", "error", "path") if k in res}
+            if dedupe_unreadable:
+                receipt["spine"]["deduped"] = "unreadable"
         else:
             receipt["spine"] = {"ok": False, "skipped": "no listed security — ledger is the memory (entity_guid)"}
         return receipt

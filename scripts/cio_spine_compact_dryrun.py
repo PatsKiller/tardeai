@@ -47,6 +47,9 @@ def analyse(path: Path, *, top: int = 10) -> dict[str, Any]:
             if not isinstance(tip, dict):
                 bad_lines += 1
                 continue
+            # Grouped by symbol, not subject_guid, deliberately: _fingerprint() includes subject_guid, so a line for a
+            # different identity under the same ticker never matches the previous kept line and is never dropped
+            # (recall() carries the same identity guard).
             sym = str(tip.get("symbol") or "").upper() or "?"
             s = per.setdefault(sym, {"seen": set(), "fp": None, "lines": 0, "drop_lines": 0, "drop_bytes": 0,
                                      "last_len": 0, "last_dropped": False})
