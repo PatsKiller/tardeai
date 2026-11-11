@@ -28144,6 +28144,48 @@
       }
     },
     {
+      "lane_id": "release-status",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/release_status.py",
+        "cadence": "5 20 * * *",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 24.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-11",
+      "state_reason": "LQ-20261107-1902 (operator-approved build, QA-GOLDEN-RULES E15, 2026-11-11 15:15 ET): the release status gate. Nightly at 20:05 ET, after the 20:00 ET market-hours window closes, it reads /proc/<pid>/cwd of every running tradeai-* / portfolio-server unit against the release CURRENT points at. DEPLOYED = some unit still runs another release; LIVE = all run it; VERIFIED = LIVE plus the acceptance probes. Not LIVE raises one system_health alert carrying the exact `systemctl --user restart <unit>` line per lagging unit (and the callback-poller market-hours caution). It restarts nothing. SHADOW: dispatch.mode dry_run, so a fire is the read-only status; promotion to --apply (the alert and the receipt) is the lead's.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/release-status_last.json",
+        "key": "ok_at"
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "5 20 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "monitor",
+        "priority": 3,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
       "lane_id": "cio-capital-plan-record",
       "owner": "cio",
       "scheduler": {

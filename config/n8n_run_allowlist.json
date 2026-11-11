@@ -6151,6 +6151,37 @@
       "source": "LQ-20261107 noon registry batch (ASSIGN-20261110T1425Z, operator order 2026-11-10). dry_run_arg [] is the read-only default; --apply writes the LaneRunReceipt@v2 (and, where stated, escalates)."
     },
     {
+      "lane_id": "release-status",
+      "command": [
+        "$PY",
+        "scripts/release_status.py"
+      ],
+      "dry_run_arg": [],
+      "live_arg": [
+        "--apply"
+      ],
+      "lock": "/tmp/release_status.lock",
+      "lock_kind": "flock",
+      "timeout_s": 120,
+      "market_gate": false,
+      "output_signal": "data/runtime/release-status_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_STATE_DIR",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "report until the import closure is re-inventoried for enforce: the alert path reads DB_* (alert_event_writer) and the state root for the LaneRunReceipt; systemctl --user needs XDG_RUNTIME_DIR, an implicit executor base name",
+      "env_evidence": "scripts/release_status.py _connect reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD from os.environ (read-only session for the dedupe query); scripts/lib/lane_last_receipt.receipt_path resolves the state root; scripts/lib/current_bound_units._run calls `systemctl --user` (XDG_RUNTIME_DIR from CHILD_ENV_BASE_NAMES). No broker credential name.",
+      "source": "LQ-20261107-1902 (operator-approved build 2026-11-11). dry_run_arg [] is the read-only status; --apply escalates when not LIVE and writes the LaneRunReceipt@v2. Definition only: not activated, no cron line, never fired."
+    },
+    {
       "lane_id": "cio-capital-plan-record",
       "command": [
         "$PY",

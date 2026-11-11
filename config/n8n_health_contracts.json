@@ -43561,6 +43561,159 @@
     },
     {
       "schema": "N8nHealthContract@v1",
+      "id": "release-status",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "lq_1902_release_status_gate",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Compare the release CURRENT points at with the release every running tradeai-* / portfolio-server user unit actually runs (/proc/<pid>/cwd). DEPLOYED = at least one unit runs another release; LIVE = all run the target; VERIFIED = LIVE and the acceptance probes pass. Not LIVE raises one system_health alert per target+lagging-set per 20 h carrying the exact restart line per lagging unit. Send nothing itself, restart nothing, never touch a unit.",
+        "business_function": "release integrity",
+        "source": "scripts/release_status.py; scripts/lib/release_status.py; QA-GOLDEN-RULES E15; LQ-20261107-1902"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/release_status.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/release_status.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock"
+        },
+        {
+          "name": "systemctl --user show / list-units and /proc/<pid>/cwd (read-only)",
+          "kind": "service",
+          "direction": "read",
+          "source": "scripts/lib/current_bound_units.py"
+        },
+        {
+          "name": "Postgres alert_events (system_health warning when not LIVE, --apply only; read-only dedupe query)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/release_status.py"
+        },
+        {
+          "name": "data/runtime/release-status_last.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/lane_last_receipt.write_lane_receipt (LaneRunReceipt@v2)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "release_live",
+          "text": "summary.release_status is LIVE or VERIFIED: every intended unit runs the target release"
+        },
+        {
+          "check": "alert_ok",
+          "text": "no alert was needed, or it was written or deduplicated"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "release_deployed",
+          "text": "summary.release_status is DEPLOYED: at least one intended unit still runs another release; the alert lists the restart lines"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED or RUN_TIMEOUT"
+        },
+        {
+          "check": "undetermined",
+          "text": "release_status is UNDETERMINED: no CURRENT target or no bound unit could be read (unknown, never LIVE)"
+        }
+      ],
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "units compared",
+        "rule": "empty_allowed",
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_bound_units"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/release-status_last.json produced_count (written under --apply only)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "baseline": {
+        "timeout_s": 120,
+        "class": "monitor",
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 96.0,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 4x the expected cadence (24 h)",
+        "computed_on": "2026-11-11",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED: defined 2026-11-11 (LQ-20261107-1902), not yet dispatched; class defaults only.",
+        "runs_considered": null,
+        "duration_degraded_above_s": 96.0,
+        "duration_rule": "0.8x timeout_s (0.8 x 120 = 96 s): the class rule every 120 s monitor lane uses"
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "scripts/release_status.py; QA-GOLDEN-RULES E15",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity, else the fan-in priority. Wiring the bridge, notifier and diagnoser to this contract is the next build item."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json yet: regenerate with scripts/build_remediation_catalogue.py --write after this allowlist entry merges"
+      },
+      "evidence": {
+        "receipt": "data/runtime/release-status_last.json",
+        "verify": [
+          "python3 scripts/release_status.py --json | jq '.status, .lagging'",
+          "jq '.summary.release_status, .summary.lagging' $STATE_ROOT/data/runtime/release-status_last.json"
+        ]
+      },
+      "review_by": "2026-11-25",
+      "review": {
+        "prepared_by": "cc-sonnet-5 (LQ-20261107-1902, 2026-11-11)",
+        "status": "DRAFT",
+        "reviewed_by": null,
+        "reviewed_on": null,
+        "requested_of": "claude-lead (to assign a non-author reviewer)",
+        "requested_on": "2026-11-11",
+        "note": "Author draft. Shadow registration: the registry row is stage shadow with dispatch.mode dry_run, so a fire is the read-only status; the alert and the receipt exist under --apply only. Not activated, no cron line."
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
       "id": "cio-capital-plan-record",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",

@@ -357,3 +357,59 @@ def test_shell_step_sets_the_word_and_never_fails_the_promote(tmp_path, printed,
     out = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
     assert f"WORD={expected}" in out.stdout
+
+
+# ------------------------------------------------------------------------------------------------ the lane definition
+LANE = "release-status"
+
+
+def _json(rel_path):
+    return json.loads((ROOT / rel_path).read_text())
+
+
+def _row(rows, key, value=LANE):
+    return next(r for r in rows if r.get(key) == value)
+
+
+def test_lane_is_defined_at_2005_et_nightly_in_shadow():
+    row = _row(_json("config/lane_registry.json")["lanes"], "lane_id")
+    assert row["scheduler"]["cadence"] == "5 20 * * *"
+    assert row["scheduler"]["timezone"] == "America/New_York"
+    assert row["scheduler"]["kind"] == "n8n" and row["scheduler"]["stage"] == "shadow"
+    assert row["dispatch"]["mode"] == "dry_run"  # a fire is the read-only status: nothing is activated by this row
+    assert row["dispatch"]["cron"] == ["5 20 * * *"]
+    assert row["expected_cadence_hours"] == 24.0
+
+
+def test_lane_allowlist_entry_runs_the_script_and_validates():
+    from scripts import n8n_run_executor as ex
+
+    entry = _row(_json("config/n8n_run_allowlist.json")["lanes"], "lane_id")
+    assert entry["command"] == ["$PY", "scripts/release_status.py"]
+    assert entry["dry_run_arg"] == [] and entry["live_arg"] == ["--apply"]  # dry run is the default
+    assert entry["market_gate"] is False and entry["output_receipt"] == "v2"
+    assert ex.validate_entry(entry) is None
+
+
+def test_lane_dispatch_block_passes_the_platform_gate():
+    from scripts.lib import lane_dispatch as ld
+
+    reg = _json("config/lane_registry.json")["lanes"]
+    row = _row(reg, "lane_id")
+    ids = [r["lane_id"] for r in reg]
+    assert not ld.validate_dispatch_block(row, known_lane_ids=ids)
+
+
+def test_lane_has_a_draft_contract_awaiting_a_non_author_reviewer():
+    c = _row(_json("config/n8n_health_contracts.json")["contracts"], "id")
+    assert c["status"] == "DRAFT" and c["review"]["status"] == "DRAFT"  # E6: the author never signs their own
+    assert c["review"]["reviewed_by"] is None and c["review"]["requested_of"]
+    assert c["stage"] == "shadow" and c["baseline"]["timeout_s"] == 120
+    assert any("DEPLOYED" in d["text"] for d in c["degraded"])
+
+
+def test_lane_is_not_activated_anywhere():
+    """No cron line, no relay live-set row, no dispatch.mode live: definition only."""
+    assert "release_status" not in (ROOT / "config" / "crontab_snapshot.txt").read_text()
+    assert LANE not in (ROOT / "config" / "n8n_relay_live_source.json").read_text()
+    assert _row(_json("config/lane_registry.json")["lanes"], "lane_id")["dispatch"]["mode"] != "live"
