@@ -1013,6 +1013,32 @@ _CACHE: dict = {}
 _LOCK = threading.Lock()
 _REFRESHING: set = set()
 
+#: LQ-20261111-1890 — the COLD path (cache miss) is single-flight. On 2026-11-11, after the 11:54 fold restarted the
+#: dashboard, a browser load sent several concurrent jobs-history requests at a ``None`` cache; each caller ran its
+#: own full ~253-lane ``_load`` (the wrapper journal shows those computes reaped after 484–682 s), the 64 handler
+#: slots starved into ``503 server_busy``, and the accumulated builds took the process past its cgroup MemoryMax
+#: (SIGKILL at 2.5 GiB peak, 12:14:58 ET). Now one caller computes the first body; the others wait (bounded) and then
+#: serve that body, and a caller whose wait runs out gets :class:`SnapshotBusy` (the API's 503) instead of starting a
+#: second build. The stale-while-revalidate path above is unchanged.
+COLD_WAIT_SECONDS = float(os.environ.get("JOBS_HISTORY_COLD_WAIT_SEC", "25"))
+_BUSY_POLL_SECONDS = 0.5
+_COLD: set = set()                       # keys whose first body a leader is computing
+_COLD_COND = threading.Condition(_LOCK)  # one mutex for the cache, the refresh flags and the leader flags
+_COLD_THREAD = threading.local()         # the key this thread is computing (self-deadlock guard only)
+
+
+class SnapshotBusy(RuntimeError):
+    """A cold snapshot body is being computed and did not arrive within ``COLD_WAIT_SECONDS``.
+
+    The API maps an exception from a route to ``503 {"ok": false, "error": <class name>}``, so a caller that cannot
+    wait is turned away instead of adding a second full ``_load`` to the process.
+    """
+
+    def __init__(self, key, waited_s):
+        super().__init__(f"jobs history is computing its first body ({waited_s:.1f}s waited)")
+        self.key = key
+        self.waited_s = waited_s
+
 #: Row statuses that put a job in "Needs attention". LQ-20261107-1803: a blocking verdict and a degraded subject
 #: both belong here — they were previously invisible (the row said ok).
 _ATTENTION = {"failed", "blocked", "subject_degraded", "missed", "late", "not_measured"}
@@ -1093,17 +1119,42 @@ def snapshot(*, state_root=None, registry_path=None, now=None, descriptions_dir=
     if now is not None:
         return _load(root, registry, now, **extra)
     key = (str(root), str(registry), str(extra["descriptions_dir"]), str(extra["categories_path"]))
-    with _LOCK:
-        cached = _CACHE.get(key)
-        stale = cached is None or time.monotonic() - cached[0] > CACHE_SECONDS
-        background = cached is not None and stale and key not in _REFRESHING
+    deadline = time.monotonic() + COLD_WAIT_SECONDS
+    leader = False
+    with _COLD_COND:
+        while True:
+            cached = _CACHE.get(key)
+            if cached is not None:
+                break
+            if key not in _COLD or getattr(_COLD_THREAD, "key", None) == key:
+                # No body and nobody building one (or this thread is the builder — a guard, never re-entered today):
+                # this caller leads the one build every cold caller will share.
+                leader = True
+                _COLD.add(key)
+                _COLD_THREAD.key = key
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise SnapshotBusy(key, COLD_WAIT_SECONDS)
+            _COLD_COND.wait(min(remaining, _BUSY_POLL_SECONDS))
+    if leader:
+        built = False
+        try:
+            result = _load(root, registry, datetime.now(timezone.utc), **extra)
+            built = True
+        finally:
+            with _COLD_COND:
+                if built:
+                    _CACHE[key] = (time.monotonic(), result)
+                _COLD.discard(key)
+                _COLD_THREAD.key = None
+                _COLD_COND.notify_all()
+        return result
+    with _COLD_COND:
+        stale = time.monotonic() - cached[0] > CACHE_SECONDS
+        background = stale and key not in _REFRESHING
         if background:
             _REFRESHING.add(key)
-    if cached is None:
-        result = _load(root, registry, datetime.now(timezone.utc), **extra)
-        with _LOCK:
-            _CACHE[key] = (time.monotonic(), result)
-        return result
     if background:
         threading.Thread(target=_refresh, args=(key, root, registry, extra), name="jobs-history-refresh", daemon=True).start()
     return cached[1]
