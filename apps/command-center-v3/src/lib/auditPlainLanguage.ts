@@ -18,7 +18,7 @@
  * invoke the engine — so "did not run" is reserved for a producer reason that says so.
  */
 
-export type PlainGap = { text: string; raw: string | null }
+export type PlainGap = { text: string; raw: string | null; capped?: boolean }
 
 /** Known producer reasons → what the operator needs to understand. Keys are matched, not displayed. */
 const GAP_TEXT: Array<[RegExp, string]> = [
@@ -70,7 +70,7 @@ export function plainConflictGap(reason: unknown, counts?: { total?: unknown; sh
     const text = total !== null && shown !== null ? `Showing the newest ${shown} of ${total} conflict records.`
       : total !== null ? `Showing the newest conflict records of ${total}; more exist.`
       : 'Showing the newest conflict records; more exist.'
-    return { text, raw }
+    return { text, raw, capped: true }
   }
   const hit = GAP_TEXT.find(([pattern]) => pattern.test(raw))
   return { text: hit?.[1] ?? COULD_NOT_READ, raw }

@@ -137,7 +137,7 @@ def test_a_healthy_read_still_shows_no_gap():
 
 def _patch_payload_readers(monkeypatch):
     class _Truth:
-        def resolve(self, root, db_query=None):
+        def resolve(self, root, db_query=None, ledger_root=None):
             return {}
 
         def stances_for_symbols(self, symbols, root=None, db_query=None):

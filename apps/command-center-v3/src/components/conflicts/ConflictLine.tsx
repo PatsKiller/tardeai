@@ -11,7 +11,7 @@ import { plainConflictGap } from '../../lib/auditPlainLanguage'
 export function ConflictGap({ reason, total, shown }: { reason?: unknown; total?: unknown; shown?: unknown }) {
   const gap = plainConflictGap(reason, { total, shown })
   return <div role="status" data-testid="conflict-gap" style={{ color: TOKENS.warning, fontSize: TYPE.base, lineHeight: 1.5 }}>
-    <strong>Conflict check unavailable:</strong> <span>{gap.text}</span>
+    <strong>{gap.capped ? 'Conflict check:' : 'Conflict check unavailable:'}</strong> <span>{gap.text}</span>
     {gap.raw ? <details style={{ marginTop: 2, color: TOKENS.text[3], fontSize: TYPE.sm }}>
       <summary style={{ cursor: 'pointer', width: 'fit-content' }}>technical detail</summary>
       <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, Consolas, monospace", overflowWrap: 'anywhere' }}>{gap.raw}</span>

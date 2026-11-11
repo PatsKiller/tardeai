@@ -50,7 +50,10 @@ def test_cio_pages_and_risk_routes_use_the_cache(monkeypatch):
 
     import scripts.lib.w7_pages as w7
 
-    def fake_pages(root, db_query=None):
+    seen = {}
+
+    def fake_pages(root, db_query=None, ledger_root=None):
+        seen["ledger_root"] = ledger_root
         n["pages"] += 1
         return {"pages": n["pages"]}
 
@@ -65,3 +68,6 @@ def test_cio_pages_and_risk_routes_use_the_cache(monkeypatch):
         api._w7_cio_pages()
         api._risk_payload_cached()
     assert n == {"pages": 1, "risk": 1}
+    # LQ-1907 wiring: cio/pages reads the durable ledger root, not the release dir (the seam that broke).
+    from scripts.lib.conflicts.api import _root as _durable_root
+    assert seen["ledger_root"] == _durable_root()
