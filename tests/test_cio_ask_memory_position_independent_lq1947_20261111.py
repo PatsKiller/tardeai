@@ -1,0 +1,133 @@
+"""LQ-20261107-1947: duplicate prevention independent of file position and recency, and of process.
+
+Synthetic fixtures only. Operator criterion: a retry after more than 100 intervening contributions, and two concurrent
+processes retrying the same answer, each yield exactly one stored memory.
+"""
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import scripts.lib.cross_asset.security_research_spine as sp  # noqa: E402
+from scripts.lib import cio_ask_contract as C  # noqa: E402
+from scripts.lib.cio_ask_memory import SpineAskMemory  # noqa: E402
+
+GUID = "11111111-2222-4333-8444-555555555555"
+ENT = C.EntityRef(name="Synthetic Corp", symbol="SYNTH", security_guid=GUID,
+                  issuer_guid="11111111-2222-4333-8444-666666666666")
+ANSWER = dict(kind="ask.answer_version", summary="v1 final: synthetic answer", ref="ask_x:v1")
+
+
+def _lines(p):
+    return [json.loads(x) for x in p.read_text().splitlines() if x.strip()]
+
+
+def _copies(p):
+    return sum(1 for t in _lines(p) for c in t["contributions"]
+               if c["artifact_id"] == "ask_x:v1" and c["kind"] == "ask.answer_version" and "accepted" not in c["kind"])
+
+
+def test_retry_after_more_than_100_intervening_contributions_is_still_one_memory(tmp_path):
+    p = tmp_path / "spine.jsonl"
+    mem = SpineAskMemory(spine_path=p)
+    mem.append(entity=ENT, **ANSWER)
+    for i in range(120):                                  # push the answer out of the 100-contribution tip window
+        mem.append(entity=ENT, kind="ask.source", summary=f"Src {i} (filing)", ref=f"ask_y:{i}")
+    tip = _lines(p)[-1]
+    assert not any(c["artifact_id"] == "ask_x:v1" and c["kind"] == "ask.answer_version" for c in tip["contributions"])
+    before = len(_lines(p))
+    r = mem.append(entity=ENT, **ANSWER)                  # the late retry
+    assert r["spine"]["ok"] is True and r["spine"]["deduped"] is True
+    assert len(_lines(p)) == before                       # nothing appended
+
+
+def test_index_is_durable_across_instances_and_does_not_conflate_identities(tmp_path):
+    p = tmp_path / "spine.jsonl"
+    SpineAskMemory(spine_path=p).append(entity=ENT, **ANSWER)
+    again = SpineAskMemory(spine_path=p).append(entity=ENT, **ANSWER)       # a new process-like instance
+    assert again["spine"]["deduped"] is True
+    other = C.EntityRef(name="Other", symbol="SYNTH", security_guid="99999999-2222-4333-8444-555555555555",
+                        issuer_guid="99999999-2222-4333-8444-666666666666")
+    n = len(_lines(p))
+    SpineAskMemory(spine_path=p).append(entity=other, **ANSWER)             # same ticker, other identity: written
+    assert len(_lines(p)) == n + 1
+
+
+def test_concurrent_writers_yield_one_memory_threads(tmp_path, monkeypatch):
+    p = tmp_path / "spine.jsonl"
+    real = sp.upsert_research_memory
+
+    def slow(*a, **k):                                    # widen the read-then-write window
+        time.sleep(0.15)
+        return real(*a, **k)
+
+    monkeypatch.setattr(sp, "upsert_research_memory", slow)
+    out = []
+
+    def worker():
+        out.append(SpineAskMemory(spine_path=p).append(entity=ENT, **ANSWER))
+
+    ts = [threading.Thread(target=worker) for _ in range(6)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert all(r["spine"]["ok"] is True for r in out)
+    assert sum(1 for r in out if r["spine"].get("deduped") is True) == 5
+    assert len(_lines(p)) == 1 and _copies(p) == 1
+
+
+_CHILD = """
+import sys, time
+sys.path.insert(0, sys.argv[1])
+from pathlib import Path
+from scripts.lib import cio_ask_contract as C
+from scripts.lib.cio_ask_memory import SpineAskMemory
+e = C.EntityRef(name="Synthetic Corp", symbol="SYNTH", security_guid=sys.argv[3], issuer_guid="11111111-2222-4333-8444-666666666666")
+time.sleep(max(0.0, float(sys.argv[4]) - time.time()))
+SpineAskMemory(spine_path=Path(sys.argv[2])).append(entity=e, kind="ask.answer_version", summary="v1 final: synthetic answer", ref="ask_x:v1")
+"""
+
+
+def test_concurrent_processes_yield_one_memory(tmp_path):
+    p = tmp_path / "spine.jsonl"
+    go = time.time() + 2.0
+    procs = [subprocess.Popen([sys.executable, "-c", _CHILD, str(ROOT), str(p), GUID, str(go)]) for _ in range(6)]
+    assert [x.wait(timeout=60) for x in procs] == [0] * 6
+    assert len(_lines(p)) == 1 and _copies(p) == 1
+
+
+def test_rebuild_seeds_the_index_from_a_pre_existing_spine_read_only(tmp_path, monkeypatch):
+    from scripts.lib.cio_ask_memory_index import MemoryIndex
+
+    p = tmp_path / "spine.jsonl"
+    mem = SpineAskMemory(spine_path=p)
+    mem.append(entity=ENT, **ANSWER)
+    for i in range(120):
+        mem.append(entity=ENT, kind="ask.source", summary=f"Src {i}", ref=f"ask_y:{i}")
+    (tmp_path / "spine.jsonl.askidx").unlink()            # as if written before the index existed
+    from scripts.lib import cio_ask_memory_index as mi
+
+    mi._CACHE.clear()
+    before_bytes = p.read_bytes()
+    assert MemoryIndex(p).rebuild(p) >= 121
+    assert p.read_bytes() == before_bytes                 # the spine was only read
+    assert mem.append(entity=ENT, **ANSWER)["spine"]["deduped"] is True
+
+
+def test_unavailable_lock_still_writes_and_says_so(tmp_path, monkeypatch):
+    from scripts.lib import cio_ask_memory_index as mi
+
+    def nolock(self):
+        raise OSError("read-only filesystem")
+
+    monkeypatch.setattr(mi.MemoryIndex, "locked", nolock)
+    r = SpineAskMemory(spine_path=tmp_path / "spine.jsonl").append(entity=ENT, **ANSWER)
+    assert r["spine"]["ok"] is True and r["spine"]["dedupe_index"].startswith("unavailable:OSError")
+    assert len(_lines(tmp_path / "spine.jsonl")) == 1     # memory never lost to an index fault

@@ -68,45 +68,83 @@ class SpineAskMemory:
             raise ValueError(f"unknown memory kind {kind!r}")
         receipt: dict[str, Any] = {"kind": kind, "ref": ref, "key": entity.memory_key, "spine": None}
         if entity.kind == "security" and entity.symbol and entity.security_guid:
-            from scripts.lib.cross_asset.security_research_spine import load_latest, upsert_research_memory  # noqa: PLC0415
+            from scripts.lib.cross_asset.security_research_spine import (  # noqa: PLC0415
+                default_path,
+                load_latest,
+                upsert_research_memory,
+            )
+            from scripts.lib.cio_ask_memory_index import MemoryIndex, fingerprint  # noqa: PLC0415
 
             text = f"[{kind}] {_excerpt(summary, 700)}"
-            # Idempotent on (kind, ref, summary) against the spine TIP, i.e. its last 100 contributions (LQ-1929):
-            # a retry of sync_answer_memory re-sends what the tip already holds. Append nothing (no tip rewrite, no
-            # "accepted_into_spine" lifecycle row) and acknowledge it, so retries cannot evict older memory. This is
-            # tip-window idempotency, not whole-file: a retry after >100 intervening contributions re-appends.
-            dedupe_unreadable = False
-            try:
-                tip = load_latest(entity.symbol, path=self.spine_path) or {}
-                if not (entity.security_guid and tip.get("subject_guid") and tip["subject_guid"] != entity.security_guid):
-                    key = (kind, ref, text[:800])
-                    if any((c.get("kind"), c.get("artifact_id"), c.get("summary")) == key
-                           for c in tip.get("contributions") or []):
-                        receipt["spine"] = {"ok": True, "deduped": True}
-                        return receipt
-            except Exception:  # noqa: BLE001 - an unreadable tip must not block the write ...
-                dedupe_unreadable = True  # ... but "could not check" is never reported as "checked" (E22, LQ-1943 N3)
-            res = upsert_research_memory(
-                entity.symbol,
-                silo="cio",
-                kind=kind,
-                summary=text,
-                artifact_id=ref,
-                refs=[ref],
-                tags=[ASK_TAG, kind.replace(".", "_")],
-                operator={"pending_id": ref, "kind": kind, "text": text}
-                if kind in ("ask.asked", "ask.follow_up")
-                else None,
-                subject_guid=entity.security_guid,
-                issuer_guid=entity.issuer_guid,
-                path=self.spine_path,
-            )
-            receipt["spine"] = {k: res.get(k) for k in ("ok", "error", "path") if k in res}
-            if dedupe_unreadable:
-                receipt["spine"]["deduped"] = "unreadable"
+            fp = fingerprint(entity.symbol, entity.security_guid, kind, ref, text[:800])
+            index = MemoryIndex(self.spine_path or default_path())
+            import contextlib  # noqa: PLC0415
+
+            with contextlib.ExitStack() as stack:
+                unavailable = None
+                try:  # check-and-write is one critical section across processes (LQ-1947)
+                    stack.enter_context(index.locked())
+                except OSError as exc:  # no lock: still write (never lose memory), and say so
+                    index, unavailable = None, "unavailable:" + type(exc).__name__
+                self._write_once(receipt, entity, kind, text, ref, fp, index, load_latest, upsert_research_memory)
+                if unavailable and isinstance(receipt.get("spine"), dict):
+                    receipt["spine"]["dedupe_index"] = unavailable
         else:
             receipt["spine"] = {"ok": False, "skipped": "no listed security — ledger is the memory (entity_guid)"}
         return receipt
+
+    def _write_once(self, receipt, entity, kind, text, ref, fp, index, load_latest, upsert_research_memory) -> None:
+        """Idempotent on (subject, kind, ref, summary), independent of file position and recency (LQ-1947).
+
+        1. The durable fingerprint index answers for every memory written since it existed, however old.
+        2. The spine tip (last 100 contributions) answers for memories written before the index existed (LQ-1929).
+        3. Otherwise write, then record the fingerprint. An unreadable tip is visible as deduped="unreadable"."""
+        if index is not None:
+            try:
+                if index.has(fp):
+                    receipt["spine"] = {"ok": True, "deduped": True, "by": "index"}
+                    return
+            except OSError:
+                index = None
+        dedupe_unreadable = False
+        try:
+            tip = load_latest(entity.symbol, path=self.spine_path) or {}
+            if not (entity.security_guid and tip.get("subject_guid") and tip["subject_guid"] != entity.security_guid):
+                key = (kind, ref, text[:800])
+                if any((c.get("kind"), c.get("artifact_id"), c.get("summary")) == key
+                       for c in tip.get("contributions") or []):
+                    receipt["spine"] = {"ok": True, "deduped": True, "by": "tip"}
+                    self._learn(receipt, index, fp)
+                    return
+        except Exception:  # noqa: BLE001 - an unreadable tip must not block the write ...
+            dedupe_unreadable = True  # ... but "could not check" is never reported as "checked" (E22, LQ-1943 N3)
+        res = upsert_research_memory(
+            entity.symbol,
+            silo="cio",
+            kind=kind,
+            summary=text,
+            artifact_id=ref,
+            refs=[ref],
+            tags=[ASK_TAG, kind.replace(".", "_")],
+            operator={"pending_id": ref, "kind": kind, "text": text} if kind in ("ask.asked", "ask.follow_up") else None,
+            subject_guid=entity.security_guid,
+            issuer_guid=entity.issuer_guid,
+            path=self.spine_path,
+        )
+        receipt["spine"] = {k: res.get(k) for k in ("ok", "error", "path") if k in res}
+        if dedupe_unreadable:
+            receipt["spine"]["deduped"] = "unreadable"
+        if res.get("ok") is True:
+            self._learn(receipt, index, fp)
+
+    @staticmethod
+    def _learn(receipt, index, fp) -> None:
+        if index is None:
+            return
+        try:
+            index.add(fp)
+        except OSError as exc:  # the memory is stored; only future dedupe is weaker — visible, not silent
+            receipt["spine"]["dedupe_index"] = "unwritable:" + type(exc).__name__
 
     # ── read ───────────────────────────────────────────────────────────────────────────────────────────────────────
     def recall(self, *, entity: EntityRef, limit: int = 6, exclude_refs: tuple[str, ...] = ()) -> list[dict]:
