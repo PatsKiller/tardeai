@@ -108,6 +108,16 @@ class FakeConn:
         pass
 
 
+def test_env_pins_cio_dir_to_the_state_root_never_the_checkout(store):
+    env = lane._env(None)
+    root = Path(env["TRADEAI_STATE_ROOT"])
+    assert Path(env["TRADEAI_CIO_DIR"]) == root / "data" / "cio"
+    assert Path(env["TRADEAI_GOVERNANCE_DIR"]) == root / "data" / "governance"
+    assert Path(env["TRADEAI_CIO_DIR"]) != Path.cwd() / "data" / "cio"
+    explicit = lane._env(store["root"])
+    assert Path(explicit["TRADEAI_CIO_DIR"]) == store["root"] / "data" / "cio"
+
+
 def test_linkage_binds_plan_outcome_as_provenance(store):
     res = lol.apply(store["root"], store["env"], apply=True)
     assert res["links_new"] == 1 and res["written"] == 1, res   # only the MRVL lesson carries plan_id

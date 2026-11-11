@@ -97,17 +97,20 @@ def receipt_path(root: Path | None) -> Path:
 
 
 def _env(root: Path | None) -> dict[str, str]:
-    """Environment for this cycle. An explicit ``--root`` WINS over inherited state-root variables.
+    """Environment for this cycle: ALWAYS the resolved state root, never the caller's cwd.
 
-    Before this, ``setdefault`` honoured an ambient ``TRADEAI_STATE_ROOT`` (a test's hermetic
-    empty root, or a staging root) and the approval package landed outside the requested root.
+    Two defects this closes. (1) ``setdefault`` honoured an ambient ``TRADEAI_STATE_ROOT`` (a
+    test's hermetic empty root, or a staging root) and the approval package landed outside the
+    requested root. (2) With no ``--root`` the ledger resolved to the production persistent
+    state while ``lesson_promotion`` (through ``intelligence_client._cio_dir``) fell back to
+    ``Path.cwd()/data/cio`` — the code checkout — so a dry run read an empty queue and found
+    no candidates. Measured 2026-11-11: 0 candidates from the checkout vs the live queue.
     """
     env = dict(os.environ)
-    if root is not None:
-        root = Path(root)
-        env["TRADEAI_STATE_ROOT"] = str(root)
-        env["TRADEAI_CIO_DIR"] = str(root / "data" / "cio")
-        env["TRADEAI_GOVERNANCE_DIR"] = str(root / "data" / "governance")
+    root = state_root(root) if root is not None else state_root(None)
+    env["TRADEAI_STATE_ROOT"] = str(root)
+    env["TRADEAI_CIO_DIR"] = str(root / "data" / "cio")
+    env["TRADEAI_GOVERNANCE_DIR"] = str(root / "data" / "governance")
     return env
 
 
