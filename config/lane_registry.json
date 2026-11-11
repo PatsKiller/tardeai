@@ -28372,6 +28372,49 @@
       "value_class": "Operationally Important",
       "severity": "High",
       "note": "READ_ONLY_ADVISORY, MBI_BEHAVIOR = 0: no broker, no order, no live flag, no sizing. One cycle links each lesson to its plan's settled outcomes (provenance only, never evidence), enqueues P2-eligible lessons coalesced by semantic key (>= 3 independent quality-checked outcomes), opens ONE ApprovalPackage for the operator, and promotes only items the OPERATOR approved. Approval itself remains the operator's act (AGENTS.md \u00a717)."
+    },
+    {
+      "lane_id": "live-maturity",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/ops/live_maturity.py",
+        "cadence": "*/10 * * * *",
+        "stage": "shadow",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/10 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "monitor",
+        "priority": 3,
+        "retry_policy": "transient-2"
+      },
+      "expected_cadence_hours": 0.25,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/live_maturity_state.json"
+      },
+      "review_by": "2026-11-25",
+      "value_class": "Technical Debt",
+      "severity": "Medium",
+      "note": "LQ-20261107-1986 (REVIEW-1967 N1): the LIVE MATURITY counter (E14, LiveAcceptance@v2) has no scheduled poller. The ATM item reads a single overwritten data/runtime/atm-auto-approver_last.json, so a slot it did not see before the next run replaces it is UNOBSERVED and resets n; the counter must therefore run at least once per ATM cadence slot (*/15). Every 10 minutes leaves one missed poll of slack inside the 15-minute interval and is also enough for the hourly service samples. SHADOW: live_arg is null and dispatch.mode is dry_run, so every fire is the read-only --dry-run argv and persists nothing; the state file only advances when the lead promotes the lane and sets live_arg to --write-state (operator-only: a live fire writes durable counter state). Until then the counter is not polled and the ATM item reads UNOBSERVED on any gap, which is the honest state."
     }
   ],
   "freshness_contracts": [

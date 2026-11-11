@@ -50,6 +50,7 @@ from pathlib import Path
 ET = zoneinfo.ZoneInfo("America/New_York")
 DEFAULT_REGISTRY = Path(__file__).resolve().parents[2] / "config" / "live_acceptance_v2.json"
 SP = Path(os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases" / "persistent-state" / "data")
+DEFAULT_STATE = SP / "runtime" / "live_maturity_state.json"
 VERIFIED = "PRODUCTION VERIFIED"
 HISTORY_CAP = 100
 HUNG_AFTER = dt.timedelta(hours=3)
@@ -413,9 +414,11 @@ def _service(item, st, src, now):
             _push(st, "unobserved", f"svc:{probe['unit']}:{gap.strftime('%Y%m%dT%H')}:unobserved", gap, False,
                   "no hourly sample")
     healthy = active and (same or accepted or contained is True)
-    st["release_state"] = ("same" if same else "changed_accepted" if accepted else
-                           "changed_contained" if contained else "changed_not_contained" if contained is False else
-                           "same")
+    if not active:
+        st["release_state"] = "not_checked"   # an inactive unit: ancestry was not asked, so say so (LQ-1971 N2)
+    else:
+        st["release_state"] = ("same" if same else "changed_accepted" if accepted else
+                               "changed_contained" if contained else "changed_not_contained")
     note = f"active={s['active']} cwd={os.path.basename(s['cwd'] or '')} release={st['release_state']}" + \
         (" restart-event" if newly else "")
     _push(st, "pass" if healthy else "fail", f"svc:{probe['unit']}:{bucket}", now, healthy, note)
@@ -501,10 +504,15 @@ def evaluate(registry, state, src, now):
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--registry", default=str(DEFAULT_REGISTRY))
-    ap.add_argument("--state", required=True, help="counter state JSON (its own file; read, and written with --write-state)")
+    ap.add_argument("--state", default=str(DEFAULT_STATE),
+                    help="counter state JSON (its own file; read, and written with --write-state)")
     ap.add_argument("--write-state", action="store_true", help="persist counted cycles; default is a read-only run")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="explicit read-only run (the n8n shadow argv); writes nothing, so it cannot be combined with --write-state")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
+    if a.dry_run and a.write_state:
+        ap.error("--dry-run is read-only and cannot be combined with --write-state")
     reg = validate_registry(load_registry(a.registry))
     sp = Path(a.state)
     lock = None

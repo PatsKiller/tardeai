@@ -44232,6 +44232,128 @@
         "requested_on": "2026-11-10",
         "note": "verified against code and the live cron line, not the READY. Dry run measured exit 0: one line per step with that cache's age, then 'nothing computed, written, proposed or sent; no receipt', returning before api_v2 / rotation_autopilot are imported (scripts/warm_caches.py:108-118). Cron L521 fires */8 with flock -n /tmp/warm_caches.lock, the same lock this allowlist entry names, so cron and a future dispatcher fire cannot double-run. Shadow is enforced twice: registry scheduler.stage shadow (lane_stage_clamp -> dry_run whatever the caller requests) and allowlist live_arg null (n8n_relay_live_lanes excludes it). Baseline honesty checked: the coordination ledger holds 0 runs for warm-caches, and the live receipt exists (steps_s rotation_summary 4.6 / trade_ai 28.8 / rotation_autopilot 4.0, ok_at set), so timeout_s 420 sits above the catalogue's 318-330 s historical peak and 0.8 x 420 = 336 s is the degraded bound. No expected_output block: the lane grades no_rule until one is added, acceptable at shadow and required before any canary promotion, which the catalogue's 'Requires Refactoring Before Migration' item gates anyway."
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "live-maturity",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "lq_1986_live_maturity_poller_20261111",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Poll the LIVE MATURITY counter (config/live_acceptance_v2.json) so every cadence slot of every item is seen before its evidence is overwritten: the ATM item reads one overwritten last-receipt file, and a slot not observed resets n. A shadow fire runs --dry-run: it evaluates the registry read-only and prints one verdict line per item, writing nothing. A live fire (not enabled) would also persist counted cycles to data/runtime/live_maturity_state.json under flock.",
+        "business_function": "production-fix maturity evidence",
+        "source": "scripts/ops/live_maturity.py; config/live_acceptance_v2.json; REVIEW-LQ-20261107-1967 N1"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/ops/live_maturity.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_live_maturity.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock"
+        },
+        {
+          "name": "data/runtime/n8n_runs, data/runtime/<lane>_last.json",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/ops/live_maturity.py Sources"
+        },
+        {
+          "name": "data/runtime/live_maturity_state.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "live run only (--write-state)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "verdicts_printed",
+          "text": "a shadow dry run prints one verdict line per registry item and exits 0, writing nothing"
+        },
+        {
+          "check": "state_advanced",
+          "text": "once promoted, a live run advances data/runtime/live_maturity_state.json at least every 15 minutes"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "state_stale",
+          "text": "promoted lane: the state file is older than 15 minutes during a window the ATM item expects slots (04:00-19:59 ET weekdays); every older slot may already be UNOBSERVED"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "the registry fails validation (exit non-zero) or the state lock is held past the run (exit 75)"
+        },
+        {
+          "check": "run_timeout",
+          "text": "the run is killed at timeout_s 60"
+        }
+      ],
+      "baseline": {
+        "timeout_s": 60,
+        "class": "monitor",
+        "freshness_degraded_after_h": 0.25,
+        "freshness_failed_after_h": 0.5,
+        "freshness_rule": "promoted lane: degraded beyond 15 min without a state refresh (the ATM slot interval), failed beyond 30 min",
+        "computed_on": "2026-11-11",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED for the dispatcher: the lane has never been dispatched. The read-only run completes in well under a second on the host (systemctl show + git merge-base), so timeout_s 60 is a generous monitor bound.",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 48.0,
+        "duration_rule": "0.8x timeout_s (0.8 x 60 = 48 s)"
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "registry row severity Medium: a silent counter hides fix maturity but moves no money",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "No catalogue entry yet; regenerate config/n8n_remediation_catalogue.json after this entry merges."
+      },
+      "evidence": {
+        "receipt": "data/runtime/live_maturity_state.json",
+        "verify": [
+          "python3 scripts/ops/live_maturity.py --dry-run",
+          "stat -c '%y' $STATE_ROOT/data/runtime/live_maturity_state.json"
+        ]
+      },
+      "review_by": "2026-11-25",
+      "review": {
+        "prepared_by": "agent draft (cc-sonnet-4, LQ-1986, 2026-11-11)",
+        "status": "DRAFT",
+        "reviewed_by": null,
+        "reviewed_on": null,
+        "requested_of": null,
+        "requested_on": null,
+        "note": "Draft at shadow per the lead's assignment; needs a non-author reviewer before the registry PR merges."
+      }
     }
   ],
   "pending_changes": {

@@ -6332,6 +6332,32 @@
       "env_report_reason": "LQ-1884: the lane imports session13_db / env_bootstrap (its DB loader re-reads the rendered env file into the process), so the import closure is not bounded by literal reads; report mode keeps the unit env and records only the NAMES enforce would drop, exactly as the wire-advisory-lessons row does.",
       "env_evidence": "scripts/lesson_queue_cycle.py reads data/cio and data/runtime through TRADEAI_STATE_ROOT / TRADEAI_CIO_DIR and writes learning_promotion_decisions through session13_db -> db_adapter (DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD). Nothing here reads a broker credential, an order route or a live flag (ruling 3); the lane never sizes, orders or writes a broker item (MBI_BEHAVIOR = 0).",
       "source": "LQ-20261107-1884 (operator directive 2026-11-11 09:38/09:45 ET, P0 WAR ROOM): the promotion chain had a module and no writer - enqueue ran once by hand (2026-09-28), lesson_queue_hygiene --apply archived every QUEUED row once by hand (2026-10-04), and nothing scheduled either, so PROMOTED stayed 0 and learning_promotion_decisions stayed empty. This lane is the writer: one cycle links lessons to their plan's settled outcomes, enqueues P2-eligible lessons (coalesced), opens ONE ApprovalPackage for the operator, and consumes only items the OPERATOR approved. Scheduled through the dispatcher, never cron (operator rail)."
+    },
+    {
+      "lane_id": "live-maturity",
+      "command": [
+        "$PY",
+        "scripts/ops/live_maturity.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_live_maturity.lock",
+      "lock_kind": "flock",
+      "timeout_s": 60,
+      "market_gate": false,
+      "output_signal": "data/runtime/live_maturity_state.json",
+      "env_names": [
+        "PROJECT_ROOT",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Shadow-only registration (LQ-1986): the argv is read-only and has not yet been fired by the executor, so the env closure is unaudited; report mode records the NAMES enforce would drop. Tighten before any live promotion.",
+      "env_evidence": "scripts/ops/live_maturity.py reads TRADEAI_STATE_ROOT only (state root for receipts, runtime and the state file). It runs `systemctl show` and `git merge-base --is-ancestor` as subprocesses and reads no credential, DB or broker setting.",
+      "source": "LQ-20261107-1986 (lead, 2026-11-11 17:16 ET), REVIEW-LQ-20261107-1967 N1. SHADOW ONLY: dry_run_arg ['--dry-run'] is read-only and refuses --write-state; live_arg null and dispatch.mode dry_run, so no live argv exists and lane_stage_clamp keeps every fire dry. Promotion (live_arg ['--write-state']) is the lead's decision."
     }
   ],
   "blocked_reasons": {
