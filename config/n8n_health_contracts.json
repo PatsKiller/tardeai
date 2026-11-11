@@ -43564,7 +43564,7 @@
       "id": "release-status",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "lq_1902_release_status_gate",
       "stage": "shadow",
       "purpose": {
@@ -43704,9 +43704,9 @@
       "review_by": "2026-11-25",
       "review": {
         "prepared_by": "cc-sonnet-5 (LQ-20261107-1902, 2026-11-11)",
-        "status": "DRAFT",
-        "reviewed_by": null,
-        "reviewed_on": null,
+        "status": "REVIEWED",
+        "reviewed_by": "cc-sonnet-7",
+        "reviewed_on": "2026-11-11",
         "requested_of": "claude-lead (to assign a non-author reviewer)",
         "requested_on": "2026-11-11",
         "note": "Author draft. Shadow registration: the registry row is stage shadow with dispatch.mode dry_run, so a fire is the read-only status; the alert and the receipt exist under --apply only. Not activated, no cron line."
