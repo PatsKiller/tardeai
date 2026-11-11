@@ -17,6 +17,8 @@
     "all_already_settled": "every item had already settled",
     "no_outcomes_written": "there were no outcomes to write",
     "below_trigger": "the pressure was below its trigger",
-    "no pending proposal needed an alert this run": "no pending proposal needed an alert"
+    "no pending proposal needed an alert this run": "no pending proposal needed an alert",
+    "already_recorded": "every decision in the plan was already recorded",
+    "no_position_decisions": "the plan held no position decisions"
   }
 }
