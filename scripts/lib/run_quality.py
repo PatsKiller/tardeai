@@ -924,9 +924,10 @@ def appended_lines(path: Path, since: datetime, *, limit: int = 512 * 1024) -> l
     """The lines at the END of ``path`` that its own leading timestamp dates at/after ``since``, oldest first.
 
     A bounded tail is read backwards, so a multi-megabyte log costs the same as a small one. ``None`` means "no
-    evidence": the file cannot be read, or not one line carries a timestamp we can compare. An undatable line is
-    kept with the run it probably belongs to (unknown is not evidence of work, but it is not evidence of a skip
-    either).
+    evidence": the file cannot be read, or its tail holds no line dated at/after ``since`` (nothing was appended
+    for this run). Once the first in-window line is found, everything from it to the end of the file belongs to
+    the run — including undatable continuation lines such as a traceback, which is why they are kept only from
+    that boundary onward and never wholesale (a whole-file tail of old tracebacks is not this run's output).
     """
     try:
         with path.open("rb") as stream:
@@ -941,18 +942,19 @@ def appended_lines(path: Path, since: datetime, *, limit: int = 512 * 1024) -> l
     lines = text.splitlines()
     if start:
         lines = lines[1:]  # first line may be cut mid-way
-    dated, undated = [], []
-    for line in lines:
-        head = line[:23]
+    boundary = None
+    for i, line in enumerate(lines):
         try:
-            when = datetime.strptime(head, "%Y-%m-%d %H:%M:%S,%f")
+            when = datetime.strptime(line[:23], "%Y-%m-%d %H:%M:%S,%f")
         except ValueError:
-            undated.append(line)
             continue
         # logging's asctime is LOCAL time; the run clock we compare against is UTC.
         if when.astimezone(timezone.utc) >= since - WRITE_TOLERANCE:
-            dated.append(line)
-    kept = dated + [ln for ln in undated if ln.strip()] if dated else []
+            boundary = i
+            break
+    if boundary is None:
+        return None
+    kept = [ln for ln in lines[boundary:] if ln.strip()]
     return kept or None
 
 

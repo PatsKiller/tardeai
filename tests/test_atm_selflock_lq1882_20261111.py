@@ -117,6 +117,27 @@ def test_skip_only_log_grades_failed_not_good(tmp_path):
     assert g["checks"]["ran_live"]["result"] == "fail"
 
 
+def test_old_undated_lines_in_the_tail_are_not_read_as_this_runs_output(tmp_path):
+    """Only lines from the first in-window stamp onward belong to the run.
+
+    Measured on the live log: a 512 KB tail of an older traceback (continuation lines carry no timestamp) sat
+    before the window and made "every appended line is a skip" false — the run graded on the log alone again.
+    """
+    log = tmp_path / "logs" / "atm.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    old = _log_ts(START - timedelta(hours=3))
+    lines = [f"{old} [atm] Traceback (most recent call last):",
+             '  File "/opt/x/scripts/atm_auto_approver.py", line 1, in <module>',
+             "RuntimeError: boom",
+             f"{_log_ts(START + timedelta(seconds=2))} [atm] ATM cycle skipped — another instance holds /tmp/tradeai_atm.lock"]
+    log.write_text("\n".join(lines) + "\n")
+    assert Q.appended_lines(log, START) == [lines[-1]]
+    ev = _evidence(tmp_path, doc=None, log_lines=lines)
+    ev["progress"] = lambda since: _progress(state_at=OLD_STATE, decisions=0)
+    g = Q.grade(ROW, LANE, ev, now=NOW)
+    assert (g["grade"], g["sub"]) == ("FAILED", "skip_only"), g
+
+
 def test_a_log_with_a_real_evaluation_is_not_treated_as_a_skip(tmp_path):
     ev = _evidence(tmp_path, doc=receipt(), log_lines=[
         f"{_log_ts(START + timedelta(seconds=2))} [atm] ATM cycle skipped — another instance holds /tmp/x.lock",
