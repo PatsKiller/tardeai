@@ -44,6 +44,17 @@ def _excerpt(text: Any, n: int) -> str:
     return s if len(s) <= n else s[: n - 1].rstrip() + "…"
 
 
+def _collapse_duplicates(items: list[dict]) -> list[dict]:
+    """Spine vs spine: N identical (kind, ref, summary) rows are one memory item (the newest copy). Pollution that
+    predates the idempotent write must not fill the recall limit with one line."""
+    newest: dict[tuple, dict] = {}
+    for i in items:
+        k = (i.get("kind"), i.get("ref"), i.get("summary"))
+        if k not in newest or str(i.get("at") or "") > str(newest[k].get("at") or ""):
+            newest[k] = i
+    return list(newest.values())
+
+
 class SpineAskMemory:
     """Default memory: research spine for securities, ask ledger for private entities."""
 
@@ -57,9 +68,22 @@ class SpineAskMemory:
             raise ValueError(f"unknown memory kind {kind!r}")
         receipt: dict[str, Any] = {"kind": kind, "ref": ref, "key": entity.memory_key, "spine": None}
         if entity.kind == "security" and entity.symbol and entity.security_guid:
-            from scripts.lib.cross_asset.security_research_spine import upsert_research_memory  # noqa: PLC0415
+            from scripts.lib.cross_asset.security_research_spine import load_latest, upsert_research_memory  # noqa: PLC0415
 
             text = f"[{kind}] {_excerpt(summary, 700)}"
+            # Idempotent on (kind, ref, summary) against the spine itself (LQ-1929): a retry of
+            # sync_answer_memory re-sends what the spine already holds. Append nothing (no tip rewrite, no
+            # "accepted_into_spine" lifecycle row) and acknowledge it, so retries cannot evict older memory.
+            try:
+                tip = load_latest(entity.symbol, path=self.spine_path) or {}
+                if not (entity.security_guid and tip.get("subject_guid") and tip["subject_guid"] != entity.security_guid):
+                    key = (kind, ref, text[:800])
+                    if any((c.get("kind"), c.get("artifact_id"), c.get("summary")) == key
+                           for c in tip.get("contributions") or []):
+                        receipt["spine"] = {"ok": True, "deduped": True}
+                        return receipt
+            except Exception:  # noqa: BLE001 - an unreadable tip must not block the write
+                pass
             res = upsert_research_memory(
                 entity.symbol,
                 silo="cio",
@@ -110,6 +134,7 @@ class SpineAskMemory:
             seen = {str(i.get("ref")) for i in items}
             items += [i for i in self._recall_ledger(entity) if str(i.get("ref")) not in seen]
         items = [i for i in items if not any(str(i.get("ref") or "").startswith(x) for x in exclude_refs if x)]
+        items = _collapse_duplicates(items)
         items.sort(key=lambda i: str(i.get("at") or ""), reverse=True)
         return items[:limit]
 
