@@ -766,12 +766,18 @@ def ask_from_cc(
                 link_channel(d.store, thread_id=tid, channel="telegram", chat_id=cid, message_id=res["message_id"])
             except Exception as exc:  # noqa: BLE001 — M2: a ledger link fault is not a delivery failure
                 mirror["link_error"] = type(exc).__name__
-        if mirror["state"] != "sent" or mirror.get("link_error"):
+        try:  # a clean send is silent, unless an earlier receipt for this ask exists: then the last word must be true
+            prior = any(e.get("kind") == "ask.mirror_status" and e.get("ask_id") == ask.get("ask_id")
+                        for e in d.store.events(thread_id=tid))
+        except Exception:  # noqa: BLE001 - cannot tell: record rather than risk a stale 'failed' being the last word
+            prior = True
+        if mirror["state"] != "sent" or mirror.get("link_error") or prior:
             try:
                 d.store.append(
                     "ask.mirror_status",
                     {"thread_id": tid, "ask_id": ask.get("ask_id"), "at": utc_now_iso(), "mirror": mirror},
-                    event_id=event_id_for("ask.mirror_status", ask.get("ask_id"), rid, mirror["state"]),
+                    event_id=event_id_for("ask.mirror_status", ask.get("ask_id"), rid, mirror["state"],
+                                          "link_error" if mirror.get("link_error") else "clean"),
                 )
             except Exception as exc:  # noqa: BLE001
                 mirror["receipt_error"] = type(exc).__name__

@@ -200,11 +200,21 @@ def test_delivered_mirror_stays_sent_when_the_ledger_link_fails(tmp_path, _offli
 
 def test_a_later_successful_mirror_is_not_masked_by_an_earlier_failure(tmp_path, _offline):
     d = make_deps(tmp_path)
+    converse = __import__("tests.test_cio_ask_20261023", fromlist=["x"])._converse_cc(_offline)
     d.telegram_send = lambda text: (_ for _ in ()).throw(ConnectionError("down"))
-    first = core.ask_from_cc("What is the view on TSLA?", deps=d, converse=__import__("tests.test_cio_ask_20261023", fromlist=["x"])._converse_cc(_offline), request_id="cc_same")
+    first = core.ask_from_cc("What is the view on TSLA?", deps=d, converse=converse, request_id="cc_same")
     assert first["mirror"]["state"] == "failed"
-    ev = [e for e in d.store.events() if e.get("kind") == "ask.mirror_status"]
-    assert len(ev) == 1
-    from scripts.lib.cio_ask_store import event_id_for
+    d.telegram_send = lambda text: {"ok": True, "message_id": 123}
+    second = core.ask_from_cc("What is the view on TSLA?", deps=d, converse=converse, request_id="cc_same")
+    assert second["mirror"]["state"] == "sent"
+    rows = [e["mirror"]["state"] for e in d.store.events() if e.get("kind") == "ask.mirror_status"
+            and e.get("ask_id") == first["ask_id"]]
+    assert rows[0] == "failed" and rows[-1] == "sent", rows  # the ledger's last word is the true one
 
-    assert ev[0]["event_id"] == event_id_for("ask.mirror_status", first["ask_id"], "cc_same", "failed")
+
+def test_a_clean_first_send_stays_silent(tmp_path, _offline):
+    d = make_deps(tmp_path)
+    d.telegram_send = lambda text: {"ok": True, "message_id": 5}
+    core.ask_from_cc("What is the view on TSLA?", deps=d,
+                     converse=__import__("tests.test_cio_ask_20261023", fromlist=["x"])._converse_cc(_offline), request_id="cc_one")
+    assert not [e for e in d.store.events() if e.get("kind") == "ask.mirror_status"]

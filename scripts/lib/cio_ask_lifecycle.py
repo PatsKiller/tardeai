@@ -573,12 +573,13 @@ def request_deep(
                 thread_id=thread_id,
                 entities=entities,
             )
-            recall, recall_errors = [], []
+            recall, recall_errors, recall_seen = [], [], 0
             for entity in entities:
                 got, errs = core.checked_recall(d.memory, entity, limit=6, exclude_refs=())
                 recall += research_context_for_model(got)
+                recall_seen += len(got)  # count what was read, not what survived sanitising (N2)
                 recall_errors += errs
-            recall_health = core.health_of(len(recall), recall_errors)  # unreadable != nothing remembered (M1)
+            recall_health = core.health_of(recall_seen, recall_errors)  # unreadable != nothing remembered (M1)
             context = AskResearchContext(
                 request=req,
                 thread_id=thread_id,
