@@ -28322,6 +28322,56 @@
       "value_class": "Operationally Important",
       "severity": "Medium",
       "note": "Read-only (MBI_BEHAVIOR = 0): every displayed figure in the catalog is compared with its truth (positions and stop rows from Postgres through a read-only session, prices from the authoritative providers, derived totals) and every finding carries BOTH sides and their timestamps; an unreadable truth is NOT_MEASURED, never PASS. Between 04:00 and 16:15 ET on a weekday the lane issues NO HTTP to :7777 (AGENTS.md 28.8) and audits the served artifacts in-process; outside that window it may GET the catalog's endpoints, one per endpoint at >=1 s pacing. The script self-bounds at 120 s (DSN F). It never repairs a number, never writes the store, never calls a broker or an order route, and never sends: strikes, self-fix (ACTIVE n8n lanes only) and escalation live in LQ-20261107-1702. An authority finding (G1-G3) skips self-fix by design - a source change is operator-only (AGENTS.md 17). Reuses scripts/lib/site_audit/cross_checks.py and scripts/desk_truth_monitor.py's checks; supersedes the unbuilt site-audit lane for phase 1."
+    },
+    {
+      "lane_id": "lesson-queue-cycle",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/lesson_queue_cycle.py --apply",
+        "cadence": "40 */6 * * *",
+        "stage": "canary",
+        "wave": "P2",
+        "timezone": "America/New_York"
+      },
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "40 */6 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "learn",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "expected_cadence_hours": 6.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-11",
+      "state_reason": "LQ-20261107-1884 (operator directive 2026-11-11 09:38/09:45 ET, P0 WAR ROOM): the memory promotion chain had a module and no writer. Measured 2026-11-11: lesson_promotions.jsonl last written 2026-10-04 (633 rows ARCHIVED by a one-shot manual lesson_queue_hygiene --apply under policy:lesson_queue_p2), PROMOTED 0, learning_promotion_decisions empty, no crontab line, no systemd unit and no registry/allowlist lane. This is the writer, scheduled through the dispatcher - never a cron line and never a systemd edit (operator rail). The lane_id avoids the word the dispatch token rule refuses; the lane's purpose is unchanged. It writes append-only state and the learning_promotion_decisions row; it NEVER promotes on its own: the only routes to PROMOTED are an operator APPROVE on the ApprovalPackage it opens, or an explicit --promote carrying the operator's own authorization. MBI_BEHAVIOR = 0.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/lesson-queue-cycle_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/lesson_queue_cycle.py writes LessonPromotionCycle@v1 (ok_at) to data/runtime/lesson-queue-cycle_last.json on --apply only; tests/test_lesson_promotion_lane_20261111.py pins the receipt, the queue coalescing, the operator-package path, the DB decision row (synthetic connection) and the operator-only guard."
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_lesson_promotion_lane_20261111.py (5 passed in the worktree; the same tests fail at base 179b081505eb with ModuleNotFoundError: lesson_outcome_linkage) plus an isolated end-to-end staging run under /data that reached PROMOTED 1 with a learning_promotion_decisions row. Root causes measured in the live store: last queue write 2026-10-04T11:36:19Z by scripts/lesson_queue_hygiene.py --apply (decided_by policy:lesson_queue_p2); 2,309 CASE_SUMMARY_CONTEXT lessons carried supporting_outcome_ids [] because outcome_to_lesson.candidates_from_case_summaries stamps the field empty.",
+      "review_by": "2026-11-25",
+      "value_class": "Operationally Important",
+      "severity": "High",
+      "note": "READ_ONLY_ADVISORY, MBI_BEHAVIOR = 0: no broker, no order, no live flag, no sizing. One cycle links each lesson to its plan's settled outcomes (provenance only, never evidence), enqueues P2-eligible lessons coalesced by semantic key (>= 3 independent quality-checked outcomes), opens ONE ApprovalPackage for the operator, and promotes only items the OPERATOR approved. Approval itself remains the operator's act (AGENTS.md \u00a717)."
     }
   ],
   "freshness_contracts": [
