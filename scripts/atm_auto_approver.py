@@ -413,9 +413,10 @@ def _another_process_holds(path):
 
     Used only when we were NOT started under the wrapper: a direct run must not race a wrapper run. The probe
     releases immediately; it is a collision check, not our lock (small TOCTOU window, documented in the READY).
+    Opened "a", never "w": this path belongs to the cron wrapper and a probe must not truncate it.
     """
     try:
-        fd = open(path, "w")
+        fd = open(path, "a")
     except OSError:
         return False
     try:

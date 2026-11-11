@@ -294,6 +294,20 @@ def test_cron_style_wrapper_run_adopts_the_wrapper_lock_and_evaluates(tmp_path):
     assert result == {"outcome": "evaluated_no_proposals", "holder": "wrapper", "blocker": None}
 
 
+def test_the_collision_probe_never_truncates_the_wrappers_lock_file(tmp_path):
+    """A direct run asks "is the cron lock held?" by opening that path. Opening it "w" would empty the wrapper's
+    lock file; the probe opens it for append and leaves whatever is there alone."""
+    project = _project(tmp_path)
+    lock = project / "outer.lock"
+    lock.write_text("sentinel held by nothing\n")
+    proc = _run(project, [sys.executable, "-I", "-c",
+                          "import sys; sys.path.insert(0, 'scripts'); import atm_auto_approver as A; "
+                          f"print('HELD', A._another_process_holds({str(lock)!r}))"])
+    assert proc.returncode == 0, proc.stderr
+    assert "HELD False" in proc.stdout, proc.stdout
+    assert lock.read_text() == "sentinel held by nothing\n"
+
+
 def test_without_the_wrapper_the_script_takes_its_own_distinct_lock(tmp_path):
     project = _project(tmp_path)
     proc = _run(project, [sys.executable, "-I", str(project / "scripts/atm_probe.py")])
