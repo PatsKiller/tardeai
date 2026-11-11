@@ -1,0 +1,30 @@
+{
+ "schema": "LiveAcceptance@v2",
+ "why": "QA E14: every production fix carries LIVE MATURITY n/N = consecutive passing production cycles since it went live. Operator 11-11 15:15 ET.",
+ "verified_against": "release dirs, deployment_log, n8n_runs receipts and lane_registry read 2026-11-11 ~15:30 ET",
+ "items": [
+  {"id": "atm", "lq": "LQ-20261107-1882", "fix_commit": "4467134a6", "release": "ae43e4c39-live-integration-20261111-105634",
+   "release_note": "git merge-base: 4467134a6 is NOT in 7d7ce8e55; it first shipped in ae43e4c39 (activated 10:57 ET) and is in 3159dab62 and 9544fa5d7",
+   "live_since": "2026-11-11 10:57", "cycle_kind": "intraday_lane", "N": 5,
+   "probe": {"kind": "last_receipt", "lane": "atm-auto-approver", "note": "cron */15 4-19 weekdays; only data/runtime/<lane>_last.json exists, so cycles between polls are not seen (undercount, never overcount). Immediate trigger lane atm-auto-approver-immediate is event-driven and not counted."}},
+  {"id": "memory-promotion", "lq": "LQ-20261107-1884", "fix_commit": "3159dab62", "release": "3159dab62-live-integration-20261111-115420",
+   "release_note": "lane registered as a dispatcher lane in 3159dab62 (11:55 ET); writer ee6d0fd22 shipped earlier in 7d7ce8e55",
+   "live_since": "2026-11-11 11:55", "cycle_kind": "intraday_lane", "N": 5,
+   "probe": {"kind": "n8n_receipts", "lane": "lesson-queue-cycle", "note": "cadence 40 */6 * * * ET"}},
+  {"id": "disk-hygiene", "lq": "LQ-20261107-1883", "fix_commit": "9544fa5d7", "release": "9544fa5d7-live-integration-20261111-142259",
+   "release_note": "release live 14:23 ET but the lane was breaker-held; breaker released 14:51:19 ET (n8n_dlq_releases.jsonl, 19:51:19Z), so live_since is the breaker release",
+   "live_since": "2026-11-11 14:51", "cycle_kind": "intraday_lane", "N": 5,
+   "probe": {"kind": "n8n_receipts", "lane": "disk-hygiene", "note": "receipts observed hourly at :17 on 11-10; lane_registry cadence field says 45 3 * * * (discrepancy, receipts are the truth)"}},
+  {"id": "portfolio-server", "lq": "LQ-20261111-1890", "fix_commit": "714b34099", "release": "9544fa5d7-live-integration-20261111-142259",
+   "release_note": "systemd ActiveEnterTimestamp 14:23:48 EST",
+   "live_since": "2026-11-11 14:23", "cycle_kind": "service", "N": 24,
+   "probe": {"kind": "service", "unit": "portfolio-server.service", "release_match": "9544fa5d7",
+             "note": "24 hourly samples plus one confirmed restart; /proc cwd + systemctl only, never a loopback request"}},
+  {"id": "jsonl-archive-rotate", "lq": null, "fix_commit": null, "release": null, "status": "pending_fix",
+   "live_since": null, "cycle_kind": "daily_lane", "N": 3,
+   "probe": {"kind": "n8n_receipts", "lane": "jsonl-archive-rotate", "note": "weekdays 16:45 ET; last live receipt 11-10 RUN_FAILED exit 1; LQ and fix commit not proven by me"}},
+  {"id": "reconcile-exit-advisory-outcomes", "lq": null, "fix_commit": null, "release": null, "status": "pending_fix",
+   "live_since": null, "cycle_kind": "daily_lane", "N": 3,
+   "probe": {"kind": "n8n_receipts", "lane": "reconcile-exit-advisory-outcomes", "note": "weekly (Sun 09:00 ET); only live receipt 11-08 RUN_FAILED exit 1 dependency_unavailable; LQ and fix commit not proven by me"}}
+ ]
+}
