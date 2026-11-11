@@ -277,7 +277,7 @@ Policies live in `config/n8n_retry_policies.json` (`N8nRetryPolicies@v1`, schema
 
 - **Verdicts.** The executor computes `verdict ∈ {ok, retryable, terminal, skipped}` from `(state, exit_code, reason)` against the policy, and writes it on the run row. `RUN_SKIPPED_LOCK` is `skipped`, which satisfies the slot (§3.2).
 - **When a run goes to the DLQ.** `terminal`, or `retryable` with `attempt == max_attempts`, writes `dead_letters` and raises a P2 finding `dlq:<lane>` (P1 if the lane's `watch.severity` is P1).
-- **Breaker.** `breaker_threshold` (default 3) consecutive dead slots open the breaker. It closes automatically on the next RUN_DONE of a manual or released run, or through `n8n_dlq.py release --lane`.
+- **Breaker.** `breaker_threshold` (default 3) consecutive dead slots **of the same mode** open the breaker (LQ-20261107-1891: a dry_run failure never counts toward the live streak). It closes automatically on the next RUN_DONE of a manual or released run, or through `n8n_dlq.py release --lane`.
 - **Never in n8n.** Retries are always a new `/run` with a new attempt key, minted by `due`. n8n's own `retryOnFail` applies only to the HTTP call (relay unreachable). That retry is safe because the key dedupes (`LedgerRunStore.request` is insert-or-return-existing).
 
 ### 3.5 Sequence: due → run → retry → DLQ

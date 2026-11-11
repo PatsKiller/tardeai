@@ -293,7 +293,7 @@ def test_breaker_opens_after_three_and_run_done_closes_it(store, policies):
     assert o5.verdict == "ok" and o5.breaker_closed
     brk = store.breaker(LANE)
     assert not brk["open"] and brk["released_by"] == "auto:run_done"
-    assert store.consecutive_dead(LANE) == 0
+    assert store.consecutive_dead(LANE, "live") == 0
 
 
 def test_dry_run_run_done_does_not_release_a_live_breaker(store, policies):
@@ -315,7 +315,7 @@ def test_dry_run_run_done_does_not_release_a_live_breaker(store, policies):
     assert out.verdict == "ok" and out.breaker_closed is False
     brk = store.breaker(LANE)
     assert brk["open"] is True and brk["released_by"] is None
-    assert store.consecutive_dead(LANE) == 3  # dry_run must not reset the live streak
+    assert store.consecutive_dead(LANE, "live") == 3  # dry_run must not reset the live streak
     # live RUN_DONE still releases
     ok = _run_slot(store, "1500", state="RUN_DONE", exit_code=0, reason=None, at=T0 + 600)
     o_live = rp.finalize_outcome(store, ok, pol, breaker_threshold=3, now=T0 + 603)
@@ -329,7 +329,7 @@ def test_skipped_and_other_lane_do_not_count(store, policies):
     assert rp.finalize_outcome(store, row, pol, breaker_threshold=3, now=T0 + 3).verdict == "skipped"
     other = _run_slot(store, "1000", state="RUN_REFUSED", exit_code=None, reason="x", lane="other-lane-xyz")
     rp.finalize_outcome(store, other, pol, breaker_threshold=3, now=T0 + 3)
-    assert store.consecutive_dead(LANE) == 0 and store.consecutive_dead("other-lane-xyz") == 1
+    assert store.consecutive_dead(LANE, "live") == 0 and store.consecutive_dead("other-lane-xyz", "live") == 1
 
 
 def test_legacy_row_without_slot_key_dead_letters_by_run_id(store, policies):
@@ -354,7 +354,7 @@ def test_release_dead_letter_and_breaker_reset_streak(store, policies):
     assert len(store.list_dead_letters(LANE, include_released=True)) == 3
     assert store.release_breaker(LANE, "operator", T0 + 1002)["open"] is False
     assert store.release_breaker(LANE, "operator", T0 + 1003) is None  # already closed
-    assert store.consecutive_dead(LANE) == 0
+    assert store.consecutive_dead(LANE, "live") == 0
     # the re-armed slot dies again: upsert clears its release, streak restarts at 1
     row = _run_slot(store, "1000", state="RUN_FAILED", exit_code=1, reason="exit_1", attempt=2, at=T0 + 1100)
     out = rp.finalize_outcome(store, row, pol, breaker_threshold=3, now=T0 + 1103)
@@ -446,7 +446,7 @@ def test_cli_release_lane_releases_all_and_breaker(tmp_path, policies, capsys):
     ledger = CoordinationLedger(db)
     st = LedgerRunStore(ledger)
     assert st.list_dead_letters(LANE) == [] and not st.breaker(LANE)["open"]
-    assert st.consecutive_dead(LANE) == 0
+    assert st.consecutive_dead(LANE, "live") == 0
     ledger.close()
     code, _, _ = _cli(["--ledger", str(db), "release", "--lane", LANE, "--note", "x", "--receipts", str(rec)], capsys)
     assert code == 3

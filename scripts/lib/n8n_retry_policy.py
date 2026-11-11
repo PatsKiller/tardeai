@@ -402,9 +402,11 @@ def finalize_outcome(store: Any, run_row: Mapping[str, Any], policy: Optional[Re
     ``store`` is a ``LedgerRunStore``. Writes ``runs.verdict``; on terminal, or retryable with
     ``attempt >= max_attempts``, upserts ``dead_letters`` (key = row ``slot_key`` or, for legacy rows, ``run_id``)
     and returns finding ``dlq:<lane>`` (``severity`` overrides the policy's dlq_severity, e.g. a P1 lane); when the
-    lane then has ``consecutive_dead >= breaker_threshold`` and no open breaker, opens it (finding
-    ``breaker:<lane>`` P2). A **live** RUN_DONE (verdict ok) auto-releases an open breaker (by ``auto:run_done``);
-    a dry_run RUN_DONE never does (LQ-20261107-1333: opall-20261108T1535 released due-diligence-questions).
+    lane then has ``consecutive_dead >= breaker_threshold`` dead slots **of this run's mode** and no open
+    breaker, opens it (finding ``breaker:<lane>`` P2). The streak is mode-scoped (LQ-20261107-1891): a dry_run
+    dead slot never counts toward the live streak. A **live** RUN_DONE (verdict ok) auto-releases an open
+    breaker (by ``auto:run_done``); a dry_run success proves the argv/allowlist path, not the live effect, and
+    must not release it (LQ-20261107-1333).
     ``now`` is unix seconds.
 
     Code-level rails (``class_verdict`` / ``effective_max_attempts``), whatever the policy file says: the run's
@@ -436,7 +438,9 @@ def finalize_outcome(store: Any, run_row: Mapping[str, Any], policy: Optional[Re
         out = Outcome(verdict=v)
         if v == VERDICT_OK:
             # Only a live RUN_DONE may release a live breaker (LQ-20261107-1333). A dry_run success proves the
-            # argv/allowlist path, not that the live effect is healthy — releasing here re-armed failing lanes.
+            # argv/allowlist path, not that the live effect is healthy — releasing here re-armed failing lanes
+            # (opall-20261108T1535). ``consecutive_dead``'s cutoff already ignores a dry_run RUN_DONE, so a
+            # release from one would still clear the live streak through ``breakers.released_at``.
             if str(run_row.get("mode") or "") == "live":
                 if store.release_breaker(lane, "auto:run_done", now) is not None:
                     out.breaker_closed = True
@@ -455,7 +459,7 @@ def finalize_outcome(store: Any, run_row: Mapping[str, Any], policy: Optional[Re
                                      f"{slot_key} {run_row['state']} {reason or ''} attempt {attempt}/{max_attempts}"
                                      f" policy {policy.name}",
                                      now))
-        out.consecutive_dead = store.consecutive_dead(lane)
+        out.consecutive_dead = store.consecutive_dead(lane, mode=run_row.get("mode"))
         brk = store.breaker(lane)
         if open_breakers and out.consecutive_dead >= breaker_threshold and not (brk and brk["open"]):
             store.open_breaker(lane, out.consecutive_dead, now)

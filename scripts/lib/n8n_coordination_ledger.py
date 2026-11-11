@@ -999,19 +999,37 @@ class LedgerRunStore:
         return {"released": [self.get_dead_letter(k) for k in slot_keys], "breaker_released": bool(brk and brk["open"])}
 
     @_locked
-    def consecutive_dead(self, lane_id: str) -> int:
-        """Dead slots of the lane since the later of its last **live** RUN_DONE and its last breaker release.
+    def consecutive_dead(self, lane_id: str, mode: str | None) -> int:
+        """Dead slots of ONE execution mode of the lane since that mode's last RUN_DONE and the last breaker release.
 
-        A live RUN_DONE resets the streak; so does an operator breaker release (otherwise the next dead slot
-        would re-open the breaker at once). A dry_run RUN_DONE does not (LQ-20261107-1333): it must not clear
-        the live failure streak the breaker is guarding."""
+        LQ-20261107-1891: the streak is mode-scoped. A dry_run slot never runs on the live path, so a dry_run
+        failure is not one of the live consecutive failures the breaker guards. ``jsonl-archive-rotate``'s live
+        breaker opened at 2026-11-10T21:45:33Z with ``consecutive=3`` on **two** live dead letters plus an
+        unreleased dry_run dead letter from 2026-10-29T20:48:02Z (RUN_TIMEOUT ``executor_lost``); threshold 3.
+        A lane whose dispatch mode really is dry_run keeps its breaker: the dry_run streak is what counts there.
+        A RUN_DONE resets the streak of its own mode only, so a dry_run success cannot clear the live streak
+        (LQ-20261107-1333). ``mode=None`` counts every mode and resets on any RUN_DONE (pre-1891 behaviour):
+        pass it explicitly, and only for a display count, never for a breaker decision. An operator breaker
+        release still resets every streak (the ``released_at`` cutoff).
+
+        ``mode`` is **required** (LQ-20261107-1891 N1): every mode-scoped answer is wrong for some caller, so
+        the caller states the scope instead of inheriting one. The old ``"live"`` default silently returned 0
+        for a dry_run-only lane (its breaker open, its own streak 3) and misled a display reader; the default
+        ``None`` would equally hide a live streak behind a later dry_run success. Omitting it is a TypeError,
+        not a quiet wrong number (Engineering Constitution: unknown beats wrong)."""
+        run_where = dl_where = ""
+        params: tuple[str, ...] = ()
+        if mode is not None:
+            run_where = dl_where = " AND mode = ?"
+            params = (str(mode),)
         last_ok = self._l._conn.execute(
-            "SELECT MAX(finished_at) AS t FROM runs WHERE lane_id = ? AND state = 'RUN_DONE' AND mode = 'live'",
-            (lane_id,)).fetchone()["t"]
+            "SELECT MAX(finished_at) AS t FROM runs WHERE lane_id = ? AND state = 'RUN_DONE'" + run_where,
+            (lane_id, *params)).fetchone()["t"]
         brk = self.breaker(lane_id)
         cutoff = max([t for t in (last_ok, (brk or {}).get("released_at")) if t] or [""])
-        row = self._l._conn.execute("SELECT COUNT(*) AS n FROM dead_letters WHERE lane_id = ? AND dead_at > ?",
-                                    (lane_id, cutoff)).fetchone()
+        row = self._l._conn.execute(
+            "SELECT COUNT(*) AS n FROM dead_letters WHERE lane_id = ? AND dead_at > ?" + dl_where,
+            (lane_id, cutoff, *params)).fetchone()
         return int(row["n"])
 
     @_locked

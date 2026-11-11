@@ -650,7 +650,7 @@ def test_s3_finalize_outcome_failure_is_retried_and_finalize_is_idempotent(rig, 
     # a second finalize of the same finished row (a retry after a commit whose error surfaced late) changes nothing
     real(rig.store, row, POLICIES.get("transient-2"), breaker_threshold=POLICIES.breaker_threshold, now=T0 + 5,
          klass="report")
-    assert len(rig.store.list_dead_letters(lane_id="bad")) == 1 and rig.store.consecutive_dead("bad") == 1
+    assert len(rig.store.list_dead_letters(lane_id="bad")) == 1 and rig.store.consecutive_dead("bad", "live") == 1
 
 
 def test_s3_finish_that_committed_before_its_error_is_treated_as_finished(rig):
