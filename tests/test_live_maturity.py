@@ -54,7 +54,8 @@ def _item(**kw):
 
 
 class Src:
-    def __init__(self, tmp_path, svc=None):
+    def __init__(self, tmp_path, svc=None, anc=None):
+        self.ancestor_fn = anc or (lambda fix, sha: None)
         self.receipts_dir = tmp_path / "n8n_runs"
         self.runtime_dir = tmp_path / "runtime"
         self.receipts_dir.mkdir(exist_ok=True)
@@ -259,20 +260,20 @@ def test_r4_daily_lane_needs_three_distinct_days(tmp_path):
 
 # ---- R5: services -----------------------------------------------------------------------------------------
 
-def _svc(active="active", enter="Wed 2026-11-11 14:23:48 EST", cwd="/r/abc-rel"):
+def _svc(active="active", enter="Wed 2026-11-11 14:23:48 EST", cwd="/r/aaaaaaa1-rel"):
     return lambda unit: {"active": active, "active_enter": enter, "cwd": cwd}
 
 
 def _sitem(**kw):
-    base = _item(cycle_kind="service", N=24, live_since="2026-11-11 14:23", cadence=None,
-                 probe={"kind": "service", "unit": "u.service", "release_match": "abc-rel"})
+    base = _item(cycle_kind="service", N=24, live_since="2026-11-11 14:23", cadence=None, fix_commit="fff0001",
+                 release="aaaaaaa1-rel", probe={"kind": "service", "unit": "u.service"})
     base.update(kw)
     return base
 
 
-def test_r5_service_without_a_release_match_is_rejected():
-    reg = {"schema": "LiveAcceptance@v2", "items": [_sitem(probe={"kind": "service", "unit": "u.service"}, fix_commit="")]}
-    with pytest.raises(ValueError, match="release_match"):
+def test_r5_service_with_neither_fix_commit_nor_accepted_releases_is_rejected():
+    reg = {"schema": "LiveAcceptance@v2", "items": [_sitem(fix_commit="")]}
+    with pytest.raises(ValueError, match="accepted_releases"):
         lm.validate_registry(reg)
 
 
@@ -284,9 +285,10 @@ def test_r5_hourly_samples_once_per_hour_wrong_release_resets(tmp_path):
     assert st["n"] == 1
     st, _ = _run(item, st, s, _t(15, 5))
     assert st["n"] == 2
-    s.service_reader = _svc(cwd="/r/other-release")
+    s.service_reader = _svc(cwd="/r/bbbbbbb2-rel")
+    s.ancestor_fn = lambda fix, sha: False                         # a release that does NOT contain the fix
     st, res = _run(item, st, s, _t(16, 5))
-    assert st["n"] == 0 and res["state"] == "failing"
+    assert st["n"] == 0 and res["state"] == "failing" and "changed_not_contained" in res["verdict"]
 
 
 def test_r5_missed_hour_breaks_the_streak(tmp_path):
@@ -385,3 +387,45 @@ def test_seed_registry_is_valid_and_complete():
         assert i["probe"]["kind"] in ("n8n_receipts", "last_receipt", "service", "unknown")
         assert i.get("status") == "pending_fix" or i["live_since"]
         assert i["cycle_kind"] == "service" or i["cadence"]["cron"]
+
+
+# ---- LQ-1969 B1: release membership by ancestry, not by a name substring ---------------------------------
+
+def test_b1_later_release_containing_the_fix_stays_live_and_says_so(tmp_path):
+    seen = []
+    s = Src(tmp_path, _svc(cwd="/r/c085dc5ea-live-integration-1"), lambda fix, sha: seen.append((fix, sha)) or True)
+    st = {}
+    for h in (14, 15, 16):
+        st, res = _run(_sitem(), st, s, _t(h, 30))
+    assert st["n"] == 3 and res["state"] == "live" and res["verdict"] == "LIVE 3/24 · release changed, fix still contained"
+    assert seen[0] == ("fff0001", "c085dc5ea")
+
+
+def test_b1_release_that_lacks_the_fix_fails_and_inactive_unit_fails(tmp_path):
+    s = Src(tmp_path, _svc(cwd="/r/c085dc5ea-x"), lambda fix, sha: False)
+    st, res = _run(_sitem(), {}, s, _t(14, 30))
+    assert res["state"] == "failing" and st["n"] == 0
+    s = Src(tmp_path, _svc(active="failed"), lambda fix, sha: True)
+    st, res = _run(_sitem(), {}, s, _t(14, 30))
+    assert res["state"] == "failing"
+
+
+def test_b1_ancestry_unanswerable_is_unknown_and_counts_nothing(tmp_path):
+    s = Src(tmp_path, _svc(cwd="/r/c085dc5ea-x"), lambda fix, sha: None)
+    st, res = _run(_sitem(), {}, s, _t(14, 30))
+    assert res["state"] == "unknown" and "cannot prove fix fff0001" in res["verdict"] and st["history"] == []
+
+
+def test_b1_explicit_accepted_release_needs_no_ancestry(tmp_path):
+    item = _sitem(probe={"kind": "service", "unit": "u.service", "accepted_releases": ["c085dc5"]})
+    s = Src(tmp_path, _svc(cwd="/r/c085dc5ea-x"), lambda fix, sha: pytest.fail("ancestry must not be asked"))
+    st, res = _run(item, {}, s, _t(14, 30))
+    assert st["n"] == 1 and "accepted release" in res["verdict"]
+
+
+def test_b1_the_real_ancestry_check_answers_from_git():
+    import subprocess
+    head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    first = subprocess.run(["git", "rev-list", "--max-parents=0", "HEAD"], capture_output=True, text=True).stdout.split()[0]
+    assert lm.git_is_ancestor(first, head) is True and lm.git_is_ancestor(head, first) in (False, None)
+    assert lm.git_is_ancestor("0000000", head) is None

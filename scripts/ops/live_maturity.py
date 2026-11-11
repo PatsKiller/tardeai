@@ -15,8 +15,20 @@ cadence slot, not by elapsed time and not by "no errors seen". Rules (operator 1
   * nothing observed is UNKNOWN, never "LIVE 0/N" (R1);
   * a verdict already given is never downgraded: after n reached N the line stays
     "PRODUCTION VERIFIED · LIVE MATURITY n/N" while n < N, but a failing or silent lane says so FIRST (R6);
-  * a service needs a non-empty release_match, >= 24 h since live_since, N consecutive hourly samples, and a
-    restart seen via systemd's own ActiveEnterTimestamp later than live_since + slack (R5).
+  * a service needs N consecutive hourly samples, >= 24 h since live_since, and a restart seen via systemd's own
+    ActiveEnterTimestamp later than live_since + slack (R5). Whether the running release carries the fix is decided
+    by ANCESTRY, not by a name match: the release directory's leading commit must contain fix_commit
+    (`git merge-base --is-ancestor`, read-only), or the release must be on the probe's explicit accepted_releases
+    list. A later release that still contains the fix keeps the counter running and is shown as
+    "release changed, fix still contained"; FAILING only when the fix is NOT contained or the unit is not active;
+    a release whose ancestry cannot be established is UNKNOWN (nothing counted), never a pass or a fail (LQ-1969 B1).
+
+DECISION (lead, LQ-1969 D1): a missed or unobserved slot RESETS n to 0. Only consecutive PROVEN slots count; a
+streak that skipped a cycle is not consecutive. The counter does not "hold" across silence.
+
+Receipt matching (LQ-1969 N2): an n8n slot is matched to its receipt by the EXACT minute stamp in the receipt name
+d:<lane>:live:<YYYYMMDDTHHMM> (ET). A dispatcher fire that lands on a different minute has no receipt for that slot
+and is recorded as missed (fail-closed). It is a dependency on the dispatcher firing on the cron minute.
 
 Timestamps in receipts without a zone are read as UTC (the n8n and lane writers emit UTC). Registry times are ET.
 The only file written is the counter's own state file, and only with --write-state, under a lock, bounded
@@ -29,6 +41,7 @@ import datetime as dt
 import fcntl
 import json
 import os
+import re
 import subprocess
 import sys
 import zoneinfo
@@ -139,8 +152,9 @@ def validate_registry(reg):
         if kind not in PROBES:
             raise ValueError(f"{i}: probe kind {kind!r}")
         if kind == "service":
-            if not probe.get("release_match"):
-                raise ValueError(f"{i}: a service probe needs a non-empty release_match")
+            if not (it.get("fix_commit") or probe.get("accepted_releases")):
+                raise ValueError(f"{i}: a service probe needs a fix_commit (ancestry) or accepted_releases "
+                                 "(it replaces the old release_match substring)")
             if not probe.get("unit"):
                 raise ValueError(f"{i}: a service probe needs a unit")
         if kind in ("n8n_receipts", "last_receipt"):
@@ -160,10 +174,32 @@ def validate_registry(reg):
 class Sources:
     """Where production evidence is read from. Tests inject temp dirs and a fake service reader."""
 
-    def __init__(self, receipts_dir=SP / "runtime" / "n8n_runs", runtime_dir=SP / "runtime", service_reader=None):
+    def __init__(self, receipts_dir=SP / "runtime" / "n8n_runs", runtime_dir=SP / "runtime", service_reader=None,
+                 ancestor_fn=None):
         self.receipts_dir = Path(receipts_dir)
         self.runtime_dir = Path(runtime_dir)
         self.service_reader = service_reader or systemd_reader
+        self.ancestor_fn = ancestor_fn or git_is_ancestor
+
+
+def git_is_ancestor(fix, release_sha):
+    """True/False from `git merge-base --is-ancestor fix release_sha` (read-only); None when it cannot be answered
+    (commit unknown to this repository, git missing)."""
+    try:
+        rc = subprocess.run(["git", "-C", str(Path(__file__).resolve().parents[2]), "merge-base", "--is-ancestor",
+                             fix, release_sha], capture_output=True, timeout=30).returncode
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return True if rc == 0 else False if rc == 1 else None
+
+
+def release_sha(path):
+    """Leading commit token of the release directory in a path (c085dc5ea-live-integration-... -> c085dc5ea)."""
+    for part in Path(path or "").parts:
+        m = re.match(r"([0-9a-f]{7,40})(?:-|$)", part)
+        if m:
+            return m.group(1)
+    return None
 
 
 def systemd_reader(unit):
@@ -322,32 +358,49 @@ def _slot_lane(item, st, src, now):
 # ---- service --------------------------------------------------------------------------------------------
 
 def _service(item, st, src, now):
+    """-> ('unread'|'unproven'|'ok', detail). Counts one sample per ET hour."""
     probe = item["probe"]
     since = parse_et(item["live_since"])
     s = src.service_reader(probe["unit"])
     if s is None:
-        return None
+        return "unread", probe["unit"]
     if now < since:
-        return s
+        return "ok", s
     enter = parse_systemd_ts(s.get("active_enter"))
     newly = False
     if enter and enter > since + RESTART_SLACK and not st["restart_confirmed"]:
         st["restart_confirmed"], newly = True, True
     hour = now.astimezone(ET).replace(minute=0, second=0, microsecond=0)
     bucket = hour.strftime("%Y%m%dT%H")
-    if bucket != st["cursor"]:
-        if st["cursor"]:
-            prev = dt.datetime.strptime(st["cursor"], "%Y%m%dT%H").replace(tzinfo=ET)
-            missing = int((hour - prev) / dt.timedelta(hours=1)) - 1
-            for k in range(max(1, missing - MAX_GAP + 1), missing + 1):
-                gap = prev + dt.timedelta(hours=k)
-                _push(st, "unobserved", f"svc:{probe['unit']}:{gap.strftime('%Y%m%dT%H')}:unobserved", gap, False,
-                      "no hourly sample")
-        healthy = s["active"] == "active" and probe["release_match"] in s["cwd"]
-        note = f"active={s['active']} cwd={os.path.basename(s['cwd'])}" + (" restart-event" if newly else "")
-        _push(st, "pass" if healthy else "fail", f"svc:{probe['unit']}:{bucket}", now, healthy, note)
-        st["cursor"] = bucket
-    return s
+    if bucket == st["cursor"]:
+        return "ok", s
+    active = s["active"] == "active"
+    sha, base = release_sha(s["cwd"]), release_sha(item.get("release"))
+    accepted = any(sha and sha.startswith(a) or a in (s["cwd"] or "") for a in probe.get("accepted_releases") or [] if a)
+    same = bool(sha and base and (sha.startswith(base) or base.startswith(sha)))
+    contained = None
+    if active and not same and not accepted:
+        if not sha or not item.get("fix_commit"):
+            return "unproven", f"cannot place the release of {os.path.basename(s['cwd'] or '') or 'the service'}"
+        contained = src.ancestor_fn(item["fix_commit"], sha)
+        if contained is None:
+            return "unproven", f"cannot prove fix {item['fix_commit']} is in release {sha}"
+    if st["cursor"]:
+        prev = dt.datetime.strptime(st["cursor"], "%Y%m%dT%H").replace(tzinfo=ET)
+        missing = int((hour - prev) / dt.timedelta(hours=1)) - 1
+        for k in range(max(1, missing - MAX_GAP + 1), missing + 1):
+            gap = prev + dt.timedelta(hours=k)
+            _push(st, "unobserved", f"svc:{probe['unit']}:{gap.strftime('%Y%m%dT%H')}:unobserved", gap, False,
+                  "no hourly sample")
+    healthy = active and (same or accepted or contained is True)
+    st["release_state"] = ("same" if same else "changed_accepted" if accepted else
+                           "changed_contained" if contained else "changed_not_contained" if contained is False else
+                           "same")
+    note = f"active={s['active']} cwd={os.path.basename(s['cwd'] or '')} release={st['release_state']}" + \
+        (" restart-event" if newly else "")
+    _push(st, "pass" if healthy else "fail", f"svc:{probe['unit']}:{bucket}", now, healthy, note)
+    st["cursor"] = bucket
+    return "ok", s
 
 
 # ---- verdict --------------------------------------------------------------------------------------------
@@ -368,9 +421,11 @@ def _verdict(item, st, now):
     last = st["history"][-1]
     counter = f"{VERIFIED} · LIVE MATURITY {n}/{N}" if ever else f"counter {n}/{N}"
     if last["kind"] == "pass":
+        rel = {"changed_contained": " · release changed, fix still contained",
+               "changed_accepted": " · release changed (accepted release)"}.get(st.get("release_state"), "")
         if done:
-            return "live", VERIFIED
-        return "live", f"{VERIFIED} · LIVE MATURITY {n}/{N}{tail}" if ever else f"LIVE {n}/{N}{tail}"
+            return "live", VERIFIED + rel
+        return "live", (f"{VERIFIED} · LIVE MATURITY {n}/{N}{tail}" if ever else f"LIVE {n}/{N}{tail}") + rel
     if last["kind"] in ("fail", "hung"):
         return "failing", f"FAILING · last cycle {last['at']} ET {last['note']} · {counter}"
     run = 0
@@ -396,8 +451,12 @@ def evaluate_item(item, state, src, now):
         return st, res
     first_due = None
     if probe["kind"] == "service":
-        if _service(item, st, src, now) is None:
-            res.update(state="unknown", verdict=f"UNKNOWN (cannot read {probe['unit']})")
+        what, detail = _service(item, st, src, now)
+        if what == "unread":
+            res.update(state="unknown", verdict=f"UNKNOWN (cannot read {detail})")
+            return st, res
+        if what == "unproven":
+            res.update(state="unknown", verdict=f"UNKNOWN ({detail}; nothing counted)")
             return st, res
     else:
         first_due = _slot_lane(item, st, src, now)
