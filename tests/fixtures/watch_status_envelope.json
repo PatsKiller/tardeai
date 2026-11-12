@@ -1,0 +1,75 @@
+{
+  "data": {
+    "cause": "Alerts: no evaluator run record: watch_alerts_eval has no heartbeat or run table yet (W-06 / WV-07); last_fired_at is not liveness",
+    "computed_at": "2026-11-12T19:00:00+00:00",
+    "inputs": [
+      {
+        "age_s": 60,
+        "as_of": "2026-11-12T18:59:00+00:00",
+        "id": "my_list",
+        "label": "My List",
+        "needs_backend": false,
+        "owner": "watch curation",
+        "reason": null,
+        "required": true,
+        "source_id": "watchlist_items",
+        "state": "OK",
+        "threshold_s": 1800,
+        "timed_out": false
+      },
+      {
+        "age_s": 10800,
+        "as_of": "2026-11-12T16:00:00+00:00",
+        "id": "prospects",
+        "label": "Prospects",
+        "needs_backend": false,
+        "owner": "cio",
+        "reason": "last write 10800 s ago, limit 1800 s",
+        "required": true,
+        "source_id": "cio_prospect",
+        "state": "STALE",
+        "threshold_s": 1800,
+        "timed_out": false
+      },
+      {
+        "age_s": null,
+        "as_of": null,
+        "id": "alerts",
+        "label": "Alerts",
+        "needs_backend": true,
+        "owner": "watch alerts",
+        "reason": "no evaluator run record: watch_alerts_eval has no heartbeat or run table yet (W-06 / WV-07); last_fired_at is not liveness",
+        "required": true,
+        "source_id": "watch_alerts_eval_runs",
+        "state": "UNKNOWN",
+        "threshold_s": 1200,
+        "timed_out": false
+      },
+      {
+        "age_s": 3600,
+        "as_of": "2026-11-12T18:00:00+00:00",
+        "id": "regime",
+        "label": "Regime",
+        "needs_backend": false,
+        "owner": "market regime",
+        "reason": null,
+        "required": true,
+        "source_id": "market_regime_snapshots",
+        "state": "OK",
+        "threshold_s": 93600,
+        "timed_out": false
+      }
+    ],
+    "read_from": "computed_on_request",
+    "required_inputs": [
+      "my_list",
+      "prospects",
+      "alerts",
+      "regime"
+    ],
+    "schema": "WatchStatus@v1",
+    "session": "rth",
+    "verdict": "UNKNOWN"
+  },
+  "ok": true
+}
