@@ -231,6 +231,9 @@ def finding(row: Mapping[str, Any], code: str, status: str, detail: str, *, show
         "severity": sev, "status": status, "code": code, "detail": str(detail)[:600],
         "shown": dict(shown or {}), "truth": dict(truth or {}),
         "domain": row.get("domain"), "producer_lane": row.get("producer_lane"),
+        # The band the figure was graded with travels on the finding: every live ticket printed "tolerance: None"
+        # while a 0.5% band had been applied, which reads to an operator as "no band" (LQ-2075).
+        "tolerance": row.get("tolerance"),
         "reason": reason,
     }
 

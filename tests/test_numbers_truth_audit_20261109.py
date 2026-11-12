@@ -632,6 +632,9 @@ def test_a_carried_holding_row_reports_when_the_row_was_written(tmp_path):
     assert f["code"] == "NT_VALUE_MISMATCH"
     assert f["shown"]["as_of"] == _iso(75)
     assert f["truth"]["as_of"] == POS_AS_OF
+    # The band the figure was graded with travels with it; "tolerance: None" on a 0.5%-graded ticket misled the
+    # operator into treating a banded comparison as exact (the live 2026-11-11 NVDA ticket).
+    assert f["tolerance"] == {"kind": "pct", "value": 0.5, "unit": "%"}
 
 
 def test_a_selection_surface_is_not_required_to_list_every_holding(tmp_path):
