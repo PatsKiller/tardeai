@@ -6,6 +6,6 @@
   ],
   "anchor": "STOP-ESCALATION-VERIFY-LQ2161",
   "comment": [
-    "ANCHOR: STOP-ESCALATION-VERIFY-LQ2161 \u2014 the escalation handler records FIXED only after re-measuring the detector's own predicate; stale data sources and stale agent jobs that remain stale, unreadable checks and unmeasured types are never FIXED."
+    "ANCHOR: STOP-ESCALATION-VERIFY-LQ2161 — the escalation handler records FIXED only after re-measuring the detector's own predicate; stale data sources and stale agent jobs that remain stale, unreadable checks and unmeasured types are never FIXED."
   ]
 }
