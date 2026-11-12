@@ -39,8 +39,20 @@ export async function readOnce<T>(source: string, timeoutMs = HOME_V010_TIMEOUT_
   try {
     const r = await fetchImpl(source, { signal: ctl?.signal, cache: 'no-store', credentials: 'same-origin' })
     if (!r.ok) return { state: 'UNKNOWN', data: null, error: `HTTP ${r.status}`, at, source }
-    const body = (await r.json()) as T
-    return { state: 'OK', data: body, error: null, at, source }
+    const body: unknown = await r.json()
+    // Every /api/v2 route wraps its payload as { ok, data }. Unwrap it here so the readers below see the payload;
+    // ok:false is a failed read (UNKNOWN with the server's reason), never OK. An un-enveloped body passes through.
+    if (body && typeof body === 'object' && !Array.isArray(body)) {
+      const env = body as { ok?: unknown; data?: unknown; reason?: unknown; code?: unknown }
+      if (env.ok === false) {
+        const why = (typeof env.reason === 'string' && env.reason) || (typeof env.code === 'string' && env.code) || 'ok:false'
+        return { state: 'UNKNOWN', data: null, error: why, at, source }
+      }
+      if (env.ok === true && env.data && typeof env.data === 'object' && !Array.isArray(env.data)) {
+        return { state: 'OK', data: env.data as T, error: null, at, source }
+      }
+    }
+    return { state: 'OK', data: body as T, error: null, at, source }
   } catch (e) {
     if (timedOut) return { state: 'TIMED OUT', data: null, error: `no answer after ${Math.round(timeoutMs / 1000)} s`, at, source }
     return { state: 'UNKNOWN', data: null, error: e instanceof Error ? e.message : String(e), at, source }
@@ -62,8 +74,10 @@ export interface IncidentsWire {
   items?: IncidentItem[] | null; served_at?: string
   data_integrity_24h?: { state?: string; value?: { events?: number } | null; age_s?: number | null; source_id?: string; owner?: string; reason?: string } | null
 }
-export interface ApprovalsWire { ok?: boolean; data?: { count?: number; urgent_count?: number; as_of?: string } }
-export interface LastSeenWire { ok?: boolean; read?: { status?: string; seen_at?: string | null; previous_seen_at?: string | null; fallback_text?: string } }
+/** After readOnce unwraps the { ok, data } envelope the counts sit at the top; the nested shape is still accepted. */
+export interface ApprovalsWire { ok?: boolean; count?: number; urgent_count?: number; as_of?: string; data?: { count?: number; urgent_count?: number; as_of?: string } }
+/** The unwrapped prefs payload ({ ok, key, value, read }); `read` is what this page uses. */
+export interface LastSeenWire { ok?: boolean; key?: string; value?: unknown; read?: { status?: string; seen_at?: string | null; previous_seen_at?: string | null; fallback_text?: string } }
 export type TradeReady = 'YES' | 'NO' | 'UNKNOWN'
 export interface HomeStatusGateWire {
   id?: string; label?: string; required?: boolean; state?: string; source_id?: string | null; as_of?: string | null
@@ -245,8 +259,9 @@ export function buildModel(inp: HomeV010Inputs, nowMs: number = Date.now(), last
     title: [s.verb, s.symbol, s.account].filter(Boolean).join(' · '),
     detail: [s.reason || s.what || ''].filter(Boolean),
   }))
-  const apprOk = inp.approvals.state === 'OK' && typeof inp.approvals.data?.data?.count === 'number'
-  const approvalsCount = apprOk ? (inp.approvals.data!.data!.count as number) : null
+  const apprRaw = inp.approvals.state === 'OK' ? (inp.approvals.data?.count ?? inp.approvals.data?.data?.count) : undefined
+  const apprOk = typeof apprRaw === 'number' && Number.isFinite(apprRaw)
+  const approvalsCount = apprOk ? (apprRaw as number) : null
   const p1Count = incState === 'OK' ? items.filter(i => i.priority === 'P1').length : null
 
   const unread: UnreadSource[] = []

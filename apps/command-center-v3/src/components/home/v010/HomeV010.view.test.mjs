@@ -195,4 +195,58 @@ await test('P0 overflow: first 3 shown, then "+N more P0 items"', () => {
   assert.equal(m.tradeReady, 'UNKNOWN')
 })
 
+// Every /api/v2 route wraps its payload as { ok, data }; readOnce unwraps it (live P0 2026-11-12: the page read the
+// envelope as the payload and showed every source as unreadable). Synthetic bodies only.
+const stub = body => async () => ({ ok: true, status: 200, json: async () => body })
+await test('readOnce: an enveloped status body is unwrapped and the server verdict NO is read', async () => {
+  const r = await readOnce(API.status, 1000, stub({ ok: true, data: STATUS_NO }))
+  assert.equal(r.state, 'OK')
+  assert.equal(r.data.verdict, 'NO')
+  const m = buildModel({ ...CLEAR, status: r }, NOW)
+  assert.equal(m.tradeReady, 'NO')
+  assert.equal(m.tradeReadyServed, true)
+  assert.doesNotMatch(m.tradeReadyCause, /unreadable/)
+})
+await test('readOnce: enveloped incidents and since-close read OK; enveloped approvals + last-seen are read', async () => {
+  const inc = await readOnce(API.incidents, 1000, stub({ ok: true, data: { schema: 'HomeIncidents@v1', state: 'OK', counts: { P0: 0, P1: 0 }, items: [], data_integrity_24h: { state: 'OK', value: { events: 0 }, age_s: 0 } } }))
+  const sc = await readOnce(API.sinceClose, 1000, stub({ ok: true, data: { status: 'ok', schema: 'since_close_card.v1', cio_brief: { status: 'available', stop_advice: [] } } }))
+  const ap = await readOnce(API.approvals, 1000, stub({ ok: true, data: { count: 2, urgent_count: 0, as_of: AT } }))
+  const ls = await readOnce(API.lastSeen, 1000, stub({ ok: true, data: { ok: true, key: 'home.last_seen', value: null, read: { status: 'NOT_RECORDED', seen_at: null } } }))
+  for (const r of [inc, sc, ap, ls]) assert.equal(r.state, 'OK')
+  const m = buildModel({ ...CLEAR, incidents: inc, sinceClose: sc, approvals: ap, lastSeen: ls, status: ok(API.status, STATUS_NO) }, NOW)
+  assert.deepEqual(m.unread, [])
+  assert.equal(m.status.find(r => r.name === 'Alerts').state, 'OK')
+  assert.equal(m.approvalsCount, 2)
+  assert.equal(m.since.state, 'OK')
+  assert.match(m.since.header, /last visit not recorded/)
+  const t = text(render(m))
+  assert.doesNotMatch(t, /could not read incidents/)
+  assert.doesNotMatch(t, /could not read stop advice/)
+})
+await test('readOnce: ok:false is UNKNOWN with the reason, never OK; the verdict stays UNKNOWN', async () => {
+  const r1 = await readOnce(API.status, 1000, stub({ ok: false, reason: 'synthetic store down' }))
+  assert.equal(r1.state, 'UNKNOWN'); assert.equal(r1.data, null); assert.equal(r1.error, 'synthetic store down')
+  const r2 = await readOnce(API.approvals, 1000, stub({ ok: false, code: 'SYNTHETIC_REFUSED' }))
+  assert.equal(r2.state, 'UNKNOWN'); assert.equal(r2.error, 'SYNTHETIC_REFUSED')
+  const r3 = await readOnce(API.incidents, 1000, stub({ ok: false }))
+  assert.equal(r3.error, 'ok:false')
+  const m = buildModel({ ...CLEAR, status: r1, approvals: r2, incidents: r3 }, NOW)
+  assert.equal(m.tradeReady, 'UNKNOWN')
+  assert.match(m.tradeReadyCause, /synthetic store down/)
+  assert.equal(m.approvalsCount, null)
+  assert.ok(m.unread.some(u => u.label === 'approvals') && m.unread.some(u => u.label === 'incidents'))
+  // an envelope with ok:true but no object payload is not unwrapped and carries no verdict -> UNKNOWN, never YES
+  const r4 = await readOnce(API.status, 1000, stub({ ok: true, data: null }))
+  assert.equal(buildModel({ ...CLEAR, status: r4 }, NOW).tradeReady, 'UNKNOWN')
+})
+await test('readOnce: an un-enveloped body still works (raw payload passes through)', async () => {
+  const r = await readOnce(API.status, 1000, stub(STATUS_NO))
+  assert.equal(r.state, 'OK'); assert.equal(r.data.verdict, 'NO')
+  assert.equal(buildModel({ ...CLEAR, status: r }, NOW).tradeReady, 'NO')
+  const inc = await readOnce(API.incidents, 1000, stub({ state: 'OK', items: [], data_integrity_24h: { state: 'OK', value: { events: 0 } } }))
+  assert.equal(buildModel({ ...CLEAR, incidents: inc }, NOW).status.find(x => x.name === 'Alerts').state, 'OK')
+  // the legacy nested approvals shape is still read
+  assert.equal(buildModel(CLEAR, NOW).approvalsCount, 0)
+})
+
 console.log(`HomeV010.view: ${n} passed`)
