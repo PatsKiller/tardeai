@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "executor_stale_drain_target_lq2246_20261112",
+  "files": [
+    "tests/test_executor_stale_drain_target_lq2246.py",
+    "tests/test_executor_drain_arm_lq2253.py"
+  ],
+  "anchor": "EXECUTOR_STALE_DRAIN_TARGET_LQ2246_20261112",
+  "comment": [
+    "ANCHOR: EXECUTOR_STALE_DRAIN_TARGET_LQ2246_20261112 — release-pipeline defect LQ-20261107-2246/2253 (2026-11-12 09:46 ET): an activation restarted the n8n run executor on top of a stale drain request (target = previous release) and it drained and exited every ~10 s (12 restarts, ~2 min with no lanes).",
+    "Root cause: the drain CLI refused (refused_market_busy, exit 3) and wrote no request; activate_live.sh captured the CLI token with `dres=$(... | tail) || dres=\"\"` under pipefail, which discards the token on exit != 0, so the refusal read as '(no result)' and fell through to a plain restart. drain_state also treated any target != its own code_root as an instruction.",
+    "Gate: a request whose target is not CURRENT is inert (real layout in a temp tree, executor serve loop); `retarget` rewrites and reads back; scripts/ops/executor_drain_arm.sh never runs `systemctl restart` on an unverified target (stub systemctl, one test per arm: re_resolved, deferred_draining, in_flight, refused_market_busy, no result, not_acknowledged, retarget mismatch/empty, missing CLI). Hermetic: tmp state roots, stubs, non-loopback sockets blocked."
+  ]
+}

@@ -8,6 +8,7 @@ CURRENT=new) drained and exited at once, then systemd restarted it, forever. Syn
 AUTHORITY: READ_ONLY_ADVISORY. Hermetic: tmp_path ledgers, fake clock and runner; no systemd, no network.
 """
 
+# ANCHOR: EXECUTOR_STALE_DRAIN_TARGET_LQ2246_20261112 — gate record: config/ci_gates/executor_stale_drain_target_lq2246_20261112.json
 from __future__ import annotations
 
 import json
