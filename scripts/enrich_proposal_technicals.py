@@ -57,19 +57,25 @@ def main(argv=None) -> int:
         write_lane_receipt(LANE_ID, ok=False, started_at=started_at, script=SCRIPT_REL,
                            error=f"{type(exc).__name__}: {exc}")
         raise
-    outcome, reason = receipt_outcome(symbols, refreshed, failed, _FINVIZ_GOT.get("n"))
+    outcome, reason = receipt_outcome(symbols, refreshed, failed, _FINVIZ_GOT.get("n"),
+                                      pattern_failed=_PATTERN_RUN["failed"], pattern_checked=_PATTERN_RUN["checked"])
     ok = outcome != "error"
     write_lane_receipt(LANE_ID, ok=ok, started_at=started_at, script=SCRIPT_REL,
-                       summary={"symbols": symbols, "refreshed": refreshed, "failed": failed},
+                       summary={"symbols": symbols, "refreshed": refreshed, "failed": failed,
+                                "pattern_lookup_failed": _PATTERN_RUN["failed"],
+                                "pattern_lookup_checked": _PATTERN_RUN["checked"]},
                        error=None if ok else f"source_error:{reason}", outcome=outcome, outcome_reason=reason)
     return 0 if ok else 1
 
 
 #: Filled by _run: how many symbols the Finviz call answered for (None = not reached / unknown).
 _FINVIZ_GOT: dict = {}
+#: Filled by _run: snapshots whose ``normal_trading_pattern`` lookup was attempted / FAILED (LQ-20261107-2135).
+_PATTERN_RUN: dict = {"checked": 0, "failed": 0}
 
 
-def receipt_outcome(symbols: int, refreshed: int, failed: int, finviz_got=None) -> tuple[str, str | None]:
+def receipt_outcome(symbols: int, refreshed: int, failed: int, finviz_got=None, *,
+                    pattern_failed: int = 0, pattern_checked: int = 0) -> tuple[str, str | None]:
     """ok | empty | error for one run (LQ-192). No active proposal symbols is a true empty; a Finviz call that
     answered for none of the symbols, or every snapshot failing, is an ERROR (unknown, not "nothing to do")."""
     if not symbols:
@@ -78,7 +84,16 @@ def receipt_outcome(symbols: int, refreshed: int, failed: int, finviz_got=None) 
         return "error", "finviz_returned_no_symbols"
     if refreshed == 0:
         return "error", "every_snapshot_failed"
-    return "ok", (f"partial_failures:{failed}" if failed else None)
+    # A pattern lookup that errors on every snapshot is a broken query, not "no pattern data" (the
+    # pattern_library column drift hid ~695 errors behind a green receipt).
+    if pattern_failed and pattern_checked and pattern_failed >= pattern_checked:
+        return "error", f"pattern_lookup_failed_for_all:{pattern_failed}"
+    notes = []
+    if failed:
+        notes.append(f"partial_failures:{failed}")
+    if pattern_failed:
+        notes.append(f"pattern_lookup_failed:{pattern_failed}/{pattern_checked}")
+    return "ok", (";".join(notes) if notes else None)
 
 
 def _run() -> tuple[int, int, int]:
@@ -105,11 +120,15 @@ def _run() -> tuple[int, int, int]:
     from proposal_technical_snapshot import generate_snapshot
 
     refreshed = failed = 0
+    _PATTERN_RUN.update(checked=0, failed=0)
     for row in rows:
         pid = int(row["id"])
         sym = str(row["symbol"] or "").upper()
         try:
-            generate_snapshot(conn, proposal_id=pid, symbol=sym)
+            snap = generate_snapshot(conn, proposal_id=pid, symbol=sym)
+            _PATTERN_RUN["checked"] += 1
+            if (snap or {}).get("normal_trading_pattern_status") == "UNAVAILABLE":
+                _PATTERN_RUN["failed"] += 1
             ir = peb.compute_proposal_intel_readiness(
                 sym, conn,
                 catalyst=row.get("catalyst"),

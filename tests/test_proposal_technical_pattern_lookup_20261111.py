@@ -1,0 +1,193 @@
+"""LQ-20261107-2135: the proposal-technicals pattern lookup queried columns that do not exist
+(``pattern_library.symbol`` / ``pattern_description``) and ``except Exception: pass`` hid ~695 PG errors.
+A lookup that fails must be named, counted and logged, must not abort the caller's transaction, and must
+reach the lane receipt. Synthetic table only; no database."""
+import logging
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import proposal_technical_snapshot as S  # noqa: E402
+import enrich_proposal_technicals as E  # noqa: E402
+
+# The columns the real table has (information_schema, LQ-2135). There is no symbol / pattern_description.
+COLUMNS = {"pattern_name", "strategy_id", "definition", "conditions", "notes", "status",
+           "trade_count", "win_rate", "expectancy", "created_at"}
+
+
+class UndefinedColumn(Exception):
+    pass
+
+
+class InFailedSqlTransaction(Exception):
+    pass
+
+
+class FakeCursor:
+    """Models: the pattern_library table, SAVEPOINT / ROLLBACK TO, and the aborted-transaction state."""
+
+    def __init__(self, rows=None, break_with=None):
+        self.rows = rows or []
+        self.break_with = break_with      # exception raised by the pattern query itself
+        self.aborted = False
+        self.savepoints = []
+        self.log = []
+        self._result = None
+
+    def execute(self, sql, params=None):
+        s = " ".join(sql.split())
+        self.log.append(s)
+        if s.startswith("ROLLBACK TO SAVEPOINT"):
+            self.aborted = False
+            return
+        if self.aborted:
+            raise InFailedSqlTransaction("current transaction is aborted, commands ignored until end of transaction block")
+        if s.startswith("SAVEPOINT"):
+            self.savepoints.append(s.split()[-1])
+            return
+        if s.startswith("RELEASE SAVEPOINT"):
+            return
+        if "FROM pattern_library" in s:
+            if self.break_with is not None:
+                self.aborted = True
+                raise self.break_with
+            self._validate_columns(s)
+            self._result = self._pattern_rows(params)
+            return
+        self._result = [("ok",)]
+
+    def _validate_columns(self, s):
+        select = s.split("SELECT", 1)[1].split("FROM", 1)[0]
+        for col in (c.strip() for c in select.split(",")):
+            if col not in COLUMNS:
+                self.aborted = True
+                raise UndefinedColumn(f'column "{col}" does not exist')
+
+    def _pattern_rows(self, params):
+        symbol, strategy_id = params[0], params[1]
+        hit = []
+        for r in self.rows:
+            if r["status"] not in ("PROVEN", "WATCH", "NEUTRAL"):
+                continue
+            by_sym = symbol in (r.get("definition") or {}).get("sample_symbols", [])
+            by_strat = strategy_id is not None and r.get("strategy_id") == strategy_id
+            if by_sym or by_strat:
+                hit.append((not by_sym, -(r.get("trade_count") or 0), r))
+        hit.sort(key=lambda t: t[:2])
+        if not hit:
+            return []
+        r = hit[0][2]
+        return [(r["pattern_name"], r.get("strategy_id"), r["status"], r.get("trade_count"),
+                 r.get("win_rate"), r.get("expectancy"))]
+
+    def fetchone(self):
+        return self._result[0] if self._result else None
+
+
+def _row(name, symbols=(), strategy="s1", status="PROVEN", trades=40, win=0.6, exp=12.5):
+    return {"pattern_name": name, "strategy_id": strategy, "status": status, "trade_count": trades,
+            "win_rate": win, "expectancy": exp, "definition": {"sample_symbols": list(symbols)}}
+
+
+@pytest.fixture(autouse=True)
+def _reset():
+    S.PATTERN_LOOKUP_FAILURES = 0
+    yield
+
+
+def test_old_query_columns_do_not_exist_in_the_table_model():
+    """The base query selected a non-existent column; the model raises exactly like Postgres did."""
+    cur = FakeCursor([_row("p")])
+    with pytest.raises(UndefinedColumn):
+        cur.execute("SELECT pattern_description FROM pattern_library WHERE symbol = %s", ["AAPL"])
+    assert cur.aborted
+
+
+def test_symbol_match_is_available():
+    cur = FakeCursor([_row("breakout_a", symbols=["AAPL"]), _row("other", symbols=["MSFT"], strategy="x")])
+    out = S.lookup_normal_pattern(cur, "AAPL", None)
+    assert out["status"] == "AVAILABLE"
+    assert "breakout_a (PROVEN)" in out["text"] and "40 trades" in out["text"] and "win rate 60%" in out["text"]
+    assert S.PATTERN_LOOKUP_FAILURES == 0
+
+
+def test_strategy_fallback_when_symbol_unknown():
+    cur = FakeCursor([_row("strat_pat", symbols=[], strategy="momentum_scalp")])
+    out = S.lookup_normal_pattern(cur, "ZZZZ", "momentum_scalp")
+    assert out["status"] == "AVAILABLE" and out["text"].startswith("strat_pat")
+
+
+def test_symbol_match_beats_strategy_match():
+    cur = FakeCursor([_row("by_strategy", strategy="s1", trades=500), _row("by_symbol", symbols=["AAPL"], strategy="s9", trades=5)])
+    assert S.lookup_normal_pattern(cur, "AAPL", "s1")["text"].startswith("by_symbol")
+
+
+def test_killed_pattern_is_not_offered():
+    cur = FakeCursor([_row("dead", symbols=["AAPL"], status="KILLED")])
+    assert S.lookup_normal_pattern(cur, "AAPL", None)["status"] == "NO_MATCH"
+
+
+def test_no_match_is_distinct_from_unavailable():
+    ok = S.lookup_normal_pattern(FakeCursor([]), "AAPL", None)
+    assert ok["status"] == "NO_MATCH" and ok["text"] == S.PATTERN_UNAVAILABLE_TEXT
+    assert S.PATTERN_LOOKUP_FAILURES == 0
+    bad = S.lookup_normal_pattern(FakeCursor(break_with=UndefinedColumn('column "symbol" does not exist')), "AAPL", None)
+    assert bad["status"] == "UNAVAILABLE" and bad["text"] != S.PATTERN_UNAVAILABLE_TEXT
+    assert "UndefinedColumn" in bad["reason"] and "symbol" in bad["reason"]
+
+
+def test_failed_lookup_is_counted_and_logged(caplog):
+    cur = FakeCursor(break_with=UndefinedColumn('column "symbol" does not exist'))
+    with caplog.at_level(logging.ERROR):
+        S.lookup_normal_pattern(cur, "AAPL", None)
+        S.lookup_normal_pattern(FakeCursor(break_with=UndefinedColumn("x")), "MSFT", None)
+    assert S.PATTERN_LOOKUP_FAILURES == 2
+    assert [r for r in caplog.records if "pattern_library lookup FAILED" in r.getMessage()]
+
+
+def test_failed_lookup_does_not_abort_the_callers_transaction():
+    """Base: the failed SELECT left the cursor aborted, so every following statement raised
+    InFailedSqlTransaction. The SAVEPOINT rolls back only the lookup."""
+    cur = FakeCursor(break_with=UndefinedColumn("boom"))
+    assert S.lookup_normal_pattern(cur, "AAPL", None)["status"] == "UNAVAILABLE"
+    assert cur.aborted is False
+    cur.execute("SELECT 1")             # would raise InFailedSqlTransaction without the savepoint
+    assert cur.fetchone() == ("ok",)
+
+
+def test_dead_connection_is_unavailable_not_a_crash():
+    class Dead:
+        def execute(self, *a, **k):
+            raise RuntimeError("connection already closed")
+    out = S.lookup_normal_pattern(Dead(), "AAPL", None)
+    assert out["status"] == "UNAVAILABLE" and "RuntimeError" in out["reason"]
+    assert S.PATTERN_LOOKUP_FAILURES == 1
+
+
+def test_query_uses_only_real_columns():
+    cur = FakeCursor([_row("p", symbols=["AAPL"])])
+    S.lookup_normal_pattern(cur, "AAPL", None)
+    sql = next(s for s in cur.log if "FROM pattern_library" in s)
+    assert "pattern_description" not in sql
+    assert "WHERE symbol" not in sql and " symbol =" not in sql
+    assert "'KILLED'" not in sql and "'PROVEN'" in sql   # the fake filters by status itself, so pin the SQL text
+
+
+def test_receipt_outcome_all_pattern_lookups_failed_is_an_error():
+    assert E.receipt_outcome(5, 5, 0, finviz_got=5, pattern_failed=5, pattern_checked=5) == (
+        "error", "pattern_lookup_failed_for_all:5")
+
+
+def test_receipt_outcome_partial_pattern_failure_is_named_but_ok():
+    assert E.receipt_outcome(5, 5, 0, finviz_got=5, pattern_failed=2, pattern_checked=5) == (
+        "ok", "pattern_lookup_failed:2/5")
+
+
+def test_receipt_outcome_unchanged_without_pattern_failures():
+    assert E.receipt_outcome(5, 4, 1, finviz_got=5) == ("ok", "partial_failures:1")
+    assert E.receipt_outcome(5, 5, 0, finviz_got=5, pattern_failed=0, pattern_checked=5) == ("ok", None)

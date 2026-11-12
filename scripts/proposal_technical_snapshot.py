@@ -226,6 +226,70 @@ def build_overbought_oversold_summary(rsi_state, vwap_state, atr_state):
     return "; ".join(parts)
 
 
+PATTERN_UNAVAILABLE_TEXT = "Pattern comparison unavailable — no historical pattern data for this symbol/setup yet"
+#: Failed pattern lookups in this process. A lookup that errors is never the same thing as "no data".
+PATTERN_LOOKUP_FAILURES = 0
+
+
+def lookup_normal_pattern(cur, symbol, strategy_id=None):
+    """The stored pattern that describes this symbol or setup, with a named outcome.
+
+    ``pattern_library`` has no ``symbol`` or ``pattern_description`` column (LQ-20261107-2135: ~695 PG
+    errors hidden by ``except Exception: pass``). A pattern is a bucket of trades: ``pattern_name``,
+    ``strategy_id``, ``definition`` (JSONB with ``sample_symbols``), ``status``, ``trade_count``,
+    ``win_rate``, ``expectancy``. A symbol match (in ``definition.sample_symbols``) is preferred, then the
+    proposal's ``strategy_id``; both rank by sample size.
+
+    Returns ``{"text", "status", "reason"}`` with status AVAILABLE, NO_MATCH or UNAVAILABLE. UNAVAILABLE
+    means the lookup itself failed: it is logged, counted in ``PATTERN_LOOKUP_FAILURES`` and carries the
+    error class. The query runs inside a SAVEPOINT so a failure cannot leave the caller's transaction
+    aborted for the statements that follow.
+    """
+    try:
+        cur.execute("SAVEPOINT pattern_lookup")
+    except Exception as exc:  # noqa: BLE001 -- the connection itself is unusable
+        return _pattern_failed(None, symbol, exc)
+    try:
+        cur.execute("""
+            SELECT pattern_name, strategy_id, status, trade_count, win_rate, expectancy
+            FROM pattern_library
+            WHERE status IN ('PROVEN', 'WATCH', 'NEUTRAL')
+              AND ((definition -> 'sample_symbols') @> to_jsonb(%s::text)
+                   OR (%s::text IS NOT NULL AND strategy_id = %s::text))
+            ORDER BY COALESCE((definition -> 'sample_symbols') @> to_jsonb(%s::text), false) DESC,
+                     trade_count DESC NULLS LAST, created_at DESC
+            LIMIT 1
+        """, [symbol, strategy_id, strategy_id, symbol])
+        row = cur.fetchone()
+        cur.execute("RELEASE SAVEPOINT pattern_lookup")
+    except Exception as exc:  # noqa: BLE001 -- named below, never swallowed
+        try:
+            cur.execute("ROLLBACK TO SAVEPOINT pattern_lookup")
+        except Exception:  # noqa: BLE001
+            pass
+        return _pattern_failed(cur, symbol, exc)
+    if not row or not row[0]:
+        return {"text": PATTERN_UNAVAILABLE_TEXT, "status": "NO_MATCH", "reason": "no pattern for this symbol or strategy"}
+    name, strat, status, trades, win_rate, expectancy = row
+    parts = [f"{name} ({status})"]
+    if trades:
+        parts.append(f"{int(trades)} trades")
+    if win_rate is not None:
+        parts.append(f"win rate {float(win_rate):.0%}")
+    if expectancy is not None:
+        parts.append(f"expectancy ${float(expectancy):.2f}")
+    return {"text": ", ".join(parts), "status": "AVAILABLE", "reason": None}
+
+
+def _pattern_failed(cur, symbol, exc):
+    global PATTERN_LOOKUP_FAILURES
+    PATTERN_LOOKUP_FAILURES += 1
+    reason = f"{type(exc).__name__}: {str(exc).strip().splitlines()[0][:160] if str(exc).strip() else ''}"
+    log.error("pattern_library lookup FAILED for %s (%d this run): %s", symbol, PATTERN_LOOKUP_FAILURES, reason)
+    return {"text": f"Pattern comparison UNAVAILABLE — lookup failed ({type(exc).__name__})",
+            "status": "UNAVAILABLE", "reason": reason}
+
+
 def generate_snapshot(conn, proposal_id=None, symbol=None):
     """Generate technical snapshot for a proposal or symbol."""
     cur = conn.cursor()
@@ -386,19 +450,9 @@ def generate_snapshot(conn, proposal_id=None, symbol=None):
         elif adx_val >= 15: trend_strength = "weak trend"
         else: trend_strength = "no trend / ranging"
 
-    # Normal trading pattern
-    normal_pattern = "Pattern comparison unavailable — no historical pattern data for this symbol/setup yet"
-    try:
-        cur.execute("""
-            SELECT pattern_description FROM pattern_library
-            WHERE symbol = %s AND status IN ('PROVEN', 'WATCH')
-            ORDER BY created_at DESC LIMIT 1
-        """, [symbol])
-        row = cur.fetchone()
-        if row and row[0]:
-            normal_pattern = row[0]
-    except Exception:
-        pass
+    # Normal trading pattern (LQ-20261107-2135): a real lookup with a named outcome, never a silent default.
+    pattern = lookup_normal_pattern(cur, symbol, (proposal or {}).get("strategy_id"))
+    normal_pattern = pattern["text"]
 
     # Technical vote
     bullish = 0
@@ -526,6 +580,8 @@ def generate_snapshot(conn, proposal_id=None, symbol=None):
         "technical_score": tech_score,
         "overbought_oversold_summary": ob_os_summary,
         "normal_trading_pattern": normal_pattern,
+        "normal_trading_pattern_status": pattern["status"],
+        "normal_trading_pattern_reason": pattern["reason"],
         "technical_vote": technical_vote,
         "technical_concerns": concerns,
         "scan_timestamp": str(scan.get('scanned_at')) if scan.get('scanned_at') else None,
@@ -639,7 +695,8 @@ def main():
                 results.append({"proposal_id": pid, "symbol": snap.get("symbol"),
                                 "atr": snap.get("atr"), "rsi": snap.get("rsi"),
                                 "vote": snap.get("technical_vote")})
-            print(json.dumps({"processed": len(results), "results": results}, indent=2, default=str))
+            print(json.dumps({"processed": len(results), "results": results,
+                              "pattern_lookup_failures": PATTERN_LOOKUP_FAILURES}, indent=2, default=str))
         elif args.proposal_id:
             snap = generate_snapshot(conn, proposal_id=args.proposal_id)
             print(json.dumps(snap, indent=2, default=str))
@@ -650,7 +707,12 @@ def main():
             print("Usage: --proposal-id N or --symbol TICK or --pending --apply")
     finally:
         conn.close()
+    if PATTERN_LOOKUP_FAILURES:
+        log.error("%d pattern_library lookup(s) failed; normal_trading_pattern was UNAVAILABLE for them",
+                  PATTERN_LOOKUP_FAILURES)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
