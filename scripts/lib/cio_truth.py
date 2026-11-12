@@ -449,12 +449,14 @@ def protection_for(p: dict, *, broker_available: bool) -> dict:
     Rule (operator 2026-11-11): PROTECTED only on a verified, current resting stop (a ``pending_activation`` GTC
     counts); GAP only when a good read exists and shows no resting stop; UNKNOWN whenever protection cannot be
     verified (no stop read source for the broker, unreadable store, stale or unmapped observation). A missing
-    read is never reported as a missing stop. Positions under $100 are listed with their real state but
-    ``counted`` is False.
+    read is never reported as a missing stop. Positions with a KNOWN value under $100 are listed with their real
+    state but ``counted`` is False. A position with no market value stays counted (``price_missing`` True): an
+    unknown value is never treated as small (LQ-2431; it was ``(value or 0)``, which hid an unpriced GAP).
     """
     kind = _exempt_kind(p)
     value = _number(p.get("market_value"))
-    counted = kind is None and (value or 0) >= COUNT_FLOOR_USD
+    price_missing = kind is None and value is None
+    counted = kind is None and (value is None or value >= COUNT_FLOOR_USD)
     source, as_of = p.get("stop_source"), p.get("stop_captured_at")
     cause = None
     if kind:
@@ -480,7 +482,7 @@ def protection_for(p: dict, *, broker_available: bool) -> dict:
         reason = ("Planned level only; no resting order at the broker" if p.get("stop_source") == "planned"
                   else "Stop read succeeded and shows no resting stop")
     return {"protection_state": state, "protection": {"state": state, "reason": reason, "cause": cause,
-            "source": source, "as_of": as_of, "counted": counted}}
+            "source": source, "as_of": as_of, "counted": counted, "price_missing": price_missing}}
 
 
 def _resting_summary(counted: list[dict], total_usd, *, broker_available: bool) -> dict:
