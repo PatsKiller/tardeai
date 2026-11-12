@@ -229,14 +229,16 @@ class CioRecordBackend:
         from scripts.lib.cio_instrument_record import (  # noqa: PLC0415
             DEFAULT_PATH,
             CognitionNoOp,
-            InstrumentRecordStore,
+            _store_for_path,
             apply_cognition,
             new_record,
             subject_key,
         )
 
         root = Path(os.environ.get("TRADEAI_ROOT") or Path(__file__).resolve().parents[2])
-        store = InstrumentRecordStore(self.path or (root / DEFAULT_PATH))
+        # The shared store for this file (LQ-20261107-2129): an ask turn is a request, and a fresh store
+        # per turn re-parsed the whole canonical record store to read and write one subject.
+        store = _store_for_path(self.path or (root / DEFAULT_PATH))
         key = subject_key("SECURITY", entity.symbol or entity.name)
         rec = store.load(key)
         created = rec is None

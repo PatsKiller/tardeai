@@ -1335,8 +1335,12 @@ def resolve_record_store(record_store: Any = None) -> Any:
     if record_store is not None:
         return record_store
     try:
-        from scripts.lib.cio_instrument_record import InstrumentRecordStore
-        return InstrumentRecordStore()
+        # The memoised store (LQ-20261107-2129): a fresh ``InstrumentRecordStore()`` per call threw the
+        # projection away, so every /api/v3/cio/home build (about every 2 min on the stale-serve refresh)
+        # re-parsed the whole 2.26 GB append-only store and ratcheted the server's RSS. The shared store
+        # catches up from the append tail and re-reads on a replaced, truncated or rewritten file.
+        from scripts.lib.cio_instrument_record import _store_for_root
+        return _store_for_root()
     except Exception:                                            # noqa: BLE001
         return None
 

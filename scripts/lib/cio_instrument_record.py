@@ -981,6 +981,17 @@ def _store_for_root(root: Path | str | None = None) -> InstrumentRecordStore:
             path = DEFAULT_PATH
     else:
         path = Path(root) / DEFAULT_PATH
+    return _store_for_path(path)
+
+
+def _store_for_path(path: Path | str) -> InstrumentRecordStore:
+    """The memoised store for one explicit file path (LQ-20261107-2129).
+
+    ``_store_for_root`` resolves a state root to a path; callers that already hold the file path (an
+    ask tracker with its own path, a request handler) use this so they share the same object, and
+    therefore the same projection and append index, instead of re-parsing the whole store per call.
+    """
+    path = Path(path)
     try:
         key = str(path.resolve())
     except OSError:
