@@ -434,3 +434,47 @@ def test_a_parent_swap_during_the_send_cannot_redirect_the_marker(tmp_path):
     out = he.maybe_alert_stale(store=store, now=NOW, state_root=state, send=send)
     assert out["sent"] is True and calls == [1]
     assert not (outside / "backups" / ".alert-episode.json").exists()
+
+
+# ── LQ-20261107-2086: the market value is the BOUND run's broker number, with its own clock ──────────
+def _prior_with_nvda(**row):
+    """A previous document whose NVDA row is a broker read from an EARLIER run than the one being exported."""
+    base = {"symbol": "NVDA", "account": "acct_a", "market_value": 1199.0, "broker_market_value": 1199.0,
+            "cost_basis": 500.0, "gain_loss": 699.0, "gain_loss_pct": 139.8,
+            "updated_at": (NOW - timedelta(hours=1)).isoformat()}
+    base.update(row)
+    return {"schema": "HoldingsExport@v1", "generated_at": (NOW - timedelta(hours=1)).isoformat(),
+            "holdings": [base]}
+
+
+def test_the_market_value_is_republished_from_the_bound_run_not_carried(tmp_path):
+    # The live ticket (LQ-2075 §2): an export bound to the 16:00 run left the 15:00 broker read (21.19) in the
+    # row beside a 16:00 `broker_market_value` (21.34), under the 16:00 artifact stamp. Fail-before: the stored
+    # value was only filled when ABSENT, so 1199.0 survived here.
+    store = tmp_path / "holdings.json"
+    store.write_text(json.dumps(_prior_with_nvda()), encoding="utf-8")
+    receipt = he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "b", now=NOW)
+    doc = json.loads(store.read_text())
+    nvda = next(r for r in doc["holdings"] if r["symbol"] == "NVDA")
+    assert nvda["market_value"] == 1200.0 == nvda["broker_market_value"]
+    assert nvda["mv_basis"] == "broker"
+    # unknown beats wrong: the row names the run the value came from and the broker read time it was taken at
+    assert nvda["market_value_source"] == f"positions_current:run{RUN_ID}"
+    assert nvda["market_value_as_of"] == nvda["broker_position_as_of"]
+    # a gain that still described the replaced value would make the row contradict itself
+    assert nvda["gain_loss"] == 700.0 and nvda["gain_loss_pct"] == 140.0
+    assert doc["export_provenance"]["market_value_rows"] == {"filled": 1, "refreshed": 1}
+    assert receipt["market_value_rows"] == {"filled": 1, "refreshed": 1}
+
+
+def test_a_row_already_at_the_bound_value_is_unchanged_and_an_absent_gain_stays_absent(tmp_path):
+    store = tmp_path / "holdings.json"
+    store.write_text(json.dumps(_prior_with_nvda(market_value=1200.0, gain_loss=None, gain_loss_pct=None)),
+                     encoding="utf-8")
+    he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "b", now=NOW)
+    doc = json.loads(store.read_text())
+    nvda = next(r for r in doc["holdings"] if r["symbol"] == "NVDA")
+    assert nvda["market_value"] == 1200.0
+    # a deliberately absent gain (no trusted basis) is not re-derived from a basis that exists: unknown stays unknown
+    assert nvda["gain_loss"] is None and nvda["gain_loss_pct"] is None
+    assert doc["export_provenance"]["market_value_rows"] == {"filled": 1, "unchanged": 1}

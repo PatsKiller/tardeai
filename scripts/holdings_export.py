@@ -276,11 +276,15 @@ def _number(value: Any) -> float | None:
 
 # ── field ownership (the review map lives in docs/ops/holdings_export_backup.md) ─
 #: Row fields the DB owns. Rendered from positions_current on every export; a prior value never survives.
+#: `market_value`/`mv_basis` are the bound run's broker value and its basis (LQ-20261107-2086 — they were
+#: carried before, which is how a prior export's broker read outlived the run it was read under);
+#: `market_value_source`/`market_value_as_of` name that run and its read time.
 DB_ROW_FIELDS = (
     "symbol", "account", "account_id", "account_key", "broker", "is_cash", "asset_type",
     "broker_shares", "broker_actual_shares", "broker_market_value", "broker_position_price",
     "broker_avg_price", "avg_cost", "cost_basis_total", "broker_source", "source", "broker_ingested_at",
     "as_of", "broker_position_as_of", "broker_position_as_of_at", "sync_run_id",
+    "market_value", "mv_basis", "market_value_source", "market_value_as_of",
 )
 #: Row fields the export derives from DB enrichment tables (symbol_profiles, market_quotes_extended,
 #: etf_holdings_snapshot). Always rendered; a gap is stated as None / "unavailable", never invented.
@@ -294,10 +298,15 @@ DB_ENRICHMENT_ROW_FIELDS = (
 #: leaves them absent when the DB has nothing to say (name, bucket: never invented).
 #:   share policy  (schwab_position_sync / share_reconciliation.stamp_broker_qty): shares, system_shares,
 #:                 share_drift, share_drift_status, shares_synced_at, last_reconciled_at, last_reconciliation_source
-#:   valuation     (portfolio_repricer, every 15 min): price, current_price, market_value, day_change,
-#:                 day_change_pct, gain_loss, gain_loss_pct, portfolio_pct, canonical_mark*, official_close*,
-#:                 analytical_*, mv_basis, implied_price_from_mv, price_source, price_field_role,
-#:                 current_price_is_alias_of, day_change_broker_check, updated_at
+#:   valuation     (portfolio_repricer, every 15 min): price, current_price, day_change, day_change_pct,
+#:                 gain_loss, gain_loss_pct, portfolio_pct, canonical_mark*, official_close*, analytical_*,
+#:                 implied_price_from_mv, price_source, price_field_role, current_price_is_alias_of,
+#:                 day_change_broker_check, updated_at
+#:                 EXCEPTION (LQ-20261107-2086): `market_value`/`mv_basis` are NOT carried. The repricer never
+#:                 wrote `market_value`, so a carried one was the last export's broker read at an older age than
+#:                 the run beside it; this writer republishes the bound run's `broker_market_value` and
+#:                 re-derives the `gain_loss` computed from it. `analytical_market_value` is the mark-based figure.
+#:                 See `_republish_market_value`.
 #:                 EXCEPTION (LQ-20261107-1645): `day_change`/`day_change_pct` are recomputed by THIS writer
 #:                 from the mark each positions sync publishes, whenever that mark is newer than the one the
 #:                 carried value was computed from. See `_refresh_day_change`.
@@ -306,7 +315,7 @@ DB_ENRICHMENT_ROW_FIELDS = (
 #:                 lots_shares, conflicted, conflict_reason, _rebuild_source, _basis_rebased_from
 #:   descriptive   (loader / sync): name, bucket, delisted, account_scope and every other key on the prior row
 FLOOR_ROW_FIELDS = (
-    "shares", "system_shares", "quantity", "share_drift", "share_drift_status", "market_value", "price",
+    "shares", "system_shares", "quantity", "share_drift", "share_drift_status", "price",
     "current_price", "price_source", "cost_basis", "cost_basis_source", "gain_loss", "gain_loss_pct",
     "day_change", "day_change_pct", "updated_at",
 )
@@ -442,6 +451,38 @@ def _refresh_day_change(out: dict[str, Any], *, mark_price: float | None, mark_a
     return "recomputed"
 
 
+def _republish_market_value(out: dict[str, Any], *, broker_value: float, run_id: Any,
+                            as_of_iso: str | None) -> str:
+    """Make the row's market value the number the BOUND run reported, and name the run and its read time.
+
+    LQ-20261107-2086 (from LQ-2075 §2): `market_value` was only filled when ABSENT, so the previous document's
+    number survived while `broker_market_value` was re-read with the newest run — one row carrying two broker
+    reads of different ages. On 2026-11-11 that published an 18:00 moomoo read (21.19) under a 19:00 stamp, and
+    the numbers-truth audit graded the fossil against the 19:00 truth (21.34) as a P1. The live document still
+    had four rows whose `market_value` disagreed with their own `broker_market_value` by more than a cent.
+
+    `market_value` is a BROKER fact here (the canonical vocabulary's `mv_basis: "broker"`; the canonical-mark
+    repair utility is explicitly told not to overwrite it with a mark); the mark-based figure is
+    `analytical_market_value`, which the repricer owns. So this writer republishes the bound run's value every
+    pass and stamps `market_value_source`/`market_value_as_of` (unknown beats wrong: a reader can age the row).
+    `gain_loss` is derived from `market_value`, so a carried one is re-derived from the value just published —
+    a row must not contradict itself. A deliberately absent gain (no usable basis) stays absent.
+    """
+    carried = _number(out.get("market_value"))
+    out["market_value"] = broker_value
+    out["mv_basis"] = "broker"
+    out["market_value_source"] = (f"positions_current:run{run_id}" if run_id is not None
+                                  else "positions_current")
+    out["market_value_as_of"] = as_of_iso
+    basis = _number(out.get("cost_basis"))
+    if not out.get("is_cash") and basis and _number(out.get("gain_loss")) is not None:
+        out["gain_loss"] = round(broker_value - basis, 2)
+        out["gain_loss_pct"] = round((broker_value - basis) / basis * 100.0, 4)
+    if carried is None:
+        return "filled"
+    return "unchanged" if abs(carried - broker_value) <= 0.005 else "refreshed"
+
+
 def _marks_fingerprint(holdings: list[dict[str, Any]]) -> str:
     """Identity of the MARKS the day total was computed from — the prices, never their timestamps.
 
@@ -484,6 +525,7 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
     newest: datetime | None = None
     carried_rows = 0
     dc_outcomes: dict[str, int] = {}
+    mv_outcomes: dict[str, int] = {}
     db_accounts: set[str] = set()
     for row in rows:
         # A partial book is worse than a refusal: a non-cash row with an unusable quantity or no market
@@ -566,9 +608,10 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
             out.setdefault("share_drift_status", "aligned")
             shares = qty
         out["quantity"] = shares
-        if _number(out.get("market_value")) is None:
-            out["market_value"] = broker_value
-            out["mv_basis"] = "broker_market_value"
+        # The market value is the bound run's broker number (LQ-20261107-2086); a carried one was a fossil.
+        mv_outcome = _republish_market_value(out, broker_value=broker_value,
+                                             run_id=row.get("sync_run_id"), as_of_iso=stamp_iso)
+        mv_outcomes[mv_outcome] = mv_outcomes.get(mv_outcome, 0) + 1  # nosemgrep: tq-py-missing-as-zero -- a counter, not a missing value
         if _number(out.get("price")) is None:
             out["price"] = price
             out["price_source"] = ("cash" if is_cash else
@@ -690,6 +733,9 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
             # of the marks it was priced from (the frozen-output contract's input fingerprint).
             "day_change_rows": dict(sorted(dc_outcomes.items())),
             "day_change_marks_fp": _marks_fingerprint(holdings),
+            # LQ-20261107-2086: how each row's market value was arrived at this pass — republished from the
+            # bound run ("filled"/"refreshed") or already equal to it ("unchanged"). Never carried.
+            "market_value_rows": dict(sorted(mv_outcomes.items())),
         },
     })
     return document
@@ -1041,6 +1087,7 @@ def export(*, conn, store: Path | str | None = None, backups: Path | str | None 
                     "holdings": len(document["holdings"]), "generated_at": document["generated_at"],
                     "sync_run_id": binding["run_id"], "prior_state": prior_state,
                     "carried_rows": document["export_provenance"]["carried_rows"],
+                    "market_value_rows": document["export_provenance"].get("market_value_rows"),
                     "day_change_rows": document["export_provenance"].get("day_change_rows"),
                     "day_change_frozen": document["portfolio_totals"].get("day_change_frozen")}
         # Backup first: if the backup cannot be written or read back, the current file is never replaced.
@@ -1054,6 +1101,7 @@ def export(*, conn, store: Path | str | None = None, backups: Path | str | None 
             "holdings": len(document["holdings"]), "generated_at": document["generated_at"],
             "sync_run_id": binding["run_id"], "prior_state": prior_state,
             "carried_rows": document["export_provenance"]["carried_rows"],
+            "market_value_rows": document["export_provenance"].get("market_value_rows"),
             "day_change_rows": document["export_provenance"].get("day_change_rows"),
             "day_change_frozen": document["portfolio_totals"].get("day_change_frozen"),
             "day_change_history": history,

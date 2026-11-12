@@ -22,8 +22,9 @@ from the database, with the file as the documented fallback.
   size cap (default 64 MiB).
 - Telegram **P1** when the export is **empty**, **older than 30 minutes during US market hours**, two consecutive sync
   runs failed, or the broker market values it carries (`portfolio_totals.broker_market_value_total`) differ from
-  `SUM(positions_current.broker_market_value)` by **more than $1**. (`total_value` is the repricer's valuation of the
-  same book — shares × canonical mark — and is not compared with the broker's figure.)
+  `SUM(positions_current.broker_market_value)` by **more than $1**. (`total_value` is the repricer's sum of the rows'
+  `market_value`; since LQ-20261107-2086 that is the bound run's broker value per DB row, so it tracks the broker's
+  figure — it differs only by rows of accounts `positions_current` does not sync, which are carried, not compared.)
 
 ## Field ownership (field → source → how it reaches the reader)
 
@@ -47,7 +48,8 @@ on any field the export does not render) is in exactly one row of this table.
 | `lookthrough`, `lookthrough_status` | `etf_holdings_snapshot` (not applied live: stated gap) | rendered |
 | `shares`, `system_shares`, `share_drift`, `share_drift_status`, `shares_synced_at`, `last_reconciled_at`, `last_reconciliation_source` | share-reconciliation policy in `schwab_position_sync` (`share_reconciliation.stamp_broker_qty`) | **carried**; floor for a new row: `shares = system_shares = qty`, `aligned` |
 | `quantity` | the rendered `shares` | rendered |
-| `price`, `current_price`, `market_value`, `day_change`, `day_change_pct`, `gain_loss`, `gain_loss_pct`, `portfolio_pct`, `canonical_mark*`, `official_close*`, `analytical_*`, `mv_basis`, `implied_price_from_mv`, `price_source`, `price_field_role`, `current_price_is_alias_of`, `day_change_broker_check`, `updated_at`, `market_session`, `freshness_state`, `observation`, … | `portfolio_repricer` (every 15 min) | **carried**; floor for a new row: price = quote (else broker value ÷ qty), `market_value = broker_market_value`, day change = qty × (quote − prior close) or null, gain = value − basis |
+| `market_value`, `mv_basis`, `market_value_source`, `market_value_as_of` | `positions_current.broker_market_value` of the **bound run** (LQ-20261107-2086) | rendered every run — never carried; the source names the run and the broker read time. The mark-based figure is `analytical_market_value` |
+| `price`, `current_price`, `day_change`, `day_change_pct`, `gain_loss`, `gain_loss_pct`, `portfolio_pct`, `canonical_mark*`, `official_close*`, `analytical_*`, `implied_price_from_mv`, `price_source`, `price_field_role`, `current_price_is_alias_of`, `day_change_broker_check`, `updated_at`, `market_session`, `freshness_state`, `observation`, … | `portfolio_repricer` (every 15 min) | **carried**; floor for a new row: price = quote (else broker value ÷ qty), day change = qty × (quote − prior close) or null, gain = value − basis. EXCEPTIONS: `day_change`/`day_change_pct` are re-priced by the export from the sync's mark when that mark is newer (LQ-20261107-1645), and `gain_loss`/`gain_loss_pct` are re-derived whenever `market_value` is republished (LQ-20261107-2086) |
 | `broker_day_pl`, `broker_day_pl_price`, `broker_day_pl_at` | `schwab_position_sync` (Schwab's own P/L Day) | **carried** (no DB column) |
 | `cost_basis`, `cost_basis_source`, `basis_status`, `basis_partial`, `lots_shares`, `conflicted`, `conflict_reason`, `_rebuild_source`, `_basis_rebased_from` | basis shield / tax-lot rebuild | **carried**; floor: `cost_basis = cost_basis_total` |
 | `name`, `bucket`, `delisted`, `account_scope`, any other prior key | loader / sync | **carried**; never invented for a new row |

@@ -370,6 +370,7 @@
         ],
         "code": "NT_VALUE_MISMATCH",
         "as_of": [
+          "/market_value_as_of",
           "/updated_at"
         ]
       },
@@ -387,7 +388,7 @@
         "value": 0.5,
         "unit": "%"
       },
-      "_note": "The page's stored market value against positions_current, at the same 0.5% band as the price row: the value is price x shares, so any real drift already surfaces on holdings.price, and a band tighter than the price's would report a one-cent quote difference twice (live 2026-11-09: NVDA 23.79 vs 23.76, SCHD 9.01 vs 9.02)."
+      "_note": "The page's stored market value against positions_current, at the same 0.5% band as the price row: the value is price x shares, so any real drift already surfaces on holdings.price, and a band tighter than the price's would report a one-cent quote difference twice (live 2026-11-09: NVDA 23.79 vs 23.76, SCHD 9.01 vs 9.02). LQ-20261107-2086: the served clock is the row's OWN value clock (market_value_as_of, stamped by holdings_export with the positions_sync run the value came from — the producer now republishes that run's broker_market_value instead of carrying a prior export's), falling back to updated_at for rows written before that field existed."
     },
     {
       "page": "/portfolio",

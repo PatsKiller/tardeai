@@ -637,6 +637,18 @@ def test_a_carried_holding_row_reports_when_the_row_was_written(tmp_path):
     assert f["tolerance"] == {"kind": "pct", "value": 0.5, "unit": "%"}
 
 
+def test_a_holding_rows_own_value_clock_is_preferred_over_the_write_time(tmp_path):
+    """LQ-20261107-2086: the producer stamps each row's value with the positions_sync run it came from
+    (`market_value_as_of`). `updated_at` only says when the FILE last touched the row — another lane rewriting a
+    neighbouring field makes every row look current, which is how a fossil value reads as fresh."""
+    row = dict(H(market_value=99.0), updated_at=_iso(1), market_value_as_of=_iso(90))
+    root = write_state(tmp_path, holdings=[row, dict(H(account="zz_ira", symbol="ZQAB", market_value=5000.0),
+                                                     updated_at=_iso(1))])
+    f = run(root, "holdings.market_value")["findings"][0]
+    assert f["shown"]["as_of"] == _iso(90)
+    assert f["truth"]["as_of"] == POS_AS_OF
+
+
 def test_a_selection_surface_is_not_required_to_list_every_holding(tmp_path):
     """The brief's stop_advice lists the rows it chose to advise; a holding it omits is not a missing figure."""
     root = write_state(tmp_path, brief_doc=brief(stop_advice=[

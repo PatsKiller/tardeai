@@ -286,8 +286,13 @@ def test_db_owned_facts_always_win_over_the_previous_document(tmp_path):
     assert aaa["cost_basis_total"] == 500.0 and aaa["sync_run_id"] == RUN_ID
     # carried: the repricer's mark and the broker's day P/L stay; the reader name `cost_basis` keeps the
     # basis shield's value, the DB's broker figure is cost_basis_total.
-    assert aaa["market_value"] == 1210.0 and aaa["canonical_mark"] == 120.0 and aaa["broker_day_pl"] == 3.0
+    # LQ-20261107-2086: `market_value` is now a DB-owned fact too — it is the BOUND run's broker value. The
+    # previous document's 1210.0 was an earlier export's read, published under the newer run's stamp.
+    assert aaa["market_value"] == 1200.0 and aaa["canonical_mark"] == 120.0 and aaa["broker_day_pl"] == 3.0
+    assert aaa["mv_basis"] == "broker" and aaa["market_value_source"] == f"positions_current:run{RUN_ID}"
     assert aaa["cost_basis"] == 111.0
+    # the gain is derived from the value, so re-deriving it is part of republishing the value
+    assert aaa["gain_loss"] == 1089.0
 
 
 def test_the_share_policy_is_carried_not_decided_by_the_export(tmp_path):
@@ -506,7 +511,9 @@ def test_portfolio_for_names_its_source(tmp_path):
     served = portfolio_for(hd.load_document(store, db_query=FakeDB().query, now=NOW, use_cache=False), now=NOW)
     assert served["document_source"] == "positions_current"
     roth = next(a for a in served["accounts"] if a["account_id"] == "schwab_roth_ira")
-    assert roth["total_usd"] == 1510.0
+    # 1200 (the bound run's AAA value, LQ-20261107-2086) + 300 cash; it read 1510 while the previous document's
+    # 1210 was carried beside a 1200 broker value.
+    assert roth["total_usd"] == 1500.0
     fallback = portfolio_for(hd.load_document(store, db_query=FakeDB(fail=True).query, now=NOW, use_cache=False),
                              now=NOW)
     assert fallback["document_source"] == "holdings_json_fallback" and fallback["document_fallback_reason"]
