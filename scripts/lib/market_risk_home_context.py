@@ -233,11 +233,19 @@ def collect(
         try:
             regular = [row for row in quotes if row.get("session") == "regular" and stamp(row.get("as_of"))]
             if regular:
+                # ``symbol = ANY(...)`` is the index-usable prefilter (idx_market_quotes_symbol_fetched_at_desc);
+                # without it ``upper(symbol)`` forced a sequential scan of all of market_quotes (7.05 M rows,
+                # 1.46-1.6 s per /api/v2/market-risk/latest and per cold /api/v2/home/cio-card, LQ-20261107-2216).
+                # The exact (upper(symbol), fetched_at) pair predicate is unchanged; the prefilter carries the
+                # upper and lower spelling of each symbol so a lower-case stored row still matches.
+                pair_symbols = [row["symbol"] for row in regular]
+                spellings = sorted({v for s in pair_symbols for v in (str(s), str(s).upper(), str(s).lower())})
                 rows = read_rows(
                     "SELECT upper(symbol) AS symbol, price, prev_close, volume, fetched_at "
-                    "FROM market_quotes WHERE source = %s AND (upper(symbol), fetched_at) IN "
+                    "FROM market_quotes WHERE source = %s AND symbol = ANY(%s::text[]) "
+                    "AND (upper(symbol), fetched_at) IN "
                     "(SELECT unnest(%s::text[]), unnest(%s::timestamptz[])) LIMIT 80",
-                    ["alpaca", [row["symbol"] for row in regular], [row["as_of"] for row in regular]],
+                    ["alpaca", spellings, pair_symbols, [row["as_of"] for row in regular]],
                 )
                 for quote in regular:
                     same_clock = [
