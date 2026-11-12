@@ -305,6 +305,15 @@ class StaleServe:
             "source": source,
             "last_refresh_error": self._errors.get(key),
         }
+        if stale:
+            # LQ-20261107-2622 WV-03: a stale body says so at the top level with its age and cause, so a consumer
+            # that never reads `_swr` still cannot mistake it for a fresh answer. `status` is only set when the
+            # body has none of its own (never clobber a domain field); `state` always names it.
+            out["state"] = "STALE"
+            out["age_s"] = out["_swr"]["age_s"]
+            out["stale_cause"] = self._errors.get(key) or "refresh_in_progress"
+            if "status" not in out:
+                out["status"] = "STALE"
         return status, out
 
     def _refresh(self, key: str, refresh: Callable[[], Any]) -> None:

@@ -233,7 +233,11 @@ def get_list(query: dict | None = None) -> dict[str, Any]:
     from lib.data_broker import opportunity as op
 
     q = op.apply_preset(dict(query or {}))
-    proj = _store().read_projection()
+    proj, cause = _store().read_projection_checked()
+    if cause:
+        # LQ-20261107-2622 WV-01: an unreadable projection is UNKNOWN with its cause, not "0 opportunities".
+        return {"ok": False, "state": "UNKNOWN", "schema": "OpportunityList@v1", "error": "projection_unavailable",
+                "cause": cause, "as_of": None, "items": [], "total": 0, "provider_calls": 0}
     items = list((proj.get("items") or {}).values())
     matched = [a for a in items if op.passes(a, q)]
     sort = str(q.get("sort") or "conviction")

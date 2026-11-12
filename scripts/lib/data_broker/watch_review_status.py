@@ -123,18 +123,24 @@ def review_status(query=None, *, priority_reader=None, stance_reader=None, now=N
             "provider_calls": 0,
             "read_only": True,
         }
+    rows = {
+        s: presentation_state(
+            states.get(s) or {"status": "unavailable", "label": "Review status unavailable", "open": False},
+            truths.get(s) or {},
+            now=now,
+        )
+        for s in names
+    }
+    # LQ-20261107-2622 WV-02: as_of is DATA time -- the newest row timestamp -- not the request time. No row
+    # carries a time -> None (unknown); the request time is `served_at`.
+    stamps = [t for t in (_time(r.get("updated_at")) or _time(r.get("answered_at")) for r in rows.values()) if t]
     return {
         "ok": True,
         "schema": "WatchReviewStatus@v1",
-        "as_of": now.isoformat(),
-        "rows": {
-            s: presentation_state(
-                states.get(s) or {"status": "unavailable", "label": "Review status unavailable", "open": False},
-                truths.get(s) or {},
-                now=now,
-            )
-            for s in names
-        },
+        "as_of": max(stamps).isoformat() if stamps else None,
+        "as_of_basis": "newest row updated_at/answered_at" if stamps else "no row carries a timestamp",
+        "served_at": now.isoformat(),
+        "rows": rows,
         "read_only": True,
         "provider_calls": 0,
     }

@@ -1273,18 +1273,28 @@ def watch_filters() -> dict[str, Any]:
 def watch_lists() -> dict[str, Any]:
     """Canonical saved lists only — not directive label substitution."""
     from lib.data_broker.watch_domains import saved_lists_canonical
-    lists = saved_lists_canonical()
+    from lib.data_broker.watch_domains import saved_lists_status
+    st = saved_lists_status()
+    lists = st["lists"]
+    if not st["readable"]:
+        note, quality = f"Saved lists could not be read ({st['cause']}); directive labels intentionally not substituted", "UNKNOWN"
+    elif not lists:
+        note, quality = "No saved lists are imported (tos_watchlists is empty); directive labels intentionally not substituted", "EMPTY"
+    else:
+        note, quality = None, "VALID"
     return {
-        "ok": True,
+        "ok": st["readable"],
         "snapshot_id": _snapshot_id({"lists": [x.get("id") for x in lists]}),
         "generated_at": _now(),
+        "as_of": st["as_of"],
         "data_contract_version": CONTRACT_VERSION,
         "provider_calls": 0,
         "items": lists,
         "canonical": True,
         "starred_count": len(_starred_set()),
-        "note": None if lists else "No canonical saved-list membership table on host; directive labels intentionally not substituted",
-        "quality_state": "VALID" if lists else "UNAVAILABLE",
+        "note": note,
+        "quality_state": quality,
+        "cause": st["cause"],
     }
 
 

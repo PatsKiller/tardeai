@@ -253,9 +253,10 @@ def _recovery_state_pass(ex) -> dict:
     return R.run_pass(store, lambda c: _recovery_snapshot(ex, c, technical_by_symbol), dry_run=False)
 
 
-def main() -> int:
+def _run_pass(stats: dict) -> int:
     from db_adapter import _execute as ex, USE_DB
     if not USE_DB:
+        stats["error"] = "USE_DB off"
         return 2
 
     today = dt.date.today().isoformat()
@@ -330,6 +331,8 @@ def main() -> int:
         recovery = {"store": "error", "considered": 0, "changed": 0, "error": str(error)[:200]}
         print(f"[watch-alerts] recovery state machine error: {recovery['error']}")
 
+    stats.update(armed=len(alerts), fired=len(fired_ids), composites=len(composite.get("fired") or []),
+                 recovery_store=recovery.get("store"))
     print(
         f"[watch-alerts] {len(alerts)} single-condition armed · "
         f"{len(fired_ids)} fired: {fired_ids} · "
@@ -342,6 +345,34 @@ def main() -> int:
         f"{recovery.get('changed', 0)} state changes"
     )
     return 0
+
+
+def main() -> int:
+    """WV-07 (LQ-20261107-2622): one pass plus a run record, so a silent stop is visible as an aged receipt."""
+    started = dt.datetime.now(dt.timezone.utc)
+    stats: dict = {}
+    try:
+        rc = _run_pass(stats)
+    except Exception as error:  # noqa: BLE001 - recorded on the receipt, then re-raised
+        stats["error"] = str(error)[:200]
+        _write_run_record(started, 1, stats)
+        raise
+    _write_run_record(started, rc, stats)
+    return rc
+
+
+def _write_run_record(started, rc: int, stats: dict) -> None:
+    try:
+        from lib.lane_last_receipt import write_lane_receipt
+        write_lane_receipt(
+            "watch-alerts-eval", ok=rc == 0, exit_code=rc, started_at=started,
+            script="scripts/watch_alerts_eval.py", error=stats.get("error"),
+            summary={k: v for k, v in stats.items() if k != "error"},
+            produced_count=int(stats.get("fired") or 0) + int(stats.get("composites") or 0),
+            attempted_count=int(stats.get("armed") or 0),
+            empty_reason=None if rc != 0 or stats.get("fired") or stats.get("composites") else "no_alert_fired")
+    except Exception as error:  # noqa: BLE001 - a receipt failure never stops the alert lane
+        print(f"[watch-alerts] run record not written: {str(error)[:200]}")
 
 
 if __name__ == "__main__":

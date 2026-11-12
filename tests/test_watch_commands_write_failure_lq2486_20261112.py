@@ -112,6 +112,9 @@ def test_successful_star_write_stays_200_and_commits(monkeypatch):
         def execute(self, sql, params=None):
             executed.append((sql, params))
 
+        def fetchone(self):  # the WV-05 read-back: the store kept the star
+            return (1,)
+
     class _Conn:
         committed = False
 

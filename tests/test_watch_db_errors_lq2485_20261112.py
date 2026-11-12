@@ -383,10 +383,22 @@ def test_the_required_read_answers_a_failed_read_without_re_running_it(monkeypat
     """The note is the whole fix: db_adapter says what happened, and ``_db_required`` believes it."""
     exc = _SqlStateError('relation "agent_connections" does not exist', "42P01")
     conn = _CountingConn(exc=exc)
-    with pytest.raises(api_v2._DbReadError):
+    with pytest.raises(api_v2._DbReadError) as caught:
         _drive_required(monkeypatch, conn, sql="SELECT 1 FROM agent_connections")
+    assert caught.value.http_status == 500 and caught.value.unavailable is False  # LQ-2553: tagged, never text
     assert conn.executions == 1
     assert conn.sqls == ["SELECT 1 FROM agent_connections"]
+
+
+@pytest.mark.parametrize("code", ["42P01", "57014", "42601", "55P03"])
+def test_a_tagged_non_connection_error_naming_a_connection_is_still_a_500(monkeypatch, code):
+    """LQ-20261107-2553 (REVIEW-2544 X2): a SQLSTATE-tagged error is classified by its code alone. A message that
+    happens to say "connection" must not turn a non-08/53/57P code into a soft 503."""
+    conn = _CountingConn(exc=_SqlStateError("connection reset while planning agent_connections", code))
+    with pytest.raises(api_v2._DbReadError) as caught:
+        _drive_required(monkeypatch, conn)
+    assert caught.value.http_status == 500 and caught.value.unavailable is False
+    assert conn.executions == 1
 
 
 def test_db_adapter_records_whether_the_statement_ran_and_why(monkeypatch):

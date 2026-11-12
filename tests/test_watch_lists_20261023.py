@@ -541,10 +541,23 @@ def test_mine_add_and_remove_are_logged_with_the_principal_and_never_trade(monke
     monkeypatch.setattr(
         wdw, "set_watch_directive_status", lambda q, did, st, source: archived.append((did, st, source))
     )
-    q = lambda sql, params=None, fetch="all": [{"id": 1352}] if "watch_directives" in sql else []  # noqa: E731
+    starred = set()  # a store that keeps what was written: the command now reads its own write back (LQ-2622 WV-05)
+
+    def q(sql, params=None, fetch="all"):
+        if "operator_starred_symbols" in sql:
+            return [{"present": 1}] if params[0] in starred else []
+        return [{"id": 1352}] if "watch_directives" in sql else []
+
+    def record(sql, p=None):
+        ex.append((sql, p))
+        if sql.startswith("INSERT INTO operator_starred_symbols"):
+            starred.add(p[0])
+        elif sql.startswith("DELETE FROM operator_starred_symbols"):
+            starred.discard(p[0])
+
     out = cmd.post_mine_decision(
         {"symbol": "nvda", "action": "add", "note": "AI capex", "by": "spoofed"},
-        db_execute=lambda sql, p=None: ex.append((sql, p)),
+        db_execute=record,
         db_query=q,
     )
     assert out["ok"] and out["event_type"] == "watch_mine_added" and out["by"] == "tailnet:john@example"
@@ -554,7 +567,7 @@ def test_mine_add_and_remove_are_logged_with_the_principal_and_never_trade(monke
     ex.clear()
     out = cmd.post_mine_decision(
         {"symbol": "SKYD", "action": "remove", "reason": "done"},
-        db_execute=lambda sql, p=None: ex.append((sql, p)),
+        db_execute=record,
         db_query=q,
     )
     assert (

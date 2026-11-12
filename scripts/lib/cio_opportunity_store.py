@@ -173,6 +173,18 @@ class CIOOpportunityStore:
         self.projection_path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(self.projection_path, body)
 
+    def read_projection_checked(self) -> tuple[dict[str, Any], str | None]:
+        """(projection, None) or ({}, cause): an unreadable/missing file is not an empty list (LQ-20261107-2622)."""
+        try:
+            doc = json.loads(self.projection_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}, "projection file missing"
+        except Exception as exc:  # noqa: BLE001
+            return {}, f"projection unreadable: {type(exc).__name__}"
+        if not isinstance(doc, dict):
+            return {}, "projection is not an object"
+        return doc, None
+
     def read_projection(self) -> dict[str, Any]:
         try:
             return json.loads(self.projection_path.read_text(encoding="utf-8"))

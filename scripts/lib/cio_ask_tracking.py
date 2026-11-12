@@ -185,6 +185,11 @@ class MyWatchlistBackend:
             execute = self.db_execute or (lambda sql, params=None: query(sql, params, fetch="none"))
             accepted = command({"symbol": sym, "action": "add", "note": f"Ask thread {thread_id}: {thesis}"[:300], "surface": "ask_the_cio"},
                                db_execute=execute, db_query=query)
+            if str(accepted.get("error") or "").startswith("READBACK_"):
+                # LQ-20261107-2622 WV-05: the command read its own write back and could not confirm it. The write
+                # was sent; its state is unproven -- the same receipt as this method's own read-back failure.
+                return self._receipt(sym, "failed", reason="canonical_membership_readback_unproven",
+                                     write_attempted=True, command_accepted=True)
             if not accepted.get("ok"):
                 return self._receipt(sym, "failed", reason="canonical_watch_command_failed_or_partial", write_attempted=True)
             after, complete = self._membership(query)

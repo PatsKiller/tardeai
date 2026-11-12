@@ -469,56 +469,64 @@ def membership_held(surface: str | None = None) -> tuple[set[str], str]:
     return set(h["symbols"]), label
 
 
-def saved_lists_canonical() -> list[dict[str, Any]]:
-    """Actual list definitions — prefer watchlist groups/master if present."""
+LISTS_SQL = """SELECT w.id::text AS id, COALESCE(NULLIF(w.display_name, ''), w.name) AS label,
+                      (count(m.id) FILTER (WHERE m.removed_at IS NULL))::int AS n,
+                      max(w.updated_at) AS list_updated_at, max(w.last_imported_at) AS imported_at
+                 FROM tos_watchlists w
+            LEFT JOIN tos_watchlist_members m ON m.watchlist_id = w.id
+             GROUP BY w.id, w.name, w.display_name
+             ORDER BY label LIMIT 80"""
+MEMBERS_SQL = """SELECT upper(m.symbol) AS s
+                   FROM tos_watchlist_members m JOIN tos_watchlists w ON w.id = m.watchlist_id
+                  WHERE m.removed_at IS NULL AND (w.id::text = %s OR w.name = %s OR w.display_name = %s)"""
+
+
+def saved_lists_status() -> dict[str, Any]:
+    """Saved lists with an honest read state (LQ-20261107-2622 WV-04).
+
+    The saved lists live in ``tos_watchlists`` / ``tos_watchlist_members``. This used to read
+    ``watchlist_groups`` and ``watchlist_list_membership`` (neither exists) inside ``except: pass``, so every
+    host answered "no lists" with a quiet note. Now: ``readable`` False + ``cause`` when the store cannot be
+    read (UNKNOWN), ``readable`` True with ``lists == []`` when it was read and is empty."""
+    try:
+        rows = _db_query(LISTS_SQL)
+    except Exception as exc:  # noqa: BLE001 -- the cause is named, never swallowed
+        first = str(exc).strip().splitlines()[0][:200] if str(exc).strip() else ""
+        return {"readable": False, "cause": f"{type(exc).__name__}: {first}", "lists": [],
+                "source": "tos_watchlists", "as_of": None}
     lists: list[dict[str, Any]] = []
-    # Try dedicated list tables first
-    for sql, source in [
-        (
-            """SELECT id::text AS id, name AS label, count(*) OVER () AS n
-                 FROM watchlist_groups ORDER BY name LIMIT 80""",
-            "watchlist_groups",
-        ),
-        (
-            """SELECT list_id::text AS id, list_name AS label, count(*)::int AS n
-                 FROM watchlist_list_membership
-                GROUP BY list_id, list_name ORDER BY n DESC LIMIT 80""",
-            "watchlist_list_membership",
-        ),
-    ]:
-        try:
-            rows = _db_query(sql)
-            if rows:
-                for r in rows:
-                    if hasattr(r, "keys"):
-                        lists.append({
-                            "id": r.get("id") or r.get("label"),
-                            "label": r.get("label") or r.get("id"),
-                            "count": r.get("n"),
-                            "source": source,
-                            "canonical": True,
-                        })
-                    else:
-                        lists.append({"id": r[0], "label": r[1], "count": r[2], "source": source, "canonical": True})
-                return lists
-        except Exception:
-            pass
-    # No canonical list table — return empty with typed gap (do NOT substitute directives)
-    return []
+    stamps: list[str] = []
+    for r in rows or []:
+        def g(k, i, r=r):
+            return r.get(k) if hasattr(r, "keys") else r[i]
+        lists.append({"id": g("id", 0) or g("label", 1), "label": g("label", 1) or g("id", 0), "count": g("n", 2),
+                      "source": "tos_watchlists", "canonical": True})
+        for k, i in (("list_updated_at", 3), ("imported_at", 4)):
+            v = g(k, i)
+            if v is not None:
+                stamps.append(v.isoformat() if hasattr(v, "isoformat") else str(v))
+    return {"readable": True, "cause": None, "lists": lists, "source": "tos_watchlists",
+            "as_of": max(stamps) if stamps else None}
+
+
+def saved_lists_canonical() -> list[dict[str, Any]]:
+    """Actual list definitions. [] when empty OR unreadable -- use ``saved_lists_status`` to tell them apart."""
+    return saved_lists_status()["lists"]
+
+
+def saved_list_membership_status(list_id: str) -> tuple[set[str], str | None]:
+    """(active member symbols, None) or (empty set, cause) when the store cannot be read."""
+    if not list_id:
+        return set(), None
+    try:
+        rows = _db_query(MEMBERS_SQL, (list_id, list_id, list_id))
+    except Exception as exc:  # noqa: BLE001
+        return set(), type(exc).__name__
+    return {(r["s"] if hasattr(r, "keys") else r[0]) for r in rows or []}, None
 
 
 def saved_list_membership(list_id: str) -> set[str]:
-    if not list_id:
-        return set()
-    try:
-        rows = _db_query(
-            """SELECT upper(symbol) AS s FROM watchlist_list_membership
-                WHERE list_id::text=%s OR list_name=%s""",
-            (list_id, list_id),
-        )
-        return {(r["s"] if hasattr(r, "keys") else r[0]) for r in rows}
-    except Exception:
-        return set()
+    return saved_list_membership_status(list_id)[0]
 
 
 # ── Review authorization ────────────────────────────────────────────────────

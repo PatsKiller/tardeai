@@ -42,6 +42,16 @@ def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def _data_as_of(*sources: dict[str, Any]) -> str | None:
+    """First source timestamp found on the product / parent / change item, else None."""
+    for src in sources:
+        for k in ("as_of", "built_at", "generated_at", "computed_at", "at"):
+            v = (src or {}).get(k)
+            if isinstance(v, str) and v.strip():
+                return v
+    return None
+
+
 def _fmt_money(v: Any) -> str:
     try:
         return f"${float(v):,.2f}"
@@ -343,7 +353,10 @@ def assemble_symbol_intelligence(
 
     return {
         "schema": SCHEMA,
-        "as_of": _now(),
+        # LQ-20261107-2622 WV-02: as_of is DATA time (when the product/parent was built), never the request
+        # time; absent source time -> None (unknown beats wrong). The request time is `served_at`.
+        "as_of": _data_as_of(product, parent, item),
+        "served_at": _now(),
         "symbol": sym,
         "action_class": "REENTRY_WATCH" if "reentry" in kind else (
             "OPPORTUNITY" if "opportunity" in kind else "UPDATE"

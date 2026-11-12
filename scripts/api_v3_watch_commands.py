@@ -30,6 +30,18 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _readback_failure(symbol: str, want_present: bool, found: bool | None) -> dict[str, Any] | None:
+    """LQ-20261107-2622 WV-05: a write is only reported as done when a read-back agrees. None = agrees."""
+    if found is None:
+        return {"ok": False, "error": "READBACK_UNAVAILABLE", "symbol": symbol, "provider_calls": 0, "http_status": 503,
+                "detail": "the write was sent but its read-back could not be read; state unknown, retry to confirm"}
+    if found != want_present:
+        return {"ok": False, "error": "READBACK_MISMATCH", "symbol": symbol, "provider_calls": 0, "http_status": 503,
+                "detail": f"expected the symbol to be {'present' if want_present else 'absent'} after the write; "
+                          f"it is {'present' if found else 'absent'}"}
+    return None
+
+
 def post_star(body: dict | None = None) -> dict[str, Any]:
     body = body or {}
     symbol = str(body.get("symbol") or "").upper().strip()
@@ -52,11 +64,18 @@ def post_star(body: dict | None = None) -> dict[str, Any]:
                 (symbol, body.get("operator") or "command_center"),
             )
         conn.commit()
+        cur.execute("SELECT 1 FROM operator_starred_symbols WHERE upper(symbol)=%s LIMIT 1", (symbol,))
+        found = cur.fetchone() is not None
+        conn.commit()
+        bad = _readback_failure(symbol, action != "unstar", found)
+        if bad:
+            return bad
         return {
             "ok": True,
             "command": "star",
             "symbol": symbol,
             "action": action,
+            "starred": found,
             "provider_calls": 0,
             "broker_write": False,
             "accepted_at": _now(),
@@ -267,6 +286,15 @@ def post_mine_decision(body: dict | None = None, *, db_execute=None, db_query=No
         db_execute("INSERT INTO watchlist_events (event_type, symbol, source, agent, status, message, payload) "
                    "VALUES (%s, %s, 'operator', 'command_center', 'recorded', %s, %s::jsonb)",
                    (_MINE_EVENTS[action], symbol, msg[:500], _json.dumps(payload)))
+        if star_write:
+            try:
+                rb = db_query("SELECT 1 AS present FROM operator_starred_symbols WHERE upper(symbol) = %s LIMIT 1",
+                              (symbol,))
+            except Exception:  # noqa: BLE001 -- the write landed; only its proof is missing
+                rb = None
+            bad = _readback_failure(symbol, action == "add", None if rb is None else bool(rb))
+            if bad:
+                return bad
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": type(e).__name__, "detail": str(e)[:160], "provider_calls": 0,
                 "http_status": 503}
