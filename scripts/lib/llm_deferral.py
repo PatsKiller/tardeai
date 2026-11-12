@@ -461,6 +461,32 @@ def complete(request_id: str, *, ok: bool, error: str | None = None) -> None:
     )
 
 
+def release(request_id: str, *, error: str | None = None, now: datetime | None = None) -> str:
+    """Return a claimed request to the queue for the next window (e.g. a per-process daily
+    cost cap refused it). Attempts were already counted at claim, so a request that never
+    clears is retired as 'failed' at MAX_ATTEMPTS instead of cycling forever (LQ-2162).
+    Returns the resulting status."""
+    from db_adapter import _execute
+    run_after = next_window_start(now)
+    row = _execute(
+        """
+        UPDATE llm_deferred_requests
+           SET status = CASE WHEN attempts >= %s THEN 'failed' ELSE 'pending' END,
+               completed_at = CASE WHEN attempts >= %s THEN NOW() ELSE NULL END,
+               claimed_at = NULL,
+               run_after = CASE WHEN attempts >= %s THEN run_after ELSE %s END,
+               error = %s
+         WHERE id = %s::uuid
+        RETURNING status
+        """,
+        (MAX_ATTEMPTS, MAX_ATTEMPTS, MAX_ATTEMPTS, run_after, (error or None), str(request_id)),
+        fetch="one",
+    )
+    if isinstance(row, dict):
+        return str(row.get("status"))
+    return str(row[0]) if row else "missing"
+
+
 def queue_summary(now: datetime | None = None) -> dict[str, Any]:
     """Counts by status plus the next due time — what the Command Center shows."""
     ensure_schema()

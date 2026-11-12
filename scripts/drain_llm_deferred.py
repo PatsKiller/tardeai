@@ -40,6 +40,10 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 HEARTBEAT_PATH = None  # resolved lazily against STATE_ROOT on a real run only
 
 
+_COST_CAP_MARK = "COST_CAP_EXCEEDED"
+_COST_CAP_ERR = "RuntimeError: COST_CAP_EXCEEDED: process cap (deferred in this run; not re-attempted)"
+
+
 def _receipt(ok: bool, exit_code: int, summary: dict) -> None:
     from lib.lane_last_receipt import write_lane_receipt
     write_lane_receipt("llm-deferred-drain", ok=ok, exit_code=exit_code,
@@ -161,9 +165,24 @@ def main(argv=None) -> int:
         _receipt(False, 2, {"claim_error": type(e).__name__})
         return 2
 
-    ok_n = fail_n = 0
+    ok_n = fail_n = cap_n = 0
+    capped: set[str] = set()  # processes whose daily cost cap refused a call in this run
     for row in batch:
-        ok, err = _run_one(row)
+        pid = str(row["process_id"])
+        if pid in capped:
+            ok, err = False, _COST_CAP_ERR  # no further paid attempt for a capped process
+        else:
+            ok, err = _run_one(row)
+        if not ok and _COST_CAP_MARK in str(err or ""):
+            # A budget refusal is not a failure of the work: the cap resets, the window returns.
+            # Marking it 'failed' (LQ-2162) retired 1,000+ requests and reddened the lane daily.
+            capped.add(pid)
+            if llm_deferral.release(str(row["id"]), error=err) == "pending":
+                cap_n += 1
+                continue
+            fail_n += 1  # attempts exhausted: retired, loudly
+            print(f"[deferred-drain] {pid}: retired after cost-cap deferrals: {err}", file=sys.stderr)
+            continue
         llm_deferral.complete(str(row["id"]), ok=ok, error=err)
         ok_n, fail_n = (ok_n + 1, fail_n) if ok else (ok_n, fail_n + 1)
         if not ok:
@@ -172,15 +191,16 @@ def main(argv=None) -> int:
     after = llm_deferral.queue_summary()
     result = {"checked_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
               "claimed": len(batch), "ok": ok_n, "failed": fail_n,
+              "deferred_cost_cap": cap_n, "capped_processes": sorted(capped),
               "expired": expired, "reclaimed": reclaimed,
               "forced": bool(args.force), **after}
     _write_heartbeat(result)
     rc = 1 if fail_n else 0
     _receipt(fail_n == 0, rc, {"claimed": len(batch), "completed": ok_n, "failed": fail_n,
-                            "expired": expired, "reclaimed": reclaimed})
+                            "deferred_cost_cap": cap_n, "expired": expired, "reclaimed": reclaimed})
     print(json.dumps(result, indent=2) if args.json
           else f"[deferred-drain] {len(batch)} claimed, {ok_n} ok, {fail_n} failed, "
-               f"{expired} expired, {after['pending']} still pending")
+               f"{cap_n} deferred (cost cap), {expired} expired, {after['pending']} still pending")
     return rc
 
 

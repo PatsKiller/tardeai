@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "test_drain_cost_cap_lq2162_20261111",
+  "files": [
+    "tests/test_drain_cost_cap_lq2162_20261111.py"
+  ],
+  "anchor": "DRAIN-COST-CAP-LQ2162",
+  "comment": [
+    "ANCHOR: DRAIN-COST-CAP-LQ2162 \u2014 llm-deferred-drain returns a request refused by a per-process daily cost cap to the queue (next window, attempt-bounded) instead of marking it failed, stops paying attempts for a capped process within the batch, and exits 0 for pure cap deferrals; real errors and exhausted attempts still fail."
+  ]
+}
