@@ -31580,6 +31580,14 @@ def _home_since_close():
     return {"status": "ok", **snap, "window_now": win, "freshness": _sc.freshness(snap, now=now), "as_of_now": now.isoformat()}
 
 
+def _home_incidents():
+    """GET /api/v2/home/incidents — open alert incidents for Home (LQ-20261107-2147). Read-only; a failed read is
+    ``status: UNKNOWN``, never an empty list (lib/home_incidents.py)."""
+    from lib import home_incidents as _hi
+
+    return _hi.build(_db_query)
+
+
 _HOME_CIO_CARD_CACHE: dict = {}
 
 
@@ -37208,12 +37216,19 @@ def _ui_prefs_get(query=None):
         )
     else:
         r = _db_query("SELECT value, updated_at FROM ui_prefs WHERE key=%s", (key,), fetch="one")
-    return {
+    out = {
         "ok": True,
         "key": key,
         "value": _json_clean(r["value"]) if r else None,
         "updated_at": _json_clean(r["updated_at"]) if r else None,
     }
+    if key == "home.last_seen":  # LQ-20261107-2142: the page-facing reading (RECORDED | NOT_RECORDED | UNKNOWN)
+        from datetime import datetime as _dt, timezone as _tz
+
+        from lib import home_last_seen as _hls
+
+        out["read"] = _hls.read(out["value"], out["updated_at"], now=_dt.now(_tz.utc), exists=r is not None)
+    return out
 
 
 def _ui_prefs_set(body=None):
@@ -37231,6 +37246,18 @@ def _ui_prefs_set(body=None):
     max_bytes = 262144
     if len(blob.encode("utf-8")) > max_bytes:
         return {"ok": False, "error": f"value too large ({max_bytes // 1024}KB cap)"}
+    if key == "home.last_seen":  # LQ-20261107-2142: only {seen_at, client?}; a stale tab cannot rewind it
+        from datetime import datetime as _dt, timezone as _tz
+
+        from lib import home_last_seen as _hls
+
+        norm, why = _hls.validate(b.get("value"), now=_dt.now(_tz.utc))
+        if norm is None:
+            return {"ok": False, "error": why}
+        cur = _db_query("SELECT value FROM ui_prefs WHERE key=%s", (key,), fetch="one")
+        if cur and _hls.is_rewind(norm, cur["value"]):
+            return {"ok": True, "key": key, "unchanged": True, "reason": "a newer last-seen is already recorded"}
+        blob = _j.dumps(norm)
     _db_query(
         """INSERT INTO ui_prefs (key, value, updated_at) VALUES (%s, %s::jsonb, now())
                  ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()""",
@@ -50464,6 +50491,7 @@ ROUTES = {
     "/api/v2/home/do-now": lambda: _home_do_now(),
     "/api/v2/home/since-close": lambda: _home_since_close(),
     "/api/v2/home/cio-card": lambda: _home_cio_card(),
+    "/api/v2/home/incidents": lambda: _home_incidents(),
     "/api/v2/queue/pending": lambda: _queue_pending(),
     "/api/v2/queue/completed": lambda: _queue_completed(),
     "/api/v2/queue/failed": lambda: _queue_failed(),
