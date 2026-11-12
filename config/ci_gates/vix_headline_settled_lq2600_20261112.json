@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "vix_headline_settled_lq2600_20261112",
+  "files": [
+    "tests/test_vix_headline_settled_lq2600_20261112.py"
+  ],
+  "anchor": "VIX_HEADLINE_SETTLED_LQ2600_20261112",
+  "comment": [
+    "ANCHOR: VIX_HEADLINE_SETTLED_LQ2600_20261112 \u2014 LQ-20261107-2600: Cboe's $VIX prints stop at the 16:15 ET settlement (measured: 53 prints/day, nothing 16:15..03:15, writer lane 105/105 RUN_DONE naming cboe_not_calculating), so the headline judges staleness against the configured printing window: inside it the operator's 30-min line, outside it the last settlement (calendar-aware, early close 13:15), and a print that predates the settlement IS stale."
+  ]
+}

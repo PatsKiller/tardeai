@@ -7,8 +7,12 @@ only because it was older than ``max_trade_age_minutes``, so the headline kept r
 
 The rule (constitution: last-known-good with age; unknown beats wrong): a print NEWER than the stored one is written
 once, with its TRUE print time, and marked ``written_stale`` -- it can never read as FRESH. A print that is not newer
-than the stored one is never written. ``produced_count`` counts these rows, and the surface still reads STALE with the
+than the stored one is never written. ``produced_count`` counts these rows, and the surface still reads the
 real print time (``16:15 ET``), not the older overnight print.
+
+LQ-20261107-2600 later measured that 16:15 ET is Cboe's settlement and the last print of the day, so the surface rule
+is session-aware: at 20:00 the settlement print reads FRESH/settled (the row's own clock is still what it shows), and
+it is a print that predates the settlement that reads STALE. The lane's ``written_stale`` status is unchanged.
 
 Synthetic values only (public repo). No DB, no network, no Schwab.
 """
@@ -184,15 +188,19 @@ def _headline_for(store_rows: list) -> dict:
     leg = {"value": values["vix_close"]["value"], "source": f"{values['vix_close']['source']}:$VIX",
            "as_of": values["vix_close"]["as_of"], "age_hours": values["vix_close"]["age_hours"]}
     return vh.from_record({"vix": leg}, now=NOW, stale_after_hours=float(vcfg["fresh_after_hours"]),
+                          printing_window=vh.parse_printing_window(vcfg["printing_window"]),
                           session_fresh_after_minutes=vcfg.get("session_fresh_after_minutes"))
 
 
-def test_the_surface_keeps_reading_stale_with_the_real_print_time_not_the_overnight_print():
+def test_the_surface_keeps_the_real_print_time_not_the_overnight_print():
     head = _headline_for([("$VIX", 18.0, "continuous", None, PRINT, "schwab_index_quote_continuous", "schwab")])
-    assert (head["vix"], head["vix_state"]) == (18.0, "STALE")
-    assert "16:15 ET" in head["vix_reason"] and "min ago" in head["vix_reason"]
+    # LQ-1872 wrote this row labelled written_stale; LQ-2600 then measured that 16:15 ET is Cboe's settlement, so at
+    # 20:00 the settlement print is the current-for-session one and reads FRESH/settled while still showing its clock.
+    assert (head["vix"], head["vix_state"], head["vix_fresh_rule"]) == (18.0, "FRESH", "settled")
+    assert head["vix_observation_time"] == PRINT.isoformat()
+    assert head["vix_expected_print"] == datetime(2026, 11, 10, 16, 15, tzinfo=ET).isoformat()
     assert head["vix_source"] == "market_quotes:schwab:$VIX"
-    assert head["vix_stale"] is True
+    assert head["vix_stale"] is False
 
 
 def test_the_continuous_source_is_admissible_to_the_header_monitor():

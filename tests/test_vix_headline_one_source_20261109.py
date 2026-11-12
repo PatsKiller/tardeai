@@ -19,8 +19,12 @@ for _p in (ROOT / "scripts", ROOT):
 
 from lib import cio_truth  # noqa: E402
 from lib import vix_headline as vh  # noqa: E402
+from lib.market_regime import vix_complex as vc  # noqa: E402
 
 NOW = datetime(2026, 1, 12, 17, 0, tzinfo=timezone.utc)  # a synthetic Monday, 12:00 ET
+# LQ-20261107-2600: the freshness rule follows the configured VIX printing window; a direct from_record()
+# call states it explicitly instead of inheriting an hour hardcoded in the module.
+WINDOW = vh.parse_printing_window(vc.load_config()["printing_window"])
 
 
 def _db(quotes=(), fred=()):
@@ -89,9 +93,9 @@ def test_no_row_is_unavailable_never_zero_and_a_read_failure_is_named():
 
 def test_a_future_or_unzoned_clock_is_undated_not_fresh():
     rec = {"vix": {"value": 20.0, "source": "x", "as_of": "2026-01-12T09:00:00"}, "missing": []}
-    assert vh.from_record(rec, now=NOW, stale_after_hours=26)["vix_state"] == "UNDATED"
+    assert vh.from_record(rec, now=NOW, stale_after_hours=26, printing_window=WINDOW)["vix_state"] == "UNDATED"
     rec["vix"]["as_of"] = "2026-01-13T09:00:00+00:00"
-    out = vh.from_record(rec, now=NOW, stale_after_hours=26)
+    out = vh.from_record(rec, now=NOW, stale_after_hours=26, printing_window=WINDOW)
     assert out["vix_state"] == "UNDATED" and out["vix_observation_time"] is None
 
 

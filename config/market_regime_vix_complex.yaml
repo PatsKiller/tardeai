@@ -23,6 +23,22 @@ continuous_source: schwab
 # Weekday staleness line for the headline (scripts/lib/vix_headline.py): older than this is STALE with its time.
 session_fresh_after_minutes: 30
 
+# LQ-20261107-2600 (lead 2026-11-12T1804): WHEN a VIX print can exist, so the headline judges staleness
+# against the session instead of a wall clock the source cannot meet. Measured 2026-11-12:
+#   * market_quotes:schwab:$VIX holds 15-min prints 03:15..16:15 ET on 11-11 and 11-12, and NOTHING between
+#     16:15 and 03:15 (53 prints/day; the provider stops at the settlement);
+#   * the writer lane vix-index-quotes-schwab fired every 15 min all evening (17 runs 14:00-18:00 ET, all
+#     RUN_DONE; 105/105 RUN_DONE since 11-11 16:00 ET) and its 18:00 receipt reads the 16:15 print and names
+#     `cboe_not_calculating` -- the writer is alive; the index simply stops printing.
+# So: inside [start_et, official close + settlement_after_close_minutes) the minute line above applies;
+# outside it the newest print any source could have is the last settlement, and a print that reaches it is
+# current-for-session (not STALE) while one that predates it IS stale (a missed settle write, not an evening).
+# Both values live here so no hour is hardcoded in the check. start_et is the trading day's first print; the
+# settlement offset follows the exchange calendar, so an early close settles at 13:15, not 16:15.
+printing_window:
+  start_et: "03:15"
+  settlement_after_close_minutes: 15
+
 # Schwab CBOE index symbol -> market_regime_indicators.indicator_key. The lane's own `schwab.indices` list must carry
 # these symbols (config/market_risk_offhours_quotes.yaml, symbol patch in the LQ-20261107-969 handoff) and the lane
 # receipt names any the provider refuses; this collector then reports that key UNKNOWN rather than substituting one.

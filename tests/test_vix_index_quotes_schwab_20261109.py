@@ -9,8 +9,10 @@ FAIL-BEFORE (pinned below against the unchanged off-hours lane): a fresh pre-mar
 
 PASS-AFTER: ``scripts/vix_index_quotes_schwab.py`` is emulated for every 15-min slot from Sunday 18:00 to Friday
 20:00 ET (488 slots) against a synthetic Cboe model, and every slot's stored row is read back through the one headline
-read (``vix_headline`` -> ``vix_complex``). Cboe does not calculate VIX between 16:15 and 03:15 ET; those slots
-must say so (``stale_print`` with the print's time, and STALE on the surface), never be missing and never be FRESH.
+read (``vix_headline`` -> ``vix_complex``). Cboe does not calculate VIX between 16:15 and 03:15 ET; those slots keep
+the 16:15 print and say so (``stale_print``, with the print's own time, never missing). LQ-20261107-2600 measured that
+16:15 IS the day's settlement, so the surface reads that stored print as current-for-session (FRESH/settled) rather
+than condemning the evening as stale; a print that predated the settlement would read STALE with the settlement named.
 
 Synthetic values only (public repo). No DB, no network, no Schwab.
 """
@@ -365,13 +367,25 @@ def test_every_calculating_slot_writes_and_reads_fresh_including_every_session_b
             assert (row["vix_status"], row["headline_state"]) == ("written", "FRESH"), row
 
 
-def test_the_cboe_gap_is_stale_with_its_time_never_missing_and_never_fresh(week):
+def test_the_cboe_gap_reads_current_for_session_with_the_print_time_never_missing(week):
+    """LQ-2600: the model's last RTH print is the 16:15 settlement, so the evening gap is FRESH/settled; the surface
+    still shows the print's own time and never a missing value, and a print past the minute line is STALE."""
     for r in week:
+        head = r["headline"]
+        assert (head["vix"], head["vix_observation_time"]) != (None, None), r
         age = (r["fire"] - datetime.fromisoformat(r["print_at"])).total_seconds() / 60.0
-        assert r["headline_state"] == ("FRESH" if age <= 30 else "STALE"), r
-        if r["headline_state"] == "STALE":
+        if head["vix_fresh_rule"] == "settled":
+            assert head["vix_state"] == "FRESH", r  # the stored print IS the settlement the rule asks for
+        else:
+            assert head["vix_state"] == ("FRESH" if age <= 30 else "STALE"), r
+        if head["vix_state"] == "STALE":
             hhmm = datetime.fromisoformat(r["print_at"]).astimezone(ET).strftime("%H:%M")
-            assert f"last print {hhmm} ET" in r["headline"]["vix_reason"], r["headline"]
+            assert f"last print {hhmm} ET" in head["vix_reason"], head
     after_close = next(r for r in week if r["slot"] == "2026-11-10T20:00")
-    assert (after_close["vix_status"], after_close["headline_state"]) == ("stale_print", "STALE")
-    assert "16:15 ET" in after_close["headline"]["vix_reason"]
+    assert (after_close["vix_status"], after_close["headline_state"]) == ("stale_print", "FRESH")
+    h = after_close["headline"]
+    assert h["vix_fresh_rule"] == "settled"
+    assert datetime.fromisoformat(h["vix_expected_print"]) == datetime.fromisoformat("2026-11-10T16:15:00-05:00")
+    # the print's own time, 225 min after it settled, in whatever zone the store stamped it
+    assert (datetime.fromisoformat(h["vix_observation_time"])
+            == datetime.fromisoformat("2026-11-10T16:15:00-05:00"))

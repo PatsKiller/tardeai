@@ -7,10 +7,15 @@ PROCESS   n8n lane ``header-market-freshness-health``, hourly, LaneRunReceipt@v2
           envelope (``data_broker.market_regime.get_market_regime``).
 CONTRACT  two contracts, each OK / DEGRADED / BROKEN / UNVERIFIABLE; the run verdict is the worst of the two.
           vix     OK           the header and the card both serve the headline: same admissible source (Schwab $VIX
-                               or FRED VIXCLS), same value, same observation time, and it is FRESH
-                               (age <= vix_stale_after_hours, 26 h from config/market_regime_vix_complex.yaml)
-                  DEGRADED     the headline is STALE or UNDATED (no admissible print inside the line — the number is
-                               shown grey with its age), or the header cache is older than the newest print (lag)
+                               or FRED VIXCLS), same value, same observation time, and it is FRESH against the
+                               session rule -- inside the VIX printing window (config/market_regime_vix_complex.yaml)
+                               that is the minute line; outside it the newest print Cboe publishes is the last
+                               settlement, and the settlement print itself is FRESH (LQ-20261107-2600: the source
+                               stops at 16:15 ET, so its evening age is expected, not a stall)
+                  DEGRADED     the headline is STALE or UNDATED: inside the printing window no admissible print
+                               within the line, or outside it a print that PREDATES the last settlement (a missed
+                               settle write) -- the number is shown grey with its age -- or the header cache is
+                               older than the newest print (lag)
                   BROKEN       no admissible VIX at all; the header or the card serves another source (the scanner
                                run's Yahoo-first VIX, an unfiltered regime row, a banned feed); or the header and the
                                card disagree on value or observation time (one VIX shown twice as two numbers)
@@ -85,7 +90,8 @@ def vix_contract(*, headline: Mapping[str, Any], header: Optional[Mapping[str, A
     """Judge the header tile and the CIO card against the one headline VIX. Pure; no I/O."""
     h = {"vix": headline.get("vix"), "source": headline.get("vix_source"),
          "as_of": headline.get("vix_observation_time"), "state": headline.get("vix_state"),
-         "age_hours": headline.get("vix_age_hours"), "stale_after_hours": headline.get("vix_stale_after_hours")}
+         "age_hours": headline.get("vix_age_hours"), "stale_after_hours": headline.get("vix_stale_after_hours"),
+         "rule": headline.get("vix_fresh_rule"), "expected_print": headline.get("vix_expected_print")}
     out = {"headline": h, "header": None, "card": None}
     if header is None:
         return {**out, "verdict": "UNVERIFIABLE", "reason": "served header projection missing or unreadable"}

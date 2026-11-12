@@ -81,6 +81,21 @@ def load_config(path: Path | str | None = None) -> dict[str, Any]:
     if not (float(sig["extreme"]) >= float(sig["high"]) >= float(sig["normal"])):
         raise ConfigError(f"{p}: vix_signal thresholds must not increase: "
                           f"normal {sig['normal']} high {sig['high']} extreme {sig['extreme']}")
+    # LQ-20261107-2600: when a VIX print can exist. The headline grades freshness inside this window by
+    # session_fresh_after_minutes and outside it against the last settlement, so a typo here must fail the
+    # config load (a named ConfigError), not silently make every evening read as a stall.
+    window = doc.get("printing_window")
+    if not isinstance(window, dict):
+        raise ConfigError(f"{p}: printing_window must be a mapping of start_et + settlement_after_close_minutes")
+    start_raw = str(window.get("start_et") or "").strip()
+    try:
+        datetime.strptime(start_raw, "%H:%M")
+    except ValueError as exc:
+        raise ConfigError(f"{p}: printing_window.start_et must be HH:MM (ET), not {start_raw!r}") from exc
+    off = window.get("settlement_after_close_minutes")
+    if isinstance(off, bool) or not isinstance(off, (int, float)) or not math.isfinite(float(off)) \
+            or not 0 < float(off) <= 120:
+        raise ConfigError(f"{p}: printing_window.settlement_after_close_minutes must be in (0, 120], not {off!r}")
     return doc
 
 
