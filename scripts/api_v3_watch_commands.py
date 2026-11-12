@@ -8,6 +8,12 @@ POST /api/v3/watch/commands/suggest-dismiss   (System Suggests: hide a suggested
 POST /api/v3/watch/commands/suggest-restore   (undo a dismissal)
 
 No provider calls. Broker remains the read model.
+
+Failure contract (LQ-20261107-2486): every handler returns a dict, and a failed command always carries
+``ok: False`` plus the cause (``error`` = exception type or reason code, ``detail`` when there is one) and
+``http_status`` = its class — 400 when the command as sent cannot be executed, 503 when the store refused
+or lost the write. The api_v2 route maps non-ok to that status, so a failed write is never a 200 and no
+client can show it as success.
 """
 from __future__ import annotations
 
@@ -29,7 +35,7 @@ def post_star(body: dict | None = None) -> dict[str, Any]:
     symbol = str(body.get("symbol") or "").upper().strip()
     action = str(body.get("action") or "star").lower()  # star | unstar
     if not symbol:
-        return {"ok": False, "error": "SYMBOL_REQUIRED", "provider_calls": 0}
+        return {"ok": False, "error": "SYMBOL_REQUIRED", "provider_calls": 0, "http_status": 400}
     try:
         from db_adapter import _get_conn
         conn = _get_conn()
@@ -56,7 +62,8 @@ def post_star(body: dict | None = None) -> dict[str, Any]:
             "accepted_at": _now(),
         }
     except Exception as e:
-        return {"ok": False, "error": type(e).__name__, "detail": str(e)[:160], "provider_calls": 0}
+        return {"ok": False, "error": type(e).__name__, "detail": str(e)[:160], "provider_calls": 0,
+                "http_status": 503}
 
 
 def post_list_membership(body: dict | None = None) -> dict[str, Any]:
@@ -66,7 +73,7 @@ def post_list_membership(body: dict | None = None) -> dict[str, Any]:
     label = str(body.get("list_id") or body.get("label") or "").strip()
     action = str(body.get("action") or "add").lower()
     if not symbol or not label:
-        return {"ok": False, "error": "SYMBOL_AND_LIST_REQUIRED", "provider_calls": 0}
+        return {"ok": False, "error": "SYMBOL_AND_LIST_REQUIRED", "provider_calls": 0, "http_status": 400}
     # Shadow-safe: record intent only if directive row path is complex — do not invent directives
     return {
         "ok": True,
@@ -86,7 +93,7 @@ def post_alert(body: dict | None = None) -> dict[str, Any]:
     body = body or {}
     symbol = str(body.get("symbol") or "").upper().strip()
     if not symbol:
-        return {"ok": False, "error": "SYMBOL_REQUIRED", "provider_calls": 0}
+        return {"ok": False, "error": "SYMBOL_REQUIRED", "provider_calls": 0, "http_status": 400}
     return {
         "ok": True,
         "command": "alert",
@@ -144,10 +151,10 @@ def post_suggest_decision(action: str, body: dict | None = None, *, db_execute=N
 
     body = body or {}
     if action not in _SUGGEST_EVENTS:
-        return {"ok": False, "error": "UNKNOWN_ACTION", "provider_calls": 0}
+        return {"ok": False, "error": "UNKNOWN_ACTION", "provider_calls": 0, "http_status": 400}
     symbol = str(body.get("symbol") or "").upper().strip()
     if not symbol or not _re.fullmatch(r"[A-Z0-9.\-^/]{1,12}", symbol):
-        return {"ok": False, "error": "SYMBOL_REQUIRED", "provider_calls": 0}
+        return {"ok": False, "error": "SYMBOL_REQUIRED", "provider_calls": 0, "http_status": 400}
     reason = str(body.get("reason") or "").strip()[:300] or None
     # `by` used to read itself here (`_principal() or (str(by)[:64] if by else "")`), which raised
     # UnboundLocalError on every unauthenticated call — the decision was lost rather than recorded as
@@ -173,7 +180,8 @@ def post_suggest_decision(action: str, body: dict | None = None, *, db_execute=N
             cur.execute(sql, params)
             conn.commit()
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": type(e).__name__, "detail": str(e)[:160], "provider_calls": 0}
+        return {"ok": False, "error": type(e).__name__, "detail": str(e)[:160], "provider_calls": 0,
+                "http_status": 503}
     try:  # the next read shows the change at once
         from lib.data_broker import watch_prospects as _wp
 
@@ -212,10 +220,10 @@ def post_mine_decision(body: dict | None = None, *, db_execute=None, db_query=No
     body = body or {}
     action = str(body.get("action") or "").lower()
     if action not in _MINE_EVENTS:
-        return {"ok": False, "error": "ACTION_MUST_BE_ADD_OR_REMOVE", "provider_calls": 0}
+        return {"ok": False, "error": "ACTION_MUST_BE_ADD_OR_REMOVE", "provider_calls": 0, "http_status": 400}
     symbol = str(body.get("symbol") or "").upper().strip()
     if not symbol or not _re.fullmatch(r"[A-Z0-9.\-^/]{1,12}", symbol):
-        return {"ok": False, "error": "SYMBOL_REQUIRED", "provider_calls": 0}
+        return {"ok": False, "error": "SYMBOL_REQUIRED", "provider_calls": 0, "http_status": 400}
     note = str(body.get("note") or body.get("reason") or "").strip()[:300] or None
     surface = str(body.get("surface") or "watch")[:40]
     by = _principal() or (str(by)[:64] if by else "") or "unauthenticated"
@@ -260,7 +268,8 @@ def post_mine_decision(body: dict | None = None, *, db_execute=None, db_query=No
                    "VALUES (%s, %s, 'operator', 'command_center', 'recorded', %s, %s::jsonb)",
                    (_MINE_EVENTS[action], symbol, msg[:500], _json.dumps(payload)))
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": type(e).__name__, "detail": str(e)[:160], "provider_calls": 0}
+        return {"ok": False, "error": type(e).__name__, "detail": str(e)[:160], "provider_calls": 0,
+                "http_status": 503}
     try:
         from lib.data_broker import watch_prospects as _wp
 
