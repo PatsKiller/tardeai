@@ -455,8 +455,9 @@ def protection_for(p: dict, *, broker_available: bool) -> dict:
     """
     kind = _exempt_kind(p)
     value = _number(p.get("market_value"))
-    price_missing = kind is None and value is None
-    counted = kind is None and (value is None or value >= COUNT_FLOOR_USD)
+    # No usable price = missing or <= 0 (a feed that writes 0 for no quote); never "under the floor" (review 2427 F3).
+    price_missing = kind is None and (value is None or value <= 0)
+    counted = kind is None and (price_missing or value >= COUNT_FLOOR_USD)
     source, as_of = p.get("stop_source"), p.get("stop_captured_at")
     cause = None
     if kind:

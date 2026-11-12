@@ -36,8 +36,15 @@ def test_known_value_under_floor_is_still_not_counted():
     assert out["protection"]["counted"] is False and out["protection"]["price_missing"] is False
 
 
-def test_zero_value_is_a_known_value_not_a_missing_one():
-    out = truth.protection_for(pos(market_value=0), broker_available=True)
+@pytest.mark.parametrize("value", [0, 0.0, -5.0])
+def test_zero_or_negative_value_is_a_missing_price_and_stays_counted(value):
+    # LQ-2436 / review 2427 F3: a held position worth <= 0 has no usable price; it is never "under $100".
+    out = truth.protection_for(pos(market_value=value), broker_available=True)
+    assert out["protection"]["counted"] is True and out["protection"]["price_missing"] is True
+
+
+def test_small_positive_value_is_under_the_floor_not_missing():
+    out = truth.protection_for(pos(market_value=40.0), broker_available=True)
     assert out["protection"]["counted"] is False and out["protection"]["price_missing"] is False
 
 
