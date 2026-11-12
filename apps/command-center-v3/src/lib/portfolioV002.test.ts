@@ -46,10 +46,10 @@ const mixed = positionsFrom(wire([
 ]), CLOSED)
 const mm = protectionModel(ok(wire([])), mixed)
 assert.equal(mm.verdict, 'GAP')
-// GAP (by value), then UNKNOWN, then WARN — not by value. TINY is a GAP under $100: it counts (F1).
-assert.deepEqual(mm.action.map(p => p.symbol), ['GGG', 'TINY', 'UUU', 'EEE'])
-assert.equal(mm.counted, 5); assert.equal(mm.listedNotCounted, 1); assert.equal(mm.exempt, 1)
-assert.equal(mm.gap, 2); assert.equal(mm.warn, 1); assert.equal(mm.unknown, 1)
+// GAP, then UNKNOWN, then WARN (backend order) — not by value. TINY is a KNOWN $40 GAP: listed, not counted (DECISIONS).
+assert.deepEqual(mm.action.map(p => p.symbol), ['GGG', 'UUU', 'EEE'])
+assert.equal(mm.counted, 4); assert.equal(mm.listedNotCounted, 2); assert.equal(mm.exempt, 1)
+assert.equal(mm.gap, 1); assert.equal(mm.warn, 1); assert.equal(mm.unknown, 1)
 const onlyUnk = protectionModel(ok(wire([])), mixed.filter(p => p.symbol === 'UUU' || p.symbol === 'PPP'))
 assert.equal(onlyUnk.verdict, 'UNKNOWN')   // an unread stop never rolls up to OK
 assert.equal(onlyUnk.brokers[0].state, 'UNKNOWN')
@@ -83,10 +83,11 @@ const rows = statusRows(ok(wire([])), inc, mixed, NOW)
 const risk = rows.find(r => r.id === 'row-risk')!; assert.equal(risk.state, 'UNKNOWN'); assert.equal(risk.needsBackend, true)
 const alerts = rows.find(r => r.id === 'row-alerts')!; assert.notEqual(alerts.state, 'OK'); assert.doesNotMatch(alerts.text, /^0\b/)
 
-// 8. Filters: unprotected = GAP + WARN; unknown = UNKNOWN; under $100 = a PROTECTED row listed, not counted.
-assert.deepEqual(filterPositions(mixed, 'unprotected', 'all').map(p => p.symbol).sort(), ['EEE', 'GGG', 'TINY'])
+// 8. Filters: unprotected = counted GAP + WARN; unknown = UNKNOWN; under $100 = known value under the floor, any state.
+assert.deepEqual(filterPositions(mixed, 'unprotected', 'all').map(p => p.symbol).sort(), ['EEE', 'GGG'])
 assert.deepEqual(filterPositions(mixed, 'unknown', 'all').map(p => p.symbol), ['UUU'])
-assert.deepEqual(filterPositions(mixed, 'under100', 'all').map(p => p.symbol), ['SMOL'])
+assert.deepEqual(filterPositions(mixed, 'under100', 'all').map(p => p.symbol).sort(), ['SMOL', 'TINY'])
+assert.equal(mixed.find(p => p.symbol === 'TINY')!.protection, 'GAP')   // listed with its real state, not hidden
 
 // 9. Audit categories come from the same model (no second source of truth).
 assert.ok(auditCategories(mm, p0).some(c => c.category.includes('Unprotected')))
@@ -105,14 +106,38 @@ assert.deepEqual(p0Items(ok(wire([])), f1)!.map(x => x.category), ['Unprotected 
 // ...and an unpriced UNKNOWN row is not hidden either.
 const unpricedUnk = row({ symbol: 'UNP', market_value: null, price: null, protection_state: 'UNKNOWN', protection: { state: 'UNKNOWN', cause: 'No Stop Read', counted: false } })
 assert.equal(verdictOf([okRow('PPP'), unpricedUnk]).verdict, 'UNKNOWN')
-// The floor still drops a small PROTECTED row from the count (display only).
+// The floor drops a row with a KNOWN value under $100 from the count, whatever its state (DECISIONS-20261111).
 const small = positionsFrom(wire([row({ symbol: 'SML', market_value: 50, protection: { state: 'PROTECTED', as_of: AT, counted: false } })]), NOW)[0]
 assert.equal(small.counted, false); assert.equal(small.underFloor, true)
+
+// LQ-2469 (folded, cc-sonnet-1 tests 3b): an unknown value is never small.
+const unp = positionsFrom(wire([
+  row({ symbol: 'NOPX', market_value: null, price: null, protection_state: 'GAP', protection: { state: 'GAP', counted: false } }),
+  row({ symbol: 'PPP', market_value: 4000 }),
+]), NOW)
+const unpModel = protectionModel(ok(wire([])), unp)
+assert.equal(unp.find(p => p.symbol === 'NOPX')!.counted, true); assert.equal(unp.find(p => p.symbol === 'NOPX')!.unpriced, true)
+assert.equal(unpModel.verdict, 'GAP'); assert.equal(unpModel.gap, 1); assert.equal(unpModel.listedNotCounted, 0)
+assert.deepEqual(unpModel.action.map(p => p.symbol), ['NOPX'])
+assert.equal(protectionModel(ok(wire([])), unp.filter(p => p.symbol === 'NOPX')).verdict, 'GAP')
+// an unpriced PROTECTED row is counted too (never silently small)
+const unpProt = positionsFrom(wire([row({ symbol: 'NOPX', market_value: null, protection: { state: 'PROTECTED', as_of: AT, counted: false } })]), NOW)
+assert.equal(unpProt[0].counted, true); assert.equal(protectionModel(ok(wire([])), unpProt).verdict, 'OK')
+// the served price_missing flag counts the row even if a stale market_value rides along
+const pm2 = positionsFrom(wire([row({ market_value: 0, protection_state: 'GAP', protection: { state: 'GAP', counted: false, price_missing: true } })]), NOW)[0]
+assert.equal(pm2.counted, true); assert.equal(pm2.underFloor, false)
+// a KNOWN $40 GAP is listed, not counted; an unpriced cash/exempt row is not counted and not 'unpriced'
+const g40 = positionsFrom(wire([row({ market_value: 40, protection_state: 'GAP', protection: { state: 'GAP', counted: false } })]), NOW)[0]
+assert.equal(g40.counted, false); assert.equal(g40.underFloor, true); assert.equal(g40.protection, 'GAP')
+const ucash = positionsFrom(wire([row({ market_value: null, is_cash: true, protection_state: 'EXEMPT', protection: { state: 'EXEMPT', counted: false } })]), NOW)[0]
+assert.equal(ucash.counted, false); assert.equal(ucash.unpriced, false); assert.equal(ucash.underFloor, false)
 
 // F2: zero counted positions is UNKNOWN unless the position count confirms zero.
 const cashOnly = [row({ symbol: 'CASH', is_cash: true, protection_state: 'EXEMPT', protection: { state: 'EXEMPT', counted: false } })]
 const f2 = verdictOf(cashOnly)
 assert.equal(f2.verdict, 'UNKNOWN'); assert.equal(f2.counted, 0); assert.ok(f2.cause)
+// LQ-2469 3c: cash plus a known $40 PROTECTED row is still zero counted -> UNKNOWN, never CLEAR.
+assert.equal(verdictOf([...cashOnly, row({ symbol: 'TINY', market_value: 40, protection: { state: 'PROTECTED', as_of: AT, counted: false } })]).verdict, 'UNKNOWN')
 assert.equal(verdictOf(cashOnly, NOW, { position_counts: { agree: false, position_count: 0 } }).verdict, 'UNKNOWN')
 assert.equal(verdictOf(cashOnly, NOW, { position_counts: { agree: true, position_count: 0 } }).verdict, 'OK')
 assert.equal(verdictOf(cashOnly, NOW, { position_counts: { agree: true, position_count: 3 } }).verdict, 'UNKNOWN')

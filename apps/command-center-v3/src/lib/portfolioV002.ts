@@ -13,8 +13,9 @@
  *  (2026-11-12, R1/R2, config/protection_verdict.json in LQ-2412) and rolls the rows up GAP > UNKNOWN > WARN > OK,
  *  the order of the backend rollups (LQ-2412 protection_verdict, LQ-2415). No served rollup is read yet (G2), so
  *  the verdict is marked NEEDS BACKEND; until one is, the client verdict errs to UNKNOWN, never to OK (LQ-2460):
- *    - every non-exempt, non-cash row that is not PROTECTED counts, whatever its value or price (the $100 floor
- *      exempts only a PROTECTED row from the count);
+ *    - an unknown value is never small: an unpriced non-exempt, non-cash row counts even when the wire says
+ *      counted:false (LQ-2469, the cio_truth rule after LQ-2431). Only a KNOWN value under $100 is listed, not
+ *      counted, not hidden (DECISIONS-20261111);
  *    - no counted position reads UNKNOWN unless the position count independently confirms zero;
  *    - R1: a GAP whose only stop expired is UNKNOWN in the regular session, WARN after the close (D1);
  *    - R2: a GAP whose stop read is older than the freshness limit is UNKNOWN; the last-known GAP stays listed.
@@ -60,7 +61,7 @@ export function unwrap(body: unknown): unknown {
 }
 
 // ── wire shapes (only the fields this page reads) ─────────────────────────────────────────────────────
-export interface ProtectionWire { state?: string; reason?: string | null; cause?: string | null; source?: string | null; as_of?: string | null; counted?: boolean; expired_stop?: boolean }
+export interface ProtectionWire { state?: string; reason?: string | null; cause?: string | null; source?: string | null; as_of?: string | null; counted?: boolean; expired_stop?: boolean; price_missing?: boolean }
 export interface HoldingWire {
   symbol?: string; account?: string; account_id?: string; account_label?: string; broker?: string
   quantity?: number | null; shares?: number | null; market_value?: number | null; price?: number | null
@@ -123,7 +124,7 @@ export const STOP_OWNER = 'stop_health_check / Stop Management'
 export interface PositionModel {
   key: string; symbol: string; account: string; broker: string
   shares: number | null; value: number | null; price: number | null; dayPct: number | null; dayUsd: number | null
-  isCash: boolean; counted: boolean; underFloor: boolean
+  isCash: boolean; counted: boolean; underFloor: boolean; unpriced: boolean
   /** R2: the backend said GAP but its stop read is past the freshness limit; the row reads UNKNOWN, the GAP stays listed. */
   lastKnownGap: boolean
   protection: RowProtection; chip: string; reason: string; cause: string | null; source: string; verifiedAt: string | null
@@ -203,16 +204,17 @@ export function positionsFrom(w: HoldingsWire | null, nowMs: number = Date.now()
     const isCash = !!h.is_cash
     const pr = rowProtection(h, ctx)
     const countedFlag = h.protection?.counted
-    // F1 (REVIEW-2448): the backend's counted:false (under $100, or no price) may drop only a PROTECTED row from the
-    // count. An unpriced or small GAP / UNKNOWN / WARN row still counts: an unpriced GAP stays a GAP.
-    const floorDrops = countedFlag === false && pr.protection === 'PROTECTED'
-    const counted = pr.protection !== 'EXEMPT' && !isCash && !floorDrops
+    // F1 (REVIEW-2448, folded from LQ-2469): an unknown value is never small. An unpriced row stays counted even when
+    // the wire says counted:false, so an unpriced GAP stays a GAP. Only a KNOWN value under the floor is listed, not
+    // counted (operator DECISIONS-20261111: "under $100: listed, not counted, not hidden"; cio_truth after LQ-2431).
+    const unpriced = value == null || h.protection?.price_missing === true
+    const counted = pr.protection !== 'EXEMPT' && !isCash && ((countedFlag ?? true) || unpriced)
     const symbol = String(h.symbol || '?').toUpperCase()
     const account = String(h.account_label || h.account || h.account_id || '—')
     return {
       key: `${h.account_id || h.account || i}:${symbol}`, symbol, account, broker: String(h.broker || '—'),
       shares: num(h.shares) ?? num(h.quantity), value, price: num(h.price), dayPct: num(h.day_change_pct), dayUsd: num(h.day_change),
-      isCash, counted, underFloor: pr.protection !== 'EXEMPT' && !isCash && floorDrops,
+      isCash, counted, unpriced: unpriced && !isCash, underFloor: pr.protection !== 'EXEMPT' && !isCash && !counted,
       ...pr, priceStale: h.price_stale ?? null, raw: h,
     }
   }).sort((a, b) => (b.value ?? -1) - (a.value ?? -1))
