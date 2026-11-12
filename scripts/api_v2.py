@@ -31582,6 +31582,51 @@ def _home_since_close():
     return {"status": "ok", **snap, "window_now": win, "freshness": _sc.freshness(snap, now=now), "as_of_now": now.isoformat()}
 
 
+_HOME_INCIDENTS_CACHE: dict = {}
+
+
+def _home_incidents():
+    """GET /api/v2/home/incidents — HomeIncidents@v1 (LQ-20261107-2147). Read-only; a failed read is
+    ``state: UNKNOWN`` / ``TIMED_OUT`` with null counts, never an empty list (lib/home_incidents.py)."""
+    import time as _t
+
+    from lib import home_incidents as _hi
+
+    hit = _HOME_INCIDENTS_CACHE.get("v")
+    if hit and _t.monotonic() - hit[0] < _hi.CACHE_TTL_S:
+        return _hi.restamp(hit[1], int(_t.monotonic() - hit[0]))
+    out = _hi.build(_db_query_raising)
+    if out.get("state") == "OK":  # a failed read is retried on the next poll, never pinned for a minute
+        _HOME_INCIDENTS_CACHE["v"] = (_t.monotonic(), out)
+    return out
+
+
+def _db_query_raising(sql, params=None, fetch="all"):
+    """Like ``_db_query`` but an error propagates (so a statement timeout reads TIMED_OUT, not "no data")."""
+    _ensure_scripts_path()
+    from db_adapter import USE_DB, ensure_conn
+
+    if not USE_DB:
+        return None
+    conn = ensure_conn()
+    if conn is None:
+        return None
+    import psycopg2.extras
+
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            out = cur.fetchone() if fetch == "one" else cur.fetchall()
+        conn.commit()
+        return out
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
 _HOME_CIO_CARD_CACHE: dict = {}
 
 
@@ -37210,12 +37255,33 @@ def _ui_prefs_get(query=None):
         )
     else:
         r = _db_query("SELECT value, updated_at FROM ui_prefs WHERE key=%s", (key,), fetch="one")
-    return {
+    out = {
         "ok": True,
         "key": key,
         "value": _json_clean(r["value"]) if r else None,
         "updated_at": _json_clean(r["updated_at"]) if r else None,
     }
+    if key == "home.last_seen":  # LQ-20261107-2142: the page-facing reading (RECORDED | NOT_RECORDED | UNKNOWN)
+        from datetime import datetime as _dt, timezone as _tz
+
+        from lib import home_last_seen as _hls
+
+        out["read"] = _hls.read(out["value"], out["updated_at"], now=_dt.now(_tz.utc), exists=r is not None)
+    return out
+
+
+def _home_last_seen_gate(ctx=None):
+    """``(200, None)`` when the caller is the operator's signed-in session with same-origin CSRF, else
+    ``(status, refusal_body)``. Same rule as the Home approvals decision route (home_approvals_api)."""
+    from lib import home_approvals_api as _haa
+
+    ctx = ctx or _haa.default_ctx()
+    if _haa._operator(ctx) is None:
+        return _haa._refused("NOT_OPERATOR", "Only the operator's signed-in Command Center session can record a visit.")
+    csrf_ok, why = ctx.csrf("POST", "/api/v2/ui/prefs")
+    if not csrf_ok:
+        return _haa._refused("CSRF_REFUSED", f"Same-origin check failed ({why}); nothing was recorded.")
+    return 200, None
 
 
 def _ui_prefs_set(body=None):
@@ -37233,6 +37299,32 @@ def _ui_prefs_set(body=None):
     max_bytes = 262144
     if len(blob.encode("utf-8")) > max_bytes:
         return {"ok": False, "error": f"value too large ({max_bytes // 1024}KB cap)"}
+    if key == "home.last_seen":  # LQ-20261107-2142: server-stamped seen_at; previous_seen_at copied from the stored one
+        from datetime import datetime as _dt, timezone as _tz
+
+        from lib import home_last_seen as _hls
+
+        norm, why = _hls.stamp(b.get("value"), None, now=_dt.now(_tz.utc))
+        if norm is None:
+            return {"ok": False, "error": why}
+        # LQ-20261107-2186 F1/F2: one atomic statement through the raising query. previous_seen_at is copied from the
+        # stored seen_at in SQL (no read-then-write race), and a failed statement is a refusal, never ok:true and
+        # never "no previous visit".
+        try:
+            row = _db_query_raising(
+                """INSERT INTO ui_prefs (key, value, updated_at) VALUES (%s, %s::jsonb, now())
+                     ON CONFLICT (key) DO UPDATE
+                       SET value = EXCLUDED.value || jsonb_build_object('previous_seen_at', ui_prefs.value -> 'seen_at'),
+                           updated_at = now()
+                     RETURNING value""",
+                (key, _j.dumps(norm)),
+                fetch="one",
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "code": "STORE_UNAVAILABLE", "error": f"last visit not recorded ({type(exc).__name__})"}
+        if not row:
+            return {"ok": False, "code": "STORE_UNAVAILABLE", "error": "last visit not recorded (no confirmation from the store)"}
+        return {"ok": True, "key": key, "value": _json_clean(row["value"])}
     _db_query(
         """INSERT INTO ui_prefs (key, value, updated_at) VALUES (%s, %s::jsonb, now())
                  ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()""",
@@ -50466,6 +50558,7 @@ ROUTES = {
     "/api/v2/home/do-now": lambda: _home_do_now(),
     "/api/v2/home/since-close": lambda: _home_since_close(),
     "/api/v2/home/cio-card": lambda: _home_cio_card(),
+    "/api/v2/home/incidents": lambda: _home_incidents(),
     "/api/v2/queue/pending": lambda: _queue_pending(),
     "/api/v2/queue/completed": lambda: _queue_completed(),
     "/api/v2/queue/failed": lambda: _queue_failed(),
@@ -58404,7 +58497,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     if method == "POST" and base_path == "/api/v2/ui/prefs":
         try:
+            if str((body or {}).get("key") or "").strip() == "home.last_seen":
+                # LQ-20261107-2167 C1: the operator's own signed-in session + same-origin CSRF (enforced even in
+                # report_only), the home-approvals rail. Scoped to this key; other prefs writers are unchanged.
+                _hls_status, _hls_refusal = _home_last_seen_gate()
+                if _hls_refusal is not None:
+                    return _hls_status, _hls_refusal
             result = _ui_prefs_set(body or {})
+            if result.get("code") == "STORE_UNAVAILABLE":
+                return 503, result
             return (200 if result.get("ok") else 400), result
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
