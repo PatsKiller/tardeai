@@ -119,6 +119,23 @@ def write_request(
     return path
 
 
+def retarget(state_root: Path, target: str | Path, *, now: float | None = None) -> dict[str, Any]:
+    """Point an existing request at ``target`` and read it back. Never creates a request.
+
+    LQ-20261107-2246: the promote runs this before it restarts the executor by any path, so a request left by
+    an earlier promote can never outlive the restart naming a stale release. ``result`` is ``absent`` (nothing
+    to fix), ``ok`` (read back equal) or ``mismatch`` (the write did not stick: the caller must not restart)."""
+    want = str(Path(target).resolve())
+    prev = read_request(state_root)
+    if prev is None:
+        return {"result": "absent", "target": want}
+    if str(Path(prev["target"]).resolve()) != want:
+        write_request(state_root, want, now=now, requested_by="deploy-retarget")
+    back = read_request(state_root)
+    ok = back is not None and str(Path(back["target"]).resolve()) == want
+    return {"result": "ok" if ok else "mismatch", "target": want, "was": prev["target"]}
+
+
 def read_request(state_root: Path) -> dict[str, Any] | None:
     """The request, or None when absent, unreadable or not ``ExecutorDrainRequest@v1`` (fail open: no drain)."""
     try:
@@ -138,14 +155,43 @@ def read_request(state_root: Path) -> dict[str, Any] | None:
     return {**doc, "requested_at": requested_at, "deadline_s": deadline_s, "target": target}
 
 
-def drain_state(state_root: Path, code_root: Path, now: float) -> dict[str, Any] | None:
-    """What a running executor at ``code_root`` should do now. None = keep working (no applicable request)."""
+CURRENT_LINK_NAME = "CURRENT"
+CURRENT_ENV = "TRADEAI_RELEASE_CURRENT_LINK"
+
+
+def current_release(code_root: Path, env: Mapping[str, str] | None = None) -> Path | None:
+    """The release ``CURRENT`` resolves to, or None when it cannot be determined (a dev checkout, a test tree).
+
+    LQ-20261107-2246: the promote points ``CURRENT`` at the new release *before* it asks the executor to drain,
+    so a request is only an instruction while its target is what ``CURRENT`` resolves to. The link is the
+    ``CURRENT`` sibling of the executor's own release directory, or ``$TRADEAI_RELEASE_CURRENT_LINK``."""
+    environ = os.environ if env is None else env
+    try:
+        link = Path(environ.get(CURRENT_ENV) or (Path(code_root).resolve().parent / CURRENT_LINK_NAME))
+        return link.resolve() if link.is_dir() else None
+    except OSError:
+        return None
+
+
+def drain_state(
+    state_root: Path, code_root: Path, now: float, *, current_root: Path | None = None
+) -> dict[str, Any] | None:
+    """What a running executor at ``code_root`` should do now. None = keep working (no applicable request).
+
+    LQ-20261107-2246: a request whose target is not the CURRENT release is inert. On 2026-11-12 09:46 ET a
+    request left by the previous promote (target e58903163, 65 min old, never acted on) made the executor of the
+    next release drain and exit every ~10 s for 2 min: its code_root differed from the stale target. A target
+    that is not CURRENT is stale by definition. ``current_root`` overrides the detected CURRENT (tests); when
+    CURRENT cannot be determined the old behaviour holds."""
     req = read_request(state_root)
     if req is None:
         return None
     target = Path(req["target"])
     try:
         if not target.is_dir() or target.resolve() == Path(code_root).resolve():
+            return None
+        current = Path(current_root).resolve() if current_root is not None else current_release(code_root)
+        if current is not None and target.resolve() != current:
             return None
     except OSError:
         return None
