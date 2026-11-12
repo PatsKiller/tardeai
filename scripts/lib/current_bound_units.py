@@ -183,6 +183,28 @@ def market_open(now: datetime | None = None, *, trading_day: Callable[[datetime]
     return 4 <= now.hour < 20
 
 
+def deferral_category(reason: str, *, is_market_open: bool) -> str | None:
+    """Category of a standing, deliberate refusal, or None when the unit is genuinely stale and must page.
+
+    LQ-20261107-2082 (E21): the operator reads three units as noise after every promote, but the activation never
+    restarts them by policy. They are ``page_only_named`` (PAGE_ONLY_NAMED: ops-applier writes grants / engages the
+    kill switch / clears STOP), ``hard_never`` (HARD_NEVER/WORD_NEVER: execution-adjacent, broker paths, §24.10) and
+    ``market_hours`` (MARKET_HOURS_PAGE_ONLY while any US session is open: the callback poller). Everything else —
+    ``not_on_restart_safe_list``, ``restart_cap_reached``, … — is NOT deferred: no policy says it may stay on the old
+    release, so it pages. ``portfolio-server.service`` is ``separately_handled`` by the deploy and a stale one is a
+    failed deploy, never a deliberate hold.
+    """
+    if reason == PAGE_ONLY_NAMED.get("portfolio-server.service"):
+        return None
+    if reason in PAGE_ONLY_NAMED.values():
+        return "page_only_named"
+    if reason.startswith("never:"):
+        return "hard_never"
+    if is_market_open and reason in MARKET_HOURS_PAGE_ONLY.values():
+        return "market_hours"
+    return None
+
+
 def path_names_current(text: str, current_link: str) -> bool:
     """Full-path match: ``CURRENT`` as a whole path component, so ``CURRENT-foo`` never matches."""
     return re.search(rf"(^|[\s=:;'\"]){re.escape(current_link)}(/|$|[\s;'\"])", text) is not None

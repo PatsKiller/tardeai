@@ -130,7 +130,14 @@ def _atomic_write(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
-def render_page(event: str, day: str, failed: list[str], restart_failed: list[str], stale_page_only: list[dict]) -> str:
+def render_page(
+    event: str,
+    day: str,
+    failed: list[str],
+    restart_failed: list[str],
+    stale_page_only: list[dict],
+    deferred_intentional: list[dict] | None = None,
+) -> str:
     """Stable per unit set per day: no release name, no pid, no time — so the router's body dedupe holds."""
     what = "rollback" if event == "rollback" else "promote"
     lines = [f"🚨 *RELEASE NOT REACHED after {what}* — {day}"]
@@ -140,10 +147,39 @@ def render_page(event: str, day: str, failed: list[str], restart_failed: list[st
         if name not in restart_failed:
             lines.append(f"• *{name}*: restarted but not running the new release")
     for u in stale_page_only:
+        when = u.get("restart_command") or f"systemctl --user restart {u['name']}"
         lines.append(
-            f"• *{u['name']}*: on an old release, not restarted by the deploy ({u['reason']}) — restart it when safe"
+            f"• *{u['name']}*: on an old release, not restarted by the deploy ({u['reason']}) — when safe: `{when}`"
         )
+    for u in deferred_intentional or ():
+        when = u.get("restart_command") or f"systemctl --user restart {u['name']}"
+        if u.get("category") == "market_hours":
+            lines.append(
+                f"• *{u['name']}*: held on the old release by the market-hours guard ({u['reason']}) — "
+                f"after the US session closes (20:00 ET): `{when}`"
+            )
+        else:
+            lines.append(
+                f"• *{u['name']}*: on the old release, intentionally deferred by the deploy ({u['reason']}) — "
+                f"operator action: `{when}`"
+            )
     lines.append(f"These services run older code until restarted (Ops → Releases). Receipt: {RECEIPT_REL}")
+    return "\n".join(lines)
+
+
+def render_summary(updated: int, deferred: list[dict], stale_page_only: list[dict], failed: list[str]) -> str:
+    """The operator's summary block (LQ-20261107-2082, E21): updated / intentionally deferred / action required."""
+    ok = not failed and not stale_page_only
+    lines = [
+        "Release activated" if ok else "Release NOT fully activated",
+        f"{updated} services updated",
+        f"{len(deferred)} services intentionally deferred",
+    ]
+    if deferred:
+        lines.append("Operator action required: systemctl --user restart " + " ".join(u["name"] for u in deferred))
+        for u in deferred:
+            if u.get("category") == "market_hours":
+                lines.append(f"  {u['name']}: only after 20:00 ET on trading days")
     return "\n".join(lines)
 
 
@@ -202,8 +238,10 @@ def cmd_verify(args: argparse.Namespace) -> int:
     refused_units = _split(getattr(args, "refused", ""))
     checks = cbu.verify(args.current, restarted)
     failed = sorted({*restart_failed, *(k for k, v in checks.items() if not v["ok"])})
-    p = cbu.plan(args.current)
-    stale_page_only = [
+    # One market clock for the whole receipt: the same value decides the plan's reasons and the split below.
+    market_now = cbu.market_open()
+    p = cbu.plan(args.current, is_open=market_now)
+    stale = [
         {"name": u.name, "cwd": u.cwd, "reason": u.reason if u.action == "page_only" else "not_in_this_deploy_list"}
         for u in p.units
         if u.stale
@@ -212,6 +250,22 @@ def cmd_verify(args: argparse.Namespace) -> int:
         and u.name not in deferred
         and u.name not in refused_units
     ]
+    # LQ-20261107-2067/2082 (E21): a unit the activation policy deliberately never restarts — market-hours guard,
+    # PAGE_ONLY_NAMED, or HARD_NEVER — is expected to sit on the old release. Record it with the exact restart
+    # command and do NOT raise "not reached" for it; a page raised for another unit still names it. A stale unit
+    # with no such policy reason stays in stale_page_only and pages.
+    deferred_intentional: list[dict] = []
+    stale_page_only: list[dict] = []
+    for u in stale:
+        u["restart_command"] = f"systemctl --user restart {u['name']}"
+        category = cbu.deferral_category(u["reason"], is_market_open=market_now)
+        if category:
+            u["category"] = category
+            deferred_intentional.append(u)
+        else:
+            stale_page_only.append(u)
+    deferred_market_close = [u for u in deferred_intentional if u["category"] == "market_hours"]
+    updated = sum(1 for v in checks.values() if v["ok"])
     now = datetime.now(timezone.utc)
     out: dict = {
         "schema": "CurrentBoundRestart@v1",
@@ -220,11 +274,18 @@ def cmd_verify(args: argparse.Namespace) -> int:
         "current": str(args.current),
         "restarted": restarted,
         "restart_failed": restart_failed,
+        "updated_confirmed": updated,
         "deferred_draining": deferred,
         "refused_market_busy": refused_units,
         "verify": checks,
         "failed": failed,
         "stale_page_only": stale_page_only,
+        # LQ-20261107-2082 (E21): every standing policy refusal, with its category, reason and restart command.
+        # Never a page by itself; read by the human summary and by release_status.py's LAG lines.
+        "intentionally_deferred": deferred_intentional,
+        # LQ-20261107-2067: the market-hours subset, kept so the original field keeps its meaning.
+        "deferred_market_close": deferred_market_close,
+        "market_open_at_verify": market_now,
         "dry_run": bool(args.dry_run),
         "harness_reason": harness_reason(),
         "paged": False,
@@ -233,7 +294,9 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if harness_reason() and not args.dry_run:
         print(f"current_bound_units: {harness_reason()} set — sends and production writes are refused", file=sys.stderr)
     if failed or stale_page_only:
-        msg = render_page(args.event, now.strftime("%Y-%m-%d"), failed, restart_failed, stale_page_only)
+        msg = render_page(
+            args.event, now.strftime("%Y-%m-%d"), failed, restart_failed, stale_page_only, deferred_intentional
+        )
         out["page_key"] = hashlib.sha256(msg.encode()).hexdigest()[:16]
         if args.dry_run:
             print(msg)
@@ -251,13 +314,16 @@ def cmd_verify(args: argparse.Namespace) -> int:
         hist.parent.mkdir(parents=True, exist_ok=True)
         with hist.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(out, sort_keys=True) + "\n")
-    print(
-        json.dumps(out, indent=2)
-        if args.json
-        else f"verify[{args.event}]: {len(checks) - len([k for k, v in checks.items() if not v['ok']])}/{len(checks)} "
-        f"on new release; failed={failed} refused_market_busy={refused_units} "
-        f"stale_page_only={[u['name'] for u in stale_page_only]} paged={out['paged']}"
-    )
+    if args.json:
+        print(json.dumps(out, indent=2))
+    else:
+        print(render_summary(updated, deferred_intentional, stale_page_only, failed))
+        print(
+            f"verify[{args.event}]: {updated}/{len(checks)} on new release; failed={failed} "
+            f"refused_market_busy={refused_units} "
+            f"stale_page_only={[u['name'] for u in stale_page_only]} "
+            f"intentionally_deferred={[u['name'] for u in deferred_intentional]} paged={out['paged']}"
+        )
     refused = bool(out.get("receipt_refused")) or str(out.get("page_error") or "").startswith("refused")
     if refused and not args.dry_run:
         print(

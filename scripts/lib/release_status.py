@@ -68,6 +68,9 @@ class UnitStatus:
     reason: str
     restart_command: str = ""
     note: str = ""
+    # LQ-20261107-2082 (E21): "" = genuinely stale (pages); otherwise the standing policy refusal that keeps it on
+    # the old release on purpose (page_only_named | hard_never | market_hours).
+    deferred: str = ""
 
 
 @dataclass
@@ -128,7 +131,7 @@ def restart_line(name: str) -> str:
     return f"systemctl --user restart {name}"
 
 
-def build_units(plan: "cbu.Plan", target: str, base: str) -> list[UnitStatus]:
+def build_units(plan: "cbu.Plan", target: str, base: str, *, is_market_open: bool) -> list[UnitStatus]:
     out: list[UnitStatus] = []
     for u in plan.units:
         if not is_intended(u.name):
@@ -149,6 +152,7 @@ def build_units(plan: "cbu.Plan", target: str, base: str) -> list[UnitStatus]:
                 reason=u.reason,
                 restart_command=restart_line(u.name) if lag else "",
                 note=NOTES.get(u.name, "") if lag else "",
+                deferred=(cbu.deferral_category(u.reason, is_market_open=is_market_open) or "") if lag else "",
             )
         )
     return out
@@ -223,8 +227,9 @@ def compute(
         rs.reason = f"{base}/CURRENT is not a symlink to a release directory"
         return rs
     rs.target, rs.target_name = target, Path(target).name
-    plan = cbu.plan(target, releases_base=base, run=run, cwd_of=cwd_of, now=now_et, is_open=is_open)
-    rs.units = build_units(plan, target, str(base))
+    open_now = cbu.market_open(now_et) if is_open is None else is_open
+    plan = cbu.plan(target, releases_base=base, run=run, cwd_of=cwd_of, now=now_et, is_open=open_now)
+    rs.units = build_units(plan, target, str(base), is_market_open=open_now)
     if not rs.units:
         rs.reason = "no running tradeai-* / portfolio-server unit is bound to a release: nothing to compare"
         return rs
@@ -256,7 +261,10 @@ def human(rs: ReleaseStatus) -> str:
     lines = [f"RELEASE STATUS: {rs.status}  target={rs.target_name or '?'}  checked {rs.checked_at}", f"  {rs.reason}"]
     for u in rs.units:
         mark = {True: "ok ", False: "LAG", None: "?? "}[u.on_target]
-        lines.append(f"  [{mark}] {u.name:<46} pid={u.pid:<8} release={u.release or '(unreadable)'}")
+        # LQ-20261107-2082 (E21): the LAG line itself says why the unit is expected to lag, so a reader never has to
+        # cross-reference the activation log. The verdict stays DEPLOYED: deferred is not live.
+        why = f"  [intentionally deferred: {u.deferred}; {u.reason}]" if u.deferred else ""
+        lines.append(f"  [{mark}] {u.name:<46} pid={u.pid:<8} release={u.release or '(unreadable)'}{why}")
     for p in rs.probes:
         lines.append(f"  probe {p.name}: {p.status} {p.detail}".rstrip())
     laggards = [u for u in rs.units if u.on_target is not True]
@@ -265,6 +273,9 @@ def human(rs: ReleaseStatus) -> str:
         lines.append("To bring the release to LIVE, restart each lagging unit (run by whoever holds the authority):")
         for u in laggards:
             lines.append(f"  {u.restart_command}")
+            if u.deferred:
+                lines.append(f"      intentionally deferred by the activation policy ({u.deferred}: {u.reason}); "
+                             "operator action, not the deploy")
             if u.note:
                 lines.append(f"      {u.note}")
     return "\n".join(lines)
@@ -278,5 +289,9 @@ def alert_text(rs: ReleaseStatus) -> str:
     body = []
     for u in rs.units:
         if u.on_target is not True:
-            body.append(f"{u.restart_command}  # runs {u.release or 'unreadable cwd'}" + (f" | {u.note}" if u.note else ""))
+            deferred = f" | intentionally deferred: {u.reason}" if u.deferred else ""
+            body.append(
+                f"{u.restart_command}  # runs {u.release or 'unreadable cwd'}{deferred}"
+                + (f" | {u.note}" if u.note else "")
+            )
     return head + "\n" + "\n".join(body)
