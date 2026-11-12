@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "injection_triage_3_20261106",
+  "files": [
+    "tests/test_injection_triage_3_20261106.py"
+  ],
+  "anchor": "INJECTION_TRIAGE_3_20261106",
+  "comment": [
+    "ANCHOR: INJECTION_TRIAGE_3_20261106 — SQL injection triage, batch 3 (tq-py-sql-fstring, 2026-11-06).",
+    "Values reach psycopg2 as bound params and identifiers as psycopg2.sql.Identifier: the probe-row archive's",
+    "column list, the table-readers audit's table name, and auto_research's screener-find window. Hermetic: a fake",
+    "cursor records (sql, params) and a hostile value must never appear in literal SQL text."
+  ]
+}

@@ -96,7 +96,7 @@ def audit() -> dict:
         if origin:
             clause = f"({clause} OR COALESCE(origin,'')=%s)"
             params.append(origin)
-        cur.execute(
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- clause is built from literal SQL only; values bound as params
             f"""SELECT symbol,
                        bool_or(COALESCE(target_account, proposed_account)=%s) AS has_paper,
                        bool_or(COALESCE(target_account, proposed_account)=%s) AS has_broker

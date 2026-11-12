@@ -37,7 +37,8 @@ def run():
         for t in ["market_regime_snapshots", "market_regime_indicators",
                    "strategy_regime_profiles", "strategy_rotation_signals",
                    "regime_trade_alignment", "risk_regime_run_log"]:
-            cur.execute(f"SELECT COUNT(*) FROM {t}")
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- t from the fixed literal table list above
+                f"SELECT COUNT(*) FROM {t}")
         test("Risk regime DB tables (6)", True)
         conn.close()
     except Exception as e: test("DB tables", False, str(e))

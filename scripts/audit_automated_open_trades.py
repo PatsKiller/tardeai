@@ -21,7 +21,7 @@ def audit(*, fix_planned_stop: bool = False) -> dict:
     conn = _get_conn()
     cur = conn.cursor()
     keys = tuple(sorted(LEGACY_AUTOMATED_KEYS))
-    cur.execute(
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only literal %s markers interpolated; keys bound as params
         f"""SELECT id, symbol, strategy_id, entry_price, shares, planned_stop, stop_loss,
                    current_stop, stop_order_id, proposal_id, account
             FROM paper_trades
@@ -42,7 +42,7 @@ def audit(*, fix_planned_stop: bool = False) -> dict:
         broker = {"_error": str(e)}
 
     if fix_planned_stop:
-        cur.execute(
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- only literal %s markers interpolated; keys bound as params
             f"""UPDATE paper_trades SET planned_stop = stop_loss
                 WHERE status = 'open' AND account IN ({','.join(['%s'] * len(keys))})
                   AND planned_stop IS NULL AND stop_loss IS NOT NULL
@@ -98,7 +98,7 @@ def audit(*, fix_planned_stop: bool = False) -> dict:
             flagged.append(rec)
 
     ph = ",".join(["%s"] * len(keys))
-    cur.execute(
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- ph is only literal %s markers; keys bound as params
         f"""SELECT count(*) FROM paper_protection_adjustment_proposals a
             JOIN paper_trades t ON t.id = a.trade_id
             WHERE a.status = 'PROPOSED' AND t.status = 'open' AND t.account IN ({ph})
