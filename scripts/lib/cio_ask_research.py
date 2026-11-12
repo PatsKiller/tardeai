@@ -519,6 +519,11 @@ class SourceSpec:
     fn: SourceFn
     timeout_s: float = 8.0
     needs_symbol: bool = True  # private entities only get sources that work on a name
+    # A shared cold load the source depends on (a whole-store parse). gather_facts runs each distinct prepare once,
+    # before any per-source timer starts, and publishes its timing in ``prepared``. LQ-20261107-2196: the CIO record
+    # store reached 2.26 GB, its cold parse took 12.4 s inside internal.cio_record_research's 15 s budget and starved
+    # internal.thesis (1.2 s alone, 12.95 s beside it), so the first thread of every fresh lane process timed out.
+    prepare: Optional[Callable[["ResearchContext"], Any]] = None
 
 
 # --------------------------------------------------------------------------------------------------- gather
@@ -543,8 +548,24 @@ def gather_facts(
             jobs.append((ent, spec))
     facts: list[Fact] = []
     runs: list[dict[str, Any]] = []
+    prepared: list[dict[str, Any]] = []
     if not jobs:
-        return {"facts": facts, "gaps": gaps, "runs": runs}
+        return {"facts": facts, "gaps": gaps, "runs": runs, "prepared": prepared}
+    # Shared cold loads run once, here, outside every source's budget. A failure is recorded and swallowed: the
+    # source repeats the load itself and reports its own outcome (error/timeout), so nothing is hidden. The timing
+    # stays out of ``runs`` so it never enters the evidence fingerprint (a slow parse is not a change in evidence).
+    seen_prepare: list[Any] = []
+    for _ent, spec in jobs:
+        if spec.prepare is None or any(spec.prepare is p for p in seen_prepare):
+            continue
+        seen_prepare.append(spec.prepare)
+        t0 = time.monotonic()
+        try:
+            spec.prepare(ctx)
+            prepared.append({"source": spec.name, "status": "ok", "elapsed_s": round(time.monotonic() - t0, 3)})
+        except Exception as exc:  # noqa: BLE001 -- the source re-runs the load and reports its own error
+            prepared.append({"source": spec.name, "status": "error", "error": type(exc).__name__,
+                             "elapsed_s": round(time.monotonic() - t0, 3)})
     pool = cf.ThreadPoolExecutor(max_workers=max(1, min(max_workers, len(jobs))), thread_name_prefix="ask-gather")
     started = time.monotonic()
 
@@ -668,7 +689,7 @@ def gather_facts(
     uniq: dict[str, Fact] = {}
     for f in facts:
         uniq.setdefault(f.fact_id, f)
-    return {"facts": list(uniq.values()), "gaps": gaps, "runs": runs}
+    return {"facts": list(uniq.values()), "gaps": gaps, "runs": runs, "prepared": prepared}
 
 
 # --------------------------------------------------------------------------------------------------- default sources
@@ -811,6 +832,12 @@ def _src_holdings(ent: Entity, ctx: ResearchContext) -> list[Fact]:
             egress="local_only",
         )
     ]
+
+
+def _prepare_thesis(ctx: ResearchContext) -> None:
+    """Warm the thesis coverage cache (symbol_thesis_attach._load) before the per-source timers start."""
+    mod = _imp("lib.symbol_thesis_attach", "scripts.lib.symbol_thesis_attach")
+    mod._load(mod._root(None))
 
 
 def _src_thesis(ent: Entity, ctx: ResearchContext) -> list[Fact]:
@@ -1242,11 +1269,11 @@ def default_sources() -> list[SourceSpec]:
     sources = [
         # A local snapshot read measured at ~3.7 s on its own; under the 30-job gather it exceeded 6 s
         # and failed the whole check on a source that had in fact answered (2026-11-01).
-        SourceSpec("internal.cio_record_research", "internal", _src_cio_record_research, 15.0),
+        SourceSpec("internal.cio_record_research", "internal", _src_cio_record_research, 15.0, prepare=_cio_snapshot),
         SourceSpec("internal.cio_prospect", "internal", _src_prospect, 15.0),
         SourceSpec("internal.prospectus", "internal", _src_prospectus, 15.0),
         SourceSpec("internal.holdings", "internal", _src_holdings, 15.0),
-        SourceSpec("internal.thesis", "internal", _src_thesis, 15.0),
+        SourceSpec("internal.thesis", "internal", _src_thesis, 15.0, prepare=_prepare_thesis),
         SourceSpec("internal.catalysts", "internal", _src_catalysts, 15.0),
         SourceSpec("internal.hermes_research", "internal", _src_research, 15.0),
         SourceSpec("internal.alerts", "internal", _src_alerts, 15.0),
@@ -2380,6 +2407,7 @@ def collect_current_evidence(
         "facts": gathered["facts"],
         "gaps": gathered["gaps"],
         "source_runs": gathered["runs"],
+        "source_prepared": gathered["prepared"],
         "fingerprint": evidence_fingerprint(gathered["facts"], gathered["runs"]),
     }
 
