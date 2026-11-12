@@ -240,24 +240,31 @@ class CioRecordBackend:
         # per turn re-parsed the whole canonical record store to read and write one subject.
         store = _store_for_path(self.path or (root / DEFAULT_PATH))
         key = subject_key("SECURITY", entity.symbol or entity.name)
-        rec = store.load(key)
-        created = rec is None
-        if created:
-            rec = new_record("SECURITY", entity.symbol or entity.name)
-            rec["symbols"] = [entity.symbol] if entity.symbol else []
-            rec["security_guid"] = entity.security_guid
-            rec["issuer_guid"] = entity.issuer_guid
-        try:
-            rec, changed = apply_cognition(
-                rec,
-                next_research_question=f"Operator asked: {question[:300]}",
-                operator_turn={"ask_id": ask_id, "thread_id": thread_id, "channel": channel, "text": question[:300]},
-                artifact_id=ask_id,
-            )
-        except CognitionNoOp:
-            return {"subject_key": key, "action": "unchanged"}
-        store.upsert(rec)
-        return {"subject_key": key, "action": "created" if created else "updated", "changed": changed}
+        # LQ-20261107-2154: the store is shared, and ``upsert`` compares the tip it observed at read time
+        # with the disk tip. Another request's ``_refresh_tail`` advances that observation, so a read here
+        # followed by an upsert after a concurrent refresh would pass the check and overwrite a newer record
+        # silently. Holding the store lock (an RLock; ``upsert`` re-enters it) from read to write keeps every
+        # other in-process refresh out of the window; an append by another process is still caught by
+        # ``upsert`` under the file lock.
+        with store._lock:
+            rec = store.load(key)
+            created = rec is None
+            if created:
+                rec = new_record("SECURITY", entity.symbol or entity.name)
+                rec["symbols"] = [entity.symbol] if entity.symbol else []
+                rec["security_guid"] = entity.security_guid
+                rec["issuer_guid"] = entity.issuer_guid
+            try:
+                rec, changed = apply_cognition(
+                    rec,
+                    next_research_question=f"Operator asked: {question[:300]}",
+                    operator_turn={"ask_id": ask_id, "thread_id": thread_id, "channel": channel, "text": question[:300]},
+                    artifact_id=ask_id,
+                )
+            except CognitionNoOp:
+                return {"subject_key": key, "action": "unchanged"}
+            store.upsert(rec)
+            return {"subject_key": key, "action": "created" if created else "updated", "changed": changed}
 
 
 def _default_db_target() -> Callable[..., Any]:

@@ -127,3 +127,46 @@ def test_an_explicit_ask_path_keeps_its_own_store(tmp_path, store_file):
     backend.note_question(EntityRef(name="CCC", symbol="CCC"), question="q", ask_id="a", thread_id="t", channel="web")
     assert "SECURITY:CCC" in _keys(ir.InstrumentRecordStore(other))
     assert "SECURITY:CCC" not in _keys(ir.InstrumentRecordStore(store_file))
+
+
+# ---- LQ-20261107-2154: the shared store must not defeat the ask turn's compare-and-swap ----------------
+
+def test_a_concurrent_refresh_between_read_and_write_cannot_hide_an_external_append(store_file, monkeypatch):
+    """Between the turn's read and its upsert an external lane appends a newer tip and another request in this
+    process refreshes the shared store (the home build). On the shared store that refresh advanced
+    ``_observed_hashes`` to the new tip, so the check passed and the lane's record was overwritten silently.
+    The turn must instead be told the tip changed (StaleInstrumentRecordWrite), as it was with a store per turn."""
+    import threading
+
+    _write(store_file, [_row("SECURITY:AAA", next_research_question="old")], mode="a")
+    monkeypatch.setenv("TRADEAI_ROOT", str(store_file.parents[2]))
+    home_store = c.resolve_record_store()
+    home_store.all()
+    real_apply = ir.apply_cognition
+    refresher = {}
+
+    def apply_with_race(rec, **kw):
+        _write(store_file, [_row("SECURITY:AAA", next_research_question="external lane wrote this")], mode="a")
+        t = threading.Thread(target=home_store.all, daemon=True)  # the concurrent home refresh
+        t.start()
+        t.join(timeout=0.5)  # blocks while the turn holds the store; completes at once if it does not
+        refresher["t"] = t
+        return real_apply(rec, **kw)
+
+    monkeypatch.setattr(ir, "apply_cognition", apply_with_race)
+    backend = CioRecordBackend()
+    with pytest.raises(ir.StaleInstrumentRecordWrite):
+        backend.note_question(EntityRef(name="AAA Corp", symbol="AAA"), question="q", ask_id="a1", thread_id="t", channel="web")
+    refresher["t"].join(timeout=5)
+    assert not refresher["t"].is_alive()
+    tip = [json.loads(l) for l in store_file.read_text().splitlines() if '"SECURITY:AAA"' in l][-1]
+    assert tip["next_research_question"] == "external lane wrote this", "the external record was overwritten"
+
+
+def test_a_serial_ask_turn_still_writes(store_file, monkeypatch):
+    """The lock must not turn a normal turn into a failure."""
+    monkeypatch.setenv("TRADEAI_ROOT", str(store_file.parents[2]))
+    out = CioRecordBackend().note_question(EntityRef(name="AAA Corp", symbol="AAA"), question="q1", ask_id="a1", thread_id="t", channel="web")
+    assert out["action"] == "created"
+    out = CioRecordBackend().note_question(EntityRef(name="AAA Corp", symbol="AAA"), question="q2", ask_id="a2", thread_id="t", channel="web")
+    assert out["action"] == "updated"
