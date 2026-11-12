@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "home_diagnostics_20261111",
+  "files": [
+    "tests/test_home_diagnostics_20261111.py"
+  ],
+  "anchor": "HOME_DIAGNOSTICS_20261111",
+  "comment": [
+    "ANCHOR: HOME_DIAGNOSTICS_20261111 — the Home v010 Diagnostics registry (source -> owner -> cause), session-aware",
+    "thresholds, the read-only collector lane and its read handler: UNKNOWN is never OK, a stale snapshot grades every",
+    "row UNKNOWN, and the handler never probes or writes (LQ-20261107-2149/2150)."
+  ]
+}

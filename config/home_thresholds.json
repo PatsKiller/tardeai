@@ -1,0 +1,307 @@
+{
+  "schema": "HomeThresholds@v1",
+  "version": "2026-11-11.1",
+  "task": "LQ-20261107-2149 / LQ-20261107-2150",
+  "comment": [
+    "Per-widget refresh rate, session-aware thresholds and failure mode for the 13 Home v010 Diagnostics rows (LQ-20261107-2150).",
+    "A rule is { sessions, threshold_s } or { sessions, authority_domain, basis: open|closed } (resolved from config/data_source_authority.json via lib/session_freshness.authority_thresholds), threshold_s null = event-driven, or { sessions, expected:false, note }."
+  ],
+  "max_snapshot_age_s": 900,
+  "probe_timeout_s": 30,
+  "widgets": [
+    {
+      "widget_id": "action_unprotected_position",
+      "widget": "Action \u00b7 Unprotected Position",
+      "source_id": "stop_store",
+      "refresh_rate": "15 min",
+      "refresh_s": 900,
+      "failure_mode": "UNKNOWN, not an all-clear",
+      "needs_backend": true,
+      "needs_backend_note": "first detected, check count (LQ-20261107-2145/2146)",
+      "rules": [
+        {
+          "sessions": [
+            "rth"
+          ],
+          "threshold_s": 3600
+        },
+        {
+          "sessions": [
+            "extended",
+            "closed"
+          ],
+          "expected": false,
+          "note": "Day-order stops lapse at the close: an expired DAY stop is not active protection (operator D1, 11-11 23:19 ET), so Orders reads WARN, never OK, until the next session captures stops",
+          "off_session_state": "WARN"
+        }
+      ]
+    },
+    {
+      "widget_id": "action_approvals",
+      "widget": "Action \u00b7 Approvals",
+      "source_id": "approval_queue",
+      "refresh_rate": "on read",
+      "refresh_s": 0,
+      "failure_mode": "\"could not be checked\"",
+      "needs_backend": false,
+      "rules": [
+        {
+          "sessions": [
+            "rth",
+            "extended",
+            "closed"
+          ],
+          "threshold_s": 300
+        }
+      ]
+    },
+    {
+      "widget_id": "action_data_integrity",
+      "widget": "Action \u00b7 Data Integrity Alert",
+      "source_id": "alert_events",
+      "refresh_rate": "on event",
+      "refresh_s": 0,
+      "failure_mode": "count shows UNKNOWN",
+      "needs_backend": true,
+      "needs_backend_note": "no Home endpoint over alert_events (LQ-20261107-2147)",
+      "rules": [
+        {
+          "sessions": [
+            "rth",
+            "extended",
+            "closed"
+          ],
+          "threshold_s": null
+        }
+      ]
+    },
+    {
+      "widget_id": "validation_gates",
+      "widget": "Validation gates",
+      "source_id": "gate_store",
+      "refresh_rate": "on change",
+      "refresh_s": 0,
+      "failure_mode": "\"no source\", never \"0 open\"",
+      "needs_backend": true,
+      "needs_backend_note": "validation_gates store (LQ-20261107-2141)",
+      "rules": [
+        {
+          "sessions": [
+            "rth",
+            "extended",
+            "closed"
+          ],
+          "threshold_s": 86400
+        }
+      ]
+    },
+    {
+      "widget_id": "since_last_visit",
+      "widget": "Since your last visit",
+      "source_id": "last_seen_and_changes",
+      "refresh_rate": "on view",
+      "refresh_s": 0,
+      "failure_mode": "falls back to \"last 24 h\"",
+      "needs_backend": true,
+      "needs_backend_note": "home.last_seen key + validation_events (LQ-20261107-2142/2143)",
+      "rules": [
+        {
+          "sessions": [
+            "rth",
+            "extended",
+            "closed"
+          ],
+          "threshold_s": 300
+        }
+      ]
+    },
+    {
+      "widget_id": "status_portfolio",
+      "widget": "Status \u00b7 Portfolio",
+      "source_id": "positions_store",
+      "refresh_rate": "30 min",
+      "refresh_s": 1800,
+      "failure_mode": "last value with age",
+      "needs_backend": false,
+      "rules": [
+        {
+          "sessions": [
+            "rth",
+            "extended"
+          ],
+          "authority_domain": "positions_store",
+          "basis": "open"
+        },
+        {
+          "sessions": [
+            "closed"
+          ],
+          "authority_domain": "positions_store",
+          "basis": "closed"
+        }
+      ]
+    },
+    {
+      "widget_id": "status_orders",
+      "widget": "Status \u00b7 Orders (stops)",
+      "source_id": "stop_store",
+      "refresh_rate": "15 min",
+      "refresh_s": 900,
+      "failure_mode": "UNKNOWN, last good time shown",
+      "needs_backend": false,
+      "rules": [
+        {
+          "sessions": [
+            "rth"
+          ],
+          "threshold_s": 3600
+        },
+        {
+          "sessions": [
+            "extended",
+            "closed"
+          ],
+          "expected": false,
+          "note": "Day-order stops lapse at the close: an expired DAY stop is not active protection (operator D1, 11-11 23:19 ET), so Orders reads WARN, never OK, until the next session captures stops",
+          "off_session_state": "WARN"
+        }
+      ]
+    },
+    {
+      "widget_id": "status_schedulers",
+      "widget": "Status \u00b7 Schedulers",
+      "source_id": "run_log",
+      "refresh_rate": "1 min",
+      "refresh_s": 60,
+      "failure_mode": "UNKNOWN with last good time",
+      "needs_backend": true,
+      "needs_backend_note": "per-lane late count (LQ-20261107-2148)",
+      "rules": [
+        {
+          "sessions": [
+            "rth",
+            "extended",
+            "closed"
+          ],
+          "threshold_s": 300
+        }
+      ]
+    },
+    {
+      "widget_id": "status_alerts",
+      "widget": "Status \u00b7 Alerts",
+      "source_id": "incident_store",
+      "refresh_rate": "on event",
+      "refresh_s": 0,
+      "failure_mode": "UNKNOWN drawn as a risk",
+      "needs_backend": true,
+      "needs_backend_note": "no Home read over alert_incidents (LQ-20261107-2147)",
+      "rules": [
+        {
+          "sessions": [
+            "rth",
+            "extended",
+            "closed"
+          ],
+          "threshold_s": null
+        }
+      ]
+    },
+    {
+      "widget_id": "status_data",
+      "widget": "Status \u00b7 Data",
+      "source_id": "feed_freshness",
+      "refresh_rate": "60 s",
+      "refresh_s": 60,
+      "failure_mode": "names the stale feed",
+      "needs_backend": false,
+      "rules": [
+        {
+          "sessions": [
+            "rth"
+          ],
+          "authority_domain": "quote_price",
+          "basis": "open"
+        },
+        {
+          "sessions": [
+            "extended"
+          ],
+          "authority_domain": "quote_extended_session",
+          "basis": "open"
+        },
+        {
+          "sessions": [
+            "closed"
+          ],
+          "authority_domain": "quote_price",
+          "basis": "closed"
+        }
+      ]
+    },
+    {
+      "widget_id": "vix_market",
+      "widget": "VIX / market",
+      "source_id": "vix_stream",
+      "refresh_rate": "intraday",
+      "refresh_s": 900,
+      "failure_mode": "last value with age, \"not measured\"",
+      "needs_backend": false,
+      "rules": [
+        {
+          "sessions": [
+            "rth"
+          ],
+          "threshold_s": 1800
+        },
+        {
+          "sessions": [
+            "extended",
+            "closed"
+          ],
+          "expected": false,
+          "note": "VIX is not measured in the evening; the last close is shown with its age"
+        }
+      ]
+    },
+    {
+      "widget_id": "trade_ready",
+      "widget": "Trade-ready",
+      "source_id": "computed_verdict",
+      "refresh_rate": "60 s",
+      "refresh_s": 60,
+      "failure_mode": "UNKNOWN, never YES by default",
+      "needs_backend": true,
+      "needs_backend_note": "computed verdict endpoint (LQ-20261107-2144)",
+      "rules": [
+        {
+          "sessions": [
+            "rth",
+            "extended",
+            "closed"
+          ],
+          "threshold_s": 120
+        }
+      ]
+    },
+    {
+      "widget_id": "details_deploys",
+      "widget": "Details \u00b7 Deploys",
+      "source_id": "deploy_log",
+      "refresh_rate": "2 min",
+      "refresh_s": 120,
+      "failure_mode": "\"no answer after 30 s\", retry in 60 s",
+      "needs_backend": false,
+      "rules": [
+        {
+          "sessions": [
+            "rth",
+            "extended",
+            "closed"
+          ],
+          "threshold_s": 300
+        }
+      ]
+    }
+  ]
+}

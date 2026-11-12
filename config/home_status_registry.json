@@ -1,0 +1,337 @@
+{
+  "schema": "HomeStatusRegistry@v1",
+  "version": "2026-11-11.1",
+  "task": "LQ-20261107-2149 / LQ-20261107-2150",
+  "comment": [
+    "Cause / Source / Owner registry for Home v010 (LQ-20261107-2149). source -> owner -> cause category.",
+    "An owner is taken from config/lane_registry.json when owner_lane is set (an explicit owner must agree); otherwise it is stated here.",
+    "A source whose probe.kind is none has no production source yet: its widgets read UNKNOWN with needs_backend, never 0 and never OK."
+  ],
+  "causes": {
+    "DATA_STALENESS": "The source has not been written within its threshold.",
+    "STOP_MONITORING": "The stop store has not been refreshed within its threshold.",
+    "NO_SOURCE": "No production source exists for this widget yet (engineering work is filed).",
+    "READ_FAILURE": "The source exists but the read failed; the last good value and its age are shown.",
+    "READ_TIMEOUT": "The source did not answer within the probe timeout.",
+    "SESSION_CLOSED": "The source is not expected to update in this market session.",
+    "COLLECTOR_STALE": "The diagnostics collector itself has not run within its limit, so no row can be graded."
+  },
+  "owners": {
+    "defense": "defense desk (stop-health-check)",
+    "portfolio": "portfolio desk (positions-sync)",
+    "platform": "platform (quote and deploy lanes)",
+    "comms": "comms (alerting)",
+    "cio": "cio (since-close, trade-ready)",
+    "os": "os (operating system / scheduler program)",
+    "risk": "risk desk (stop-coverage-incidents)"
+  },
+  "sessions": {
+    "rth": "regular trading hours, NYSE trading day, 09:30-16:00 ET (early closes honoured)",
+    "extended": "trading day, 04:00-09:30 and 16:00-20:00 ET",
+    "closed": "overnight, weekend or market holiday"
+  },
+  "sources": [
+    {
+      "source_id": "stop_store",
+      "label": "stop store",
+      "owner_lane": "stop-health-check",
+      "cause_category": "STOP_MONITORING",
+      "probe": {
+        "kind": "db_max",
+        "table": "stop_last_known",
+        "column": "captured_at"
+      }
+    },
+    {
+      "source_id": "approval_queue",
+      "label": "approval queues",
+      "owner": "platform",
+      "owner_lane": null,
+      "cause_category": "READ_FAILURE",
+      "probe": {
+        "kind": "db_live",
+        "table": "trade_approvals",
+        "last_event_column": "requested_at"
+      }
+    },
+    {
+      "source_id": "alert_events",
+      "label": "alert events",
+      "owner": "comms",
+      "owner_lane": null,
+      "cause_category": "READ_FAILURE",
+      "probe": {
+        "kind": "db_live",
+        "table": "alert_events",
+        "last_event_column": "created_at"
+      }
+    },
+    {
+      "source_id": "gate_store",
+      "label": "gate store",
+      "owner": "os",
+      "owner_lane": null,
+      "cause_category": "NO_SOURCE",
+      "probe": {
+        "kind": "none",
+        "reason": "no validation_gates store exists (LQ-20261107-2141)"
+      }
+    },
+    {
+      "source_id": "last_seen_and_changes",
+      "label": "last-seen key + change events",
+      "owner": "os",
+      "owner_lane": null,
+      "cause_category": "NO_SOURCE",
+      "probe": {
+        "kind": "db_max",
+        "table": "ui_prefs",
+        "column": "updated_at",
+        "where": "key = 'home.last_seen'"
+      }
+    },
+    {
+      "source_id": "positions_store",
+      "label": "positions store",
+      "owner_lane": "positions-sync",
+      "cause_category": "DATA_STALENESS",
+      "probe": {
+        "kind": "db_max",
+        "table": "positions_current",
+        "column": "as_of"
+      }
+    },
+    {
+      "source_id": "run_log",
+      "label": "run log",
+      "owner": "os",
+      "owner_lane": null,
+      "cause_category": "NO_SOURCE",
+      "probe": {
+        "kind": "none",
+        "reason": "no per-lane expected-schedule + last-run record (LQ-20261107-2148)"
+      }
+    },
+    {
+      "source_id": "incident_store",
+      "label": "incident store",
+      "owner": "comms",
+      "owner_lane": null,
+      "cause_category": "READ_FAILURE",
+      "probe": {
+        "kind": "db_live",
+        "table": "alert_incidents",
+        "last_event_column": "last_seen_at"
+      }
+    },
+    {
+      "source_id": "feed_freshness",
+      "label": "feed freshness checks",
+      "owner_lane": "market-quotes-extended",
+      "cause_category": "DATA_STALENESS",
+      "probe": {
+        "kind": "db_max",
+        "table": "market_quotes",
+        "column": "fetched_at"
+      }
+    },
+    {
+      "source_id": "vix_stream",
+      "label": "VIX stream",
+      "owner_lane": "vix-index-quotes-schwab",
+      "cause_category": "DATA_STALENESS",
+      "probe": {
+        "kind": "db_max",
+        "table": "market_quotes",
+        "column": "fetched_at",
+        "where": "symbol = '$VIX'"
+      }
+    },
+    {
+      "source_id": "computed_verdict",
+      "label": "computed verdict",
+      "owner": "cio",
+      "owner_lane": null,
+      "cause_category": "NO_SOURCE",
+      "probe": {
+        "kind": "none",
+        "reason": "no /api/v2/home/status verdict endpoint exists (LQ-20261107-2144)"
+      }
+    },
+    {
+      "source_id": "deploy_log",
+      "label": "deploy log",
+      "owner_lane": "deploy-detect",
+      "cause_category": "READ_FAILURE",
+      "probe": {
+        "kind": "db_live",
+        "table": "deploy_events",
+        "last_event_column": "created_at"
+      }
+    }
+  ],
+  "incident_classes_approved": false,
+  "incident_classes_note": "PROPOSAL (operator decision D2): the class -> P-level map decides what turns the Trade-ready chip NO. Not approved; 2147/2144 read it as a proposal until approved is true.",
+  "incident_classes": {
+    "position_unprotected": {
+      "category": "Unprotected Position",
+      "priority": "P0",
+      "blocks_trading_default": true,
+      "owner": "risk",
+      "ttl_h": 1,
+      "proof_window_h": 24,
+      "home_visible": true,
+      "rationale": "a held position with no resting stop"
+    },
+    "trading_impact_outage": {
+      "category": "Trading-Impacting Outage",
+      "priority": "P0",
+      "blocks_trading_default": true,
+      "owner": "platform",
+      "ttl_h": 1,
+      "proof_window_h": 24,
+      "home_visible": true,
+      "rationale": "an outage that stops orders or data the desk trades on"
+    },
+    "emergency_kill_or_revoke": {
+      "category": "Emergency Kill or Revoke",
+      "priority": "P0",
+      "blocks_trading_default": true,
+      "owner": "platform",
+      "ttl_h": 1,
+      "proof_window_h": 24,
+      "home_visible": true,
+      "rationale": "a kill switch or credential revoke was triggered"
+    },
+    "orphaned_stop": {
+      "category": "Orphaned Stop",
+      "priority": "P1",
+      "blocks_trading_default": false,
+      "owner": "risk",
+      "ttl_h": 4,
+      "proof_window_h": 24,
+      "home_visible": true,
+      "rationale": "a resting stop with no matching position"
+    },
+    "stop_warning": {
+      "category": "Stop Warning",
+      "priority": "P1",
+      "blocks_trading_default": false,
+      "owner": "risk",
+      "ttl_h": 4,
+      "proof_window_h": 24,
+      "home_visible": true,
+      "rationale": "a stop-monitor warning short of a gap"
+    },
+    "data_integrity": {
+      "category": "Data Integrity",
+      "priority": "P1",
+      "blocks_trading_default": false,
+      "owner": "portfolio",
+      "ttl_h": 4,
+      "proof_window_h": 24,
+      "home_visible": true,
+      "rationale": "stored data disagrees with its source"
+    },
+    "platform_availability": {
+      "category": "Platform Availability",
+      "priority": "P1",
+      "blocks_trading_default": false,
+      "owner": "platform",
+      "ttl_h": 4,
+      "proof_window_h": 24,
+      "home_visible": true,
+      "rationale": "a platform component is degraded without trading impact"
+    },
+    "siem_without_trading_impact": {
+      "category": "Security Event, No Trading Impact",
+      "priority": "INFO",
+      "blocks_trading_default": false,
+      "owner": "os",
+      "ttl_h": 24,
+      "proof_window_h": null,
+      "home_visible": false,
+      "rationale": "security telemetry"
+    },
+    "proposal_blocked_or_rebuild": {
+      "category": "Proposal Blocked or Rebuilt",
+      "priority": "INFO",
+      "blocks_trading_default": false,
+      "owner": "cio",
+      "ttl_h": 24,
+      "proof_window_h": null,
+      "home_visible": false,
+      "rationale": "CIO pipeline housekeeping"
+    },
+    "paper_proposal": {
+      "category": "Paper Proposal",
+      "priority": "INFO",
+      "blocks_trading_default": false,
+      "owner": "cio",
+      "ttl_h": 24,
+      "proof_window_h": null,
+      "home_visible": false,
+      "rationale": "paper-only proposal"
+    },
+    "scanner_candidate": {
+      "category": "Scanner Candidate",
+      "priority": "INFO",
+      "blocks_trading_default": false,
+      "owner": "cio",
+      "ttl_h": 24,
+      "proof_window_h": null,
+      "home_visible": false,
+      "rationale": "scanner output awaiting review"
+    },
+    "research_update": {
+      "category": "Research Update",
+      "priority": "INFO",
+      "blocks_trading_default": false,
+      "owner": "cio",
+      "ttl_h": 24,
+      "proof_window_h": null,
+      "home_visible": false,
+      "rationale": "research feed item"
+    },
+    "thesis_update": {
+      "category": "Thesis Update",
+      "priority": "INFO",
+      "blocks_trading_default": false,
+      "owner": "cio",
+      "ttl_h": 24,
+      "proof_window_h": null,
+      "home_visible": false,
+      "rationale": "thesis feed item"
+    },
+    "cio_entry_state": {
+      "category": "CIO Entry State",
+      "priority": "INFO",
+      "blocks_trading_default": false,
+      "owner": "cio",
+      "ttl_h": 24,
+      "proof_window_h": null,
+      "home_visible": false,
+      "rationale": "entry-state change"
+    },
+    "job_telemetry": {
+      "category": "Job Telemetry",
+      "priority": "INFO",
+      "blocks_trading_default": false,
+      "owner": "os",
+      "ttl_h": 24,
+      "proof_window_h": null,
+      "home_visible": false,
+      "rationale": "lane run telemetry"
+    }
+  },
+  "requires_stop": {
+    "asset_types": [
+      "equity",
+      "etf",
+      "closed_end_fund",
+      "mutual_fund"
+    ],
+    "note": "PROPOSAL per DECISIONS-20261111: cash, money-market funds and sweep vehicles are exempt; ETFs, closed-end funds, mutual funds and stocks are not."
+  },
+  "stop_exempt_accounts": []
+}
