@@ -30,7 +30,7 @@ THRESHOLDS_PATH = _CONFIG / "home_thresholds.json"
 LANE_REGISTRY_PATH = _CONFIG / "lane_registry.json"
 SNAPSHOT_NAME = "home_diagnostics_latest.json"
 SCHEMA = "HomeDiagnostics@v1"
-STATUSES = ("OK", "STALE", "UNKNOWN", "TIMED OUT", "OFF_SESSION")
+STATES = ("OK", "WARN", "STALE", "UNKNOWN", "TIMED_OUT")  # HomeField@v1 vocabulary (spec §1.1)
 SESSIONS = ("rth", "extended", "closed")
 PROBE_KINDS = ("db_max", "db_live", "none")
 _IDENT = re.compile(r"^[a-z_][a-z0-9_]*$")
@@ -46,10 +46,34 @@ def _need(cond: bool, msg: str) -> None:
         raise RegistryError(msg)
 
 
+PRIORITIES = ("P0", "P1", "INFO")
+
+
+def validate_incident_registry(doc: Mapping[str, Any]) -> None:
+    """The incident-class map that 2147 (alerts read), 2144 (trade-ready) and 2145 (coverage) consume."""
+    owners = doc.get("owners") or {}
+    classes = doc.get("incident_classes")
+    _need(isinstance(classes, Mapping) and bool(classes), "incident_classes is required")
+    _need(isinstance(doc.get("incident_classes_approved"), bool), "incident_classes_approved must be a boolean (D2 is an operator decision)")
+    for key, c in classes.items():
+        _need(bool(c.get("category")), f"incident class {key}: category is required")
+        _need(c.get("priority") in PRIORITIES, f"incident class {key}: priority {c.get('priority')!r} not in {PRIORITIES}")
+        _need(isinstance(c.get("blocks_trading_default"), bool), f"incident class {key}: blocks_trading_default must be a boolean")
+        _need(c.get("owner") in owners, f"incident class {key}: owner {c.get('owner')!r} not in owners")
+        _need(isinstance(c.get("home_visible"), bool), f"incident class {key}: home_visible must be a boolean")
+        for k in ("ttl_h", "proof_window_h"):
+            _need(c.get(k) is None or (isinstance(c[k], (int, float)) and c[k] > 0), f"incident class {key}: {k} must be null or positive")
+        _need(not (c["blocks_trading_default"] and c["priority"] == "INFO"), f"incident class {key}: an INFO class cannot block trading")
+    rs = doc.get("requires_stop") or {}
+    _need(isinstance(rs.get("asset_types"), list) and bool(rs["asset_types"]), "requires_stop.asset_types is required")
+    _need(isinstance(doc.get("stop_exempt_accounts"), list), "stop_exempt_accounts must be a list")
+
+
 def validate_registry(doc: Mapping[str, Any]) -> dict[str, Any]:
     _need(doc.get("schema") == "HomeStatusRegistry@v1", "schema must be HomeStatusRegistry@v1")
     causes, owners = doc.get("causes") or {}, doc.get("owners") or {}
     _need(bool(causes) and bool(owners), "causes and owners are required")
+    validate_incident_registry(doc)
     sources: dict[str, Any] = {}
     for s in doc.get("sources") or []:
         sid = s.get("source_id")
@@ -212,11 +236,12 @@ def evaluate(widget: Mapping[str, Any], source: Mapping[str, Any], fact: Mapping
     age_s = None if as_of is None else (now - as_of).total_seconds()
     threshold = None if rule.get("expected") is False else rule.get("threshold_s")
     status, cause, why = "UNKNOWN", source["cause_category"], None
+    off_session, session_note = False, None
 
     if read == "none":
         cause, why = "NO_SOURCE", fact.get("error") or source["probe"].get("reason")
     elif read == "timeout":
-        status, cause, why = "TIMED OUT", "READ_TIMEOUT", fact.get("error") or "no answer within the probe timeout"
+        status, cause, why = "TIMED_OUT", "READ_TIMEOUT", fact.get("error") or "no answer within the probe timeout"
     elif read == "error":
         cause, why = "READ_FAILURE", fact.get("error") or "the read failed"
     elif read == "ok":
@@ -225,7 +250,8 @@ def evaluate(widget: Mapping[str, Any], source: Mapping[str, Any], fact: Mapping
         elif age_s is not None and age_s < -60:
             cause, why = "READ_FAILURE", "the source timestamp is in the future (clock disagreement)"
         elif rule.get("expected") is False:
-            status, cause, why = "OFF_SESSION", "SESSION_CLOSED", rule["note"]
+            # One vocabulary: a source that is not expected to print outside its session is OK, with the basis named.
+            status, off_session, session_note = "OK", True, rule["note"]
         elif threshold is None:
             status, why = "OK", "event-driven source: status is whether the read worked"
         elif age_s is not None and age_s > threshold:
@@ -258,10 +284,13 @@ def evaluate(widget: Mapping[str, Any], source: Mapping[str, Any], fact: Mapping
         "as_of": _iso(as_of),
         "threshold_s": threshold,
         "threshold": _fmt_age(threshold) if threshold else None,
-        "threshold_basis": rule.get("threshold_basis") or ("fixed" if threshold else None),
+        "threshold_basis": "session_closed" if off_session else (rule.get("threshold_basis") or ("fixed" if threshold else None)),
+        "off_session": off_session,
+        "session_note": session_note,
+        "read": read,
         "in_session_threshold": _fmt_age(in_session) if in_session else None,
         "session": session,
-        "status": status,
+        "state": status,
         "cause": None if ok else causes.get(cause, cause),
         "cause_category": None if ok else cause,
         "why": None if ok else why,
@@ -305,7 +334,7 @@ def build_snapshot(registry: Mapping[str, Any], query: Callable[[str], Any], now
     facts: dict[str, dict[str, Any]] = {}
     for sid, src in registry["_sources"].items():
         facts[sid] = probe_source(src, query, float(registry["probe_timeout_s"]))
-    prev_rows = {r.get("widget_id"): r for r in ((previous or {}).get("widgets") or [])}
+    prev_rows = {r.get("widget_id"): r for r in ((previous or {}).get("rows") or [])}
     rows = []
     for w in registry["widgets"]:
         fact = dict(facts[w["source_id"]])
@@ -315,12 +344,33 @@ def build_snapshot(registry: Mapping[str, Any], query: Callable[[str], Any], now
         if fact.get("read") == "ok" and registry["_sources"][w["source_id"]]["probe"]["kind"] == "db_live":
             fact["as_of"] = _iso(now)
         rows.append(evaluate(w, registry["_sources"][w["source_id"]], fact, now, registry["owners"], registry["causes"]))
-    counts = {s: sum(1 for r in rows if r["status"] == s) for s in STATUSES}
+    counts = {s: sum(1 for r in rows if r["state"] == s) for s in STATES}
     return {"schema": SCHEMA, "generated_at": _iso(now), "registry_version": registry.get("version"),
-            "session": session_of(now), "counts": counts, "widgets": rows}
+            "session": session_of(now), "counts": counts, "rows": rows}
 
 
 # ---- read side (the endpoint) -----------------------------------------------------------------------
+
+def regrade(rows: list, registry: Mapping[str, Any], now: datetime) -> list:
+    """Re-grade a snapshot's rows at serve time. A row's age and OK/STALE come from its ``as_of`` and the limit that
+    applies at ``now`` (session included), never from collect time: a source read 800 s old at collection is 1650 s
+    old 850 s later and must not still read OK. Rows the collector could not read (no source, read failure, timed
+    out) stay as written, because nothing new has been read.
+    """
+    widgets = {w["widget_id"]: w for w in registry["widgets"]}
+    out = []
+    for r in rows:
+        w = widgets.get(r.get("widget_id"))
+        if w is None or r.get("read") != "ok":
+            out.append(dict(r))
+            continue
+        fact = {"read": "ok", "as_of": r.get("as_of"), "last_event_at": r.get("last_event_at"),
+                "last_good_at": r.get("last_good_at")}
+        row = evaluate(w, registry["_sources"][w["source_id"]], fact, now, registry["owners"], registry["causes"])
+        row["regraded_at"] = _iso(now)
+        out.append(row)
+    return out
+
 
 def serve(snapshot: Optional[Mapping[str, Any]], registry: Mapping[str, Any], now: datetime) -> dict[str, Any]:
     """What GET /api/v2/home/diagnostics returns. Reads a snapshot; never probes, never writes.
@@ -330,12 +380,14 @@ def serve(snapshot: Optional[Mapping[str, Any]], registry: Mapping[str, Any], no
     limit = int(registry["max_snapshot_age_s"])
     gen = _parse((snapshot or {}).get("generated_at")) if isinstance(snapshot, Mapping) else None
     good = isinstance(snapshot, Mapping) and snapshot.get("schema") == SCHEMA and gen is not None \
-        and isinstance(snapshot.get("widgets"), list)
+        and isinstance(snapshot.get("rows"), list)
     age = None if gen is None else (now - gen).total_seconds()
     if good and age is not None and -60 <= age <= limit:
-        return {**snapshot, "status": "ok", "snapshot_age_s": int(max(0, age)), "max_snapshot_age_s": limit,
-                "as_of_now": _iso(now)}
-    prev = {r.get("widget_id"): r for r in ((snapshot or {}).get("widgets") or [])} if good else {}
+        rows = regrade(snapshot["rows"], registry, now)
+        return {**snapshot, "state": "OK", "reason": None, "rows": rows, "served_at": _iso(now),
+                "counts": {s: sum(1 for r in rows if r["state"] == s) for s in STATES},
+                "snapshot_age_s": int(max(0, age)), "max_snapshot_age_s": limit, "as_of_now": _iso(now)}
+    prev = {r.get("widget_id"): r for r in ((snapshot or {}).get("rows") or [])} if good else {}
     reason = "no snapshot has been written" if not isinstance(snapshot, Mapping) or not snapshot else (
         "the snapshot is unreadable or has the wrong schema" if not good else
         f"the snapshot is {_fmt_age(age)} old (limit {_fmt_age(limit)})")
@@ -348,8 +400,9 @@ def serve(snapshot: Optional[Mapping[str, Any]], registry: Mapping[str, Any], no
         row["cause_category"], row["cause"] = "COLLECTOR_STALE", registry["causes"]["COLLECTOR_STALE"]
         row["age"] = row["age_s"] = None
         rows.append(row)
-    return {"schema": SCHEMA, "status": "collector_stale" if good else "no_snapshot", "reason": reason,
+    return {"schema": SCHEMA, "state": "STALE" if good else "UNKNOWN",
+            "detail": "collector_stale" if good else "no_snapshot", "reason": reason, "served_at": _iso(now),
             "generated_at": (snapshot or {}).get("generated_at") if good else None, "snapshot_age_s": None if age is None else int(age),
             "max_snapshot_age_s": limit, "registry_version": registry.get("version"), "session": session_of(now),
-            "counts": {s: sum(1 for r in rows if r["status"] == s) for s in STATUSES}, "widgets": rows,
+            "counts": {s: sum(1 for r in rows if r["state"] == s) for s in STATES}, "rows": rows,
             "as_of_now": _iso(now)}

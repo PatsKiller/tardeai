@@ -22,7 +22,8 @@
     "platform": "platform (quote and deploy lanes)",
     "comms": "comms (alerting)",
     "cio": "cio (since-close, trade-ready)",
-    "os": "os (operating system / scheduler program)"
+    "os": "os (operating system / scheduler program)",
+    "risk": "risk desk (stop-coverage-incidents)"
   },
   "sessions": {
     "rth": "regular trading hours, NYSE trading day, 09:30-16:00 ET (early closes honoured)",
@@ -168,5 +169,169 @@
         "last_event_column": "created_at"
       }
     }
-  ]
+  ],
+  "incident_classes_approved": false,
+  "incident_classes_note": "PROPOSAL (operator decision D2): the class -> P-level map decides what turns the Trade-ready chip NO. Not approved; 2147/2144 read it as a proposal until approved is true.",
+  "incident_classes": {
+    "position_unprotected": {
+      "category": "Unprotected Position",
+      "priority": "P0",
+      "blocks_trading_default": true,
+      "owner": "risk",
+      "ttl_h": 1,
+      "proof_window_h": 24,
+      "home_visible": true,
+      "rationale": "a held position with no resting stop"
+    },
+    "trading_impact_outage": {
+      "category": "Trading-Impacting Outage",
+      "priority": "P0",
+      "blocks_trading_default": true,
+      "owner": "platform",
+      "ttl_h": 1,
+      "proof_window_h": 24,
+      "home_visible": true,
+      "rationale": "an outage that stops orders or data the desk trades on"
+    },
+    "emergency_kill_or_revoke": {
+      "category": "Emergency Kill or Revoke",
+      "priority": "P0",
+      "blocks_trading_default": true,
+      "owner": "platform",
+      "ttl_h": 1,
+      "proof_window_h": 24,
+      "home_visible": true,
+      "rationale": "a kill switch or credential revoke was triggered"
+    },
+    "orphaned_stop": {
+      "category": "Orphaned Stop",
+      "priority": "P1",
+      "blocks_trading_default": false,
+      "owner": "risk",
+      "ttl_h": 4,
+      "proof_window_h": 24,
+      "home_visible": true,
+      "rationale": "a resting stop with no matching position"
+    },
+    "stop_warning": {
+      "category": "Stop Warning",
+      "priority": "P1",
+      "blocks_trading_default": false,
+      "owner": "risk",
+      "ttl_h": 4,
+      "proof_window_h": 24,
+      "home_visible": true,
+      "rationale": "a stop-monitor warning short of a gap"
+    },
+    "data_integrity": {
+      "category": "Data Integrity",
+      "priority": "P1",
+      "blocks_trading_default": false,
+      "owner": "portfolio",
+      "ttl_h": 4,
+      "proof_window_h": 24,
+      "home_visible": true,
+      "rationale": "stored data disagrees with its source"
+    },
+    "platform_availability": {
+      "category": "Platform Availability",
+      "priority": "P1",
+      "blocks_trading_default": false,
+      "owner": "platform",
+      "ttl_h": 4,
+      "proof_window_h": 24,
+      "home_visible": true,
+      "rationale": "a platform component is degraded without trading impact"
+    },
+    "siem_without_trading_impact": {
+      "category": "Security Event, No Trading Impact",
+      "priority": "INFO",
+      "blocks_trading_default": false,
+      "owner": "os",
+      "ttl_h": 24,
+      "proof_window_h": null,
+      "home_visible": false,
+      "rationale": "security telemetry"
+    },
+    "proposal_blocked_or_rebuild": {
+      "category": "Proposal Blocked or Rebuilt",
+      "priority": "INFO",
+      "blocks_trading_default": false,
+      "owner": "cio",
+      "ttl_h": 24,
+      "proof_window_h": null,
+      "home_visible": false,
+      "rationale": "CIO pipeline housekeeping"
+    },
+    "paper_proposal": {
+      "category": "Paper Proposal",
+      "priority": "INFO",
+      "blocks_trading_default": false,
+      "owner": "cio",
+      "ttl_h": 24,
+      "proof_window_h": null,
+      "home_visible": false,
+      "rationale": "paper-only proposal"
+    },
+    "scanner_candidate": {
+      "category": "Scanner Candidate",
+      "priority": "INFO",
+      "blocks_trading_default": false,
+      "owner": "cio",
+      "ttl_h": 24,
+      "proof_window_h": null,
+      "home_visible": false,
+      "rationale": "scanner output awaiting review"
+    },
+    "research_update": {
+      "category": "Research Update",
+      "priority": "INFO",
+      "blocks_trading_default": false,
+      "owner": "cio",
+      "ttl_h": 24,
+      "proof_window_h": null,
+      "home_visible": false,
+      "rationale": "research feed item"
+    },
+    "thesis_update": {
+      "category": "Thesis Update",
+      "priority": "INFO",
+      "blocks_trading_default": false,
+      "owner": "cio",
+      "ttl_h": 24,
+      "proof_window_h": null,
+      "home_visible": false,
+      "rationale": "thesis feed item"
+    },
+    "cio_entry_state": {
+      "category": "CIO Entry State",
+      "priority": "INFO",
+      "blocks_trading_default": false,
+      "owner": "cio",
+      "ttl_h": 24,
+      "proof_window_h": null,
+      "home_visible": false,
+      "rationale": "entry-state change"
+    },
+    "job_telemetry": {
+      "category": "Job Telemetry",
+      "priority": "INFO",
+      "blocks_trading_default": false,
+      "owner": "os",
+      "ttl_h": 24,
+      "proof_window_h": null,
+      "home_visible": false,
+      "rationale": "lane run telemetry"
+    }
+  },
+  "requires_stop": {
+    "asset_types": [
+      "equity",
+      "etf",
+      "closed_end_fund",
+      "mutual_fund"
+    ],
+    "note": "PROPOSAL per DECISIONS-20261111: cash, money-market funds and sweep vehicles are exempt; ETFs, closed-end funds, mutual funds and stocks are not."
+  },
+  "stop_exempt_accounts": []
 }

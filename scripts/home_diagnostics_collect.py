@@ -96,7 +96,7 @@ def main(argv: list[str] | None = None, *, query=None, now: datetime | None = No
         if conn is not None:
             conn.close()
     c = snap["counts"]
-    print(f"home diagnostics: {len(snap['widgets'])} widgets, session {snap['session']}, "
+    print(f"home diagnostics: {len(snap['rows'])} widgets, session {snap['session']}, "
           + ", ".join(f"{k} {v}" for k, v in c.items() if v))
     if not a.apply:
         print("DRY RUN: nothing written")
@@ -108,7 +108,7 @@ def main(argv: list[str] | None = None, *, query=None, now: datetime | None = No
 
         write_lane_receipt(LANE_ID, ok=not db_error, exit_code=1 if db_error else 0, started_at=started, script=SCRIPT_REL,
                            summary={"counts": c, "session": snap["session"], "path": str(out_path)},
-                           error=db_error, produced_count=len(snap["widgets"]))
+                           error=db_error, produced_count=len(snap["rows"]))
     except Exception as exc:  # noqa: BLE001 -- the snapshot is the durable artifact; say so
         print(f"lane receipt not written: {type(exc).__name__}: {exc}", file=sys.stderr)
     return 1 if db_error else 0

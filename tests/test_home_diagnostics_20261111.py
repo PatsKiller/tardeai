@@ -120,63 +120,63 @@ def test_session_of():
 
 def test_ok_stale_and_threshold_boundary(reg):
     ok = _row(reg, "status_portfolio", {"read": "ok", "as_of": _ago(RTH, 600)}, RTH)
-    assert ok["status"] == "OK" and ok["age_s"] == 600 and ok["threshold_s"] == 1800 and ok["cause"] is None and ok["cause_category"] is None and ok["why"] is None
+    assert ok["state"] == "OK" and ok["age_s"] == 600 and ok["threshold_s"] == 1800 and ok["cause"] is None and ok["cause_category"] is None and ok["why"] is None
     stale = _row(reg, "status_portfolio", {"read": "ok", "as_of": _ago(RTH, 1801)}, RTH)
-    assert stale["status"] == "STALE" and stale["cause_category"] == "DATA_STALENESS" and stale["owner"]
+    assert stale["state"] == "STALE" and stale["cause_category"] == "DATA_STALENESS" and stale["owner"]
 
 
 def test_unknown_is_never_ok(reg):
     for fact in ({"read": "error", "error": "OperationalError: down"}, {"read": "ok", "as_of": None},
                  {"read": "none", "error": "no store"}, {"read": "weird"}):
         r = _row(reg, "status_portfolio", fact, RTH)
-        assert r["status"] != "OK" and r["cause"] and r["why"] and r["source"] and r["owner"]
+        assert r["state"] != "OK" and r["cause"] and r["why"] and r["source"] and r["owner"]
 
 
 def test_missing_source_is_no_source_unknown_not_zero(reg):
     r = _row(reg, "validation_gates", {"read": "none", "error": "no validation_gates store"}, RTH)
-    assert r["status"] == "UNKNOWN" and r["cause_category"] == "NO_SOURCE" and r["needs_backend"] is True
+    assert r["state"] == "UNKNOWN" and r["cause_category"] == "NO_SOURCE" and r["needs_backend"] is True
 
 
 def test_timeout_is_timed_out(reg):
     r = _row(reg, "status_portfolio", {"read": "timeout", "error": "TimeoutError: 30s"}, RTH)
-    assert r["status"] == "TIMED OUT" and r["cause_category"] == "READ_TIMEOUT"
+    assert r["state"] == "TIMED_OUT" and r["cause_category"] == "READ_TIMEOUT"
 
 
 def test_future_timestamp_is_unknown_not_fresh(reg):
     r = _row(reg, "status_portfolio", {"read": "ok", "as_of": (RTH + timedelta(hours=2)).isoformat()}, RTH)
-    assert r["status"] == "UNKNOWN" and "future" in r["why"]
+    assert r["state"] == "UNKNOWN" and "future" in r["why"]
 
 
 def test_event_driven_source_is_ok_when_read_works_and_shows_event_age(reg):
     r = _row(reg, "status_alerts", {"read": "ok", "as_of": RTH.isoformat(), "last_event_at": _ago(RTH, 7200)}, RTH)
-    assert r["status"] == "OK" and r["threshold_s"] is None and r["age_s"] == 7200
+    assert r["state"] == "OK" and r["threshold_s"] is None and r["age_s"] == 7200
 
 
 def test_vix_evening_is_off_session_not_stale(reg):
     fact = {"read": "ok", "as_of": _ago(EXT, 4 * 3600)}
     r = _row(reg, "vix_market", fact, EXT)
-    assert r["status"] == "OFF_SESSION" and r["cause_category"] == "SESSION_CLOSED" and r["age_s"] == 4 * 3600
+    assert r["state"] == "OK" and r["off_session"] is True and r["threshold_basis"] == "session_closed" and r["cause_category"] is None and r["session_note"] and r["age_s"] == 4 * 3600
     assert r["in_session_threshold"] == "30 m"
-    assert _row(reg, "vix_market", {"read": "ok", "as_of": _ago(RTH, 4 * 3600)}, RTH)["status"] == "STALE"
+    assert _row(reg, "vix_market", {"read": "ok", "as_of": _ago(RTH, 4 * 3600)}, RTH)["state"] == "STALE"
 
 
 def test_day_order_stops_are_off_session_after_the_close_but_stale_in_session(reg):
     fact = {"read": "ok", "as_of": _ago(CLOSED, 8 * 3600)}
-    assert _row(reg, "action_unprotected_position", fact, CLOSED)["status"] == "OFF_SESSION"
-    assert _row(reg, "status_orders", fact, CLOSED)["status"] == "OFF_SESSION"
-    assert _row(reg, "status_orders", {"read": "ok", "as_of": _ago(RTH, 8 * 3600)}, RTH)["status"] == "STALE"
+    assert _row(reg, "action_unprotected_position", fact, CLOSED)["off_session"] is True
+    assert _row(reg, "status_orders", fact, CLOSED)["off_session"] is True
+    assert _row(reg, "status_orders", {"read": "ok", "as_of": _ago(RTH, 8 * 3600)}, RTH)["state"] == "STALE"
 
 
 def test_friday_close_read_on_sunday_is_ok_for_quotes_and_a_missed_session_is_stale(reg):
     friday_close = datetime(2026, 11, 13, 21, 0, tzinfo=UTC)
-    assert _row(reg, "status_data", {"read": "ok", "as_of": friday_close.isoformat()}, SUNDAY)["status"] == "OK"
-    assert _row(reg, "status_data", {"read": "ok", "as_of": _ago(RTH, 3 * 86400 + 1)}, RTH)["status"] == "STALE"
-    assert _row(reg, "status_data", {"read": "ok", "as_of": _ago(RTH, 3 * 3600)}, RTH)["status"] == "STALE"
+    assert _row(reg, "status_data", {"read": "ok", "as_of": friday_close.isoformat()}, SUNDAY)["state"] == "OK"
+    assert _row(reg, "status_data", {"read": "ok", "as_of": _ago(RTH, 3 * 86400 + 1)}, RTH)["state"] == "STALE"
+    assert _row(reg, "status_data", {"read": "ok", "as_of": _ago(RTH, 3 * 3600)}, RTH)["state"] == "STALE"
 
 
 def test_unreadable_source_never_reads_off_session(reg):
     r = _row(reg, "vix_market", {"read": "error", "error": "x"}, EXT)
-    assert r["status"] == "UNKNOWN"
+    assert r["state"] == "UNKNOWN"
 
 
 # ---- build_snapshot / probe ------------------------------------------------------------------------
@@ -189,11 +189,11 @@ def _q_ok(now):
 
 def test_snapshot_has_13_rows_with_all_seven_drawer_fields(reg):
     snap = hd.build_snapshot(reg, _q_ok(RTH), RTH)
-    assert len(snap["widgets"]) == 13 and snap["generated_at"] and snap["session"] == "rth"
-    for r in snap["widgets"]:
-        for k in ("widget", "source", "refresh_rate", "age", "threshold", "status", "failure_mode", "owner"):
+    assert len(snap["rows"]) == 13 and snap["generated_at"] and snap["session"] == "rth"
+    for r in snap["rows"]:
+        for k in ("widget", "source", "refresh_rate", "age", "threshold", "state", "failure_mode", "owner"):
             assert k in r
-        if r["status"] != "OK":
+        if r["state"] != "OK":
             assert r["cause"] and r["source"] and r["owner"]
     assert sum(snap["counts"].values()) == 13
 
@@ -210,9 +210,9 @@ def test_probe_is_read_only_select_and_a_failure_does_not_hide_the_others(reg):
         return [(RTH,)]
     snap = hd.build_snapshot(reg, q, RTH)
     assert seen and all(s.lstrip().upper().startswith("SELECT") for s in seen)
-    by = {r["widget_id"]: r for r in snap["widgets"]}
-    assert by["status_orders"]["status"] == "UNKNOWN" and by["status_data"]["status"] == "TIMED OUT"
-    assert by["status_portfolio"]["status"] == "OK"
+    by = {r["widget_id"]: r for r in snap["rows"]}
+    assert by["status_orders"]["state"] == "UNKNOWN" and by["status_data"]["state"] == "TIMED_OUT"
+    assert by["status_portfolio"]["state"] == "OK"
 
 
 def test_last_good_survives_a_failed_read(reg):
@@ -222,8 +222,8 @@ def test_last_good_survives_a_failed_read(reg):
     def q(sql):
         raise RuntimeError("down")
     second = hd.build_snapshot(reg, q, later, previous=first)
-    row = next(r for r in second["widgets"] if r["widget_id"] == "status_portfolio")
-    assert row["status"] == "UNKNOWN" and row["last_good_at"]
+    row = next(r for r in second["rows"] if r["widget_id"] == "status_portfolio")
+    assert row["state"] == "UNKNOWN" and row["last_good_at"]
 
 
 # ---- serve / handler ---------------------------------------------------------------------------------
@@ -231,37 +231,37 @@ def test_last_good_survives_a_failed_read(reg):
 def test_serve_fresh_snapshot_ok(reg):
     snap = hd.build_snapshot(reg, _q_ok(RTH), RTH)
     out = hd.serve(snap, reg, RTH + timedelta(seconds=120))
-    assert out["status"] == "ok" and out["snapshot_age_s"] == 120 and len(out["widgets"]) == 13
+    assert out["state"] == "OK" and out["snapshot_age_s"] == 120 and len(out["rows"]) == 13
 
 
 @pytest.mark.parametrize("snap", [None, {}, {"schema": "x"}, "junk"])
 def test_serve_missing_or_bad_snapshot_is_all_unknown(reg, snap):
     out = hd.serve(snap, reg, RTH)
-    assert out["status"] == "no_snapshot" and len(out["widgets"]) == 13
-    assert all(r["status"] == "UNKNOWN" and r["cause_category"] == "COLLECTOR_STALE" for r in out["widgets"])
+    assert out["detail"] == "no_snapshot" and len(out["rows"]) == 13
+    assert all(r["state"] == "UNKNOWN" and r["cause_category"] == "COLLECTOR_STALE" for r in out["rows"])
 
 
 def test_serve_stale_snapshot_is_all_unknown_even_if_rows_said_ok(reg):
     snap = hd.build_snapshot(reg, _q_ok(RTH), RTH)
-    assert any(r["status"] == "OK" for r in snap["widgets"])
+    assert any(r["state"] == "OK" for r in snap["rows"])
     out = hd.serve(snap, reg, RTH + timedelta(seconds=reg["max_snapshot_age_s"] + 60))
-    assert out["status"] == "collector_stale" and "old" in out["reason"]
-    assert all(r["status"] == "UNKNOWN" and r["cause_category"] == "COLLECTOR_STALE" for r in out["widgets"])
-    assert any(r["last_good_at"] for r in out["widgets"])
+    assert out["detail"] == "collector_stale" and "old" in out["reason"]
+    assert all(r["state"] == "UNKNOWN" and r["cause_category"] == "COLLECTOR_STALE" for r in out["rows"])
+    assert any(r["last_good_at"] for r in out["rows"])
 
 
 def test_handler_reads_only_and_writes_nothing(tmp_path, reg):
     out = api.diagnostics(tmp_path, RTH, reg)
-    assert out["status"] == "no_snapshot" and list(tmp_path.iterdir()) == []
+    assert out["detail"] == "no_snapshot" and list(tmp_path.iterdir()) == []
     (tmp_path / hd.SNAPSHOT_NAME).write_text(json.dumps(hd.build_snapshot(reg, _q_ok(RTH), RTH)))
     before = (tmp_path / hd.SNAPSHOT_NAME).stat().st_mtime_ns
-    assert api.diagnostics(tmp_path, RTH + timedelta(seconds=30), reg)["status"] == "ok"
+    assert api.diagnostics(tmp_path, RTH + timedelta(seconds=30), reg)["state"] == "OK"
     assert (tmp_path / hd.SNAPSHOT_NAME).stat().st_mtime_ns == before
 
 
 def test_handler_with_corrupt_snapshot_is_unknown(tmp_path, reg):
     (tmp_path / hd.SNAPSHOT_NAME).write_text("{not json")
-    assert api.diagnostics(tmp_path, RTH, reg)["status"] == "no_snapshot"
+    assert api.diagnostics(tmp_path, RTH, reg)["detail"] == "no_snapshot"
 
 
 def test_handler_does_not_import_a_database_module():
@@ -282,7 +282,7 @@ def test_collector_apply_writes_snapshot_atomically(tmp_path, monkeypatch):
     rc = collect.main(["--apply", "--state-dir", str(tmp_path)], query=_q_ok(RTH), now=RTH)
     assert rc == 0
     doc = json.loads((tmp_path / hd.SNAPSHOT_NAME).read_text())
-    assert doc["schema"] == hd.SCHEMA and len(doc["widgets"]) == 13
+    assert doc["schema"] == hd.SCHEMA and len(doc["rows"]) == 13
     assert [p.name for p in tmp_path.iterdir()] == [hd.SNAPSHOT_NAME]
 
 
@@ -302,8 +302,8 @@ def test_collector_db_down_exits_1_and_writes_truthful_all_unknown(tmp_path, mon
     rc = collect.main(["--apply", "--state-dir", str(tmp_path)], now=RTH)
     assert rc == 1
     doc = json.loads((tmp_path / hd.SNAPSHOT_NAME).read_text())
-    db_rows = [r for r in doc["widgets"] if r["status"] != "OK"]
-    assert len(doc["widgets"]) == 13 and all(r["status"] != "OK" for r in doc["widgets"]) and db_rows
+    db_rows = [r for r in doc["rows"] if r["state"] != "OK"]
+    assert len(doc["rows"]) == 13 and all(r["state"] != "OK" for r in doc["rows"]) and db_rows
 
 
 def test_collector_invalid_registry_exits_2_and_writes_nothing(tmp_path):
@@ -311,3 +311,53 @@ def test_collector_invalid_registry_exits_2_and_writes_nothing(tmp_path):
     bad.write_text("{}")
     rc = collect.main(["--apply", "--state-dir", str(tmp_path), "--registry", str(bad)], query=_q_ok(RTH), now=RTH)
     assert rc == 2 and [p.name for p in tmp_path.iterdir()] == ["bad.json"]
+
+
+# ---- LQ-20261107-2175 rework (REVIEW-2164b C2 / C3) ------------------------------------------------------
+
+def _snap_with_status_data_age(reg, age_s):
+    """A snapshot where every db source was written ``age_s`` before collection."""
+    def q(sql):
+        return [(RTH - timedelta(seconds=age_s),)]
+    return hd.build_snapshot(reg, q, RTH)
+
+
+def test_c2_served_age_and_state_are_recomputed_at_serve_time(reg):
+    """Review probe: source 800 s old at collection, status_data limit 900 s -> OK at T, but 1650 s old at T+850."""
+    snap = _snap_with_status_data_age(reg, 800)
+    at_collect = next(r for r in snap["rows"] if r["widget_id"] == "status_data")
+    assert at_collect["state"] == "OK" and at_collect["age_s"] == 800
+    for later, true_age in ((850, 1650), (899, 1699)):
+        out = hd.serve(snap, reg, RTH + timedelta(seconds=later))
+        row = next(r for r in out["rows"] if r["widget_id"] == "status_data")
+        assert out["state"] == "OK"  # the snapshot itself is still within its limit
+        assert row["age_s"] == true_age and row["state"] == "STALE", row
+        assert row["cause_category"] == "DATA_STALENESS" and row["why"]
+    assert out["counts"]["STALE"] >= 1 and sum(out["counts"].values()) == 13
+
+
+def test_c2_collect_time_failures_are_not_regraded(reg):
+    def q(sql):
+        raise RuntimeError("boom")
+    snap = hd.build_snapshot(reg, q, RTH)
+    out = hd.serve(snap, reg, RTH + timedelta(seconds=300))
+    by_state = {r["widget_id"]: r["state"] for r in out["rows"]}
+    assert by_state["status_orders"] == "UNKNOWN" and "OK" not in {r["state"] for r in out["rows"] if r.get("read") == "error"}
+
+
+def test_c3_states_are_the_spec_vocabulary_and_off_session_is_ok_with_a_basis(reg):
+    assert hd.STATES == ("OK", "WARN", "STALE", "UNKNOWN", "TIMED_OUT")
+    snap = hd.build_snapshot(reg, _q_ok(EXT), EXT)
+    assert {r["state"] for r in snap["rows"]} <= set(hd.STATES)
+    assert "rows" in snap and "widgets" not in snap
+    r = _row(reg, "vix_market", {"read": "ok", "as_of": _ago(EXT, 3600)}, EXT)
+    assert r["state"] == "OK" and r["off_session"] and r["threshold_basis"] == "session_closed"
+
+
+def test_c3_invalid_registry_still_returns_13_unknown_read_failure_rows(tmp_path, monkeypatch):
+    def boom(*a, **k):
+        raise hd.RegistryError("synthetic invalid registry")
+    monkeypatch.setattr(hd, "load_registry", boom)
+    out = api.diagnostics(tmp_path, RTH)
+    assert out["state"] == "UNKNOWN" and out["detail"] == "registry_invalid" and len(out["rows"]) == 13
+    assert all(r["state"] == "UNKNOWN" and r["cause_category"] == "READ_FAILURE" for r in out["rows"])
