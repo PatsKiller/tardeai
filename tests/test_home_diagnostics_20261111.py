@@ -361,3 +361,22 @@ def test_c3_invalid_registry_still_returns_13_unknown_read_failure_rows(tmp_path
     out = api.diagnostics(tmp_path, RTH)
     assert out["state"] == "UNKNOWN" and out["detail"] == "registry_invalid" and len(out["rows"]) == 13
     assert all(r["state"] == "UNKNOWN" and r["cause_category"] == "READ_FAILURE" for r in out["rows"])
+
+
+def test_d1_orders_after_the_close_is_warn_never_ok_and_vix_stays_ok(reg):
+    """Operator D1 (11-11 23:19 ET): an expired DAY stop as the only protection -> Orders WARN, never OK."""
+    fact = {"read": "ok", "as_of": _ago(CLOSED, 8 * 3600)}
+    for wid in ("status_orders", "action_unprotected_position"):
+        r = _row(reg, wid, fact, CLOSED)
+        assert r["state"] == "WARN" and r["off_session"] is True and r["cause_category"] == "SESSION_CLOSED", wid
+        assert r["cause"] and r["owner"] and "DAY" in r["why"] or "Day" in r["why"]
+    assert _row(reg, "vix_market", {"read": "ok", "as_of": _ago(EXT, 3600)}, EXT)["state"] == "OK"
+    # in session the same stale stop is STALE, not WARN
+    assert _row(reg, "status_orders", {"read": "ok", "as_of": _ago(RTH, 8 * 3600)}, RTH)["state"] == "STALE"
+
+
+def test_d1_no_source_timeout_and_failed_read_defaults(reg):
+    assert _row(reg, "validation_gates", {"read": "none"}, RTH)["state"] == "UNKNOWN"
+    assert _row(reg, "status_orders", {"read": "timeout"}, RTH)["state"] == "TIMED_OUT"
+    assert _row(reg, "status_orders", {"read": "error", "error": "x"}, RTH)["state"] == "UNKNOWN"
+    assert _row(reg, "status_orders", {"read": "ok", "as_of": None}, RTH)["state"] == "UNKNOWN"

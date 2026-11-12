@@ -108,6 +108,7 @@ def validate_registry(doc: Mapping[str, Any]) -> dict[str, Any]:
                 covered.add(sess)
             if r.get("expected") is False:
                 _need(bool(r.get("note")), f"widget {wid}: an expected:false rule must say why (note)")
+                _need(r.get("off_session_state", "OK") in ("OK", "WARN"), f"widget {wid}: off_session_state must be OK or WARN")
             else:
                 t = r.get("threshold_s")
                 _need(t is None or (isinstance(t, int) and t > 0), f"widget {wid}: threshold_s must be null or a positive int")
@@ -251,7 +252,11 @@ def evaluate(widget: Mapping[str, Any], source: Mapping[str, Any], fact: Mapping
             cause, why = "READ_FAILURE", "the source timestamp is in the future (clock disagreement)"
         elif rule.get("expected") is False:
             # One vocabulary: a source that is not expected to print outside its session is OK, with the basis named.
-            status, off_session, session_note = "OK", True, rule["note"]
+            # D1 (operator 11-11): where the rule says off_session_state WARN (Orders: an expired DAY stop is no longer
+            # active protection) the row is WARN with a cause, never OK.
+            status, off_session, session_note = rule.get("off_session_state", "OK"), True, rule["note"]
+            if status == "WARN":
+                cause, why = "SESSION_CLOSED", rule["note"]
         elif threshold is None:
             status, why = "OK", "event-driven source: status is whether the read worked"
         elif age_s is not None and age_s > threshold:

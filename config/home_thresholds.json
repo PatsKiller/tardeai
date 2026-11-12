@@ -11,7 +11,7 @@
   "widgets": [
     {
       "widget_id": "action_unprotected_position",
-      "widget": "Action · Unprotected Position",
+      "widget": "Action \u00b7 Unprotected Position",
       "source_id": "stop_store",
       "refresh_rate": "15 min",
       "refresh_s": 900,
@@ -31,13 +31,14 @@
             "closed"
           ],
           "expected": false,
-          "note": "Day-order stops lapse at the close; the next capture is the next session"
+          "note": "Day-order stops lapse at the close: an expired DAY stop is not active protection (operator D1, 11-11 23:19 ET), so Orders reads WARN, never OK, until the next session captures stops",
+          "off_session_state": "WARN"
         }
       ]
     },
     {
       "widget_id": "action_approvals",
-      "widget": "Action · Approvals",
+      "widget": "Action \u00b7 Approvals",
       "source_id": "approval_queue",
       "refresh_rate": "on read",
       "refresh_s": 0,
@@ -56,7 +57,7 @@
     },
     {
       "widget_id": "action_data_integrity",
-      "widget": "Action · Data Integrity Alert",
+      "widget": "Action \u00b7 Data Integrity Alert",
       "source_id": "alert_events",
       "refresh_rate": "on event",
       "refresh_s": 0,
@@ -116,7 +117,7 @@
     },
     {
       "widget_id": "status_portfolio",
-      "widget": "Status · Portfolio",
+      "widget": "Status \u00b7 Portfolio",
       "source_id": "positions_store",
       "refresh_rate": "30 min",
       "refresh_s": 1800,
@@ -142,7 +143,7 @@
     },
     {
       "widget_id": "status_orders",
-      "widget": "Status · Orders (stops)",
+      "widget": "Status \u00b7 Orders (stops)",
       "source_id": "stop_store",
       "refresh_rate": "15 min",
       "refresh_s": 900,
@@ -161,13 +162,14 @@
             "closed"
           ],
           "expected": false,
-          "note": "Day-order stops lapse at the close; the next capture is the next session"
+          "note": "Day-order stops lapse at the close: an expired DAY stop is not active protection (operator D1, 11-11 23:19 ET), so Orders reads WARN, never OK, until the next session captures stops",
+          "off_session_state": "WARN"
         }
       ]
     },
     {
       "widget_id": "status_schedulers",
-      "widget": "Status · Schedulers",
+      "widget": "Status \u00b7 Schedulers",
       "source_id": "run_log",
       "refresh_rate": "1 min",
       "refresh_s": 60,
@@ -187,7 +189,7 @@
     },
     {
       "widget_id": "status_alerts",
-      "widget": "Status · Alerts",
+      "widget": "Status \u00b7 Alerts",
       "source_id": "incident_store",
       "refresh_rate": "on event",
       "refresh_s": 0,
@@ -207,7 +209,7 @@
     },
     {
       "widget_id": "status_data",
-      "widget": "Status · Data",
+      "widget": "Status \u00b7 Data",
       "source_id": "feed_freshness",
       "refresh_rate": "60 s",
       "refresh_s": 60,
@@ -284,7 +286,7 @@
     },
     {
       "widget_id": "details_deploys",
-      "widget": "Details · Deploys",
+      "widget": "Details \u00b7 Deploys",
       "source_id": "deploy_log",
       "refresh_rate": "2 min",
       "refresh_s": 120,
