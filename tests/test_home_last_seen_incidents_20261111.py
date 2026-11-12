@@ -54,49 +54,57 @@ def _now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
-def test_first_read_is_not_recorded_with_a_stated_fallback(prefs):
+def _post(api, value):
+    return api._ui_prefs_set({"key": "home.last_seen", "value": value})
+
+
+def test_absent_key_is_the_stated_24h_fallback(prefs):
     api, _ = prefs
-    out = api._ui_prefs_get({"key": "home.last_seen"})
-    assert out["read"]["status"] == "NOT_RECORDED" and out["read"]["seen_at"] is None
-    assert out["read"]["fallback"]["window_hours"] == 24 and "not recorded" in out["read"]["fallback"]["text"]
+    r = api._ui_prefs_get({"key": "home.last_seen"})["read"]
+    assert r["status"] == "NOT_RECORDED" and r["window_basis"] == "fallback_24h"
+    assert r["last_visit_recorded"] is False and r["seen_at"] is None and "not recorded" in r["fallback_text"]
 
 
-def test_write_then_read_round_trips_with_age(prefs):
+def test_a_second_post_moves_seen_to_previous(prefs):
     api, fake = prefs
-    assert api._ui_prefs_set({"key": "home.last_seen", "value": {"seen_at": _now_iso(), "client": "phone"}})["ok"]
-    out = api._ui_prefs_get({"key": "home.last_seen"})
-    assert out["read"]["status"] == "RECORDED" and out["read"]["client"] == "phone"
-    assert isinstance(out["read"]["age_sec"], int) and out["read"]["age_sec"] < 60
+    assert _post(api, {"device": "phone"})["ok"]
+    first = fake.rows["home.last_seen"]["seen_at"]
+    assert fake.rows["home.last_seen"]["previous_seen_at"] is None
+    assert _post(api, {"device": "desktop"})["ok"]
+    v = fake.rows["home.last_seen"]
+    assert v["previous_seen_at"] == first and v["device"] == "desktop"
+    assert HL.parse_ts(v["seen_at"]) >= HL.parse_ts(first)
+    r = api._ui_prefs_get({"key": "home.last_seen"})["read"]
+    assert r["status"] == "RECORDED" and r["window_basis"] == "last_visit" and r["last_visit_recorded"] is True
+    assert r["previous_seen_at"] == first and r["device"] == "desktop" and isinstance(r["age_sec"], int)
 
 
-@pytest.mark.parametrize("bad", [
-    "yesterday", 5, None, {"seen_at": "2026-11-11T10:00:00"},            # no zone
-    {"seen_at": "not a time"}, {"seen_at": _now_iso(), "extra": 1},       # unknown field
-    {"seen_at": _now_iso(), "client": "toaster"},
-    {"seen_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()},   # future
-    {"seen_at": "1999-01-01T00:00:00+00:00"},
-])
+def test_a_client_cannot_set_previous_seen_at_or_seen_at(prefs):
+    api, fake = prefs
+    _post(api, {"device": "phone"})
+    stored_seen = fake.rows["home.last_seen"]["seen_at"]
+    forged = "2020-01-01T00:00:00+00:00"
+    assert _post(api, {"device": "phone", "previous_seen_at": forged, "seen_at": forged})["ok"]
+    v = fake.rows["home.last_seen"]
+    assert v["previous_seen_at"] == stored_seen            # copied from the server's stored seen_at
+    assert v["seen_at"] != forged and HL.parse_ts(v["seen_at"]).year >= 2026   # server now(), not the client
+
+
+@pytest.mark.parametrize("bad", ["yesterday", 5, None, {}, {"device": "toaster"}, {"seen_at": "2026-11-11T10:00:00+00:00"}])
 def test_garbage_is_rejected_and_nothing_is_stored(prefs, bad):
     api, fake = prefs
-    out = api._ui_prefs_set({"key": "home.last_seen", "value": bad})
+    out = _post(api, bad)
     assert out["ok"] is False and "home.last_seen" not in fake.rows
 
 
-def test_a_stale_tab_cannot_rewind_the_anchor(prefs):
-    api, fake = prefs
-    newer = datetime.now(timezone.utc)
-    older = newer - timedelta(hours=3)
-    api._ui_prefs_set({"key": "home.last_seen", "value": {"seen_at": newer.isoformat()}})
-    out = api._ui_prefs_set({"key": "home.last_seen", "value": {"seen_at": older.isoformat()}})
-    assert out["ok"] and out.get("unchanged") is True
-    assert HL.parse_ts(fake.rows["home.last_seen"]["seen_at"]) == newer
-
-
-def test_a_corrupt_stored_value_is_unknown_not_a_guess(prefs):
+def test_a_corrupt_stored_value_is_unknown_with_fallback_not_a_guess(prefs):
     api, fake = prefs
     fake.rows["home.last_seen"] = {"seen_at": "garbage"}
     r = api._ui_prefs_get({"key": "home.last_seen"})["read"]
     assert r["status"] == "UNKNOWN" and r["seen_at"] is None and "unreadable" in r["reason"]
+    assert r["window_basis"] == "fallback_24h" and r["last_visit_recorded"] is False
+    # and the next post still works: it starts a clean window (previous unreadable -> None)
+    assert _post(api, {"device": "phone"})["ok"] and fake.rows["home.last_seen"]["previous_seen_at"] is None
 
 
 def test_other_keys_are_untouched(prefs):
@@ -107,101 +115,151 @@ def test_other_keys_are_untouched(prefs):
 
 
 # ----------------------------------------------------------------------------- home/incidents
+CLASSES = {
+    "position_unprotected": {"category": "Unprotected Position", "priority": "P0", "blocks_trading_default": True,
+                             "owner": "risk", "ttl_h": 1, "cause": "no working stop", "home_visible": True},
+    "data_integrity": {"category": "Data Integrity", "priority": "P1", "blocks_trading_default": False,
+                       "owner": "data", "ttl_h": 24, "home_visible": True},
+    "job_telemetry": {"priority": "INFO", "home_visible": False},
+}
+
+
 def _inc(**kw):
-    base = dict(incident_id="i1", alert_type="stop_unprotected", digest_bucket="RISK", severity="critical",
-                status="open", symbol="AAA", source_system="stop_monitor", source_producer=None,
-                operator_action_required=True, first_seen_at=NOW - timedelta(hours=2), last_seen_at=NOW - timedelta(minutes=5),
-                occurrence_count=7, acknowledged_at=None, blocks_trading_declared=None)
+    base = dict(incident_id="i1", alert_type="position_unprotected", digest_bucket="RISK", severity="critical",
+                symbol="AAA", source_system="stop_monitor", source_producer=None,
+                first_seen_at=NOW - timedelta(hours=2), last_seen_at=NOW - timedelta(minutes=5),
+                occurrence_count=4, blocks_trading_declared=None, account_label="acct-A", payload_cause=None)
     base.update(kw)
     return base
 
 
-def _db(rows=None, exc=None, seen=None):
+def _db(rows=None, exc=None, events=12, seen=None, exc_events=None):
     def q(sql, params=None, fetch="all"):
         if seen is not None:
             seen.append((sql, params))
+        if "FROM alert_events" in sql:
+            if exc_events:
+                raise exc_events
+            return None if events is None else {"events": events}
         if exc:
             raise exc
         return rows
     return q
 
 
-def test_row_carries_category_severity_first_seen_count_and_ages():
-    out = HI.build(_db([_inc()]), now=NOW, registry={})
-    assert out["status"] == "OK" and out["open_count"] == 1
-    i = out["incidents"][0]
-    assert (i["category"], i["severity"], i["count"]) == ("stop_unprotected", "critical", 7)
-    assert i["first_seen_age_sec"] == 7200 and i["last_seen_age_sec"] == 300
-    assert i["stale_after_sec"] == HI.STALE_AFTER_SEC and i["stale"] is False
+def test_item_matches_the_spec_shape():
+    out = HI.build(_db([_inc()]), now=NOW, classes=CLASSES)
+    assert out["schema"] == "HomeIncidents@v1" and out["state"] == "OK" and out["reason"] is None
+    assert out["counts"] == {"P0": 1, "P1": 0, "UNCLASSIFIED": 0, "blocks_trading": 1}
+    i = out["items"][0]
+    for k in ("incident_id", "category", "priority", "blocks_trading", "symbol", "account_label", "first_seen_at",
+              "last_seen_at", "failed_checks", "owner", "cause", "stale_condition"):
+        assert k in i
+    assert (i["category"], i["priority"], i["owner"], i["cause"]) == ("Unprotected Position", "P0", "risk", "no working stop")
+    assert i["failed_checks"] == 4 and i["failing_for_s"] == 7200 and i["account_label"] == "acct-A"
+    assert i["blocks_trading"] is True              # class default
+    assert out["snapshot"]["age_s"] == 0 and out["served_at"]
 
 
-def test_an_incident_not_reobserved_within_the_threshold_is_flagged_stale_not_dropped():
-    out = HI.build(_db([_inc(last_seen_at=NOW - timedelta(hours=5))]), now=NOW, registry={})
-    assert out["open_count"] == 1 and out["incidents"][0]["stale"] is True
+def test_an_unmapped_class_is_unclassified_shown_and_counted():
+    out = HI.build(_db([_inc(incident_id="x", alert_type="mystery_alert")]), now=NOW, classes=CLASSES)
+    i = out["items"][0]
+    assert i["priority"] == "UNCLASSIFIED" and i["category"] == "mystery_alert" and i["owner"] == "UNREGISTERED"
+    assert i["stale_condition"] is None and i["blocks_trading"] is False
+    assert out["counts"]["UNCLASSIFIED"] == 1 and out["counts"]["P0"] == 0
 
 
-def test_a_failed_read_is_unknown_never_an_empty_list():
-    out = HI.build(_db(exc=RuntimeError("connection already closed")), now=NOW, registry={})
-    assert out["status"] == "UNKNOWN" and out["incidents"] is None and out["open_count"] is None
-    assert "RuntimeError" in out["reason"]
-    assert HI.build(_db(None), now=NOW, registry={})["status"] == "UNKNOWN"
+def test_no_registry_file_marks_everything_unclassified():
+    out = HI.build(_db([_inc()]), now=NOW, classes={})
+    assert out["registry"] == "absent" and out["items"][0]["priority"] == "UNCLASSIFIED"
 
 
-def test_a_clean_read_with_no_rows_is_ok_zero():
-    out = HI.build(_db([]), now=NOW, registry={})
-    assert out["status"] == "OK" and out["open_count"] == 0 and out["incidents"] == []
+def test_past_ttl_is_stale_condition_and_within_ttl_is_not():
+    old = HI.build(_db([_inc(last_seen_at=NOW - timedelta(hours=3))]), now=NOW, classes=CLASSES)["items"][0]
+    fresh = HI.build(_db([_inc(last_seen_at=NOW - timedelta(minutes=10))]), now=NOW, classes=CLASSES)["items"][0]
+    assert old["stale_condition"] is True and fresh["stale_condition"] is False
+    assert old["last_seen_age_s"] == 10800 and old["ttl_h"] == 1
 
 
-def test_blocks_trading_only_when_the_incident_declares_it():
-    rows = [_inc(incident_id="a", severity="warning"),
-            _inc(incident_id="b", severity="warning", blocks_trading_declared=True),
-            _inc(incident_id="c", severity="warning", blocks_trading_declared="true"),
-            _inc(incident_id="d", severity="critical", blocks_trading_declared=False)]
-    out = HI.build(_db(rows), now=NOW, registry={})
-    flags = {i["incident_id"]: i["blocks_trading"] for i in out["incidents"]}
-    assert flags == {"a": False, "b": True, "c": True, "d": False}
-    assert out["blocks_trading_count"] == 2
+def test_sort_is_p0_then_blocks_trading_then_first_seen():
+    rows = [
+        _inc(incident_id="p1_old", alert_type="data_integrity", first_seen_at=NOW - timedelta(hours=20)),
+        _inc(incident_id="p1_block", alert_type="data_integrity", blocks_trading_declared=True, first_seen_at=NOW - timedelta(hours=2)),
+        _inc(incident_id="p0_new", first_seen_at=NOW - timedelta(hours=1)),
+        _inc(incident_id="p0_old", first_seen_at=NOW - timedelta(hours=9)),
+        _inc(incident_id="uncl", alert_type="zzz", first_seen_at=NOW - timedelta(hours=30)),
+    ]
+    got = [i["incident_id"] for i in HI.build(_db(rows), now=NOW, classes=CLASSES)["items"]]
+    assert got == ["p0_old", "p0_new", "p1_block", "p1_old", "uncl"]
 
 
-def test_cause_source_owner_are_unknown_without_the_registry_and_named_with_it():
-    bare = HI.build(_db([_inc()]), now=NOW, registry={})["incidents"][0]
-    assert (bare["cause"], bare["source"], bare["owner"]) == ("UNKNOWN",) * 3
-    reg = {"stop_unprotected": {"cause": "stop lane late", "source": "stop-monitor", "owner": "ops"}}
-    got = HI.build(_db([_inc()]), now=NOW, registry=reg)
-    assert (got["incidents"][0]["cause"], got["incidents"][0]["owner"]) == ("stop lane late", "ops")
-    partial = HI.build(_db([_inc()]), now=NOW, registry={"stop_unprotected": {"owner": "ops"}})["incidents"][0]
-    assert partial["owner"] == "ops" and partial["cause"] == "UNKNOWN"
+def test_a_payload_declaration_beats_the_class_default_both_ways():
+    rows = [_inc(incident_id="no", blocks_trading_declared=False),
+            _inc(incident_id="yes", alert_type="data_integrity", blocks_trading_declared="true")]
+    flags = {i["incident_id"]: i["blocks_trading"] for i in HI.build(_db(rows), now=NOW, classes=CLASSES)["items"]}
+    assert flags == {"no": False, "yes": True}
+
+
+def test_non_visible_classes_are_hidden_and_counted_as_hidden():
+    out = HI.build(_db([_inc(alert_type="job_telemetry", incident_id="t"), _inc()]), now=NOW, classes=CLASSES)
+    assert [i["incident_id"] for i in out["items"]] == ["i1"] and out["hidden_count"] == 1
+
+
+def test_read_failure_is_unknown_with_null_counts_never_an_empty_list():
+    out = HI.build(_db(exc=RuntimeError("connection already closed")), now=NOW, classes=CLASSES)
+    assert out["state"] == "UNKNOWN" and out["counts"] is None and out["items"] is None and "RuntimeError" in out["reason"]
+    assert HI.build(_db(None), now=NOW, classes=CLASSES)["state"] == "UNKNOWN"
+
+
+def test_read_timeout_is_timed_out():
+    out = HI.build(_db(exc=Exception("canceling statement due to statement timeout")), now=NOW, classes=CLASSES)
+    assert out["state"] == "TIMED_OUT" and out["counts"] is None and out["items"] is None
+
+
+def test_clean_read_with_no_rows_is_ok_zero():
+    out = HI.build(_db([]), now=NOW, classes=CLASSES)
+    assert out["state"] == "OK" and out["items"] == [] and out["counts"]["P0"] == 0
+
+
+def test_data_integrity_24h_is_a_field_with_state_and_failure_is_not_zero():
+    ok = HI.build(_db([]), now=NOW, classes=CLASSES)["data_integrity_24h"]
+    assert ok["state"] == "OK" and ok["value"]["events"] == 12 and ok["age_s"] == 0
+    bad = HI.build(_db([], events=None), now=NOW, classes=CLASSES)["data_integrity_24h"]
+    assert bad["state"] == "UNKNOWN" and bad["value"] is None
+    to = HI.build(_db([], exc_events=Exception("statement timeout")), now=NOW, classes=CLASSES)
+    assert to["state"] == "OK" and to["data_integrity_24h"]["state"] == "TIMED_OUT"
 
 
 def test_registry_loader_tolerates_missing_and_corrupt_files(tmp_path):
-    assert HI.load_registry(tmp_path / "nope.json") == {}
+    assert HI.load_classes(tmp_path / "nope.json") == {}
     bad = tmp_path / "bad.json"
     bad.write_text("{not json")
-    assert HI.load_registry(bad) == {}
+    assert HI.load_classes(bad) == {}
     ok = tmp_path / "ok.json"
-    ok.write_text(json.dumps({"types": {"x": {"owner": "o"}, "junk": 3}}))
-    assert HI.load_registry(ok) == {"x": {"owner": "o"}}
+    ok.write_text(json.dumps({"incident_classes": {"x": {"owner": "o"}, "junk": 3}}))
+    assert HI.load_classes(ok) == {"x": {"owner": "o"}}
 
 
-def test_most_severe_first_then_oldest():
-    rows = [_inc(incident_id="w", severity="warning"), _inc(incident_id="c2", severity="critical", first_seen_at=NOW - timedelta(hours=1)),
-            _inc(incident_id="c1", severity="critical", first_seen_at=NOW - timedelta(hours=9))]
-    assert [i["incident_id"] for i in HI.build(_db(rows), now=NOW, registry={})["incidents"]] == ["c1", "c2", "w"]
-
-
-def test_the_query_is_read_only_open_production_and_bounded():
+def test_the_queries_are_read_only_open_production_and_bounded():
     seen = []
-    HI.build(_db([], seen=seen), now=NOW, registry={})
-    sql, params = seen[0]
-    s = " ".join(sql.split()).upper()
-    assert s.startswith("SELECT") and not any(w in s for w in ("INSERT ", "UPDATE ", "DELETE "))
-    assert "STATUS = 'OPEN'" in s and "NOT I.SYNTHETIC" in s and "ENVIRONMENT = 'PRODUCTION'" in s and params == (HI.MAX_ROWS,)
+    HI.build(_db([], seen=seen), now=NOW, classes=CLASSES)
+    for sql, _ in seen:
+        s = " ".join(sql.split()).upper()
+        assert "SET LOCAL STATEMENT_TIMEOUT" in s
+        assert not any(w in s for w in ("INSERT ", "UPDATE ", "DELETE ", "CREATE ", "ALTER "))
+    s0, p0 = seen[0]
+    s0 = " ".join(s0.split()).upper()
+    assert "STATUS = 'OPEN'" in s0 and "NOT I.SYNTHETIC" in s0 and "ENVIRONMENT = 'PRODUCTION'" in s0 and p0 == (HI.MAX_ROWS,)
+    assert "ALERT_TYPE = 'DATA_INTEGRITY'" in " ".join(seen[1][0].split()).upper()
 
 
 def test_the_route_is_registered_and_returns_the_lib_body(monkeypatch):
     import scripts.api_v2 as api
 
-    monkeypatch.setattr(api, "_db_query", _db([_inc()]))
+    monkeypatch.setattr(api, "_db_query_raising", _db([_inc()]))
+    from lib import home_incidents as route_hi   # the module the route imports
+
+    monkeypatch.setattr(route_hi, "load_classes", lambda *a, **k: CLASSES)
     out = api._home_incidents()
-    assert out["schema"] == HI.SCHEMA and out["open_count"] == 1
-    assert "/api/v2/home/incidents" in Path(api.__file__).read_text()
+    assert out["schema"] == HI.SCHEMA and out["counts"]["P0"] == 1
+    assert '"/api/v2/home/incidents": lambda: _home_incidents()' in Path(api.__file__).read_text()

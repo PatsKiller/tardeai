@@ -31581,11 +31581,37 @@ def _home_since_close():
 
 
 def _home_incidents():
-    """GET /api/v2/home/incidents — open alert incidents for Home (LQ-20261107-2147). Read-only; a failed read is
-    ``status: UNKNOWN``, never an empty list (lib/home_incidents.py)."""
+    """GET /api/v2/home/incidents — HomeIncidents@v1 (LQ-20261107-2147). Read-only; a failed read is
+    ``state: UNKNOWN`` / ``TIMED_OUT`` with null counts, never an empty list (lib/home_incidents.py)."""
     from lib import home_incidents as _hi
 
-    return _hi.build(_db_query)
+    return _hi.build(_db_query_raising)
+
+
+def _db_query_raising(sql, params=None, fetch="all"):
+    """Like ``_db_query`` but an error propagates (so a statement timeout reads TIMED_OUT, not "no data")."""
+    _ensure_scripts_path()
+    from db_adapter import USE_DB, ensure_conn
+
+    if not USE_DB:
+        return None
+    conn = ensure_conn()
+    if conn is None:
+        return None
+    import psycopg2.extras
+
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            out = cur.fetchone() if fetch == "one" else cur.fetchall()
+        conn.commit()
+        return out
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
 
 
 _HOME_CIO_CARD_CACHE: dict = {}
@@ -37246,17 +37272,15 @@ def _ui_prefs_set(body=None):
     max_bytes = 262144
     if len(blob.encode("utf-8")) > max_bytes:
         return {"ok": False, "error": f"value too large ({max_bytes // 1024}KB cap)"}
-    if key == "home.last_seen":  # LQ-20261107-2142: only {seen_at, client?}; a stale tab cannot rewind it
+    if key == "home.last_seen":  # LQ-20261107-2142: server-stamped seen_at; previous_seen_at copied from the stored one
         from datetime import datetime as _dt, timezone as _tz
 
         from lib import home_last_seen as _hls
 
-        norm, why = _hls.validate(b.get("value"), now=_dt.now(_tz.utc))
+        cur = _db_query("SELECT value FROM ui_prefs WHERE key=%s", (key,), fetch="one")
+        norm, why = _hls.stamp(b.get("value"), cur["value"] if cur else None, now=_dt.now(_tz.utc))
         if norm is None:
             return {"ok": False, "error": why}
-        cur = _db_query("SELECT value FROM ui_prefs WHERE key=%s", (key,), fetch="one")
-        if cur and _hls.is_rewind(norm, cur["value"]):
-            return {"ok": True, "key": key, "unchanged": True, "reason": "a newer last-seen is already recorded"}
         blob = _j.dumps(norm)
     _db_query(
         """INSERT INTO ui_prefs (key, value, updated_at) VALUES (%s, %s::jsonb, now())
