@@ -5903,98 +5903,91 @@ def watchlist_combined():
     social_map = {}
     scan_map = {}
 
+    # LQ-20261107-2137: _db_query returns None on ANY failure, so a failed enrichment read was `or []` + `except: pass`
+    # and indistinguishable from "no rows". news_articles.quality_score never existed (the column is relevance_score);
+    # the query failed ~every poll for weeks and every item silently lost the "active_news" conviction signal.
+    # A failed read is now recorded per source and surfaced as UNKNOWN with its reason.
+    enrichment_unknown: dict = {}
+
+    def _enrich_rows(source, sql, params):
+        try:
+            from db_adapter import _execute, USE_DB
+            if not USE_DB:
+                enrichment_unknown[source] = "database disabled (USE_DB off)"
+                return []
+            return _execute(sql, params, fetch="all") or []
+        except Exception as exc:  # noqa: BLE001
+            enrichment_unknown[source] = f"{type(exc).__name__}: {str(exc).strip().splitlines()[0][:160]}" if str(exc).strip() else type(exc).__name__
+            return []
+
     if all_syms:
         # LLM health from holdings
-        try:
-            llm_rows = (
-                _db_query(
-                    """
+        for r in _enrich_rows(
+            "llm_health",
+            """
                 SELECT symbol, holdings_llm_health, holdings_llm_action, holdings_llm_confidence
                 FROM watchlist_items WHERE symbol = ANY(%s) AND holdings_llm_health IS NOT NULL
             """,
-                    (all_syms,),
-                )
-                or []
-            )
-            for r in llm_rows:
-                llm_map[r["symbol"]] = {
-                    "llm_health": r.get("holdings_llm_health"),
-                    "llm_action": r.get("holdings_llm_action"),
-                    "llm_confidence": _json_clean(r.get("holdings_llm_confidence")),
-                }
-        except Exception:
-            pass
+            (all_syms,),
+        ):
+            llm_map[r["symbol"]] = {
+                "llm_health": r.get("holdings_llm_health"),
+                "llm_action": r.get("holdings_llm_action"),
+                "llm_confidence": _json_clean(r.get("holdings_llm_confidence")),
+            }
 
-        # Recent news count per symbol
-        try:
-            news_rows = (
-                _db_query(
-                    """
+        # Recent news count per symbol (top_score = best relevance_score in the window)
+        for r in _enrich_rows(
+            "news",
+            """
                 SELECT symbol, COUNT(*) as news_count,
-                       MAX(quality_score) as top_score
+                       MAX(relevance_score) as top_score
                 FROM news_articles WHERE symbol = ANY(%s)
                 AND created_at > NOW() - INTERVAL '7 days'
                 GROUP BY symbol
             """,
-                    (all_syms,),
-                )
-                or []
-            )
-            for r in news_rows:
-                news_map[r["symbol"]] = {
-                    "news_7d": r.get("news_count", 0),
-                    "news_top_score": r.get("top_score"),
-                }
-        except Exception:
-            pass
+            (all_syms,),
+        ):
+            news_map[r["symbol"]] = {
+                "news_7d": r.get("news_count", 0),
+                "news_top_score": _json_clean(r.get("top_score")),
+            }
 
         # Social sentiment
-        try:
-            social_rows = (
-                _db_query(
-                    """
+        for r in _enrich_rows(
+            "social",
+            """
                 SELECT DISTINCT ON (symbol)
                     symbol, mention_count, sentiment_score
                 FROM social_sentiment_history
                 WHERE symbol = ANY(%s) AND observed_at > NOW() - INTERVAL '7 days'
                 ORDER BY symbol, observed_at DESC
             """,
-                    (all_syms,),
-                )
-                or []
-            )
-            for r in social_rows:
-                social_map[r["symbol"]] = {
-                    "social_mentions": r.get("mention_count", 0),
-                    "social_sentiment": _json_clean(r.get("sentiment_score")),
-                }
-        except Exception:
-            pass
+            (all_syms,),
+        ):
+            social_map[r["symbol"]] = {
+                "social_mentions": r.get("mention_count", 0),
+                "social_sentiment": _json_clean(r.get("sentiment_score")),
+            }
 
         # Latest scan data (score, decision)
-        try:
-            scan_rows = (
-                _db_query(
-                    """
+        for r in _enrich_rows(
+            "scan",
+            """
                 SELECT DISTINCT ON (symbol) symbol, score, decision, catalyst,
                        social_stocktwits, social_sentiment, scanned_at
                 FROM trade_ai_scans WHERE symbol = ANY(%s)
                 ORDER BY symbol, scanned_at DESC
             """,
-                    (all_syms,),
-                )
-                or []
-            )
-            for r in scan_rows:
-                scan_map[r["symbol"]] = {
-                    "scan_score": r.get("score"),
-                    "scan_decision": r.get("decision"),
-                    "catalyst": r.get("catalyst"),
-                    "stocktwits_posts": r.get("social_stocktwits", 0),
-                    "scan_sentiment": r.get("social_sentiment"),
-                }
-        except Exception:
-            pass
+            (all_syms,),
+        ):
+            scan_map[r["symbol"]] = {
+                "scan_score": r.get("score"),
+                "scan_decision": r.get("decision"),
+                "catalyst": r.get("catalyst"),
+                "stocktwits_posts": r.get("social_stocktwits", 0),
+                "scan_sentiment": r.get("social_sentiment"),
+            }
 
     # Merge enrichment into items + compute conviction rating
     for item in items:
@@ -6038,6 +6031,14 @@ def watchlist_combined():
             signals.append("thesis_defined")
         item["conviction_score"] = min(conviction, 100)
         item["conviction_signals"] = signals
+        if enrichment_unknown:
+            # A source that could not be read is UNKNOWN, never "no news"/"no sentiment": the score above was built
+            # without it, so say which inputs are missing (its signal could not be earned).
+            item["conviction_inputs_unknown"] = sorted(enrichment_unknown)
+            if "news" in enrichment_unknown:
+                item["news_7d"] = None
+                item["news_top_score"] = None
+                item["news_status"] = "UNKNOWN"
 
         # ── Alert flag for RSI extremes ──
         if item.get("rsi_signal") in ("oversold", "overbought"):
@@ -6061,6 +6062,7 @@ def watchlist_combined():
         "count": len(items),
         "total_count": len(items),
         "active_directives_count": len(directive_rows),
+        "enrichment_unknown": enrichment_unknown,   # {source: reason}; empty = every enrichment read succeeded
         "items": items,
     }
 

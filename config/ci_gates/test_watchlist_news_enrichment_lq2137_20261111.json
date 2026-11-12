@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "test_watchlist_news_enrichment_lq2137_20261111",
+  "files": [
+    "tests/test_watchlist_news_enrichment_lq2137_20261111.py"
+  ],
+  "anchor": "WATCHLIST_NEWS_ENRICHMENT_LQ2137_20261111",
+  "comment": [
+    "ANCHOR: WATCHLIST_NEWS_ENRICHMENT_LQ2137_20261111 — /api/v2/watchlist reads news_articles.relevance_score (quality_score does not exist), and a failed enrichment read (news, social, scan, llm_health) is reported as enrichment_unknown with its reason and stamps the item UNKNOWN, never as no data."
+  ]
+}
