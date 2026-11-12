@@ -26,6 +26,14 @@ ROOT = Path(__file__).resolve().parents[2]
 _CACHE = {}
 _LOCK = threading.Lock()
 _SINGLE = threading.Lock()
+#: LQ-20261107-2130: a cold caller waits at most this long for the one compute in flight, then gets
+#: :class:`SnapshotBusy` (the API's 503) instead of queueing behind it for the compute's whole length
+#: (measured 2026-11-11 20:28-22:10: jobs-health waiters up to 2,118 s, each holding a request slot).
+COLD_WAIT_SECONDS = float(os.environ.get("JOBS_HEALTH_COLD_WAIT_SEC", "25"))
+
+
+class SnapshotBusy(RuntimeError):
+    """A cold jobs-health body is being computed and did not arrive within ``COLD_WAIT_SECONDS``."""
 _FAILURES = {"RUN_FAILED", "RUN_TIMEOUT", "RUN_REFUSED"}
 #: The independent watchdog writes every minute. An observation arms the Jobs light for this long.
 MONITOR_MAX_AGE = timedelta(seconds=180)
@@ -659,12 +667,16 @@ def get_jobs_health(query=None, *, state_root=None, registry_path=None, now=None
                 refreshing = _start_refresh(root, registry, key) if stale else key in _REFRESHING
             swr = {"as_of": as_of, "age_s": round(age, 1), "stale": stale, "refreshing": refreshing, "source": source}
         else:
-            with _SINGLE:  # concurrent cold callers share one compute
+            if not _SINGLE.acquire(timeout=COLD_WAIT_SECONDS):  # concurrent cold callers share one compute
+                raise SnapshotBusy(f"jobs health is computing its first body ({COLD_WAIT_SECONDS:.0f}s waited)")
+            try:
                 cached = _CACHE.get(key)
                 if cached is not None and time.time() - cached[0] <= FRESH_S:
                     result, as_of = cached[1], cached[2]
                 else:
                     result, as_of = _compute(root, registry, key)
+            finally:
+                _SINGLE.release()
             swr = {"as_of": as_of, "age_s": 0.0, "stale": False, "refreshing": False, "source": "computed"}
         # The served body can be an hour old. Re-grade only the monitor from the live receipt so
         # the 180 s check sees that receipt, not the snapshot's frozen observed_at.

@@ -100,6 +100,14 @@ def request_key(path: str, query: dict | None, principal: str = "") -> str | Non
     return (principal or "") + "|" + base + "?" + "&".join(items)
 
 
+class LeaderStuck(RuntimeError):
+    """The leader of an in-flight computation did not finish within ``wait_s``.
+
+    LQ-20261107-2130: the old fallback ran ``fn()`` in every waiter, so one stuck leader turned into N more full
+    computes (the memory spike this module exists to prevent). Waiters are now turned away; ``coalesce_get``
+    maps this to a 503."""
+
+
 class _Flight:
     __slots__ = ("event", "value", "error")
 
@@ -144,7 +152,7 @@ class Coalescer:
                 if flight.error is not None:
                     raise flight.error
                 return flight.value
-            return fn()  # leader stuck past wait_s: compute independently rather than hang
+            raise LeaderStuck(key)  # leader stuck past wait_s: refuse (503), never start a second compute
         try:
             flight.value = fn()
         except BaseException as exc:  # noqa: BLE001 - re-raised to every waiter
@@ -188,4 +196,7 @@ def coalesce_get(
     key = request_key(path, query, principal)
     if key is None:
         return fn()
-    return per_caller_copy((coalescer or _DEFAULT).run(key, fn))
+    try:
+        return per_caller_copy((coalescer or _DEFAULT).run(key, fn))
+    except LeaderStuck:
+        return 503, {"ok": False, "error": "coalesce_leader_stuck", "retry_after_sec": 5}

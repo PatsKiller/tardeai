@@ -229,6 +229,22 @@ def read(path: Path, *, identity: str, invalidated_at: Any, now: float | None = 
     return {**doc["body"], "_projection": {"source": "projection", "built_at": doc.get("built_at")}}, meta
 
 
+def is_fresh(path: Path | None = None, *, now: float | None = None) -> bool:
+    """True when a well-formed projection exists that is at most ``MAX_AGE_S`` old (and not from the future).
+
+    LQ-20261107-2130: the request semaphore exempts ``/api/v2/overview`` only while this holds, because only then
+    is the request a cheap file read. Code identity and write invalidation are not checked here (a request those
+    would send inline is rare and still bounded by the compute's own timeouts). Never raises: unknown is False."""
+    try:
+        doc, _reason = _load(Path(path) if path is not None else projection_path())
+        if doc is None:
+            return False
+        age = (time.time() if now is None else now) - float(doc["built_at_epoch"])
+        return -FUTURE_TOLERANCE_S <= age <= MAX_AGE_S
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def invalidation_reader(swr_module: Any = None) -> Callable[[], Any]:
     """A zero-arg reader of when the overview was last invalidated by a write (stale_serve's record).
 

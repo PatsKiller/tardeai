@@ -1700,27 +1700,42 @@ def _peer_closed(conn) -> bool:
         return True   # errored socket: treat as gone
 
 
+_REAPED: set = set()  # (thread ident, start time) already logged: one line per reaped request, not one per 5 s
+
+
+def _watchdog_pass(now: float) -> int:
+    """One watchdog sweep: shut down the socket of any request computing past the abandon threshold whose client
+    is gone. Returns how many were newly reaped. LQ-20261107-2130: a reaped request is logged ONCE (the old loop
+    re-logged it every 5 s for as long as the compute ran: 3,698 lines in 100 minutes on 2026-11-11), and the line
+    says the compute still holds its request slot, because shutting the socket does not stop the thread."""
+    with _INFLIGHT_LOCK:
+        snapshot = list(_INFLIGHT.items())
+    live = {(tid, t0) for tid, (_p, t0, _c) in snapshot}
+    _REAPED.intersection_update(live)
+    reaped = 0
+    for tid, (path, t0, conn) in snapshot:
+        age = now - t0
+        if age < _WATCHDOG_ABANDON_SEC or (tid, t0) in _REAPED:
+            continue
+        try:
+            if _peer_closed(conn):
+                conn.shutdown(_socket.SHUT_RDWR)
+                _REAPED.add((tid, t0))
+                reaped += 1
+                print(f"  [watchdog] reaped abandoned compute: {path} after {age:.0f}s "
+                      f"(thread still running; it keeps its request slot until it returns)")
+        except Exception:
+            pass
+    return reaped
+
+
 def _compute_watchdog() -> None:
     """Every 5s: any request computing past the abandon threshold whose client is
     gone gets its socket shut down, so the thread dies on its next write instead of
     finishing a response nobody will read. Never touches a connected client."""
     while True:
         _wd_time.sleep(5)
-        now = _wd_time.time()
-        with _INFLIGHT_LOCK:
-            snapshot = list(_INFLIGHT.items())
-        for tid, (path, t0, conn) in snapshot:
-            age = now - t0
-            if age < _WATCHDOG_ABANDON_SEC:
-                continue
-            try:
-                if _peer_closed(conn):
-                    conn.shutdown(_socket.SHUT_RDWR)
-                    print(f"  [watchdog] reaped abandoned compute: {path} after {age:.0f}s")
-            except Exception:
-                pass
-
-
+        _watchdog_pass(_wd_time.time())
 
 
 def freshness_payload(state_dir):
@@ -2934,6 +2949,17 @@ def _peek_http_path(request) -> str:
     return ""
 
 
+def _overview_projection_fresh() -> bool:
+    try:
+        try:
+            from lib import overview_projection as _ovp
+        except ImportError:
+            from scripts.lib import overview_projection as _ovp
+        return bool(_ovp.is_fresh())
+    except Exception:  # noqa: BLE001 -- unknown freshness means the semaphore applies
+        return False
+
+
 def _sem_exempt_path(path: str) -> bool:
     """Always serve these without waiting on the global request semaphore.
 
@@ -2944,7 +2970,6 @@ def _sem_exempt_path(path: str) -> bool:
     if p in (
         "/api/health",
         "/api/v2/health",
-        "/api/v2/overview",
         "/api/v2/trade-ai",
         "/api/v2/trade-ai/summary",
         "/api/v2/trade-ai/scanner",
@@ -2956,6 +2981,10 @@ def _sem_exempt_path(path: str) -> bool:
         return True
     if p.startswith("/api/v3/agent-maturity/"):
         return True
+    if p == "/api/v2/overview":
+        # LQ-20261107-2130: exempt only while it is a cheap projection read. The projection lane runs */1 4-20
+        # Mon-Fri; outside that every poll computes inline, so it takes a slot like any heavy read.
+        return _overview_projection_fresh()
     # Static SPA/assets — cheap, high volume
     if p.startswith("/v3/") or p.startswith("/v2/") or p.startswith("/assets/"):
         return True
