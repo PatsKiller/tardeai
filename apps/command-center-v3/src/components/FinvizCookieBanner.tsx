@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { finvizBannerView } from '../lib/finvizBannerView'
 
 type Health = {
   ok?: boolean
@@ -25,15 +26,6 @@ type Health = {
   show_banner?: boolean
   message?: string
   admin_secrets_path?: string
-}
-
-function shouldShow(h: Health | null): boolean {
-  if (!h) return false
-  if (h.show_banner) return true
-  if (h.ok === false) return true
-  const st = (h.status || '').toLowerCase()
-  if (st === 'token_ok') return true // cookie dead even though the token works (LQ-1289)
-  return st === 'expired' || st === 'missing' || st === 'error' || st === 'check_failed' || st === 'invalid'
 }
 
 export default function FinvizCookieBanner() {
@@ -61,8 +53,8 @@ export default function FinvizCookieBanner() {
     return () => { cancelled = true; window.clearInterval(id) }
   }, [])
 
-  const severe = !!(health && (health.severity === 'red' || health.ok === false || health.cookie_status === 'missing'))
-  const show = shouldShow(health) && (severe || !dismissed)
+  // LQ-20261107-2228: an ERRORED check is UNKNOWN (amber, dismissible), never the red of a confirmed expiry
+  const { show, severe, unknown } = finvizBannerView(health, dismissed)
   if (!show || !health) return null
 
   const tone = severe
@@ -102,7 +94,7 @@ export default function FinvizCookieBanner() {
           whiteSpace: 'nowrap',
         }}
       >
-        {severe ? 'Admin secrets →' : 'Renew cookie →'}
+        {severe || unknown ? 'Admin secrets →' : 'Renew cookie →'}
       </Link>
       {!severe && (
         <button

@@ -78,7 +78,7 @@ def _state(tmp_path: Path) -> Path:
     ({"status": "ok"}, "ok"),
     ({"status": "expired"}, "expired"),
     ({"status": "error"}, "expired"),
-    ({"status": "check_failed"}, "expired"),
+    ({"status": "check_failed"}, "unknown"),  # LQ-2220: an errored check is not an expired cookie
     ({"status": "missing"}, "missing"),
     ({"status": "something_new"}, "unknown"),
     ({}, "unknown"),

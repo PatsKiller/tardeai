@@ -46187,18 +46187,23 @@ def _finviz_credential_health_live(query=None):
     except Exception as e:
         import re as _re
 
+        # LQ-20261107-2220: the CHECK errored; that says nothing about the cookie. The old text asserted
+        # a dead cookie (a 01:34 ET false alert while data_source_health was healthy).
+        _cls = type(e).__name__
         return {
             "ok": False,
             "status": "check_failed",
             "cookie_status": "unknown",
-            "severity": "red",
+            "severity": "amber",
             "degraded_features": [],
             "degraded_count": 0,
             "detail": _re.sub(r"(auth=)[^&\s'\"]+", r"\1<redacted>", str(e))[:160],
             "last_error": last_error,
+            "error_class": _cls,
+            "source_status": (row or {}).get("status") if isinstance(row, dict) else None,
             "as_of": as_of,
             "show_banner": True,
-            "message": "Finviz Elite cookie expired — screener and social scalp empty",
+            "message": f"UNKNOWN \u2014 health check errored: {_cls}",
             "admin_secrets_path": "/v3/system?tab=Admin",
         }
 
