@@ -1393,7 +1393,9 @@ def _cio_prospects(symbols: list[str]) -> tuple[Optional[dict[str, dict[str, Any
     if fn is None:
         return None, "absent"
     try:
-        out = fn(db_query=_db_query(), symbols=symbols)
+        # Only a live store row is used below, so the shadow file is never parsed here (LQ-20261107-2215:
+        # it was a 61 MB json.loads per call whose result was discarded).
+        out = fn(db_query=_db_query(), symbols=symbols, load_shadow=False)
     except Exception:  # noqa: BLE001
         return None, "error"
     kind = str(((out or {}).get("source") or {}).get("kind") or "")

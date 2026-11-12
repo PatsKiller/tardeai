@@ -337,6 +337,39 @@ def _read_jsonl(
         return None, "UNAVAILABLE"
 
 
+def _read_jsonl_head(path: Path, retain: int) -> tuple[list[dict[str, Any]] | None, int, str]:
+    """(first ``retain`` rows, total rows, quality) of a plain JSONL source, holding at most ``retain`` rows.
+
+    LQ-20261107-2215: a list page shows ``limit`` rows from ``offset`` plus the total. Building the whole
+    row list for that (twice: the parse, then ``_extract_rows``' copy) put ~285 MB on the API process
+    for the 97 MB research request log. Every line is still parsed, so one corrupt row is still
+    INVALID_SCHEMA exactly as ``_read_jsonl`` answers it; only rows past the page are not retained.
+    """
+    head: list[dict[str, Any]] = []
+    total = 0
+    try:
+        with path.open(encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                try:
+                    value = json.loads(line)
+                except ValueError:
+                    return None, 0, "INVALID_SCHEMA"
+                if not isinstance(value, dict):
+                    return None, 0, "INVALID_SCHEMA"
+                total += 1
+                if len(head) < retain:
+                    head.append(value)
+        return head, total, "AVAILABLE"
+    except FileNotFoundError:
+        return None, 0, "UNAVAILABLE"
+    except UnicodeDecodeError:
+        return None, 0, "INVALID_SCHEMA"
+    except OSError:
+        return None, 0, "UNAVAILABLE"
+
+
 def _workflow_list_keep(row: dict[str, Any]) -> bool:
     """The workflow LIST never shows raw node/edge rows (see _project_workflow_collection).
 
@@ -754,7 +787,7 @@ def _extract_rows_raw(value: Any, *, domain: str, path: Path) -> list[dict[str, 
 
 
 def _select_rows(
-    paths: tuple[Path, ...], *, domain: str, meta: dict[str, Any] | None = None
+    paths: tuple[Path, ...], *, domain: str, meta: dict[str, Any] | None = None, retain: int | None = None
 ) -> tuple[list[dict[str, Any]], str]:
     """First-AVAILABLE over registry-ordered candidates.
 
@@ -780,7 +813,16 @@ def _select_rows(
             keep = _workflow_list_keep if domain == "workflows" else None
             compact = _jsonl_compactor(domain, path)
             tolerant = bool(CONTROL_PLANE_DOMAINS.get(domain, {}).get("skip_corrupt_lines")) and compact is not None
-            value, quality = _read_jsonl(path, keep=keep, compact=compact, tolerant=tolerant)
+            if retain is not None and compact is None and keep is None and meta is not None:
+                # A page read of a plain JSONL source: hold the page, count the rest (LQ-20261107-2215).
+                # _extract_rows maps a list 1:1 per dict row for every domain that reaches here (the
+                # reshaping domains, agents traces and workflows, always have a compactor), so the
+                # first ``retain`` rows of the file are the first ``retain`` rows of the projection.
+                value, total, quality = _read_jsonl_head(path, retain)
+                if quality == "AVAILABLE":
+                    meta["total"] = total
+            else:
+                value, quality = _read_jsonl(path, keep=keep, compact=compact, tolerant=tolerant)
             if tolerant and quality == "AVAILABLE" and meta is not None:
                 meta["skipped_corrupt_lines"] = _jsonl_skipped(path, keep=keep, compact=compact, tolerant=True)
         else:
@@ -808,12 +850,15 @@ def _select_rows(
 
 def _rows_from_json(paths: tuple[Path, ...], query: dict[str, Any], *, domain: str) -> tuple[dict[str, Any], str]:
     meta: dict[str, Any] = {}
-    rows, quality = _select_rows(paths, domain=domain, meta=meta)
+    limit, offset = _bounded(query)
+    rows, quality = _select_rows(paths, domain=domain, meta=meta, retain=offset + limit)
     # STALE is a stamped score payload, not an empty store. AVAILABLE stays the
     # only quality that means current.
     if quality not in {"AVAILABLE", "STALE"}:
         return _empty_page(query), quality
     page = _paged(rows, query)
+    if meta.get("total") is not None:
+        page["pagination"]["total"] = meta["total"]
     if meta.get("skipped_corrupt_lines"):
         page["skipped_corrupt_lines"] = meta["skipped_corrupt_lines"]
     return page, quality
