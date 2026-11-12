@@ -1,17 +1,23 @@
 {
   "version": 1,
   "hooks": {
-    "beforeShellExecution": [
-      { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/guard-shell.sh", "failClosed": true, "timeout": 10 },
-      { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/audit.sh" }
+    "sessionStart": [
+      {
+        "command": "node .cursor/telemetry-sync.cjs",
+        "timeout": 15
+      }
     ],
-    "beforeReadFile": [
-      { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/guard-read.sh", "failClosed": true }
+    "beforeSubmitPrompt": [
+      {
+        "command": "node .cursor/telemetry-sync.cjs",
+        "timeout": 15
+      }
     ],
     "preToolUse": [
-      { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/guard-write.sh", "matcher": "Write|Delete|StrReplace|Edit|MultiEdit|EditNotebook", "failClosed": true }
-    ],
-    "afterShellExecution": [ { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/audit.sh" } ],
-    "afterFileEdit":       [ { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/audit.sh" } ]
+      {
+        "command": "node .cursor/telemetry-sync.cjs",
+        "timeout": 15
+      }
+    ]
   }
 }
