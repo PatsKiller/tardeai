@@ -263,3 +263,92 @@ def test_the_route_is_registered_and_returns_the_lib_body(monkeypatch):
     out = api._home_incidents()
     assert out["schema"] == HI.SCHEMA and out["counts"]["P0"] == 1
     assert '"/api/v2/home/incidents": lambda: _home_incidents()' in Path(api.__file__).read_text()
+
+
+# ----------------------------------------------------------------------------- C1: auth on the home.last_seen write
+def _ctx(principal="tailnet:op@example.test", listener="serve_proxy", csrf=(True, ""), logins=("op@example.test",)):
+    from scripts.lib import home_approvals_api as haa
+
+    return haa.Ctx(principal=lambda: principal, listener=lambda: listener, csrf=lambda m, p: csrf,
+                   allowed_logins=logins, can_read=lambda: False, clock=lambda: NOW)
+
+
+def test_gate_admits_only_the_operators_signed_in_session():
+    import scripts.api_v2 as api
+
+    assert api._home_last_seen_gate(_ctx()) == (200, None)
+    for bad in (_ctx(principal=""), _ctx(principal="service-token"), _ctx(principal="agent:cc-sonnet-3"),
+                _ctx(principal="tailnet:someone@else.test"), _ctx(listener="direct")):
+        status, body = api._home_last_seen_gate(bad)
+        assert status == 403 and body["ok"] is False and body["code"] == "NOT_OPERATOR"
+
+
+def test_gate_refuses_a_failed_csrf_check():
+    import scripts.api_v2 as api
+
+    status, body = api._home_last_seen_gate(_ctx(csrf=(False, "csrf: no request context")))
+    assert status == 403 and body["code"] == "CSRF_REFUSED"
+
+
+def test_unauthenticated_post_is_refused_and_stores_nothing(prefs):
+    """Through the HTTP edge with no cc_auth request context at all: refused, fail-closed, nothing written."""
+    api, fake = prefs
+    status, body = api.handle("/api/v2/ui/prefs", "POST", {"key": "home.last_seen", "value": {"device": "phone"}})
+    assert status == 403 and body["ok"] is False
+    assert "home.last_seen" not in fake.rows
+
+
+def test_an_authorised_post_reaches_the_handler(prefs, monkeypatch):
+    api, fake = prefs
+    monkeypatch.setattr(api, "_home_last_seen_gate", lambda ctx=None: (200, None))
+    status, body = api.handle("/api/v2/ui/prefs", "POST", {"key": "home.last_seen", "value": {"device": "phone"}})
+    assert status == 200 and body["ok"] and fake.rows["home.last_seen"]["device"] == "phone"
+
+
+def test_other_keys_are_not_gated(prefs):
+    api, fake = prefs
+    status, _ = api.handle("/api/v2/ui/prefs", "POST", {"key": "watch.layout", "value": {"a": 1}})
+    assert status == 200 and fake.rows["watch.layout"] == {"a": 1}
+
+
+def test_key_spelled_with_padding_is_still_gated(prefs):
+    api, fake = prefs
+    status, _ = api.handle("/api/v2/ui/prefs", "POST", {"key": "  home.last_seen ", "value": {"device": "phone"}})
+    assert status == 403 and "home.last_seen" not in fake.rows
+
+
+# ----------------------------------------------------------------------------- 30-60 s cache
+def test_incidents_ok_body_is_cached_and_a_failure_is_not(monkeypatch):
+    import scripts.api_v2 as api
+    from lib import home_incidents as route_hi
+
+    calls = []
+
+    def q(sql, params=None, fetch="all"):
+        calls.append(sql)
+        return [] if "alert_incidents" in sql else {"events": 0}
+
+    api._HOME_INCIDENTS_CACHE.clear()
+    monkeypatch.setattr(api, "_db_query_raising", q)
+    monkeypatch.setattr(route_hi, "load_classes", lambda *a, **k: CLASSES)
+    a = api._home_incidents()
+    n = len(calls)
+    assert api._home_incidents() is a and len(calls) == n          # served from cache, no new reads
+    api._HOME_INCIDENTS_CACHE.clear()
+    monkeypatch.setattr(api, "_db_query_raising", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
+    assert api._home_incidents()["state"] == "UNKNOWN"
+    monkeypatch.setattr(api, "_db_query_raising", q)
+    assert api._home_incidents()["state"] == "OK"                    # the failure was not pinned
+    api._HOME_INCIDENTS_CACHE.clear()
+    assert 30 <= route_hi.CACHE_TTL_S <= 60
+
+
+# ----------------------------------------------------------------------------- operator P0/P1 classes (DECISIONS-20261111)
+def test_decision_classes_in_a_registry_sort_p0_before_p1_and_unmapped_last():
+    classes = {"protection_gap": {"category": "Protection Gap", "priority": "P0", "blocks_trading_default": True, "owner": "defense", "ttl_h": 1},
+               "late_scheduler": {"category": "Late Scheduler", "priority": "P1", "owner": "os", "ttl_h": 2}}
+    rows = [_inc(incident_id="s", alert_type="late_scheduler"), _inc(incident_id="u", alert_type="new_unseen"),
+            _inc(incident_id="g", alert_type="protection_gap")]
+    out = HI.build(_db(rows), now=NOW, classes=classes)
+    assert [i["incident_id"] for i in out["items"]] == ["g", "s", "u"]
+    assert out["counts"] == {"P0": 1, "P1": 1, "UNCLASSIFIED": 1, "blocks_trading": 1}

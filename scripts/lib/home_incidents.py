@@ -25,6 +25,8 @@ SCHEMA = "HomeIncidents@v1"
 REGISTRY_PATH = Path(__file__).resolve().parents[2] / "config" / "home_status_registry.json"
 MAX_ROWS = 500
 STATEMENT_TIMEOUT_MS = 2000
+#: In-process cache of an OK body (spec 1.2: 30-60 s); the route owns the dict.
+CACHE_TTL_S = 45
 PRIORITY_RANK = {"P0": 0, "P1": 1, "UNCLASSIFIED": 2}
 UNKNOWN = "UNKNOWN"
 UNREGISTERED = "UNREGISTERED"

@@ -31580,12 +31580,23 @@ def _home_since_close():
     return {"status": "ok", **snap, "window_now": win, "freshness": _sc.freshness(snap, now=now), "as_of_now": now.isoformat()}
 
 
+_HOME_INCIDENTS_CACHE: dict = {}
+
+
 def _home_incidents():
     """GET /api/v2/home/incidents — HomeIncidents@v1 (LQ-20261107-2147). Read-only; a failed read is
     ``state: UNKNOWN`` / ``TIMED_OUT`` with null counts, never an empty list (lib/home_incidents.py)."""
+    import time as _t
+
     from lib import home_incidents as _hi
 
-    return _hi.build(_db_query_raising)
+    hit = _HOME_INCIDENTS_CACHE.get("v")
+    if hit and _t.monotonic() - hit[0] < _hi.CACHE_TTL_S:
+        return hit[1]
+    out = _hi.build(_db_query_raising)
+    if out.get("state") == "OK":  # a failed read is retried on the next poll, never pinned for a minute
+        _HOME_INCIDENTS_CACHE["v"] = (_t.monotonic(), out)
+    return out
 
 
 def _db_query_raising(sql, params=None, fetch="all"):
@@ -37255,6 +37266,20 @@ def _ui_prefs_get(query=None):
 
         out["read"] = _hls.read(out["value"], out["updated_at"], now=_dt.now(_tz.utc), exists=r is not None)
     return out
+
+
+def _home_last_seen_gate(ctx=None):
+    """``(200, None)`` when the caller is the operator's signed-in session with same-origin CSRF, else
+    ``(status, refusal_body)``. Same rule as the Home approvals decision route (home_approvals_api)."""
+    from lib import home_approvals_api as _haa
+
+    ctx = ctx or _haa.default_ctx()
+    if _haa._operator(ctx) is None:
+        return _haa._refused("NOT_OPERATOR", "Only the operator's signed-in Command Center session can record a visit.")
+    csrf_ok, why = ctx.csrf("POST", "/api/v2/ui/prefs")
+    if not csrf_ok:
+        return _haa._refused("CSRF_REFUSED", f"Same-origin check failed ({why}); nothing was recorded.")
+    return 200, None
 
 
 def _ui_prefs_set(body=None):
@@ -58454,6 +58479,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     if method == "POST" and base_path == "/api/v2/ui/prefs":
         try:
+            if str((body or {}).get("key") or "").strip() == "home.last_seen":
+                # LQ-20261107-2167 C1: the operator's own signed-in session + same-origin CSRF (enforced even in
+                # report_only), the home-approvals rail. Scoped to this key; other prefs writers are unchanged.
+                _hls_status, _hls_refusal = _home_last_seen_gate()
+                if _hls_refusal is not None:
+                    return _hls_status, _hls_refusal
             result = _ui_prefs_set(body or {})
             return (200 if result.get("ok") else 400), result
         except Exception as e:
