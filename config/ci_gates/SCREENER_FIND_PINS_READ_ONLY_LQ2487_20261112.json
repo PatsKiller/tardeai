@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "SCREENER_FIND_PINS_READ_ONLY_LQ2487_20261112",
+  "files": [
+    "tests/test_screener_find_pins_read_only_lq2487_20261112.py"
+  ],
+  "anchor": "SCREENER_FIND_PINS_READ_ONLY_LQ2487_20261112",
+  "comment": [
+    "ANCHOR: SCREENER_FIND_PINS_READ_ONLY_LQ2487_20261112 — LQ-20261107-2487: the Screener Finds GET handlers read screener_find_pins and never write it.",
+    "Part B of the test file needs the api_v2.py hunk (shipped as a patch while scripts/api_v2.py is claimed by others)."
+  ]
+}
