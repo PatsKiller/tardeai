@@ -13,6 +13,7 @@ import RiskHub from './pages/RiskHub'
 import HomeHub from './pages/HomeHub'
 import HomeV010 from './pages/HomeV010'
 import PortfolioHub from './pages/PortfolioHub'
+import PortfolioV002 from './pages/PortfolioV002'
 import ReEntryPage from './pages/ReEntryPage'
 import TradingHub from './pages/TradingHub'
 import ActiveTraderHub from './pages/ActiveTraderHub'
@@ -256,7 +257,9 @@ function Shell() {
             {/* Home v010 (operator-approved 2026-11-11) owns Today; the old Home stays reachable at /home-classic. */}
             <Route index element={<RouteErrorBoundary route="/v3/"><HomeV010 /></RouteErrorBoundary>} />
             <Route path="home-classic" element={<RouteErrorBoundary route="/v3/home-classic"><HomeHub onDrill={setDrill} /></RouteErrorBoundary>} />
-            <Route path="portfolio" element={<RouteErrorBoundary route="/v3/portfolio"><PortfolioHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            {/* Portfolio v002 (operator-approved 2026-11-11) owns the route; the old page stays at /portfolio-classic (UI removal rule). */}
+            <Route path="portfolio" element={<RouteErrorBoundary route="/v3/portfolio"><PortfolioV002 /></RouteErrorBoundary>} />
+            <Route path="portfolio-classic" element={<RouteErrorBoundary route="/v3/portfolio-classic"><PortfolioHub onDrill={setDrill} /></RouteErrorBoundary>} />
             {/* Boards 1-4 (desks redesign 2026-10-24): the new desk owns the route; the classic page stays reachable until the desk is accepted. */}
             <Route path="portfolio/re-entry" element={<RouteErrorBoundary route="/v3/portfolio/re-entry"><ReEntryDesk /></RouteErrorBoundary>} />
             <Route path="portfolio/re-entry/classic" element={<RouteErrorBoundary route="/v3/portfolio/re-entry/classic"><ReEntryPage /></RouteErrorBoundary>} />

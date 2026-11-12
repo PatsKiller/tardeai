@@ -1,0 +1,89 @@
+/* Portfolio v002 (design/pages/portfolio/v002, operator-approved with amendments 2026-11-11). Tokens only; no raw colours.
+   Phone 390/412: no text under 11 px, every tap target >= 44 px, no sideways scroll. */
+.pv2 { max-width: 1240px; margin: 0 auto; color: var(--text-0); font-family: var(--font-sans); font-size: 13px; line-height: 1.35; overflow-x: hidden; }
+.pv2 * { box-sizing: border-box; min-width: 0; }
+.pv2-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.pv2-hdr { display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 6px 0; border-bottom: 1px solid var(--border-color); }
+.pv2-hdr-main { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.pv2-hdr-t { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.pv2-title { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.pv2-chips { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.pv2-age { font-size: 11px; color: var(--text-2); white-space: nowrap; }
+.pv2-plain { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.pv2-push { margin-left: auto; }
+.pv2-chip { display: inline-block; padding: 1px 6px; border-radius: var(--radius-pill); font-size: 11px; font-weight: 700; border: 1px solid var(--neutral-border); background: var(--neutral-bg); color: var(--neutral-color); white-space: nowrap; }
+.pv2-chip.ok { background: var(--success-bg); color: var(--success-color); border-color: var(--success-border); }
+.pv2-chip.warn { background: var(--warning-bg); color: var(--warning-color); border-color: var(--warning-border); }
+.pv2-chip.bad { background: var(--danger-bg); color: var(--danger-color); border-color: var(--danger-border); }
+.pv2-chip-btn { min-height: 44px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: var(--radius-pill); border: 1px solid var(--neutral-border); background: var(--neutral-bg); color: var(--neutral-color); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.pv2-chip-btn.ok { background: var(--success-bg); color: var(--success-color); border-color: var(--success-border); }
+.pv2-chip-btn.warn { background: var(--warning-bg); color: var(--warning-color); border-color: var(--warning-border); }
+.pv2-chip-btn.bad { background: var(--danger-bg); color: var(--danger-color); border-color: var(--danger-border); }
+.pv2-nb { display: inline-block; padding: 0 5px; border-radius: var(--radius-sm); border: 1px dashed var(--ai-border); background: var(--ai-bg); color: var(--ai-color); font-size: 11px; font-weight: 700; white-space: nowrap; text-transform: none; letter-spacing: 0; vertical-align: middle; }
+.pv2-ask { flex: none; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 10px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-2); color: var(--ai-color); font-size: 12px; font-weight: 700; text-decoration: none; }
+.pv2-grid { display: grid; grid-template-columns: 1fr; }
+.pv2-blk { padding: 8px 0; border-bottom: 1px solid var(--border-color); scroll-margin-top: 8px; }
+.pv2-blk-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 24px; flex-wrap: wrap; }
+.pv2-h2 { margin: 0; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.pv2-muted { margin: 4px 0; font-size: 12px; color: var(--text-2); }
+.pv2-unk { min-height: 44px; display: flex; align-items: center; padding: 6px 10px; margin: 6px 0; border: 1px solid var(--neutral-border); background: var(--neutral-bg); color: var(--text-1); border-radius: var(--radius-md); font-weight: 600; overflow-wrap: anywhere; }
+.pv2-unk.bad { border-color: var(--danger-border); background: var(--danger-bg); }
+.pv2-collapsed { display: flex; align-items: center; gap: 8px; min-height: 44px; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; }
+.pv2-txt { color: var(--text-0); }
+.pv2-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 4px 0 2px; }
+.pv2-tile { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; min-height: 48px; padding: 3px 8px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-2); font: inherit; cursor: pointer; text-align: left; }
+.pv2-tile .k { font-size: 11px; color: var(--text-2); letter-spacing: .04em; text-transform: uppercase; }
+.pv2-tile .n { font-size: 17px; font-weight: 700; color: var(--text-0); font-variant-numeric: tabular-nums; }
+.pv2-tile.ok { border-color: var(--success-border); } .pv2-tile.ok .n { color: var(--success-color); }
+.pv2-tile.bad { border-color: var(--danger-border); background: var(--danger-bg); } .pv2-tile.bad .n { color: var(--danger-color); }
+.pv2-tile.unk { border-color: var(--neutral-border); background: var(--neutral-bg); } .pv2-tile.unk .n { color: var(--neutral-color); }
+.pv2-pt-h, .pv2-prow-main { display: grid; grid-template-columns: 62px 96px minmax(0, 1fr); gap: 6px; align-items: center; }
+.pv2-pt-h { grid-template-columns: 62px 96px minmax(0, 1fr) 84px; font-size: 11px; color: var(--text-2); font-weight: 600; min-height: 18px; }
+.pv2-pt-h .r { text-align: right; }
+.pv2-prow { display: grid; grid-template-columns: minmax(0, 1fr) 84px; gap: 6px; align-items: center; border-top: 1px solid var(--border-color); }
+.pv2-prow-main { min-height: 44px; background: none; border: none; padding: 0; color: var(--text-0); font: inherit; text-align: left; cursor: pointer; }
+.pv2-prow-main .sym { font-weight: 700; }
+.pv2-prow-main .ver { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv2-act { justify-self: end; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 8px; border-radius: var(--radius-md); border: 1px solid var(--info-border); background: var(--info-bg); color: var(--info-color); font: inherit; font-weight: 600; font-size: 12px; white-space: nowrap; text-decoration: none; cursor: pointer; }
+.pv2-own { font-size: 11px; line-height: 14px; color: var(--text-2); padding: 2px 0 4px; overflow-wrap: anywhere; }
+.pv2-own b { color: var(--text-1); font-weight: 600; }
+.pv2-more { min-height: 44px; width: 100%; background: none; border: none; border-top: 1px solid var(--border-color); color: var(--info-color); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.pv2-lnk { min-height: 44px; background: none; border: none; padding: 0; color: var(--info-color); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.pv2-st { padding: 2px 0; }
+.pv2-st .s1 { display: grid; grid-template-columns: 62px 84px minmax(0, 1fr); gap: 6px; align-items: center; min-height: 22px; }
+.pv2-st .n { color: var(--text-0); font-weight: 600; }
+.pv2-st .sub { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
+.pv2-sel { display: block; margin: 6px 0; }
+.pv2-sel select { width: 100%; min-height: 44px; padding: 0 10px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-2); color: var(--text-0); font: inherit; }
+.pv2-fchips { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0; }
+.pv2-fchip { display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px; border-radius: var(--radius-pill); border: 1px solid var(--border-color); background: var(--bg-2); color: var(--text-1); font: inherit; font-size: 12px; cursor: pointer; }
+.pv2-fchip.on { border-color: var(--info-border); color: var(--info-color); background: var(--info-bg); }
+.pv2-hl-h, .pv2-hrow { display: grid; grid-template-columns: minmax(0, 1fr) 50px 76px 92px 28px; gap: 6px; align-items: center; }
+.pv2-hl-h { font-size: 11px; color: var(--text-2); font-weight: 600; min-height: 20px; }
+.pv2-hl-h .r { text-align: right; }
+.pv2-hrow { width: 100%; min-height: 52px; border: none; border-top: 1px solid var(--border-color); background: none; padding: 0; color: var(--text-0); font: inherit; text-align: left; cursor: pointer; }
+.pv2-hrow .c1 { display: flex; flex-direction: column; overflow: hidden; }
+.pv2-hrow .s2 { font-size: 11px; color: var(--text-2); line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv2-hrow .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv2-hrow .risk { font-size: 12px; font-weight: 700; text-align: center; color: var(--text-2); }
+.pv2-hrow .pv2-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.up { color: var(--success-color); } .dn { color: var(--danger-color); }
+.pv2-det { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; min-height: 48px; border: none; border-top: 1px solid var(--border-color); background: none; padding: 0; color: var(--text-0); font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.pv2-retired { color: var(--text-2); cursor: default; }
+.pv2-chip-btn:focus-visible, .pv2-ask:focus-visible, .pv2-act:focus-visible, .pv2-tile:focus-visible, .pv2-prow-main:focus-visible,
+.pv2-hrow:focus-visible, .pv2-fchip:focus-visible, .pv2-det:focus-visible, .pv2-lnk:focus-visible, .pv2-more:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* sheets (shell from Home v010 WhySheet.css) */
+.pv2-sheet-h { margin: 14px 0 4px; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
+.pv2-go { display: inline-flex; align-items: center; text-decoration: none; margin: 4px 0 8px; }
+.pv2-va-h, .pv2-va { display: grid; grid-template-columns: 64px minmax(0, 1fr) 52px; gap: 6px; align-items: start; }
+.pv2-va-h { font-size: 11px; color: var(--text-2); font-weight: 600; padding: 6px 0; border-bottom: 1px solid var(--border-color); }
+.pv2-va { padding: 6px 0; border-bottom: 1px solid var(--border-color); font-size: 13px; }
+.pv2-va .f { color: var(--text-2); } .pv2-va .v { color: var(--text-0); font-weight: 600; overflow-wrap: anywhere; } .pv2-va .a { color: var(--text-2); text-align: right; }
+.pv2-va .p { grid-column: 1 / -1; font-size: 11px; line-height: 14px; color: var(--text-2); overflow-wrap: anywhere; }
+@media (min-width: 1024px) {
+  .pv2-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); column-gap: 24px; }
+  .pv2-hl-h, .pv2-hrow { grid-template-columns: minmax(0, 1fr) 80px 110px 140px 50px; }
+  .pv2-pt-h { grid-template-columns: 90px 110px minmax(0, 1fr) 100px; }
+  .pv2-prow-main { grid-template-columns: 90px 110px minmax(0, 1fr); }
+  .pv2-prow { grid-template-columns: minmax(0, 1fr) 100px; }
+}
