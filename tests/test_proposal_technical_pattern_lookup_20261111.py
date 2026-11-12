@@ -191,3 +191,130 @@ def test_receipt_outcome_partial_pattern_failure_is_named_but_ok():
 def test_receipt_outcome_unchanged_without_pattern_failures():
     assert E.receipt_outcome(5, 4, 1, finviz_got=5) == ("ok", "partial_failures:1")
     assert E.receipt_outcome(5, 5, 0, finviz_got=5, pattern_failed=0, pattern_checked=5) == ("ok", None)
+
+
+# ---- LQ-20261107-2159 (REVIEW-2156 C1 + N1): the chain from a failed lookup to a red receipt ----------
+
+def test_unknown_or_empty_strategy_is_not_a_fallback_key():
+    """N1: every library row has strategy_id 'UNKNOWN'; a proposal with that placeholder must not be told the
+    highest-count bucket of an unrelated symbol is its normal pattern."""
+    rows = [_row("float_mid", symbols=["PL"], strategy="UNKNOWN", trades=212)]
+    for placeholder in ("UNKNOWN", "unknown", " ", "", None):
+        out = S.lookup_normal_pattern(FakeCursor(rows), "ZZZZ", placeholder)
+        assert out["status"] == "NO_MATCH", placeholder
+    assert S.lookup_normal_pattern(FakeCursor(rows), "PL", "UNKNOWN")["status"] == "AVAILABLE"   # by symbol
+    real = [_row("strat_pat", strategy="momentum_scalp")]
+    assert S.lookup_normal_pattern(FakeCursor(real), "ZZZZ", "momentum_scalp")["status"] == "AVAILABLE"
+
+
+def test_sql_text_pins_the_status_list_and_symbol_first_order():
+    cur = FakeCursor([_row("p", symbols=["AAPL"])])
+    S.lookup_normal_pattern(cur, "AAPL", None)
+    sql = next(s for s in cur.log if "FROM pattern_library" in s)
+    assert "status IN ('PROVEN', 'WATCH', 'NEUTRAL')" in sql          # no extra status can slip in
+    order = sql.split("ORDER BY", 1)[1]
+    assert order.lstrip().startswith("COALESCE((definition -> 'sample_symbols') @> to_jsonb(%s::text), false) DESC")
+    assert "trade_count DESC" in order and order.index("sample_symbols") < order.index("trade_count")
+
+
+class _Conn:
+    def cursor(self):
+        return self
+
+    def execute(self, *a, **k):
+        pass
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+
+@pytest.fixture()
+def lane(monkeypatch):
+    """Run E.main() with every outside edge stubbed; returns (run, receipts). ``statuses`` drives each snapshot."""
+    import types
+
+    receipts = []
+    from lib import lane_last_receipt as LR
+    monkeypatch.setattr(LR, "write_lane_receipt", lambda lane_id, **kw: receipts.append(kw))
+
+    def install(statuses):
+        rows = [{"id": i + 1, "symbol": f"S{i}", "catalyst": None, "catalyst_verified": False} for i in range(len(statuses))]
+        monkeypatch.setitem(sys.modules, "db_adapter", types.SimpleNamespace(_execute=lambda *a, **k: rows, _get_conn=lambda: _Conn()))
+        monkeypatch.setitem(sys.modules, "finviz_enrichment", types.SimpleNamespace(enrich_tickers=lambda syms, **k: {s: {} for s in syms}))
+        monkeypatch.setitem(sys.modules, "proposal_enrichment_bridge",
+                            types.SimpleNamespace(compute_proposal_intel_readiness=lambda *a, **k: "READY"))
+        it = iter(statuses)
+        monkeypatch.setattr(S, "generate_snapshot",
+                            lambda conn, proposal_id=None, symbol=None: {"symbol": symbol, "normal_trading_pattern_status": next(it)})
+
+    def run(statuses):
+        install(statuses)
+        return E.main(), receipts[-1]
+    return run
+
+
+def test_lane_counts_unavailable_snapshots_and_goes_red_when_all_failed(lane):
+    code, r = lane(["UNAVAILABLE", "UNAVAILABLE", "UNAVAILABLE"])
+    assert code == 1 and r["outcome"] == "error" and r["outcome_reason"] == "pattern_lookup_failed_for_all:3"
+    assert r["summary"]["pattern_lookup_failed"] == 3 and r["summary"]["pattern_lookup_checked"] == 3
+
+
+def test_lane_partial_pattern_failure_stays_ok_but_is_named(lane):
+    code, r = lane(["AVAILABLE", "UNAVAILABLE", "NO_MATCH", "UNAVAILABLE"])
+    assert code == 0 and r["outcome"] == "ok" and r["outcome_reason"] == "pattern_lookup_failed:2/4"
+    assert (r["summary"]["pattern_lookup_failed"], r["summary"]["pattern_lookup_checked"]) == (2, 4)
+
+
+def test_lane_no_match_is_not_a_failure(lane):
+    code, r = lane(["NO_MATCH", "NO_MATCH"])
+    assert code == 0 and r["outcome"] == "ok" and r["outcome_reason"] is None
+    assert r["summary"]["pattern_lookup_failed"] == 0
+
+
+def test_lane_counts_reset_between_runs(lane):
+    """A bad run must not colour the next one (the module-level counter is reused in-process)."""
+    lane(["UNAVAILABLE", "UNAVAILABLE"])
+    code, r = lane(["AVAILABLE", "AVAILABLE"])
+    assert code == 0 and r["outcome_reason"] is None
+    assert (r["summary"]["pattern_lookup_failed"], r["summary"]["pattern_lookup_checked"]) == (0, 2)
+
+
+def _cli(monkeypatch, fail):
+    class Cur(_Conn):
+        def fetchall(self):
+            return [(1,), (2,)]
+
+    class Conn(_Conn):
+        def cursor(self):
+            return Cur()
+
+        def close(self):
+            pass
+
+    def snap(conn, proposal_id=None, symbol=None):
+        if fail:
+            S.PATTERN_LOOKUP_FAILURES += 1
+        return {"symbol": "AAA"}
+
+    monkeypatch.setattr(S, "get_conn", lambda: Conn())
+    monkeypatch.setattr(S, "generate_snapshot", snap)
+    monkeypatch.setattr(sys, "argv", ["proposal_technical_snapshot.py", "--pending"])
+    return S.main()
+
+
+def test_cli_exits_1_when_any_pattern_lookup_failed(monkeypatch, capsys):
+    assert _cli(monkeypatch, fail=True) == 1
+    assert json_out(capsys)["pattern_lookup_failures"] == 2
+
+
+def test_cli_exits_0_when_no_lookup_failed(monkeypatch, capsys):
+    assert _cli(monkeypatch, fail=False) == 0
+    assert json_out(capsys)["pattern_lookup_failures"] == 0
+
+
+def json_out(capsys):
+    import json
+    return json.loads(capsys.readouterr().out)

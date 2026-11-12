@@ -245,6 +245,10 @@ def lookup_normal_pattern(cur, symbol, strategy_id=None):
     error class. The query runs inside a SAVEPOINT so a failure cannot leave the caller's transaction
     aborted for the statements that follow.
     """
+    # Every strategy_id in pattern_library is 'UNKNOWN' today (REVIEW-2156 N1): an 'UNKNOWN' or empty proposal
+    # strategy would match the highest-count bucket of ANY symbol. A placeholder is not a strategy.
+    if strategy_id is None or str(strategy_id).strip().upper() in ("", "UNKNOWN"):
+        strategy_id = None
     try:
         cur.execute("SAVEPOINT pattern_lookup")
     except Exception as exc:  # noqa: BLE001 -- the connection itself is unusable
