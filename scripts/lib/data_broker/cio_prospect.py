@@ -116,8 +116,15 @@ def _load_shadow(base: Path | None) -> tuple[Optional[dict[str, Any]], str]:
 def get_prospects(*, db_query: Optional[Callable[..., Any]] = None, shadow_base: Path | None = None,
                   symbols: Optional[Iterable[str]] = None, stage: Optional[str] = None,
                   limit: Optional[int] = None, now: Optional[datetime] = None,
-                  status: Optional[dict[str, Any]] = None, market_closed: Optional[bool] = None) -> dict[str, Any]:
-    """{prospects: [...], count, source{kind, ...}, as_of, age_hours, stale[, gap]} — never raises."""
+                  status: Optional[dict[str, Any]] = None, market_closed: Optional[bool] = None,
+                  load_shadow: bool = True) -> dict[str, Any]:
+    """{prospects: [...], count, source{kind, ...}, as_of, age_hours, stale[, gap]} — never raises.
+
+    ``load_shadow=False`` (LQ-20261107-2215): a caller that only uses the live store says so, and the
+    shadow file (61 MB on the served host) is not parsed when the store is not live. The answer still
+    says ``source.kind == "shadow"`` with ``shadow_loaded: False`` and no prospects, so it cannot be
+    mistaken for an empty live store.
+    """
     now = now or datetime.now(timezone.utc)
     ir = _ir()
     if status is None:
@@ -148,12 +155,15 @@ def get_prospects(*, db_query: Optional[Callable[..., Any]] = None, shadow_base:
         src_extra = {"table": "cio_prospect", "writer": WRITER, "label": "cio_prospect store"}
     else:
         kind = "shadow"
-        doc, path = _load_shadow(shadow_base)
+        if load_shadow:
+            doc, path = _load_shadow(shadow_base)
+        else:
+            doc, path = None, str(shadow_path(shadow_base))
         rows = list((doc or {}).get("prospects") or [])
         as_of = (doc or {}).get("as_of")
         src_extra = {"file": SHADOW_REL, "path": path, "writer": SHADOW_WRITER,
                      "label": "SHADOW — the cio_prospect shadow build, not the store",
-                     "store_not_live": status.get("reasons")}
+                     "store_not_live": status.get("reasons"), "shadow_loaded": bool(load_shadow)}
     if want is not None:
         rows = [r for r in rows if str(r.get("symbol") or "").upper() in want
                 or str(r.get("security_guid") or "").upper() in want]

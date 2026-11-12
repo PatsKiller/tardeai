@@ -25,6 +25,7 @@ here decides whether an operator may act; it reports who decides.
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
@@ -171,8 +172,55 @@ def _probe_domain(domain: str, state_root: Path, root: Path) -> dict[str, Any]:
     }
 
 
-def _domain_state(domain: str | None, root: Path) -> dict[str, Any]:
-    """What the operator's browser actually gets, plus what this checkout would give."""
+def _collection_files(domain: str, state_root: Path, root: Path) -> tuple[str, ...] | None:
+    """The real paths a collection domain reads under ``state_root``; None when it is not a plain collection.
+
+    Used only to decide that two probes would read byte-for-byte the same files (LQ-20261107-2215). Any
+    doubt returns None, and None means "probe it".
+    """
+    import sys
+
+    scripts = str(root / "scripts")
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    prev = os.environ.get("TRADEAI_STATE_ROOT")
+    os.environ["TRADEAI_STATE_ROOT"] = str(state_root)
+    try:
+        import control_plane_api as cpa  # type: ignore
+
+        spec = cpa.CONTROL_PLANE_DOMAINS.get(domain) or {}
+        if spec.get("kind") != "collection":
+            return None
+        return tuple(os.path.realpath(p) for p in cpa._domain_paths(domain))
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        if prev is None:
+            os.environ.pop("TRADEAI_STATE_ROOT", None)
+        else:
+            os.environ["TRADEAI_STATE_ROOT"] = prev
+
+
+def _domain_state(domain: str | None, root: Path, memo: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    """What the operator's browser actually gets, plus what this checkout would give.
+
+    LQ-20261107-2215 (memory): each probe is a full read of the domain's stores (the workflow lineage is
+    216 MB, the research requests 97 MB). Two probes are skipped when their answer is already known:
+      * the checkout probe of a collection domain whose files resolve to the SAME real paths as the
+        served probe's (on the served host the release ``data/*`` dirs are symlinks into the state
+        root) reuses the served answer, and says so (``checkout.probe = "same_files_as_served"``);
+      * a domain backing several surfaces in one call is probed once (``memo``).
+    Computed domains, and collections whose files differ, are still probed under both roots.
+    """
+    if domain and memo is not None and domain in memo:
+        return copy.deepcopy(memo[domain])
+    out = _domain_state_uncached(domain, root)
+    if domain and memo is not None:
+        memo[domain] = copy.deepcopy(out)
+    return out
+
+
+def _domain_state_uncached(domain: str | None, root: Path) -> dict[str, Any]:
     if not domain:
         return {
             "served": False,
@@ -185,12 +233,15 @@ def _domain_state(domain: str | None, root: Path) -> dict[str, Any]:
         }
     served_root = _served_state_root()
     served = _probe_domain(domain, served_root, root)
-    checkout = _probe_domain(domain, root, root)
+    served_files = _collection_files(domain, served_root, root)
+    same = served_files is not None and served_files == _collection_files(domain, root, root)
+    checkout = served if same else _probe_domain(domain, root, root)
     served["state_root"] = str(served_root)
     served["checkout"] = {
         "state_root": str(root),
         "data_quality": checkout.get("data_quality"),
         "item_count": checkout.get("item_count"),
+        "probe": "same_files_as_served" if same else "probed",
     }
     served["roots_disagree"] = served.get("data_quality") != checkout.get("data_quality")
     return served
@@ -233,8 +284,9 @@ def control_plane_surface_authority(root: Path | str | None = None) -> dict[str,
     """
     r = _root(root)
     surfaces = []
+    memo: dict[str, dict[str, Any]] = {}
     for route, spec in CONTROL_PLANE_SURFACES.items():
-        dom = _domain_state(spec["domain"], r)
+        dom = _domain_state(spec["domain"], r, memo)
         fix = _fixture_state(spec["bundled_fixture"], r)
         quality = dom.get("data_quality")
 

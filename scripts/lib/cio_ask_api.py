@@ -87,17 +87,23 @@ def handle(path: str, method: str, body: Any = None, query: Any = None, *, ctx: 
     if m == "GET":
         if base == PREFIX_ASKS:
             lim = _int(_first(q.get("limit")), 50)
-            data: dict[str, Any] = {"threads": core.list_threads(deps=deps, limit=lim), "as_of": _now()}
             gb = _first(q.get("group_by"))
+            # One ledger parse per request (LQ-20261107-2215): the grouped view used to parse it again
+            # for threads() and once more for events(), on top of list_threads' own parse.
+            d = core._deps(deps)
+            snap = getattr(d.store, "snapshot", None) if (d is not None and gb is not None) else None
+            threads, events = snap() if snap is not None else (None, None)
+            data: dict[str, Any] = {"threads": core.list_threads(deps=deps, limit=lim, threads=threads),
+                                    "as_of": _now()}
             if gb is not None:
                 from scripts.lib import cio_ask_groups as groups  # noqa: PLC0415
 
                 channel = _first(q.get("channel")) or None
                 if gb not in groups.GROUP_BYS or (channel is not None and channel not in groups.CHANNELS):
                     return _err(400, "BAD_GROUPING", f"group_by {'|'.join(groups.GROUP_BYS)}; channel cc|telegram")
-                d = core._deps(deps)
-                threads = d.store.threads() if d else {}
-                events = d.store.events() if d else []
+                if threads is None:
+                    threads = d.store.threads() if d else {}
+                    events = d.store.events() if d else []
                 data["grouped"] = groups.group_questions(
                     threads,
                     group_by=gb,

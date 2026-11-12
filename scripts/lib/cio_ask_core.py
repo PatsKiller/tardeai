@@ -887,12 +887,14 @@ def untrack(thread_id: str, entity_key: str, *, deps: Optional[AskDeps] = None, 
 # ── list projection for the page ───────────────────────────────────────────────────────────────────────────────────
 
 
-def list_threads(*, deps: Optional[AskDeps] = None, limit: int = 50) -> list[dict[str, Any]]:
+def list_threads(*, deps: Optional[AskDeps] = None, limit: int = 50,
+                 threads: Optional[dict[str, dict[str, Any]]] = None) -> list[dict[str, Any]]:
+    """``threads``: an already-folded ``store.threads()`` result to reuse (one ledger parse per request)."""
     d = _deps(deps)
     if d is None:
         return []
     rows = []
-    for t in d.store.threads().values():
+    for t in (threads if threads is not None else d.store.threads()).values():
         last = None
         for turn in t["turns"]:
             for a in turn["answers"]:

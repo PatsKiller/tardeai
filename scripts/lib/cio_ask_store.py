@@ -221,10 +221,21 @@ class AskEventStore:
         return round(actual + holds, 8)
 
     # ── projection ─────────────────────────────────────────────────────────────────────────────────────────────────
-    def threads(self) -> dict[str, dict[str, Any]]:
-        """Fold the ledger into thread views. Pure replay; same input → same output."""
+    def threads(self, *, rows: Optional[list[dict[str, Any]]] = None) -> dict[str, dict[str, Any]]:
+        """Fold the ledger into thread views. Pure replay; same input → same output.
+
+        The ledger is parsed ONCE per call (LQ-20261107-2215). It used to be parsed once more per thread
+        for the lifecycle projection, which made a GET of /cio/asks cost (threads + 1) full parses.
+        ``rows`` lets a caller that already parsed the ledger (``snapshot``) reuse that parse.
+        """
+        if rows is None:
+            rows = list(self._iter_raw())
         th: dict[str, dict[str, Any]] = {}
-        for e in self._iter_raw():
+        by_thread: dict[str, list[dict[str, Any]]] = {}
+        for e in rows:
+            if e.get("thread_id"):
+                by_thread.setdefault(e.get("thread_id"), []).append(e)
+        for e in rows:
             tid = e.get("thread_id")
             if not tid:
                 continue
@@ -301,8 +312,13 @@ class AskEventStore:
             t["entities"] = list(t["entities"].values())
             from scripts.lib.cio_ask_lifecycle import project_lifecycle
 
-            t["lifecycle"] = project_lifecycle(t, self.events(thread_id=t["thread_id"]))
+            t["lifecycle"] = project_lifecycle(t, by_thread.get(t["thread_id"], []))
         return th
+
+    def snapshot(self) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
+        """(threads, events) from ONE parse of the ledger, for a request that needs both."""
+        rows = list(self._iter_raw())
+        return self.threads(rows=rows), rows
 
     def thread(self, thread_id: str) -> Optional[dict[str, Any]]:
         return self.threads().get(thread_id)
