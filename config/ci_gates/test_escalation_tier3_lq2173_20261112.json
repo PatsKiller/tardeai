@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "test_escalation_tier3_lq2173_20261112",
+  "files": [
+    "tests/test_escalation_tier3_lq2173_20261112.py"
+  ],
+  "anchor": "STOP-ESCALATION-TIER3-LQ2173",
+  "comment": [
+    "ANCHOR: STOP-ESCALATION-TIER3-LQ2173 — Tier 3 LLM analysis (gemma text or Claude CLI exit 0) never writes FIXED; a row is fixed only when the failing metric is re-measured clear, otherwise investigated_unverified."
+  ]
+}

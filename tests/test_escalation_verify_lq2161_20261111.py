@@ -53,8 +53,18 @@ def test_stale_source_unreadable_or_unparseable_fails_closed(monkeypatch):
     assert esc._verify_remediation(ITEM)[0] is False, "source absent from table is unknown, not clear"
 
 
+def _pin_clock(monkeypatch, esc, y, m, d):
+    class _Pinned(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(y, m, d, 12, 0, tzinfo=tz)
+
+    monkeypatch.setattr(esc, "datetime", _Pinned)
+
+
 def test_agent_jobs_stale_measures_age_not_backlog(monkeypatch):
     esc = _esc()
+    _pin_clock(monkeypatch, esc, 2026, 11, 11)  # Wednesday: 4h limit, independent of the real day
     item = {"component": "health:data_quality:agent_jobs_stale"}
     monkeypatch.setattr(esc, "_db_verify", lambda sql, params=None: (True, 4.4, "ok"))
     cleared, note = esc._verify_remediation(item)
@@ -63,6 +73,49 @@ def test_agent_jobs_stale_measures_age_not_backlog(monkeypatch):
     assert esc._verify_remediation(item)[0] is True
     monkeypatch.setattr(esc, "_db_verify", lambda sql, params=None: (True, None, "ok"))
     assert esc._verify_remediation(item)[0] is False, "no completed job at all is unknown, not clear"
+
+
+def test_agent_jobs_stale_weekend_limit_is_48h(monkeypatch):
+    esc = _esc()
+    _pin_clock(monkeypatch, esc, 2026, 11, 14)  # Saturday
+    item = {"component": "health:data_quality:agent_jobs_stale"}
+    monkeypatch.setattr(esc, "_db_verify", lambda sql, params=None: (True, 30.0, "ok"))
+    assert esc._verify_remediation(item)[0] is True
+    monkeypatch.setattr(esc, "_db_verify", lambda sql, params=None: (True, 50.0, "ok"))
+    assert esc._verify_remediation(item)[0] is False
+
+
+def _view_returning(monkeypatch, status):
+    import lib.data_source_health_view as v
+
+    monkeypatch.setattr(v, "view_rows", lambda rows, now, reg: [{"status": status}])
+
+
+def test_not_alerted_statuses_clear_but_error_and_unknown_do_not(monkeypatch):
+    esc = _esc()
+    monkeypatch.setattr(esc, "_data_source_rows", lambda: [_row(0.01)])
+    for status in ("idle", "premium_endpoint_unavailable"):
+        _view_returning(monkeypatch, status)
+        cleared, note = esc._verify_remediation(ITEM)
+        assert cleared is True and note == f"data_source_ok_{status}"
+    for status in ("error", "unknown", "stale"):
+        _view_returning(monkeypatch, status)
+        cleared, note = esc._verify_remediation(ITEM)
+        assert cleared is False and note == f"data_source_still_{status}"
+
+
+def test_view_exception_fails_closed(monkeypatch):
+    esc = _esc()
+    import lib.data_source_health_view as v
+
+    monkeypatch.setattr(esc, "_data_source_rows", lambda: [_row(0.01)])
+
+    def boom(*a, **k):
+        raise RuntimeError("registry unreadable")
+
+    monkeypatch.setattr(v, "view_rows", boom)
+    cleared, note = esc._verify_remediation(ITEM)
+    assert cleared is False and note.startswith("data_source_verify_error")
 
 
 def test_unmeasured_type_is_not_fixed():

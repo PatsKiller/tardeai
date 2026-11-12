@@ -959,6 +959,22 @@ def _clear_queues():
             pass
 
 
+def tier3_row_status(item, analysis_obtained: bool) -> tuple[str, str]:
+    """Outcome for one Tier 3 intervention row (LQ-20261107-2173).
+
+    An LLM reply or a CLI exit 0 only proves the analysis ran. `fixed` requires the failing metric
+    to measure clear now; anything else is `investigated_unverified` (analysis obtained) or
+    `failed` (no analysis).
+    """
+    if not analysis_obtained:
+        return "failed", "no_analysis"
+    try:
+        cleared, note = _verify_remediation(item)
+    except Exception as e:  # unknown beats wrong
+        return "investigated_unverified", f"verify_error:{type(e).__name__}"
+    return ("fixed" if cleared else "investigated_unverified"), note
+
+
 def process_queue(dry_run=False, tier1_only=False, no_llm=False):
     """Process escalation queues: direct retry → LLM diagnosis → deep LLM.
 
@@ -1537,6 +1553,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
 
     log.info(f"Tier 3: Deep LLM analysis for {len(remaining)} item(s)...")
     intervention_ids = []
+    intervention_items = []  # (id, item) so each row is re-checked against ITS finding
     if conn:
         for item in remaining:
             iid = _log_intervention(
@@ -1544,6 +1561,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
             )
             if iid:
                 intervention_ids.append(iid)
+                intervention_items.append((iid, item))
 
     _notify(
         f"🔍 Investigating {len(remaining)} escalation(s) via local LLM:\n"
@@ -1812,27 +1830,36 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
         except Exception as e:
             session_log += f"\nCLAUDE_CLI error: {e}"
 
-    final_status = "fixed" if success else "failed"
+    # LQ-20261107-2173: an LLM answering (gemma text > N chars, CLI exit 0) is NOT evidence that
+    # anything was fixed — Tier 3 only analyses. `success` therefore means "an analysis was
+    # obtained" and nothing more. A row becomes `fixed` only when the failing metric is re-measured
+    # clear (_verify_remediation); otherwise it is `investigated_unverified`.
+    final_status = "investigated_unverified" if success else "failed"
+    n_measured_fixed = 0
     if conn:
         cur = conn.cursor()
-        for iid in intervention_ids:
+        for iid, item in intervention_items:
+            row_status, vnote = tier3_row_status(item, success)
+            if row_status == "fixed":
+                n_measured_fixed += 1
             try:
                 cur.execute(
                     """UPDATE claude_interventions
                     SET status=%s, session_log=%s, resolved_at=NOW()
                     WHERE id=%s""",
-                    [final_status, session_log[:5000], iid],
+                    [row_status, f"[tier3 re-check: {vnote}]\n{session_log}"[:5000], iid],
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning(f"  Tier 3 outcome write failed for intervention {iid}: {e}")
         conn.commit()
 
     resolved_count = len(resolved_by_retry)
     defer_note = f"\nDeferred: {len(deferred)} queued for next run" if deferred else ""
     _notify(
-        f"{'✅' if success else '❌'} Escalation analysis {'complete' if success else 'failed'}\n"
+        f"{'🔍' if success else '❌'} Escalation analysis {'obtained — NOT verified as fixed' if success else 'failed'}\n"
         f"Tier 1 (retry_cmd): {resolved_count} resolved\n"
-        f"Tier 3 (local LLM): {len(remaining)} analyzed → {final_status}{defer_note}\n"
+        f"Tier 3 (local LLM): {len(remaining)} analyzed → {final_status}"
+        f" ({n_measured_fixed} re-measured clear){defer_note}\n"
         f"Analysis: {session_log[:200]}"
     )
 
