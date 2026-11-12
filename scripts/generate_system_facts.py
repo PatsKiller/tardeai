@@ -38,7 +38,8 @@ def _safe_count(conn, sql):
 
 def _run(cmd, timeout=10):
     try:
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(  # nosemgrep: tq-py-subprocess-shell -- every caller passes a constant find/wc/git pipeline
+            cmd, shell=True, capture_output=True, text=True, timeout=timeout)
         return r.stdout.strip()
     except Exception:
         return None

@@ -53,7 +53,7 @@ def main():
 
     # 4. Backup cron
     try:
-        crontab = subprocess.check_output("crontab -l", shell=True, stderr=subprocess.DEVNULL).decode()
+        crontab = subprocess.check_output(["crontab", "-l"], stderr=subprocess.DEVNULL).decode()
         has_backup_cron = "backup_verify" in crontab or "full_system_backup" in crontab
     except Exception:
         has_backup_cron = False
@@ -61,7 +61,7 @@ def main():
 
     # 5. Offsite target
     try:
-        remotes = subprocess.check_output("rclone listremotes", shell=True, stderr=subprocess.DEVNULL).decode().strip()
+        remotes = subprocess.check_output(["rclone", "listremotes"], stderr=subprocess.DEVNULL).decode().strip()
         has_offsite = len(remotes) > 0
     except Exception:
         has_offsite = False

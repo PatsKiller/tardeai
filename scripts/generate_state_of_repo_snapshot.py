@@ -20,7 +20,8 @@ PIPELINES = ["tradeai-market-pipeline", "tradeai-after-close-pipeline", "hermes-
 
 def sh(cmd):
     try:
-        return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=20, cwd=ROOT).stdout.strip()
+        return subprocess.run(  # nosemgrep: tq-py-subprocess-shell -- every caller passes a constant git/wc pipeline
+            cmd, shell=True, capture_output=True, text=True, timeout=20, cwd=ROOT).stdout.strip()
     except Exception:
         return ""
 

@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "injection_triage_1_20261106",
+  "files": [
+    "tests/test_injection_triage_1_20261106.py"
+  ],
+  "anchor": "INJECTION_TRIAGE_1_20261106",
+  "comment": [
+    "ANCHOR: INJECTION_TRIAGE_1_20261106 - security triage of shell=True (operator 2026-11-06): POST /api/yaml-apply ids,",
+    "stop-monitoring symbols and the a1a git helper run as argument lists with no shell; ids are validated. Hermetic: a",
+    "subprocess spy, nothing runs or writes."
+  ]
+}
