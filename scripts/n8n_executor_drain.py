@@ -134,6 +134,14 @@ def cmd_request(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_retarget(args: argparse.Namespace) -> int:
+    """Point a leftover drain request at ``--target`` (never creates one) and read it back (LQ-20261107-2246)."""
+    out = D.retarget(_state_root(args.state_root), Path(args.target), now=args.now)
+    print(json.dumps(out))
+    print(f"RETARGET_RESULT={out['result']}")
+    return 0 if out["result"] in ("ok", "absent") else 5
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -167,8 +175,12 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--requested-by", default="deploy")
     r.add_argument("--no-systemd", action="store_true", help="skip the live cwd read-back (tests)")
     r.add_argument("--dry-run", action="store_true")
+    t = sub.add_parser("retarget", help="point a leftover request at --target and read it back; exit 5 on mismatch")
+    t.add_argument("--target", required=True)
+    t.add_argument("--state-root")
+    t.add_argument("--now", type=float, default=None)
     args = ap.parse_args(argv)
-    return {"request": cmd_request}[args.cmd](args)
+    return {"request": cmd_request, "retarget": cmd_retarget}[args.cmd](args)
 
 
 if __name__ == "__main__":
