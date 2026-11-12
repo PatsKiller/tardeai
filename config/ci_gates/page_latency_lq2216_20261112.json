@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "page_latency_lq2216_20261112",
+  "files": [
+    "tests/test_page_latency_lq2216_20261112.py"
+  ],
+  "anchor": "PAGE_LATENCY_LQ2216_20261112",
+  "comment": [
+    "ANCHOR: PAGE_LATENCY_LQ2216_20261112 — the Home v007 exact-observation market_quotes join carries an",
+    "index-usable bare-symbol prefilter (was a 7 M-row sequential scan per market-risk/latest call)."
+  ]
+}
