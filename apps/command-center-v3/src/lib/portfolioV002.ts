@@ -19,6 +19,16 @@
  *    - no counted position reads UNKNOWN unless the position count independently confirms zero;
  *    - R1: a GAP whose only stop expired is UNKNOWN in the regular session, WARN after the close (D1);
  *    - R2: a GAP whose stop read is older than the freshness limit is UNKNOWN; the last-known GAP stays listed.
+ *      The limit itself is fresh (age > limit is stale). The session is 09:30:00 <= ET < 16:00:00, Mon-Fri.
+ *  One verdict for one book (LQ-2483): the rollup ORDER matches the backend. Row MEMBERSHIP matches
+ *  stops_protection.summary only once LQ-2431 (e5afdf19d) is folded. Before that, the backend marks an unpriced row
+ *  counted:false and drops it, while this module counts it, so the page can read GAP where the served rollup reads
+ *  OK. That is the safe direction, and it closes when 2431 folds; fold 2431 with or before this module. R1 has no
+ *  effect until LQ-2412 (b66945cf2) folds, because protection.expired_stop is absent from the wire before then.
+ *  Second known split: a book with zero counted positions. stops_protection.summary reads OK (counted 0); this module
+ *  reads UNKNOWN and shows its cause, unless the position count confirms zero (F2, the 2412 rule). Also the safe side.
+ *  The served summary also turns UNKNOWN for an unverified broker stop read (unverified_brokers). This module has
+ *  no broker-state input, so it sees that only through the rows (G2: render the served verdict instead).
  *
  *  I1/I2 defaults: unreadable -> UNKNOWN; no source -> UNKNOWN + NEEDS BACKEND; timeout (30 s) -> TIMED OUT;
  *  missing data -> UNKNOWN. Missing is never healthy. No /api/v2/overview read. */

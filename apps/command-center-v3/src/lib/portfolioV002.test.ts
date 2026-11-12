@@ -177,4 +177,36 @@ assert.equal(verdictOf([gapRow({}, { as_of: new Date(CLOSED - 73 * 3_600_000).to
 // A fresh GAP stays a GAP (R3 input: a NO from a fresh read).
 assert.equal(verdictOf([okRow('PPP'), gapRow()]).verdict, 'GAP')
 
+// 11. LQ-2483 (REVIEW-2479 M1/M2): exact limits. The limit itself is still fresh; one millisecond past it is stale.
+// 2031-03-07 is before the 2031-03-09 DST change, so ET = UTC-5: 09:30 ET = 14:30Z, 16:00 ET = 21:00Z.
+const agedGap = (nowMs: number, age: number) => gapRow({}, { as_of: new Date(nowMs - age).toISOString() })
+assert.equal(verdictOf([agedGap(NOW, 900_000)]).verdict, 'GAP')
+assert.equal(verdictOf([agedGap(NOW, 900_001)]).verdict, 'UNKNOWN')
+assert.equal(verdictOf([agedGap(CLOSED, 72 * 3_600_000)], CLOSED).verdict, 'GAP')
+assert.equal(verdictOf([agedGap(CLOSED, 72 * 3_600_000 + 1)], CLOSED).verdict, 'UNKNOWN')
+// Session edges: 09:29:59 closed, 09:30:00 open, 15:59:59 open, 16:00:00 closed.
+const OPEN_0930 = Date.parse('2031-03-07T14:30:00Z'), CLOSE_1600 = Date.parse('2031-03-07T21:00:00Z')
+assert.equal(sessionOpenET(OPEN_0930 - 1_000), false); assert.equal(sessionOpenET(OPEN_0930), true)
+assert.equal(sessionOpenET(CLOSE_1600 - 1_000), true); assert.equal(sessionOpenET(CLOSE_1600), false)
+// At 16:00:00 ET R1 is WARN (closed) and R2 uses the 72 h limit: a 20 min old GAP read is still a GAP.
+assert.equal(rowProtection(gapRow({ stop_state: 'none' }, { expired_stop: true }), { nowMs: CLOSE_1600 }).protection, 'WARN')
+assert.equal(verdictOf([agedGap(CLOSE_1600, 20 * 60_000)], CLOSE_1600).verdict, 'GAP')
+// At 09:30:00 ET R1 is UNKNOWN (open) and R2 uses the 900 s limit.
+assert.equal(rowProtection(gapRow({ stop_state: 'none' }, { expired_stop: true }), { nowMs: OPEN_0930 }).protection, 'UNKNOWN')
+assert.equal(verdictOf([agedGap(OPEN_0930, 900_001)], OPEN_0930).verdict, 'UNKNOWN')
+
+// 12. LQ-2483: one verdict for one book. Same membership as stops_protection.summary over cio_truth after LQ-2431:
+// a KNOWN value under $100 is listed, not counted, whatever its state, so a known $40 GAP next to a protected
+// position reads OK on the page exactly as the served rollup does (no GAP-vs-served-OK split).
+const oneBook = verdictOf([okRow('PPP'), row({ symbol: 'G40', market_value: 40, protection_state: 'GAP', stop_price: null,
+  protection: { state: 'GAP', counted: false, as_of: AT } })])
+assert.equal(oneBook.verdict, 'OK'); assert.equal(oneBook.counted, 1); assert.equal(oneBook.listedNotCounted, 1); assert.equal(oneBook.gap, 0)
+// An unpriced GAP (after 2431: counted:true + price_missing; before it: counted:false) is counted and reads GAP.
+for (const counted of [true, false]) {
+  assert.equal(verdictOf([okRow('PPP'), gapRow({ market_value: null, price: null }, { counted, price_missing: counted })]).verdict, 'GAP')
+}
+// Cash only: UNKNOWN with its cause shown, never OK and never blank.
+const cashCause = verdictOf(cashOnly)
+assert.equal(cashCause.verdict, 'UNKNOWN'); assert.equal(cashCause.cause, 'No counted position, and the position count does not confirm zero')
+
 console.log('portfolioV002.test.ts: ok')
