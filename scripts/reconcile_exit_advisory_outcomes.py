@@ -586,7 +586,19 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
-    return self_test() if args.self_test else reconcile()
+    if args.self_test:
+        return self_test()
+    try:
+        return reconcile()
+    except Exception as exc:  # noqa: BLE001 -- LQ-20261107-2230: name the crash instead of leaving a stale receipt
+        # An uncaught exception used to exit 1 with only a traceback in the n8n stderr tail and NO receipt, so
+        # ``reconcile-exit-advisory-outcomes_last.json`` (the lane's output_signal) kept describing an older
+        # run. Write a failed receipt that names the exception class, then still fail the run.
+        why = f"{type(exc).__name__}: {str(exc)[:300]}"
+        print(f"[exit-outcomes] unhandled_exception — {why}", file=sys.stderr)
+        _receipt(ok=False, produced=0, attempted=None, empty_reason="unhandled_exception",
+                 skipped={"unhandled_exception": 1}, error=why)
+        return 1
 
 
 if __name__ == "__main__":
