@@ -35,6 +35,13 @@ class FakePrefs:
         if s.startswith("SELECT value FROM ui_prefs"):
             r = self.rows.get(params[0])
             return {"value": r} if r is not None else None
+        if s.startswith("INSERT INTO ui_prefs") and "RETURNING value" in s:   # the atomic home.last_seen upsert
+            new = json.loads(params[1])
+            old = self.rows.get(params[0])
+            if old is not None:
+                new = {**new, "previous_seen_at": old.get("seen_at")}
+            self.rows[params[0]] = new
+            return {"value": new}
         if s.startswith("INSERT INTO ui_prefs"):
             self.rows[params[0]] = json.loads(params[1])
             return None
@@ -47,6 +54,7 @@ def prefs(monkeypatch):
 
     fake = FakePrefs()
     monkeypatch.setattr(api, "_db_query", fake)
+    monkeypatch.setattr(api, "_db_query_raising", fake)
     return api, fake
 
 
@@ -104,7 +112,9 @@ def test_a_corrupt_stored_value_is_unknown_with_fallback_not_a_guess(prefs):
     assert r["status"] == "UNKNOWN" and r["seen_at"] is None and "unreadable" in r["reason"]
     assert r["window_basis"] == "fallback_24h" and r["last_visit_recorded"] is False
     # and the next post still works: it starts a clean window (previous unreadable -> None)
-    assert _post(api, {"device": "phone"})["ok"] and fake.rows["home.last_seen"]["previous_seen_at"] is None
+    assert _post(api, {"device": "phone"})["ok"]
+    r2 = api._ui_prefs_get({"key": "home.last_seen"})["read"]
+    assert r2["status"] == "RECORDED" and r2["previous_seen_at"] is None     # the garbage is never served as a time
 
 
 def test_other_keys_are_untouched(prefs):
@@ -333,7 +343,8 @@ def test_incidents_ok_body_is_cached_and_a_failure_is_not(monkeypatch):
     monkeypatch.setattr(route_hi, "load_classes", lambda *a, **k: CLASSES)
     a = api._home_incidents()
     n = len(calls)
-    assert api._home_incidents() is a and len(calls) == n          # served from cache, no new reads
+    b = api._home_incidents()
+    assert b["snapshot"]["computed_at"] == a["snapshot"]["computed_at"] and len(calls) == n   # served from cache, no new reads
     api._HOME_INCIDENTS_CACHE.clear()
     monkeypatch.setattr(api, "_db_query_raising", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
     assert api._home_incidents()["state"] == "UNKNOWN"
@@ -352,3 +363,40 @@ def test_decision_classes_in_a_registry_sort_p0_before_p1_and_unmapped_last():
     out = HI.build(_db(rows), now=NOW, classes=classes)
     assert [i["incident_id"] for i in out["items"]] == ["g", "s", "u"]
     assert out["counts"] == {"P0": 1, "P1": 1, "UNCLASSIFIED": 1, "blocks_trading": 1}
+
+
+# ----------------------------------------------------------------------------- LQ-2186 F1/F2/F3
+def test_upsert_is_one_atomic_statement_copying_previous_in_sql(prefs):
+    api, fake = prefs
+    seen = []
+    orig = fake.__call__
+
+    def spy(sql, params=None, fetch="all"):
+        seen.append(" ".join(sql.split()))
+        return orig(sql, params, fetch)
+    api._db_query_raising = spy
+    out = api._ui_prefs_set({"key": "home.last_seen", "value": {"device": "phone"}})
+    assert out["ok"] and out["value"]["device"] == "phone"
+    assert len(seen) == 1 and "ON CONFLICT (key) DO UPDATE" in seen[0] and "ui_prefs.value -> 'seen_at'" in seen[0]
+    assert "RETURNING value" in seen[0]
+
+
+def test_failed_write_returns_503_through_the_http_edge(prefs, monkeypatch):
+    api, fake = prefs
+    monkeypatch.setattr(api, "_home_last_seen_gate", lambda ctx=None: (200, None))
+    monkeypatch.setattr(api, "_db_query_raising", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
+    status, body = api.handle("/api/v2/ui/prefs", "POST", {"key": "home.last_seen", "value": {"device": "phone"}})
+    assert status == 503 and body["ok"] is False and body["code"] == "STORE_UNAVAILABLE"
+
+
+def test_restamp_computes_ages_at_serve_time():
+    body = HI.build(_db([]), now=NOW, classes=CLASSES)
+    later = NOW + timedelta(seconds=30)
+    out = HI.restamp(body, 30, now=later)
+    assert out["served_at"] == later.isoformat() and out["snapshot"]["age_s"] == 30
+    assert out["data_integrity_24h"]["age_s"] == 30 and body["snapshot"]["age_s"] == 0   # original untouched
+
+
+def test_failure_bodies_name_owner_and_source():
+    out = HI.build(_db(exc=RuntimeError("x")), now=NOW, classes=CLASSES)
+    assert out["owner"] == "UNREGISTERED" and out["source_id"] == "alert_incidents"

@@ -31592,7 +31592,7 @@ def _home_incidents():
 
     hit = _HOME_INCIDENTS_CACHE.get("v")
     if hit and _t.monotonic() - hit[0] < _hi.CACHE_TTL_S:
-        return hit[1]
+        return _hi.restamp(hit[1], int(_t.monotonic() - hit[0]))
     out = _hi.build(_db_query_raising)
     if out.get("state") == "OK":  # a failed read is retried on the next poll, never pinned for a minute
         _HOME_INCIDENTS_CACHE["v"] = (_t.monotonic(), out)
@@ -37302,11 +37302,27 @@ def _ui_prefs_set(body=None):
 
         from lib import home_last_seen as _hls
 
-        cur = _db_query("SELECT value FROM ui_prefs WHERE key=%s", (key,), fetch="one")
-        norm, why = _hls.stamp(b.get("value"), cur["value"] if cur else None, now=_dt.now(_tz.utc))
+        norm, why = _hls.stamp(b.get("value"), None, now=_dt.now(_tz.utc))
         if norm is None:
             return {"ok": False, "error": why}
-        blob = _j.dumps(norm)
+        # LQ-20261107-2186 F1/F2: one atomic statement through the raising query. previous_seen_at is copied from the
+        # stored seen_at in SQL (no read-then-write race), and a failed statement is a refusal, never ok:true and
+        # never "no previous visit".
+        try:
+            row = _db_query_raising(
+                """INSERT INTO ui_prefs (key, value, updated_at) VALUES (%s, %s::jsonb, now())
+                     ON CONFLICT (key) DO UPDATE
+                       SET value = EXCLUDED.value || jsonb_build_object('previous_seen_at', ui_prefs.value -> 'seen_at'),
+                           updated_at = now()
+                     RETURNING value""",
+                (key, _j.dumps(norm)),
+                fetch="one",
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "code": "STORE_UNAVAILABLE", "error": f"last visit not recorded ({type(exc).__name__})"}
+        if not row:
+            return {"ok": False, "code": "STORE_UNAVAILABLE", "error": "last visit not recorded (no confirmation from the store)"}
+        return {"ok": True, "key": key, "value": _json_clean(row["value"])}
     _db_query(
         """INSERT INTO ui_prefs (key, value, updated_at) VALUES (%s, %s::jsonb, now())
                  ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()""",
@@ -58486,6 +58502,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if _hls_refusal is not None:
                     return _hls_status, _hls_refusal
             result = _ui_prefs_set(body or {})
+            if result.get("code") == "STORE_UNAVAILABLE":
+                return 503, result
             return (200 if result.get("ok") else 400), result
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}

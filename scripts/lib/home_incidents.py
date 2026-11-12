@@ -118,7 +118,18 @@ def _is_timeout(exc: BaseException) -> bool:
 
 
 def _failed(base: dict, state: str, reason: str) -> dict:
-    return {**base, "state": state, "reason": reason, "counts": None, "items": None, "data_integrity_24h": None}
+    return {**base, "state": state, "reason": reason, "counts": None, "items": None, "data_integrity_24h": None,
+            "source_id": "alert_incidents", "owner": UNREGISTERED}
+
+
+def restamp(body: dict, held_s: int, *, now: Optional[datetime] = None) -> dict:
+    """A cached body re-served ``held_s`` seconds after it was computed: ages are computed at serve time, never frozen."""
+    now = now or datetime.now(timezone.utc)
+    out = {**body, "served_at": now.isoformat(), "snapshot": {**(body.get("snapshot") or {}), "age_s": max(0, held_s)}}
+    di = body.get("data_integrity_24h")
+    if isinstance(di, dict) and di.get("age_s") is not None:
+        out["data_integrity_24h"] = {**di, "age_s": di["age_s"] + max(0, held_s)}
+    return out
 
 
 def build(db_query: Callable[..., Any], *, now: Optional[datetime] = None, classes: Optional[dict] = None) -> dict:
