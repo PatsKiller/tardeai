@@ -130,7 +130,16 @@ def run_stage(conn, run_id, pipeline_key, stage, attempt, dry_run=False):
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"{stage_key}_attempt{attempt}.log"
 
+    # Injection triage 21 (2026-11-06): stage commands are pipeline_stages rows, so only the narrow
+    # remediation grammar may reach the shell. A refused stage fails like any other stage error.
+    from lib.shell_command_guard import check_command
+
+    cmd_ok, cmd_why = check_command(command, roots=(str(PROJECT_ROOT),))
+
     if dry_run:
+        if not cmd_ok:
+            print(f"  [DRY] {stage_key}: would REFUSE '{command}': {cmd_why}")
+            return {"status": "failed", "duration": 0, "error": f"command refused: {cmd_why}", "dry_run": True}
         print(f"  [DRY] {stage_key}: would run '{command}' (timeout={timeout}s)")
         return {"status": "success", "duration": 0, "exit_code": 0, "dry_run": True}
 
@@ -138,8 +147,10 @@ def run_stage(conn, run_id, pipeline_key, stage, attempt, dry_run=False):
     started = time.time()
 
     try:
+        if not cmd_ok:
+            raise ValueError(f"command refused by shell_command_guard: {cmd_why}")
         with open(log_path, "w") as log_file:
-            proc = subprocess.run(
+            proc = subprocess.run(  # nosemgrep: tq-py-subprocess-shell -- command passed shell_command_guard
                 command, shell=True, cwd=str(PROJECT_ROOT),
                 stdout=log_file, stderr=subprocess.STDOUT,
                 timeout=timeout

@@ -160,7 +160,7 @@ def _run_cmd(cmd: str, timeout: int = 300) -> dict:
     root = _root()
     full = _rewrite_cmd(cmd)
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # nosemgrep: tq-py-subprocess-shell -- cmd from in-code SEED_RECIPES strategies
             full, shell=True, cwd=str(root),
             capture_output=True, text=True, timeout=timeout,
         )

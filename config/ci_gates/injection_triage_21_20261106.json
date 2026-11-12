@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "injection_triage_21_20261106",
+  "files": [
+    "tests/test_injection_triage_21_20261106.py"
+  ],
+  "anchor": "INJECTION_TRIAGE_21_20261106",
+  "comment": [
+    "ANCHOR: INJECTION_TRIAGE_21_20261106 - security triage of shell=True (operator 2026-11-06): command lines read from",
+    "the DB (health_agent policy, pipeline_schedule, pipeline_stages) reach the shell only when shell_command_guard",
+    "accepts them; coder_dispatch test_cmd runs as an argv. Hermetic: a subprocess spy, nothing runs or writes."
+  ]
+}

@@ -205,6 +205,7 @@ def _script_of(cmd: str) -> str:
 def _rerun(remediate_cmd: str) -> bool:
     cmd = _expand(remediate_cmd)
     try:
+        # nosemgrep: tq-py-subprocess-shell -- remediate_cmd is a job_coverage_monitor.REGISTRY literal; $PROJ/$PY only
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=900)
         ok = r.returncode == 0
         _log(f"rerun {'ok' if ok else 'failed'} rc={r.returncode}: {cmd}")
