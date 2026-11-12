@@ -316,6 +316,55 @@ def _next(p: Pack, bars: dict[str, list[dict]], snap: dict, cfg: dict) -> dict[s
     return feats
 
 
+WEEKEND_DAYS = (4, 5, 6)  # Friday, Saturday, Sunday in New York: the next session is across a weekend
+
+
+def _weekend(p: Pack, feats: dict[str, Any], now: datetime, cfg: dict) -> None:
+    """PKG-SELLOFF-INTEL-20261106 D: what Friday close -> Monday did under today's conditions, measured, beside every
+    other session under the same conditions. Stated Friday to Sunday only; a fact with n, median, the share lower and
+    the date range, or "too few" with the count. Never a forecast, never scored."""
+    from zoneinfo import ZoneInfo
+
+    if now.astimezone(ZoneInfo("America/New_York")).weekday() not in WEEKEND_DAYS:
+        return
+    try:
+        table = br.load_table()
+    except (OSError, ValueError) as exc:
+        p.miss("next", "weekend effect", f"table unavailable ({type(exc).__name__})")
+        return
+    min_n = int(cfg.get("min_n") or 20)
+    w = br.weekend(feats, min_n=min_n, table=table)
+    if w.get("insufficient_history"):
+        loose = ", ".join(f"{k}={v}" for k, v in (w.get("loosest_conditions") or {}).items()) or "none"
+        p.miss(
+            "next",
+            "weekend effect",
+            f"only {w['n_at_loosest']} plain weekends 2016-2025 match [{loose}] (n<{min_n}): "
+            "too few to state a Friday-to-Monday effect",
+        )
+        return
+    conds = ", ".join(f"{k}={v}" for k, v in w["conditions"].items()) or "no conditions (all plain weekends)"
+    for leg in ("close", "open"):
+        spy, qqq, base = w["SPY"][leg], w["QQQ"][leg], w["baseline"]["SPY"][leg]
+        if spy.get("insufficient_history"):
+            p.miss("next", f"weekend Monday {leg}", f"only {spy['n']} weekends carry a Monday {leg} (n<{min_n})")
+            continue
+        text = (
+            f"Friday close to Monday {leg}, {spy['n']} plain weekends {w['first_weekend']} to {w['last_weekend']} "
+            f"on [{conds}]: SPY median {_pct(spy['median_pct'], 2)}, lower in {spy['share_negative_pct']}%"
+        )
+        if not qqq.get("insufficient_history"):
+            text += f"; QQQ median {_pct(qqq['median_pct'], 2)}, lower in {qqq['share_negative_pct']}%"
+        if not base.get("insufficient_history"):
+            text += (
+                f". Every other session on the same conditions, next {leg}: SPY median "
+                f"{_pct(base['median_pct'], 2)}, lower in {base['share_negative_pct']}% (n={base['n']})"
+            )
+        if w["dropped"]:
+            text += f". Dropped [{', '.join(w['dropped'])}] to reach n>={min_n}"
+        p.add("next", f"weekend Monday {leg}", text, source="base_rates_table", as_of=w.get("table_as_of"))
+
+
 def _hedging(
     p: Pack, reader: Any, now: datetime, bars: dict[str, list[dict]], held: list[str], sources: Any, cfg: dict
 ):
@@ -827,6 +876,7 @@ def build_fact_pack(
     bars = _closes(reader, ("SPY", "QQQ", "SOXX", "SMH", "^VIX", "^VIX9D", "^VIX3M", "^VVIX") + br.SECTOR_ETFS, now)
     _happening(p, doc, snap, bars)
     feats = _next(p, bars, snap, cfg)
+    _weekend(p, feats, now, cfg)
     reads = _hedging(p, reader, now, bars, held, sources, cfg) or {}
     cat = _catalysts(p, reader, now, held, sources, doc, cfg)
     cons = _consensus(p, doc, reads, cat, snap, cfg)
