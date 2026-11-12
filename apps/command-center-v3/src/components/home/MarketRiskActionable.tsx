@@ -136,6 +136,7 @@ function Reentry({ m }: { m: ActionableModel }) {
                 <span>now <b style={numStyle}>{r.now}</b> (<span style={signed(r.vsExitNeg ? -1 : 1)}>{r.vsExit}</span> vs exit){r.vsMa && <> · <span style={numStyle}>{r.vsMa}</span></>} {r.trend}</span>
                 <span data-testid="mr-reentry-verdict" style={{ ...chipStyle(r.verdictTone, 'soft'), color: vt.color }}>{r.verdict.toUpperCase()}</span>
               </div>
+              {r.verdictBasis && <div data-testid="mr-reentry-basis" style={{ color: TOKENS.text[2] }}>why: {r.verdictBasis}</div>}
               <div><b>Stage 1 <Explain term="stage1" /> (early setup): {r.stage1}</b><span style={{ color: TOKENS.text[2] }}> — waiting: {r.waiting}</span></div>
               <div>Invalidates below <Explain term="invalidates_below" /> <b style={numStyle}>{r.invalidates}</b><span style={{ color: TOKENS.text[2] }}> (selloff low) · Stage 2 <Explain term="stage2" /> (confirmed): {r.stage2}</span></div>
               {r.wash && <div data-testid="mr-reentry-wash" data-tone={r.wash.tone} style={{ color: r.wash.tone === 'warning' ? toneVars('warning').color : TOKENS.text[2], fontWeight: r.wash.tone === 'warning' ? 600 : 400 }}>{r.wash.tone === 'warning' ? '⚠ ' : 'ⓘ '}{r.wash.text}</div>}

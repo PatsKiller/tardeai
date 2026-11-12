@@ -19,7 +19,7 @@ Stage 2 ("confirmed"), any one: a close above a ``confirm_ma_sessions`` average,
 bars since the swing low than the average needs (a recent IPO), the anchored VWAP from the swing low stands in.
 
 Verdict, first match: Invalidated · Confirmed · Early setup · Basing · Still falling (thresholds under
-``reentry_watch.verdict``). Every threshold comes from ``config/market_risk_policy.yaml`` ``reentry_watch``; the
+``reentry_watch.verdict``); an exit with no completed session after it is "Pending next close". Every threshold comes from ``config/market_risk_policy.yaml`` ``reentry_watch``; the
 defaults below only apply when a key is absent. MBI_BEHAVIOR = 0: signal and status only — no size, no order, no price
 to pay. Prices shown are market facts (exit fill, closes, the swing low), never an instruction.
 """
@@ -31,7 +31,11 @@ from typing import Any
 
 from scripts.lib.market_risk import contract as c
 
-VERDICTS = ("Invalidated", "Confirmed", "Early setup", "Basing", "Still falling")
+VERDICTS = ("Invalidated", "Confirmed", "Early setup", "Basing", "Still falling", "Pending next close")
+#: An exit dated on or after the last completed close has no session to judge yet. Saying "Still falling" there
+#: asserted a measurement that was never made (PKG-SELLOFF-INTEL-20261106 B, 2026-11-06: V, exited that day).
+#: It is not in reentry_watch.STAGE_CARD_VERDICTS, so it never pages; the next close moves it like any other verdict.
+PENDING = "Pending next close"
 #: the Stage 1 conditions, in card order (the card shows "k of len(STAGE1_KEYS)")
 STAGE1_KEYS = ("follow_through", "volume", "group_no_new_low", "hedging_easing", "tier_ok")
 
@@ -172,9 +176,13 @@ def evaluate(
         "last_close": last,
         "last_date": str(bars[-1]["date"])[:10] if bars else None,
     }
-    if not since or last is None:
-        out.update(verdict="Still falling", stage1={"met": 0, "of": len(STAGE1_KEYS), "conditions": []},
-                   stage2={"met": False, "conditions": []}, note="no session since the exit")
+    if last is None or not any(str(b.get("date") or "")[:10] > exit_date for b in since):
+        # No completed session AFTER the exit day: the exit-day bar closed on the exit itself, so nothing can be
+        # judged yet. Stage 1 is "not evaluated" (no conditions, of 0) rather than "0 of 5", which read as five
+        # conditions checked and failed.
+        out.update(verdict=PENDING, stage1={"met": 0, "of": 0, "conditions": []},
+                   stage2={"met": False, "conditions": []}, note="no completed session since the exit",
+                   verdict_basis="pending: no completed session after the exit yet")
         c.assert_no_behavior_fields(out)
         return out
 
@@ -270,16 +278,25 @@ def evaluate(
     basing = (not recent_low) and len(after) >= k["basing_min_sessions"] and all(
         float(b["close"]) <= band for b in after[-k["basing_min_sessions"] :]
     )
+    # ``verdict_basis`` names the rule that decided the verdict. "Confirmed" is Stage 2 (any one price check), which
+    # does not need Stage 1: without the basis, a card read "Confirmed" beside "2 of 5" as a contradiction (lead,
+    # 2026-11-06: NFLX/XLB). The rule is unchanged; changing it would change what pages, an operator decision.
+    s2_passed = [x["text"] for x in s2 if x["met"]]
     if invalidated:
         verdict = "Invalidated"
+        basis = f"invalidated: a close below the swing low {last_invalidation['level']:.2f} on {last_invalidation['date']}"
     elif s2_met:
         verdict = "Confirmed"
+        basis = f"confirmed by price: {'; '.join(s2_passed)} (Stage 2 needs one; Stage 1 is {s1_met} of {len(conds)})"
     elif s1_met == len(conds):
         verdict = "Early setup"
+        basis = f"early setup: all {len(conds)} Stage 1 conditions met"
     elif basing:
         verdict = "Basing"
+        basis = f"basing: {k['basing_min_sessions']} closes within {k['basing_band_pct']:g}% of the low"
     else:
         verdict = "Still falling"
+        basis = f"still falling: no price confirmation, Stage 1 {s1_met} of {len(conds)}"
     tn, tb = k["trend_sessions"], k["trend_band_pct"] / 100.0
     trend = None
     if len(closes) > tn:
@@ -296,6 +313,7 @@ def evaluate(
         pct_vs_sma20=round((last / sma20 - 1) * 100, 2) if sma20 else None,
         trend=trend,
         verdict=verdict,
+        verdict_basis=basis,
         stage1={"met": s1_met, "of": len(conds), "conditions": conds},
         stage2={"met": s2_met, "conditions": s2},
     )

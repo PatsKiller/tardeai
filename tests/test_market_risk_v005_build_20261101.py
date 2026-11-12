@@ -40,11 +40,13 @@ def _history(n=25, px=100.0):
 # ── Stage 1 / Stage 2 ─────────────────────────────────────────────────────────────────────────────────────────────
 
 
-def test_no_session_since_exit_is_still_falling():
+def test_no_session_since_exit_is_pending_not_still_falling():
+    # PKG-SELLOFF-INTEL-20261106 B: nothing was measured, so the verdict says so (was "Still falling").
     bars = _bars(_history(25))
     out = rs.evaluate(symbol="AAA", exit_date="2099-01-01", exit_price=100.0, bars=bars, group_ratio=[],
                       hedging_series=[], market_tier="YELLOW", policy=POLICY)
-    assert out["verdict"] == "Still falling"
+    assert out["verdict"] == "Pending next close"
+    assert out["stage1"] == {"met": 0, "of": 0, "conditions": []}
 
 
 def test_follow_through_with_volume_is_early_setup_and_swing_low_is_the_invalidation():
@@ -109,7 +111,8 @@ def test_hedging_needs_history_and_tier_gate():
     assert ok is False and "history 1 of 3" in txt
     assert rs.hedging_easing([3.0, 4.0, 3.5], 3, 10)[0] is True
     hist = _history(25)
-    bars = _bars(hist + [(95, 96, 90, 91, 1000)])
+    # One completed session after the exit day: an exit on the last close is "Pending next close" (selloff B).
+    bars = _bars(hist + [(95, 96, 90, 91, 1000), (91, 92, 89, 90, 1000)])
     out = rs.evaluate(symbol="AAA", exit_date=bars[25]["date"], exit_price=95.0, bars=bars, group_ratio=[],
                       hedging_series=[], market_tier="ORANGE", policy=POLICY)
     assert {c["key"]: c["met"] for c in out["stage1"]["conditions"]}["tier_ok"] is False
