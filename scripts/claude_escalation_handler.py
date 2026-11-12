@@ -649,18 +649,19 @@ def _data_source_rows():
         out = [dict(zip(cols, r)) for r in cur.fetchall()]
         conn.commit()
         return out
-    except Exception:
+    except Exception as e:
+        log.warning("data_source_health read failed (verify fails closed): %s", e)
         try:
             conn.rollback()
-        except Exception:
-            pass
+        except Exception as e2:
+            log.warning("rollback after data_source_health read failed: %s", e2)
         return None
     finally:
         if cur is not None:
             try:
                 cur.close()
-            except Exception:
-                pass
+            except Exception as e3:
+                log.warning("cursor close failed: %s", e3)
 
 
 def _cmd_timeout_seconds(cmd: str, allowlist: dict | None) -> int:
