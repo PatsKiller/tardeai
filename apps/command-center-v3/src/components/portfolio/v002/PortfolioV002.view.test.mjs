@@ -97,4 +97,18 @@ assert.match(section(failHtml, 'card-protect'), /UNKNOWN/); assert.doesNotMatch(
 const okHtml = render(ok(API.holdings, wire([row({ symbol: 'ONE' }), row({ symbol: 'TWO', stop_state: 'pending_activation' })])))
 assert.match(okHtml, />CLEAR</); assert.equal(chipP0(okHtml), '0 P0'); assert.doesNotMatch(okHtml, /NO STOP/)
 
+// F5: the CLEAR line names the brokers it covered, not "N of N brokers".
+assert.doesNotMatch(okHtml, /(\d+) of \1 brokers/); assert.match(okHtml, /1 broker with counted positions/)
+
+// 5. LQ-2460 F1 (REVIEW-2448): an unpriced GAP (counted:false, no value) is a GAP row and a P0, never CLEAR.
+const unpricedHtml = render(ok(API.holdings, wire([row({ symbol: 'SAFE' }),
+  row({ symbol: 'NOPX', market_value: null, price: null, protection_state: 'GAP', protection: { state: 'GAP', counted: false }, stop_price: null })])))
+assert.doesNotMatch(unpricedHtml, />CLEAR</); assert.equal(chipP0(unpricedHtml), '1 P0')
+assert.match(section(unpricedHtml, 'card-protect').split('data-testid="prot-row"').find(r => r.includes('NOPX')) || '', /NO STOP/)
+
+// 6. LQ-2460 F2: a cash-only book (zero counted positions, count not confirmed) is UNKNOWN, never CLEAR.
+const cashHtml = render(ok(API.holdings, wire([row({ symbol: 'CASH', is_cash: true, protection_state: 'EXEMPT', protection: { state: 'EXEMPT', counted: false } })])))
+assert.doesNotMatch(cashHtml, />CLEAR</); assert.match(cashHtml, /Protection: UNKNOWN/)
+assert.match(section(cashHtml, 'card-protect'), /Protection UNKNOWN: No counted position, and the position count does not confirm zero/)
+
 console.log('PortfolioV002.view.test.mjs: ok')

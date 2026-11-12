@@ -9,9 +9,15 @@
  *    - WARN (D1) when the only protection was a stop that expired (protection existed, no longer active);
  *    - UNKNOWN whenever protection cannot be verified. UNKNOWN is never drawn as NO STOP and never as OK.
  *  The per-row verdict is the backend's (cio_truth.protection_for -> holdings `protection_state`, LQ-2165).
- *  This module never re-derives a row. It rolls the rows up exactly as scripts/lib/stops_protection.summary does
- *  (GAP beats UNKNOWN beats OK). The served rollup (G2 /api/v2/portfolio/protection) does not exist yet, so the
- *  verdict is marked NEEDS BACKEND.
+ *  This module never re-derives a row's state from stop fields. It applies only the operator's time rules to it
+ *  (2026-11-12, R1/R2, config/protection_verdict.json in LQ-2412) and rolls the rows up GAP > UNKNOWN > WARN > OK,
+ *  the order of the backend rollups (LQ-2412 protection_verdict, LQ-2415). No served rollup is read yet (G2), so
+ *  the verdict is marked NEEDS BACKEND; until one is, the client verdict errs to UNKNOWN, never to OK (LQ-2460):
+ *    - every non-exempt, non-cash row that is not PROTECTED counts, whatever its value or price (the $100 floor
+ *      exempts only a PROTECTED row from the count);
+ *    - no counted position reads UNKNOWN unless the position count independently confirms zero;
+ *    - R1: a GAP whose only stop expired is UNKNOWN in the regular session, WARN after the close (D1);
+ *    - R2: a GAP whose stop read is older than the freshness limit is UNKNOWN; the last-known GAP stays listed.
  *
  *  I1/I2 defaults: unreadable -> UNKNOWN; no source -> UNKNOWN + NEEDS BACKEND; timeout (30 s) -> TIMED OUT;
  *  missing data -> UNKNOWN. Missing is never healthy. No /api/v2/overview read. */
@@ -54,7 +60,7 @@ export function unwrap(body: unknown): unknown {
 }
 
 // ── wire shapes (only the fields this page reads) ─────────────────────────────────────────────────────
-export interface ProtectionWire { state?: string; reason?: string | null; cause?: string | null; source?: string | null; as_of?: string | null; counted?: boolean }
+export interface ProtectionWire { state?: string; reason?: string | null; cause?: string | null; source?: string | null; as_of?: string | null; counted?: boolean; expired_stop?: boolean }
 export interface HoldingWire {
   symbol?: string; account?: string; account_id?: string; account_label?: string; broker?: string
   quantity?: number | null; shares?: number | null; market_value?: number | null; price?: number | null
@@ -118,12 +124,36 @@ export interface PositionModel {
   key: string; symbol: string; account: string; broker: string
   shares: number | null; value: number | null; price: number | null; dayPct: number | null; dayUsd: number | null
   isCash: boolean; counted: boolean; underFloor: boolean
+  /** R2: the backend said GAP but its stop read is past the freshness limit; the row reads UNKNOWN, the GAP stays listed. */
+  lastKnownGap: boolean
   protection: RowProtection; chip: string; reason: string; cause: string | null; source: string; verifiedAt: string | null
   stopPrice: number | null; priceStale: boolean | null
   raw: HoldingWire
 }
 
-export function rowProtection(h: HoldingWire): Pick<PositionModel, 'protection' | 'chip' | 'reason' | 'cause' | 'source' | 'verifiedAt' | 'stopPrice'> {
+/** Stop-read freshness limits (config/home_status_registry.json stop_freshness_contract: open 900 s, closed 72 h). */
+export const STOP_READ_MAX_AGE_MS = { session: 900_000, offHours: 72 * 3_600_000 } as const
+
+/** Regular US equity session, 09:30-16:00 ET Mon-Fri. No holiday calendar: a holiday reads as open, which picks the
+ *  stricter limit (R2) and UNKNOWN over WARN (R1), the safe side of both rules. */
+export function sessionOpenET(nowMs: number): boolean {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .formatToParts(new Date(nowMs))
+  const get = (t: string) => parts.find(x => x.type === t)?.value || ''
+  if (get('weekday') === 'Sat' || get('weekday') === 'Sun') return false
+  const m = Number(get('hour')) * 60 + Number(get('minute'))
+  return m >= 9 * 60 + 30 && m < 16 * 60
+}
+
+export interface RowContext { nowMs: number; sessionOpen?: boolean }
+type RowView = Pick<PositionModel, 'protection' | 'chip' | 'reason' | 'cause' | 'source' | 'verifiedAt' | 'stopPrice' | 'lastKnownGap'>
+
+export function rowProtection(h: HoldingWire, ctx: RowContext = { nowMs: Date.now() }): RowView {
+  const r = rowView(h, ctx)
+  return { lastKnownGap: false, ...r }
+}
+
+function rowView(h: HoldingWire, ctx: RowContext): Omit<RowView, 'lastKnownGap'> & { lastKnownGap?: boolean } {
   const p = h.protection || {}
   const st = String(h.protection_state || p.state || '').toUpperCase()
   const stopPrice = num(h.stop_price)
@@ -134,9 +164,23 @@ export function rowProtection(h: HoldingWire): Pick<PositionModel, 'protection' 
       reason: p.reason || 'Resting stop', cause: null, source, verifiedAt, stopPrice }
   }
   if (st === 'GAP') {
-    if (String(h.stop_state || '').toLowerCase() === 'expired') {
-      return { protection: 'WARN', chip: 'EXPIRED', reason: 'The stop expired; protection existed but is no longer active (D1: WARN, never OK)',
-        cause: 'Expired Stop', source, verifiedAt, stopPrice }
+    const open = ctx.sessionOpen ?? sessionOpenET(ctx.nowMs)
+    // R1/D1: the backend keeps an expired-only stop as GAP and marks it (LQ-2412 protection.expired_stop).
+    if (p.expired_stop === true || String(h.stop_state || '').toLowerCase() === 'expired') {
+      return open
+        ? { protection: 'UNKNOWN', chip: 'EXPIRED', reason: 'The stop expired during the session; protection cannot be verified (R1: UNKNOWN)',
+          cause: 'Expired Stop', source, verifiedAt, stopPrice }
+        : { protection: 'WARN', chip: 'EXPIRED', reason: 'The stop expired after the close; protection existed but is no longer active (D1: WARN, never OK)',
+          cause: 'Expired Stop', source, verifiedAt, stopPrice }
+    }
+    // R2: a GAP from a read past the freshness limit is UNKNOWN; the last-known GAP stays visible. A GAP row with no
+    // as_of carries no age to judge (the book-level read age is the served rollup's, G2) and stays GAP.
+    const age = ageMs(verifiedAt, ctx.nowMs)
+    const limit = open ? STOP_READ_MAX_AGE_MS.session : STOP_READ_MAX_AGE_MS.offHours
+    if (age != null && age > limit) {
+      return { protection: 'UNKNOWN', chip: 'UNKNOWN', lastKnownGap: true,
+        reason: `Last known: no resting stop, but the stop read is ${fmtAge(age)} old (limit ${fmtAge(limit)}); R2: UNKNOWN`,
+        cause: 'Stale Stop Read', source, verifiedAt, stopPrice }
     }
     return { protection: 'GAP', chip: 'NO STOP', reason: p.reason || 'Stop read succeeded and shows no resting stop',
       cause: 'Unprotected Position', source, verifiedAt, stopPrice }
@@ -151,20 +195,24 @@ export function rowProtection(h: HoldingWire): Pick<PositionModel, 'protection' 
     source: 'none', verifiedAt: null, stopPrice }
 }
 
-export function positionsFrom(w: HoldingsWire | null): PositionModel[] {
+export function positionsFrom(w: HoldingsWire | null, nowMs: number = Date.now()): PositionModel[] {
   const rows = Array.isArray(w?.holdings) ? w!.holdings! : []
+  const ctx: RowContext = { nowMs, sessionOpen: sessionOpenET(nowMs) }
   return rows.map((h, i) => {
     const value = num(h.market_value)
     const isCash = !!h.is_cash
-    const pr = rowProtection(h)
+    const pr = rowProtection(h, ctx)
     const countedFlag = h.protection?.counted
-    const counted = pr.protection !== 'EXEMPT' && !isCash && (countedFlag ?? true)
+    // F1 (REVIEW-2448): the backend's counted:false (under $100, or no price) may drop only a PROTECTED row from the
+    // count. An unpriced or small GAP / UNKNOWN / WARN row still counts: an unpriced GAP stays a GAP.
+    const floorDrops = countedFlag === false && pr.protection === 'PROTECTED'
+    const counted = pr.protection !== 'EXEMPT' && !isCash && !floorDrops
     const symbol = String(h.symbol || '?').toUpperCase()
     const account = String(h.account_label || h.account || h.account_id || '—')
     return {
       key: `${h.account_id || h.account || i}:${symbol}`, symbol, account, broker: String(h.broker || '—'),
       shares: num(h.shares) ?? num(h.quantity), value, price: num(h.price), dayPct: num(h.day_change_pct), dayUsd: num(h.day_change),
-      isCash, counted, underFloor: pr.protection !== 'EXEMPT' && !isCash && countedFlag === false,
+      isCash, counted, underFloor: pr.protection !== 'EXEMPT' && !isCash && floorDrops,
       ...pr, priceStale: h.price_stale ?? null, raw: h,
     }
   }).sort((a, b) => (b.value ?? -1) - (a.value ?? -1))
@@ -183,12 +231,24 @@ export function protectionModel(read: Read<HoldingsWire>, positions: PositionMod
   const empty = { counted: null, protectedN: null, gap: null, warn: null, unknown: null, listedNotCounted: null, exempt: null, action: [], oldestRead: null, brokers: [] }
   if (read.state === 'LOADING') return { verdict: 'LOADING', ...empty, cause: null }
   if (read.state !== 'OK') return { verdict: read.state, ...empty, cause: `${read.source}: ${read.error || read.state}` }
-  if (positions.length === 0) return { verdict: 'UNKNOWN', ...empty, cause: 'The holdings read returned no positions' }
   const counted = positions.filter(p => p.counted)
+  // F2: no counted position is OK only when the position count independently confirms zero; otherwise UNKNOWN.
+  if (counted.length === 0) {
+    const pc = read.data?.position_counts
+    const confirmedZero = pc?.agree === true && pc?.position_count === 0
+    if (!confirmedZero || positions.length === 0) {
+      return { verdict: 'UNKNOWN', ...empty,
+        counted: positions.length ? 0 : null, listedNotCounted: positions.length ? positions.filter(p => p.underFloor).length : null,
+        exempt: positions.length ? positions.filter(p => p.protection === 'EXEMPT' || p.isCash).length : null,
+        cause: positions.length === 0 ? 'The holdings read returned no positions'
+          : confirmedZero ? null : 'No counted position, and the position count does not confirm zero' }
+    }
+  }
   const n = { PROTECTED: 0, GAP: 0, WARN: 0, UNKNOWN: 0 }
   for (const p of counted) n[p.protection === 'EXEMPT' ? 'UNKNOWN' : p.protection]++
-  const verdict: Verdict = n.GAP ? 'GAP' : n.WARN ? 'WARN' : n.UNKNOWN ? 'UNKNOWN' : 'OK'
-  const rank: Record<RowProtection, number> = { GAP: 0, WARN: 1, UNKNOWN: 2, PROTECTED: 3, EXEMPT: 4 }
+  // F3: GAP > UNKNOWN > WARN > OK, the order of the backend rollups (2412, 2415).
+  const verdict: Verdict = n.GAP ? 'GAP' : n.UNKNOWN ? 'UNKNOWN' : n.WARN ? 'WARN' : 'OK'
+  const rank: Record<RowProtection, number> = { GAP: 0, UNKNOWN: 1, WARN: 2, PROTECTED: 3, EXEMPT: 4 }
   const action = counted.filter(p => p.protection !== 'PROTECTED')
     .sort((a, b) => rank[a.protection] - rank[b.protection] || (b.value ?? -1) - (a.value ?? -1))
   let oldestRead: string | null = null
@@ -201,8 +261,8 @@ export function protectionModel(read: Read<HoldingsWire>, positions: PositionMod
     const unk = ps.find(p => p.protection === 'UNKNOWN' || p.protection === 'EXEMPT')
     let oldest: string | null = null
     for (const p of prot) if (p.verifiedAt && (oldest == null || p.verifiedAt < oldest)) oldest = p.verifiedAt
-    return { broker, state: unk ? 'UNKNOWN' : gap ? 'GAP' : warn ? 'WARN' : 'OK', counted: ps.length, protectedN: prot.length, oldest,
-      cause: unk ? unk.cause : gap ? 'Unprotected Position' : warn ? 'Expired Stop' : null }
+    return { broker, state: gap ? 'GAP' : unk ? 'UNKNOWN' : warn ? 'WARN' : 'OK', counted: ps.length, protectedN: prot.length, oldest,
+      cause: gap ? 'Unprotected Position' : unk ? unk.cause : warn ? 'Expired Stop' : null }
   })
   return {
     verdict, counted: counted.length, protectedN: n.PROTECTED, gap: n.GAP, warn: n.WARN, unknown: n.UNKNOWN,
@@ -219,6 +279,9 @@ export function p0Items(read: Read<HoldingsWire>, prot: ProtectionModel): P0Item
   const out: P0Item[] = []
   const gaps = prot.action.filter(p => p.protection === 'GAP')
   if (gaps.length) out.push({ category: 'Unprotected Position', detail: `${gaps.map(p => p.symbol).join(', ')}: no resting stop in a good read` })
+  // R2: the last-known GAP and its P0 row stay visible while the verdict reads UNKNOWN.
+  const lastKnown = prot.action.filter(p => p.lastKnownGap)
+  if (lastKnown.length) out.push({ category: 'Unprotected Position (stale read)', detail: `${lastKnown.map(p => p.symbol).join(', ')}: last read showed no resting stop; the read is past its freshness limit` })
   const pc = read.data?.position_counts
   if (pc && pc.agree === false) {
     out.push({ category: 'Position Count Mismatch', detail: pc.findings?.[0]?.detail || pc.summary || 'position counts disagree' })

@@ -82,7 +82,7 @@ export default function PortfolioV002View(props: ViewProps) {
             <div className="pv2-collapsed" id="card-protect" data-testid="card-protect">
               <span className="pv2-chip ok">CLEAR</span>
               <span className="pv2-txt">{prot.protectedN} of {prot.counted} protected</span>
-              <span className="pv2-age pv2-push">read {fmtET(prot.oldestRead)} · {prot.brokers.length} of {prot.brokers.length} brokers</span>
+              <span className="pv2-age pv2-push">read {fmtET(prot.oldestRead)} · {prot.brokers.length} broker{prot.brokers.length === 1 ? '' : 's'} with counted positions</span>
             </div>
           ) : (
             <section className="pv2-blk" id="card-protect" data-testid="card-protect">
@@ -90,7 +90,7 @@ export default function PortfolioV002View(props: ViewProps) {
                 <h2 className="pv2-h2">Action · Protection</h2>
                 <span className="pv2-age">{prot.oldestRead ? `oldest stop read ${fmtET(prot.oldestRead)} · ${fmtAge(Date.parse(nowIso) - Date.parse(prot.oldestRead))}` : holdings.state === 'OK' ? 'no resting stop read' : ''}</span>
               </div>
-              {prot.verdict === 'LOADING' || prot.verdict === 'TIMED OUT' || (prot.verdict === 'UNKNOWN' && prot.counted == null) ? (
+              {prot.verdict === 'LOADING' || prot.verdict === 'TIMED OUT' || (prot.verdict === 'UNKNOWN' && !prot.counted) ? (
                 <div className={`pv2-unk ${prot.verdict === 'TIMED OUT' ? 'bad' : ''}`} data-testid="protect-unread">
                   {prot.verdict === 'LOADING' ? 'Reading holdings…' : `Protection ${prot.verdict}: ${prot.cause || 'holdings not read'}. Nothing here is drawn as NO STOP.`}
                 </div>

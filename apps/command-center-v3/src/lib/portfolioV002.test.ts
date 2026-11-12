@@ -3,7 +3,7 @@
 // Synthetic fixtures only (public repo): placeholder symbols, accounts and values.
 import assert from 'node:assert/strict'
 import {
-  readOnce, positionsFrom, protectionModel, p0Items, statusRows, filterPositions, rowProtection, auditCategories,
+  readOnce, positionsFrom, protectionModel, p0Items, statusRows, filterPositions, rowProtection, auditCategories, sessionOpenET,
   type HoldingWire, type HoldingsWire, type Read, type IncidentsWire,
 } from './portfolioV002.ts'
 
@@ -31,8 +31,9 @@ const pend = positionsFrom(wire([row({ symbol: 'BBB', stop_state: 'pending_activ
 const pm = protectionModel(ok(wire([])), pend)
 assert.equal(pm.verdict, 'OK'); assert.equal(pm.counted, 2); assert.equal(pm.protectedN, 2); assert.equal(pm.action.length, 0)
 
-// 3. D1: an expired stop is WARN, never OK; GAP outranks WARN outranks UNKNOWN.
-const exp = rowProtection(row({ protection_state: 'GAP', protection: { state: 'GAP', counted: true }, stop_state: 'expired' }))
+// 3. D1: an expired stop after the close is WARN, never OK; GAP outranks UNKNOWN outranks WARN (LQ-2460 F3).
+const CLOSED = Date.parse('2031-03-08T15:00:00Z')   // Saturday
+const exp = rowProtection(row({ protection_state: 'GAP', protection: { state: 'GAP', counted: true }, stop_state: 'expired' }), { nowMs: CLOSED })
 assert.equal(exp.protection, 'WARN'); assert.equal(exp.chip, 'EXPIRED')
 const mixed = positionsFrom(wire([
   row({ symbol: 'UUU', market_value: 9000, protection_state: 'UNKNOWN', protection: { state: 'UNKNOWN', cause: 'No Stop Read', counted: true } }),
@@ -41,12 +42,14 @@ const mixed = positionsFrom(wire([
   row({ symbol: 'PPP', market_value: 4000 }),
   row({ symbol: 'TINY', market_value: 40, protection_state: 'GAP', protection: { state: 'GAP', counted: false } }),
   row({ symbol: 'CASH', market_value: 700, is_cash: true, protection_state: 'EXEMPT', protection: { state: 'EXEMPT', counted: false } }),
-]))
+  row({ symbol: 'SMOL', market_value: 40 , protection: { state: 'PROTECTED', as_of: AT, counted: false } }),
+]), CLOSED)
 const mm = protectionModel(ok(wire([])), mixed)
 assert.equal(mm.verdict, 'GAP')
-assert.deepEqual(mm.action.map(p => p.symbol), ['GGG', 'EEE', 'UUU'])   // GAP, WARN, UNKNOWN — not by value
-assert.equal(mm.counted, 4); assert.equal(mm.listedNotCounted, 1); assert.equal(mm.exempt, 1)
-assert.equal(mm.gap, 1); assert.equal(mm.warn, 1); assert.equal(mm.unknown, 1)
+// GAP (by value), then UNKNOWN, then WARN — not by value. TINY is a GAP under $100: it counts (F1).
+assert.deepEqual(mm.action.map(p => p.symbol), ['GGG', 'TINY', 'UUU', 'EEE'])
+assert.equal(mm.counted, 5); assert.equal(mm.listedNotCounted, 1); assert.equal(mm.exempt, 1)
+assert.equal(mm.gap, 2); assert.equal(mm.warn, 1); assert.equal(mm.unknown, 1)
 const onlyUnk = protectionModel(ok(wire([])), mixed.filter(p => p.symbol === 'UUU' || p.symbol === 'PPP'))
 assert.equal(onlyUnk.verdict, 'UNKNOWN')   // an unread stop never rolls up to OK
 assert.equal(onlyUnk.brokers[0].state, 'UNKNOWN')
@@ -80,11 +83,73 @@ const rows = statusRows(ok(wire([])), inc, mixed, NOW)
 const risk = rows.find(r => r.id === 'row-risk')!; assert.equal(risk.state, 'UNKNOWN'); assert.equal(risk.needsBackend, true)
 const alerts = rows.find(r => r.id === 'row-alerts')!; assert.notEqual(alerts.state, 'OK'); assert.doesNotMatch(alerts.text, /^0\b/)
 
-// 8. Filters: unprotected = GAP + WARN; unknown = UNKNOWN; under $100 = listed, not counted.
-assert.deepEqual(filterPositions(mixed, 'unprotected', 'all').map(p => p.symbol).sort(), ['EEE', 'GGG'])
+// 8. Filters: unprotected = GAP + WARN; unknown = UNKNOWN; under $100 = a PROTECTED row listed, not counted.
+assert.deepEqual(filterPositions(mixed, 'unprotected', 'all').map(p => p.symbol).sort(), ['EEE', 'GGG', 'TINY'])
 assert.deepEqual(filterPositions(mixed, 'unknown', 'all').map(p => p.symbol), ['UUU'])
-assert.deepEqual(filterPositions(mixed, 'under100', 'all').map(p => p.symbol), ['TINY'])
+assert.deepEqual(filterPositions(mixed, 'under100', 'all').map(p => p.symbol), ['SMOL'])
 
 // 9. Audit categories come from the same model (no second source of truth).
 assert.ok(auditCategories(mm, p0).some(c => c.category.includes('Unprotected')))
+
+// 10. LQ-20261107-2460 (REVIEW-2448 F1-F4): the client verdict errs to UNKNOWN, never to OK.
+const gapRow = (o: Partial<HoldingWire> = {}, p: Record<string, unknown> = {}) =>
+  row({ symbol: 'GAP1', protection_state: 'GAP', stop_price: null, protection: { state: 'GAP', counted: true, as_of: AT, ...p }, ...o })
+const okRow = (sym: string) => row({ symbol: sym, market_value: 5000 })
+const verdictOf = (rows: HoldingWire[], nowMs = NOW, o: Partial<HoldingsWire> = {}) => protectionModel(ok(wire(rows, o)), positionsFrom(wire(rows, o), nowMs))
+
+// F1: an unpriced GAP (backend counted:false, no market value, no price) stays a GAP; the page cannot read OK.
+const unpriced = gapRow({ market_value: null, price: null }, { counted: false })
+const f1 = verdictOf([okRow('PPP'), unpriced])
+assert.equal(f1.verdict, 'GAP'); assert.equal(f1.gap, 1); assert.equal(f1.counted, 2); assert.equal(f1.listedNotCounted, 0)
+assert.deepEqual(p0Items(ok(wire([])), f1)!.map(x => x.category), ['Unprotected Position'])
+// ...and an unpriced UNKNOWN row is not hidden either.
+const unpricedUnk = row({ symbol: 'UNP', market_value: null, price: null, protection_state: 'UNKNOWN', protection: { state: 'UNKNOWN', cause: 'No Stop Read', counted: false } })
+assert.equal(verdictOf([okRow('PPP'), unpricedUnk]).verdict, 'UNKNOWN')
+// The floor still drops a small PROTECTED row from the count (display only).
+const small = positionsFrom(wire([row({ symbol: 'SML', market_value: 50, protection: { state: 'PROTECTED', as_of: AT, counted: false } })]), NOW)[0]
+assert.equal(small.counted, false); assert.equal(small.underFloor, true)
+
+// F2: zero counted positions is UNKNOWN unless the position count confirms zero.
+const cashOnly = [row({ symbol: 'CASH', is_cash: true, protection_state: 'EXEMPT', protection: { state: 'EXEMPT', counted: false } })]
+const f2 = verdictOf(cashOnly)
+assert.equal(f2.verdict, 'UNKNOWN'); assert.equal(f2.counted, 0); assert.ok(f2.cause)
+assert.equal(verdictOf(cashOnly, NOW, { position_counts: { agree: false, position_count: 0 } }).verdict, 'UNKNOWN')
+assert.equal(verdictOf(cashOnly, NOW, { position_counts: { agree: true, position_count: 0 } }).verdict, 'OK')
+assert.equal(verdictOf(cashOnly, NOW, { position_counts: { agree: true, position_count: 3 } }).verdict, 'UNKNOWN')
+
+// F3: GAP > UNKNOWN > WARN > OK, for the book and for each broker.
+const expRow = (sym: string) => gapRow({ symbol: sym }, { expired_stop: true })
+const unkRow = row({ symbol: 'UUU', protection_state: 'UNKNOWN', protection: { state: 'UNKNOWN', cause: 'No Stop Read', counted: true } })
+const f3 = verdictOf([expRow('EEE'), unkRow], CLOSED)
+assert.equal(f3.warn, 1); assert.equal(f3.unknown, 1)
+assert.equal(f3.verdict, 'UNKNOWN'); assert.equal(f3.brokers[0].state, 'UNKNOWN')
+assert.deepEqual(f3.action.map(p => p.symbol), ['UUU', 'EEE'])
+const f3g = verdictOf([unkRow, gapRow()])
+assert.equal(f3g.verdict, 'GAP'); assert.equal(f3g.brokers[0].state, 'GAP')
+
+// F4 R1: the backend's expired-only GAP (protection.expired_stop, LQ-2412; stop_state is 'none') is UNKNOWN in the
+// session and WARN after the close; never GAP-as-NO-STOP, never OK.
+assert.equal(sessionOpenET(NOW), true); assert.equal(sessionOpenET(CLOSED), false)
+assert.equal(sessionOpenET(Date.parse('2031-03-07T21:30:00Z')), false)   // Friday 16:30 ET
+const r1 = rowProtection(gapRow({ stop_state: 'none' }, { expired_stop: true }), { nowMs: NOW })
+assert.equal(r1.protection, 'UNKNOWN'); assert.equal(r1.chip, 'EXPIRED'); assert.equal(r1.cause, 'Expired Stop')
+assert.equal(verdictOf([okRow('PPP'), gapRow({ stop_state: 'none' }, { expired_stop: true })]).verdict, 'UNKNOWN')
+assert.equal(rowProtection(gapRow({ stop_state: 'none' }, { expired_stop: true }), { nowMs: CLOSED }).protection, 'WARN')
+assert.equal(verdictOf([okRow('PPP'), gapRow({ stop_state: 'none' }, { expired_stop: true })], CLOSED).verdict, 'WARN')
+
+// F4 R2: a 60 h old GAP read is UNKNOWN in session (limit 15 m); the last-known GAP stays listed as a P0 row.
+const OLD = new Date(NOW - 60 * 3_600_000).toISOString()
+const r2 = verdictOf([okRow('PPP'), gapRow({}, { as_of: OLD })])
+assert.equal(r2.verdict, 'UNKNOWN'); assert.equal(r2.gap, 0); assert.equal(r2.unknown, 1)
+assert.equal(r2.action[0].lastKnownGap, true); assert.equal(r2.action[0].cause, 'Stale Stop Read')
+assert.deepEqual(p0Items(ok(wire([])), r2)!.map(x => x.category), ['Unprotected Position (stale read)'])
+// 20 minutes old: stale in session, fresh after the close (72 h).
+const MIN20 = (t: number) => new Date(t - 20 * 60_000).toISOString()
+assert.equal(verdictOf([gapRow({}, { as_of: MIN20(NOW) })]).verdict, 'UNKNOWN')
+assert.equal(verdictOf([gapRow({}, { as_of: MIN20(CLOSED) })], CLOSED).verdict, 'GAP')
+// 73 h old after the close: stale.
+assert.equal(verdictOf([gapRow({}, { as_of: new Date(CLOSED - 73 * 3_600_000).toISOString() })], CLOSED).verdict, 'UNKNOWN')
+// A fresh GAP stays a GAP (R3 input: a NO from a fresh read).
+assert.equal(verdictOf([okRow('PPP'), gapRow()]).verdict, 'GAP')
+
 console.log('portfolioV002.test.ts: ok')
