@@ -269,6 +269,9 @@
       },
       "truth": {
         "provider": "market_quotes_extended",
+        "also_providers": [
+          "index_quotes"
+        ],
         "key": {},
         "value": "price",
         "symbol": "$VIX",
@@ -279,7 +282,7 @@
         "value": 0.5,
         "unit": "%"
       },
-      "_note": "REV 2 A: Finviz/Schwab quote, value <=0.5%, as_of <=15 min in session. The VIX tile's own provenance is `market_quotes_extended:schwab:$VIX`, so the truth store is that relation (`feed` is the provider, `bar_end` the observation time); market_quotes never carries $VIX. The single-key form compares the tile against the newest $VIX row."
+      "_note": "REV 4 (LQ-20261107-2075): the tile shows the NEWEST $VIX print across market_quotes (continuous, source schwab) and market_quotes_extended (index, feed schwab) -- the same relation `lib/market_regime/vix_complex.py` reads, since LQ-1669. REV 2 A's claim that `market_quotes` never carries $VIX is false: on 2026-11-11 it held the 16:15 print the tile served (17.49) while extended's newest $VIX row was a 03:45 overnight print (18.66). Grading against extended alone therefore indicted a correct tile and misdated the truth row (the audit reported the store's bucket clock, 19:00, as the row's own). The audit compares the tile against the newest print by the ROW's own clock across both stores; value <=0.5%, as_of <=15 min in session."
     },
     {
       "page": "/cio",
@@ -365,7 +368,10 @@
           "/market_value",
           "/broker_market_value"
         ],
-        "code": "NT_VALUE_MISMATCH"
+        "code": "NT_VALUE_MISMATCH",
+        "as_of": [
+          "/updated_at"
+        ]
       },
       "truth": {
         "provider": "positions_current",

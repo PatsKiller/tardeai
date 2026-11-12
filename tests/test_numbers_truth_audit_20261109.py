@@ -105,7 +105,8 @@ def write_state(tmp: Path, *, holdings=None, brief_doc=None, since=None) -> Path
 
 
 def bundle(*, positions=None, stops=None, slk=None, quotes=None, pos_as_of=POS_AS_OF,
-           stop_as_of=STOP_AS_OF, quote_as_of=QUOTE_AS_OF, quotes_ok=True, quotes_extended=None) -> T.Bundle:
+           stop_as_of=STOP_AS_OF, quote_as_of=QUOTE_AS_OF, quotes_ok=True, quotes_extended=None,
+           index_quotes=None) -> T.Bundle:
     b = T.Bundle()
     b.put("positions", rows=list(positions if positions is not None else [P_AA, P_AB]),
           as_of=T._ts(pos_as_of))
@@ -121,6 +122,9 @@ def bundle(*, positions=None, stops=None, slk=None, quotes=None, pos_as_of=POS_A
           rows=list(quotes_extended if quotes_extended is not None else [X_VIX]),
           as_of=T._ts(quote_as_of),
           by_symbol={r["symbol"]: r for r in (quotes_extended if quotes_extended is not None else [X_VIX])})
+    b.put("index_quotes", rows=list(index_quotes or []),
+          as_of=T._ts(max((r.get("fetched_at") for r in index_quotes or []), default=None)),
+          by_symbol={r["symbol"]: r for r in index_quotes or []})
     return b
 
 
@@ -564,10 +568,70 @@ def test_the_vix_tile_is_compared_to_its_own_extended_store(tmp_path):
     assert run(tmp_path, "overview.vix", b=bundle(), doc=doc, http_open=True)["findings"] == []
     rep = run(tmp_path, "overview.vix", b=bundle(), doc=_overview(vix=15.5), http_open=True)
     assert codes(rep) == ["NT_VALUE_MISMATCH"]
-    # market_quotes never carries $VIX; a tile may not be graded against a store that cannot answer for it
+    # Neither store answers for $VIX here: the figure is NOT_MEASURED, and the reason names both stores.
     rep = run(tmp_path, "overview.vix", b=bundle(quotes_extended=[]), doc=doc, http_open=True)
     assert codes(rep) == ["NT_NOT_MEASURED"]
     assert "market_quotes_extended" in rep["findings"][0]["detail"]
+    assert "market_quotes" in rep["findings"][0]["detail"]
+
+
+def _vix_row(price, mins_ago, symbol="$VIX"):
+    return {"symbol": symbol, "source": "schwab", "price": price, "fetched_at": _iso(mins_ago)}
+
+
+def test_the_vix_tile_is_graded_against_the_newest_print_across_both_stores(tmp_path):
+    """LQ-2075: since LQ-1669 the tile reads the newest $VIX print across the continuous index tape
+    (`index_quotes`, source schwab) and market_quotes_extended (index, feed schwab). Grading against extended
+    alone indicted a correct tile whenever its newest $VIX row was an overnight print while the continuous tape
+    held the session's last print."""
+    b = bundle(index_quotes=[_vix_row(17.49, 2)], quotes_extended=[_vix_row(18.66, 15 * 60)])
+    assert run(tmp_path, "overview.vix", b=b, doc=_overview(vix=17.49), http_open=True)["findings"] == []
+    rep = run(tmp_path, "overview.vix", b=b, doc=_overview(vix=20.0), http_open=True)
+    assert codes(rep) == ["NT_VALUE_MISMATCH"]
+    f = rep["findings"][0]
+    assert f["truth"]["provider"] == "index_quotes"
+    assert f["truth"]["as_of"] == _iso(2)
+    assert "index_quotes" in f["detail"] and "market_quotes_extended" not in f["detail"]
+
+
+def test_a_stale_vix_row_is_not_made_fresh_by_another_symbols_print(tmp_path):
+    """LQ-2075: the freshness gate read the STORE's newest row; a fresh ZQZZ row made a 12-hour-old $VIX row
+    pass as fresh and the stale value was graded as a P1 quote mismatch (the live 2026-11-11 ticket)."""
+    b = bundle(quotes_extended=[_vix_row(18.66, 12 * 60), _vix_row(1.0, 1, symbol="ZQZZ")],
+               quote_as_of=_iso(1))
+    rep = run(tmp_path, "overview.vix", b=b, doc=_overview(vix=17.49), http_open=True)  # NOW is in session
+    assert codes(rep) == ["NT_NOT_MEASURED"]
+    assert rep["findings"][0]["reason"] == "stale_truth"
+    assert rep["findings"][0]["truth"]["as_of"] == _iso(12 * 60)
+    assert "stale_truth" not in rep["findings"][0]["detail"]  # the reason is typed, the detail is prose
+    assert "older than 15 min" in rep["findings"][0]["detail"]
+
+
+def test_the_truth_side_is_dated_by_the_selected_row_not_the_store_clock(tmp_path):
+    """LQ-2075: a 03:45 overnight print was reported as the 19:00 observation because the ticket carried the
+    store's bucket clock. Outside the session there is no freshness gate, so the comparison itself must be
+    dated by the row it read."""
+    stale = _vix_row(18.66, 15 * 60)
+    b = bundle(quotes_extended=[stale, _vix_row(1.0, 1, symbol="ZQZZ")], quote_as_of=_iso(1))
+    rep = run(tmp_path, "overview.vix", b=b, doc=_overview(vix=17.49), http_open=True,
+              now=NOW + timedelta(hours=6))  # 20:00 ET, after the close
+    f = rep["findings"][0]
+    assert codes(rep) == ["NT_VALUE_MISMATCH"]
+    assert f["truth"]["as_of"] == stale["fetched_at"]
+    assert f["truth"]["as_of"] != b.get("quotes_extended")["as_of"].isoformat()
+
+
+def test_a_carried_holding_row_reports_when_the_row_was_written(tmp_path):
+    """LQ-2075: holdings.json carries a row forward under a newer artifact `as_of`; the finding must show the
+    row's own write time so the operator can see that the page's number predates the broker truth."""
+    row = dict(H(market_value=99.0), updated_at=_iso(75))
+    root = write_state(tmp_path, holdings=[row, dict(H(account="zz_ira", symbol="ZQAB", market_value=5000.0),
+                                                     updated_at=_iso(75))])
+    rep = run(root, "holdings.market_value")
+    f = rep["findings"][0]
+    assert f["code"] == "NT_VALUE_MISMATCH"
+    assert f["shown"]["as_of"] == _iso(75)
+    assert f["truth"]["as_of"] == POS_AS_OF
 
 
 def test_a_selection_surface_is_not_required_to_list_every_holding(tmp_path):
@@ -958,7 +1022,7 @@ def test_a_fund_nav_backed_only_by_a_retired_provider_is_not_measured_with_a_rea
     assert codes(rep) == ["NT_NOT_MEASURED"]
     f = rep["findings"][0]
     assert f["reason"] == "not_a_quoted_instrument"
-    assert f["shown"]["value"]["value"] == 100.0 and f["shown"]["value"]["source"] == "price_cache_nav"
+    assert f["shown"]["value"] == 100.0 and f["shown"]["source"] == "price_cache_nav"
     assert not f.get("truth") or f["truth"].get("value") is not None  # no null truth side on a finding
 
 

@@ -119,6 +119,20 @@ def _ts(v: Any) -> Optional[datetime]:
     return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
 
 
+def _row_clock(r: Any) -> Optional[datetime]:
+    """The observation time OF ONE TRUTH ROW, not of the store or of the bundle.
+
+    Every truth bundle also carries a bucket clock (`as_of`, the newest row anywhere in the store). Using it to
+    date or freshness-gate one figure grades a stale row as if it were the newest one: on 2026-11-11 the `$VIX`
+    row in `market_quotes_extended` was a 03:45 overnight print while the bucket clock read 19:00 from other
+    symbols, so a correct 17.49 tile was ticketed as a P1 quote mismatch against 18.66 with a 15-hour misdate
+    (LQ-2075). Each row names its own read: quotes `fetched_at`, stops `snapshot_at`, positions `as_of`.
+    """
+    if not isinstance(r, Mapping):
+        return None
+    return _ts(r.get("fetched_at") or r.get("snapshot_at") or r.get("as_of"))
+
+
 def _canon(v: Any) -> str:
     return str(v or "").strip().lower().replace(" ", "_").replace("-", "_")
 
@@ -223,11 +237,16 @@ def finding(row: Mapping[str, Any], code: str, status: str, detail: str, *, show
 
 def not_measured(row: Mapping[str, Any], reason: str, detail: str, *, account: Any = None, symbol: Any = None,
                  shown: Any = None, truth: Any = None) -> dict[str, Any]:
-    """An unreadable side is NOT_MEASURED — never PASS, never FAIL (DSN §1)."""
+    """An unreadable side is NOT_MEASURED — never PASS, never FAIL (DSN §1).
+
+    A side that is already a finding side ({value, as_of, provider, ...}) passes through unchanged; wrapping it
+    again put the side's own clock under `value`, so a NOT_MEASURED record could not say WHEN it was measured
+    (LQ-2075: the stale-truth record dropped the row's observation time).
+    """
     return finding(row, "NT_NOT_MEASURED", "NOT_MEASURED", detail, account=account, symbol=symbol,
                    reason=reason if reason in _TYPED_EMPTY else "truth_unreadable",
-                   shown={"value": shown} if shown is not None else None,
-                   truth={"value": truth} if truth is not None else None)
+                   shown=shown if isinstance(shown, Mapping) else ({"value": shown} if shown is not None else None),
+                   truth=truth if isinstance(truth, Mapping) else ({"value": truth} if truth is not None else None))
 
 
 # ── truth bundle (read-only sources) ───────────────────────────────────────────────────────────────────────────
@@ -349,6 +368,18 @@ def load_truth(policy: Mapping[str, Any], *, conn_factory: Callable[[], Any] = p
               by_symbol={str(r.get("symbol") or "").upper(): r for r in rows})
     except Exception as exc:  # noqa: BLE001 -- unreadable quotes are NOT_MEASURED downstream, never a pass
         b.put("quotes", reason=f"quotes_unreadable: {type(exc).__name__}")
+    try:
+        # The index tape: the continuous store's index prints (`$VIX` and the other `$` symbols). The index feed
+        # writes `source: schwab`, which the display allowlist above deliberately excludes, so the tile's
+        # continuous leg needs its own relation — without it a union truth silently loses half its rows and
+        # grades a correct index tile against the other store's overnight print (LQ-2075).
+        rows = _select(conn(), "SELECT DISTINCT ON (symbol) symbol, source, price, prev_close, fetched_at "
+                               "FROM market_quotes WHERE LEFT(symbol, 1) = '$' ORDER BY symbol, fetched_at DESC")
+        newest = max([t for t in (_ts(r.get("fetched_at")) for r in rows) if t], default=None)
+        b.put("index_quotes", rows=rows, as_of=newest,
+              by_symbol={str(r.get("symbol") or "").upper(): r for r in rows})
+    except Exception as exc:  # noqa: BLE001 -- unreadable index prints are NOT_MEASURED downstream, never a pass
+        b.put("index_quotes", reason=f"index_quotes_unreadable: {type(exc).__name__}")
     try:
         # Index/extended-hours quotes (the VIX tile's provenance says market_quotes_extended:schwab:$VIX).
         # `feed` is this store's provider column and `bar_end` its observation time.
@@ -540,6 +571,7 @@ def row_scalar(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[s
     spec = row["served_from"]
     truth_spec = row.get("truth") or {}
     provider = str(truth_spec.get("provider") or "")
+    truth_provider = provider  # the store that actually answered (a union truth may answer from `also_providers`)
     src = bundle.get(provider)
     if src["status"] != "ok":
         return [not_measured(row, "truth_unreadable", f"{provider} unavailable: {src.get('reason')}")]
@@ -582,19 +614,41 @@ def row_scalar(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[s
             return [not_measured(row, "no_such_field", f"served field {value_ptrs} not found")]
         smap, value_ptrs, real_ptr = {(): {"value": shown0}}, ["/value"], {(): ptr0}
         want = str(truth_spec.get("symbol") or "").strip().upper()
-        cand = src["rows"] or []
-        trow0 = next((r for r in cand if str(r.get("symbol") or "").upper() == want), None) if want \
-            else (cand[0] if cand else None)
-        if trow0 is None:
-            return [not_measured(row, "truth_unreadable", f"{provider} has no {want or 'newest'} row")]
+        also = [str(p) for p in (truth_spec.get("also_providers") or []) if str(p).strip()]
+        truth_provider = provider
+        if want:
+            # A figure's truth may live in more than one store: the VIX tile reads the newest print across
+            # market_quotes (continuous) and market_quotes_extended (index), LQ-1669. Grade against every store
+            # the catalog names and take the newest print BY ITS OWN CLOCK; ties keep the named provider first.
+            stores = [provider] + also
+            cands: list[tuple[Optional[datetime], int, str, Mapping[str, Any]]] = []
+            for order, prov in enumerate(stores):
+                store = bundle.get(prov)
+                if store["status"] != "ok":
+                    continue
+                for r in store["rows"] or []:
+                    if isinstance(r, Mapping) and str(r.get("symbol") or "").upper() == want:
+                        cands.append((_row_clock(r), order, prov, r))
+            if not cands:
+                return [not_measured(row, "truth_unreadable", f"{' and '.join(stores)} has no {want} row")]
+            epoch = datetime.min.replace(tzinfo=timezone.utc)
+            _, _, truth_provider, trow0 = max(cands, key=lambda c: (c[0] is not None, c[0] or epoch, -c[1]))
+        else:
+            cand = src["rows"] or []
+            trow0 = cand[0] if cand else None
+            if trow0 is None:
+                return [not_measured(row, "truth_unreadable", f"{provider} has no newest row")]
         tmap = {(): trow0}
+        single_clock = _row_clock(trow0)
     freshness = _num(spec.get("truth_fresh_min_in_session") if spec.get("truth_fresh_min_in_session") is not None
                      else truth_spec.get("fresh_min_in_session"))
     if session and freshness is not None:
-        newest = src.get("as_of")
+        # The gate must read the clock of the row this figure will actually be graded against; the bucket max
+        # passes a stale row whenever any other symbol in the store is recent (LQ-2075).
+        newest = (single_clock if not rows_ptr else None) or src.get("as_of")
         if newest is None or (now - newest) > timedelta(minutes=freshness):
             return [not_measured(row, "stale_truth",
-                                 f"{provider} newest {'unknown' if newest is None else newest.isoformat()} "
+                                 f"{truth_provider} newest {'unknown' if newest is None else newest.isoformat()} "
                                  f"older than {freshness:g} min in session",
                                  truth={"as_of": newest.isoformat() if newest else None})]
     transform = truth_spec.get("transform")
@@ -627,9 +681,13 @@ def row_scalar(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[s
         # not an omission, when the catalog says so.
         shown_null_is_absence = bool(spec.get("shown_null_is_absence"))
         code = str(spec.get("code") or "NT_VALUE_MISMATCH")
-        truth_side = {"value": truth_v, "raw": raw_truth, "field": tp, "provider": provider,
-                      "as_of": (src.get("as_of").isoformat() if isinstance(src.get("as_of"), datetime) else
-                                src.get("as_of")) if src.get("as_of") else None}
+        # The truth side is dated by ITS OWN row, never by the store's bucket clock: a P1 ticket that reports a
+        # 15-hour-old overnight print as the 19:00 observation misdates the comparison and indicts the page
+        # (LQ-2075). The bucket clock survives only as the fallback for a source whose rows carry no clock.
+        row_at = _row_clock(trow)
+        truth_side = {"value": truth_v, "raw": raw_truth, "field": tp, "provider": truth_provider,
+                      "as_of": (row_at or src.get("as_of")).isoformat()
+                      if (row_at or src.get("as_of")) else None}
         if shown is None and only_displayed and not shown_null_is_absence:
             continue  # the field is not displayed on this row; a selection surface shows only what it chose
         # A row whose own provenance says the figure is not a broker fact (a PLANNED stop is the CIO's
@@ -660,7 +718,7 @@ def row_scalar(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[s
                 continue  # the page lists a selection; an object it does not list is not a missing figure
             if truth_v is not None:
                 out.append(finding(row, code, "MISMATCH", f"{acct} {sym}: the page does not show it; truth "
-                               f"{_fmt(truth_v)} ({provider})", account=acct, symbol=sym,
+                               f"{_fmt(truth_v)} ({truth_provider})", account=acct, symbol=sym,
                                shown={"value": None, "source": meta.get("source")}, truth=truth_side))
             continue
         if trow is None and shown is not None:
@@ -702,7 +760,7 @@ def row_scalar(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[s
             # A state/vocabulary value (stop_state) is compared as a word, never coerced to a number.
             if _canon(shown) != _canon(truth_v):
                 out.append(finding(row, code, "MISMATCH", f"{acct} {sym}: the page shows {shown!r}; truth "
-                               f"{truth_v!r} ({provider})", account=acct, symbol=sym, shown=shown_side,
+                               f"{truth_v!r} ({truth_provider})", account=acct, symbol=sym, shown=shown_side,
                                truth=truth_side))
             continue
         sf, tf = _num(shown), _num(truth_v)
@@ -715,7 +773,7 @@ def row_scalar(row: Mapping[str, Any], bundle: Bundle, doc: Any, meta: Mapping[s
             unit = "" if str(tol.get("kind")) == "pct" else (tol.get("unit") or "")
             out.append(finding(row, code, "MISMATCH",
                                f"{acct} {sym}: the page shows {_fmt(sf)}{unit}; truth {_fmt(tf)}{unit} "
-                               f"({provider})", account=acct, symbol=sym, shown=shown_side, truth=truth_side))
+                               f"({truth_provider})", account=acct, symbol=sym, shown=shown_side, truth=truth_side))
     return out
 
 
