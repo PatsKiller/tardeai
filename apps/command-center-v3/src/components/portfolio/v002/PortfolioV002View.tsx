@@ -132,7 +132,7 @@ export default function PortfolioV002View(props: ViewProps) {
           {/* Validation gates — no gate store in this build */}
           <section className="pv2-blk" id="card-gates" data-testid="card-gates">
             <div className="pv2-blk-h"><h2 className="pv2-h2">Validation gates <NB /></h2><span className="pv2-age">not available</span></div>
-            <p className="pv2-muted">Gate store not served for Portfolio (scope=portfolio, LQ-2141). Never shown as "0 open".</p>
+            <p className="pv2-muted">Gate store not served for Portfolio (scope=portfolio, LQ-2141).</p>
           </section>
 
           {/* Since your last visit — no portfolio.last_seen / change store in this build */}
