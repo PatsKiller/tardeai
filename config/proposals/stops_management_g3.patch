@@ -1,0 +1,152 @@
+diff --git a/scripts/api_v2.py b/scripts/api_v2.py
+index 63c38e4ce..e0464e4a0 100644
+--- a/scripts/api_v2.py
++++ b/scripts/api_v2.py
+@@ -617,6 +617,12 @@ def _stops_management_api_build(query=None, *, stored_only=False):
+     # 1. broker-actual stops — LIVE Schwab/Alpaca protective stops (60s cache), same source the cards use,
+     #    plus armed Fidelity software-monitored stops. (The stop_lifecycle snapshot lags and under-reports.)
+     live_stops = {}
++    _snap_rows = None
++    _src_fail = {}  # LQ-2166: source name -> error. A failed source is UNKNOWN, never "no stop".
++
++    def _src_failed(name, exc):
++        log.warning("stops_management source %s unreadable: %s", name, exc)
++        _src_fail[name] = f"{type(exc).__name__}: {exc}"[:200]
+     # Was the live Schwab order read HEALTHY (not degraded/errored)? If so the broker is AUTHORITATIVE —
+     # a confirmed/snapshot stop it does NOT show is STALE (order expired/cancelled) and must not be
+     # resurrected as a phantom "active stop" (that hides an unprotected position AND triggers a false
+@@ -668,8 +674,8 @@ def _stops_management_api_build(query=None, *, stored_only=False):
+                 "coverage": None,
+                 "stop_source": "broker",
+             }
+-    except Exception:
+-        pass
++    except Exception as _e:
++        _src_failed('live_stops', _e)
+     # Fidelity manual_broker_stops — belt-and-suspenders if live-stops overlay missed a row.
+     try:
+         from lib.fidelity_stop_sync import load_manual_protective_stops
+@@ -689,11 +695,15 @@ def _stops_management_api_build(query=None, *, stored_only=False):
+                 "coverage": None,
+                 "stop_source": "fidelity_manual",
+             }
+-    except Exception:
+-        pass
++    except Exception as _e:
++        _src_failed('fidelity_manual', _e)
+     # Persisted stop_lifecycle snapshot (DB only — never trigger a 60s+ broker rescan on this hot path).
+     try:
+-        for s in _stops_lifecycle_db_snapshot().get("stops") or []:
++        _snap = _stops_lifecycle_db_snapshot()
++        _snap_rows = _snap["raw_rows"] if "raw_rows" in _snap else _snap.get("stops") or []
++        if _snap_rows is None:
++            _src_fail["stop_lifecycle"] = "stop_lifecycle snapshot unreadable"
++        for s in _snap.get("stops") or []:
+             sym = str(s.get("symbol", "")).upper()
+             acct = str(s.get("account", ""))
+             if (sym, acct) in live_stops:
+@@ -706,17 +716,17 @@ def _stops_management_api_build(query=None, *, stored_only=False):
+             if entry["stop_price"] is None and "TRAIL" not in entry["order_type"]:
+                 continue
+             live_stops[(sym, acct)] = entry
+-    except Exception:
+-        pass
++    except Exception as _e:
++        _src_failed('stop_lifecycle', _e)
+     # operator-confirmed live stops (stop_confirmations) — persists after-hours when the live Schwab read is
+     # empty; the source the cards fall back to. Does not overwrite a fresher live-overlay entry.
+     try:
+-        for cr in (
+-            _db_query(
+-                "SELECT symbol, account, stop_price_confirmed FROM stop_confirmations WHERE stop_confirmed = true"
+-            )
+-            or []
+-        ):
++        _conf_rows = _db_query(
++            "SELECT symbol, account, stop_price_confirmed FROM stop_confirmations WHERE stop_confirmed = true"
++        )
++        if _conf_rows is None:
++            _src_fail["stop_confirmations"] = "stop_confirmations unreadable"
++        for cr in _conf_rows or []:
+             sym = str(cr.get("symbol") or "").upper()
+             acct = str(cr.get("account") or "")
+             sp = _f(cr.get("stop_price_confirmed"))
+@@ -735,8 +745,8 @@ def _stops_management_api_build(query=None, *, stored_only=False):
+                 "coverage": None,
+                 "stop_source": "confirmed",
+             }
+-    except Exception:
+-        pass
++    except Exception as _e:
++        _src_failed('stop_confirmations', _e)
+     try:
+         fm = _fidelity_monitored_stops_list({"status": "armed"}) or {}
+         for _key, ms in (fm.get("by_key") or {}).items():
+@@ -752,8 +762,8 @@ def _stops_management_api_build(query=None, *, stored_only=False):
+                 "coverage": None,
+                 "stop_source": "monitored",
+             }
+-    except Exception:
+-        pass
++    except Exception as _e:
++        _src_failed('fidelity_monitored', _e)
+     # 2. holdings (all accounts)
+     try:
+         holds = (portfolio_holdings() or {}).get("holdings") or []
+@@ -1410,7 +1420,25 @@ def _stops_management_api_build(query=None, *, stored_only=False):
+         and str(h.get("symbol") or "").upper() not in ("", "CASH", "SPAXX", "VMFXX", "USD")
+         and ((_f(h.get("shares")) or 0.0) > 0)
+     )
+-    _broker_degraded = _schwab_holdings > 0 and (not _live_read_ok or bool(_live_stops_meta.get("degraded")))
++    from lib import stops_protection as _sp
++
++    _snap_grade = _sp.grade_snapshot(_snap_rows)
++    _brokers = {str(h.get("account", "")).split("_")[0] for h in holds if not _sp.is_exempt(h)} - {""}
++    _broker_rows = _sp.broker_rows(
++        _live_stops_meta, _snap_grade, _brokers, stored_only=stored_only, fidelity_manual_ok="fidelity_manual" not in _src_fail
++    )
++    _broker_degraded = _schwab_holdings > 0 and _sp.banner_degraded(_broker_rows, stored_only=stored_only)
++    _row_states = {
++        (r["symbol"], r["account"]): _sp.stop_state(bool(r.get("has_active_stop")), sources_ok=not _src_fail and all(b["state"] == _sp.OK for b in _broker_rows if b["broker"] == str(r["account"]).split("_")[0]))
++        for r in rows
++    }
++    for r in rows:
++        r["stop_state"] = _row_states[(r["symbol"], r["account"])]
++        # only a healthy live broker read verifies a stop; a snapshot-sourced stop is STALE-aged, never verified
++        r["broker_verified"] = bool(_live_read_ok and r.get("stop_source") == "broker")
++        r["stop_snapshot_state"] = _snap_grade["state"] if r.get("stop_source") == "broker_snapshot" else None
++        r["stop_age_s"] = _snap_grade["age_s"] if r.get("stop_source") == "broker_snapshot" else None
++    _protection = _sp.rollup(holds, _row_states, _broker_rows)
+     import datetime as _dt
+ 
+     return {
+@@ -1418,6 +1446,9 @@ def _stops_management_api_build(query=None, *, stored_only=False):
+         "regime_now": regime_now,
+         "broker_stops_meta": _live_stops_meta,
+         "broker_stops_degraded": _broker_degraded,
++        "broker_status_rows": _broker_rows,
++        "source_failures": _src_fail,
++        "protection_state": _protection,
+         "cached": False,
+         "summary": {
+             "total_open_risk": round(total_open_risk, 2),
+@@ -2131,15 +2162,16 @@ def _stops_lifecycle_db_snapshot():
+             "current_price,proximity_pct,coverage,lifecycle,health,flags,trail_offset,snapshot_at "
+             "FROM stop_lifecycle ORDER BY health DESC, symbol"
+         )
+-        or []
++        # LQ-2166: keep None (read failed) distinct from [] (read fine, no rows)
+     )
++    raw_rows = rows
+     stops = []
+-    for r in rows:
++    for r in rows or []:
+         row = {k: _json_clean(v) for k, v in r.items()}
+         ot = str(row.get("order_type") or "").upper()
+         row["is_trailing"] = "TRAIL" in ot
+         stops.append(row)
+-    return {"stops": stops, "source": "db_snapshot"}
++    return {"stops": stops, "source": "db_snapshot", "raw_rows": raw_rows}
+ 
+ 
+ #: A persisted stop_lifecycle row in one of these states is a FINISHED order: it can never fire, so a page view
