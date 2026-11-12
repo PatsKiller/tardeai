@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "test_stops_protection_lq2166_20261111",
+  "files": [
+    "tests/test_stops_protection_lq2166_20261111.py"
+  ],
+  "anchor": "STOPS_PROTECTION_LQ2166_20261111",
+  "comment": [
+    "ANCHOR: STOPS_PROTECTION_LQ2166_20261111 — Stop Management protection rule: unreadable source is UNKNOWN never no-stop, stored mode has no false red banner, stale stop_lifecycle snapshot is STALE with an age and never broker_verified, one >=$100 floor, cash/MMF exempt, GAP only on a good read."
+  ]
+}

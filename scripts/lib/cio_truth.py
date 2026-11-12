@@ -411,6 +411,78 @@ def stop_protects(p: dict) -> bool:
                 and sp is not None and sp > 0)
 
 
+# LQ-20261107-2165 (Portfolio G1, DECISIONS-20261111): one backend verdict per holdings row.
+PROTECTION_STATES = ("PROTECTED", "GAP", "UNKNOWN", "EXEMPT")
+COUNT_FLOOR_USD = 100
+# Broker families that have a stop read source: Schwab orders land in stop_last_known; Fidelity has no order API,
+# its GTC stops are operator records in manual_broker_stops. Moomoo and Alpaca have neither: nothing is ever read.
+STOP_READ_BROKERS = ("schwab", "fidelity")
+_MMF_SYMBOLS = frozenset({"SPAXX", "FDRXX", "FZFXX", "SWVXX", "SNVXX", "SNSXX", "VMFXX", "VMMXX", "FCASH", "CORE"})
+
+
+def _exempt_kind(p: dict) -> str | None:
+    """Cash, money-market fund or sweep vehicle: nothing to stop. ETFs, CEFs, mutual funds and stocks are never exempt."""
+    from .portfolio_positions import is_cash
+    symbol = str(p.get("symbol") or "").upper()
+    labels = " ".join(str(p.get(k) or "") for k in ("asset_type", "instrument_type", "industry", "quote_type", "name")).lower()
+    if is_cash(p):
+        return "cash"
+    if symbol in _MMF_SYMBOLS or "money market" in labels or "money_market" in labels:
+        return "money-market fund"
+    if "sweep" in labels:
+        return "sweep vehicle"
+    if p.get("is_loan"):
+        return "loan balance"
+    shares = _number(p.get("shares", p.get("quantity")))
+    if shares is not None and shares <= 0:
+        return "no open position"
+    return None
+
+
+def has_stop_read_source(account: str) -> bool:
+    return any(canonical_key(account).lower().startswith(b) for b in STOP_READ_BROKERS)
+
+
+def protection_for(p: dict, *, broker_available: bool) -> dict:
+    """The row's protection verdict: PROTECTED | GAP | UNKNOWN | EXEMPT, with reason, source and as_of.
+
+    Rule (operator 2026-11-11): PROTECTED only on a verified, current resting stop (a ``pending_activation`` GTC
+    counts); GAP only when a good read exists and shows no resting stop; UNKNOWN whenever protection cannot be
+    verified (no stop read source for the broker, unreadable store, stale or unmapped observation). A missing
+    read is never reported as a missing stop. Positions under $100 are listed with their real state but
+    ``counted`` is False.
+    """
+    kind = _exempt_kind(p)
+    value = _number(p.get("market_value"))
+    counted = kind is None and (value or 0) >= COUNT_FLOOR_USD
+    source, as_of = p.get("stop_source"), p.get("stop_captured_at")
+    cause = None
+    if kind:
+        state, reason, source, as_of = "EXEMPT", f"Exempt: {kind}", "policy", None
+    elif not has_stop_read_source(p.get("account_id")):
+        state, cause, source, as_of = "UNKNOWN", "No Stop Read", "none", None
+        reason = "No stop read source for this broker; protection cannot be verified"
+    elif not broker_available:
+        state, cause, source, as_of = "UNKNOWN", "Stop Read Failed", "none", None
+        reason = "The stored stop read could not be loaded"
+    elif stop_protects(p) and p.get("stop_state") in _RESTING_STOP_STATES:
+        state = "PROTECTED"
+        reason = ("Resting GTC stop, pending activation" if p.get("stop_state") == "pending_activation"
+                  else "Active resting stop")
+    elif p.get("stop_state") == "unknown":
+        state, cause = "UNKNOWN", "Stop State Unproven"
+        reason = p.get("stop_note") or "The last stop observation is stale or its status is unmapped"
+    elif p.get("stop_state") == "filled":
+        state, cause = "UNKNOWN", "Stop Filled"
+        reason = p.get("stop_note") or "The stop filled; the position is awaiting the holdings sync"
+    else:
+        state = "GAP"
+        reason = ("Planned level only; no resting order at the broker" if p.get("stop_source") == "planned"
+                  else "Stop read succeeded and shows no resting stop")
+    return {"protection_state": state, "protection": {"state": state, "reason": reason, "cause": cause,
+            "source": source, "as_of": as_of, "counted": counted}}
+
+
 def _resting_summary(counted: list[dict], total_usd, *, broker_available: bool) -> dict:
     """Counted positions by stop category plus the loss if every resting broker stop (active or pending) fills.
 
@@ -1639,6 +1711,8 @@ def holdings_payload(payload, *, root=None, now=None, db_query=None, inputs=None
             row.update(cost_basis=basis["cost_basis_usd"], gain_loss=basis["unrealized_pl_usd"],
                        gain_loss_pct=basis["unrealized_pl_pct"], basis_truth=basis)
         row.update(stop_by_key.get(key) or {})
+        if "protection_state" not in row:  # cash/loan rows carry no stop row: classify them directly
+            row.update(protection_for(row, broker_available=doc["stops"].get("active_count") is not None))
         rows.append(row)
     p = doc["portfolio"]
     out.update(holdings=rows, count=len(rows), position_count=p["position_count"], total_value=p["total_usd"],
@@ -1722,7 +1796,8 @@ def positions_payload(payload, *, root=None, now=None, db_query=None, inputs=Non
             if fact:
                 for field in ("price", "shares", "market_value", "stop_price", "stop_source", "stop_state",
                               "stop_captured_at", "broker_protected", "basis_truth", "distance_to_stop_pct", "loss_at_stop_usd",
-                              "stop_status_raw", "stop_state_observed", "stop_note", "stop_evidence", "stop_observation"):
+                              "stop_status_raw", "stop_state_observed", "stop_note", "stop_evidence", "stop_observation",
+                              "protection_state", "protection"):
                     row[field] = deepcopy(fact.get(field))
                 row["current_price"] = row["price"]
                 row["cost_basis"] = fact["basis_truth"]["cost_basis_usd"]
@@ -2010,6 +2085,7 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None, ledger_root=None
                         holding_updated_at=r.get("updated_at"))
         p.update({k: v for k, v in stop.items() if k not in ("source", "as_of", "age_hours", "stale", "gap")})
         p["stop_evidence"] = {k: stop[k] for k in ("source", "as_of", "age_hours", "stale", "gap")}
+        p.update(protection_for(p, broker_available=broker is not None))
         positions.append(p)
     counted_positions = [p for p in positions if (_number(p.get("market_value")) or 0) >= _min_position_usd()]
     unproven_positions = [p for p in counted_positions if _unproven_protection(p)]
@@ -2022,7 +2098,8 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None, ledger_root=None
     counts = {state: sum(p["stop_state"] == state for p in counted_positions) for state in ("active", "pending_activation", "filled")}
     stop_rows = [{**{k: p.get(k) for k in ("account_id", "account_label", "symbol", "stop_price", "stop_source", "stop_state",
                                          "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence", "stop_note",
-                                         "stop_state_observed", "stop_observation", "stop_history", "stop_order_type")},
+                                         "stop_state_observed", "stop_observation", "stop_history", "stop_order_type",
+                                         "protection_state", "protection")},
                   # the stored broker order id, so a page can show a resting stop without a live broker read
                   "stop_order_id": p.get("order_id")} for p in positions]
     stops = {"rows": stop_rows, "active_count": counts["active"], "pending_count": counts["pending_activation"],
