@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "CONTROL_PLANE_WORKFLOWS_INDEX_LQ2407_20261112",
+  "files": [
+    "tests/test_control_plane_workflows_index_lq2407_20261112.py"
+  ],
+  "anchor": "CONTROL_PLANE_WORKFLOWS_INDEX_LQ2407_20261112",
+  "comment": [
+    "ANCHOR: CONTROL_PLANE_WORKFLOWS_INDEX_LQ2407_20261112 — workflow LIST holds an offset index; DETAIL tolerates a torn line (LQ-20261107-2407, design LQ-2398 c1+c2).",
+    "LIST keeps workflow_id -> (offset, length), parses only the page, no row cache or deepcopy; DETAIL skips corrupt complete lines (meta.skipped_corrupt_lines, DEGRADED) instead of INVALID_SCHEMA.",
+    "Hermetic: synthetic lineage fixtures under tmp_path."
+  ]
+}

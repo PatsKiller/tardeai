@@ -40,7 +40,7 @@ def registry_view(now: Optional[datetime] = None) -> dict[str, Any]:
                 "served_at": now.isoformat()}
     return {"schema": doc["schema"], "state": "OK", "reason": None, "served_at": now.isoformat(),
             "version": doc.get("version"), "owners": doc["owners"], "causes": doc["causes"],
-            "incident_classes": doc["incident_classes"], "incident_classes_approved": doc["incident_classes_approved"],
+            "incident_classes": doc["incident_classes"], "unclassified_incident": doc["unclassified_incident"], "incident_classes_approved": doc["incident_classes_approved"],
             "requires_stop": doc["requires_stop"], "stop_exempt_accounts": doc["stop_exempt_accounts"]}
 
 

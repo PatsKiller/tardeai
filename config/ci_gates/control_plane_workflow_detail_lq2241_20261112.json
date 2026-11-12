@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "control_plane_workflow_detail_lq2241_20261112",
+  "files": [
+    "tests/test_control_plane_workflow_detail_lq2241_20261112.py"
+  ],
+  "anchor": "CONTROL_PLANE_WORKFLOW_DETAIL_LQ2241_20261112",
+  "comment": [
+    "ANCHOR: CONTROL_PLANE_WORKFLOW_DETAIL_LQ2241_20261112 — LQ-20261107-2241 / 2255: GET /api/v3/control-plane/workflows/<id>",
+    "streams the lineage in two passes and retains only the requested workflow's rows instead of the whole 216 MB store",
+    "(+763.9 MB per request, FINDING-LQ-2215). It must answer exactly what the whole-store load answers (typed, untyped,",
+    "orphan and id-less rows, non-workflow_id identifiers, node-derived identifiers) and a corrupt line stays INVALID_SCHEMA."
+  ]
+}

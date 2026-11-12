@@ -337,6 +337,54 @@ def _read_jsonl(
         return None, "UNAVAILABLE"
 
 
+def _read_jsonl_stream_tolerant(
+    path: Path, *, keep: Any, skipped_out: dict[str, int] | None = None
+) -> tuple[list[dict[str, Any]] | None, str]:
+    """Plain streaming read of an append-only lineage that skips (and counts) corrupt complete lines.
+
+    LQ-20261107-2407: the workflow DETAIL read was strict, so one torn line (two interleaved appends, 2026-11-03)
+    made every workflow answer INVALID_SCHEMA while the LIST, which tolerates it, stayed AVAILABLE. Same policy
+    as ``_read_jsonl_resumable(tolerant=True)``: an unparseable, non-dict or undecodable complete line is
+    skipped and counted; a final line with no newline yet is a writer mid-append (neither counted nor kept);
+    more than ``_corrupt_limit`` corrupt lines is INVALID_SCHEMA. Rows ``keep`` rejects are never retained.
+    ``skipped_out["skipped"]`` receives the count."""
+    rows: list[dict[str, Any]] = []
+    lines = skipped = 0
+    try:
+        with path.open("rb") as handle:
+            for raw in handle:
+                complete = raw.endswith(b"\n")
+                try:
+                    line = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    line = "\ufffd"
+                if not line.strip():
+                    continue
+                try:
+                    value = json.loads(line)
+                except ValueError:
+                    value = None
+                if not isinstance(value, dict):
+                    if not complete:
+                        break
+                    lines += 1
+                    skipped += 1
+                    continue
+                if complete:
+                    lines += 1
+                if keep is None or keep(value):
+                    rows.append(value)
+    except FileNotFoundError:
+        return None, "UNAVAILABLE"
+    except OSError:
+        return None, "UNAVAILABLE"
+    if skipped > _corrupt_limit(lines):
+        return None, "INVALID_SCHEMA"
+    if skipped_out is not None:
+        skipped_out["skipped"] = skipped
+    return rows, "AVAILABLE"
+
+
 def _read_jsonl_head(path: Path, retain: int) -> tuple[list[dict[str, Any]] | None, int, str]:
     """(first ``retain`` rows, total rows, quality) of a plain JSONL source, holding at most ``retain`` rows.
 
@@ -787,9 +835,17 @@ def _extract_rows_raw(value: Any, *, domain: str, path: Path) -> list[dict[str, 
 
 
 def _select_rows(
-    paths: tuple[Path, ...], *, domain: str, meta: dict[str, Any] | None = None, retain: int | None = None
+    paths: tuple[Path, ...], *, domain: str, meta: dict[str, Any] | None = None, retain: int | None = None,
+    row_keep: Any = None, tolerant_stream: bool = False,
 ) -> tuple[list[dict[str, Any]], str]:
     """First-AVAILABLE over registry-ordered candidates.
+
+    ``row_keep(row) -> bool`` (LQ-20261107-2241) is a streaming filter for a ``.jsonl`` candidate read with
+    ``domain=""``: rows it rejects are never retained, so a caller that wants one workflow does not hold the
+    whole lineage. Every line is still parsed, so a corrupt line is still INVALID_SCHEMA. ``meta["streamed"]``
+    is set True when the filter was applied; a ``.json`` candidate is returned whole and unfiltered.
+    ``tolerant_stream`` (LQ-20261107-2407) makes that filtered read skip and count corrupt complete lines
+    (``meta["skipped_corrupt_lines"]``) instead of answering INVALID_SCHEMA for the first one.
 
     missing → continue
     invalid JSON → try next unless it is the only existing unreadable primary
@@ -811,6 +867,10 @@ def _select_rows(
             continue
         if path.suffix.lower() == ".jsonl":
             keep = _workflow_list_keep if domain == "workflows" else None
+            if row_keep is not None and domain == "":
+                keep = row_keep
+                if meta is not None:
+                    meta["streamed"] = True
             compact = _jsonl_compactor(domain, path)
             tolerant = bool(CONTROL_PLANE_DOMAINS.get(domain, {}).get("skip_corrupt_lines")) and compact is not None
             if retain is not None and compact is None and keep is None and meta is not None:
@@ -821,6 +881,11 @@ def _select_rows(
                 value, total, quality = _read_jsonl_head(path, retain)
                 if quality == "AVAILABLE":
                     meta["total"] = total
+            elif tolerant_stream and meta is not None and meta.get("streamed"):
+                skipped_box: dict[str, int] = {}
+                value, quality = _read_jsonl_stream_tolerant(path, keep=keep, skipped_out=skipped_box)
+                if quality == "AVAILABLE":
+                    meta["skipped_corrupt_lines"] = skipped_box.get("skipped", 0)
             else:
                 value, quality = _read_jsonl(path, keep=keep, compact=compact, tolerant=tolerant)
             if tolerant and quality == "AVAILABLE" and meta is not None:
@@ -848,7 +913,260 @@ def _select_rows(
     return [], "UNAVAILABLE"
 
 
+def _count_workflow_projection(path: Path) -> tuple[int, str]:
+    """(rows the workflow LIST projection would hold, quality) for a lineage ``.jsonl``, holding no rows.
+
+    LQ-20261107-2355: ``control-plane-surface-authority`` probes every domain only to read ``data_quality`` and
+    a page's ``item_count``; for the 216 MB lineage that built the whole projection (plus a deep copy for the
+    resumable cache) in a throwaway child: ~290 MB maxrss. This mirrors ``_read_jsonl_resumable`` line for line
+    (tolerant skip of corrupt complete lines, a torn final line neither counted nor skipped, the same
+    ``_corrupt_limit``) and ``_project_workflow_collection`` (the latest envelope per ``workflow_id`` wins; with
+    no such envelope, the untyped leftovers; node/edge rows never count), keeping only the workflow ids.
+    Any answer other than AVAILABLE is reported as such and the caller falls back to the full read.
+    """
+    ids: set[str] = set()
+    leftovers = 0
+    lines = skipped = 0
+    try:
+        with path.open("rb") as handle:
+            for raw in handle:
+                complete = raw.endswith(b"\n")
+                try:
+                    line = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    line = "\ufffd"
+                if not line.strip():
+                    continue
+                try:
+                    value = json.loads(line)
+                except ValueError:
+                    value = None
+                if not isinstance(value, dict):
+                    if not complete:
+                        break
+                    lines += 1
+                    skipped += 1
+                    continue
+                if complete:
+                    lines += 1
+                rt = value.get("record_type")
+                if rt in {"node", "edge"}:
+                    continue
+                if rt == "envelope":
+                    wf = str(value.get("workflow_id") or "")
+                    if wf:
+                        ids.add(wf)
+                    continue
+                leftovers += 1
+                if not complete:
+                    break
+    except FileNotFoundError:
+        return 0, "UNAVAILABLE"
+    except OSError:
+        return 0, "UNAVAILABLE"
+    if skipped > _corrupt_limit(lines):
+        return 0, "INVALID_SCHEMA"
+    return (len(ids) if ids else leftovers), "AVAILABLE"
+
+
+def _count_agent_projection(path: Path) -> tuple[int, str]:
+    """(rows the agents LIST projection would hold, quality) for an agent-trace ``.jsonl``, holding no rows.
+
+    LQ-20261107-2367: after the workflows probe stopped reading rows, the agents domain was the largest holder in the
+    ``control-plane-surface-authority`` child (a 140 MB trace file streamed through ``_agents_from_traces``: ~70 MB
+    transient peak for a one-row answer). The projection keeps one row per non-empty
+    ``str(row.get("agent") or row.get("agent_id") or "")`` and the compactor is idempotent (its own rows carry
+    ``agent_id``), so the row count is the number of distinct ids over every dict row, torn final line included
+    (``_read_jsonl_resumable`` answers with it, uncached). Mirrors the STRICT read the agents domain uses: any
+    non-dict line or undecodable byte answers "INVALID_SCHEMA" here and the caller falls back to the full read.
+    """
+    ids: set[str] = set()
+    try:
+        with path.open("rb") as handle:
+            for raw in handle:
+                try:
+                    line = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    return 0, "INVALID_SCHEMA"
+                if not line.strip():
+                    continue
+                try:
+                    value = json.loads(line)
+                except ValueError:
+                    return 0, "INVALID_SCHEMA"
+                if not isinstance(value, dict):
+                    return 0, "INVALID_SCHEMA"
+                agent_id = str(value.get("agent") or value.get("agent_id") or "")
+                if agent_id:
+                    ids.add(agent_id)
+    except (FileNotFoundError, OSError):
+        return 0, "UNAVAILABLE"
+    return len(ids), "AVAILABLE"
+
+
+def probe_domain_envelope(domain: str, query: dict[str, Any] | None = None) -> tuple[int, dict[str, Any]] | None:
+    """The envelope ``handle("/api/v3/control-plane/<domain>")`` would answer, built without the rows, or None.
+
+    Only the workflow lineage and the agent traces (LQ-20261107-2367) have a cheap equivalent; every other domain, and any doubt (the first usable
+    candidate is not a plain ``.jsonl``, anything but AVAILABLE), returns None and the caller reads in full.
+    The page is ``item_count`` placeholders long and carries the same envelope fields, so a caller that
+    reads only the envelope and ``len(data["items"])`` cannot tell the difference.
+    """
+    if domain not in ("workflows", "agents"):
+        return None
+    from scripts.lib.maturity_score_latest_reader import is_archived_maturity_score_path
+
+    for path in _domain_paths(domain):
+        if is_archived_maturity_score_path(path) or not path.is_file():
+            continue
+        if path.suffix.lower() != ".jsonl":
+            return None
+        if domain == "agents":
+            if not _is_agent_trace_source(path):
+                return None
+            n, quality = _count_agent_projection(path)
+        else:
+            n, quality = _count_workflow_projection(path)
+        if quality != "AVAILABLE":
+            return None
+        limit, offset = _bounded(query or {})
+        page = {"items": [None] * max(0, min(limit, n - offset)), "pagination": {"limit": limit, "offset": offset, "total": n}}
+        return 200, _envelope(page, quality="AVAILABLE")
+    return None
+
+
+# ── LQ-20261107-2407: the workflow LIST holds an offset index, not the rows ──────────────────────────────────────
+#
+# The list kept every workflow's latest envelope (34,791 dicts: 139 MB traced, ~230 MB RSS after the call) and
+# deep-copied them all per request (+64 MB) to show 50. This keeps ``workflow_id -> (offset, length)`` of that
+# workflow's latest envelope line (about 5 MB) and parses only the page's lines from the file. The index is built
+# and resumed exactly like ``_read_jsonl_resumable``: same inode, no shorter than the offset reached, same
+# bytes at the head and before the offset, else a full re-scan; a torn final line is read for the answer and never
+# cached; corrupt complete lines are skipped and counted with the same ``_corrupt_limit``. Order is the order
+# ``_project_workflow_collection`` gives: first appearance of a workflow, its latest envelope.
+_wf_index_cache: dict[str, dict[str, Any]] = {}
+_wf_index_lock = threading.Lock()
+
+
+def _wf_index_clear() -> None:
+    with _wf_index_lock:
+        _wf_index_cache.clear()
+
+
+def _wf_index_update(path: Path) -> dict[str, Any] | None:
+    """The (possibly resumed) index entry for ``path`` or None to make the caller use the full read.
+
+    Caller holds ``_wf_index_lock``. The returned entry carries ``index`` (wf -> (offset, length)), ``skipped``,
+    ``lines``, ``envelopes`` (bool) and, transiently, ``tail`` = (wf, offset, length) for a valid final envelope
+    line that has no newline yet."""
+    key = str(path)
+    try:
+        with path.open("rb") as handle:
+            st = os.fstat(handle.fileno())
+            entry = _wf_index_cache.get(key)
+            if (
+                entry is None
+                or entry["dev_ino"] != (st.st_dev, st.st_ino)
+                or st.st_size < entry["offset"]
+                or _jsonl_fingerprint(handle, entry["offset"]) != entry["fingerprint"]
+            ):
+                entry = {"dev_ino": (st.st_dev, st.st_ino), "offset": 0, "index": {}, "lines": 0, "skipped": 0,
+                         "envelopes": False}
+            offset = entry["offset"]
+            if st.st_size == offset and "fingerprint" in entry:
+                return {**entry, "tail": None}
+            index = entry["index"]
+            lines, skipped, envelopes = int(entry["lines"]), int(entry["skipped"]), bool(entry["envelopes"])
+            tail = None
+            handle.seek(offset)
+            for raw in handle:
+                complete = raw.endswith(b"\n")
+                try:
+                    line = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    line = "\ufffd"
+                if line.strip():
+                    try:
+                        value = json.loads(line)
+                    except ValueError:
+                        value = None
+                    if not isinstance(value, dict):
+                        if not complete:
+                            break
+                        lines += 1
+                        skipped += 1
+                        offset += len(raw)
+                        continue
+                    if complete:
+                        lines += 1
+                    rt = value.get("record_type")
+                    if rt == "envelope":
+                        envelopes = True
+                        wf = str(value.get("workflow_id") or "")
+                        if wf:
+                            if not complete:
+                                tail = (wf, offset, len(raw))
+                                break
+                            index[wf] = (offset, len(raw))
+                    elif not complete:
+                        break
+                if complete:
+                    offset += len(raw)
+            if skipped > _corrupt_limit(lines):
+                _wf_index_cache.pop(key, None)
+                return None
+            entry = {
+                "dev_ino": (st.st_dev, st.st_ino), "offset": offset, "index": index, "lines": lines,
+                "skipped": skipped, "envelopes": envelopes, "fingerprint": _jsonl_fingerprint(handle, offset),
+            }
+            _wf_index_cache[key] = entry
+            return {**entry, "tail": tail}
+    except (OSError, ValueError):
+        _wf_index_cache.pop(key, None)
+        return None
+
+
+def _workflow_page_from_index(paths: tuple[Path, ...], query: dict[str, Any]) -> tuple[dict[str, Any], str] | None:
+    """The workflow LIST page built from the offset index, or None to use the full read (any doubt)."""
+    from scripts.lib.maturity_score_latest_reader import is_archived_maturity_score_path
+
+    path = next((p for p in paths if not is_archived_maturity_score_path(p) and p.is_file()), None)
+    if path is None or path.suffix.lower() != ".jsonl":
+        return None
+    limit, offset = _bounded(query)
+    with _wf_index_lock:
+        entry = _wf_index_update(path)
+        if entry is None or not (entry["index"] or entry["tail"]):
+            return None  # no workflow-id envelope (untyped / leftover-only store) or unreadable: the full read decides
+        index, tail = entry["index"], entry["tail"]
+        keys = list(index)
+        if tail is not None and tail[0] not in index:
+            keys.append(tail[0])
+        total = len(keys)
+        window = [(wf, tail[1:] if tail is not None and wf == tail[0] else index[wf]) for wf in keys[offset: offset + limit]]
+        skipped = int(entry["skipped"])
+    items: list[dict[str, Any]] = []
+    try:
+        with path.open("rb") as handle:
+            for wf, (start, length) in window:
+                handle.seek(start)
+                value = json.loads(handle.read(length).decode("utf-8"))
+                if not isinstance(value, dict) or value.get("record_type") != "envelope" or str(value.get("workflow_id") or "") != wf:
+                    return None  # the file moved under the index: do not guess
+                items.append(value)
+    except (OSError, ValueError):
+        return None
+    page: dict[str, Any] = {"items": items, "pagination": {"limit": limit, "offset": offset, "total": total}}
+    if skipped:
+        page["skipped_corrupt_lines"] = skipped
+    return page, "AVAILABLE"
+
+
 def _rows_from_json(paths: tuple[Path, ...], query: dict[str, Any], *, domain: str) -> tuple[dict[str, Any], str]:
+    if domain == "workflows":
+        indexed = _workflow_page_from_index(paths, query)
+        if indexed is not None:
+            return indexed
     meta: dict[str, Any] = {}
     limit, offset = _bounded(query)
     rows, quality = _select_rows(paths, domain=domain, meta=meta, retain=offset + limit)
@@ -960,12 +1278,100 @@ def _load_checkpoint_row(checkpoint_id: str) -> dict[str, Any] | None:
     return None
 
 
+_ENVELOPE_ID_KEYS = (
+    "workflow_id",
+    "research_request_id",
+    "research_artifact_id",
+    "specialist_artifact_id",
+    "cio_generation_id",
+    "notification_id",
+    "checkpoint_id",
+    "event_id",
+    "generation_id",
+)
+_TYPED_RECORDS = {"node", "edge", "envelope"}
+
+
+def _fold_record_identifiers(identifiers: dict[str, str], record: dict[str, Any]) -> None:
+    """How one envelope or node record contributes to its workflow's ``identifiers`` (shared by the grouping
+    and by the streaming pre-pass, so the two cannot drift)."""
+    rt = record.get("record_type")
+    if rt == "envelope":
+        for key in _ENVELOPE_ID_KEYS:
+            if record.get(key):
+                identifiers[key] = str(record[key])
+    elif rt == "node":
+        node_id = record.get("node_id")
+        if node_id:
+            identifiers.setdefault(str(record.get("node_type", "")).lower() + "_id", str(node_id))
+
+
+def _workflow_rows_for(workflow_id: str, info: dict[str, Any] | None = None) -> tuple[list[dict[str, Any]], str]:
+    """The lineage rows that can answer ``workflow_id``, without holding the whole lineage (LQ-20261107-2241).
+
+    The detail used to load every row (``_select_rows(domain="")``): +763.9 MB for one GET on the 216 MB
+    lineage (FINDING-LQ-2215). Two streaming passes now: pass 1 retains nothing but a small identifier
+    summary per workflow (which workflows answer to ``workflow_id``); pass 2 retains only those workflows'
+    rows, in file order. The result is exactly the rows the old code would have selected from, so
+    ``_workflow_detail`` is unchanged. A ``.json`` store (not streamable) is returned whole as before.
+
+    ``info`` (optional out-parameter) receives ``store_typed``: whether ANY row of the whole store is typed. The
+    detail must decide typed-vs-legacy from the whole store, not from the retained subset: a workflow whose rows
+    are all untyped, inside a typed store, is grouped by the old code (REVIEW-LQ-20261107-2261 F2).
+    """
+    paths = _domain_paths("workflows")
+    summary: dict[str, dict[str, Any]] = {}
+    seen = {"typed": False, "wf": False}
+
+    def _survey(row: dict[str, Any]) -> bool:
+        if row.get("record_type") in _TYPED_RECORDS:
+            seen["typed"] = True
+        wf = str(row.get("workflow_id") or "")
+        if wf:
+            seen["wf"] = True
+            entry = summary.setdefault(wf, {"ids": {}, "checkpoint_id": None})
+            _fold_record_identifiers(entry["ids"], row)
+            if row.get("record_type") == "envelope":
+                entry["checkpoint_id"] = row.get("checkpoint_id")
+        return False
+
+    def _select_pass2(keep: Any) -> tuple[list[dict[str, Any]], str]:
+        meta2: dict[str, Any] = {}
+        out = _select_rows(paths, domain="", meta=meta2, row_keep=keep, tolerant_stream=True)
+        if info is not None:
+            info["skipped_corrupt_lines"] = int(meta2.get("skipped_corrupt_lines") or 0)
+        return out
+
+    meta: dict[str, Any] = {}
+    rows, quality = _select_rows(paths, domain="", meta=meta, row_keep=_survey, tolerant_stream=True)
+    if info is not None:
+        info["store_typed"] = bool(seen["typed"])
+        info["skipped_corrupt_lines"] = int(meta.get("skipped_corrupt_lines") or 0)
+    if not meta.get("streamed"):
+        if info is not None:
+            info.pop("store_typed", None)  # not surveyed: the caller derives it from the whole rows
+        return rows, quality  # a .json store, or nothing readable: the old whole-store answer
+    if seen["typed"] and seen["wf"]:
+        matched = {
+            wf for wf, e in summary.items()
+            if _row_matches_workflow({"workflow_id": wf, "identifiers": e["ids"], "checkpoint_id": e["checkpoint_id"]}, workflow_id)
+        }
+        summary.clear()
+        return _select_pass2(lambda r: str(r.get("workflow_id") or "") in matched)
+    summary.clear()
+    return _select_pass2(lambda r: _row_matches_workflow(r, workflow_id))
+
+
 def _workflow_detail(workflow_id: str, query: dict[str, Any]) -> tuple[dict[str, Any], str]:
     # domain="" skips list projection so node/edge/envelope records remain.
-    rows, quality = _select_rows(_domain_paths("workflows"), domain="")
+    info: dict[str, Any] = {}
+    rows, quality = _workflow_rows_for(workflow_id, info)
+    skipped = int(info.get("skipped_corrupt_lines") or 0)
     grouped: dict[str, dict[str, Any]] = {}
-    typed = [r for r in rows if r.get("record_type") in {"node", "edge", "envelope"}]
-    if typed:
+    store_typed = info.get("store_typed")
+    if store_typed is None:
+        store_typed = any(r.get("record_type") in _TYPED_RECORDS for r in rows)
+    if store_typed:
         for record in rows:
             wf = str(record.get("workflow_id") or "")
             if not wf:
@@ -982,35 +1388,25 @@ def _workflow_detail(workflow_id: str, query: dict[str, Any]) -> tuple[dict[str,
                 },
             )
             rt = record.get("record_type")
+            _fold_record_identifiers(trace["identifiers"], record)
             if rt == "envelope":
-                for key in (
-                    "workflow_id",
-                    "research_request_id",
-                    "research_artifact_id",
-                    "specialist_artifact_id",
-                    "cio_generation_id",
-                    "notification_id",
-                    "checkpoint_id",
-                    "event_id",
-                    "generation_id",
-                ):
-                    if record.get(key):
-                        trace["identifiers"][key] = str(record[key])
                 trace["envelope"] = record
                 trace["checkpoint_id"] = record.get("checkpoint_id")
                 continue
             if rt == "node":
                 trace["nodes"].append(record)
-                node_id = record.get("node_id")
-                if node_id:
-                    trace["identifiers"].setdefault(str(record.get("node_type", "")).lower() + "_id", str(node_id))
             elif rt == "edge":
                 trace["edges"].append(record)
         rows = list(grouped.values()) or rows
     matches = [r for r in rows if _row_matches_workflow(r, workflow_id)]
     if not matches:
         status = "UNAVAILABLE" if quality == "UNAVAILABLE" else "NO_RELEVANT_EVENTS"
-        return {"workflow_id": workflow_id, "status": status, "nodes": [], "edges": [], "identifiers": {}}, quality
+        absent: dict[str, Any] = {"workflow_id": workflow_id, "status": status, "nodes": [], "edges": [], "identifiers": {}}
+        if skipped and quality == "AVAILABLE":
+            # Not finding it is not proof it is absent: a skipped line may have been its record.
+            absent["meta"] = {"skipped_corrupt_lines": skipped}
+            return absent, "DEGRADED"
+        return absent, quality
     row = matches[0]
     identifiers = _identifiers(row)
     raw_nodes = row.get("nodes", [])
@@ -1075,7 +1471,9 @@ def _workflow_detail(workflow_id: str, query: dict[str, Any]) -> tuple[dict[str,
     canonical_id = str(identifiers.get("workflow_id") or row.get("workflow_id") or workflow_id)
     checkpoint_id = str(identifiers.get("checkpoint_id") or row.get("checkpoint_id") or "")
     checkpoint = _load_checkpoint_row(checkpoint_id) if checkpoint_id else None
-    return {
+    if skipped and quality == "AVAILABLE" and dq in {"AVAILABLE", "PARTIAL"}:
+        dq = "DEGRADED"  # LQ-20261107-2407: lines were skipped, so this answer may be missing records
+    detail_out = {
         "workflow_id": canonical_id,
         "resolved_from": workflow_id if canonical_id != workflow_id else None,
         "status": "AVAILABLE",
@@ -1088,7 +1486,10 @@ def _workflow_detail(workflow_id: str, query: dict[str, Any]) -> tuple[dict[str,
         "edges": edges,
         "unresolved_links": missing,
         "pagination": {"nodes": _bounded(query)[0], "edges": _bounded(query)[0]},
-    }, dq if quality == "AVAILABLE" else quality
+    }
+    if skipped:
+        detail_out["meta"] = {"skipped_corrupt_lines": skipped}
+    return detail_out, dq if quality == "AVAILABLE" else quality
 
 
 def _invoke_status(fn: Any) -> Any:

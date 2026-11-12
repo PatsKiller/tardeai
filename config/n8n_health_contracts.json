@@ -44507,6 +44507,206 @@
         "requested_on": null,
         "note": "Draft at shadow per the lead's assignment; needs a non-author reviewer before the registry PR merges."
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "home-status-verdict",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Computes the Home 'Trade-ready' verdict (YES/NO/UNKNOWN) by the approved v010 rule from six required inputs (P0, blocking P1, trade-blocking gates, Portfolio, Orders, Data) plus Schedulers/Alerts as information, and writes it with numbered blockers and every input with its age and threshold. Unknown never reads as OK.",
+        "business_function": "Home trade-ready verdict",
+        "source": "LQ-20261107-2144; Home v010 design REPORT.md 4-6 + DECISION.md; HOME-BACKEND-SPEC-20261111 section 2"
+      },
+      "owner": "ops",
+      "connects_to": [
+        {
+          "name": "n8n -> relay -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3 (dispatcher row)"
+        },
+        {
+          "name": "$PY scripts/home_status_verdict.py --dry-run (shadow) / --apply (after promotion)",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_home_status_verdict.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "Postgres alert_incidents, validation_gates, positions_current, positions_sync_runs, market_quotes, lane_health_current (2 s statement_timeout each)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/home_status_verdict.py gather"
+        },
+        {
+          "name": "config/home_status_registry.json incident_classes (LQ-2149; operator approval required)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/home_status_verdict.py class_map_status"
+        },
+        {
+          "name": "data/runtime/validation-gates-sync_last.json, data/runtime/stop-coverage-incidents_last.json",
+          "kind": "receipt",
+          "direction": "read",
+          "source": "scripts/home_status_verdict.py read_receipt"
+        },
+        {
+          "name": "Postgres home_snapshots kind=status (upsert + own-kind 7-day retention, one transaction)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/home_status_verdict.py write_snapshot"
+        },
+        {
+          "name": "data/runtime/home_status_latest.json (mirror) and data/runtime/home-status-verdict_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2 / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire ends RUN_DONE in mode dry_run while stage is shadow; a dry run writes no receipt, no row, no mirror"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "receipt ok_at advances on each successful live run and a home_snapshots kind=status row exists for that run_id"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at within 5 min in session (09:00-15:59 ET weekdays) and 15 min otherwise (3x cadence)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 36 s (80% of timeout_s 45)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count 1 (one snapshot written); a verdict of NO or UNKNOWN is output, not a failure"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "receipt ok_at older than 3x cadence but younger than 6x"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 36 s"
+        },
+        {
+          "check": "inputs_unknown",
+          "text": "one or more required inputs UNKNOWN/TIMED_OUT: the verdict is UNKNOWN (or NO with the unknown inputs listed) and the receipt names them (summary.unknown_inputs)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "receipt ok_at older than 6x cadence; GET /api/v2/home/status already serves UNKNOWN past 300 s in session / 900 s otherwise"
+        },
+        {
+          "check": "snapshot_write_failed",
+          "text": "home_snapshots missing or the upsert failed -> exit 1, receipt ok false, empty_reason names the error type"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 0.25,
+        "freshness_failed_after_h": 0.5,
+        "freshness_rule": "off-session bound (5-minute cadence): degraded beyond 3x, failed beyond 6x; in session the endpoint's own 300 s serve limit is the tighter guard",
+        "timeout_s": 45,
+        "class": "monitor",
+        "computed_on": "2026-11-12",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet (stage shadow); the dry run against live data 2026-11-11 23:xx ET bounds duration",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 36.0
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "lane_registry.json row severity: the operator reads this verdict before trading; a stale verdict is served UNKNOWN, never YES",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:home-status-verdict by scripts/n8n_siem_bridge.py. Never PAGE from the lane itself."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json (lane_not_in_catalogue). The lane never repairs; a stale or failed lane makes the served verdict UNKNOWN."
+      },
+      "evidence": {
+        "receipt": "data/runtime/home-status-verdict_last.json",
+        "verify": [
+          "python3 scripts/home_status_verdict.py --dry-run          # read-only, writes nothing",
+          "jq '{ok, produced_count, summary}' data/runtime/home-status-verdict_last.json",
+          "psql -c \"SELECT run_id, computed_at, payload->>'verdict' FROM home_snapshots WHERE kind='status' ORDER BY computed_at DESC LIMIT 5\"",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='home-status-verdict' ORDER BY requested_at DESC LIMIT 10\""
+        ],
+        "never": "an n8n execution status; prove work with the ledger, the receipt and the home_snapshots row",
+        "expected_output_basis": "expected_output 2026-11-12 from the script's main(): produced_count 1 when the snapshot row was upserted, 0 with ok false when the write failed"
+      },
+      "review_by": "2026-11-26",
+      "review": {
+        "prepared_by": "agent draft (LQ-20261107-2144 2026-11-12, cc-opus-2)",
+        "status": "REVIEWED",
+        "reviewed_by": "agent self-review against docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md section 3; an independent review is the queued next pass and may amend fields",
+        "reviewed_on": "2026-11-12"
+      },
+      "state_note": "Written 2026-11-12 with the lane's registry row (a new lane's contract must be REVIEWED before its registry PR). The REVIEWED status is an agent self-review.",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "one home_snapshots kind=status row for the run",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/home-status-verdict_last.json produced_count and output_evidence"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
     }
   ],
   "pending_changes": {

@@ -6389,6 +6389,36 @@
       "env_report_reason": "Shadow-only registration (LQ-1986): the argv is read-only and has not yet been fired by the executor, so the env closure is unaudited; report mode records the NAMES enforce would drop. Tighten before any live promotion.",
       "env_evidence": "scripts/ops/live_maturity.py reads TRADEAI_STATE_ROOT only (state root for receipts, runtime and the state file). It runs `systemctl show` and `git merge-base --is-ancestor` as subprocesses and reads no credential, DB or broker setting.",
       "source": "LQ-20261107-1986 (lead, 2026-11-11 17:16 ET), REVIEW-LQ-20261107-1967 N1. SHADOW ONLY: dry_run_arg ['--dry-run'] is read-only and refuses --write-state; live_arg null and dispatch.mode dry_run, so no live argv exists and lane_stage_clamp keeps every fire dry. Promotion (live_arg ['--write-state']) is the lead's decision."
+    },
+    {
+      "lane_id": "home-status-verdict",
+      "command": [
+        "$PY",
+        "scripts/home_status_verdict.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_home_status_verdict.lock",
+      "lock_kind": "flock",
+      "timeout_s": 45,
+      "market_gate": false,
+      "output_signal": "data/runtime/home-status-verdict_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_RUN_ID",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "New lane: confirm the env NAMES from the first dry-run receipt before enforce (the DB_* five, the state root for receipts and the mirror, the executor run id as the snapshot key). No broker credential name, no sender, no model.",
+      "env_evidence": "scripts/home_status_verdict.py pg_connect() reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD; main() reads TRADEAI_STATE_ROOT; run_id_for() reads TRADEAI_RUN_ID; scripts/lib/lane_last_receipt.py reads the executor TRADEAI_RUN_* names for the v2 attempt receipt.",
+      "source": "LQ-20261107-2144 (lead 2026-11-11 22:49 ET): register home-status-verdict, every minute in session / 5 min otherwise. SHADOW: live_arg null; --dry-run prints and writes nothing. lock_kind flock; no host cron line runs this script. timeout_s 45: six inputs at a 2 s statement_timeout each plus connect (10 s) is well under it, and a 1-minute cadence must never overlap itself."
     }
   ],
   "blocked_reasons": {

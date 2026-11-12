@@ -11,6 +11,7 @@ import SharedIntelligenceBridge from './components/SharedIntelligenceBridge'
 import StrategyHub from './pages/StrategyHub'
 import RiskHub from './pages/RiskHub'
 import HomeHub from './pages/HomeHub'
+import HomeV010 from './pages/HomeV010'
 import PortfolioHub from './pages/PortfolioHub'
 import ReEntryPage from './pages/ReEntryPage'
 import TradingHub from './pages/TradingHub'
@@ -252,7 +253,9 @@ function Shell() {
           {/* Menu level 2 (nav/v001): the current section's pages; level 3 stays each page's own tabs. */}
           <SectionStrip />
           <Routes>
-            <Route index element={<RouteErrorBoundary route="/v3/"><HomeHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            {/* Home v010 (operator-approved 2026-11-11) owns Today; the old Home stays reachable at /home-classic. */}
+            <Route index element={<RouteErrorBoundary route="/v3/"><HomeV010 /></RouteErrorBoundary>} />
+            <Route path="home-classic" element={<RouteErrorBoundary route="/v3/home-classic"><HomeHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="portfolio" element={<RouteErrorBoundary route="/v3/portfolio"><PortfolioHub onDrill={setDrill} /></RouteErrorBoundary>} />
             {/* Boards 1-4 (desks redesign 2026-10-24): the new desk owns the route; the classic page stays reachable until the desk is accepted. */}
             <Route path="portfolio/re-entry" element={<RouteErrorBoundary route="/v3/portfolio/re-entry"><ReEntryDesk /></RouteErrorBoundary>} />

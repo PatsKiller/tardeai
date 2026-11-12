@@ -357,13 +357,20 @@ STRATEGY_SECTORS = {
 
 
 def get_symbol_strategy(symbol: str) -> str:
-    """Look up a symbol's strategy from watchlist or holdings."""
+    """Look up a symbol's strategy from watchlist or holdings.
+
+    LQ-2509: the card read ordered by a column the table does not have (created_at), so every
+    call raised, was swallowed, and returned "unknown" (no sector-correlation alert could fire).
+    symbol is the primary key of watchlist_strategy_cards, so no ordering is needed. A failed
+    read is still "unknown" for the caller, but it is logged and never leaks the connection.
+    """
+    conn = None
     try:
         conn = _get_conn()
         cur = conn.cursor()
         cur.execute("""
             SELECT strategy_type FROM watchlist_strategy_cards
-            WHERE symbol = %s ORDER BY created_at DESC LIMIT 1
+            WHERE symbol = %s
         """, (symbol.upper(),))
         row = cur.fetchone()
         if not row:
@@ -372,10 +379,17 @@ def get_symbol_strategy(symbol: str) -> str:
                 WHERE symbol = %s LIMIT 1
             """, (symbol.upper(),))
             row = cur.fetchone()
-        conn.close()
         return (row[0] or "unknown") if row else "unknown"
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - named and logged, never silent
+        print(f"[agent_watchlist_engine] WARNING get_symbol_strategy({symbol}) read failed: "
+              f"{type(exc).__name__}: {str(exc).splitlines()[0][:200] if str(exc) else ''}", file=sys.stderr)
         return "unknown"
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def detect_sector_correlation(symbols: list) -> dict | None:

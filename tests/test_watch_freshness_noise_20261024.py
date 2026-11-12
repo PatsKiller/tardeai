@@ -20,7 +20,7 @@ def facts(master, strategy=None, closed=None, price=10):
 
 
 def test_broken_primary_uses_nearest_existing_resistance_not_first_compatible():
-    raw, view = facts({"resistance": 8}, {"resistance": 15, "created_at": NOW},
+    raw, view = facts({"resistance": 8}, {"resistance": 15, "updated_at": NOW},
                       {"resistance": 11, "as_of": "2026-10-23", "state": "BELOW"})
     before = deepcopy(raw)
     r = view["resistance"]

@@ -55,7 +55,7 @@ export const NAV: NavSection[] = [
   {
     id: 'home', label: 'Home', groups: [
       { label: 'Home', pages: [
-        { to: '/', label: 'Today', exact: true },
+        { to: '/', label: 'Today', exact: true, match: ['/home-classic'] },  // Home v010: the old Home stays reachable
         { to: '/approvals', search: '?tab=waiting', label: 'Needs you', alias: true },
         { to: '/cio/questions', label: 'My questions', alias: true },
       ] },

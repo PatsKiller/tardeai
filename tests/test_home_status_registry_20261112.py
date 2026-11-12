@@ -39,8 +39,11 @@ def test_class_fields_and_the_p0_blockers():
     assert classes["job_telemetry"]["priority"] == "INFO" and not classes["job_telemetry"]["home_visible"]
 
 
-def test_the_map_is_marked_a_proposal_until_the_operator_approves_it():
-    assert RAW["incident_classes_approved"] is False and "operator" in RAW["incident_classes_note"].lower()
+def test_the_map_is_approved_and_the_note_records_the_decision():
+    # LQ-20261107-2264: operator approved D2 on 2026-11-12 (~10:12 ET); the flip is recorded in the note
+    assert RAW["incident_classes_approved"] is True
+    note = RAW["incident_classes_note"]
+    assert "APPROVED" in note and "operator" in note.lower() and "D2-PROPOSAL-20261112" in note
 
 
 def test_requires_stop_and_exempt_accounts():
@@ -79,4 +82,87 @@ def test_validator_rejects_a_broken_incident_registry(mutate, match):
 def test_registry_endpoint_view_is_read_only_and_complete():
     out = api.registry_view()
     assert out["state"] == "OK" and set(OPEN_ALERT_TYPES) <= set(out["incident_classes"])
-    assert out["incident_classes_approved"] is False and "requires_stop" in out and "stop_exempt_accounts" in out
+    assert out["incident_classes_approved"] is True and "unclassified_incident" in out and "requires_stop" in out and "stop_exempt_accounts" in out
+
+
+# ---- LQ-20261107-2264: the approved D2 class map (surface columns) ----------------------------------------------------
+D2_EXPECT = {  # alert type -> (priority, home_status, trade_ready_effect, verdict, blocks)
+    "position_unprotected": ("P0", "CRITICAL", "NO", "ACT NOW", True),
+    "trading_impact_outage": ("P0", "CRITICAL", "NO", "ACT NOW", True),
+    "emergency_kill_or_revoke": ("P0", "CRITICAL", "NO", "ACT NOW", True),
+    "orphaned_stop": ("P1", "WARN", "NONE", "ACT TODAY", False),   # D2-d: warns, does not block
+    "stop_warning": ("P1", "WARN", "NONE", "ACT TODAY", False),
+    "data_integrity": ("P1", "WARN", "NONE", "ACT TODAY", False),
+    "platform_availability": ("P1", "WARN", "NONE", "ACT TODAY", False),
+}
+
+
+@pytest.mark.parametrize("alert,exp", sorted(D2_EXPECT.items()))
+def test_the_approved_d2_map_row(alert, exp):
+    out = hd.incident_surface(RAW, alert)
+    assert out["classified"] is True
+    assert (out["priority"], out["home_status"], out["trade_ready_effect"], out["incident_verdict"], out["blocks_trading"]) == exp
+
+
+def test_every_info_class_is_log_only_and_not_on_home():
+    info = [k for k, c in RAW["incident_classes"].items() if c["priority"] == "INFO"]
+    assert len(info) == 8
+    for k in info:
+        out = hd.incident_surface(RAW, k)
+        assert out["home_status"] is None and out["incident_verdict"] == "LOG ONLY" and not out["blocks_trading"]
+        assert RAW["incident_classes"][k]["home_visible"] is False
+
+
+def test_a_p0_can_never_map_below_critical():
+    p0 = [k for k, c in RAW["incident_classes"].items() if c["priority"] == "P0"]
+    assert sorted(p0) == ["emergency_kill_or_revoke", "position_unprotected", "trading_impact_outage"]
+    for k in p0:
+        out = hd.incident_surface(RAW, k)
+        assert out["home_status"] == "CRITICAL" and out["trade_ready_effect"] == "NO" and out["incident_verdict"] == "ACT NOW"
+        assert out["blocks_trading"] is True
+
+
+@pytest.mark.parametrize("field,value", [("home_status", "WARN"), ("home_status", None), ("trade_ready_effect", "NONE"),
+                                          ("incident_verdict", "ACT TODAY"), ("blocks_trading_default", False)])
+def test_the_loader_refuses_a_p0_mapped_below_critical(field, value):
+    d = copy.deepcopy(RAW)
+    d["incident_classes"]["position_unprotected"][field] = value
+    with pytest.raises(hd.RegistryError):
+        hd.validate_incident_registry(d)
+
+
+def test_the_loader_refuses_a_p1_promoted_or_an_info_shown_on_home():
+    d = copy.deepcopy(RAW)
+    d["incident_classes"]["orphaned_stop"]["home_status"] = "CRITICAL"
+    with pytest.raises(hd.RegistryError):
+        hd.validate_incident_registry(d)
+    d = copy.deepcopy(RAW)
+    d["incident_classes"]["job_telemetry"]["home_status"] = "WARN"
+    with pytest.raises(hd.RegistryError):
+        hd.validate_incident_registry(d)
+
+
+@pytest.mark.parametrize("alert", ["brand_new_alert_type", "", None, 7, "POSITION_UNPROTECTED"])
+def test_an_unclassified_incident_is_unknown_never_ok_never_ignored(alert):
+    out = hd.incident_surface(RAW, alert)
+    assert out["classified"] is False
+    assert out["trade_ready_effect"] == "UNKNOWN" and out["incident_verdict"] == "ACT TODAY" and out["home_status"] == "WARN"
+    assert out["blocks_trading"] is False  # UNKNOWN is not NO; NO still overrides UNKNOWN (R3)
+
+
+def test_the_loader_refuses_an_unclassified_mapping_that_ignores_or_passes_it():
+    for field, bad in (("trade_ready_effect", "NONE"), ("trade_ready_effect", "YES"), ("incident_verdict", "LOG ONLY"), ("home_status", None)):
+        d = copy.deepcopy(RAW)
+        d["unclassified_incident"][field] = bad
+        with pytest.raises(hd.RegistryError):
+            hd.validate_incident_registry(d)
+    d = copy.deepcopy(RAW)
+    d.pop("unclassified_incident")
+    with pytest.raises(hd.RegistryError):
+        hd.validate_incident_registry(d)
+
+
+def test_a_per_incident_override_may_only_raise_never_lower_a_p0():
+    assert hd.incident_surface(RAW, "position_unprotected", blocks_override=False)["blocks_trading"] is True   # D2-c
+    assert hd.incident_surface(RAW, "orphaned_stop", blocks_override=True)["blocks_trading"] is True           # raising is allowed
+    assert hd.incident_surface(RAW, "orphaned_stop", blocks_override=None)["blocks_trading"] is False

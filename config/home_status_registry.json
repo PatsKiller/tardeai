@@ -170,8 +170,12 @@
       }
     }
   ],
-  "incident_classes_approved": false,
-  "incident_classes_note": "PROPOSAL (operator decision D2): the class -> P-level map decides what turns the Trade-ready chip NO. Not approved; 2147/2144 read it as a proposal until approved is true.",
+  "incident_classes_approved": true,
+  "incident_classes_note": "APPROVED by the operator 2026-11-12 ~10:12 ET (D2-a map, D2-b unclassified = UNKNOWN, D2-c an override may only raise, never lower a P0, D2-d orphaned_stop = WARN / ACT TODAY and does not block). Record: coordinator/lead/D2-PROPOSAL-20261112.md. Approving the map does not by itself take the status verdict out of shadow (needs the home_snapshots migration and a validated release).",
+  "protection_verdict": {
+    "confirmed_no_overrides_unknown": true,
+    "note": "R3, operator 2026-11-12 08:40 ET (v6 addendum section 3; DECISION.md I1): a NO from a good read overrides UNKNOWN; the unknown inputs stay listed. Read at run time by scripts/home_status_verdict.py (LQ-2411). Missing or not a boolean -> verdict UNKNOWN, cause 'config invalid', plus a data-quality row; never YES, never a silent NO. R1/R2 keys are not added until a consumer honours them (U2/U3)."
+  },
   "incident_classes": {
     "position_unprotected": {
       "category": "Unprotected Position",
@@ -181,7 +185,10 @@
       "ttl_h": 1,
       "proof_window_h": 24,
       "home_visible": true,
-      "rationale": "a held position with no resting stop"
+      "rationale": "a held position with no resting stop",
+      "home_status": "CRITICAL",
+      "trade_ready_effect": "NO",
+      "incident_verdict": "ACT NOW"
     },
     "trading_impact_outage": {
       "category": "Trading-Impacting Outage",
@@ -191,7 +198,10 @@
       "ttl_h": 1,
       "proof_window_h": 24,
       "home_visible": true,
-      "rationale": "an outage that stops orders or data the desk trades on"
+      "rationale": "an outage that stops orders or data the desk trades on",
+      "home_status": "CRITICAL",
+      "trade_ready_effect": "NO",
+      "incident_verdict": "ACT NOW"
     },
     "emergency_kill_or_revoke": {
       "category": "Emergency Kill or Revoke",
@@ -201,7 +211,10 @@
       "ttl_h": 1,
       "proof_window_h": 24,
       "home_visible": true,
-      "rationale": "a kill switch or credential revoke was triggered"
+      "rationale": "a kill switch or credential revoke was triggered",
+      "home_status": "CRITICAL",
+      "trade_ready_effect": "NO",
+      "incident_verdict": "ACT NOW"
     },
     "orphaned_stop": {
       "category": "Orphaned Stop",
@@ -211,7 +224,10 @@
       "ttl_h": 4,
       "proof_window_h": 24,
       "home_visible": true,
-      "rationale": "a resting stop with no matching position"
+      "rationale": "a resting stop with no matching position",
+      "home_status": "WARN",
+      "trade_ready_effect": "NONE",
+      "incident_verdict": "ACT TODAY"
     },
     "stop_warning": {
       "category": "Stop Warning",
@@ -221,7 +237,10 @@
       "ttl_h": 4,
       "proof_window_h": 24,
       "home_visible": true,
-      "rationale": "a stop-monitor warning short of a gap"
+      "rationale": "a stop-monitor warning short of a gap",
+      "home_status": "WARN",
+      "trade_ready_effect": "NONE",
+      "incident_verdict": "ACT TODAY"
     },
     "data_integrity": {
       "category": "Data Integrity",
@@ -231,7 +250,10 @@
       "ttl_h": 4,
       "proof_window_h": 24,
       "home_visible": true,
-      "rationale": "stored data disagrees with its source"
+      "rationale": "stored data disagrees with its source",
+      "home_status": "WARN",
+      "trade_ready_effect": "NONE",
+      "incident_verdict": "ACT TODAY"
     },
     "platform_availability": {
       "category": "Platform Availability",
@@ -241,7 +263,10 @@
       "ttl_h": 4,
       "proof_window_h": 24,
       "home_visible": true,
-      "rationale": "a platform component is degraded without trading impact"
+      "rationale": "a platform component is degraded without trading impact",
+      "home_status": "WARN",
+      "trade_ready_effect": "NONE",
+      "incident_verdict": "ACT TODAY"
     },
     "siem_without_trading_impact": {
       "category": "Security Event, No Trading Impact",
@@ -251,7 +276,10 @@
       "ttl_h": 24,
       "proof_window_h": null,
       "home_visible": false,
-      "rationale": "security telemetry"
+      "rationale": "security telemetry",
+      "home_status": null,
+      "trade_ready_effect": "NONE",
+      "incident_verdict": "LOG ONLY"
     },
     "proposal_blocked_or_rebuild": {
       "category": "Proposal Blocked or Rebuilt",
@@ -261,7 +289,10 @@
       "ttl_h": 24,
       "proof_window_h": null,
       "home_visible": false,
-      "rationale": "CIO pipeline housekeeping"
+      "rationale": "CIO pipeline housekeeping",
+      "home_status": null,
+      "trade_ready_effect": "NONE",
+      "incident_verdict": "LOG ONLY"
     },
     "paper_proposal": {
       "category": "Paper Proposal",
@@ -271,7 +302,10 @@
       "ttl_h": 24,
       "proof_window_h": null,
       "home_visible": false,
-      "rationale": "paper-only proposal"
+      "rationale": "paper-only proposal",
+      "home_status": null,
+      "trade_ready_effect": "NONE",
+      "incident_verdict": "LOG ONLY"
     },
     "scanner_candidate": {
       "category": "Scanner Candidate",
@@ -281,7 +315,10 @@
       "ttl_h": 24,
       "proof_window_h": null,
       "home_visible": false,
-      "rationale": "scanner output awaiting review"
+      "rationale": "scanner output awaiting review",
+      "home_status": null,
+      "trade_ready_effect": "NONE",
+      "incident_verdict": "LOG ONLY"
     },
     "research_update": {
       "category": "Research Update",
@@ -291,7 +328,10 @@
       "ttl_h": 24,
       "proof_window_h": null,
       "home_visible": false,
-      "rationale": "research feed item"
+      "rationale": "research feed item",
+      "home_status": null,
+      "trade_ready_effect": "NONE",
+      "incident_verdict": "LOG ONLY"
     },
     "thesis_update": {
       "category": "Thesis Update",
@@ -301,7 +341,10 @@
       "ttl_h": 24,
       "proof_window_h": null,
       "home_visible": false,
-      "rationale": "thesis feed item"
+      "rationale": "thesis feed item",
+      "home_status": null,
+      "trade_ready_effect": "NONE",
+      "incident_verdict": "LOG ONLY"
     },
     "cio_entry_state": {
       "category": "CIO Entry State",
@@ -311,7 +354,10 @@
       "ttl_h": 24,
       "proof_window_h": null,
       "home_visible": false,
-      "rationale": "entry-state change"
+      "rationale": "entry-state change",
+      "home_status": null,
+      "trade_ready_effect": "NONE",
+      "incident_verdict": "LOG ONLY"
     },
     "job_telemetry": {
       "category": "Job Telemetry",
@@ -321,8 +367,18 @@
       "ttl_h": 24,
       "proof_window_h": null,
       "home_visible": false,
-      "rationale": "lane run telemetry"
+      "rationale": "lane run telemetry",
+      "home_status": null,
+      "trade_ready_effect": "NONE",
+      "incident_verdict": "LOG ONLY"
     }
+  },
+  "unclassified_incident": {
+    "priority": "P1",
+    "home_status": "WARN",
+    "trade_ready_effect": "UNKNOWN",
+    "incident_verdict": "ACT TODAY",
+    "note": "D2-b: an incident whose class is not in incident_classes is never ignored: it makes Trade Ready UNKNOWN and asks to be classified."
   },
   "requires_stop": {
     "asset_types": [

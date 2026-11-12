@@ -237,6 +237,22 @@ def _advice_hold(name: str) -> bool:
         return False
 
 
+# Producer headers of notices that are never trading alerts (LQ-2445); anchored at the start, after an emoji/markup.
+_NOTICE_HEADER = re.compile(r"^[^\w]{0,8}(?:release not reached after\b|pr merge digest\b)", re.I)
+# A kill switch / revoke named in words, not inside an identifier (unit flag, service name, column, gate id):
+# ``..._killswitch_stop``, ``tradeai-killswitch-watch.service``, ``kill_switches_clear``, ``unrevoked``,
+# ``grant_revoked_at`` do not match; "KILL SWITCH FIRED", "kill_switch active:", "KILL-SWITCH tripped",
+# "session revoked" do (LQ-2445).
+_ID_LEFT = r"(?<![A-Za-z0-9_.-])"
+_ID_RIGHT = r"(?![A-Za-z0-9_]|[-.][A-Za-z0-9])"
+_KILL_OR_REVOKE = re.compile(
+    _ID_LEFT + r"(?:kill[ _-]?switch(?:es)?|emergency kill|revok(?:e|ed|es|ing))" + _ID_RIGHT, re.I)
+# The same words, with no identifier guard (LQ-2468, REVIEW-2463 F1). A text that names a kill switch / revoke only in a
+# shape the guards above reject (``KILL_SWITCH_ENGAGED``, ``kill-switch-tripped``, ``atm_kill_switch fired``,
+# ``token_revoked``) is not known to be a flag name: it must never fall to the quiet default (job_telemetry/info).
+_KILL_OR_REVOKE_WORD = re.compile(r"kill[ _.-]*switch|emergency[ _.-]*kill|revok", re.I)
+
+
 def classify_legacy_message(message: str, *, source_producer: str = "legacy_send_telegram") -> AlertEvent:
     """Compatibility classifier for old string producers.
 
@@ -293,6 +309,15 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
     if ("material change \u2014" in low or "material change \u00b7" in low
             or re.search(r"[x\u00d7] its normal daily move", low)):
         return ev("material_change", "info")
+    # Deploy/release and PR-digest notices (LQ-2445). Matched on the producer header at the START of the text
+    # (scripts/current_bound_units.py, scripts/lib/pr_merge_digest.py), before any content rule: their bullets name
+    # units, flags and PR prose, and the unit flag ``ops_applier_writes_grants_killswitch_stop`` turned a
+    # "RELEASE NOT REACHED" notice into emergency_kill_or_revoke (critical P0, Home NO) 149 times from
+    # 2026-11-01 and again 2026-11-12 09:47 ET. A stale release is an ops warning, never a kill.
+    if _NOTICE_HEADER.match(text):
+        if "release not reached" in low:
+            return ev("job_telemetry", "warning")
+        return ev("job_telemetry", "info")
     if re.search(r"\blive (?:order )?2fa\b|2fa required.*live order|live order.*approval required", text, re.I):
         return ev("live_order_2fa_required", "critical", True, "LIVE_ORDER_2FA")
     if re.search(r"\blive session\b.*\b2fa\b|session authorization.*required", text, re.I):
@@ -362,9 +387,7 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
         return ev("partial_fill_protection_uncertain", "critical", True, "PROTECTION_REPAIR")
     if re.search(r"flatten.*(?:failed|uncertain)", text, re.I):
         return ev("flatten_failed_or_uncertain", "critical", True, "FLATTEN_REVIEW")
-    if not re.search(r"health agent|system health", text, re.I) and re.search(
-        r"kill.?switch|emergency kill|revoke", text, re.I
-    ):
+    if not re.search(r"health agent|system health", text, re.I) and _KILL_OR_REVOKE.search(text):
         return ev("emergency_kill_or_revoke", "critical", True, "KILL_REVIEW")
     if re.search(r"siem\s+p[01]", text, re.I):
         if "paper_execution" not in low and re.search(
@@ -393,6 +416,10 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
     if "[DATA_INTEGRITY]" in text:
         return ev("data_integrity", "critical", True, "DATA_REVIEW")
 
+    # LQ-2468: a kill/revoke word that the identifier guards rejected and no other rule claimed is UNCLASSIFIED
+    # (warning, not in the Home class map, so Home reads UNKNOWN), never the default info. Unknown beats wrong.
+    if not re.search(r"health agent|system health", text, re.I) and _KILL_OR_REVOKE_WORD.search(text):
+        return ev("unclassified", "warning")
     if re.search(r"health|pipeline|reaper|job|output_invalid|retry_exhausted|locktimeout", text, re.I):
         return ev("job_telemetry", "warning")
     return ev("job_telemetry", "info")

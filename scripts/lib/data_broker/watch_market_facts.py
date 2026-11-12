@@ -8,6 +8,7 @@ closed-session resistance fallback. No price targets, stops or averages become l
 from __future__ import annotations
 
 import json
+import logging
 import math
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -15,11 +16,14 @@ from typing import Any, Callable, Iterable
 
 from lib.data_broker.latest_quote import DEFAULT_MAX_AGE_SECONDS, get_latest_quotes
 
+log = logging.getLogger(__name__)
+
 SCHEMA = "WatchMarketFacts@v1"
 RESISTANCE_KEY = "portfolio.reentry.resistance.v1"
 MASTER_SQL = "SELECT symbol, support, resistance FROM watchlist_symbol_master WHERE symbol = ANY(%s)"
-STRATEGY_SQL = """SELECT DISTINCT ON (symbol) symbol, support, resistance, created_at
-FROM watchlist_strategy_cards WHERE symbol = ANY(%s) ORDER BY symbol, created_at DESC"""
+# symbol is the table's primary key (one card per symbol) and the table has no created_at:
+# LQ-2509, the old ORDER BY created_at failed on every read since >= 2026-11-02.
+STRATEGY_SQL = "SELECT symbol, support, resistance, updated_at FROM watchlist_strategy_cards WHERE symbol = ANY(%s)"
 PREF_SQL = "SELECT value FROM ui_prefs WHERE key=%s"
 CANONICAL_KEYS = (
     "last", "day_change_pct", "price_as_of", "observed_at", "price_source", "quote_id", "source_record_id",
@@ -56,6 +60,25 @@ def _symbols(values: Iterable[Any]) -> list[str]:
     return sorted({str(v).strip().upper() for v in values if str(v or "").strip()})
 
 
+class ReadUnavailable(Exception):
+    """A reader returned None: db_adapter._execute's signal for a swallowed SQL error or no connection."""
+
+
+def _rows(db_query: Callable[..., Any], sql: str, params: Any, source: str) -> Any:
+    rows = db_query(sql, params)
+    if rows is None:
+        # LQ-2509: production db_query swallows the SQL error and returns None; an empty
+        # list is "no rows". Treating None as [] made a failed read look like missing data.
+        raise ReadUnavailable(source)
+    return rows
+
+
+def _unavailable(source: str, exc: BaseException) -> str:
+    # Named and logged for operators; the snapshot/view keep only the sanitized state.
+    log.warning("watch_market_facts: %s read unavailable (%s)", source, type(exc).__name__)
+    return "unavailable"
+
+
 def _raw(row: Any, key: str, index: int) -> Any:
     if isinstance(row, dict):
         return row.get(key)
@@ -87,7 +110,7 @@ def load_snapshot(db_query: Callable[..., Any] | None, symbols: Iterable[Any], *
     quote_inputs: list[Any] = []
 
     def quote_reader(sql, params):
-        rows = list(db_query(sql, params) or [])
+        rows = list(_rows(db_query, sql, params, "quotes"))
         quote_inputs.extend(rows)
         return rows
 
@@ -101,17 +124,17 @@ def load_snapshot(db_query: Callable[..., Any] | None, symbols: Iterable[Any], *
             rec["as_of"] = _iso(_raw(row, "fetched_at", 5))
             if isinstance(_raw(row, "price", 1), bool):
                 rec["price"] = None
-    result["read_status"]["quotes"] = "ok" if quote_batch.get("ok") else "unavailable"
+    result["read_status"]["quotes"] = "ok" if quote_batch.get("ok") else _unavailable("quotes", ReadUnavailable("quotes"))
     for name, sql in (("master", MASTER_SQL), ("strategy", STRATEGY_SQL)):
         try:
-            rows = db_query(sql, (syms,)) or []
+            rows = _rows(db_query, sql, (syms,), name)
             result[name] = {str(r["symbol"]).upper(): dict(r) for r in rows
                             if isinstance(r, dict) and str(r.get("symbol") or "").upper() in syms}
             result["read_status"][name] = "ok"
-        except Exception:  # noqa: BLE001 - independent, sanitized missing-source state
-            result["read_status"][name] = "unavailable"
+        except Exception as exc:  # noqa: BLE001 - independent, sanitized missing-source state
+            result["read_status"][name] = _unavailable(name, exc)
     try:
-        rows = db_query(PREF_SQL, (RESISTANCE_KEY,)) or []
+        rows = _rows(db_query, PREF_SQL, (RESISTANCE_KEY,), "closed")
         row = rows if isinstance(rows, dict) else rows[0] if rows else {}
         payload = row.get("value") or {}
         payload = json.loads(payload) if isinstance(payload, str) else payload
@@ -119,8 +142,8 @@ def load_snapshot(db_query: Callable[..., Any] | None, symbols: Iterable[Any], *
         result["closed"] = {str(s).upper(): r for s, r in closed.items() if isinstance(r, dict)} if isinstance(closed, dict) else {}
         result["invalid_closed_symbols"] = [str(s).upper() for s, r in closed.items() if not isinstance(r, dict)] if isinstance(closed, dict) else []
         result["read_status"]["closed"] = "ok" if isinstance(closed, dict) else "invalid"
-    except Exception:  # noqa: BLE001 - never expose DB/credential details to an operator surface
-        result["read_status"]["closed"] = "unavailable"
+    except Exception as exc:  # noqa: BLE001 - never expose DB/credential details to an operator surface
+        result["read_status"]["closed"] = _unavailable("closed", exc)
     return result
 
 
@@ -170,6 +193,7 @@ def _price(snapshot: dict, sym: str, now: datetime) -> dict:
 
 def _level(snapshot: dict, sym: str, kind: str, price: float | None) -> dict:
     notes: list[str] = []
+    unreadable: list[str] = []
     broken: list[dict] = []
     fallbacks: list[dict] = []
     specs = [("master", "watchlist_symbol_master", "Watch symbol master"),
@@ -184,12 +208,14 @@ def _level(snapshot: dict, sym: str, kind: str, price: float | None) -> dict:
         if value is None:
             status = (snapshot.get("read_status") or {}).get(name)
             invalid = status == "invalid" or (name == "closed" and sym in snapshot.get("invalid_closed_symbols", []))
+            if status == "unavailable":
+                unreadable.append(source)
             reason = "read unavailable" if status == "unavailable" else "data invalid" if invalid else "invalid" if rec.get(kind) is not None else "missing"
             notes.append(f"{label} {kind} {reason}.")
             continue
         crossed = price is not None and (value > price if kind == "support" else value < price)
-        observed = _iso(rec.get("created_at")) if name == "strategy" else _iso(rec.get("as_of")) if name == "closed" else None
-        basis = "strategy card created_at" if name == "strategy" else "last closed session" if name == "closed" else "not exposed by source"
+        observed = _iso(rec.get("updated_at")) if name == "strategy" else _iso(rec.get("as_of")) if name == "closed" else None
+        basis = "strategy card updated_at" if name == "strategy" else "last closed session" if name == "closed" else "not exposed by source"
         if crossed:
             notes.append(f"{label} {kind} is {'above' if kind == 'support' else 'below'} the shown price.")
             broken.append({"value": value, "source": source, "source_label": label, "as_of": observed,
@@ -210,11 +236,14 @@ def _level(snapshot: dict, sym: str, kind: str, price: float | None) -> dict:
             notes.append("Price unavailable; nearest-level relation is unknown.")
         notes.append("Level observation time unavailable." if selected["as_of"] is None else
                      "Closed-session date; level freshness is not assessed." if selected["as_of_basis"] == "last closed session" else
-                     "Strategy-card creation time; level freshness is not assessed.")
+                     "Strategy-card update time; level freshness is not assessed.")
         return {**selected, "reason": " ".join(notes), "broken_reference": broken[0] if broken else None,
+                "unreadable_sources": unreadable,
                 "fallback_status": "nearest_compatible_reference" if broken else None}
-    return {"value": None, "as_of": None, "source": None, "source_label": "No reference", "stale": None,
-            "freshness": "MISSING", "compatibility": "UNKNOWN", "reason": " ".join(notes), "as_of_basis": None,
+    # A source that could not be read may hold the level: that is UNKNOWN, never MISSING (LQ-2509).
+    return {"value": None, "as_of": None, "source": None,
+            "source_label": "Reference unknown: source read unavailable" if unreadable else "No reference", "stale": None,
+            "freshness": "UNKNOWN" if unreadable else "MISSING", "unreadable_sources": unreadable, "compatibility": "UNKNOWN", "reason": " ".join(notes), "as_of_basis": None,
             "broken_reference": broken[0] if broken else None,
             "fallback_status": ("none_below_price" if kind == "support" else "none_above_price") if broken else None}
 

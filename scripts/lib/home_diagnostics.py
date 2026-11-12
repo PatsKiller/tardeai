@@ -47,6 +47,9 @@ def _need(cond: bool, msg: str) -> None:
 
 
 PRIORITIES = ("P0", "P1", "INFO")
+# D2 (operator 2026-11-12): what each priority does on the three surfaces. A P0 can never map below CRITICAL / NO / ACT NOW.
+SURFACE_BY_PRIORITY = {"P0": ("CRITICAL", "NO", "ACT NOW"), "P1": ("WARN", "NONE", "ACT TODAY"), "INFO": (None, "NONE", "LOG ONLY")}
+UNCLASSIFIED_SURFACE = ("WARN", "UNKNOWN", "ACT TODAY")  # D2-b: an unclassified incident is UNKNOWN for Trade Ready, never ignored
 
 
 def validate_incident_registry(doc: Mapping[str, Any]) -> None:
@@ -64,9 +67,32 @@ def validate_incident_registry(doc: Mapping[str, Any]) -> None:
         for k in ("ttl_h", "proof_window_h"):
             _need(c.get(k) is None or (isinstance(c[k], (int, float)) and c[k] > 0), f"incident class {key}: {k} must be null or positive")
         _need(not (c["blocks_trading_default"] and c["priority"] == "INFO"), f"incident class {key}: an INFO class cannot block trading")
+        home, tr, verdict = SURFACE_BY_PRIORITY[c["priority"]]
+        _need(c.get("home_status") == home, f"incident class {key}: home_status must be {home!r} for {c['priority']}, got {c.get('home_status')!r}")
+        _need(c.get("trade_ready_effect") == tr, f"incident class {key}: trade_ready_effect must be {tr!r} for {c['priority']}, got {c.get('trade_ready_effect')!r}")
+        _need(c.get("incident_verdict") == verdict, f"incident class {key}: incident_verdict must be {verdict!r} for {c['priority']}, got {c.get('incident_verdict')!r}")
+        _need(c["priority"] != "P0" or c["blocks_trading_default"], f"incident class {key}: a P0 class must block trading")
+    u = doc.get("unclassified_incident") or {}
+    _need((u.get("home_status"), u.get("trade_ready_effect"), u.get("incident_verdict")) == UNCLASSIFIED_SURFACE,
+          f"unclassified_incident must map to {UNCLASSIFIED_SURFACE} (D2-b: unclassified is UNKNOWN, never ignored)")
     rs = doc.get("requires_stop") or {}
     _need(isinstance(rs.get("asset_types"), list) and bool(rs["asset_types"]), "requires_stop.asset_types is required")
     _need(isinstance(doc.get("stop_exempt_accounts"), list), "stop_exempt_accounts must be a list")
+
+
+def incident_surface(doc: Mapping[str, Any], alert_type: Any, blocks_override: Optional[bool] = None) -> dict[str, Any]:
+    """PURE: what an incident of ``alert_type`` shows on Home / Trade Ready / Incident Management under the approved D2 map.
+
+    A class the registry does not know is UNKNOWN for Trade Ready (never ignored, never OK). ``blocks_override`` (the per-incident
+    blocks_trading column) may only RAISE a class to blocking: False can never lower a class that blocks by default (D2-c)."""
+    c = (doc.get("incident_classes") or {}).get(alert_type) if isinstance(alert_type, str) else None
+    if c is None:
+        home, tr, verdict = UNCLASSIFIED_SURFACE
+        return {"classified": False, "priority": "P1", "home_status": home, "trade_ready_effect": tr, "incident_verdict": verdict,
+                "blocks_trading": False}
+    blocks = bool(c["blocks_trading_default"]) or blocks_override is True
+    return {"classified": True, "priority": c["priority"], "home_status": c["home_status"], "trade_ready_effect": c["trade_ready_effect"],
+            "incident_verdict": c["incident_verdict"], "blocks_trading": blocks}
 
 
 def validate_registry(doc: Mapping[str, Any]) -> dict[str, Any]:

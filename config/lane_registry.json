@@ -28457,6 +28457,58 @@
       "value_class": "Technical Debt",
       "severity": "Medium",
       "note": "LQ-20261107-1986 (REVIEW-1967 N1): the LIVE MATURITY counter (E14, LiveAcceptance@v2) has no scheduled poller. The ATM item reads a single overwritten data/runtime/atm-auto-approver_last.json, so a slot it did not see before the next run replaces it is UNOBSERVED and resets n; the counter must therefore run at least once per ATM cadence slot (*/15). Every 10 minutes leaves one missed poll of slack inside the 15-minute interval and is also enough for the hourly service samples. SHADOW: live_arg is null and dispatch.mode is dry_run, so every fire is the read-only --dry-run argv and persists nothing; the state file only advances when the lead promotes the lane and sets live_arg to --write-state (operator-only: a live fire writes durable counter state). Until then the counter is not polled and the ATM item reads UNOBSERVED on any gap, which is the honest state."
+    },
+    {
+      "lane_id": "home-status-verdict",
+      "owner": "ops",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/home_status_verdict.py",
+        "cadence": "* 9-15 * * 1-5",
+        "stage": "shadow",
+        "wave": "W5",
+        "timezone": "America/New_York"
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "* 9-15 * * 1-5",
+          "*/5 0-8,16-23 * * 1-5",
+          "*/5 * * * 0,6"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "monitor",
+        "priority": 2,
+        "retry_policy": "transient-2"
+      },
+      "expected_cadence_hours": 0.08333333333333333,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-12",
+      "state_reason": "LQ-20261107-2144 (lead 2026-11-11 22:49 ET; Home v010 APPROVED, HOME-BACKEND-SPEC-20261111 section 2): the Home 'Trade-ready' verdict computer. n8n-native dispatcher lane, every minute 09:00-15:59 ET on weekdays and every 5 minutes otherwise (one row, three cron lines); no cron line and no systemd unit is added. Stage SHADOW: every fire runs --dry-run (prints, writes nothing) and the allowlist has no live_arg. Promotion needs: home_snapshots migrated (W0-c), the LQ-2149 incident class map operator-approved (D2), and the operator's word.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/home-status-verdict_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/home_status_verdict.py writes LaneRunReceipt@v2 through scripts/lib/lane_last_receipt.py on --apply only (produced_count 1 = one home_snapshots kind=status row upserted); tests/test_home_trade_ready_20261112.py pins this row. At shadow no receipt is written: runtime NOT_MEASURED."
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_home_trade_ready_20261112.py (truth table, serve-time staleness, this row, the allowlist entry, the REVIEWED contract, and the scheduled dry-run argv writing no receipt).",
+      "review_by": "2026-11-26",
+      "value_class": "Business Critical",
+      "severity": "High",
+      "note": "Read-only advisory (MBI_BEHAVIOR = 0): reads alert_incidents, validation_gates, positions_current, positions_sync_runs, market_quotes, lane_health_current and two lane receipts, each query under a 2 s statement_timeout; writes only its own home_snapshots kind=status row (7-day retention of its own kind in the same transaction), a JSON mirror and its receipt. It never sizes, orders, stops, sends or calls a broker. GET /api/v2/home/status only reads the snapshot; a stale snapshot serves UNKNOWN."
     }
   ],
   "freshness_contracts": [

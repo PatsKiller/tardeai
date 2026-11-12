@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "home_trade_ready_20261112",
+  "files": [
+    "tests/test_home_trade_ready_20261112.py"
+  ],
+  "anchor": "HOME_TRADE_READY_20261112",
+  "comment": [
+    "ANCHOR: HOME_TRADE_READY_20261112 - the Home 'Trade-ready' verdict (LQ-20261107-2144, Home v010 DECISION 2026-11-11).",
+    "Exhaustive truth table (81,000 cases) against an independent oracle of the approved rule; NO > UNKNOWN > YES (I1),",
+    "unreadable rows are UNKNOWN (I2); no default incident class map (D2); a stale snapshot is never served as YES;",
+    "the n8n dispatcher row, allowlist entry and REVIEWED health contract pinned to the script. Synthetic ZQ* fixtures."
+  ]
+}

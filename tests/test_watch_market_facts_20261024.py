@@ -79,18 +79,18 @@ def test_invalid_prices_and_levels_are_missing_not_fabricated(value):
 
 def test_primary_source_precedence_is_per_field_and_strategy_time_is_qualified():
     db = FakeDB(master=[{"symbol": "AAA", "support": 8, "resistance": None}],
-                strategy=[{"symbol": "AAA", "support": 9, "resistance": 11, "created_at": NOW}])
+                strategy=[{"symbol": "AAA", "support": 9, "resistance": 11, "updated_at": NOW}])
     facts = mf.view(snapshot(db), "AAA", now=NOW)
     assert facts["support"]["value"] == 8 and facts["support"]["source"] == "watchlist_symbol_master"
     assert facts["support"]["as_of"] is None and facts["support"]["stale"] is None
     assert facts["resistance"]["value"] == 11 and facts["resistance"]["source"] == "watchlist_strategy_cards"
-    assert facts["resistance"]["as_of"] == NOW.isoformat() and facts["resistance"]["as_of_basis"] == "strategy card created_at"
+    assert facts["resistance"]["as_of"] == NOW.isoformat() and facts["resistance"]["as_of_basis"] == "strategy card updated_at"
 
 
 @pytest.mark.parametrize("json_pref", [False, True])
 def test_crossed_primary_falls_back_and_closed_date_is_never_cache_generation_time(json_pref):
     db = FakeDB(master=[{"symbol": "AAA", "support": 12, "resistance": 8}],
-                strategy=[{"symbol": "AAA", "support": 9, "resistance": 9, "created_at": NOW}],
+                strategy=[{"symbol": "AAA", "support": 9, "resistance": 9, "updated_at": NOW}],
                 closed={"aaa": {"resistance": 11, "state": "BELOW", "as_of": "2026-10-22"}}, json_pref=json_pref)
     facts = mf.view(snapshot(db), "AAA", now=NOW)
     assert facts["support"]["value"] == 9 and "above the shown price" in facts["support"]["reason"]
@@ -117,7 +117,7 @@ def test_missing_price_retains_known_levels_with_unknown_nearest_relation():
 
 @pytest.mark.parametrize("failed", ["quotes", "master", "strategy", "closed"])
 def test_independent_source_failure_keeps_other_evidence_and_sanitizes_reason(failed):
-    db = FakeDB(strategy=[{"symbol": "AAA", "support": 8, "resistance": 12, "created_at": NOW}], failures={failed})
+    db = FakeDB(strategy=[{"symbol": "AAA", "support": 8, "resistance": 12, "updated_at": NOW}], failures={failed})
     raw = snapshot(db); facts = mf.view(raw, "AAA", now=NOW)
     assert "PRIVATE_DB_FAILURE_DETAILS" not in json.dumps([raw, facts], default=str)
     assert facts["support"]["value"] is not None

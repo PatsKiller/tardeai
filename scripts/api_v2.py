@@ -31627,6 +31627,18 @@ def _db_query_raising(sql, params=None, fetch="all"):
         raise
 
 
+def _home_status():
+    """GET /api/v2/home/status — HomeStatus@v1 + ``trade_ready`` + ``gates`` (home-status-backend, LQ-2144/2411 rule).
+    A fresh home-status-verdict snapshot when one exists; otherwise the lane's read-only providers run on this request
+    (READ ONLY transaction, 2 s statement_timeout each) over STORED rows only — never a broker, credential probe or
+    network call. Cached 30 s. Any failure is verdict UNKNOWN with a named reason, never YES (lib/home_status_live.py)."""
+    _ensure_scripts_path()
+    from db_adapter import USE_DB, ensure_conn
+    from lib import home_status_live as _hsl
+
+    return _hsl.serve(lambda: ensure_conn() if USE_DB else None, snapshot_query=_db_query)
+
+
 _HOME_CIO_CARD_CACHE: dict = {}
 
 
@@ -37261,12 +37273,12 @@ def _ui_prefs_get(query=None):
         "value": _json_clean(r["value"]) if r else None,
         "updated_at": _json_clean(r["updated_at"]) if r else None,
     }
-    if key == "home.last_seen":  # LQ-20261107-2142: the page-facing reading (RECORDED | NOT_RECORDED | UNKNOWN)
+    from lib import home_last_seen as _hls
+
+    if _hls.is_last_seen_key(key):  # LQ-2142 home / LQ-2467 portfolio: the page-facing reading (RECORDED | NOT_RECORDED | UNKNOWN)
         from datetime import datetime as _dt, timezone as _tz
 
-        from lib import home_last_seen as _hls
-
-        out["read"] = _hls.read(out["value"], out["updated_at"], now=_dt.now(_tz.utc), exists=r is not None)
+        out["read"] = _hls.read(out["value"], out["updated_at"], now=_dt.now(_tz.utc), exists=r is not None, key=key)
     return out
 
 
@@ -37299,10 +37311,10 @@ def _ui_prefs_set(body=None):
     max_bytes = 262144
     if len(blob.encode("utf-8")) > max_bytes:
         return {"ok": False, "error": f"value too large ({max_bytes // 1024}KB cap)"}
-    if key == "home.last_seen":  # LQ-20261107-2142: server-stamped seen_at; previous_seen_at copied from the stored one
-        from datetime import datetime as _dt, timezone as _tz
+    from lib import home_last_seen as _hls
 
-        from lib import home_last_seen as _hls
+    if _hls.is_last_seen_key(key):  # LQ-2142 / LQ-2467: server-stamped seen_at; previous_seen_at copied from the stored one
+        from datetime import datetime as _dt, timezone as _tz
 
         norm, why = _hls.stamp(b.get("value"), None, now=_dt.now(_tz.utc))
         if norm is None:
@@ -50564,6 +50576,7 @@ ROUTES = {
     "/api/v2/home/since-close": lambda: _home_since_close(),
     "/api/v2/home/cio-card": lambda: _home_cio_card(),
     "/api/v2/home/incidents": lambda: _home_incidents(),
+    "/api/v2/home/status": lambda: _home_status(),
     "/api/v2/queue/pending": lambda: _queue_pending(),
     "/api/v2/queue/completed": lambda: _queue_completed(),
     "/api/v2/queue/failed": lambda: _queue_failed(),
@@ -58502,7 +58515,9 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     if method == "POST" and base_path == "/api/v2/ui/prefs":
         try:
-            if str((body or {}).get("key") or "").strip() == "home.last_seen":
+            from lib import home_last_seen as _hls_keys
+
+            if _hls_keys.is_last_seen_key((body or {}).get("key")):  # home.last_seen, portfolio.last_seen (LQ-2467)
                 # LQ-20261107-2167 C1: the operator's own signed-in session + same-origin CSRF (enforced even in
                 # report_only), the home-approvals rail. Scoped to this key; other prefs writers are unchanged.
                 _hls_status, _hls_refusal = _home_last_seen_gate()

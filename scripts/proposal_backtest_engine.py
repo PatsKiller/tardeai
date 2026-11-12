@@ -78,6 +78,22 @@ def backtest_proposal(conn, proposal_id, *, persist: bool = True):
     ``persist=False`` (dry run) returns the computed result before the snapshot upsert / proposal update.
     ``result["persisted"]`` is True only when the upsert committed."""
     cur = conn.cursor()
+    sql_errors: list[str] = []
+
+    def _sql_error(section: str, exc: Exception) -> None:
+        """Record one failed enrichment query and clear its aborted transaction (LQ-20261107-2458).
+
+        A failed statement leaves the Postgres transaction ABORTED, so every later query in this proposal
+        fails with "current transaction is aborted, commands ignored until end of transaction block". Both
+        used to be swallowed (a bare ``except: pass``), so the run reported status ok / load_errors 0 while
+        the PG log recorded the failure once per processed item. Roll back per item and carry the failure
+        into the result, which fails the run instead of writing a snapshot from partial evidence.
+        """
+        sql_errors.append(f"{section}: {type(exc).__name__}: {str(exc)[:160]}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass  # a broken connection is the caller's problem; the run still fails on sql_errors
 
     # Load proposal
     cur.execute("""
@@ -204,17 +220,20 @@ def backtest_proposal(conn, proposal_id, *, persist: bool = True):
                 similar_wins += 1
             similar_pnl += float(pnl or 0)
     except Exception as e:
-        log.debug(f"Similar setup query failed: {e}")
-        try: conn.rollback()
-        except: pass
+        log.warning(f"Similar setup query failed for {symbol}: {type(e).__name__}: {e}")
+        _sql_error("similar_setup", e)
 
     # ── 4. Pattern library ──────────────────────────────────────────────
+    # The real table has pattern_name / status / notes / strategy_id / definition (jsonb, carrying
+    # sample_symbols); there is no pattern_description and no symbol column. The old query named both, so
+    # every item failed here — and the failure was invisible (LQ-20261107-2458, PG log "column
+    # pattern_description does not exist"). The symbol match reads the definition's sample_symbols array.
     patterns = {"proven": [], "killed": [], "watch": []}
     try:
         cur.execute("""
-            SELECT pattern_name, status, pattern_description
+            SELECT pattern_name, status, COALESCE(notes, '')
             FROM pattern_library
-            WHERE (symbol = %s OR strategy_id = %s)
+            WHERE (definition -> 'sample_symbols' ? %s OR strategy_id = %s)
               AND status IN ('PROVEN', 'KILLED', 'WATCH')
             ORDER BY created_at DESC LIMIT 10
         """, [symbol, strategy_id])
@@ -223,8 +242,9 @@ def backtest_proposal(conn, proposal_id, *, persist: bool = True):
             if status == 'PROVEN': patterns["proven"].append(entry)
             elif status == 'KILLED': patterns["killed"].append(entry)
             elif status == 'WATCH': patterns["watch"].append(entry)
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning(f"Pattern library query failed for {symbol}: {type(e).__name__}: {e}")
+        _sql_error("pattern_library", e)
 
     # ── 5. Agent recommendation outcomes ────────────────────────────────
     agent_outcomes = 0
@@ -238,8 +258,9 @@ def backtest_proposal(conn, proposal_id, *, persist: bool = True):
         r = cur.fetchone()
         agent_outcomes = r[0] or 0
         agent_correct = r[1] or 0
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning(f"Agent outcomes query failed for {symbol}: {type(e).__name__}: {e}")
+        _sql_error("agent_recommendation_outcomes", e)
 
     # ── Aggregate ───────────────────────────────────────────────────────
     # One sample per row: sample_size IS the metrics sample, so a row can never show a win rate and a
@@ -332,6 +353,18 @@ def backtest_proposal(conn, proposal_id, *, persist: bool = True):
         "agent_outcomes": {"total": agent_outcomes, "correct": agent_correct},
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+    # A snapshot built on evidence a failed query could not read is "unknown", not "no patterns". Carry the
+    # failure out as the item's error so it is counted and never persisted (LQ-20261107-2458).
+    if sql_errors:
+        result["sql_errors"] = list(sql_errors)
+        result["error"] = (f"sql_error: {len(sql_errors)} enrichment query failure(s); first: {sql_errors[0]}")
+        result["persisted"] = False
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return result
 
     if not persist:
         # Structural (AGENTS.md §6): the upsert below is not reachable from a dry run. End the read-only
@@ -460,6 +493,9 @@ def main(argv=None) -> int:
     lane_run = bool(args.all_pending or args.pending) and not dry_run
     started = datetime.now(timezone.utc).isoformat()
     stats: dict = {"processed": 0, "load_errors": 0, "persist_failures": 0}
+    # Diagnostic only: names the enrichment queries that failed. The item is counted once, in load_errors, so
+    # produced/attempted keep their meaning; the first message goes on the receipt's error field (LQ-2458).
+    sql_failures: list[str] = []
 
     try:
         conn = get_conn()
@@ -490,6 +526,7 @@ def main(argv=None) -> int:
                     if result.get('error'):
                         log.error(f"  #{pid}: {result['error']}")
                         stats["load_errors"] += 1
+                        sql_failures.extend(result.get("sql_errors") or [])
                     else:
                         if not dry_run:
                             wrote = _write_strategy_backtest_result(conn, result)  # called as before
@@ -507,6 +544,7 @@ def main(argv=None) -> int:
                 print(json.dumps(result, indent=2, default=str))
                 if result.get("error"):
                     stats["load_errors"] += 1
+                    sql_failures.extend(result.get("sql_errors") or [])
                 else:
                     # LQ-20261107-288: a single-proposal run computed (and, live, wrote) one proposal, but the
                     # counter stayed 0, so the --dry-run report — the artifact a reviewer reads as the proof of
@@ -533,9 +571,12 @@ def main(argv=None) -> int:
             "strategy_backtest_results (insert per proposal)"],
             json_stdout=True)
     elif lane_run:
-        _receipt_lib().write_lane_receipt(LANE_ID, ok=(rc == 0), exit_code=rc, started_at=started,
-                                          script="proposal_backtest_engine.py", summary=stats,
-                                          output=lane_output(stats))
+        _receipt_lib().write_lane_receipt(
+            LANE_ID, ok=(rc == 0), exit_code=rc, started_at=started,
+            script="proposal_backtest_engine.py", summary=stats, output=lane_output(stats),
+            # A SQL failure used to be invisible in the receipt; name it there (LQ-20261107-2458).
+            error=(f"sql_error: {len(sql_failures)} enrichment query failure(s); first: {sql_failures[0]}"
+                   if sql_failures else None))
     return rc
 
 
