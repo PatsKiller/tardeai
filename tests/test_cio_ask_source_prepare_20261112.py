@@ -29,7 +29,7 @@ def _slow_shared_load(ctx):
     with ctx.shared_lock:
         if "store" not in ctx.shared:
             time.sleep(COLD_S)
-            ctx.shared["store"] = {"loads": ctx.shared.get("loads", 0) + 1}
+            ctx.shared["store"] = {"loaded": True}
         return ctx.shared["store"]
 
 
