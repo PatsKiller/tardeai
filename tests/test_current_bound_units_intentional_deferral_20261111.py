@@ -1,6 +1,10 @@
 """LQ-20261107-2082 (E21): the release verifier records every standing policy refusal as intentionally deferred and
 never pages "RELEASE NOT REACHED" for it, while a genuinely stale unit still pages.
 
+LQ-20261107-2089 closes REVIEW-2087 T1/T2 with the two mutants that survived the first pass: a stale
+``portfolio-server.service`` (``separately_handled``) must page with markets open and closed (K, L), and
+``updated_confirmed`` must count only confirmed read-backs in the failed-restart scenario (H, mutant i).
+
 Synthetic only: ``cbu.plan`` / ``cbu.verify`` / ``cbu.market_open`` are stubbed, ``deliver`` raises if called, and
 every receipt write is ``--dry-run``. No systemctl, no /proc, no Telegram, no email, no DB.
 """
@@ -61,11 +65,14 @@ def _deferred_three(market_open):
     return [_unit(MOTION, "page_only", MOTION_R), _unit(OPS, "page_only", OPS_R), poller]
 
 
-def _run(tmp_path, units, *, market_open, restarted=(), restart_failed=(), refused=(), as_json=False):
+def _run(tmp_path, units, *, market_open, restarted=(), restart_failed=(), refused=(), as_json=False,
+         check_ok=None):
     mod = _load()
     plan = real_cbu.Plan(current=CURRENT, units=units)
     mod.cbu.plan = lambda current, **kw: plan
-    mod.cbu.verify = lambda current, names: {n: {"ok": True, "pid": 1, "cwd": CURRENT} for n in names}
+    mod.cbu.verify = lambda current, names: {
+        n: {"ok": (check_ok or {}).get(n, True), "pid": 1, "cwd": CURRENT} for n in names
+    }
     mod.cbu.market_open = lambda *a, **k: market_open
 
     def no_send(msg):  # pragma: no cover - a send here is the bug
@@ -191,13 +198,22 @@ def test_g_units_passed_as_refused_are_not_recorded_twice(tmp_path):
 
 
 def test_h_a_failed_restart_pages_but_deferrals_stay_recorded(tmp_path):
+    # T2 (REVIEW-2087): one restarted unit is confirmed on the target and one is not. "N services updated" must
+    # count only confirmed read-backs, never len(checks) (the mutant would print 2 here).
     units = _deferred_three(True)
-    rc, out = _run(tmp_path, units, market_open=True, restart_failed=[HEALTH])
-    r = _receipt(_run(tmp_path, units, market_open=True, restart_failed=[HEALTH], as_json=True)[1])
+    restarted = [HEALTH, "cio-governed-bridge.service"]
+    check_ok = {HEALTH: True, "cio-governed-bridge.service": False}
+    rc, out = _run(tmp_path, units, market_open=True, restarted=restarted,
+                   restart_failed=["tradeai-phone-status.service"], check_ok=check_ok)
+    r = _receipt(_run(tmp_path, units, market_open=True, restarted=restarted,
+                      restart_failed=["tradeai-phone-status.service"], check_ok=check_ok, as_json=True)[1])
     assert rc == 2
+    assert r["updated_confirmed"] == 1 and len(r["verify"]) == 2
     assert _names(r["intentionally_deferred"]) == [MOTION, OPS, POLLER]
-    assert "RELEASE NOT REACHED" in out and f"*{HEALTH}*: restart FAILED" in out
+    assert "RELEASE NOT REACHED" in out and "*tradeai-phone-status.service*: restart FAILED" in out
+    assert "*cio-governed-bridge.service*: restarted but not running the new release" in out
     assert "Release NOT fully activated" in out
+    assert "1 services updated" in out and "2 services updated" not in out
     assert f"Operator action required: systemctl --user restart {MOTION} {OPS} {POLLER}" in out
 
 
@@ -212,6 +228,33 @@ def test_i_hard_never_is_deferred_even_with_markets_closed(tmp_path):
     assert "RELEASE NOT REACHED" not in out
     assert "1 services intentionally deferred" in out
     assert "after the US session closes" not in out
+
+
+def test_k_stale_portfolio_server_pages_market_open(tmp_path):
+    # T1 (REVIEW-2087 mutant b): portfolio-server is `separately_handled` — a stale one is a failed deploy, not a
+    # deliberate hold, so it must page even though its reason is in PAGE_ONLY_NAMED.values().
+    ps = "portfolio-server.service"
+    units = [_unit(ps, "page_only", "separately_handled")] + _deferred_three(True)
+    rc, out = _run(tmp_path, units, market_open=True)
+    r = _receipt(_run(tmp_path, units, market_open=True, as_json=True)[1])
+    assert rc == 0
+    assert _names(r["intentionally_deferred"]) == [MOTION, OPS, POLLER]
+    assert _names(r["stale_page_only"]) == [ps]
+    assert "RELEASE NOT REACHED" in out and f"*{ps}*: on an old release" in out
+    assert "Release NOT fully activated" in out
+
+
+def test_l_stale_portfolio_server_pages_market_closed(tmp_path):
+    ps = "portfolio-server.service"
+    units = [_unit(ps, "page_only", "separately_handled"),
+             _unit(MOTION, "page_only", MOTION_R), _unit(OPS, "page_only", OPS_R),
+             _unit(POLLER, "page_only", POLLER_R, stale=False)]
+    rc, out = _run(tmp_path, units, market_open=False)
+    r = _receipt(_run(tmp_path, units, market_open=False, as_json=True)[1])
+    assert rc == 0
+    assert _names(r["intentionally_deferred"]) == [MOTION, OPS]
+    assert _names(r["stale_page_only"]) == [ps]
+    assert "RELEASE NOT REACHED" in out and f"*{ps}*" in out
 
 
 def test_j_release_status_lag_lines_read_the_deferral(tmp_path):
