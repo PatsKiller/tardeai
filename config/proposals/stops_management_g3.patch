@@ -1,5 +1,5 @@
 diff --git a/scripts/api_v2.py b/scripts/api_v2.py
-index 63c38e4ce..e0464e4a0 100644
+index 63c38e4ce..6f0919692 100644
 --- a/scripts/api_v2.py
 +++ b/scripts/api_v2.py
 @@ -617,6 +617,12 @@ def _stops_management_api_build(query=None, *, stored_only=False):
@@ -93,44 +93,55 @@ index 63c38e4ce..e0464e4a0 100644
      # 2. holdings (all accounts)
      try:
          holds = (portfolio_holdings() or {}).get("holdings") or []
-@@ -1410,7 +1420,25 @@ def _stops_management_api_build(query=None, *, stored_only=False):
+@@ -1410,7 +1420,36 @@ def _stops_management_api_build(query=None, *, stored_only=False):
          and str(h.get("symbol") or "").upper() not in ("", "CASH", "SPAXX", "VMFXX", "USD")
          and ((_f(h.get("shares")) or 0.0) > 0)
      )
 -    _broker_degraded = _schwab_holdings > 0 and (not _live_read_ok or bool(_live_stops_meta.get("degraded")))
-+    from lib import stops_protection as _sp
++    from lib import stops_protection as _spr
 +
-+    _snap_grade = _sp.grade_snapshot(_snap_rows)
-+    _brokers = {str(h.get("account", "")).split("_")[0] for h in holds if not _sp.is_exempt(h)} - {""}
-+    _broker_rows = _sp.broker_rows(
++    # ONE position universe + ONE per-row verdict (LQ-2165): cio_truth.resolve. This view only attaches it.
++    _truth_rows = None
++    try:
++        from lib import cio_truth as _ct
++
++        _truth_rows = (_ct.resolve(db_query=_db_query).get("stops") or {}).get("rows")
++        if not isinstance(_truth_rows, list):
++            _truth_rows = None
++    except Exception as _e:
++        _src_failed("cio_truth.resolve", _e)
++    _pidx = _spr.attach(_truth_rows)
++    _snap_grade = _spr.grade_snapshot(_snap_rows)
++    _brokers = {
++        str(r.get("account_id") or "").split("_")[0]
++        for r in (_truth_rows or [])
++        if r.get("protection_state") != "EXEMPT"
++    } - {""}
++    _broker_rows = _spr.broker_rows(
 +        _live_stops_meta, _snap_grade, _brokers, stored_only=stored_only, fidelity_manual_ok="fidelity_manual" not in _src_fail
 +    )
-+    _broker_degraded = _schwab_holdings > 0 and _sp.banner_degraded(_broker_rows, stored_only=stored_only)
-+    _row_states = {
-+        (r["symbol"], r["account"]): _sp.stop_state(bool(r.get("has_active_stop")), sources_ok=not _src_fail and all(b["state"] == _sp.OK for b in _broker_rows if b["broker"] == str(r["account"]).split("_")[0]))
-+        for r in rows
-+    }
++    _broker_degraded = _schwab_holdings > 0 and (_truth_rows is None or _spr.banner_degraded(_broker_rows, stored_only=stored_only))
 +    for r in rows:
-+        r["stop_state"] = _row_states[(r["symbol"], r["account"])]
++        r.update(_spr.row_protection(_pidx, r["symbol"], r["account"]))
 +        # only a healthy live broker read verifies a stop; a snapshot-sourced stop is STALE-aged, never verified
 +        r["broker_verified"] = bool(_live_read_ok and r.get("stop_source") == "broker")
 +        r["stop_snapshot_state"] = _snap_grade["state"] if r.get("stop_source") == "broker_snapshot" else None
 +        r["stop_age_s"] = _snap_grade["age_s"] if r.get("stop_source") == "broker_snapshot" else None
-+    _protection = _sp.rollup(holds, _row_states, _broker_rows)
++    _protection_summary = _spr.summary(_truth_rows, _broker_rows)
      import datetime as _dt
  
      return {
-@@ -1418,6 +1446,9 @@ def _stops_management_api_build(query=None, *, stored_only=False):
+@@ -1418,6 +1457,9 @@ def _stops_management_api_build(query=None, *, stored_only=False):
          "regime_now": regime_now,
          "broker_stops_meta": _live_stops_meta,
          "broker_stops_degraded": _broker_degraded,
 +        "broker_status_rows": _broker_rows,
 +        "source_failures": _src_fail,
-+        "protection_state": _protection,
++        "protection_summary": _protection_summary,
          "cached": False,
          "summary": {
              "total_open_risk": round(total_open_risk, 2),
-@@ -2131,15 +2162,16 @@ def _stops_lifecycle_db_snapshot():
+@@ -2131,15 +2173,16 @@ def _stops_lifecycle_db_snapshot():
              "current_price,proximity_pct,coverage,lifecycle,health,flags,trail_offset,snapshot_at "
              "FROM stop_lifecycle ORDER BY health DESC, symbol"
          )
