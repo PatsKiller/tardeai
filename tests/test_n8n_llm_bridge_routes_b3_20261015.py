@@ -238,7 +238,10 @@ def test_ddq_route_asks_the_researcher_once_per_question(bridge, poison, monkeyp
         lambda cmd, **k: spawned.append((cmd, k)) or types.SimpleNamespace(returncode=0, stderr=""),
     )
     out = ddq.route(RCur(), 2)
-    assert out["lanes_ranked"] == ["chatgpt"] and out["routed"] == 1 and len(spawned) == 1
+    # LQ-20261107-2620: on the bridge path the label is the n8n LLM order's primary (grok), not the first
+    # DIRECT-route ranking (chatgpt) — the bridge chooses the provider, and chatgpt's direct breaker gated
+    # every question before the bridge was asked. Still exactly one call per question.
+    assert out["lanes_ranked"] == ["grok"] and out["routed"] == 1 and len(spawned) == 1
     assert "env" not in spawned[0][1]
 
 

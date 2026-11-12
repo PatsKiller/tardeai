@@ -5738,7 +5738,10 @@
       "source": "OVN-9 2026-11-07 (operator: everything moves to n8n overnight): shadow-stage allowlist entry for the live cron line `*/20 * * * * ... --route`; live_arg null at shadow, the cron line keeps doing the real work. Dry run proven write-free (cc-deepseek-9 DONE report, quoted).",
       "llm_route": {
         "via": "cio-governed-bridge",
-        "process_id": "due_diligence_questions"
+        "process_ids": [
+          "due_diligence_questions",
+          "hermes_external_research"
+        ]
       },
       "offpeak_gate": "scheduled",
       "env_evidence": "W5 template set (3e5058a4b): DB_* plus project/state-root names the script and its DB helper read; evidence line added 2026-11-07 by the lead after the committed-allowlist test (hidden by a collection error) caught its absence"

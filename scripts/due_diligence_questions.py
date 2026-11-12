@@ -467,6 +467,33 @@ def rank_research_lanes(cur) -> list[tuple[str, float, float]]:
     return ranked
 
 
+def bridge_lane_order(process_id: str = "due_diligence_questions") -> list[str]:
+    """The governed bridge's provider order for ``process_id`` (config/llm_routing_policy.json).
+
+    On the bridge path the BRIDGE chooses the provider: it walks primary -> secondary -> fallback itself
+    (operator D10). ``--lane`` is only the label this caller records, so the label the bridge would try
+    first is the policy's primary. Measured success cannot decide that: it ranks a lane label's
+    DIRECT-provider history, which the bridge route does not use (LQ-20261107-2620).
+
+    Unknown/unreadable policy -> ``[]`` (the caller keeps its measured ranking): an unreadable policy is
+    not permission to invent an order.
+    """
+    try:
+        doc = json.loads((ROOT / "config" / "llm_routing_policy.json").read_text(encoding="utf-8"))
+        policy = (doc.get("policies") or {}).get(doc.get("default_policy_id", "default"), {})
+        row = ((policy.get("processes") or {}).get(process_id)) or {}
+    except (OSError, ValueError, AttributeError, TypeError):
+        return []
+    if not isinstance(row, dict):
+        return []
+    order: list[str] = []
+    for step in ("primary", "secondary", "fallback"):
+        provider = str(((row.get(step) or {}).get("provider")) or "").strip().lower()
+        if provider in RESEARCH_LANE_CANDIDATES and provider not in order:
+            order.append(provider)
+    return order
+
+
 #: Step 3. Still inside the bridge's four caps, so it cannot run away. Reached only
 #: when both free lanes AND flash have failed.
 CURATION_MODEL_PRO = os.getenv("DDQ_CURATION_MODEL_PRO", "deepseek-flash")
@@ -788,7 +815,17 @@ def route(cur, limit: int) -> dict:
     rows = cur.fetchall()
     lanes = rank_research_lanes(cur)
     if via_bridge():
-        lanes = lanes[:1]  # the governed bridge chooses the provider: one researcher call per question
+        # The governed bridge chooses the provider, so the n8n LLM order — not the measured rank — picks
+        # the label; and the measured gate cannot empty the list. That gate measures a label's DIRECT
+        # history, which the bridge route does not take: measured 2026-11-12, chatgpt was the only lane
+        # over 0.5 and its direct OAuth route was dead, so every question exited 75 before the healthy
+        # bridge was ever asked (LQ-20261107-2620). One call per question either way: a refusal from the
+        # bridge is the bridge's own failover's business, not another paid call from here.
+        order = bridge_lane_order()
+        if order:
+            scores = {lane: (success, quality) for lane, success, quality in lanes}
+            lanes = [(lane, *scores.get(lane, (0.0, 0.0))) for lane in order]
+        lanes = lanes[:1]
     out = {"routed": 0, "failed": 0, "lanes_ranked": [l[0] for l in lanes], "detail": []}
     if not lanes:
         out["detail"].append("no research lane met the minimum success rate")
@@ -865,6 +902,21 @@ def route(cur, limit: int) -> dict:
             out["failed"] += 1
             out["detail"].append(f"{symbol}: {str(getattr(r, 'stderr', ''))[:120]}")
     return out
+
+
+def _route_verdict(routed: dict | None) -> tuple[bool, int, str | None]:
+    """``(ok, exit_code, error)`` for the routing half of the run's verdict.
+
+    A question this run SELECTED and then could not route is a standing gap, not an empty lane. When
+    every selected question failed and none routed, the run is failed — the same rule the model-call
+    half already applies to a broken provider route. Measured 2026-11-12 (LQ-20261107-2620): two
+    questions selected every 20 min, every one gated before attempting, ``routed=0``, and the lane
+    still wrote ``ok`` / ``nothing_due`` on every run, so the health contract reported healthy while
+    the desk got no research request. ``routed=0, failed=0`` is untouched: nothing was selected.
+    """
+    if isinstance(routed, dict) and routed.get("routed", 0) == 0 and routed.get("failed", 0) > 0:
+        return False, 1, "all_route_attempts_failed"
+    return True, 0, None
 
 
 def _write_lane_receipt(*, ok: bool = True, exit_code: int = 0, produced_count: int | None = 0,
@@ -981,6 +1033,14 @@ def _apply_run(args, started: datetime) -> int:
             conn.commit()
         conn.close()
         print("RESULT: " + json.dumps(result, default=str))
+        route_ok, route_exit, route_err = _route_verdict(result.get("routed"))
+        if not route_ok:
+            # A backlog question it could select and then not send is work the lane found and did not do;
+            # `nothing_due` would advance ok_at over it.
+            _write_lane_receipt(ok=False, exit_code=route_exit, produced_count=0, empty_reason=None,
+                                error=route_err, started_at=started,
+                                outcome_reason=f"routed=0 failed={result['routed']['failed']}")
+            return route_exit
         _write_lane_receipt(ok=True, exit_code=0, produced_count=0, empty_reason="nothing_due",
                             started_at=started)
         return 0
@@ -1081,6 +1141,16 @@ def _apply_run(args, started: datetime) -> int:
         _write_lane_receipt(ok=False, exit_code=1, produced_count=0, empty_reason=None,
                             error="no_dossier_evidence", started_at=started)
         return 1
+    # The routing half of the verdict. Questions this run selected and could not send are a standing gap:
+    # every one gated before attempting is a broken research route, not an empty lane, and it outranks the
+    # daily-cap wait below (the cap is a quota wait; this is a fault). LQ-20261107-2620: routed=0 with
+    # failed=2 was written as `ok`/`nothing_due` every 20 min for a day while ok_at kept advancing.
+    route_ok, route_exit, route_err = _route_verdict(result.get("routed"))
+    if not route_ok:
+        _write_lane_receipt(ok=False, exit_code=route_exit, produced_count=total_q, empty_reason=None,
+                            error=route_err, started_at=started,
+                            outcome_reason=f"routed=0 failed={result['routed']['failed']}")
+        return route_exit
     # The bridge's daily cap (LQ-20261107-1104). Like LQ-20261107-1010's 429: no alert, no regression, exit 0,
     # no dead letter. The receipt says why it stopped; what was written before the cap is counted. A call that
     # failed for any OTHER reason before the cap still makes this a failed run, so a real fault is not hidden.

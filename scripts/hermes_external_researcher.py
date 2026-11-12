@@ -796,6 +796,24 @@ def breaker_trips(rows, n=None):
     return all(lane_failure(st, rec) for st, rec in rows[:n])
 
 
+def lane_breaker_gates(lane):
+    """Whether the per-lane circuit breaker refuses THIS call: ``(gated, why)``.
+
+    The breaker tracks a lane label's DIRECT-provider history (HTTP 401/403, unavailable, auth_pending).
+    On the governed-bridge path the bridge chooses the provider itself (grok -> chatgpt -> deepseek,
+    config/llm_routing_policy.json; operator D10) and ``--lane`` is only the label this caller records,
+    so that history describes a route this call does not take. Measured 2026-11-12 (LQ-20261107-2620):
+    chatgpt's breaker was open from DIRECT OAuth failures elsewhere, and every due-diligence question
+    exited EXIT_LANE_GATED here before the healthy bridge was ever asked. The bridge's own health gate
+    and transport failover govern the bridge route; this breaker does not.
+    """
+    if via_bridge():
+        return False, "governed_bridge_chooses_the_provider"
+    if lane_circuit_open(lane):
+        return True, "lane_circuit_open"
+    return False, ""
+
+
 def read_capability(lane):
     """Return the cached capability dict for a lane, or {} if absent/unreadable."""
     try:
@@ -1024,10 +1042,12 @@ def main(argv=None):
         account("DRY_RUN", reason="provider_not_called")
         return
 
-    if lane_circuit_open(args.lane):
-        print(f"\n[circuit-breaker] lane={args.lane} OPEN — last {BREAKER_N} calls in {BREAKER_WINDOW_MIN}m "
-              f"were all lane failures (HTTP 401/403, unavailable, auth pending). Deferring (no call, no row); "
-              f"fix or re-auth the lane (hermes auth add …); the breaker self-closes once the window passes.")
+    _breaker_gated, _breaker_why = lane_breaker_gates(args.lane)
+    if _breaker_gated:
+        print(f"\n[circuit-breaker] lane={args.lane} OPEN ({_breaker_why}) — last {BREAKER_N} calls in "
+              f"{BREAKER_WINDOW_MIN}m were all lane failures (HTTP 401/403, unavailable, auth pending). "
+              f"Deferring (no call, no row); fix or re-auth the lane (hermes auth add …); the breaker "
+              f"self-closes once the window passes.")
         try:
             from db_adapter import _execute
             from datetime import datetime as _dt
