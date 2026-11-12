@@ -139,6 +139,30 @@ import threading as _threading
 _tls = _threading.local()
 
 
+def begin_exec_note() -> None:
+    """Clear the per-thread record of the last ``_execute`` (LQ-20261107-2517).
+
+    ``_execute`` must keep answering None to every caller that treats None as "no data", so it records
+    whether the statement ran and why it failed. A strict caller (``api_v2._db_required``) calls this
+    before its read and then ``last_exec_note()``: a failed read is answered with the driver's real
+    cause **without re-running the statement**, and a read that ran and found no row stays a not-found.
+    """
+    _tls.exec_ran = False
+    _tls.exec_error = None
+
+
+def last_exec_note() -> tuple[bool, BaseException | None]:
+    """(did the statement run, driver exception or None) for the last ``_execute`` on this thread."""
+    return getattr(_tls, "exec_ran", False), getattr(_tls, "exec_error", None)
+
+
+def _note_exec(ran: bool, error: BaseException | None = None) -> None:
+    try:
+        _tls.exec_ran, _tls.exec_error = ran, error
+    except Exception:  # pragma: no cover -- a broken thread-local must not break a read
+        pass
+
+
 def _get_conn():
     """Get or create a THREAD-LOCAL PostgreSQL connection (lazy, one per thread)."""
     import time as _time
@@ -336,6 +360,24 @@ def ensure_conn():
     return _get_conn()
 
 
+def _is_connection_failure(exc) -> bool:
+    """Is this the idle-reaped / closed-handle failure that a fresh connection can fix?
+
+    Judged by SQLSTATE class 08 or by the driver's class, never by the words in the message:
+    a schema error naming a connection (``relation "agent_connections" does not exist``) must not
+    re-run the statement, and neither must a statement timeout -- re-running it would double the
+    wait (LQ-20261107-2517).
+    """
+    code = str(getattr(exc, "pgcode", "") or "")
+    if code:
+        return code.startswith("08")
+    try:
+        import psycopg2
+    except Exception:  # noqa: BLE001 -- no driver to classify with
+        return False
+    return isinstance(exc, (psycopg2.OperationalError, psycopg2.InterfaceError))
+
+
 def _execute(sql: str, params=None, fetch: str = None):
     """Execute SQL. fetch='one'|'all'|None. Retries once on a closed connection."""
 
@@ -353,27 +395,33 @@ def _execute(sql: str, params=None, fetch: str = None):
             conn.commit()
             return result
 
+    _note_exec(False)  # LQ-20261107-2517: from here on, the record describes THIS call
     conn = ensure_conn()
     if conn is None:
         return None
     try:
-        return _run(conn)
+        out = _run(conn)
+        _note_exec(True)
+        return out
     except Exception as e:
-        msg = str(e).lower()
         try:
             conn.rollback()
         except Exception:
             pass
-        if "already closed" in msg or "interfaceerror" in msg or "connection" in msg:
+        if _is_connection_failure(e):
             try:
                 close_thread_conn()
                 conn = ensure_conn()
                 if conn is not None:
-                    return _run(conn)
+                    out = _run(conn)
+                    _note_exec(True)
+                    return out
             except Exception as e2:
                 print(f"  [db_adapter] SQL retry failed: {e2}")
+                _note_exec(True, e2)
                 return None
         print(f"  [db_adapter] SQL error: {e}")
+        _note_exec(True, e)
         return None
 
 
