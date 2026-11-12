@@ -48270,14 +48270,26 @@ _SHARED_GET_LOCKS: dict = {}
 _SHARED_GET_LOCKS_GUARD = _sg_threading.Lock()
 
 
-def _shared_get_cached(key: str, ttl_s: float, build):
+def _shared_get_cached(key: str, ttl_s: float, build, stale_ok: bool = False, annotate=None, unknown=None):
     """Serve one computed GET payload to every caller for ttl_s seconds, single-flight.
 
     /api/v2/cio/pages (20-30 s) and /api/v2/risk (11-21 s) were recomputed for every poll from
     every component and tab; concurrent identical builds pinned the one CPU the server has
     (2026-11-07). While one build runs, other callers for the same key wait for it instead of
-    starting their own. A failed build is not cached."""
+    starting their own. A failed build is not cached.
+
+    stale_ok=True (LQ-20261107-2572): a caller NEVER waits on a build. It gets the last-good payload with
+    as_of/age_s/stale, or UNKNOWN 'building' before the first build lands; one background build per key
+    survives the request watchdog and its result is stored (scripts/lib/shared_get_swr.py). Opt-in for
+    slow GETs: cio/pages, cio/asks/tracked (wired); reports/analyst/links, market-risk/latest, risk (not yet)."""
     import time as _t
+
+    if stale_ok:
+        try:
+            from scripts.lib import shared_get_swr as _swr
+        except ImportError:  # pragma: no cover - flat lib.* layout
+            from lib import shared_get_swr as _swr
+        return _swr.get(key, ttl_s, build, annotate=annotate, unknown=unknown)
 
     hit = _SHARED_GET_CACHE.get(key)
     if hit and _t.monotonic() - hit[0] < ttl_s:
@@ -48301,12 +48313,50 @@ def _conflict_ledger_root():
 
 
 def _w7_cio_pages():
-    """Read-only W7 page projection over one CIO truth document. Cached 60 s, single-flight."""
+    """Read-only W7 page projection over one CIO truth document. Cached 60 s; serve-last-good, one background build."""
+    return _shared_get_cached("cio_pages", 60.0, _cio_pages_build, stale_ok=True)
+
+
+def _cio_pages_build():
     from scripts.lib.w7_pages import page_payload
 
+    return page_payload(STATE_DIR.parents[2], db_query=_db_query, ledger_root=_conflict_ledger_root())
+
+
+def _asks_tracked_annotate(out, meta: dict):
+    """(status, {"ok", "data": {...}}) -> same shape with stale/age_s/cache_as_of (+ build state) inside data."""
+    st, body = out
+    data = dict(body.get("data") or {})
+    data.update({k: v for k, v in meta.items() if k != "as_of"})
+    data["cache_as_of"] = meta["as_of"]
+    return st, {**body, "data": data}
+
+
+def _asks_tracked_unknown(key: str, meta: dict):
+    data = {"tracked": None, "status": "UNKNOWN", "stale": True, "age_s": None, "cache_as_of": None}
+    data.update(meta)  # reason (building|build_failed|build_stuck), build_running_s, last_build_error[_at]
+    return 200, {"ok": True, "data": data}
+
+
+def _asks_tracked_cached(base_path, method, body, query):
+    from scripts.lib import cio_ask_api as _caa
+
     return _shared_get_cached(
-        "cio_pages", 60.0, lambda: page_payload(STATE_DIR.parents[2], db_query=_db_query, ledger_root=_conflict_ledger_root())
+        "cio_asks_tracked", 30.0, lambda: _caa.handle(base_path, method, body, query),
+        stale_ok=True, annotate=_asks_tracked_annotate, unknown=_asks_tracked_unknown,
     )
+
+
+def warm_swr_caches() -> list:
+    """Boot warm: start the one background build for each opted-in key, once. Returns the keys started."""
+    try:
+        from scripts.lib import shared_get_swr as _swr
+    except ImportError:  # pragma: no cover
+        from lib import shared_get_swr as _swr
+    started = []
+    if _swr.warm("cio_pages", 60.0, _cio_pages_build):
+        started.append("cio_pages")
+    return started
 
 
 def _risk_payload_cached():
@@ -50977,6 +51027,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 from scripts.lib import cio_ask_api as _caa
             except ImportError:  # pragma: no cover - flat lib.* layout
                 from lib import cio_ask_api as _caa
+            if method == "GET" and base_path.rstrip("/") == "/api/v2/cio/asks/tracked":
+                return _asks_tracked_cached(base_path, method, body, query)
             _caa_out = _caa.handle(base_path, method, body, query)
             if _caa_out is not None:
                 return _caa_out

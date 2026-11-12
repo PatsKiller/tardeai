@@ -64,6 +64,14 @@ def test_cio_pages_and_risk_routes_use_the_cache(monkeypatch):
 
     monkeypatch.setattr(w7, "page_payload", fake_pages)
     monkeypatch.setattr(api, "_cio_truth_readers", lambda: R())
+    from scripts.lib import shared_get_swr as swr
+
+    swr.clear()
+    api._w7_cio_pages()  # LQ-2572: cio/pages never blocks; the one background build lands shortly
+    for _ in range(200):
+        if not swr.inflight():
+            break
+        time.sleep(0.02)
     for _ in range(3):
         api._w7_cio_pages()
         api._risk_payload_cached()
