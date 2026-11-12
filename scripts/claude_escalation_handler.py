@@ -399,11 +399,53 @@ def _verify_remediation(item) -> tuple[bool, str]:
 
     Returns (cleared, note). On verify SQL/IO errors return cleared=False (fail closed)
     so exit-0 thrash cannot mark 'fixed' while the finding is still active.
-    Unknown types return (True, 'no_verify') for legacy allowlisted producers.
+    LQ-2161: a type with no re-measurement is NOT cleared ('unverified_*'); a retry
+    exiting 0 is not evidence the condition went away (Constitution: exit 0 is not
+    evidence; unknown beats wrong).
     """
     ftype = _finding_type_from_component(item.get("component", ""))
     if not ftype:
-        return True, "no_verify_unknown_component"
+        return False, "unverified_unknown_component"
+
+    # Data source stale: re-run the DETECTOR's own predicate (data_source_health_view,
+    # the same view health_agent.collect_data_source_health uses), not "the command exited 0".
+    if ftype == "data_source_stale":
+        m = re.search(r"data source '([^']+)'", item.get("detail") or "")
+        if not m:
+            return False, "data_source_unparseable"
+        rows = _data_source_rows()
+        if rows is None:
+            return False, "data_source_unreadable"
+        try:
+            from lib.data_source_health_view import HEALTHY, NOT_ALERTED, load_registry, view_rows
+
+            src = m.group(1)
+            mine = [r for r in rows if r.get("source_key") == src]
+            if not mine:
+                return False, f"data_source_absent_{src}"
+            eff = view_rows(mine, datetime.now(timezone.utc), load_registry())[0].get("status")
+        except Exception as e:  # fail closed
+            return False, f"data_source_verify_error:{e}"
+        if eff == HEALTHY or eff in NOT_ALERTED:
+            return True, f"data_source_ok_{eff}"
+        return False, f"data_source_still_{eff}"
+
+    # Agent jobs stale: the detector (health_agent collect_data_quality "agent_jobs") measures the
+    # AGE of the newest completed job, not the queue backlog. Verify that same quantity.
+    if ftype == "agent_jobs_stale":
+        ok, age_h, note = _db_verify(
+            "SELECT EXTRACT(EPOCH FROM (now() - MAX(created_at)))/3600.0 "
+            "FROM watchlist_agent_jobs WHERE status='completed'"
+        )
+        if not ok:
+            return False, note
+        if age_h is None:
+            return False, "agent_jobs_age_unknown"
+        limit = 48.0 if datetime.now().weekday() >= 5 else 4.0
+        age_h = float(age_h)
+        if age_h <= limit:
+            return True, f"agent_jobs_age_ok_{age_h:.1f}h"
+        return False, f"agent_jobs_age_still_{age_h:.1f}h_max_{limit:g}h"
 
     # Paper stuck: the DETECTOR's predicate, not "zero rows in the lane".
     #
@@ -570,7 +612,7 @@ def _verify_remediation(item) -> tuple[bool, str]:
         return False, f"pipeline_still unrecovered={n} sla={n2}"
 
     # Agent jobs backlog: decision-feeding (SLA) types only — matches health_agent
-    if ftype in ("agent_jobs_stuck", "agent_jobs_stale"):
+    if ftype == "agent_jobs_stuck":
         ok, n, note = _db_verify(
             """
             SELECT COUNT(*) FROM watchlist_agent_jobs
@@ -588,7 +630,37 @@ def _verify_remediation(item) -> tuple[bool, str]:
             return True, f"jobs_sla_backlog_{n}"
         return False, f"jobs_sla_backlog_still_{n}"
 
-    return True, "no_verify"
+    return False, f"unverified_{ftype}"
+
+
+def _data_source_rows():
+    """data_source_health rows, or None when unreadable (caller fails closed)."""
+    conn = _get_conn()
+    if not conn:
+        return None
+    cur = None
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT source_key, status, last_success_at, last_failure_at, max_stale_minutes, "
+            "last_error, failure_count FROM data_source_health"
+        )
+        cols = [d[0] for d in cur.description]
+        out = [dict(zip(cols, r)) for r in cur.fetchall()]
+        conn.commit()
+        return out
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return None
+    finally:
+        if cur is not None:
+            try:
+                cur.close()
+            except Exception:
+                pass
 
 
 def _cmd_timeout_seconds(cmd: str, allowlist: dict | None) -> int:
