@@ -132,3 +132,16 @@ def test_cli_retarget_exit_codes_and_token(tree):
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0 and "RETARGET_RESULT=ok" in r.stdout, r.stdout + r.stderr
     assert json.loads(D.request_path(tree.state).read_text())["target"] == str(tree.new.resolve())
+
+
+def test_cli_retarget_mismatch_exits_5_with_token(tree, monkeypatch, capsys):
+    """Review M5: the exit-5 path the activate HOLD relies on, through the real cmd_retarget."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("drain_cli_m5", ROOT / "scripts" / "n8n_executor_drain.py")
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    _stale_request(tree)
+    monkeypatch.setattr(cli.D, "write_request", lambda *a, **k: None)
+    args = cli.argparse.Namespace(target=str(tree.new), state_root=str(tree.state), now=None)
+    rc = cli.cmd_retarget(args)
+    assert rc == 5 and "RETARGET_RESULT=mismatch" in capsys.readouterr().out
