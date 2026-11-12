@@ -107,3 +107,61 @@ def get_analyst_detail(days: int = 30) -> dict[str, Any]:
             for r in rows[:100]
         ],
     }
+
+
+def _rows(db_query, sql: str, params: list) -> list[dict[str, Any]]:
+    """Call an injected reader with or without the ``fetch`` keyword (the market-risk reader's ``_rows`` has none)."""
+    try:
+        return [dict(r) for r in (db_query(sql, params, fetch="all") or [])]
+    except TypeError:
+        return [dict(r) for r in (db_query(sql, params) or [])]
+
+
+def history_window(db_query, *, start_date, end_date, written_by, symbols: list[str] | None = None) -> list[dict[str, Any]]:
+    """Daily Yahoo analyst records dated in [start_date, end_date] and written by ``written_by``, oldest first per symbol.
+
+    Price (captured ~06:10 ET, the prior close), consensus target and rating, analyst count, and only the three
+    ``data.extended`` lists a dip list reads (EPS trend, EPS revisions, earnings dates). ``written_by`` keeps a replay
+    from seeing a later capture. The market-risk dip list (selloff E) reads the store through here, not directly
+    (AGENTS.md §7A rule 3)."""
+    syms = [str(s).upper() for s in symbols] if symbols is not None else None
+    return _rows(
+        db_query,
+        "SELECT symbol, snapshot_date, current_price, target_mean_price, recommendation_mean, recommendation_key, "
+        "number_of_analyst_opinions, jsonb_build_object('extended', jsonb_build_object("
+        "'eps_trend', data->'extended'->'eps_trend', 'eps_revisions', data->'extended'->'eps_revisions', "
+        "'earnings_dates', data->'extended'->'earnings_dates')) AS data "
+        "FROM yahoo_analyst_targets_history WHERE snapshot_date BETWEEN %s AND %s AND created_at <= %s "
+        + ("AND symbol = ANY(%s) " if syms is not None else "")
+        + "ORDER BY symbol, snapshot_date",
+        [start_date, end_date, written_by] + ([syms] if syms is not None else []),
+    )
+
+
+def consensus_shift(db_query, symbols: list[str], *, written_by, lookback_days: int = 20) -> list[dict[str, Any]]:
+    """Per symbol: the newest consensus target and EPS trend written by ``written_by``, and the newest target dated at
+    least ``lookback_days`` before it (``tgt_then``, None when the history does not reach back that far).
+
+    Returns ``{symbol, tgt_now, as_of, eps_trend, tgt_then}``. The market-risk deep brief reads analyst revisions through
+    here (AGENTS.md §7A rule 3)."""
+    syms = list(symbols)
+    if not syms:
+        return []
+    now_rows = _rows(
+        db_query,
+        "SELECT DISTINCT ON (symbol) symbol, target_mean_price AS tgt_now, snapshot_date AS as_of, "
+        "data->'extended'->'eps_trend' AS eps_trend FROM yahoo_analyst_targets_history "
+        "WHERE symbol = ANY(%s) AND created_at <= %s AND target_mean_price IS NOT NULL ORDER BY symbol, snapshot_date DESC",
+        [syms, written_by],
+    )
+    then = {
+        r["symbol"]: r["tgt_then"]
+        for r in _rows(
+            db_query,
+            "SELECT DISTINCT ON (symbol) symbol, target_mean_price AS tgt_then FROM yahoo_analyst_targets_history "
+            "WHERE symbol = ANY(%s) AND created_at <= %s AND snapshot_date <= (%s::date - %s) "
+            "AND target_mean_price IS NOT NULL ORDER BY symbol, snapshot_date DESC",
+            [syms, written_by, written_by, int(lookback_days)],
+        )
+    }
+    return [{**r, "tgt_then": then.get(r["symbol"])} for r in now_rows]
