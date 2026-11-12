@@ -71,6 +71,8 @@ def cookie_state(health: Optional[dict]) -> str:
     """
     doc = health if isinstance(health, dict) else {}
     explicit = str(doc.get("cookie_status") or "").strip().lower()
+    if str(doc.get("status") or "").strip().lower() == "check_failed":
+        return "unknown"
     if explicit in ("ok", "expired", "missing"):
         return explicit
     status = str(doc.get("status") or "").strip().lower()
@@ -79,11 +81,46 @@ def cookie_state(health: Optional[dict]) -> str:
     if status == "token_ok":
         # The pre-LQ-1289 shape: cookie dead, Elite API token carrying every export.
         return "expired"
-    if status in ("expired", "error", "check_failed"):
+    if status == "check_failed":
+        # LQ-20261107-2220: the probe itself errored; it says nothing about the cookie.
+        return "unknown"
+    if status in ("expired", "error"):
         return "expired"
     if status == "missing":
         return "missing"
     return "unknown"
+
+
+CONFIG_REL = "config/finviz_cookie_alert.json"
+_DEFAULT_THRESHOLD = 3
+_DEFAULT_FAILING = ("error", "failed", "degraded", "down", "stale", "unhealthy")
+
+
+def _config() -> dict:
+    try:
+        doc = json.loads((Path(__file__).resolve().parents[2] / CONFIG_REL).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def check_failed_threshold() -> int:
+    """Consecutive errored checks needed before an errored check may alert (config; never below 2)."""
+    try:
+        return max(2, int(_config().get("check_failed_consecutive_min", _DEFAULT_THRESHOLD)))
+    except (TypeError, ValueError):
+        return _DEFAULT_THRESHOLD
+
+
+def source_failing(health: Optional[dict]) -> bool:
+    """True only when data_source_health[finviz] was READ and is in a failing status.
+
+    An unreadable or absent status is not failing: unknown beats wrong."""
+    status = str((health or {}).get("source_status") or "").strip().lower()
+    if not status:
+        return False
+    failing = _config().get("source_failing_statuses") or _DEFAULT_FAILING
+    return status in {str(x).lower() for x in failing}
 
 
 def _features() -> tuple[int, list[str], str]:
@@ -224,7 +261,9 @@ def maybe_alert(
 
     state = cookie_state(health)
     day = et_day(now)
-    if state not in _DEGRADED:
+    is_check_failed = str((health or {}).get("status") or "").strip().lower() == "check_failed"
+    if state not in _DEGRADED and not is_check_failed:
+        _reset_check_failed(health, now=now, state_path=state_path)
         return {"alerted": False, "reason": f"cookie {state}", "cookie_state": state, "et_date": day}
 
     if state_path:
@@ -251,6 +290,11 @@ def maybe_alert(
 
     with _state_transaction(path):
         doc = _read_state(path)
+        if is_check_failed:
+            return _handle_check_failed(doc, path, health, day=day, now=now, sender=sender,
+                                        gateways=gateways, gateway_error=gateway_error,
+                                        count=count, names=names)
+        doc["check_failed_consecutive"] = 0
         transitioned = doc.get("last_cookie_state") not in _DEGRADED
         if doc.get("last_alert_et_date") == day:
             # Keep the observed state current even when the day's alert already went out.
@@ -322,3 +366,72 @@ def _outcome(result: Optional[dict]) -> dict:
         "error": str(doc.get("error") or "")[:120] or None,
         "gateway_mode": str(doc.get("gateway_mode") or "")[:20] or None,
     }
+
+
+def _reset_check_failed(health, *, now, state_path) -> None:
+    """A verdict that is not a failed check ends the consecutive run (only when a state file exists)."""
+    try:
+        path = Path(state_path) if state_path else None
+        if path is None:
+            custom = (os.environ.get(STATE_ENV) or "").strip()
+            path = Path(custom) if custom else _persistent_root() / STATE_REL
+        if not path.exists():
+            return
+        with _state_transaction(path):
+            doc = _read_state(path)
+            if int(doc.get("check_failed_consecutive") or 0) > 0:
+                doc["check_failed_consecutive"] = 0
+                _write_state(path, doc)
+    except Exception:  # noqa: BLE001 — bookkeeping must not break the health route
+        return
+
+
+def check_failed_text(health: Optional[dict], *, telegram: bool = False) -> str:
+    cls = str((health or {}).get("error_class") or "unknown error")[:60]
+    body = (f"FINVIZ HEALTH CHECK ERRORING ({cls}) and the finviz data source is failing. "
+            "The cookie state is UNKNOWN. Check Command Center → System → Admin.")
+    return html.escape(body) if telegram else " ".join(body.split())[:280]
+
+
+def _handle_check_failed(doc, path, health, *, day, now, sender, gateways, gateway_error, count, names):
+    """An errored check: record class+time, count the run, alert only past the threshold AND with the
+    source failing. Never says the cookie expired. Called under the state transaction."""
+    at = (now or datetime.now(timezone.utc)).isoformat().replace("+00:00", "Z")
+    n = int(doc.get("check_failed_consecutive") or 0) + 1
+    doc.update({
+        "schema": "FinvizCookieAlertState@v1",
+        "check_failed_consecutive": n,
+        "last_check_failed_class": str((health or {}).get("error_class") or "unknown")[:60],
+        "last_check_failed_at": at,
+    })
+    need = check_failed_threshold()
+    base = {"cookie_state": "unknown", "et_date": day, "check_failed_consecutive": n}
+    if n < need or not source_failing(health):
+        _write_state(path, doc)
+        why = "below threshold" if n < need else "data source not failing"
+        return {"alerted": False, "reason": f"check_failed: {why}", **base}
+    if doc.get("last_check_failed_alert_et_date") == day:
+        _write_state(path, doc)
+        return {"alerted": False, "reason": f"already alerted on {day}", **base}
+    subject = "Finviz health check erroring — cookie state unknown"
+    results: dict[str, Any] = {"telegram": None, "texts": []}
+    try:
+        results["telegram"] = sender("telegram", body=check_failed_text(health, telegram=True), subject=subject,
+                                     to=None, subject_key=f"{PRODUCER}:{day}:check_failed:telegram")
+    except Exception as exc:  # noqa: BLE001
+        results["telegram"] = {"ok": False, "delivered": False, "error": type(exc).__name__}
+    for address in gateways or []:
+        slot = hashlib.sha256(str(address).encode("utf-8")).hexdigest()[:12]
+        try:
+            results["texts"].append(sender("email", body=check_failed_text(health), subject=subject, to=address,
+                                           subject_key=f"{PRODUCER}:{day}:check_failed:sms:{slot}"))
+        except Exception as exc:  # noqa: BLE001
+            results["texts"].append({"ok": False, "delivered": False, "error": type(exc).__name__})
+    delivered = bool((results["telegram"] or {}).get("delivered")) or any(
+        (r or {}).get("delivered") for r in results["texts"])
+    doc["last_check_failed_alert_et_date"] = day
+    doc["last_check_failed_alert_at"] = at
+    _write_state(path, doc)
+    return {"alerted": True, "delivered": delivered, "reason": "sent" if delivered else "attempted", **base,
+            "telegram": _outcome(results["telegram"]), "texts": [_outcome(r) for r in results["texts"]],
+            "gateway_error": gateway_error}

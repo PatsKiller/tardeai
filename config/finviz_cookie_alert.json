@@ -1,0 +1,12 @@
+{
+    "check_failed_consecutive_min": 3,
+    "source_failing_statuses": [
+        "error",
+        "failed",
+        "degraded",
+        "down",
+        "stale",
+        "unhealthy"
+    ],
+    "comment": "LQ-20261107-2220: a check that errored is UNKNOWN. It alerts only after N consecutive errored checks (one per fresh 300 s probe) AND data_source_health[finviz] is in a failing status."
+}
