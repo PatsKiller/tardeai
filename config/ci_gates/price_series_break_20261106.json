@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "price_series_break_20261106",
+  "files": [
+    "tests/test_price_series_break_20261106.py"
+  ],
+  "anchor": "PRICE_SERIES_BREAK_20261106",
+  "comment": [
+    "ANCHOR: PRICE_SERIES_BREAK_20261106 — a one-session close step of 2.5x or more (an unadjusted split) is a break in",
+    "the price history, never a drawdown: technical measures only the sessions since and names its span; sectors drop",
+    "the broken member from its groups and say so."
+  ]
+}

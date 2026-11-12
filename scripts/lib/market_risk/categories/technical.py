@@ -47,6 +47,17 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     cfg = ctx.policy[CATEGORY]
     rows = ctx.reader.daily_bars(cfg["symbols"], sessions=int(cfg["history_sessions"]), end=ctx.now)
     by = md.closes_by_symbol(rows)
+    # A one-session step no index ETF can make is a break in the price history (an unadjusted split): measure only the
+    # sessions since it, and say so (PKG-SELLOFF-INTEL-20261106 F: "SOXX -79.1% off 52w high" was a pre-split high).
+    breaks: list[Evidence] = []
+    for sym in sorted(by):
+        brk = md.price_break([c for _, c in by[sym]], float(cfg.get("series_break_ratio", md.DEFAULT_BREAK_RATIO)))
+        if brk:
+            when = by[sym][brk[0]][0]
+            by[sym] = by[sym][brk[0] :]
+            breaks.append(
+                Evidence("price history break", round(brk[1], 4), md.iso(when), SOURCE, md.break_note(sym, when, brk[1], len(by[sym])))
+            )
     usable = {s: v for s, v in by.items() if len(v) >= int(cfg["min_sessions"])}
     if not usable:
         return unknown(CATEGORY, ctx.now, "no daily bars for the index symbols")
@@ -61,19 +72,21 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
         if cur is None or severity > cur[1].value[1]:  # type: ignore[index]
             fired[key] = (key, Evidence(ev.label, (sym, severity), ev.as_of, ev.source, ev.detail))
 
-    context: list[Evidence] = []
+    context: list[Evidence] = list(breaks)
     for sym, series in sorted(usable.items()):
         closes = [c for _, c in series]
         last_t, last = series[-1]
         asof = md.iso(last_t)
         hi52 = max(closes[-252:])
         dd52 = md.pct(last, hi52)
+        # A shorter series (new symbol, or cut at a price break) has no 52-week high: name the span it does have.
+        span = "52w" if len(closes) >= 252 else f"{len(closes)}-session"
         if dd52 <= -float(cfg["drawdown_52w_pct"]):
             fire(
                 "drawdown_52w",
                 sym,
                 -dd52,
-                Evidence("drawdown from 52-week high", None, asof, SOURCE, f"{sym} {dd52:.1f}% off 52w high"),
+                Evidence("drawdown from 52-week high", None, asof, SOURCE, f"{sym} {dd52:.1f}% off {span} high"),
             )
         dd20 = md.pct(last, max(closes[-20:]))
         if dd20 <= -float(cfg["drawdown_20d_pct"]):
