@@ -98,8 +98,46 @@ def test_the_production_sources_that_share_a_cold_store_declare_a_prepare_step()
     assert specs["internal.thesis"].timeout_s == 15.0
 
 
-def test_prepare_timing_never_enters_the_evidence_fingerprint():
-    spec = car.SourceSpec("internal.fixture", "internal", _fact_from_store, BUDGET_S, prepare=_slow_shared_load)
-    one = car.gather_facts([_entity()], [spec], _ctx())
-    two = car.gather_facts([_entity()], [spec], _ctx())
-    assert car.evidence_fingerprint(one["facts"], one["runs"]) == car.evidence_fingerprint(two["facts"], two["runs"])
+def _published(monkeypatch, prepare, source_s=0.0, claim="fixture fact"):
+    """The production fingerprint site: collect_current_evidence publishes fingerprint + source_prepared."""
+    monkeypatch.setattr(car, "resolve_entity", lambda *a, **k: _entity())
+    monkeypatch.setattr(car, "normalize_request",
+                        lambda r, known_symbol=None: {"question": "q", "subjects": ["EXMP"], "mode": "deep"})
+
+    def fn(ent, ctx):
+        time.sleep(source_s)  # no cold store here: only timing/outcome varies between calls
+        return [car.make_fact(source="internal.fixture", family="internal", kind="company_evidence",
+                              subject_key=ent.subject_key, symbol=ent.symbol, claim=claim, as_of=NOW.isoformat(),
+                              citation={"store": "fixture"})]
+
+    spec = car.SourceSpec("internal.fixture", "internal", fn, BUDGET_S, prepare=prepare)
+    return car.collect_current_evidence({"question": "q"}, sources=[spec], now=NOW)
+
+
+def test_the_published_fingerprint_ignores_prepare_and_run_duration(monkeypatch):
+    # LQ-2198 (REVIEW-2197 FP2/FP3): same facts and outcomes, different prepare and source durations.
+    fast = _published(monkeypatch, lambda ctx: None, source_s=0.0)
+    slow = _published(monkeypatch, lambda ctx: time.sleep(0.4), source_s=0.1)
+    assert fast["source_prepared"][0]["elapsed_s"] < slow["source_prepared"][0]["elapsed_s"]
+    assert fast["source_runs"][0]["elapsed_s"] < slow["source_runs"][0]["elapsed_s"]
+    assert [r["status"] for r in fast["source_runs"]] == [r["status"] for r in slow["source_runs"]] == ["ok"]
+    assert fast["fingerprint"] == slow["fingerprint"]
+
+
+def test_the_published_fingerprint_ignores_prepare_outcome(monkeypatch):
+    def broken(ctx):
+        raise OSError("store unreadable")
+
+    ok = _published(monkeypatch, lambda ctx: None)
+    bad = _published(monkeypatch, broken)
+    assert ok["source_prepared"][0]["status"] == "ok"
+    assert bad["source_prepared"][0]["status"] == "error" and bad["source_prepared"][0]["error"] == "OSError"
+    assert [r["status"] for r in bad["source_runs"]] == ["ok"]  # the source still owns its outcome
+    assert ok["fingerprint"] == bad["fingerprint"]
+
+
+def test_the_published_fingerprint_still_moves_when_the_evidence_moves(monkeypatch):
+    # guards the two tests above against a constant fingerprint
+    ok = _published(monkeypatch, lambda ctx: None)
+    moved = _published(monkeypatch, lambda ctx: None, claim="a different fixture fact")
+    assert ok["fingerprint"] != moved["fingerprint"]
