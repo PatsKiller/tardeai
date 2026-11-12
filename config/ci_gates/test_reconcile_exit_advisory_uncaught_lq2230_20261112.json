@@ -1,7 +1,11 @@
 {
   "schema": "CiGate@v1",
   "name": "test_reconcile_exit_advisory_uncaught_lq2230_20261112",
-  "files": ["tests/test_reconcile_exit_advisory_uncaught_lq2230_20261112.py"],
+  "files": [
+    "tests/test_reconcile_exit_advisory_uncaught_lq2230_20261112.py"
+  ],
   "anchor": "RECONCILE_EXIT_ADVISORY_UNCAUGHT_LQ2230_20261112",
-  "comment": ["ANCHOR: RECONCILE_EXIT_ADVISORY_UNCAUGHT_LQ2230_20261112 — an unhandled exception writes a failed receipt naming the exception class."]
+  "comment": [
+    "ANCHOR: RECONCILE_EXIT_ADVISORY_UNCAUGHT_LQ2230_20261112 — an unhandled exception writes a failed receipt naming the exception class."
+  ]
 }
