@@ -44869,6 +44869,132 @@
           "notifier_priority": "P2"
         }
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "cio-pages-product",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "lq_2743_cio_pages_product_builder_20261112",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Schedule the cio.pages product builder so GET /api/v2/cio/pages has a stored copy. A shadow fire runs --dry-run: it builds the CIO page record in a forked child under RLIMIT_AS 512 MB with read-only PG sessions, measures it and prints one JSON receipt, writing nothing. A live fire (not enabled) would write cc_product_current + cc_product_build_log in one transaction and refresh the hot tier.",
+        "business_function": "CIO page served from a stored product",
+        "source": "scripts/cc_products_cio_pages.py -> scripts/lib/cc_products/cio_pages.py (LQ-2595); LQ-20261107-2743"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/cc_products_cio_pages.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_cc_product_cio_pages.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (flock)"
+        },
+        {
+          "name": "data/ under TRADEAI_STATE_ROOT and Postgres (read-only sessions in the build child) via scripts/lib/w7_pages.page_payload",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/cc_products/cio_pages.py build_in_child"
+        },
+        {
+          "name": "Postgres cc_product_current, cc_product_build_log (product_id cio.pages); hot tier",
+          "kind": "store",
+          "direction": "write",
+          "source": "live run only (no --dry-run)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire ends RUN_DONE in mode dry_run while stage is shadow; the printed receipt has outcome OK and wrote false"
+        },
+        {
+          "check": "output_advanced",
+          "text": "after promotion: max(cc_product_build_log.finished_at) where product_id='cio.pages' advances each run and cc_product_current has the cio.pages row"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "slow",
+          "text": "build_ms above 88 s (0.8 x the builder's BUILD_TIMEOUT_S 110)"
+        },
+        {
+          "check": "sections_gapped",
+          "text": "the receipt's source_watermarks mark sections gap true (the builder still writes them; the page shows the gap)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED, or the receipt outcome is not OK (TIMEOUT, RLIMIT, ERROR)"
+        },
+        {
+          "check": "stale",
+          "text": "after promotion: the stored product passes hard_expiry_s 1800 and the route falls back to the in-server compute"
+        }
+      ],
+      "baseline": {
+        "timeout_s": 150,
+        "class": "monitor",
+        "freshness_degraded_after_h": 1.5,
+        "freshness_failed_after_h": 3.0,
+        "freshness_rule": "shadow cadence */30: degraded beyond 3x, failed beyond 6x; promotion to */2 must tighten this to the product's stale_after_s 360 / hard_expiry_s 1800",
+        "computed_on": "2026-11-12",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED for the dispatcher (never dispatched). One sandboxed read-only dry run 2026-11-13T02:52Z: outcome OK, build_ms 17,044, peak_rss_kb 311,884, 649,401 bytes, wrote false.",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 120.0,
+        "duration_rule": "0.8x timeout_s (0.8 x 150 = 120 s)"
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "registry row severity High: without a stored product the CIO page is computed in the server process (memory) or shows BUILDING gaps",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "No catalogue entry yet; regenerate config/n8n_remediation_catalogue.json after this entry merges."
+      },
+      "evidence": {
+        "receipt": "cc_product_build_log (product_id cio.pages)",
+        "verify": [
+          "python3 scripts/cc_products_cio_pages.py --dry-run",
+          "psql -c \"select max(finished_at) from cc_product_build_log where product_id='cio.pages'\""
+        ]
+      },
+      "review_by": "2026-11-26",
+      "review": {
+        "prepared_by": "agent draft (cc-opus-2, LQ-2743, 2026-11-12)",
+        "status": "DRAFT",
+        "reviewed_by": null,
+        "reviewed_on": null,
+        "requested_of": null,
+        "requested_on": null,
+        "note": "Draft at shadow per the lead's assignment (LQ-2743); needs a non-author reviewer before the registry change merges."
+      }
     }
   ],
   "pending_changes": {

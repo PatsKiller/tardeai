@@ -28559,6 +28559,51 @@
       "value_class": "Business Critical",
       "severity": "High",
       "note": "Read-only advisory (MBI_BEHAVIOR = 0): reads alert_incidents, validation_gates, positions_current, positions_sync_runs, market_quotes, lane_health_current and two lane receipts, each query under a 2 s statement_timeout; writes only its own home_snapshots kind=status row (7-day retention of its own kind in the same transaction), a JSON mirror and its receipt. It never sizes, orders, stops, sends or calls a broker. GET /api/v2/home/status only reads the snapshot; a stale snapshot serves UNKNOWN."
+    },
+    {
+      "lane_id": "cio-pages-product",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/cc_products_cio_pages.py",
+        "cadence": "*/30 * * * *",
+        "stage": "shadow",
+        "wave": "W5",
+        "timezone": "America/New_York"
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/30 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "monitor",
+        "priority": 3,
+        "retry_policy": "transient-2"
+      },
+      "expected_cadence_hours": 0.5,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "cc_product_build_log",
+        "column": "finished_at",
+        "where": "product_id='cio.pages'"
+      },
+      "review_by": "2026-11-26",
+      "value_class": "Operationally Important",
+      "severity": "High",
+      "note": "LQ-20261107-2743 (lead 21:40 ET 2026-11-12, P0): release 2 (d014c75d5) was rolled back because GET /api/v2/cio/pages served only the stored cio.pages product and nothing scheduled its builder (cc_product_current 0 rows). This lane schedules the builder (scripts/lib/cc_products/cio_pages.py via the entrypoint scripts/cc_products_cio_pages.py). SHADOW: dispatch.mode dry_run and live_arg null, so every fire is --dry-run: it builds in a forked child under RLIMIT_AS 512 MB, measures and prints, and writes nothing (no PG row, no hot tier, no lock); the db_max signal therefore does not advance until promotion. The shadow cadence is */30 so a dry run (about 17 s, about 312 MB peak on 2026-11-12) does not burn CPU every 2 minutes. Promotion is the lead's call: cadence */2 (the builder's CADENCE_S 120; stale after 360 s, hard expiry 1800 s) and live_arg []. Until then the route computes in the server on a miss (LQ-2743 part 1). READ_ONLY: no broker, no order, no AI call (MBI_BEHAVIOR = 0)."
     }
   ],
   "freshness_contracts": [
