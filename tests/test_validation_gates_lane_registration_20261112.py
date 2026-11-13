@@ -33,11 +33,11 @@ CONTRACT = {c["id"]: c for c in HEALTH["contracts"]}[LID]
 FRESH = {c["key"]: c for c in REG["freshness_contracts"]}["home.validation_gates"]
 
 
-def test_row_is_a_shadow_dispatcher_row_for_the_real_script():
+def test_row_is_a_canary_dispatcher_row_for_the_real_script():
     s = ROW["scheduler"]
-    assert (s["kind"], s["expression"], s["stage"], s["timezone"]) == ("n8n", "dispatcher", "shadow", TZ)
+    assert (s["kind"], s["expression"], s["stage"], s["timezone"]) == ("n8n", "dispatcher", "canary", TZ)
     assert s["match"] == "scripts/validation_gates_sync.py" and (ROOT / s["match"]).is_file()
-    assert ROW["dispatch"]["mode"] == "dry_run"  # flipping to live is the lead's act, not this commit's
+    assert ROW["dispatch"]["mode"] == "live"  # LQ-20261107-2970: promoted by the lead's release-3 order
     assert LR.validate_row(ROW) == []
     policies = json.loads((ROOT / "config/n8n_retry_policies.json").read_text(encoding="utf-8"))["policies"]
     assert LD.validate_dispatch_block(ROW, known_lane_ids=[r["lane_id"] for r in REG["lanes"]],
@@ -67,8 +67,8 @@ def test_allowlist_entry_is_the_apply_form_with_its_own_lock():
     assert ENTRY["timeout_s"] == 120
 
 
-def test_health_contract_is_a_reviewed_shadow_copy_of_the_row():
-    assert CONTRACT["status"] == "REVIEWED" and CONTRACT["stage"] == ROW["scheduler"]["stage"] == "shadow"
+def test_health_contract_is_a_reviewed_canary_copy_of_the_row():
+    assert CONTRACT["status"] == "REVIEWED" and CONTRACT["stage"] == ROW["scheduler"]["stage"] == "canary"
     assert CONTRACT["baseline"]["timeout_s"] == ENTRY["timeout_s"]
     assert any("last_evaluated_at" in t["text"] for t in CONTRACT["healthy"])
 

@@ -6099,6 +6099,62 @@
       "source": "LQ-20261107-2141 (HOME-BACKEND-SPEC-20261111): the live fire is --apply; the dry fire (no args) ingests and evaluates inside a transaction it rolls back and moves no file. Its own lock."
     },
     {
+      "lane_id": "lane-health-snapshot",
+      "command": [
+        "$PY",
+        "scripts/lane_health_snapshot.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "lock": "/tmp/tradeai_lane_health_snapshot.lock",
+      "lock_kind": "flock",
+      "timeout_s": 120,
+      "market_gate": false,
+      "output_signal": "data/runtime/lane-health-snapshot_last.json",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "LQ-2148: the lane writes Postgres through session13_db / env_bootstrap, whose loader re-reads the rendered env file, so the import closure is not bounded by literal reads (same reasoning as lesson-queue-cycle).",
+      "env_evidence": "scripts/lane_health_snapshot.py reads config/, the n8n coordination ledger (sqlite mode=ro) and data/runtime under TRADEAI_STATE_ROOT, and writes lane_health_current through session13_db (DB_*). No broker credential, order route or live flag is read (MBI_BEHAVIOR = 0).",
+      "source": "LQ-20261107-2148 (Home v010 APPROVED 2026-11-11 22:48 ET; HOME-BACKEND-SPEC-20261111 section LQ-2148)"
+    },
+    {
+      "lane_id": "validation-gate-declare",
+      "command": [
+        "$PY",
+        "scripts/validation_gate_declare.py"
+      ],
+      "dry_run_arg": [],
+      "live_arg": [
+        "--apply"
+      ],
+      "lock": "/tmp/validation_gate_declare.lock",
+      "lock_kind": "flock",
+      "timeout_s": 120,
+      "market_gate": false,
+      "env_names": [
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "scripts/validation_gate_declare.state_root() reads TRADEAI_STATE_ROOT (else ~/trade-ai-releases/persistent-state); the catalog and query files are read from the code root. No DB, provider or broker name is read. TRADEAI_RUN_ID / TRADEAI_RUN_ATTEMPT / TRADEAI_RUN_MODE / TRADEAI_CODE_SHA are executor base names.",
+      "source": "LQ-20261107-2966 / LQ-20261107-2970: the live fire is --apply (writes the missing ValidationGateDecl@v1 files); the dry fire (no args) prints the plan and writes nothing. Own lock."
+    },
+    {
       "lane_id": "cio-overnight-brief",
       "command": [
         "$PY",

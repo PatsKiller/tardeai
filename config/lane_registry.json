@@ -28007,7 +28007,7 @@
         "match": "scripts/validation_gates_sync.py",
         "cadence": "*/5 * * * *",
         "timezone": "America/New_York",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W5"
       },
       "expected_cadence_hours": 0.1,
@@ -28021,8 +28021,8 @@
         6
       ],
       "state": "ACTIVE",
-      "state_since": "2026-11-12",
-      "state_reason": "LQ-20261107-2141/2143 (Home v010 backend, HOME-BACKEND-SPEC-20261111): the writer for validation_gates / validation_events. Ingests ValidationGateDecl@v1 files from the intake dir, evaluates each open gate's check (named read-only queries, 2 s statement_timeout), applies OPEN->OVERDUE/FAILED/PASSED transitions and writes a validation_events row for each, every 5 minutes, all days. GET /api/v2/home/gates only reads. Registered SHADOW with dispatch mode dry_run: a dry fire evaluates and rolls back. Going live (mode live, stage canary) needs both migrations applied and the lead's word.",
+      "state_since": "2026-11-13",
+      "state_reason": "LQ-20261107-2141/2143 (Home v010 backend, HOME-BACKEND-SPEC-20261111): the writer for validation_gates / validation_events. Ingests ValidationGateDecl@v1 files from the intake dir, evaluates each open gate's check (named read-only queries, 2 s statement_timeout), applies OPEN->OVERDUE/FAILED/PASSED transitions and writes a validation_events row for each, every 5 minutes, all days. GET /api/v2/home/gates only reads. Registered SHADOW with dispatch mode dry_run: a dry fire evaluates and rolls back. Going live (mode live, stage canary) needs both migrations applied and the lead's word. LQ-20261107-2970 (lead 2026-11-13, release 3): PROMOTED shadow/dry_run -> canary/live; prod table validation_gates exists (lead verified to_regclass). Canary bar: >=3 consecutive live RUN_DONE with fresh output.",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/validation-gates-sync_last.json",
@@ -28037,7 +28037,7 @@
       "severity": "Medium",
       "note": "*/5 * * * * = every five minutes, all week (gates have due times at night and on weekends). A declaration that fails validation or a DB CHECK is refused and counted, never applied; the lane never deletes. No open gates is not zero evidence: the receipt ok_at plus LANE_OUTPUT evaluated prove the lane looked.",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/5 * * * *"
         ],
@@ -28046,6 +28046,103 @@
         "class": "report",
         "priority": 6,
         "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "lane-health-snapshot",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/lane_health_snapshot.py --apply",
+        "cadence": "*/10 * * * *",
+        "stage": "canary",
+        "wave": "W1",
+        "timezone": "America/New_York"
+      },
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "*/10 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W1",
+        "class": "monitor",
+        "priority": 3,
+        "retry_policy": "transient-2"
+      },
+      "expected_cadence_hours": 0.1667,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-13",
+      "state_reason": "LQ-20261107-2148 (Home v010 APPROVED 2026-11-11 22:48 ET; HOME-BACKEND-SPEC-20261111 section LQ-2148): the Home Schedulers row had no source. This is its writer, scheduled through the dispatcher, never cron or systemd. LQ-20261107-2970 (lead 2026-11-13, release 3): PROMOTED shadow/dry_run -> canary/live; prod table lane_health_current exists (lead verified to_regclass). Canary bar: >=3 consecutive live RUN_DONE with fresh output.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/lane-health-snapshot_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/lane_health_snapshot.py --apply writes lane_health_current then the LaneRunReceipt via lane_receipt_main.run_main (ok_at on success only); tests/test_lane_health_20261112.py."
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_lane_health_20261112.py; read-only dry run against the production ledger 2026-11-11 23:0x ET (see READY-LQ-20261107-2148).",
+      "review_by": "2026-11-26",
+      "value_class": "Operationally Important",
+      "severity": "Medium",
+      "note": "READ_ONLY_ADVISORY, MBI_BEHAVIOR = 0: reads the registry, the ledger (mode=ro) and output signals; writes only lane_health_current, its JSON mirror and its receipt. A Schedulers WARN never blocks trading (Home v010 DECISION)."
+    },
+    {
+      "lane_id": "validation-gate-declare",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/validation_gate_declare.py",
+        "cadence": "7 * * * *",
+        "timezone": "America/New_York",
+        "stage": "canary",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 1.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-13",
+      "state_reason": "LQ-20261107-2966 / LQ-20261107-2970 (lead 2026-11-13, release 3): the ValidationGateDecl@v1 producer. Writes the release's missing declaration files from config/validation_gate_declarations.json into <state>/data/coordination/validation_gates/inbox/ (atomic rename); validation-gates-sync ingests them into Postgres. Idempotent: a re-run writes nothing; a catalog edit of a declared gate is DRIFT (exit 2), never an overwrite. Registered canary/live at :07 so its files are ingested by the next */5 sync fire.",
+      "output_signal": {
+        "kind": "none",
+        "reason": "NO_SIGNAL_WITH_REASON: scripts/validation_gate_declare.py writes no LaneRunReceipt and an idempotent re-run writes no file, so no artifact advances on a healthy no-op fire. Proof of a fire is its RunReceipt@v2 in the n8n coordination ledger; proof of effect is validation_gates rows (lane validation-gates-sync, db_max last_evaluated_at). Fix: wrap main() in lane_receipt_main.run_main (follow-up, not in this registration)."
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/validation_gate_declare.py (files only: no DB, no broker, no credentials); tests/test_lane_registration_release3_lq2970_20261113.py pins this row to the allowlist and health contract.",
+      "review_by": "2026-11-27",
+      "value_class": "Operationally Important",
+      "severity": "Low",
+      "note": "7 * * * * = hourly at :07, all week. Files only; never deletes; a DRIFT exit 2 is a RUN_FAILED the lead must read (a declared gate's check cannot change; declare a new gate_id).",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "7 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "report",
+        "priority": 6,
+        "retry_policy": "none"
       }
     },
     {
@@ -29137,6 +29234,23 @@
         "pipeline-freshness-monitor"
       ],
       "note": "Nothing is moved: the lane is new and no prior monitor covered it; the pipeline freshness monitor is named only as the owner of the check. Three missed 5-minute fires is stale; GET /api/v2/home/gates applies the same 15-minute bound (scripts/lib/validation_gates.THRESHOLD_S) and serves last-known-good rows with their age. An empty table has no last_evaluated_at, so the receipt ok_at is the proof the lane looked."
+    },
+    {
+      "key": "ops.lane_health_current",
+      "lane_id": "lane-health-snapshot",
+      "signal": {
+        "kind": "db_max",
+        "table": "lane_health_current",
+        "column": "measured_at"
+      },
+      "max_age_hours": 0.5,
+      "basis": "lane_due",
+      "severity": "P2",
+      "source": "LQ-20261107-2148 (Home v010 APPROVED 2026-11-11 22:48 ET; HOME-BACKEND-SPEC-20261111 section LQ-2148): spec freshness contract db_max lane_health_current.measured_at 0.5 h, P2.",
+      "replaces": [
+        "pipeline-freshness-monitor"
+      ],
+      "note": "enable only after the migration is applied and the lane is at canary; before that the table does not exist; enabled by LQ-20261107-2970 at canary (table verified present by the lead 2026-11-13)."
     },
     {
       "key": "ops.alert_delivery_queue_hygiene",
