@@ -12,7 +12,7 @@
 # dispatch block in lane_registry.json). If set false again, --apply stops at ``disabled`` before any Schwab or database module is imported.
 schema: VixIndexQuotes@v1
 enabled: true
-requires_grant: "data_source_authority providers.schwab.supply_grants: market_data_quotes for quote_price, symbols below only (GRANTED 2026-11-09 16:08 ET, AGENTS 32.0.0 §23.20a)"
+requires_grant: "data_source_authority providers.schwab.supply_grants: market_data_quotes for quote_price, the symbols below (GRANTED 2026-11-09 16:08 ET, AGENTS 32.0.0 §23.20a) and the held_funds leg for held MUTUAL_FUND symbols from positions_current (GRANTED 2026-11-13 ~09:20/09:45 ET in-session, LQ-20261107-2962/2964)"
 symbols: ["$VIX", "$VIX9D", "$VIX3M"]
 # STORE: market_quotes through its single writer (scripts/lib/writers/market_quotes_writer.py), source 'schwab'.
 # fetched_at holds Schwab's own quote.tradeTime (the instant the level was observed), NEVER the fetch time, so a
@@ -35,3 +35,14 @@ cadence_minutes: 15
 # with its true print time and labelled written_stale -- last-known-good with its age (LQ-20261107-1872). The slot's
 # receipt names the print and its age either way, so the timeline shows the gap as a fact, never as a missing run.
 max_trade_age_minutes: 30
+
+# LQ-20261107-2962: held mutual-fund NAV quotes (finding 2943: no sanctioned writer covers a fund; yfinance is retired).
+# Same read-only Schwab market-data call, same single market_quotes writer, source 'schwab'. fetched_at is the quote's
+# own NAV time, never the fetch time. The symbols are read from positions_current (asset_type MUTUAL_FUND), not listed here.
+# ON under the operator's 2026-11-13 grant (data_source_authority providers.schwab.supply_grants, quote_price, approved_on
+# 2026-11-13: the held_funds leg only). The 2026-11-09 grant names $VIX, $VIX9D and $VIX3M only.
+# max_trading_hours: a fund prices once a day after the close,
+# so the Home data gate treats a NAV as fresh for 1 trading day (24 h with weekends and exchange holidays removed).
+held_funds:
+  enabled: true
+  max_trading_hours: 24

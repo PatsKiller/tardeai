@@ -65,7 +65,18 @@ def load_config(path: Path | str | None = None) -> dict[str, Any]:
     syms = cfg.get("symbols") or []
     if not syms or any(not str(s).startswith("$") for s in syms):
         raise ValueError("symbols must be a non-empty list of $-prefixed index symbols")
+    hf = cfg.get("held_funds")
+    if hf is not None and not isinstance(hf, dict):
+        raise ValueError("held_funds must be a mapping")
     return cfg
+
+
+def funds_enabled(cfg: dict[str, Any]) -> bool:
+    """Held mutual-fund NAV quoting (LQ-20261107-2962). Off unless the config says ``held_funds.enabled: true``."""
+    return bool((cfg.get("held_funds") or {}).get("enabled"))
+
+
+_FUND_SYMBOL_OK = __import__("re").compile(r"^[A-Z][A-Z0-9.]{0,9}$")
 
 
 def _hhmm(text: str) -> time:
@@ -158,9 +169,75 @@ def parse_payload(payload: Any, now: datetime, cfg: dict[str, Any],
     return rows, entries
 
 
+def parse_funds(payload: Any, now: datetime, cfg: dict[str, Any], fund_symbols: list[str],
+                last_stored: dict[str, datetime | None]) -> tuple[list[dict], list[dict]]:
+    """Schwab quotes payload -> (rows, receipt entries) for held MUTUAL_FUND symbols.
+
+    A fund prices once a day (NAV after the close). ``fetched_at`` is the quote's own NAV/trade time, never the fetch
+    time: a fetch-time stamp would show a day-old NAV as fresh. A fund block with no price or no NAV time is refused
+    by name (unknown beats wrong). Freshness is the trading-day age of the NAV, ``held_funds.max_trading_hours``.
+    """
+    from lib.session_freshness import trading_age_hours
+
+    limit_h = float((cfg.get("held_funds") or {}).get("max_trading_hours", 24))
+    blocks = payload if isinstance(payload, dict) else {}
+    rows: list[dict] = []
+    entries: list[dict] = []
+    for sym in fund_symbols:
+        blk = blocks.get(sym)
+        entry: dict[str, Any] = {"symbol": sym, "kind": "fund"}
+        entries.append(entry)
+        if not isinstance(blk, dict) or not isinstance(blk.get("quote"), dict):
+            entry["status"] = "refused:not_in_payload" if blk is None else "refused:not_a_quote"
+            continue
+        asset = str(blk.get("assetMainType") or "")
+        if asset.upper() != "MUTUAL_FUND":  # verify, never assume
+            entry["status"] = f"refused:fund_asset_type_{asset.strip().lower() or 'missing'}"
+            continue
+        q = blk["quote"]
+        price = _num(q.get("nAV")) or _num(q.get("NAV")) or _num(q.get("lastPrice"))
+        at = _ts(q.get("tradeTime")) or _ts(q.get("quoteTime"))
+        if price is None or at is None:
+            entry["status"] = "refused:no_nav_price_or_date"
+            continue
+        age = trading_age_hours(at, now)
+        entry.update({"price": price, "print_at": at.isoformat(),
+                      "trading_age_hours": None if age is None else round(age, 1)})
+        stored = last_stored.get(sym)
+        if (now - at).total_seconds() < -300:
+            entry["status"] = "refused:future_timestamp"
+        elif stored is not None and at <= stored:
+            entry["status"] = "unchanged"
+        elif age is None or age > limit_h:
+            entry["status"] = "written_stale"  # real NAV the store lacks: written with its true date, labelled stale
+            rows.append({"symbol": sym, "price": price, "fetched_at": at})
+        else:
+            entry["status"] = "written"
+            rows.append({"symbol": sym, "price": price, "fetched_at": at})
+    return rows, entries
+
+
+def read_fund_symbols() -> list[str]:
+    """Held MUTUAL_FUND symbols from positions_current (read-only). Anything not a plain ticker is dropped."""
+    from db_adapter import _get_conn
+
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SET TRANSACTION READ ONLY")
+        cur.execute("SELECT DISTINCT upper(symbol) FROM positions_current WHERE upper(COALESCE(asset_type,'')) = "
+                    "'MUTUAL_FUND' AND NOT COALESCE(is_cash, false) AND qty > 0 ORDER BY 1")
+        got = [str(r[0]) for r in cur.fetchall() if r and r[0]]
+        conn.rollback()
+    finally:
+        conn.close()
+    return [g for g in got if _FUND_SYMBOL_OK.match(g)]
+
+
 def run(*, cfg: dict[str, Any], now: datetime, fetch: Callable[[list[str]], Any],
         read_last: Callable[[list[str]], dict[str, datetime | None]],
-        write: Callable[[list[dict]], dict] | None, dry_run: bool, force_window: bool = False) -> dict[str, Any]:
+        write: Callable[[list[dict]], dict] | None, dry_run: bool, force_window: bool = False,
+        read_funds: Callable[[], list[str]] | None = None) -> dict[str, Any]:
     """One fire. ``fetch``, ``read_last`` and ``write`` are injected so tests and emulation never reach Schwab or a DB."""
     receipt: dict[str, Any] = {"schema": SCHEMA, "provider": "schwab", "store": cfg.get("store", "market_quotes"),
                                "now": now.isoformat(), "slot": slot_of(now, int(cfg.get("cadence_minutes", 15))),
@@ -171,7 +248,10 @@ def run(*, cfg: dict[str, Any], now: datetime, fetch: Callable[[list[str]], Any]
         receipt["status"] = "outside_window"
         return receipt
     syms = [str(s).upper() for s in cfg["symbols"]]
-    payload = fetch(syms)
+    funds: list[str] = []
+    if funds_enabled(cfg) and read_funds is not None:
+        funds = [f for f in read_funds() if f not in syms]
+    payload = fetch(syms + funds)
     if isinstance(payload, dict) and payload.get("_status"):
         receipt["status"] = str(payload["_status"])
         receipt["detail"] = payload.get("_detail")
@@ -179,6 +259,9 @@ def run(*, cfg: dict[str, Any], now: datetime, fetch: Callable[[list[str]], Any]
     if isinstance(payload, dict):
         payload = {k: v for k, v in payload.items() if not str(k).startswith("_")}
     rows, entries = parse_payload(payload, now, cfg, read_last(syms))
+    if funds:
+        frows, fentries = parse_funds(payload, now, cfg, funds, read_last(funds))
+        rows, entries = rows + frows, entries + fentries
     receipt["symbols"] = entries
     if rows and not dry_run and write is not None:
         wr = write(rows)
@@ -293,7 +376,8 @@ def main(argv: list[str] | None = None) -> int:
     import market_quotes_offhours_schwab as lane  # the one token-safe Schwab market-data read
 
     receipt = run(cfg=cfg, now=now, fetch=lambda s: lane.live_fetch(s, cfg), read_last=lambda s: _read_last(s, src),
-                  write=None if args.dry_run else (lambda r: _write(r, src)), dry_run=bool(args.dry_run))
+                  write=None if args.dry_run else (lambda r: _write(r, src)), dry_run=bool(args.dry_run),
+                  read_funds=read_fund_symbols)
     print(json.dumps(receipt, default=str, indent=1))
     if args.dry_run:
         return 0

@@ -74,6 +74,9 @@ SYNC_OK_STATUSES = ("complete",)      # measured 2026-11-11: complete | partial
 # Operator decisions 2026-11-11 (Portfolio v002 DECISIONS, binding for Home via LQ-2172): exempt by default are cash,
 # money-market funds and sweep vehicles; ETFs, closed-end funds, mutual funds and stocks are NOT exempt; a position
 # under $100 is listed, not counted, not hidden. Cash lines never reach the data input (is_cash is filtered in SQL).
+# LQ-20261107-2962: a mutual fund prices once a day (NAV after the close), so the shared quote_price limit (0.25 h open)
+# would call a good NAV STALE all session. Its limit is 1 trading day: hours with weekends and exchange holidays removed.
+FUND_NAV_MAX_TRADING_HOURS = 24.0
 DATA_EXEMPT_ASSET_TYPES = ("CASH", "MONEY_MARKET", "MONEY_MARKET_FUND", "SWEEP", "SWEEP_VEHICLE")
 DATA_NOT_COUNTED_UNDER_USD = 100.0
 # LQ-20261107-2643 (operator P0 2026-11-12 19:08 ET): a mutual fund strikes ONE NAV a day, after the close, so it
@@ -475,7 +478,12 @@ def read_data(q: Query, now: datetime) -> Reading:
         return r
     # One row per counted symbol is graded on its own reading, so a fund's daily NAV cannot mask a stale quote
     # and a stale quote cannot make a fresh NAV look old. The gate takes the worst, oldest on a tie.
+    # LQ-20261107-2962: a fund priced from market_quotes (the Schwab quote lane's daily NAV) is graded as a NAV,
+    # fresh for FUND_NAV_MAX_TRADING_HOURS trading hours; a broker NAV keeps the LQ-2643 rule in _quote_reading.
     graded = [(str(row.get("symbol")),
+               _fund_quote_reading(htr.DATA, row, as_of, now, source_id=source_id, lane_id="market-quotes",
+                                   owner="data")
+               if data_is_mutual_fund(row) and not src.startswith(BROKER_NAV_SOURCE) else
                _quote_reading(htr.DATA, as_of, src, now, source_id=source_id, lane_id="market-quotes", owner="data"))
               for row, as_of, src in priced]
     graded_on, r = min(graded, key=lambda g: (-_DATA_STATE_RANK.get(g[1].state, 2), g[1].as_of or ""))
@@ -483,7 +491,30 @@ def read_data(q: Query, now: datetime) -> Reading:
     r.value = {"symbols": len(rows), "listed_not_counted": small, "exempt": exempt, "oldest_symbol": graded_on}
     if fund_nav:
         r.value["fund_nav"] = fund_nav
+    funds = sorted(str(row.get("symbol")) for row, _as_of, _src in priced if data_is_mutual_fund(row))
+    if funds:
+        r.value["funds"] = funds
     return r
+
+
+def _fund_quote_reading(name: str, row: dict[str, Any], as_of: Any, now: datetime, *, source_id: str, lane_id: str,
+                        owner: str) -> Reading:
+    """Grade a mutual fund's market_quotes NAV (LQ-20261107-2962): OK within FUND_NAV_MAX_TRADING_HOURS trading hours
+    (weekends and exchange holidays do not age it), STALE beyond, with the fund named. Unreadable age is UNKNOWN."""
+    from scripts.lib.session_freshness import trading_age_hours
+
+    sym = str(row.get("symbol"))
+    age = trading_age_hours(as_of, now)
+    kw = dict(source_id=source_id, lane_id=lane_id, owner=owner)
+    if age is None:
+        return htr.unknown(name, f"mutual fund NAV time unreadable: {sym}", **kw)
+    stale = age > FUND_NAV_MAX_TRADING_HOURS
+    # An OK NAV is the last session's close value; "since_last_close" stops home_trade_ready.field_of re-judging it on
+    # wall-clock age (a Friday NAV read on Monday is ~62 wall hours but ~1 trading hour old).
+    return Reading(name=name, state=htr.STALE if stale else htr.OK, as_of=htr.iso(htr.to_utc(as_of)),
+                   threshold_s=FUND_NAV_MAX_TRADING_HOURS * 3600,
+                   threshold_basis="fixed" if stale else "since_last_close",
+                   cause=f"fund NAV older than 1 trading day: {sym}" if stale else None, **kw)
 
 
 def read_schedulers(q: Query, now: datetime) -> Reading:

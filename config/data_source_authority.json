@@ -86,6 +86,14 @@
           "approved_on": "2026-11-09",
           "reference": "operator 2026-11-09 16:08 ET in-session: \"I approve the above. Expedite as fast as possible.\" in reply to APPROVE_AGENTS_POLICY_32_0_0 local 2bfb6c511 (LQ-20261107-1684 option B, picked 15:45 ET: n8n with a narrow exception for one read-only Schwab quote lane); AGENTS.md 32.0.0 \u00a723.20a",
           "scope": "lane vix-index-quotes-schwab only: scripts/vix_index_quotes_schwab.py reads GET https://api.schwabapi.com/marketdata/v1/quotes for $VIX, $VIX9D, $VIX3M only (config/vix_index_quotes.yaml), writes through the single market_quotes writer; never account, order, stop, 2FA or auth endpoints; the token is loaded on the host by schwab_token_manager, never by n8n or an agent"
+        },
+        {
+          "supply": "market_data_quotes",
+          "domain": "quote_price",
+          "approved_by": "operator",
+          "approved_on": "2026-11-13",
+          "reference": "operator 2026-11-13 ~09:20 ET in-session (verbatim): \"AMANX, you can quote that from FinViz or you can quote it from Charles Schwab. What's the problem?\" and ~09:45 ET: \"Fix AMANX through the approved market-data path. Implement and deploy Schwab coverage for held mutual funds ... Keep the November 7 yfinance ban enforced. Do not substitute an ETF price or present daily NAV as an intraday quote.\"",
+          "scope": "lane vix-index-quotes-schwab, held_funds leg only: GET /marketdata/v1/quotes for symbols of held positions with asset_type MUTUAL_FUND (positions_current), NAV + its own NAV date, never account/order/stop/2FA/auth endpoints"
         }
       ]
     },
