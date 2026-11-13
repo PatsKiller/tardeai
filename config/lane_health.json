@@ -9,7 +9,7 @@
     "stale_after_slots": 3,
     "warn_states": ["LATE", "STALE", "FAILING"],
     "unknown_states": ["UNKNOWN", "NOT_MEASURED"],
-    "business_critical_value_classes": [],
+    "business_critical_value_classes": ["Business Critical"],
     "stale_after_minutes": 30,
     "owner": "platform",
     "max_listed_slots": 5,
@@ -18,7 +18,7 @@
   "notes": {
     "late_grace_minutes": "spec test: a slot done 20 min late with a 10-min grace is late 1. Lateness is started_at - slot; the slot is matched on the dispatch (requested_at).",
     "stale_after_slots": "output signal older than the lane's 3rd-newest expected slot (about 2.5x cadence, the spec's freshness-contract multiple), counted on the lane's own market-day/active-day slots so a weekend is not stale.",
-    "business_critical_value_classes": "empty = every lane counts toward the Schedulers WARN. LQ-2149 (home_status_registry) decides which lanes are business-critical; set the value classes here when it lands.",
+    "business_critical_value_classes": "LQ-2967 (REVIEW-2963 D2): the Schedulers WARN counts only LATE/STALE/FAILING lanes whose lane_registry value_class is in this list. Empty meant every lane counted, so on the live registry the tile read WARN permanently (33 lanes LATE/STALE/FAILING on 2026-11-13, most a late start under host load). 'Business Critical' is the registry's top tier (66 lanes). 'Operationally Important' (192 lanes, 18 off schedule that day) is left out on purpose: a lane in it that must page is promoted to Business Critical in lane_registry.json, not listed here. Gap: Home-card owner lanes stop-health-check (Technical Debt), market-quotes-extended (UNCLASSIFIED), vix-index-quotes-schwab (no class) and deploy-detect (Nice to Have) are outside the tier, so their staleness does not turn Schedulers WARN; reclassifying them is a registry decision. Only the WARN is narrowed; unknown_states still count every lane.",
     "unknown_states": "NOT_MEASURED (cron/systemd: no per-run ledger, spec A4) keeps the rollup UNKNOWN rather than OK until those lanes move to n8n. Unknown never reads as OK.",
     "stale_after_minutes": "the snapshot is stale for a reader after 30 min (3 missed 10-minute slots)"
   }
