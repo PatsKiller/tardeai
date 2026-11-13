@@ -2841,6 +2841,56 @@
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
+      "lane_id": "cio-persistent-wake",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/run_cio_wake_bounded.py",
+        "cadence": "0 * * * *",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 1.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-13",
+      "state_reason": "LQ-20261107-2965 (SEV-1 LQ-2954 follow-up): the hourly CIO persistent wake, moved off the bare crontab line (paused 2026-11-13 after the 13 GB OOM) onto the n8n dispatcher behind scripts/run_cio_wake_bounded.py: flock -n single flight, admission fence (refuses while a non-comment crontab line runs the same wake or a wake is in flight), systemd-run --user --scope MemoryMax=2G MemorySwapMax=0 OOMPolicy=kill CPUWeight=20 IOWeight=20, nice/ionice, timeout 1800 s --kill-after 30 s, receipt with exit code and cgroup memory.peak. Registered SHADOW with dispatch mode dry_run: a dry fire runs admission only and spawns nothing. Going live (mode live, stage canary) needs the LQ-2954 bounded IR load served, the canary in the READY note passed, and the lead's word.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/cio-persistent-wake_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "LaneRunReceipt@v2 written by scripts/run_cio_wake_bounded.write_lane_run_receipt on an --apply run only (refused, failed, OOM and timeout runs write it too, with ok_at unchanged); ok_at advances only when the bounded wake exits 0. The wake's own durable record is <SHARED_STATE_ROOT>/persistent_wake/state/wakes.jsonl (the persistent-wake-hourly row's signal)."
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_cio_wake_bounded_lq2965_20261113.py pins admission, argv bounds, classification and both receipts; real-host smoke 2026-11-13 (synthetic workload): ok peak 72 MB, OOM under 256M contained as oom_killed with memory.peak = MemoryMax, timeout rc 124.",
+      "review_by": "2026-11-27",
+      "value_class": "Nice to Have",
+      "severity": "Medium",
+      "note": "0 * * * * = hourly, all week, matching the paused cron line. At cutover the cron-scheduled persistent-wake-hourly row goes RETIRED (its cron line stays commented); both rows describe the same wake and the runner refuses to start while that cron line is uncommented, so they cannot both fire. Re-running a slot is idempotent (wake_id is minted from agent, reason, hourly slot and subject; a terminal wake replays as replay_suppressed), so retry stays none: a failed fire waits for the next slot rather than re-spending provider calls.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "report",
+        "priority": 6,
+        "retry_policy": "none"
+      }
+    },
+    {
       "lane_id": "governed-research-producer",
       "owner": "cio",
       "scheduler": {

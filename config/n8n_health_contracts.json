@@ -87,6 +87,172 @@
   "contracts": [
     {
       "schema": "N8nHealthContract@v1",
+      "id": "cio-persistent-wake",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "lq2965_cio_wake_bounded",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Run the hourly CIO persistent wake (L1/L2/L3 subject selection, provider judgment, settlement, outbound) inside a 2 GB memory-capped, low-priority systemd scope so a runaway wake is killed alone instead of taking the host and :443 down.",
+        "business_function": "cio",
+        "source": "LQ-20261107-2965 (SEV-1 LQ-2954 follow-up)"
+      },
+      "owner": "cio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/run_cio_wake_bounded.py --agent-id cio",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command + live_arg"
+        },
+        {
+          "name": "systemd-run --user --scope (MemoryMax=2G MemorySwapMax=0 OOMPolicy=kill) -> scripts/run_persistent_wake.py --agent-id cio",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "scripts/run_cio_wake_bounded.build_argv"
+        },
+        {
+          "name": "/tmp/cio_persistent_wake.lock, /tmp/cio_wake_bounded.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock + runner flock"
+        },
+        {
+          "name": "<SHARED_STATE_ROOT>/persistent_wake/state/{wakes,receipts,commitments,agent_views,l3_judgment_cache}.jsonl",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "scripts/lib/persistent_agent_wake.py"
+        },
+        {
+          "name": "Postgres communication_events, communication_deliveries (outbound via gateway settlement)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/gateway_settlement.deliver_agent_outbound"
+        },
+        {
+          "name": "data/runtime/cio-persistent-wake_last.json, data/runtime/cio-persistent-wake_bounded_last.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/run_cio_wake_bounded.py, --apply runs only"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "run_done",
+          "text": "every live fire ends RUN_DONE; the bounded receipt names outcome ok, exit_code 0 and peak_memory_bytes under MemoryMax"
+        },
+        {
+          "check": "signal_fresh",
+          "text": "cio-persistent-wake_last.json ok_at under 2 hours old and wakes.jsonl advancing hourly"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "no ledger run row for 2 hours"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 900 s"
+        },
+        {
+          "check": "memory_high",
+          "text": "peak_memory_bytes above 75 % of MemoryMax (1.5 GB) on an ok run"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a fire ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED; exit 3 = admission refused (cron line still active or a wake in flight), exit 4 = scope could not start, 124/137 = timeout, outcome oom_killed = the wake hit MemoryMax"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 3 hours while the lane is live"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        }
+      ],
+      "baseline": {
+        "timeout_s": 1900,
+        "class": "report",
+        "freshness_degraded_after_h": 2.0,
+        "freshness_failed_after_h": 3.0,
+        "freshness_rule": "one missed hourly fire degrades, two fail",
+        "computed_on": "2026-11-13",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED",
+        "runs_considered": null,
+        "duration_degraded_above_s": 900.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "a missed wake delays CIO review of a subject by an hour; an OOM is contained by the scope and recorded in the receipt",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity, else the fan-in priority (RUN_* = P2)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: regenerate with scripts/build_remediation_catalogue.py --write after this allowlist entry merges (step 7 of the onboarding checklist)"
+      },
+      "evidence": {
+        "receipt": "data/governance/n8n_coordination_ledger.sqlite runs (one row per fire) plus data/runtime/cio-persistent-wake_bounded_last.json (exit code, outcome, peak memory)",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='cio-persistent-wake' ORDER BY requested_at DESC LIMIT 20\"",
+          "python3 -m json.tool data/runtime/cio-persistent-wake_bounded_last.json"
+        ]
+      },
+      "review_by": "2026-11-27",
+      "review": {
+        "prepared_by": "agent draft (cc-opus-3, LQ-20261107-2965, 2026-11-13)",
+        "status": "REVIEWED",
+        "reviewed_by": "lead assignment LQ-20261107-2965 (claude-lead 09:27 ET); registration only",
+        "reviewed_on": "2026-11-13",
+        "note": "registration only: baseline.source is NOT_MEASURED; no live fire has happened"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "bounded wake runs completed (exit 0)",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "admission_refused"
+        ],
+        "evidence": [
+          {
+            "kind": "ledger_row",
+            "ref": "data/governance/n8n_coordination_ledger.sqlite runs + run_outcomes for lane_id=cio-persistent-wake"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
       "id": "aegis-nightly-ingestion",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",

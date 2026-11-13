@@ -11,6 +11,46 @@
   "_entry_shape": "lane_id, command (argv, run with cwd = code root), lock (absolute; reused from the live cron/unit so n8n and cron cannot double-run), lock_kind (safe_flock default | flock = cron-style `flock -n`, conflict exit 75), timeout_s, dry_run_arg / live_arg (argv appended for that mode; null = mode unavailable, run refused), market_gate (bool; executor prepends scripts/market_day_gate.sh), output_signal (relative to $STATE_ROOT; mtime recorded before/after on the RunReceipt@v1)",
   "lanes": [
     {
+      "lane_id": "cio-persistent-wake",
+      "command": [
+        "$PY",
+        "scripts/run_cio_wake_bounded.py",
+        "--agent-id",
+        "cio"
+      ],
+      "dry_run_arg": [],
+      "live_arg": [
+        "--apply"
+      ],
+      "lock": "/tmp/cio_persistent_wake.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1900,
+      "market_gate": false,
+      "output_signal": "data/runtime/cio-persistent-wake_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_STATE_ROOT",
+        "XDG_RUNTIME_DIR",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "WAKE_L3_JUDGMENT",
+        "WAKE_L3_ALLOW_LIVE_PROVIDER",
+        "PERSISTENT_WAKE_ENABLED",
+        "PERSISTENT_WAKE_SCHEDULE_ENABLED",
+        "TRADEAI_WAKE_MATERIAL_CHANGES_PATH",
+        "TRADEAI_WAKE_RESEARCH_OBJECTS_PATH",
+        "TRADEAI_WAKE_RECEIPTS_PATH"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Report until the operator adds the L3 provider credential NAMES the paused cron line takes from its sourced canary env file (agents may not read that file). Under report the child keeps the executor's pre-P7 env, so the provider names must be present in the executor's own environment before the lane goes live; a wake without them refuses L3 judgment rather than calling a provider.",
+      "env_evidence": "scripts/run_cio_wake_bounded.wake_env setdefaults the four wake flags and the three TRADEAI_WAKE_*_PATH feeds exactly as the paused cron line sets them; systemd-run --user needs XDG_RUNTIME_DIR (and DBUS_SESSION_BUS_ADDRESS where set) to reach the user manager, else admission refuses systemd_run_unavailable or the scope fails (exit 4, scope_failed). TRADEAI_RUN_ID / TRADEAI_RUN_ATTEMPT / TRADEAI_RUN_MODE / TRADEAI_CODE_SHA are executor base names.",
+      "source": "LQ-20261107-2965: the live fire is --apply (one bounded wake); the dry fire (no args) prints admission and the exact argv and writes nothing. timeout_s 1900 > runner timeout 1800 + kill-after 30, so the runner's own timeout fires first and its receipt is written. Own lock; the runner also takes its own flock (/tmp/cio_wake_bounded.lock) for operator-run canaries."
+    },
+    {
       "lane_id": "generate-analyst-daily-digest",
       "env_names": [
         "AGENT_FRESHNESS_DAYS",
