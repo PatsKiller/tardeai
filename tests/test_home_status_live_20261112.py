@@ -45,7 +45,7 @@ def test_route_is_registered_in_the_served_table():
     import scripts.api_v2 as api
 
     assert "/api/v2/home/status" in api.ROUTES
-    assert '"/api/v2/home/status": lambda: _home_status(),' in Path(api.__file__).read_text()
+    _assert_route_dispatches_legacy("/api/v2/home/status", "_home_status")
     assert callable(getattr(api, "_home_status", None))
 
 
@@ -159,3 +159,23 @@ def test_readonly_query_sets_read_only_and_timeout_and_rolls_back():
     assert Conn.rollbacks == 2
     with pytest.raises(ConnectionError):
         hsl.readonly_query(lambda: None, TimeoutError)("SELECT 1")
+
+
+def _assert_route_dispatches_legacy(path, legacy_name, product="home"):
+    """The route is flag-dispatched (TRADEAI_CC_PRODUCT_READERS, home-products rework 13 Nov 2026): with the flag
+    at its default (legacy) it delegates to ``legacy_name``; nothing else is called."""
+    import scripts.api_v2 as api
+    from scripts.lib.cc_products import reader_flag
+
+    reader_flag.reload("")
+    try:
+        assert reader_flag.mode(product) == "legacy"
+        sentinel = {"sentinel": legacy_name}
+        orig = getattr(api, legacy_name)
+        setattr(api, legacy_name, lambda *a, **k: sentinel)
+        try:
+            assert api.ROUTES[path]() is sentinel
+        finally:
+            setattr(api, legacy_name, orig)
+    finally:
+        reader_flag.reload()

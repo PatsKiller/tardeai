@@ -77,7 +77,27 @@ def test_rows_never_evaluated_are_unknown_not_ok():
 
 def test_api_route_is_a_thin_delegation():
     src = (ROOT / "scripts" / "api_v2.py").read_text()
-    assert '"/api/v2/home/gates": lambda: _home_gates()' in src
+    _assert_route_dispatches_legacy("/api/v2/home/gates", "_home_gates")
     start = src.index("def _home_gates():")
     body = src[start:src.index("\n\n\n", start)]
     assert "home_v010_api" in body and len(body.splitlines()) <= 10 and "read_model" not in body
+
+
+def _assert_route_dispatches_legacy(path, legacy_name, product="home"):
+    """The route is flag-dispatched (TRADEAI_CC_PRODUCT_READERS, home-products rework 13 Nov 2026): with the flag
+    at its default (legacy) it delegates to ``legacy_name``; nothing else is called."""
+    import scripts.api_v2 as api
+    from scripts.lib.cc_products import reader_flag
+
+    reader_flag.reload("")
+    try:
+        assert reader_flag.mode(product) == "legacy"
+        sentinel = {"sentinel": legacy_name}
+        orig = getattr(api, legacy_name)
+        setattr(api, legacy_name, lambda *a, **k: sentinel)
+        try:
+            assert api.ROUTES[path]() is sentinel
+        finally:
+            setattr(api, legacy_name, orig)
+    finally:
+        reader_flag.reload()

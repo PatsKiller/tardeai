@@ -20,7 +20,7 @@ def _wire(monkeypatch, *, inc=INC, since=None, appr=(200, {"ok": True, "data": {
 
 def test_route_is_registered():
     import inspect
-    assert '"/api/v2/home/priorities-live": lambda: _home_priorities_live()' in inspect.getsource(api)
+    _assert_route_dispatches_legacy("/api/v2/home/priorities-live", "_home_priorities_live")
 
 
 def test_route_ranks_and_names_the_unread_stop_advice(monkeypatch):
@@ -53,3 +53,23 @@ def test_an_approvals_body_behind_a_non_200_status_is_never_used(monkeypatch):
     _wire(monkeypatch, appr=(503, {"ok": True, "data": {"count": 4, "urgent_count": 1}}))
     out = api._home_priorities_live()
     assert any(u["input"] == "approvals" for u in out["unread"]) and all(i["kind"] != "APPROVALS" for i in out["items"])
+
+
+def _assert_route_dispatches_legacy(path, legacy_name, product="home"):
+    """The route is flag-dispatched (TRADEAI_CC_PRODUCT_READERS, home-products rework 13 Nov 2026): with the flag
+    at its default (legacy) it delegates to ``legacy_name``; nothing else is called."""
+    import scripts.api_v2 as api
+    from scripts.lib.cc_products import reader_flag
+
+    reader_flag.reload("")
+    try:
+        assert reader_flag.mode(product) == "legacy"
+        sentinel = {"sentinel": legacy_name}
+        orig = getattr(api, legacy_name)
+        setattr(api, legacy_name, lambda *a, **k: sentinel)
+        try:
+            assert api.ROUTES[path]() is sentinel
+        finally:
+            setattr(api, legacy_name, orig)
+    finally:
+        reader_flag.reload()
