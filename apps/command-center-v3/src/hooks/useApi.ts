@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { TransportState } from '../lib/observationEnvelope.ts'
-import { classifyStatus, classifyError, countsAsConnectionFailure } from '../lib/httpOutcome'
-import { coalesceInFlight } from '../lib/inflightGet'
+import { classifyStatus, classifyError, countsAsConnectionFailure } from '../lib/httpOutcome.ts'
+import { coalesceInFlight } from '../lib/inflightGet.ts'
 
 // ── Global connection health ─────────────────────────────────────────────────────────────────────────
 // useApi consumers register/clear when they enter/leave a failed state, so a single top-level indicator
@@ -53,6 +53,91 @@ export type UseApiOptions = { enabled?: boolean; priority?: 'background' }
 // v3.1 (WS-A): manual ETag revalidation — server answers 304 before any JSON
 // serialize/gzip, which is where the CPU actually went. Keyed by path.
 const _etags = new Map<string, string>()
+
+// One subscription per path (combined Home, operator controlling decision 2026-11-13).
+//
+// The combined Home mounts the classic Home and the operational section on one page, inside a shell whose chrome polls
+// some of the same paths (approvals/summary in NavRail + MetricStrip; overview, risk-regime, trade-ai/summary in
+// MetricStrip and HomeDoNow). Every hook for a path is a subscriber of ONE shared record:
+//   - whichever subscriber's poll comes due first reads the server; the body is handed to every subscriber at once;
+//   - a subscriber whose own poll comes due while the shared body is younger than 90% of its own interval takes that
+//     body instead of issuing a second GET — so a path is read once per (shortest) poll cycle, never once per hook;
+//   - concurrent reads of a path still join one in-flight GET (lib/inflightGet.ts);
+//   - polling pauses while the document is hidden and resumes with one read when it becomes visible again
+//     (lib/pageVisibility.ts, the 2026-10-22 memory incident).
+// A body is never older than the subscriber's own cadence promised, and an operator refetch always reaches the server.
+const _lastGood = new Map<string, { json: unknown; at: number }>()
+type BodyListener = (json: unknown, at: number) => void
+const _subscribers = new Map<string, Set<BodyListener>>()
+const _anyListeners = new Set<(path: string) => void>()
+
+/** The last 200 body read for exactly this path (cache-buster excluded), with the time it was last confirmed. */
+export function peekLastGood(path: string): { json: unknown; at: number } | null {
+  return _lastGood.get(path) ?? null
+}
+
+/** Record a 200 body for `path` and hand it to every subscriber of that path (except `from`, which applied it). */
+export function noteLastGood(path: string, json: unknown, at: number = Date.now(), from?: BodyListener): void {
+  _lastGood.set(path, { json, at })
+  _subscribers.get(path)?.forEach(fn => { if (fn !== from) fn(json, at) })
+  _anyListeners.forEach(fn => fn(path))
+}
+
+/** Every path that has a recorded body, with that body (the page's endpoint inventory, for the product-clock panel). */
+export function listLastGood(): Array<[string, { json: unknown; at: number }]> {
+  return [...(_lastGood.entries())]
+}
+
+/** Be told whenever any path records a new body. Returns the unsubscribe function. */
+export function subscribeAnyBody(fn: (path: string) => void): () => void {
+  _anyListeners.add(fn)
+  return () => { _anyListeners.delete(fn) }
+}
+
+/** A 304 confirmed the recorded body is still current: its confirmation time moves, the body does not. */
+function confirmLastGood(path: string, at: number): void {
+  const held = _lastGood.get(path)
+  if (held) _lastGood.set(path, { json: held.json, at })
+}
+
+/** Receive every body recorded for `path` from now on (a passive subscriber: it never polls). */
+export function subscribeBody(path: string, fn: BodyListener): () => void { return subscribe(path, fn) }
+
+function subscribe(path: string, fn: BodyListener): () => void {
+  let set = _subscribers.get(path)
+  if (!set) { set = new Set(); _subscribers.set(path, set) }
+  set.add(fn)
+  return () => { set!.delete(fn); if (set!.size === 0) _subscribers.delete(path) }
+}
+
+/** Test-only: forget every recorded body and subscriber. */
+export function resetLastGood(): void {
+  _lastGood.clear()
+  _subscribers.clear()
+  _anyListeners.clear()
+}
+
+/** A one-shot hook (no interval) takes a shared body only inside this burst window. */
+export const SHARED_ONE_SHOT_MS = 5_000
+
+export type PollReason = 'mount' | 'tick' | 'visible'
+export type PollAction = 'fetch' | 'reuse' | 'paused'
+
+/** What a subscriber does when its read comes due. Pure; exported for the regression test. */
+export function sharedPollAction(input: {
+  held: { at: number } | null; nowMs: number; intervalMs?: number; manual: boolean; visible: boolean; reason: PollReason
+}): PollAction {
+  const { held, nowMs, intervalMs, manual, visible, reason } = input
+  if (manual) return 'fetch'
+  if (!visible && reason === 'tick') return 'paused'
+  const windowMs = intervalMs && intervalMs > 0 ? Math.floor(intervalMs * 0.9) : SHARED_ONE_SHOT_MS
+  if (held && nowMs >= held.at && nowMs - held.at < windowMs) return 'reuse'
+  return 'fetch'
+}
+
+function documentVisible(): boolean {
+  return typeof document === 'undefined' || document.visibilityState !== 'hidden'
+}
 
 // The portfolio server is intentionally a small single-process service. A hub
 // mount can otherwise start 9–12 requests in the same render tick, turning a
@@ -192,10 +277,36 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
       }
     }
 
-    const load = async () => {
+    // Apply a 200 body (this hook's own read, or one another subscriber of the path just read).
+    const apply = (json: any, at: number) => {
+      if (cancelled) return
+      const next = json && typeof json === 'object' && json.ok !== undefined ? (json.data ?? json) : json
+      dataRef.current = next
+      setData(next)
+      setEnvelope(json && typeof json === 'object' ? json : null)
+      setError(null)
+      setStale(false)
+      setReceivedAt(new Date(at).toISOString())
+      setTransport('OK')
+      setLoading(false)
+    }
+    const listener: BodyListener = (json, at) => { if (!terminalRef.current) apply(json, at) }
+    const unsubscribe = subscribe(path, listener)
+
+    const load = async (reason: PollReason = 'tick') => {
       // A terminal outcome stands until an operator explicitly asks again.
       if (terminalRef.current) return
       if (inFlight) return
+      const action = sharedPollAction({ held: peekLastGood(path), nowMs: Date.now(), intervalMs, manual: manualRef.current, visible: documentVisible(), reason })
+      if (action === 'paused') return
+      if (action === 'reuse') {
+        const held = peekLastGood(path)!
+        apply(held.json, held.at)
+        setAuthState('OK')
+        clearFailing()
+        retries = 0
+        return
+      }
       inFlight = true
       // broker-proposals: 15s hard timeout (P0 2026-07-14) — the endpoint is now bounded
       // server-side (quote budget + background autocal/summary); anything slower should
@@ -249,6 +360,13 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           }
         })
         if (r.status === 304) {
+          confirmLastGood(path, Date.now())
+          // A subscriber that joined another hook's ETag revalidation has no body of its own yet: the recorded body is
+          // the answer the 304 confirmed.
+          if (dataRef.current == null) {
+            const held = peekLastGood(path)
+            if (held && !cancelled) apply(held.json, held.at)
+          }
           // Snapshot unchanged — the retained body is still the last-good body.
           // Transport receipt advances; the DATA clock does not. Consumers keep
           // the complete prior payload and recompute age from the current clock,
@@ -328,15 +446,11 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         const et = r.headers.get('ETag')
         if (et) _etags.set(path, et)
         const json = JSON.parse(r.text)
+        const at = Date.now()
+        // Every other subscriber of this path gets the same body now; this hook applies it below.
+        noteLastGood(path, json, at, listener)
         if (cancelled) return
-        const next = json.ok !== undefined ? (json.data ?? json) : json
-        dataRef.current = next
-        setData(next)
-        setEnvelope(json && typeof json === 'object' ? json : null)
-        setError(null)
-        setStale(false)
-        setReceivedAt(new Date().toISOString())
-        setTransport('OK')
+        apply(json, at)
         clearFailing()
         retries = 0
       } catch (e: any) {
@@ -373,10 +487,15 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         inFlight = false
       }
     }
-    load()
-    if (intervalMs && intervalMs > 0) intervalRef.current = setInterval(load, intervalMs)
+    load('mount')
+    if (intervalMs && intervalMs > 0) intervalRef.current = setInterval(() => { void load('tick') }, intervalMs)
+    // Paused while hidden; one read (or the shared body) as soon as the page is visible again.
+    const onVisibility = () => { if (documentVisible()) void load('visible') }
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility)
     return () => {
       cancelled = true
+      unsubscribe()
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility)
       clearInterval(intervalRef.current)
       clearTimeout(retryRef.current)
       clearTimeout(slowRetryRef)
