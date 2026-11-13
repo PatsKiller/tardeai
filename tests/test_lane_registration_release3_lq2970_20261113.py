@@ -100,13 +100,15 @@ def test_lane_health_freshness_contract_names_the_monitor_it_replaces():
     assert fc["replaces"] == ["pipeline-freshness-monitor"]
 
 
-def test_cio_persistent_wake_promoted_canary_live():
-    """Release 3c (lead, 2026-11-13): promoted after the bounded --wake-dry-run canary in production
-    (peak 589 MB under MemoryMax=2G, 0 OOM, 0 swap). Rollback = dispatch back to dry_run."""
+def test_cio_persistent_wake_held_off_pending_provider_route():
+    """Release 3e (lead, 2026-11-13 10:48 ET): operator held the live CIO wake until the approved provider route is
+    verified. Registered (canary) but dispatch off with a declared reason: PAUSED is a declared state, not an absence."""
     row = ROWS["cio-persistent-wake"]
     assert row["scheduler"]["stage"] == "canary"
-    assert row["dispatch"]["mode"] == "live"
+    assert row["dispatch"]["mode"] == "off"
+    assert "provider route" in row["dispatch"]["paused_reason"]
     assert CONTRACTS["cio-persistent-wake"]["stage"] == "canary"
+    assert LD.dispatchable(row) is False if hasattr(LD, "dispatchable") else True
 
 
 @pytest.mark.parametrize("lane_id", ["stop-coverage-incidents", "stop-coverage-incidents-offhours"])
