@@ -36,10 +36,19 @@ def _api_get(path):
 def assemble_stop_alert_data(symbol, account=""):
     """Fetch and assemble everything needed for a stop decision alert."""
 
-    # 1. Risk positions
-    risk_data = _api_get("/api/v2/risk").get("data", {})
-    positions = risk_data.get("positions", [])
-    pos = next((p for p in positions if p["symbol"] == symbol), None)
+    # 1. Risk positions. /api/v2/risk is serve-last-good SWR (MEM-CONTAIN 2026-11-13): before its first build lands it
+    # answers UNKNOWN with positions None, and a refused/timed-out read is {}. Either is an explicit UNKNOWN for the
+    # caller ("risk data unavailable"), never a crash and never "no position" (review B2).
+    risk_data = _api_get("/api/v2/risk").get("data")
+    if not isinstance(risk_data, dict) or not risk_data:
+        return {"symbol": symbol, "status": "UNKNOWN", "reason": "risk data unavailable (/api/v2/risk did not answer)"}
+    if risk_data.get("status") == "UNKNOWN":
+        why = risk_data.get("reason") or "unknown"
+        return {"symbol": symbol, "status": "UNKNOWN", "reason": f"risk data still building ({why})"}
+    positions = risk_data.get("positions") or []
+    if not isinstance(positions, list):
+        return {"symbol": symbol, "status": "UNKNOWN", "reason": "risk data unavailable (positions unreadable)"}
+    pos = next((p for p in positions if isinstance(p, dict) and p.get("symbol") == symbol), None)
     if not pos:
         return None
 
@@ -69,7 +78,7 @@ def assemble_stop_alert_data(symbol, account=""):
 
     # 4. Portfolio context
     portfolio_heat = risk_data.get("portfolio_heat_pct", 0)
-    triggered_positions = [p for p in positions if p.get("status") == "TRIGGERED"]
+    triggered_positions = [p for p in positions if isinstance(p, dict) and p.get("status") == "TRIGGERED"]
     triggered_count = len(triggered_positions)
 
     # 5. Compute P&L scenarios
@@ -106,7 +115,7 @@ def assemble_stop_alert_data(symbol, account=""):
                "CACI", "BAH", "SAIC", "GD", "HII", "TXT", "HEI"}
     sector_note = ""
     if symbol in defense:
-        n_def = sum(1 for p in triggered_positions if p["symbol"] in defense)
+        n_def = sum(1 for p in triggered_positions if p.get("symbol") in defense)
         sector_note = f"Defense sector rotation — {n_def} defense stops triggered."
 
     return {
@@ -132,5 +141,5 @@ def assemble_stop_alert_data(symbol, account=""):
         "trend_state": trend_state,
         "portfolio_heat_pct": portfolio_heat,
         "portfolio_triggered_count": triggered_count,
-        "triggered_symbols": [p["symbol"] for p in triggered_positions],
+        "triggered_symbols": [p.get("symbol") for p in triggered_positions],
     }

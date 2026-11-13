@@ -384,10 +384,15 @@ def send_stop_alert(symbol, account=""):
         log.exception(f"stop_alert assembly failed for {symbol}")
         data = None
 
-    if not data:
+    unknown = isinstance(data, dict) and data.get("status") == "UNKNOWN"  # review B2: the one existing fail send
+    if not data or unknown:
         try:
             from telegram_alert import send_telegram
-            fail_msg = f"\U0001f6a8 STOP TRIGGERED: {symbol} \u2014 data assembly failed, check /v3/risk"
+            if unknown:
+                fail_msg = (f"\U0001f6a8 STOP TRIGGERED: {symbol} \u2014 risk data unavailable "
+                            f"({data.get('reason') or 'unknown'}), check /v3/risk")
+            else:
+                fail_msg = f"\U0001f6a8 STOP TRIGGERED: {symbol} \u2014 data assembly failed, check /v3/risk"
             send_telegram(fail_msg)
             _shadow_publish(
                 fail_msg, producer="proposal_alerter",

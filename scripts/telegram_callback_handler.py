@@ -742,7 +742,10 @@ def handle_callback_query(cb):
         from stop_alert_assembler import assemble_stop_alert_data
 
         data = assemble_stop_alert_data(sym)
-        if data:
+        if data and data.get("status") == "UNKNOWN":  # review B2: cold/refused risk read is not "no position"
+            info = (f"{sym}: risk data unavailable \u2014 {data.get('reason') or 'unknown'}. This is not 'no position'; "
+                    "retry shortly or open /v3/risk.")
+        elif data:
             info = _build_stop_info(data)
         else:
             info = f"Could not load context for {sym}"
