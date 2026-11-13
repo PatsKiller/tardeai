@@ -20,7 +20,21 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import argparse  # noqa: E402
+import os  # noqa: E402
+
 from scripts.lib.cc_products import product_builder  # noqa: E402
 
+
+def parse(argv=None) -> argparse.Namespace:
+    ap = argparse.ArgumentParser(prog="cc_products_build.py", description=__doc__.split("\n")[0])
+    ap.add_argument("--product", required=True, choices=sorted(product_builder.CATALOGUE))
+    ap.add_argument("--dry-run", action="store_true", help="build and measure; write nothing (no PG, no hot tier)")
+    ap.add_argument("--timeout", type=float, default=None)
+    ap.add_argument("--rlimit-mb", type=int, default=None)
+    ap.add_argument("--builder-sha", default=os.environ.get("TRADEAI_BUILDER_SHA", ""))
+    return ap.parse_args(argv)
+
+
 if __name__ == "__main__":
-    sys.exit(product_builder.main())
+    sys.exit(product_builder.run_cli(parse()))

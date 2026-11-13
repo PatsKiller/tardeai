@@ -24,7 +24,6 @@ CLI: ``python3 scripts/cc_products_build.py --product market_risk.latest --dry-r
 """
 from __future__ import annotations
 
-import argparse
 import contextlib
 import datetime as _dtmod
 import decimal
@@ -618,13 +617,16 @@ def _rw_connect():
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="cc_products_build.py", description=__doc__.split("\n")[0])
-    ap.add_argument("--product", required=True, choices=sorted(CATALOGUE))
-    ap.add_argument("--dry-run", action="store_true", help="build and measure; write nothing (no PG, no hot tier)")
-    ap.add_argument("--timeout", type=float, default=None)
-    ap.add_argument("--rlimit-mb", type=int, default=None)
-    ap.add_argument("--builder-sha", default=os.environ.get("TRADEAI_BUILDER_SHA", ""))
-    args = ap.parse_args(argv)
+    """Same as ``scripts/cc_products_build.py`` (the lane entrypoint owns the argv contract)."""
+    import importlib.util
+
+    spec_ = importlib.util.spec_from_file_location("cc_products_build", CODE_ROOT / "scripts" / "cc_products_build.py")
+    mod = importlib.util.module_from_spec(spec_)
+    spec_.loader.exec_module(mod)
+    return run_cli(mod.parse(argv))
+
+
+def run_cli(args) -> int:
     spec = CATALOGUE[args.product]
     kw: dict[str, Any] = {}
     if args.timeout is not None:

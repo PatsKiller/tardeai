@@ -318,3 +318,17 @@ def test_host_busy_is_receipted(connect, tmp_path):
     assert r["outcome"] == "SKIPPED_BUSY"
     assert _row(connect) is None
     assert [o for o, _, _ in _log(connect)] == ["SKIPPED_BUSY"]
+
+
+def test_lane_entrypoint_owns_the_argv_contract():
+    import importlib.util
+
+    s = importlib.util.spec_from_file_location("cc_products_build", ROOT / "scripts" / "cc_products_build.py")
+    m = importlib.util.module_from_spec(s)
+    s.loader.exec_module(m)
+    a = m.parse(["--product", "home", "--dry-run"])
+    assert a.product == "home" and a.dry_run is True
+    assert m.parse(["--product", "risk"]).dry_run is False
+    with pytest.raises(SystemExit):
+        m.parse(["--product", "not.a.product"])
+    assert set(pb.CATALOGUE) == {"market_risk.latest", "risk", "reports.analyst_links", "home"}
