@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "LANE_HEALTH_SNAPSHOT_20261112",
+  "files": [
+    "tests/test_lane_health_20261112.py"
+  ],
+  "anchor": "LANE_HEALTH_SNAPSHOT_20261112",
+  "comment": [
+    "ANCHOR: LANE_HEALTH_SNAPSHOT_20261112 — LQ-20261107-2148: per-lane late/missed counts for the Home Schedulers row. An n8n slot with no ledger run is MISSED (registration is not execution); a cron/systemd lane is NOT_MEASURED (None, never 0); an unreadable ledger is UNKNOWN. Synthetic fixtures only."
+  ]
+}

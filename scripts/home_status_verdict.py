@@ -392,20 +392,29 @@ def read_data(q: Query, now: datetime) -> Reading:
 
 
 def read_schedulers(q: Query, now: datetime) -> Reading:
+    """Home Schedulers row from ``lane_health_current`` (LQ-2148). Only the rows of the NEWEST run are read (a lane
+    that left ACTIVE keeps its last row and must not count), and the status is the lane's own rollup rule
+    (``lane_health.rollup``): a late/stale/failing lane is WARN, a lane that could not be measured (cron/systemd, or an
+    unreadable ledger) leaves the row UNKNOWN, never OK. A present-but-empty table is UNKNOWN: no row is not "0 late"."""
     name = htr.SCHEDULERS
+    kw = dict(source_id="lane_health_current", lane_id="lane-health-snapshot", owner="ops")
     reg = q("SELECT to_regclass('public.lane_health_current') IS NOT NULL AS present", None)
     if not reg or not reg[0].get("present"):
-        return htr.no_source(name, "lane_health_current not present (LQ-2148)", source_id="lane_health_current",
-                             lane_id="lane-health-snapshot", owner="ops")
-    rows = q("SELECT max(measured_at) AS as_of, count(*) FILTER (WHERE state IN ('LATE','STALE','FAILING')) AS bad "
-             "FROM lane_health_current", None)
-    if not rows or rows[0].get("bad") is None:
-        return htr.unknown(name, "lane_health_current returned no aggregate row", source_id="lane_health_current",
-                           lane_id="lane-health-snapshot", owner="ops")
-    bad = int(rows[0]["bad"])
-    return Reading(name=name, state=htr.WARN if bad else htr.OK, value=bad, as_of=htr.iso(htr.to_utc(rows[0].get("as_of"))),
-                   threshold_s=SCHEDULERS_MAX_AGE_S, source_id="lane_health_current", lane_id="lane-health-snapshot",
-                   owner="ops", cause=f"{bad} lane(s) late/stale/failing" if bad else None)
+        return htr.no_source(name, "lane_health_current not present (LQ-2148)", **kw)
+    from scripts.lib import lane_health as lh
+    rows = q(lh.READ_CURRENT_SQL, None)
+    if not rows:
+        return htr.unknown(name, "lane_health_current has no row: the lane-health-snapshot lane has not written",
+                           **kw)
+    as_of = max((t for t in (htr.to_utc(r.get("measured_at")) for r in rows) if t is not None), default=None)
+    if as_of is None:
+        return htr.unknown(name, "lane_health_current rows carry no measured_at", **kw)
+    roll = lh.rollup(list(rows), registry_ok=True, ledger={"readable": True}, policy=lh.load_config())
+    counts = roll.get("counts") or {}
+    bad = sum(int(counts.get(k) or 0) for k in ("late", "stale", "failing"))
+    state = {"OK": htr.OK, "WARN": htr.WARN}.get(roll.get("status"), htr.UNKNOWN)
+    return Reading(name=name, state=state, value=bad, as_of=htr.iso(as_of), threshold_s=SCHEDULERS_MAX_AGE_S,
+                   cause=roll.get("cause") if state != htr.OK else None, **kw)
 
 
 def gather(q: Query, now: datetime, *, state_root: Optional[Path], registry: Optional[dict[str, Any]]) -> list[Reading]:

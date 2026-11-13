@@ -1,0 +1,25 @@
+{
+  "schema": "LaneHealthPolicy@v1",
+  "lane_id": "lane-health-snapshot",
+  "source": "LQ-20261107-2148 (Home v010 APPROVED 2026-11-11; HOME-BACKEND-SPEC-20261111 section LQ-2148). Read by scripts/lib/lane_health.py; an unreadable file falls back to the module DEFAULTS and the snapshot names the gap.",
+  "policy": {
+    "window_hours": 24,
+    "lookback_days": 8,
+    "late_grace_minutes": 10,
+    "stale_after_slots": 3,
+    "warn_states": ["LATE", "STALE", "FAILING"],
+    "unknown_states": ["UNKNOWN", "NOT_MEASURED"],
+    "business_critical_value_classes": [],
+    "stale_after_minutes": 30,
+    "owner": "platform",
+    "max_listed_slots": 5,
+    "max_listed_lanes": 10
+  },
+  "notes": {
+    "late_grace_minutes": "spec test: a slot done 20 min late with a 10-min grace is late 1. Lateness is started_at - slot; the slot is matched on the dispatch (requested_at).",
+    "stale_after_slots": "output signal older than the lane's 3rd-newest expected slot (about 2.5x cadence, the spec's freshness-contract multiple), counted on the lane's own market-day/active-day slots so a weekend is not stale.",
+    "business_critical_value_classes": "empty = every lane counts toward the Schedulers WARN. LQ-2149 (home_status_registry) decides which lanes are business-critical; set the value classes here when it lands.",
+    "unknown_states": "NOT_MEASURED (cron/systemd: no per-run ledger, spec A4) keeps the rollup UNKNOWN rather than OK until those lanes move to n8n. Unknown never reads as OK.",
+    "stale_after_minutes": "the snapshot is stale for a reader after 30 min (3 missed 10-minute slots)"
+  }
+}

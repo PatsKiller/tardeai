@@ -1,0 +1,234 @@
+{
+  "schema": "LaneRegistrationFragment@v1",
+  "lane_id": "lane-health-snapshot",
+  "source": "LQ-20261107-2148 (Home v010 APPROVED 2026-11-11 22:48 ET; HOME-BACKEND-SPEC-20261111 section LQ-2148)",
+  "why_a_fragment": "config/lane_registry.json, config/n8n_run_allowlist.json and config/n8n_health_contracts.json are claimed by cc-opus-2 (LQ-2144) and the spec section 3 names ONE W1-reg owner for all Wave-1 lanes. This file carries the four rows verbatim so that owner merges them in one atomic config change; tests/test_lane_health_20261112.py validates each row against the live config shapes and the dispatcher's admission rule.",
+  "promotion": [
+    "1. W1-reg merges the four rows below at stage shadow (dispatch.mode dry_run): the dispatcher runs --dry-run every 10 min; it writes nothing.",
+    "2. Proof of shadow: >=1 ledger row d:lane-health-snapshot:dry_run:* RUN_DONE.",
+    "3. Lead/operator applies migrations/2026_11_12_lane_health_current.sql off-hours (BEFORE/AFTER to_regclass).",
+    "4. Canary: stage canary + dispatch.mode live; >=3 consecutive live RUN_DONE with produced_count>0 and lane_health_current.measured_at < 30 min.",
+    "5. Live."
+  ],
+  "lane_registry_row": {
+    "lane_id": "lane-health-snapshot",
+    "owner": "platform",
+    "scheduler": {
+      "kind": "n8n",
+      "expression": "dispatcher",
+      "match": "scripts/lane_health_snapshot.py --apply",
+      "cadence": "*/10 * * * *",
+      "stage": "shadow",
+      "wave": "W1",
+      "timezone": "America/New_York"
+    },
+    "dispatch": {
+      "mode": "dry_run",
+      "cron": [
+        "*/10 * * * *"
+      ],
+      "tz": "America/New_York",
+      "wave": "W1",
+      "class": "monitor",
+      "priority": 3,
+      "retry_policy": "transient-2"
+    },
+    "expected_cadence_hours": 0.1667,
+    "active_days": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "state": "ACTIVE",
+    "state_since": "2026-11-12",
+    "state_reason": "LQ-20261107-2148 (Home v010 APPROVED 2026-11-11 22:48 ET; HOME-BACKEND-SPEC-20261111 section LQ-2148): the Home Schedulers row had no source. This is its writer, scheduled through the dispatcher, never cron or systemd.",
+    "output_signal": {
+      "kind": "json_key",
+      "path": "data/runtime/lane-health-snapshot_last.json",
+      "key": "ok_at",
+      "evidence": "SOURCE_ONLY",
+      "evidence_ref": "scripts/lane_health_snapshot.py --apply writes lane_health_current then the LaneRunReceipt via lane_receipt_main.run_main (ok_at on success only); tests/test_lane_health_20261112.py."
+    },
+    "reason_confidence": "ESTABLISHED",
+    "reason_evidence": "tests/test_lane_health_20261112.py; read-only dry run against the production ledger 2026-11-11 23:0x ET (see READY-LQ-20261107-2148).",
+    "review_by": "2026-11-26",
+    "value_class": "Operationally Important",
+    "severity": "Medium",
+    "note": "READ_ONLY_ADVISORY, MBI_BEHAVIOR = 0: reads the registry, the ledger (mode=ro) and output signals; writes only lane_health_current, its JSON mirror and its receipt. A Schedulers WARN never blocks trading (Home v010 DECISION)."
+  },
+  "freshness_contract": {
+    "key": "ops.lane_health_current",
+    "lane_id": "lane-health-snapshot",
+    "signal": {
+      "kind": "db_max",
+      "table": "lane_health_current",
+      "column": "measured_at"
+    },
+    "max_age_hours": 0.5,
+    "basis": "lane_due",
+    "severity": "P2",
+    "source": "LQ-20261107-2148 (Home v010 APPROVED 2026-11-11 22:48 ET; HOME-BACKEND-SPEC-20261111 section LQ-2148): spec freshness contract db_max lane_health_current.measured_at 0.5 h, P2.",
+    "note": "enable only after the migration is applied and the lane is at canary; before that the table does not exist"
+  },
+  "allowlist_entry": {
+    "lane_id": "lane-health-snapshot",
+    "command": [
+      "$PY",
+      "scripts/lane_health_snapshot.py"
+    ],
+    "dry_run_arg": [
+      "--dry-run"
+    ],
+    "live_arg": [
+      "--apply"
+    ],
+    "lock": "/tmp/tradeai_lane_health_snapshot.lock",
+    "lock_kind": "flock",
+    "timeout_s": 120,
+    "market_gate": false,
+    "output_signal": "data/runtime/lane-health-snapshot_last.json",
+    "env_names": [
+      "DB_CONN_TRACE",
+      "DB_HOST",
+      "DB_NAME",
+      "DB_PASSWORD",
+      "DB_PORT",
+      "DB_USER",
+      "PROJECT_ROOT",
+      "SAFE_FLOCK_LOG_DIR",
+      "TRADEAI_PERSISTENT_STATE_ROOT",
+      "TRADEAI_ROOT",
+      "TRADEAI_STATE_ROOT"
+    ],
+    "env_allowlist_mode": "report",
+    "env_report_reason": "LQ-2148: the lane writes Postgres through session13_db / env_bootstrap, whose loader re-reads the rendered env file, so the import closure is not bounded by literal reads (same reasoning as lesson-queue-cycle).",
+    "env_evidence": "scripts/lane_health_snapshot.py reads config/, the n8n coordination ledger (sqlite mode=ro) and data/runtime under TRADEAI_STATE_ROOT, and writes lane_health_current through session13_db (DB_*). No broker credential, order route or live flag is read (MBI_BEHAVIOR = 0).",
+    "source": "LQ-20261107-2148 (Home v010 APPROVED 2026-11-11 22:48 ET; HOME-BACKEND-SPEC-20261111 section LQ-2148)"
+  },
+  "health_contract": {
+    "schema": "N8nHealthContract@v1",
+    "id": "lane-health-snapshot",
+    "kind": "lane",
+    "workflow_id": "tradeai-dispatcher",
+    "status": "DRAFT",
+    "target_reason": "lq_2148_lane_health_snapshot_20261112",
+    "stage": "shadow",
+    "purpose": {
+      "text": "Per ACTIVE scheduled lane: expected slots (config/lane_registry.json) vs dispatcher runs (n8n coordination ledger) -> 24 h expected/done/late/missed/failed, last expected slot, last RUN_DONE, output-signal age and one state with its cause; plus the Home v010 Schedulers rollup (OK/WARN/UNKNOWN). Registration is not execution: an n8n slot with no ledger run is MISSED. Cron/systemd lanes have no per-run ledger: NOT_MEASURED, never 0.",
+      "business_function": "Home v010 Schedulers row (late/missed per lane)",
+      "source": "scripts/lane_health_snapshot.py; scripts/lib/lane_health.py; config/lane_health.json"
+    },
+    "owner": "platform",
+    "connects_to": [
+      {
+        "name": "n8n -> relay -> gateway coordination/run -> tradeai-n8n-run-executor",
+        "kind": "service",
+        "direction": "calls",
+        "source": "AGENTS.md 23.3"
+      },
+      {
+        "name": "$PY scripts/lane_health_snapshot.py",
+        "kind": "runner",
+        "direction": "calls",
+        "source": "config/n8n_run_allowlist.json command"
+      },
+      {
+        "name": "/tmp/tradeai_lane_health_snapshot.lock",
+        "kind": "lock",
+        "direction": "read_write",
+        "source": "allowlist lock"
+      },
+      {
+        "name": "config/lane_registry.json, data/governance/n8n_coordination_ledger.sqlite (mode=ro), lane output signals",
+        "kind": "store",
+        "direction": "read",
+        "source": "scripts/lib/lane_health.py compute"
+      },
+      {
+        "name": "Postgres lane_health_current; data/runtime/lane_health_current.json; data/runtime/lane-health-snapshot_last.json",
+        "kind": "store",
+        "direction": "write",
+        "source": "live run only (--apply)"
+      }
+    ],
+    "healthy": [
+      {
+        "check": "rows_printed",
+        "text": "a shadow dry run prints the Schedulers rollup and one row count, exits 0, writes nothing"
+      },
+      {
+        "check": "table_advanced",
+        "text": "once promoted, lane_health_current.measured_at advances at least every 10 minutes"
+      }
+    ],
+    "degraded": [
+      {
+        "check": "table_stale",
+        "text": "promoted lane: lane_health_current.measured_at older than 20 minutes"
+      }
+    ],
+    "failed": [
+      {
+        "check": "run_failed",
+        "text": "the table is missing (exit 1, no DDL), the DB write fails (exit 1, mirror db_written=false), or --apply without TRADEAI_RUN_ID (exit 2)"
+      },
+      {
+        "check": "run_timeout",
+        "text": "the run is killed at timeout_s 120"
+      }
+    ],
+    "baseline": {
+      "timeout_s": 120,
+      "class": "monitor",
+      "freshness_degraded_after_h": 0.33,
+      "freshness_failed_after_h": 0.5,
+      "freshness_rule": "promoted lane: degraded beyond 20 min without a table refresh, failed beyond 30 min (the spec's 0.5 h contract)",
+      "computed_on": "2026-11-11",
+      "basis": "CLASS_DEFAULT_PROVISIONAL",
+      "source": "NOT_MEASURED for the dispatcher (never dispatched). A read-only dry run against the production ledger (39,499 runs, 739 registry rows) took about 1.3 s wall on the host.",
+      "runs_considered": 0,
+      "duration_degraded_above_s": 96.0,
+      "duration_rule": "0.8x timeout_s (0.8 x 120 = 96 s)"
+    },
+    "alerting": {
+      "lane_severity": "Medium",
+      "severity_basis": "registry row severity Medium: a stale Schedulers row hides lateness but moves no money and never blocks trading",
+      "failed": {
+        "siem_severity": "WARN",
+        "notifier_priority": "P2"
+      },
+      "degraded": {
+        "siem_severity": "INFO",
+        "notifier_priority": "P3"
+      },
+      "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py",
+      "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity."
+    },
+    "remediation": {
+      "catalogue_entry": false,
+      "diagnosis_excluded": false,
+      "note": "No catalogue entry yet; regenerate config/n8n_remediation_catalogue.json after this entry merges."
+    },
+    "evidence": {
+      "receipt": "data/runtime/lane-health-snapshot_last.json",
+      "verify": [
+        "python3 scripts/lane_health_snapshot.py --dry-run",
+        "psql -Atc \"select run_id, max(measured_at), count(*) from lane_health_current group by 1 order by 2 desc limit 1\""
+      ]
+    },
+    "review_by": "2026-11-26",
+    "review": {
+      "prepared_by": "agent draft (cc-opus-3, LQ-2148, 2026-11-11)",
+      "status": "DRAFT",
+      "reviewed_by": null,
+      "reviewed_on": null,
+      "requested_of": "cc-opus-1",
+      "requested_on": "2026-11-12",
+      "note": "Draft at shadow; needs a non-author reviewer (REVIEWED) before the registry PR merges."
+    }
+  }
+}
