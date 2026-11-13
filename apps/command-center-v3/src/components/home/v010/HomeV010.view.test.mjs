@@ -102,7 +102,7 @@ await test('no status read / 404 -> chip UNKNOWN "not served" with NEEDS BACKEND
 await test('failed fetch -> UNKNOWN / TIMED OUT, never OK, never clear', () => {
   const m = buildModel(FAILED, NOW)
   for (const r of m.status) assert.notEqual(r.state, 'OK', `${r.name} must not be OK on a failed read`)
-  assert.equal(m.status.find(r => r.name === 'Orders').state, 'TIMED OUT')
+  assert.equal(m.status.find(r => r.name === 'Stop read').state, 'TIMED OUT')
   assert.equal(m.status.find(r => r.name === 'Alerts').state, 'UNKNOWN')
   assert.equal(m.actionEmpty, false)
   const t = text(render(m))

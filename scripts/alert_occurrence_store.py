@@ -251,9 +251,11 @@ def record_occurrence(
             )
             incident_id = cur.fetchone()[0]
             seq = 1
+            reopened = False
         else:
             incident_id = rec["incident_id"]
             seq = decision.occurrence_seq
+            reopened = rec.get("status") not in (None, "open") and not decision.is_resolution
 
         cur.execute(
             """
@@ -289,6 +291,11 @@ def record_occurrence(
             """
             UPDATE alert_incidents
                SET last_seen_at = %s,
+                   -- LQ-20261107-2146: a REOPENED incident (resolved/expired row reclaimed by primary key) is a new
+                   -- episode: first_seen_at restarts, so "first seen" never predates the gap it describes.
+                   -- LQ-20261107-2667 (REVIEW-2653 B1): occurrence_count does NOT restart. It is the seq source
+                   -- (alert_dedupe: seq = count + 1) and alert_occurrences is UNIQUE (incident_id, occurrence_seq).
+                   first_seen_at = CASE WHEN %s THEN %s ELSE first_seen_at END,
                    occurrence_count = occurrence_count + 1,
                    notified_count = notified_count + CASE WHEN %s THEN 1 ELSE 0 END,
                    suppressed_count = suppressed_count + CASE WHEN %s THEN 0 ELSE 1 END,
@@ -309,7 +316,7 @@ def record_occurrence(
                    acknowledged_by = CASE WHEN %s THEN NULL ELSE acknowledged_by END
              WHERE incident_id = %s
             """,
-            (observed_at, decision.notify, decision.notify,
+            (observed_at, reopened, observed_at, decision.notify, decision.notify,
              decision.notify, observed_at,
              decision.reason == "severity_increased", event.severity,
              bool(event.operator_action_required), str(event.state_version or "1"),

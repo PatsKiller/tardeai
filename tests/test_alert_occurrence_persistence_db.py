@@ -202,8 +202,32 @@ class TestOccurrencePersistence:
                             WHERE incident_id='inc_same'""")
             rows, seq = cur.fetchone()
         assert status == "open" and cleared, "a recurrence must reopen the incident"
+        # LQ-20261107-2667 (REVIEW-2653 B1): occurrence_count is the SEQ SOURCE (alert_dedupe: seq = count + 1) and
+        # alert_occurrences is UNIQUE (incident_id, occurrence_seq), so the count stays monotonic across a reopen.
+        # Only first_seen_at restarts (a reopened gap is a new episode).
         assert (occ, rows, seq) == (3, 3, 3), \
-            "the recurrence must be RECORDED and continue the sequence, not be dropped"
+            "the recurrence must be RECORDED and continue the log, and the count must stay the seq source"
+
+    def test_two_publishes_after_a_reopen_keep_the_log_unique(self, conn):
+        """REVIEW-2653 B1: publish, publish, resolve, reopen, ONE MORE publish. The 2146 count reset made the last
+        one ask for seq 2 again -> UniqueViolation (alert_occurrences_incident_id_occurrence_seq_key)."""
+        for i, minutes in enumerate((0, 1)):
+            publish(conn, ev(), at=T0 + timedelta(minutes=minutes), alert_id=f"al_a{i}",
+                    dedupe="FPSEQ", incident="inc_seq")
+        publish(conn, ev(), at=T0 + timedelta(minutes=30), alert_id="al_res", dedupe="FPSEQ", incident="inc_seq",
+                resolving=True)
+        reopen_at = T0 + timedelta(hours=2)
+        publish(conn, ev(), at=reopen_at, alert_id="al_re", dedupe="FPSEQ", incident="inc_seq")
+        publish(conn, ev(), at=reopen_at + timedelta(minutes=1), alert_id="al_re2", dedupe="FPSEQ",
+                incident="inc_seq")
+        with conn.cursor() as cur:
+            cur.execute("SELECT occurrence_seq FROM alert_occurrences WHERE incident_id='inc_seq' "
+                        "ORDER BY occurrence_seq")
+            seqs = [r[0] for r in cur.fetchall()]
+            cur.execute("SELECT first_seen_at, occurrence_count FROM alert_incidents WHERE incident_id='inc_seq'")
+            first_seen, occ = cur.fetchone()
+        assert seqs == [1, 2, 3, 4, 5] and occ == 5
+        assert first_seen == reopen_at, "first_seen_at restarts on a reopen (the 2146 intent that stays)"
 
     def test_escalation_deadline_reraises(self, conn):
         publish(conn, ev(), at=T0)

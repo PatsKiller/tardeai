@@ -307,15 +307,15 @@ export function buildModel(inp: HomeV010Inputs, nowMs: number = Date.now(), last
     : pg ? { ...unknownRow('row-portfolio', 'Portfolio', pg.source, pg.state, pg.needsBackend, pg.reason || 'unknown') }
     : unknownRow('row-portfolio', 'Portfolio', 'no light Home source (positions store)')
   let orders: StatusRow
-  if (inp.sinceClose.state === 'LOADING') orders = unknownRow('row-orders', 'Orders', API.sinceClose, 'LOADING', false)
+  if (inp.sinceClose.state === 'LOADING') orders = unknownRow('row-orders', 'Stop read', API.sinceClose, 'LOADING', false)
   else if (!scOk || !stopRead || stopRead.status !== 'read') {
     const st: RowState = inp.sinceClose.state === 'TIMED OUT' ? 'TIMED OUT' : 'UNKNOWN'
-    orders = unknownRow('row-orders', 'Orders', API.sinceClose + ' (stop read)', st, false,
+    orders = unknownRow('row-orders', 'Stop read', API.sinceClose + ' (stop read)', st, false,
       !scOk ? 'read failed' : stopRead?.status === 'missing' ? 'no stop read on record' : 'stop read failed')
   } else {
     const age = ageFrom(stopRead.asOf, nowMs)
     const stale = !!sc?.stale
-    orders = { id: 'row-orders', name: 'Orders', state: stale ? 'STALE' : 'OK',
+    orders = { id: 'row-orders', name: 'Stop read', state: stale ? 'STALE' : 'OK',
       value: `stops read ${etTime(stopRead.asOf, true) || stopRead.asOfText || 'time not recorded'}${age != null ? ` · ${ageText(age)} old` : ''}`,
       ...(stale ? { cause: 'Since-close snapshot stale', source: API.sinceClose, owner: NB_OWNER } : {}) }
   }

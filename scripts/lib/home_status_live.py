@@ -41,7 +41,7 @@ GATE_LABELS = (
     ("incident_classes", "Incident classification"),
     ("gates", "Validation gates"),
     ("portfolio", "Portfolio (positions sync)"),
-    ("orders", "Orders / protection"),
+    ("orders", "Stop coverage (protection)"),
     ("data", "Data freshness (quotes)"),
     ("schedulers", "Schedulers (info)"),
     ("alerts", "Alerts (info)"),

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "test_stop_coverage_incidents_lq2145_20261111",
+  "files": [
+    "tests/test_stop_coverage_incidents_lq2145_20261111.py"
+  ],
+  "anchor": "STOP_COVERAGE_INCIDENTS_LQ2145_20261111",
+  "comment": [
+    "ANCHOR: STOP_COVERAGE_INCIDENTS_LQ2145_20261111 — the stop-coverage-incidents lane publishes one position_unprotected occurrence per gap through the single writer (so first_seen_at/occurrence_count persist), resolves only on positive evidence from a complete scan, and never advances its freshness key on a dry run."
+  ]
+}
