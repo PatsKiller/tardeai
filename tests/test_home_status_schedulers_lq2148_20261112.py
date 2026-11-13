@@ -60,7 +60,10 @@ def test_an_unmeasurable_lane_leaves_the_row_unknown_never_ok():
 
 
 def test_a_late_lane_is_warn_with_the_cause_and_count():
-    f = _field([_row("a"), _row("b", "LATE"), _row("c", "FAILING"), _row("d", "NOT_MEASURED", kind="cron")])
+    # LQ-2967 ships business_critical_value_classes=["Business Critical"]: only those lanes count toward the WARN.
+    bc = "Business Critical"
+    f = _field([_row("a"), _row("b", "LATE", value_class=bc), _row("c", "FAILING", value_class=bc),
+                _row("d", "NOT_MEASURED", kind="cron")])
     assert f["state"] == "WARN" and f["value"] == 2
     assert "2 lane(s) LATE/STALE/FAILING" in f["cause"]
 
