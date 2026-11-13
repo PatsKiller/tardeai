@@ -31846,6 +31846,33 @@ def _home_incidents():
     return out
 
 
+_HOME_PRIORITIES_LIVE_CACHE: dict = {}
+
+
+def _home_priorities_live():
+    """GET /api/v2/home/priorities-live — HomePrioritiesLive@v1 (LQ-20261107-2644): the server's ranking of "Today's priorities"
+    over the open incidents, the stop advice and the approvals count (lib/home_priorities_live.py). Read-only, no broker.
+    An input that cannot be read is named in ``unread`` (state PARTIAL/UNKNOWN), never an empty "nothing to do".
+    An OK/PARTIAL body is cached 30 s; an UNKNOWN one is retried on the next poll."""
+    import time as _t
+
+    from lib import home_approvals_api as _haa
+    from lib import home_priorities_live as _hp
+
+    hit = _HOME_PRIORITIES_LIVE_CACHE.get("v")
+    if hit and _t.monotonic() - hit[0] < 30:
+        return hit[1]
+
+    def _approvals():
+        status, body = _haa.handle(_haa.PREFIX + "/summary", "GET")  # same route; the literal trips check_no_pii home_path
+        return body if status == 200 else None
+
+    out = _hp.build(_home_incidents, _home_since_close, _approvals)
+    if out.get("state") in ("OK", "PARTIAL"):
+        _HOME_PRIORITIES_LIVE_CACHE["v"] = (_t.monotonic(), out)
+    return out
+
+
 def _db_query_raising(sql, params=None, fetch="all"):
     """Like ``_db_query`` but an error propagates (so a statement timeout reads TIMED_OUT, not "no data")."""
     _ensure_scripts_path()
@@ -50901,6 +50928,7 @@ ROUTES = {
     "/api/v2/home/gates": lambda: _home_gates(),
     "/api/v2/home/cio-card": lambda: _home_cio_card(),
     "/api/v2/home/incidents": lambda: _home_incidents(),
+    "/api/v2/home/priorities-live": lambda: _home_priorities_live(),
     "/api/v2/home/status": lambda: _home_status(),
     "/api/v2/watch/status": lambda: _watch_status(),
     "/api/v2/queue/pending": lambda: _queue_pending(),

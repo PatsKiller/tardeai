@@ -17,6 +17,7 @@ with ``alert_type='data_integrity'`` (24 h evidence count). Writes nothing; a GE
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -35,13 +36,22 @@ SQL = f"""
 SET LOCAL statement_timeout = {STATEMENT_TIMEOUT_MS};
 SELECT i.incident_id, i.alert_type, i.digest_bucket, i.severity, i.symbol,
        i.source_system, i.source_producer, i.first_seen_at, i.last_seen_at, i.occurrence_count,
-       (SELECT o.payload -> 'blocks_trading' FROM alert_occurrences o
-         WHERE o.incident_id = i.incident_id ORDER BY o.occurrence_seq DESC LIMIT 1) AS blocks_trading_declared,
-       (SELECT o.payload ->> 'account_label' FROM alert_occurrences o
-         WHERE o.incident_id = i.incident_id ORDER BY o.occurrence_seq DESC LIMIT 1) AS account_label,
-       (SELECT o.payload ->> 'cause' FROM alert_occurrences o
-         WHERE o.incident_id = i.incident_id ORDER BY o.occurrence_seq DESC LIMIT 1) AS payload_cause
+       lo.blocks_trading AS blocks_trading_declared, lo.account_label AS account_label,
+       lo.cause AS payload_cause, lo.message AS payload_message, ev.event_text AS event_text
   FROM alert_incidents i
+  LEFT JOIN LATERAL (SELECT o.payload -> 'blocks_trading' AS blocks_trading,
+                            o.payload ->> 'account_label' AS account_label,
+                            o.payload ->> 'cause' AS cause, o.payload ->> 'message' AS message
+                       FROM alert_occurrences o
+                      WHERE o.incident_id = i.incident_id ORDER BY o.occurrence_seq DESC LIMIT 1) lo ON true
+  LEFT JOIN LATERAL (SELECT COALESCE(e.parsed_payload ->> 'cause', e.parsed_payload ->> 'reason', e.raw_text) AS event_text
+                       FROM alert_events e
+                      WHERE COALESCE(btrim(lo.cause), '') = '' AND COALESCE(btrim(lo.message), '') = ''
+                        AND e.alert_type = i.alert_type
+                        AND (i.symbol IS NULL OR e.symbol IS NULL OR e.symbol = i.symbol)
+                        AND e.created_at >= i.first_seen_at - interval '1 hour'
+                        AND e.created_at <= i.last_seen_at + interval '1 hour'
+                      ORDER BY e.created_at DESC LIMIT 1) ev ON true
  WHERE i.status = 'open' AND NOT i.synthetic AND i.environment = 'production'
  ORDER BY i.first_seen_at ASC
  LIMIT %s
@@ -61,6 +71,39 @@ def load_classes(path: Path = REGISTRY_PATH) -> dict[str, dict]:
     except (OSError, ValueError, AttributeError):
         return {}
     return {str(k): v for k, v in classes.items() if isinstance(v, dict)} if isinstance(classes, dict) else {}
+
+
+CAUSE_MAX = 160
+_MARKUP = re.compile(r"[*`#>]+")
+_LEAD = re.compile(r"^[^\w\[(]+")  # leading emoji / bullets / punctuation
+
+
+def cause_line(text: Any) -> Optional[str]:
+    """One readable line of an alert's own words: the first non-empty line, markdown and leading emoji removed,
+    whitespace collapsed, at most ``CAUSE_MAX`` characters. ``None`` when nothing readable is left (never a guess)."""
+    if not isinstance(text, str):
+        return None
+    for line in text.splitlines():
+        line = _LEAD.sub("", _MARKUP.sub("", line)).strip()
+        line = re.sub(r"\s+", " ", line)
+        if len(line) >= 3:
+            return line if len(line) <= CAUSE_MAX else line[: CAUSE_MAX - 1].rstrip() + "\u2026"
+    return None
+
+
+def resolve_cause(cls: Optional[dict], row: dict) -> tuple[str, str]:
+    """``(cause, cause_source)``: registry class -> the occurrence's own ``cause`` -> its ``message`` -> the latest
+    matching ``alert_events`` row -> ``UNKNOWN``. The source is named so the page can say where a cause came from."""
+    if cls and cls.get("cause"):
+        return str(cls["cause"]), "registry"
+    pc = row.get("payload_cause")
+    if isinstance(pc, str) and pc.strip():
+        return pc.strip(), "occurrence.cause"
+    for key, src in (("payload_message", "occurrence.message"), ("event_text", "alert_events")):
+        line = cause_line(row.get(key))
+        if line:
+            return line, src
+    return UNKNOWN, "none"
 
 
 def _iso(v: Any) -> Optional[str]:
@@ -105,7 +148,8 @@ def shape(row: dict, classes: dict[str, dict], now: datetime) -> dict:
         "failed_checks": row.get("occurrence_count"),
         "failing_for_s": first_age,
         "owner": (cls.get("owner") if cls else None) or UNREGISTERED,
-        "cause": (cls.get("cause") if cls else None) or row.get("payload_cause") or UNKNOWN,
+        "cause": resolve_cause(cls, row)[0],
+        "cause_source": resolve_cause(cls, row)[1],
         "ttl_h": ttl_h if ttl_ok else None,
         "last_seen_age_s": seen_age,
         "stale_condition": (seen_age is None or seen_age > ttl_h * 3600) if ttl_ok else None,

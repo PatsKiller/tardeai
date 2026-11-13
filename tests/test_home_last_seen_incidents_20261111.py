@@ -147,7 +147,7 @@ def _db(rows=None, exc=None, events=12, seen=None, exc_events=None):
     def q(sql, params=None, fetch="all"):
         if seen is not None:
             seen.append((sql, params))
-        if "FROM alert_events" in sql:
+        if "count(*) AS events" in sql:  # the data-integrity evidence read (the incident read also names alert_events: LQ-2644 cause lookup)
             if exc_events:
                 raise exc_events
             return None if events is None else {"events": events}

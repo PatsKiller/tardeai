@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { etTime, type HomeV010Model, type RowState } from '../../../lib/homeV010'
+import { PRIORITIES_VISIBLE, type PrioritiesView } from '../../../lib/homePriorities'
 import './HomeV010.css'
 
 export const P0_VISIBLE = 3
@@ -21,10 +22,13 @@ export interface HomeV010ViewProps {
   nowIso: string
   onOpenWhy: () => void
   onOpenDiag: () => void
+  /** The server ranking (lib/homePriorities); absent -> the card says it is not available in this build. */
+  priorities?: PrioritiesView
 }
 
-export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag }: HomeV010ViewProps) {
+export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, priorities }: HomeV010ViewProps) {
   const [showAllP0, setShowAllP0] = useState(false)
+  const [showAllPrio, setShowAllPrio] = useState(false)
   const p0Shown = showAllP0 ? m.p0 : m.p0.slice(0, P0_VISIBLE)
   const p0More = m.p0.length - p0Shown.length
 
@@ -136,10 +140,33 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag }
     </section>
   )
 
-  const priorities = (
+  const pv = priorities
+  const prioRows = pv ? (showAllPrio ? pv.rows : pv.rows.slice(0, PRIORITIES_VISIBLE)) : []
+  const prioCard = (
     <section className="v010-card" id="card-priorities" aria-labelledby="h-prio">
-      <div className="v010-card-hd"><h2 className="v010-h2" id="h-prio">Today's priorities <NB /></h2></div>
-      <div className="v010-muted">No server ranking in this build; see Action required above.</div>
+      <div className="v010-card-hd"><h2 className="v010-h2" id="h-prio">Today's priorities {!pv || pv.needsBackend ? <NB /> : null}</h2>
+        {pv && (pv.state === 'OK' || pv.state === 'PARTIAL') ? <span className={pv.state === 'OK' ? 'v010-pill ok' : 'v010-pill warn'} data-testid="prio-state">{pv.state === 'OK' ? 'ranked by the server' : 'PARTIAL'}</span> : null}
+      </div>
+      {!pv ? <div className="v010-muted">No server ranking in this build; see Action required above.</div>
+        : pv.rows.length === 0 ? (
+          <div className="v010-muted" data-testid="prio-empty">{pv.state === 'OK' ? 'Nothing needs you today: every input was read and none has an open item.' : pv.note}</div>
+        ) : (
+          <>
+            <ol className="v010-prio" data-testid="prio-list">
+              {prioRows.map(r => (
+                <li key={r.id} className="v010-srow" data-kind={r.kind}>
+                  <span className="v010-srow-n">{r.rank}</span>
+                  <span className="v010-srow-v"><b>{r.title}</b>{r.blocks ? ' · blocks trading' : ''}{r.stale ? ' · not re-observed (stale)' : ''}</span>
+                  <span className="v010-srow-c">Why: <b>{r.why}</b>{r.tier ? <> · {r.tier}</> : null}{r.since ? <> · since {etTime(r.since, true)}</> : null}</span>
+                </li>
+              ))}
+            </ol>
+            {pv.rows.length > PRIORITIES_VISIBLE ? (
+              <button type="button" className="v010-btn" onClick={() => setShowAllPrio(v => !v)}>{showAllPrio ? 'Show fewer' : `Show all ${pv.rows.length}`}</button>
+            ) : null}
+            {pv.note ? <div className="v010-muted" data-testid="prio-note">{pv.note}</div> : null}
+          </>
+        )}
     </section>
   )
 
@@ -164,7 +191,7 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag }
       </header>
       <div className="v010-grid">
         <div className="v010-col">{action}{gates}{since}</div>
-        <div className="v010-col">{status}{priorities}{diagEntry}</div>
+        <div className="v010-col">{status}{prioCard}{diagEntry}</div>
       </div>
       <footer className="v010-foot">
         <Link className="v010-link" to="/home-classic" data-testid="classic-home-link">Classic Home</Link>
