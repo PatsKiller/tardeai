@@ -31876,6 +31876,17 @@ def _home_status():
     return _hsl.serve(lambda: ensure_conn() if USE_DB else None, snapshot_query=_db_query)
 
 
+def _watch_status():
+    """GET /api/v2/watch/status — the Watch-data verdict over My List, Prospects, Alerts, Regime (Watch v003 D1,
+    LQ-20261107-2625). OK / STALE / UNKNOWN computed on the request from stored rows (READ ONLY transaction, 2 s
+    statement_timeout), cached 30 s; an unread input is UNKNOWN, never OK (lib/watch_status_live.py)."""
+    _ensure_scripts_path()
+    from db_adapter import USE_DB, ensure_conn
+    from lib import watch_status_live as _wsl
+
+    return _wsl.serve(lambda: ensure_conn() if USE_DB else None)
+
+
 _HOME_CIO_CARD_CACHE: dict = {}
 
 
@@ -50882,6 +50893,7 @@ ROUTES = {
     "/api/v2/home/cio-card": lambda: _home_cio_card(),
     "/api/v2/home/incidents": lambda: _home_incidents(),
     "/api/v2/home/status": lambda: _home_status(),
+    "/api/v2/watch/status": lambda: _watch_status(),
     "/api/v2/queue/pending": lambda: _queue_pending(),
     "/api/v2/queue/completed": lambda: _queue_completed(),
     "/api/v2/queue/failed": lambda: _queue_failed(),
