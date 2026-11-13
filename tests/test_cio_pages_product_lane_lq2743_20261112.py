@@ -152,9 +152,11 @@ def test_compute_due_emits_only_dry_run_one_per_thirty_minute_slot(tmp_path, mon
         ledger.close()
 
 
-def test_the_contract_is_a_draft_at_the_registry_stage():
+def test_the_contract_is_reviewed_by_a_non_author_at_the_registry_stage():
+    # K1 cleared by REVIEW-2969 (cc-sonnet-6, non-author); the 2743 author is cc-opus-2.
     c = contract()
-    assert c["status"] == "DRAFT" and c["review"]["status"] == "DRAFT" and c["review"]["reviewed_by"] is None
+    assert c["status"] == "REVIEWED" and c["review"]["status"] == "REVIEWED"
+    assert c["review"]["reviewed_by"] and "cc-opus-2" not in c["review"]["reviewed_by"]
     assert c["stage"] == row()["scheduler"]["stage"] == "shadow"
     assert c["baseline"]["timeout_s"] == entry()["timeout_s"]
     assert c["baseline"]["duration_degraded_above_s"] == 0.8 * entry()["timeout_s"]
