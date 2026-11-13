@@ -794,8 +794,27 @@ def reconcile_answers(cur, *, limit: int = 100, apply: bool = False) -> dict:
     return out
 
 
+ROUTE_LEASE_S = int(os.getenv("DDQ_ROUTE_LEASE_S", "7200"))
+
+
+def _end_txn(conn) -> None:
+    """Commit so no transaction is open while a researcher subprocess runs (LQ-20261107-2592).
+
+    The trade_ai role has idle_in_transaction_session_timeout=120s and a researcher call may take
+    DDQ_ROUTE_TIMEOUT=300s: a row lock or even a read-only transaction held across it is terminated by the
+    server and the next statement raises ``cursor already closed`` (17:00 and 17:20 ET 2026-11-12).
+    """
+    if conn is not None:
+        conn.commit()
+
+
 def route(cur, limit: int) -> dict:
     """Send the top unrouted questions out for research.
+
+    No transaction is held across a researcher call. The selected questions are CLAIMED first
+    (``routed_at = now()`` committed), the connection is re-checked after each subprocess, and a failed
+    question releases its claim. A claim older than DDQ_ROUTE_LEASE_S (a crashed run) is eligible again.
+    The (possibly new) connection pair comes back in ``out["_db"]``; callers pop it.
 
     hermes_external_researcher is the existing, redaction-hardened request path. It
     is invoked exactly as an operator would, and its answer lands in
@@ -805,15 +824,22 @@ def route(cur, limit: int) -> dict:
     cur.execute(
         """SELECT q.question_guid, q.symbol, q.question FROM due_diligence_questions q
             LEFT JOIN material_changes m ON m.change_guid=q.change_guid
-            WHERE q.status = 'ASKED' AND q.routed_at IS NULL
+            WHERE q.status = 'ASKED'
+              AND (q.routed_at IS NULL OR q.routed_at < now() - make_interval(secs => %s))
               AND (q.expires_at IS NULL OR q.expires_at > now())
               AND NOT EXISTS (SELECT 1 FROM hermes_external_research h
                    WHERE h.trigger_reason='due_diligence_question:' || q.question_guid::text)
             ORDER BY least(100,greatest(0,coalesce(m.magnitude,0))) + extract(epoch FROM now()-q.created_at)/3600 DESC,
                      q.created_at ASC, q.question_guid
-            LIMIT %s FOR UPDATE OF q SKIP LOCKED""", (limit,))
+            LIMIT %s FOR UPDATE OF q SKIP LOCKED""", (ROUTE_LEASE_S, limit))
     rows = cur.fetchall()
+    conn = getattr(cur, "connection", None)
+    if rows:
+        cur.execute("UPDATE due_diligence_questions SET routed_at = now() WHERE question_guid = ANY(%s)",
+                    ([r[0] for r in rows],))
+    _end_txn(conn)
     lanes = rank_research_lanes(cur)
+    _end_txn(conn)
     if via_bridge():
         # The governed bridge chooses the provider, so the n8n LLM order — not the measured rank — picks
         # the label; and the measured gate cannot empty the list. That gate measures a label's DIRECT
@@ -827,8 +853,14 @@ def route(cur, limit: int) -> dict:
             lanes = [(lane, *scores.get(lane, (0.0, 0.0))) for lane in order]
         lanes = lanes[:1]
     out = {"routed": 0, "failed": 0, "lanes_ranked": [l[0] for l in lanes], "detail": []}
+    if conn is not None:
+        out["_db"] = (conn, cur)
     if not lanes:
         out["detail"].append("no research lane met the minimum success rate")
+        if rows:
+            cur.execute("UPDATE due_diligence_questions SET routed_at = NULL "
+                        "WHERE question_guid = ANY(%s) AND status = 'ASKED'", ([r[0] for r in rows],))
+            _end_txn(conn)
         return out
     # A lane that refuses BEFORE attempting (budget guard, open circuit breaker, not a bridge
     # provider) exits with this code. That is a fact about the LANE, not the question, so the
@@ -849,8 +881,14 @@ def route(cur, limit: int) -> dict:
                    "--question", question, "--symbol", symbol,
                    "--trigger", f"due_diligence_question:{qguid}", "--apply"]
             try:
-                r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True,
-                                   timeout=int(os.getenv("DDQ_ROUTE_TIMEOUT", "300")))
+                _end_txn(conn)
+                try:
+                    r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True,
+                                       timeout=int(os.getenv("DDQ_ROUTE_TIMEOUT", "300")))
+                finally:
+                    if conn is not None:
+                        conn, cur = _usable(conn, cur)
+                        out["_db"] = (conn, cur)
                 # A stored row closes this attempt; reconciliation reports its real status.
                 # Exit 75 is the lane refusing before it attempted (EXIT_LANE_GATED) — the
                 # next lane may still answer this question. Exit 0 with no row is the older
@@ -859,6 +897,7 @@ def route(cur, limit: int) -> dict:
                 cur.execute("SELECT id FROM hermes_external_research WHERE trigger_reason=%s ORDER BY id DESC LIMIT 1",
                             (f"due_diligence_question:{qguid}",))
                 ok = bool(cur.fetchone())
+                _end_txn(conn)
                 if r.returncode == _GATED:
                     out["detail"].append(f"{symbol}:{lane} gated before attempting — next lane")
                     continue
@@ -871,6 +910,7 @@ def route(cur, limit: int) -> dict:
                                  lifecycle_events=lifecycle_events || jsonb_build_array(jsonb_build_object(
                                    'at', now(), 'state', 'UNRESOLVED', 'reason', 'route_outcome_unknown'))
                                 WHERE question_guid=%s""", (qguid,))
+                _end_txn(conn)
                 break
             if ok:
                 used = lane
@@ -894,6 +934,7 @@ def route(cur, limit: int) -> dict:
                               AND h.trigger_reason = 'due_diligence_question:' || q.question_guid::text
                               AND h.symbol = q.symbol
                               AND h.subject_guid IS NULL""", (qguid,))
+            _end_txn(conn)
             out["routed"] += 1
             out.setdefault("used", []).append(f"{symbol}:{used}")
         else:
@@ -901,6 +942,9 @@ def route(cur, limit: int) -> dict:
             # standing gap and must stay visible to the next run.
             out["failed"] += 1
             out["detail"].append(f"{symbol}: {str(getattr(r, 'stderr', ''))[:120]}")
+            cur.execute("UPDATE due_diligence_questions SET routed_at = NULL "
+                        "WHERE question_guid = %s AND status = 'ASKED'", (qguid,))
+            _end_txn(conn)
     return out
 
 
@@ -1030,6 +1074,7 @@ def _apply_run(args, started: datetime) -> int:
         # the next — the backlog was unreachable by design.
         if args.apply and args.route:
             result["routed"] = route(cur, MAX_ROUTED)
+            conn, cur = result["routed"].pop("_db", (conn, cur))
             conn.commit()
         conn.close()
         print("RESULT: " + json.dumps(result, default=str))
@@ -1121,6 +1166,7 @@ def _apply_run(args, started: datetime) -> int:
     if args.apply and args.route:
         conn, cur = _usable(conn, cur)
         result["routed"] = route(cur, MAX_ROUTED)
+        conn, cur = result["routed"].pop("_db", (conn, cur))
         conn.commit()
     conn.close()
     print("\nRESULT: " + json.dumps(result, default=str))

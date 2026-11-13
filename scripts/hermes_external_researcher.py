@@ -231,8 +231,7 @@ def safe_context(symbol):
             k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip())
     ctx = {"symbol": symbol}
     try:
-        c = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
-                             user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD")); cur = c.cursor()
+        c = _pg_connect(); cur = c.cursor()
         cur.execute("""SELECT strategy_id, status, count(*) FROM trade_instances WHERE symbol=%s
                        GROUP BY 1,2 ORDER BY 3 DESC LIMIT 5""", (symbol,))
         ctx["trade_strategy_status_counts"] = [list(map(str, r)) for r in cur.fetchall()]  # counts only, no $
@@ -758,13 +757,31 @@ def _load_env():
             k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip())
 
 
+def _pg_connect():
+    """Connect to the app database from DB_* with the db_adapter defaults (LQ-20261107-2592).
+
+    Every connect site used os.getenv() with no default: an unset or EMPTY DB_NAME (setdefault in _load_env
+    never overrides an empty inherited value) made libpq fall back to the OS user, so the server logged
+    `FATAL: database "johnclaw" does not exist`. An empty value is treated as unset here.
+    """
+    import psycopg2
+    try:
+        _load_env()
+    except OSError:
+        pass
+    def _e(k, d):
+        return (os.environ.get(k) or "").strip() or d
+    return psycopg2.connect(host=_e("DB_HOST", "localhost"), port=int(_e("DB_PORT", "5432")),
+                            dbname=_e("DB_NAME", "trade_ai"), user=_e("DB_USER", "trade_ai"),
+                            password=os.environ.get("DB_PASSWORD") or "")
+
+
 def lane_circuit_open(lane):
     """True when the lane's recent history is nothing but auth failures. Fails open on any error."""
     try:
         import psycopg2
         _load_env()
-        c = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
-                             user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD"))
+        c = _pg_connect()
         cur = c.cursor()
         cur.execute("""SELECT status, recommendation FROM hermes_external_research
                        WHERE lane=%s AND created_at >= NOW() - (%s || ' minutes')::interval
@@ -1008,9 +1025,7 @@ def main(argv=None):
     prior_block = None
     try:
         import psycopg2 as _psycopg2_prior
-        _pconn = _psycopg2_prior.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"),
-                                         dbname=os.getenv("DB_NAME"), user=os.getenv("DB_USER"),
-                                         password=os.getenv("DB_PASSWORD"))
+        _pconn = _pg_connect()
         _pcur = _pconn.cursor()
         _prior = fetch_prior_curation(_pcur, args.symbol, args.lane)
         prior_research_guid = (_prior or {}).get("research_guid")
@@ -1075,8 +1090,7 @@ def main(argv=None):
         print(f"  {guidance}")
         print(f"  (override with --force-retest; next auto-retest: {cap.get('next_retest_not_before') or cap.get('next_retest_condition')})")
         parsed = {"recommendation": f"[{status.upper()}] {guidance} (cached reason: {reason}; not retried)"}
-        c = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
-                             user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD")); cur = c.cursor()
+        c = _pg_connect(); cur = c.cursor()
         cur.execute("""INSERT INTO hermes_external_research
             (lane, trigger_reason, priority, symbol, question, redacted_context, model, status,
              recommendation, research_guid, prior_research_guid)
@@ -1161,8 +1175,7 @@ def main(argv=None):
         else:
             account("ERROR", reason=f"provider_status:{status}", attempt_no=1)
         return
-    c = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
-                         user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD")); cur = c.cursor()
+    c = _pg_connect(); cur = c.cursor()
     cur.execute("""INSERT INTO hermes_external_research
         (lane, trigger_reason, priority, symbol, question, redacted_context, model, status,
          recommendation, evidence_json, dissent, confidence, risk_flags, learning_candidate, operator_action,
