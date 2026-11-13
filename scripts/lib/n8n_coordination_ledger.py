@@ -689,11 +689,15 @@ class LedgerRunStore:
                 (run_id, lane_id, mode, RUN_STATE_REQUESTED, requested_by, caller_id, _iso(now),
                  slot_key, None if attempt is None else int(attempt), parent_run_id, klass,
                  None if priority is None else int(priority)))
+            # LQ-20261107-2617: read the row INSIDE the insert transaction. A re-read after COMMIT let the executor's
+            # claim_next flip it to RUNNING first, so the relay answered a run it had just queued with
+            # state RUNNING -> HTTP 403 (n8n-incident-fanin 192191/192249; the runs themselves ran RUN_DONE).
+            created = self._l._conn.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
             self._l._conn.execute("COMMIT")
         except Exception:
             self._l._conn.execute("ROLLBACK")
             raise
-        return self.get(run_id), False
+        return self._row_dict(created), False
 
     @_locked
     def get(self, run_id: str) -> dict[str, Any] | None:
