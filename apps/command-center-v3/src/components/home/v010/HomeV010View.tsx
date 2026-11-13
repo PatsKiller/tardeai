@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { etTime, type HomeV010Model, type RowState } from '../../../lib/homeV010'
 import { PRIORITIES_VISIBLE, type PrioritiesView } from '../../../lib/homePriorities'
+import { DETAILS, blocksText, gateOverflow, priorityDestination } from '../../../lib/homeDestinations'
 import './HomeV010.css'
 
 export const P0_VISIBLE = 3
@@ -29,6 +30,8 @@ export interface HomeV010ViewProps {
 export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, priorities }: HomeV010ViewProps) {
   const [showAllP0, setShowAllP0] = useState(false)
   const [showAllPrio, setShowAllPrio] = useState(false)
+  const [showAllGates, setShowAllGates] = useState(false)
+  const go = m.gates ? gateOverflow(m.gates, showAllGates) : { shown: [], hidden: 0 }
   const p0Shown = showAllP0 ? m.p0 : m.p0.slice(0, P0_VISIBLE)
   const p0More = m.p0.length - p0Shown.length
 
@@ -85,18 +88,22 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
         <h2 className="v010-h2" id="h-gates">Trading gates {m.gates ? null : <NB />}</h2>
         <span className="v010-meta">{m.gates ? 'from /api/v2/home/status' : ''}</span>
       </div>
-      {m.gates && m.gates.length > 0 ? m.gates.map(g => (
+      {m.gates && m.gates.length > 0 ? go.shown.map(g => (
         <div className="v010-srow" id={`gate-${g.id}`} key={g.id} data-state={g.state} data-testid="gate-row">
           <span className="v010-srow-n">{g.label}</span>
           <span className={pillClass(g.state)}>{g.state}</span>
           <span className="v010-srow-v">{g.asOf ? `as of ${etTime(g.asOf, true)}${g.age ? ` · ${g.age} old` : ''}` : 'no as-of'} {g.needsBackend ? <NB /> : null}</span>
           {g.state !== 'OK' && (
-            <span className="v010-srow-c">{g.reason ? <>Why: <b>{g.reason}</b> · </> : null}Source: <b>{g.source}</b></span>
+            <span className="v010-srow-c">{g.reason ? <>Why: <b>{g.reason}</b> · </> : null}Source: <b>{g.source}</b> · <span data-testid="gate-blocks" data-blocks={String(g.blocks)}>{blocksText(g.blocks)}</span></span>
           )}
         </div>
       )) : (
         <div className="v010-line" data-testid="gates-na">{m.loading && m.tradeReadyCause === 'reading…' ? 'Trading gates: reading…' : 'Trading gates: not available'}</div>
       )}
+      {m.gates && m.gates.length > 5 && (go.hidden > 0 || showAllGates) ? (
+        <button type="button" className="v010-btn" data-testid="gates-more" onClick={() => setShowAllGates(v => !v)}>
+          {showAllGates ? 'Show fewer gates' : `+${go.hidden} more gates`}</button>
+      ) : null}
     </section>
   )
 
@@ -157,7 +164,8 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
                 <li key={r.id} className="v010-srow" data-kind={r.kind}>
                   <span className="v010-srow-n">{r.rank}</span>
                   <span className="v010-srow-v"><b>{r.title}</b>{r.blocks ? ' · blocks trading' : ''}{r.stale ? ' · not re-observed (stale)' : ''}</span>
-                  <span className="v010-srow-c">Why: <b>{r.why}</b>{r.tier ? <> · {r.tier}</> : null}{r.since ? <> · since {etTime(r.since, true)}</> : null}</span>
+                  <span className="v010-srow-c">Why: <b>{r.why}</b>{r.tier ? <> · {r.tier}</> : null}{r.since ? <> · since {etTime(r.since, true)}</> : null}
+                    {' · '}{(() => { const d = priorityDestination(r.kind); return d ? <Link className="v010-link" to={d.to} data-testid="prio-link">{d.label}</Link> : <span data-testid="prio-nolink">no destination recorded</span> })()}</span>
                 </li>
               ))}
             </ol>
@@ -167,6 +175,23 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
             {pv.note ? <div className="v010-muted" data-testid="prio-note">{pv.note}</div> : null}
           </>
         )}
+    </section>
+  )
+
+  const watch = (
+    <section className="v010-card" id="card-watch" aria-labelledby="h-watch">
+      <div className="v010-card-hd"><h2 className="v010-h2" id="h-watch">Watch today / Watch tonight <NB /></h2></div>
+      <div className="v010-muted" data-testid="watch-na">No source yet for today's and tonight's watch items on Home; nothing is shown rather than a guess.</div>
+      <Link className="v010-link" to="/watch" data-testid="watch-link">Open Watch</Link>
+    </section>
+  )
+
+  const details = (
+    <section className="v010-card" id="card-details" aria-labelledby="h-details">
+      <div className="v010-card-hd"><h2 className="v010-h2" id="h-details">Details</h2></div>
+      <ul className="v010-prio" data-testid="details-list">
+        {DETAILS.map(d => <li key={d.id} className="v010-srow"><Link className="v010-link" to={d.to} data-testid="details-link">{d.label}</Link></li>)}
+      </ul>
     </section>
   )
 
@@ -191,7 +216,7 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
       </header>
       <div className="v010-grid">
         <div className="v010-col">{action}{gates}{since}</div>
-        <div className="v010-col">{status}{prioCard}{diagEntry}</div>
+        <div className="v010-col">{status}{prioCard}{watch}{details}{diagEntry}</div>
       </div>
       <footer className="v010-foot">
         <Link className="v010-link" to="/home-classic" data-testid="classic-home-link">Classic Home</Link>

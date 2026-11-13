@@ -81,7 +81,7 @@ export interface LastSeenWire { ok?: boolean; key?: string; value?: unknown; rea
 export type TradeReady = 'YES' | 'NO' | 'UNKNOWN'
 export interface HomeStatusGateWire {
   id?: string; label?: string; required?: boolean; state?: string; source_id?: string | null; as_of?: string | null
-  age_s?: number | null; threshold_s?: number | null; value?: number | null; reason?: string | null; needs_backend?: boolean
+  age_s?: number | null; threshold_s?: number | null; value?: number | null; reason?: string | null; needs_backend?: boolean; blocks_trading?: boolean | null
 }
 export interface HomeStatusWire {
   schema?: string; verdict?: string; read_from?: string | null
@@ -126,7 +126,7 @@ function incidentsState(r: Read<IncidentsWire>): ReadState {
 
 // ── model ──────────────────────────────────────────────────────────────────────────────────────────────
 export type RowState = 'OK' | 'STALE' | 'UNKNOWN' | 'TIMED OUT' | 'WARN' | 'GAP' | 'LOADING'
-export interface GateRow { id: string; label: string; required: boolean; state: RowState; age: string; asOf: string | null; source: string; reason: string | null; needsBackend: boolean; count: number | null }
+export interface GateRow { id: string; label: string; required: boolean; state: RowState; age: string; asOf: string | null; source: string; reason: string | null; needsBackend: boolean; count: number | null; blocks: boolean | null }
 export interface StatusRow { id: string; name: string; state: RowState; value: string; cause?: string; source?: string; owner?: string; needsBackend?: boolean }
 export interface ActionRow { id: string; kind: 'P0' | 'STOP'; title: string; detail: string[] }
 export interface UnreadSource { source: string; label: string; state: ReadState; lastGood: string | null }
@@ -196,7 +196,8 @@ export function statusFrom(r: Read<HomeStatusWire> | undefined, nowMs: number): 
     const age = typeof g.age_s === 'number' ? g.age_s : (asOf ? Math.max(0, Math.round((nowMs - new Date(asOf).getTime()) / 1000)) : null)
     return { id: g.id || `gate-${i}`, label: g.label || g.id || 'input', required: !!g.required, state: GATE_STATES.has(s) ? s : 'UNKNOWN',
       age: ageText(age), asOf, source: g.source_id || 'unknown', reason: g.reason || null, needsBackend: !!g.needs_backend,
-      count: typeof g.value === 'number' ? g.value : null }
+      count: typeof g.value === 'number' ? g.value : null,
+      blocks: typeof g.blocks_trading === 'boolean' ? g.blocks_trading : null }
   }) : null
   const blockers: HomeV010Model['why']['blockers'] = [
     ...(d.blockers || []).map(b => ({ category: b.category || 'Blocker', detail: `${b.cause || 'cause not recorded'}${b.count ? ` · ${b.count} open` : ''}`,
