@@ -123,8 +123,12 @@ json_str() {  # JSON string body: backslash, quote and control characters
   printf '%s' "$v"
 }
 # Review N2: durable ESCALATE artifacts. Caller holds the flock; never fails the run, never sends anything.
-write_escalation() {  # $1 = pid NOT killed
-  local target="$1" now at_utc at_et episode t line finding tmp
+write_escalation() {  # $1 = pid NOT killed; $2 = reason: kill_cap (default) or kill_state_unwritable (review v2c)
+  local target="$1" reason="${2:-kill_cap}" now at_utc at_et episode t line finding tmp what
+  case "$reason" in
+    kill_state_unwritable) what="the kill-time state file could not be written, so the restart budget cannot be enforced and the watchdog refused to kill." ;;
+    *) reason=kill_cap; what="${RECENT_KILLS} watchdog kills in the last ${KILL_WINDOW_S}s reached the cap of ${KILL_CAP}." ;;
+  esac
   now=$(date +%s)
   at_utc=$(date -u -d "@$now" '+%Y-%m-%dT%H:%M:%SZ')
   at_et=$(TZ=America/New_York date -d "@$now" '+%Y-%m-%dT%H:%M:%S%z')
@@ -134,11 +138,12 @@ write_escalation() {  # $1 = pid NOT killed
     [ "$t" -lt "$episode" ] && episode=$t
   done <<< "$KEPT_KILLS"
   case "$target" in ''|*[!0-9]*) target=0 ;; esac
-  line=$(printf '{"event": "ESCALATE", "pid": %d, "recent_kills": %d, "kill_cap": %d, "window_s": %d, "at_utc": "%s", "at_et": "%s", "episode": %d, "state_file": "%s", "evidence": "%s"}' \
-    "$target" "$RECENT_KILLS" "$KILL_CAP" "$KILL_WINDOW_S" "$at_utc" "$at_et" "$episode" "$(json_str "$KILL_STATE")" "$(json_str "${EVIDENCE:-}")")
+  line=$(printf '{"event": "ESCALATE", "reason": "%s", "pid": %d, "recent_kills": %d, "kill_cap": %d, "window_s": %d, "at_utc": "%s", "at_et": "%s", "episode": %d, "state_file": "%s", "evidence": "%s"}' \
+    "$reason" "$target" "$RECENT_KILLS" "$KILL_CAP" "$KILL_WINDOW_S" "$at_utc" "$at_et" "$episode" "$(json_str "$KILL_STATE")" "$(json_str "${EVIDENCE:-}")")
   if ! { mkdir -p "$(dirname "$ESCALATION_LOG")" && printf '%s\n' "$line" >> "$ESCALATION_LOG"; } 2>/dev/null; then
     log "escalation artifact write failed: $ESCALATION_LOG"
   fi
+  [ "$reason" = kill_state_unwritable ] && episode="unwritable-$(date -u -d "@$now" '+%Y%m%d')"  # one FINDING per UTC day, not per run
   finding="$FINDING_DIR/FINDING-portfolio-server-watchdog-ESCALATE-${episode}.md"
   [ -e "$finding" ] && return 0  # one FINDING per episode; every ESCALATE run still appends its jsonl record
   tmp="$FINDING_DIR/.FINDING-portfolio-server-watchdog-ESCALATE-${episode}.md.tmp.$$"
@@ -146,7 +151,8 @@ write_escalation() {  # $1 = pid NOT killed
 # FINDING: portfolio-server watchdog ESCALATE (episode ${episode})
 
 - At: ${at_et} ET (${at_utc})
-- What: ${RECENT_KILLS} watchdog kills in the last ${KILL_WINDOW_S}s reached the cap of ${KILL_CAP}. The unresponsive
+- Reason: ${reason}
+- What: ${what} The unresponsive
   portfolio server (pid ${target}) was NOT killed; the watchdog leaves it alone until the window drains.
 - Evidence: ${EVIDENCE:-none}
 - Kill-time state: ${KILL_STATE}
@@ -213,7 +219,7 @@ kill_allowed() {
   if ! save_kills "$now"; then
     cgroup_evidence
     log "ESCALATE: KILL_STATE unwritable ($KILL_STATE) — refusing to kill pid ${target}; the restart budget cannot be enforced"
-    write_escalation "$target"
+    write_escalation "$target" kill_state_unwritable
     return 1
   fi
   return 0

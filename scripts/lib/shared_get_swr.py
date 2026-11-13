@@ -312,6 +312,7 @@ def acquire_host_slots(key: str, cap: int):
     d = slot_dir()
     if not d:
         return [], None
+    kfd = None
     try:
         os.makedirs(d, mode=0o700, exist_ok=True)
         kfd = _flock_nb(os.path.join(d, "key-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:20] + ".lock"))
@@ -329,6 +330,8 @@ def acquire_host_slots(key: str, cap: int):
         release_slots([kfd])
         return None, "REFUSED_CAP"
     except OSError as e:  # fail open to the per-process cap; say so once
+        if kfd is not None:  # 3034b review A5: never leak the key lock (it would refuse that key for the process life)
+            release_slots([kfd])
         if not _SLOT_WARNED[0]:
             _SLOT_WARNED[0] = True
             _emit("swr-build", {"event": "swr_slot_pool_unavailable", "dir": d, "error": f"{type(e).__name__}: {e}"})

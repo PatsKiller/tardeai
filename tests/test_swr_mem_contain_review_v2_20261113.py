@@ -62,7 +62,7 @@ def test_abandoned_builds_are_bounded(monkeypatch):
         gate.set()
 
 
-def test_abandon_limit_keeps_cap_and_logs(monkeypatch):
+def test_abandon_limit_keeps_cap_and_logs(monkeypatch, capsys):
     monkeypatch.setenv("SWR_BUILD_LEASE_S", "0.05")
     monkeypatch.setenv("SWR_MAX_ABANDONED", "0")
     gate, calls = threading.Event(), []
@@ -73,6 +73,8 @@ def test_abandon_limit_keeps_cap_and_logs(monkeypatch):
         out = swr.get("c", 60, _hang(gate, calls))
         assert out.get("build_refused") == "REFUSED_CAP"  # expired builds were NOT reaped: they still hold the cap
         assert len(calls) == 2 and swr.stats()["abandoned_builds"] == 0
+        # Review v2c T2 (mutant NB1-i): the limit state is loud, never silent.
+        assert '"outcome": "ABANDONED_LEASE_LIMIT"' in capsys.readouterr().out
     finally:
         gate.set()
 
@@ -129,6 +131,13 @@ def test_unwritable_kill_state_never_kills(tmp_path):
         ro.chmod(0o755)
     assert _kills(rec) == 0
     assert "KILL_STATE unwritable" in (logs / "wd.log").read_text()
+    # Review v2c T1 (mutant WD-k): a refused kill escalates durably, with the true reason, one FINDING not one per run.
+    import json
+    recs = [json.loads(x) for x in (logs / "watchdog_escalations.jsonl").read_text().splitlines()]
+    assert len(recs) == 4 and all(r["reason"] == "kill_state_unwritable" for r in recs)
+    findings = list(logs.glob("FINDING-portfolio-server-watchdog-ESCALATE-*.md"))
+    assert len(findings) == 1 and "kill_state_unwritable" in findings[0].read_text()
+    assert "reached the cap" not in findings[0].read_text()
 
 
 def test_orphan_branch_honours_the_kill_budget(tmp_path):
@@ -139,6 +148,7 @@ def test_orphan_branch_honours_the_kill_budget(tmp_path):
     assert cp.returncode == 0, cp.stderr
     assert _kills(rec) == 0
     assert "ESCALATE" in (logs / "wd.log").read_text()
+    assert '"reason": "kill_cap"' in (logs / "watchdog_escalations.jsonl").read_text()
 
 
 # ── C1 / F3: a stop decision is never assembled from stale risk ──────────────────────────────────────────────
@@ -158,3 +168,22 @@ def test_fresh_risk_still_assembles(monkeypatch):
     monkeypatch.setattr(saa, "_api_get", lambda p: {"ok": True, "data": data} if p == "/api/v2/risk" else {})
     out = saa.assemble_stop_alert_data("SYNTH")
     assert out is not None and out.get("status") != "UNKNOWN"
+
+
+# ── 3034b review A5: an OSError while taking a slot never leaks the key lock ───────────────────────────────────────
+def test_slot_oserror_releases_the_key_lock(monkeypatch, tmp_path):
+    monkeypatch.setenv("SWR_SLOT_DIR", str(tmp_path / "slots"))
+    real = swr._flock_nb
+
+    def flaky(path):
+        if "slot-" in path:
+            raise OSError("synthetic slot failure")
+        return real(path)
+    monkeypatch.setattr(swr, "_flock_nb", flaky)
+    assert swr.acquire_host_slots("k-a5", 2) == ([], None)  # fails open to the per-process cap
+    monkeypatch.setattr(swr, "_flock_nb", real)
+    fds, why = swr.acquire_host_slots("k-a5", 2)
+    try:
+        assert why is None and fds, f"key lock leaked: {why}"
+    finally:
+        swr.release_slots(fds or [])
