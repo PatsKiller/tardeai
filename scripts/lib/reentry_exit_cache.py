@@ -35,7 +35,11 @@ def refresh_exit_cache(ex: Callable[..., Any], days: int = 365) -> dict[str, Any
         (int(days),), fetch="all",
     ) or []
     events = ex(
-        """SELECT id, event_key, status, completion_status, operator_status,
+        # deploy_events has no completion_status column (that is a computed field of the
+        # redeploy capital book). Selecting it failed every watch-alerts run since 11-09;
+        # db_adapter swallowed the error and returned None, so the cache was rewritten
+        # with zero matched events and every exit read PENDING (110 PG errors 11-09..11-13).
+        """SELECT id, event_key, status, operator_status,
                   proceeds_settled, sold_at, source
            FROM deploy_events
            WHERE sold_at >= CURRENT_DATE - %s""",
@@ -85,7 +89,6 @@ def refresh_exit_cache(ex: Callable[..., Any], days: int = 365) -> dict[str, Any
             "dedupe_key": transaction.get("dedupe_key"),
             "matched_event_id": event.get("id") if event else None,
             "event_status": event.get("status") if event else None,
-            "completion_status": event.get("completion_status") if event else None,
             "operator_status": event.get("operator_status") if event else None,
             "proceeds_settled": bool(event.get("proceeds_settled")) if event else None,
             "event_source": event.get("source") if event else None,

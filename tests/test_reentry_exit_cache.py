@@ -128,3 +128,34 @@ def test_paper_account_is_not_cached():
 
     assert all(row["account"] != "alpaca_paper" for row in payload["rows"])
     assert "alpaca_paper" not in payload["counts"]["accounts"]
+
+
+# deploy_events columns as of 2026-11-13 (information_schema, read-only). The events query
+# selected completion_status, which is not one of them, so every refresh raised.
+DEPLOY_EVENTS_COLUMNS = {
+    "id", "event_key", "symbol", "account", "sold_at", "proceeds_usd", "shares_sold",
+    "realized_pnl", "instrument_type", "proxy_symbol", "proxy_sleeve", "status",
+    "proceeds_settled", "cash_visible_usd", "lookthrough_delta", "redeploy_plan", "source",
+    "txn_ref", "txn_id", "dismiss_reason", "metadata", "created_at", "updated_at",
+    "net_proceeds_usd", "deployable_cash_usd", "reconciliation_status", "policy_version",
+    "generator_version", "holdings_snapshot_id", "plan_locked_at", "locked_plan_id",
+    "locked_plan_version", "operator_status",
+}
+
+
+def test_events_query_selects_only_existing_deploy_events_columns():
+    import re
+
+    seen = []
+
+    class Recorder(FakeExecute):
+        def __call__(self, sql, params=None, fetch=None):
+            seen.append(sql)
+            return super().__call__(sql, params, fetch=fetch)
+
+    refresh_exit_cache(Recorder())
+    events_sql = [q for q in seen if "FROM deploy_events" in q]
+    assert events_sql, seen
+    cols = re.search(r"SELECT(.*?)FROM deploy_events", events_sql[0], re.S).group(1)
+    selected = {c.strip() for c in cols.split(",") if c.strip()}
+    assert selected <= DEPLOY_EVENTS_COLUMNS, selected - DEPLOY_EVENTS_COLUMNS
