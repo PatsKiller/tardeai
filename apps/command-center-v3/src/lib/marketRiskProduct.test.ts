@@ -28,4 +28,9 @@ t(selectMarketRisk(null).unknown && riskTierWord(selectMarketRisk(null)) === 'UN
 
 // YELLOW / GREEN never get the ORANGE/RED banner, fresh or stale
 t(!riskBannerVisible(selectMarketRisk({ ...base, tier: 'YELLOW', state: 'stale', stale: true })), 'stale YELLOW: no RED banner')
+// product_stale alone marks stale even if a proxy/older API left state 'evaluated' (selector must not rely on state)
+const markedOnly = selectMarketRisk({ ok: true, data: { ...base, product_stale: { status: 'STALE', greyed: false, age_s: 200, as_of: base.as_of } } })
+t(markedOnly.stale && /^stale — /.test(markedOnly.staleLabel) && riskBannerVisible(markedOnly), 'product_stale alone marks RED stale, banner stays')
+const flagOnly = selectMarketRisk({ ok: true, data: { ...base, stale: true } })
+t(flagOnly.stale && riskTierWord(flagOnly) === 'RED', 'stale flag alone marks RED stale')
 console.log('marketRiskProduct.test ok')

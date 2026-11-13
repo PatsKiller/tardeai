@@ -461,3 +461,26 @@ def test_cli_exit_code_matches_contract(outcome, rc, monkeypatch, capsys):
     monkeypatch.setattr(pb, "run_once", lambda *a, **k: {"outcome": outcome})
     args = types.SimpleNamespace(product="home", timeout=None, rlimit_mb=None, dry_run=True, builder_sha=None)
     assert pb.run_cli(args) == rc
+
+
+# ------------------------------------------------------------------------------------- mutant killers (SC2, SW1)
+
+
+def test_run_once_locks_and_reports_its_own_scope(tmp_path):
+    """A scoped build takes the lock for ITS scope (a held global lock does not block acct:B) and its receipt names
+    that scope; writing every scope as global would serialize accounts and mislabel receipts (mutant SC2)."""
+    with pb.HostLocks(tmp_path, slots=4).acquire("syn.product", "global") as busy:
+        assert busy is None
+        r = pb.run_once(spec(scope_key="acct:B"), connect=None, dry_run=True, locks=pb.HostLocks(tmp_path, slots=4),
+                        build_fn=fake_build(T0), ctx_factory=_ctx)
+    assert r["outcome"] != "SKIPPED_BUSY", r
+    assert r["scope_key"] == "acct:B"
+
+
+def test_slot_wait_default_is_bounded_twenty_seconds(tmp_path):
+    """The bounded slot wait (cron-collision fix) defaults to 20 s; 0 would turn every same-minute collision back
+    into SKIPPED_BUSY (mutant SW1). The catalogue runner timeouts budget tmo + 20 + 10."""
+    if "TRADEAI_CC_BUILDER_SLOT_WAIT_S" in os.environ:
+        pytest.skip("slot wait overridden in this environment")
+    assert pb.SLOT_WAIT_S == 20.0
+    assert pb.HostLocks(tmp_path).slot_wait_s == 20.0
