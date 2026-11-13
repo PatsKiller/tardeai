@@ -340,7 +340,11 @@ def read_orders(q: Query, now: datetime, state_root: Optional[Path], incident_ro
     open_gaps = [r for r in incident_rows
                  if r.get("alert_type") == UNPROTECTED_TYPE and r.get("source_producer") == ORDERS_PRODUCER]
     limit = ORDERS_MAX_AGE_SESSION_S if htr.in_session_window(now) else ORDERS_MAX_AGE_OFF_S
-    base = dict(value=counts, as_of=htr.iso(ok_at), threshold_s=limit, source_id=src, **kw)
+    # LQ-2964: held positions of a type that cannot carry a stop (mutual funds) are not gaps, and never hidden
+    np_rows = [r for r in (doc.get("not_stop_protectable") or []) if isinstance(r, dict) and r.get("symbol")]
+    dq = [{"code": "not_stop_protectable", "symbol": str(r["symbol"]), "asset_type": r.get("asset_type"),
+           "label": str(r.get("label") or "not stop-protectable")} for r in np_rows]
+    base = dict(value=counts, as_of=htr.iso(ok_at), threshold_s=limit, source_id=src, data_quality=dq, **kw)
     if counts["gaps"] or open_gaps:
         n = max(counts["gaps"], len(open_gaps))
         return Reading(name=name, state=htr.GAP, cause=f"{n} position(s) confirmed unprotected", **base)

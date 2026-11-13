@@ -159,6 +159,8 @@ def scan_from_snapshot(snapshot: list[dict], positions: list[dict], *, now: date
               if isinstance(e, dict)}
     floor = float(cfg.get("min_position_value_usd", 0) or 0)
     skip_types = {str(x).lower() for x in cfg.get("exclude_asset_types") or []}
+    labels = {str(k).lower(): str(v) for k, v in (cfg.get("not_stop_protectable_labels") or {}).items()}
+    not_protectable: list[dict] = []
     limit = MAX_AGE_SESSION_S if session_open else MAX_AGE_OFF_S
     newest = max((t for t in (_when(r.get("snapshot_at")) for r in snapshot) if t is not None), default=None)
     if newest is None:
@@ -183,6 +185,9 @@ def scan_from_snapshot(snapshot: list[dict], positions: list[dict], *, now: date
         if not sym or acct in paper or acct not in live_accts or (acct, sym) in exempt:
             continue
         if str(p.get("asset_type") or "").lower() in skip_types:
+            label = labels.get(str(p.get("asset_type") or "").lower())
+            if label:   # not a gap, but never hidden (LQ-2964: a mutual fund cannot carry a stop)
+                not_protectable.append({"symbol": sym, "asset_type": str(p.get("asset_type")), "label": label})
             continue
         mv = p.get("broker_market_value")
         if floor and mv is not None and abs(float(mv)) < floor:
@@ -193,7 +198,8 @@ def scan_from_snapshot(snapshot: list[dict], positions: list[dict], *, now: date
             stops.append({"account": acct, "symbol": sym, "health": "alert", "flags": ["unprotected"],
                           "held_qty": float(p.get("qty") or 0), "status": None})
     return {"ok": True, "stops": stops, "generated_at": now, "snapshot_age_s": round(age),
-            "summary": {"total": len(stops)}, "errors": [], "schwab_stops_status": "SNAPSHOT"}
+            "summary": {"total": len(stops)}, "errors": [], "schwab_stops_status": "SNAPSHOT",
+            "not_stop_protectable": sorted(not_protectable, key=lambda r: r["symbol"])}
 
 
 def _fetch(conn, sql: str) -> list[dict]:
@@ -258,6 +264,7 @@ def main(argv: list[str] | None = None) -> int:
                                          ("snapshot_missing", "snapshot_stale", "positions_stale") else "error")
         doc = {"started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(), "status": status,
                "dry_run": not apply, **{k: len(v) if isinstance(v, list) else v for k, v in out.items()}}
+        doc["not_stop_protectable"] = list(scan.get("not_stop_protectable") or [])   # the list, not a count
     except BaseException as exc:
         _heartbeat({"started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(),
                     "status": "error", "error": f"{type(exc).__name__}: {exc}"[:300]})
