@@ -69,11 +69,13 @@ def test_cio_pages_and_risk_routes_use_the_cache(monkeypatch):
     from scripts.lib.cc_products import cio_pages, cio_pages_route as cpr
 
     swr.clear()
-    monkeypatch.setattr(cpr, "serve_cio_pages", lambda **kw: {"stored": True})
+    fresh = {"stored": True, "_product": {"status": "STALE"}}
+    monkeypatch.setattr(cpr, "serve_cio_pages", lambda **kw: fresh)
     for _ in range(3):
-        assert api._w7_cio_pages() == {"stored": True}
+        assert api._w7_cio_pages() == fresh
         api._risk_payload_cached()
-    # LQ-2600 (REVIEW-2606 F1): cio/pages serves the stored product and never computes in the request process.
+    # LQ-2600 (REVIEW-2606 F1): while the stored product is fresh, cio/pages never computes in the request process
+    # (a miss computes on the SWR thread, LQ-2743).
     assert n == {"pages": 0, "risk": 1} and not swr.inflight()
     # LQ-1907 wiring moved with the build: the cio.pages builder reads the durable ledger root, not the release dir.
     from scripts.lib.conflicts.api import _root as _durable_root

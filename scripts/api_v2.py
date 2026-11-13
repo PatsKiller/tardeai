@@ -48617,15 +48617,58 @@ def _conflict_ledger_root():
     return _root()
 
 
-def _w7_cio_pages():
-    """GET /api/v2/cio/pages: the stored ``cio.pages`` product plus its clocks (LQ-20261107-2595).
+#: Stored ``cio.pages`` statuses served as they are. Anything else (BUILDING = no row, UNKNOWN = store unreadable or
+#: past hard expiry) falls back to the computed page (LQ-20261107-2743).
+_CIO_PAGES_FRESH = ("OK", "STALE")
+_CIO_PAGES_COMPUTED_TTL_S = 60.0
 
-    One primary-key read (hot tier, then Postgres with a 250 ms statement timeout). Never builds: the
-    page projection runs only in the background builder. A store failure reads UNKNOWN, never a compute.
-    Supersedes the LQ-2584 in-process SWR cache for this route (lead decision, REVIEW-2606 F1)."""
+
+def _w7_cio_pages():
+    """GET /api/v2/cio/pages: stored first, computed on a miss (LQ-20261107-2595, LQ-20261107-2743).
+
+    1. The stored ``cio.pages`` product (one primary-key read: hot tier, then Postgres under a 250 ms statement
+       timeout). OK or STALE is served as stored and nothing is computed.
+    2. No fresh stored row (BUILDING, or UNKNOWN: store unreadable / past hard expiry): the pre-2595 computed page,
+       through the serve-last-good SWR cache (LQ-2572). A request never waits on that build: it runs on one
+       background thread per process and the request gets the last computed page with its age.
+    3. Nothing computed yet (the first poll after a start, or the build failed): the stored response as it was
+       (BUILDING gaps, or the greyed last good), with the compute state named in ``_product.computed``.
+
+    Why: release 2 (d014c75d5) was rolled back 2026-11-12 21:39 ET because nothing schedules the ``cio.pages``
+    builder, ``cc_product_current`` had 0 rows, and every section read "being built" indefinitely."""
     from scripts.lib.cc_products import cio_pages_route as _cpr
 
-    return _cpr.serve_cio_pages(fetch_row=_cpr.make_pg_fetch_row(_db_query_raising), hot=_cpr.production_hot())
+    stored = _cpr.serve_cio_pages(fetch_row=_cpr.make_pg_fetch_row(_db_query_raising), hot=_cpr.production_hot())
+    meta = stored.get("_product") if isinstance(stored, dict) else None
+    stored_status = (meta or {}).get("status")
+    if stored_status in _CIO_PAGES_FRESH:
+        return stored
+    computed = _shared_get_cached(
+        "cio_pages", _CIO_PAGES_COMPUTED_TTL_S, _cio_pages_build, stale_ok=True,
+        annotate=lambda payload, m: (payload, m), unknown=lambda key, m: (None, m),
+    )
+    payload, cmeta = computed if isinstance(computed, tuple) and len(computed) == 2 else (None, {})
+    stored_reason = (meta or {}).get("reason")
+    if isinstance(payload, dict):
+        product = {
+            "status": "STALE" if cmeta.get("stale") else "OK",
+            "as_of": cmeta.get("as_of"), "built_at": cmeta.get("as_of"), "age_s": cmeta.get("age_s"),
+            "stale_after_s": None, "hard_expiry_s": None, "next_refresh_at": None, "seq": None,
+            "reason": f"computed in the server: the stored cio.pages product is {stored_status} ({stored_reason})",
+            "served_from": "computed", "greyed": False, "stored_status": stored_status,
+            "computed": dict(cmeta),
+        }
+        return {**payload, "_product": product}
+    out = dict(stored) if isinstance(stored, dict) else {}
+    out["_product"] = {**(meta or {}), "computed": dict(cmeta)}
+    return out
+
+
+def _cio_pages_build():
+    """The computed W7 page (the pre-2595 route body). Runs only on the SWR background thread, never a request."""
+    from scripts.lib.w7_pages import page_payload
+
+    return page_payload(STATE_DIR.parents[2], db_query=_db_query, ledger_root=_conflict_ledger_root())
 
 
 def _asks_tracked_annotate(out, meta: dict):

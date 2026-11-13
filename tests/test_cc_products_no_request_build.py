@@ -497,8 +497,10 @@ import api_v2 as api
 from scripts.lib import w7_pages, cio_truth
 from scripts.lib.cc_products import cio_pages_route as cpr
 calls = {"n": 0}
+BUILD_THREADS = []
 def boom(*a, **k):
     calls["n"] += 1
+    BUILD_THREADS.append(threading.current_thread())
     raise AssertionError("build on request")
 w7_pages.page_payload = boom; w7_pages.project_pages = boom; cio_truth.resolve = boom
 now = datetime.now(timezone.utc)
@@ -519,7 +521,11 @@ for m in ("ok", "none", "nodb", "raise"):
         out[m] = r["_product"]["status"]
     except BaseException as e:
         out[m] = "ERROR " + repr(e)[:120]
-out["build_calls"] = calls["n"]
+    if m == "ok":
+        out["build_calls_while_fresh"] = calls["n"]
+# LQ-2743: a miss (none/nodb/raise) starts the computed page on the SWR thread; the request itself never builds,
+# so it still returns the stored status at once (the first poll has nothing computed yet).
+out["request_built"] = any(t.name == "MainThread" for t in BUILD_THREADS)
 out["timeout_sql"] = bool(sqls) and all("SET LOCAL statement_timeout = '250ms'" in s for s in sqls)
 print("PROBE " + json.dumps(out, sort_keys=True)); sys.stdout.flush(); os._exit(0)
 '''
@@ -552,4 +558,4 @@ def test_patched_api_v2_route_never_builds(tmp_path):
     out = json.loads(line[6:])
     _record("api_v2", out)
     assert out == {"route_is_w7": True, "ok": "OK", "none": "BUILDING", "nodb": "UNKNOWN", "raise": "UNKNOWN",
-                   "build_calls": 0, "timeout_sql": True}
+                   "build_calls_while_fresh": 0, "request_built": False, "timeout_sql": True}
