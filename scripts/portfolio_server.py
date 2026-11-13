@@ -837,17 +837,23 @@ def json_response(handler, status: int, data: dict) -> None:
         else:
             body, use_gzip = raw_body, False
 
-    handler.send_response(status)
-    handler.send_header("Content-Type", "application/json")
-    if etag and status == 200:
-        handler.send_header("ETag", etag)
-    if use_gzip:
-        handler.send_header("Content-Encoding", "gzip")
-        handler.send_header("Vary", "Accept-Encoding")
-    handler.send_header("Content-Length", str(len(body)))
-    _send_cors(handler)
-    handler.send_header("Connection", "close")
-    handler.end_headers()
+    try:
+        handler.send_response(status)
+        handler.send_header("Content-Type", "application/json")
+        if etag and status == 200:
+            handler.send_header("ETag", etag)
+        if use_gzip:
+            handler.send_header("Content-Encoding", "gzip")
+            handler.send_header("Vary", "Accept-Encoding")
+        handler.send_header("Content-Length", str(len(body)))
+        _send_cors(handler)
+        handler.send_header("Connection", "close")
+        handler.end_headers()
+    except (BrokenPipeError, ConnectionResetError, TimeoutError, OSError):
+        # client abandoned the request before the headers went out (LQ-2956): the caller's except-branch would
+        # write a SECOND response (a logged 500) to the dead socket; there is nobody to answer.
+        handler.close_connection = True
+        return
     try:
         handler.wfile.write(body)
     except (BrokenPipeError, ConnectionResetError, TimeoutError, OSError):

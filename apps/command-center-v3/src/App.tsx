@@ -136,6 +136,8 @@ function BuildMarker() {
 
 function ReconnectingBar() {
   const { degraded, failing } = useConnectionHealth()
+  // LQ-2956: "server busy" is claimed only while /api/health itself fails; if it answers, some feeds are slow.
+  const [healthOk, setHealthOk] = useState(false)
 
   useEffect(() => {
     if (!degraded) return
@@ -143,6 +145,7 @@ function ReconnectingBar() {
     let state = initialProbeState()
     let id = 0
     const step = (ok: boolean) => {
+      setHealthOk(ok)
       const r = onProbeResult(state, ok)
       state = r.state
       // Global refetch only after a real outage (health itself failed this episode). When health is
@@ -174,7 +177,7 @@ function ReconnectingBar() {
       background: 'rgba(245,158,11,0.10)', color: '#f5c76a', borderBottom: '1px solid rgba(245,158,11,0.28)',
       fontSize: 10.5, fontWeight: 650, textAlign: 'center', padding: '2px 8px', letterSpacing: .2,
     }}>
-      showing last-good data · live refresh paused (server busy{failing > 1 ? ` · ${failing} feeds` : ''}) · retrying with backoff
+      showing last-good data · live refresh paused ({healthOk ? 'server up, some feeds slow' : 'server not answering'}{failing > 1 ? ` · ${failing} feeds` : ''}) · retrying with backoff
       {' · '}
       <button
         type="button"
