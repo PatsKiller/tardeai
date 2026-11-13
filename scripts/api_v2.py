@@ -9812,6 +9812,7 @@ def _sync_all_screener_find_pins_batch(symbols) -> bool:
     return done is not None
 
 
+@_db_explicit
 def _screener_finds_candidates(query=None):
     """GET /api/v2/screener-finds/candidates — auto-research screener finds with buy-side CIO cards.
 
@@ -9819,7 +9820,7 @@ def _screener_finds_candidates(query=None):
     upserts every pin (it used to stamp auto_research_at on all rows per GET). The stored flag is refreshed by a lane."""
     from lib import screener_find_pins_read as _sfp_read
 
-    pins = _sfp_read.active_pins(_db_query)
+    pins = _sfp_read.active_pins(_db_required)  # LQ-20261107-2633: a failed read raises -> explicit UNKNOWN body
     syms = [p["symbol"] for p in pins]
     items_out = []
     if syms:
