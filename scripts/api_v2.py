@@ -48313,14 +48313,14 @@ def _conflict_ledger_root():
 
 
 def _w7_cio_pages():
-    """Read-only W7 page projection over one CIO truth document. Cached 60 s; serve-last-good, one background build."""
-    return _shared_get_cached("cio_pages", 60.0, _cio_pages_build, stale_ok=True)
+    """GET /api/v2/cio/pages: the stored ``cio.pages`` product plus its clocks (LQ-20261107-2595).
 
+    One primary-key read (hot tier, then Postgres with a 250 ms statement timeout). Never builds: the
+    page projection runs only in the background builder. A store failure reads UNKNOWN, never a compute.
+    Supersedes the LQ-2584 in-process SWR cache for this route (lead decision, REVIEW-2606 F1)."""
+    from scripts.lib.cc_products import cio_pages_route as _cpr
 
-def _cio_pages_build():
-    from scripts.lib.w7_pages import page_payload
-
-    return page_payload(STATE_DIR.parents[2], db_query=_db_query, ledger_root=_conflict_ledger_root())
+    return _cpr.serve_cio_pages(fetch_row=_cpr.make_pg_fetch_row(_db_query_raising), hot=_cpr.production_hot())
 
 
 def _asks_tracked_annotate(out, meta: dict):
@@ -48348,15 +48348,11 @@ def _asks_tracked_cached(base_path, method, body, query):
 
 
 def warm_swr_caches() -> list:
-    """Boot warm: start the one background build for each opted-in key, once. Returns the keys started."""
-    try:
-        from scripts.lib import shared_get_swr as _swr
-    except ImportError:  # pragma: no cover
-        from lib import shared_get_swr as _swr
-    started = []
-    if _swr.warm("cio_pages", 60.0, _cio_pages_build):
-        started.append("cio_pages")
-    return started
+    """Boot warm: start the one background build for each opted-in key, once. Returns the keys started.
+
+    No key is warmed today. ``cio_pages`` was the only one (LQ-2584); since LQ-2595 the route reads the stored
+    ``cio.pages`` product, so a boot build in this process would only cost RSS. Kept so a boot hook stays valid."""
+    return []
 
 
 def _risk_payload_cached():

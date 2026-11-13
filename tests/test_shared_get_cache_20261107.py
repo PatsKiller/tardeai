@@ -66,16 +66,15 @@ def test_cio_pages_and_risk_routes_use_the_cache(monkeypatch):
     monkeypatch.setattr(api, "_cio_truth_readers", lambda: R())
     from scripts.lib import shared_get_swr as swr
 
+    from scripts.lib.cc_products import cio_pages, cio_pages_route as cpr
+
     swr.clear()
-    api._w7_cio_pages()  # LQ-2572: cio/pages never blocks; the one background build lands shortly
-    for _ in range(200):
-        if not swr.inflight():
-            break
-        time.sleep(0.02)
+    monkeypatch.setattr(cpr, "serve_cio_pages", lambda **kw: {"stored": True})
     for _ in range(3):
-        api._w7_cio_pages()
+        assert api._w7_cio_pages() == {"stored": True}
         api._risk_payload_cached()
-    assert n == {"pages": 1, "risk": 1}
-    # LQ-1907 wiring: cio/pages reads the durable ledger root, not the release dir (the seam that broke).
+    # LQ-2600 (REVIEW-2606 F1): cio/pages serves the stored product and never computes in the request process.
+    assert n == {"pages": 0, "risk": 1} and not swr.inflight()
+    # LQ-1907 wiring moved with the build: the cio.pages builder reads the durable ledger root, not the release dir.
     from scripts.lib.conflicts.api import _root as _durable_root
-    assert seen["ledger_root"] == _durable_root()
+    assert cio_pages.default_ledger_root() == _durable_root()

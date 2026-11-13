@@ -117,16 +117,19 @@ def test_api_v2_opt_in_and_old_path_unchanged(monkeypatch):
     api._SHARED_GET_CACHE.clear()
     n = []
     assert api._shared_get_cached("old", 60, lambda: n.append(1) or {"a": 1}) == {"a": 1}  # blocking path
-    gate = threading.Event()
-    monkeypatch.setattr(api, "_cio_pages_build", _slow(n, gate, {"pages": 1}))
-    t0 = time.monotonic()
-    out = api._w7_cio_pages()
-    assert time.monotonic() - t0 < 1.0 and out["reason"] == "building"
-    gate.set()
-    time.sleep(0.3)
-    got = api._w7_cio_pages()
-    assert got["pages"] == 1 and got["stale"] is False
-    assert api.warm_swr_caches() == []  # already fresh
+    # LQ-2600 (REVIEW-2606 F1): cio/pages reads the stored cio.pages product (LQ-2595); this process never
+    # builds it, so the SWR cache holds no cio_pages key and the boot warm starts nothing.
+    from scripts.lib.cc_products import cio_pages_route as cpr
+
+    served, queries = [], []
+    monkeypatch.setattr(cpr, "serve_cio_pages", lambda **kw: served.append(kw) or {"stored": True})
+    monkeypatch.setattr(cpr, "make_pg_fetch_row", lambda q: queries.append(q) or "fetch_row")
+    monkeypatch.setattr(cpr, "production_hot", lambda: "hot")
+    swr.clear()
+    assert api._w7_cio_pages() == {"stored": True}
+    assert served == [{"fetch_row": "fetch_row", "hot": "hot"}]
+    assert queries == [api._db_query_raising]  # a store error must raise (UNKNOWN), never read as "no row"
+    assert api.warm_swr_caches() == [] and not swr.inflight()
 
 
 def test_asks_tracked_route_serves_last_good_tuple(monkeypatch):
