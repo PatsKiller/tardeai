@@ -72,6 +72,8 @@ export default function PortfolioV002View(props: ViewProps) {
             <span className="pv2-chip neutral" data-testid="chip-gates">Gates — <NB short /></span>
           </div>
         </div>
+        {/* LQ-2752 (operator 2026-11-12 21:56 ET): the classic page stays one tap away until v002 is validated. */}
+        <Link className="pv2-classic" to="/portfolio-classic" data-testid="classic-portfolio-link">Classic Portfolio</Link>
         <Link className="pv2-ask" to="/cio" aria-label="Ask the CIO">Ask</Link>
       </header>
 

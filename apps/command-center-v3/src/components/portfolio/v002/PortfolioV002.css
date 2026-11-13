@@ -21,6 +21,7 @@
 .pv2-chip-btn.bad { background: var(--danger-bg); color: var(--danger-color); border-color: var(--danger-border); }
 .pv2-nb { display: inline-block; padding: 0 5px; border-radius: var(--radius-sm); border: 1px dashed var(--ai-border); background: var(--ai-bg); color: var(--ai-color); font-size: 11px; font-weight: 700; white-space: nowrap; text-transform: none; letter-spacing: 0; vertical-align: middle; }
 .pv2-ask { flex: none; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 10px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-2); color: var(--ai-color); font-size: 12px; font-weight: 700; text-decoration: none; }
+.pv2-classic { flex: none; min-height: 44px; display: inline-flex; align-items: center; padding: 0 8px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-2); color: var(--text-1); font-size: 12px; font-weight: 700; text-decoration: none; white-space: nowrap; }
 .pv2-grid { display: grid; grid-template-columns: 1fr; }
 .pv2-blk { padding: 8px 0; border-bottom: 1px solid var(--border-color); scroll-margin-top: 8px; }
 .pv2-blk-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 24px; flex-wrap: wrap; }

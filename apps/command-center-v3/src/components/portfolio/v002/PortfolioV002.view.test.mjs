@@ -111,4 +111,33 @@ const cashHtml = render(ok(API.holdings, wire([row({ symbol: 'CASH', is_cash: tr
 assert.doesNotMatch(cashHtml, />CLEAR</); assert.match(cashHtml, /Protection: UNKNOWN/)
 assert.match(section(cashHtml, 'card-protect'), /Protection UNKNOWN: No counted position, and the position count does not confirm zero/)
 
+// 7. LQ-2752 (operator order 2026-11-12 21:56 ET): until v002 is validated the page carries a visible link to the
+// classic Portfolio page, like Home's "Classic Home". It sits in the header, ahead of every card, in every read state,
+// so a long holdings list at 390/412 px never pushes it off the first screen.
+{
+  const many = Array.from({ length: 40 }, (_, i) => row({ symbol: `S${i}`, market_value: 1000 + i }))
+  const states = {
+    ok: render(ok(API.holdings, wire(many))),
+    loading: render({ state: 'LOADING', data: null, error: null, at: null, source: API.holdings }),
+    unknown: render(fail(API.holdings)),
+    timedOut: render(fail(API.holdings, 'TIMED OUT')),
+  }
+  for (const [name, html] of Object.entries(states)) {
+    const link = html.match(/<a[^>]*data-testid="classic-portfolio-link"[^>]*>([^<]*)</)
+    assert.ok(link, `${name}: no classic Portfolio link`)
+    assert.match(link[0], /href="\/portfolio-classic"/, `${name}: classic link target`)
+    assert.equal(link[1], 'Classic Portfolio', `${name}: classic link label`)
+    const at = html.indexOf('data-testid="classic-portfolio-link"')
+    assert.ok(at < html.indexOf('</header>'), `${name}: classic link is not in the header`)
+    assert.ok(at < html.indexOf('data-testid="card-protect"'), `${name}: classic link is below the first card`)
+  }
+  // The Details row stays as a second way in.
+  assert.match(section(states.ok, 'card-details'), /data-testid="classic-link"/)
+  // Phone: nothing hides the link, and it is a 44 px tap target.
+  const css = readFileSync(join(app, 'src/components/portfolio/v002/PortfolioV002.css'), 'utf8')
+  const rule = (css.match(/\.pv2-classic\s*\{([^}]*)\}/) || [])[1] || ''
+  assert.match(rule, /min-height:\s*44px/, '.pv2-classic is not a 44 px tap target')
+  assert.doesNotMatch(css, /\.pv2-classic[^{]*\{[^}]*(display:\s*none|visibility:\s*hidden)/, '.pv2-classic is hidden somewhere')
+}
+
 console.log('PortfolioV002.view.test.mjs: ok')
