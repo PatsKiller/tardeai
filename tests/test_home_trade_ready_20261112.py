@@ -549,6 +549,44 @@ def test_gates_open_blocking_gate_is_warn_and_closed_gates_are_ignored(tmp_path)
     assert r.state == htr.WARN and r.value == 1 and [i.id for i in r.items] == ["VG-ZQ-1", "VG-ZQ-2"]
 
 
+def test_gates_failing_with_undeclared_blocks_trading_are_unknown_never_a_pass(tmp_path):
+    """LQ-2141: blocks_trading NULL is 'not declared' = unknown. A FAIL/ERROR/unevaluated open gate with no declared
+    classification must not render as 'OK, 0 blocking' (operator correction 2026-11-13)."""
+    receipt(tmp_path, "validation-gates-sync", NOW - timedelta(minutes=3))
+    gates = [{"g": {"gate_id": "VG-ZQ-F", "title": "synthetic fail", "status": "OPEN", "last_eval_result": "FAIL"}},
+             {"g": {"gate_id": "VG-ZQ-E", "title": "synthetic error", "status": "OPEN", "blocks_trading": None,
+                    "last_eval_result": "ERROR"}},
+             {"g": {"gate_id": "VG-ZQ-A", "title": "synthetic advisory", "status": "OPEN", "blocks_trading": False,
+                    "last_eval_result": "FAIL"}}]
+    q = FakeDB({"to_regclass('public.validation_gates')": [{"present": True}], "FROM validation_gates g": gates})
+    r = lane.read_gates(q, NOW, tmp_path)
+    assert r.state == htr.UNKNOWN and r.value is None
+    assert "VG-ZQ-F" in r.reason and "VG-ZQ-E" in r.reason and "VG-ZQ-A" not in r.reason
+    out = verdict({**all_ok(), htr.GATES: r})
+    assert out["verdict"] == htr.UNKNOWN
+    assert any(u.get("input") == htr.GATES or u.get("name") == htr.GATES for u in out["unknown_inputs"])
+
+
+def test_gates_declared_advisory_failure_stays_non_blocking_and_undeclared_pass_is_ok(tmp_path):
+    receipt(tmp_path, "validation-gates-sync", NOW - timedelta(minutes=3))
+    gates = [{"g": {"gate_id": "VG-ZQ-A", "title": "advisory", "status": "OPEN", "blocks_trading": False,
+                    "last_eval_result": "FAIL"}},
+             {"g": {"gate_id": "VG-ZQ-P", "title": "in proof window", "status": "OPEN", "last_eval_result": "PASS"}}]
+    q = FakeDB({"to_regclass('public.validation_gates')": [{"present": True}], "FROM validation_gates g": gates})
+    r = lane.read_gates(q, NOW, tmp_path)
+    assert r.state == htr.OK and r.value == 0
+
+
+def test_a_declared_blocking_gate_still_wins_over_undeclared_ones(tmp_path):
+    receipt(tmp_path, "validation-gates-sync", NOW - timedelta(minutes=3))
+    gates = [{"g": {"gate_id": "VG-ZQ-B", "title": "blocks", "status": "OPEN", "blocks_trading": True,
+                    "last_eval_result": "FAIL"}},
+             {"g": {"gate_id": "VG-ZQ-F", "title": "undeclared", "status": "OPEN", "last_eval_result": "ERROR"}}]
+    q = FakeDB({"to_regclass('public.validation_gates')": [{"present": True}], "FROM validation_gates g": gates})
+    r = lane.read_gates(q, NOW, tmp_path)
+    assert r.state == htr.WARN and r.value == 1
+
+
 def test_gates_with_a_stale_writer_are_unknown_through_the_rule(tmp_path):
     receipt(tmp_path, "validation-gates-sync", NOW - timedelta(hours=2))
     q = FakeDB({"to_regclass('public.validation_gates')": [{"present": True}], "FROM validation_gates g": []})

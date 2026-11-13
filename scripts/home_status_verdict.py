@@ -69,6 +69,7 @@ SCHEDULERS_MAX_AGE_S = 1800           # spec 2148: db_max lane_health_current.me
 INCIDENT_READ_MAX_AGE_S = 600
 VIX_SYMBOL = "$VIX"
 OPEN_GATE_EXCLUDED = ("PASSED", "CLOSED", "WAIVED", "CANCELLED")
+UNDECLARED_GATE_CATEGORY = "Gate failing, classification not declared"
 UNPROTECTED_TYPE = "position_unprotected"
 SYNC_OK_STATUSES = ("complete",)      # measured 2026-11-11: complete | partial
 # Operator decisions 2026-11-11 (Portfolio v002 DECISIONS, binding for Home via LQ-2172): exempt by default are cash,
@@ -259,12 +260,28 @@ def read_gates(q: Query, now: datetime, state_root: Optional[Path]) -> Reading:
         status = str(g.get("status") or "").upper()
         if g.get("closed_at") or status in OPEN_GATE_EXCLUDED:
             continue
+        declared = g.get("blocks_trading")
+        result = str(g.get("last_eval_result") or "").upper()
+        # LQ-2141 contract: blocks_trading NULL = not declared = unknown, never false. An open gate that is failing,
+        # erroring or not yet evaluated with no declared classification cannot be counted as "does not block".
+        undeclared_failing = declared is None and result != "PASS"
         items.append(Item(id=str(g.get("gate_id") or g.get("id")), title=str(g.get("title") or ""),
-                          blocks_trading=bool(_truthy(g.get("blocks_trading"))), category=None, source_id=src,
-                          owner=g.get("owner"), cause=g.get("title"), first_seen_at=htr.iso(htr.to_utc(g.get("opened_at")))))
+                          blocks_trading=bool(_truthy(declared)),
+                          category=(UNDECLARED_GATE_CATEGORY if undeclared_failing else None), source_id=src,
+                          owner=g.get("owner"),
+                          cause=(f"{g.get('title')} [{result or 'NOT EVALUATED'}; blocks_trading not declared]"
+                                 if undeclared_failing else g.get("title")),
+                          first_seen_at=htr.iso(htr.to_utc(g.get("opened_at")))))
     blocking = [i for i in items if i.blocks_trading]
-    return Reading(name=name, state=htr.WARN if blocking else htr.OK, value=len(blocking), as_of=htr.iso(ok_at),
-                   threshold_s=GATES_WRITER_MAX_AGE_S, source_id=src, lane_id=GATES_LANE, owner="ops", items=items)
+    undeclared = [i for i in items if i.category == UNDECLARED_GATE_CATEGORY]
+    common = dict(as_of=htr.iso(ok_at), threshold_s=GATES_WRITER_MAX_AGE_S, source_id=src, lane_id=GATES_LANE,
+                  owner="ops", items=items)
+    if not blocking and undeclared:
+        return Reading(name=name, state=htr.UNKNOWN, value=None,
+                       reason=(f"{len(undeclared)} open gate(s) failing or unevaluated with no declared blocks_trading "
+                               f"(undeclared is unknown, never a pass): " + ", ".join(i.id for i in undeclared)),
+                       **common)
+    return Reading(name=name, state=htr.WARN if blocking else htr.OK, value=len(blocking), **common)
 
 
 def _session_reading(name: str, as_of: Any, now: datetime, domain: str, *, source_id: str, lane_id: Optional[str],
