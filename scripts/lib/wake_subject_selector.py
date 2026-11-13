@@ -104,6 +104,124 @@ def _load_jsonl(path: Path | str | None) -> list[dict]:
     return rows
 
 
+# LQ-2954 (2026-11-13): the shared cio_instrument_records.jsonl is append-only
+# and passed 2.9 GB (~360k rows of ~8 KB; the watchlist curator re-appends
+# ~3.6k WATCH tips several times a day, ~600 MB/day). `_load_jsonl` read the
+# whole file with read_text() and kept every historical row as a dict, so the
+# hourly cio wake reached 13.2 GB RSS and filled swap. Only the latest tip per
+# subject is ever used (`latest_record_per_subject`), so stream the file and
+# keep tips only. Memory is then bounded by the subject count, not the history.
+IR_MAX_SUBJECTS_DEFAULT = 20_000
+IR_MAX_LINE_BYTES_DEFAULT = 4 * 1024 * 1024
+IR_MAX_RETAINED_BYTES_DEFAULT = 512 * 1024 * 1024
+
+
+class InstrumentRecordLoadRefused(RuntimeError):
+    """The streamed tip set crossed a configured bound; the source is withheld."""
+
+
+def _env_int(env: dict, key: str, default: int) -> int:
+    try:
+        v = int(str(env.get(key) or "").strip() or default)
+    except (TypeError, ValueError):
+        return default
+    return v if v > 0 else default
+
+
+def _log_error(msg: str) -> None:
+    import logging
+    import sys
+
+    logging.getLogger(__name__).error(msg)
+    print(f"ERROR wake_subject_selector: {msg}", file=sys.stderr, flush=True)
+
+
+def stream_instrument_record_tips(
+    path: Path | str,
+    *,
+    max_subjects: int = IR_MAX_SUBJECTS_DEFAULT,
+    max_line_bytes: int = IR_MAX_LINE_BYTES_DEFAULT,
+    max_retained_bytes: int = IR_MAX_RETAINED_BYTES_DEFAULT,
+) -> list[dict]:
+    """Stream an append-only record file, keeping one tip per subject_key.
+
+    Same winner rule as ``latest_record_per_subject``: a later row replaces the
+    held tip when its ``as_of`` is >= the held one. Rows without a subject_key
+    are dropped (they never become candidates). A blank, unparsable or
+    half-written line is skipped. Raises ``InstrumentRecordLoadRefused`` when
+    one line, the distinct-subject count or the bytes of the retained tips
+    exceeds its bound, before the excess is held in memory.
+    """
+    import json
+
+    tips: dict[str, dict] = {}
+    sizes: dict[str, int] = {}
+    retained = 0
+    with open(path, "rb") as fh:
+        while True:
+            raw = fh.readline(max_line_bytes + 1)
+            if not raw:
+                break
+            if len(raw) > max_line_bytes and not raw.endswith(b"\n"):
+                raise InstrumentRecordLoadRefused(
+                    f"line at byte {fh.tell() - len(raw)} exceeds {max_line_bytes} bytes"
+                )
+            if not raw.strip() or not raw.endswith(b"\n"):
+                continue
+            try:
+                rec = json.loads(raw)
+            except ValueError:
+                continue
+            if not isinstance(rec, dict):
+                continue
+            sk = str(rec.get("subject_key") or "").strip()
+            if not sk:
+                continue
+            prev = tips.get(sk)
+            if prev is not None and str(rec.get("as_of") or "") < str(prev.get("as_of") or ""):
+                continue
+            if prev is None and len(tips) >= max_subjects:
+                raise InstrumentRecordLoadRefused(
+                    f"more than {max_subjects} distinct subject_keys"
+                )
+            retained += len(raw) - sizes.get(sk, 0)
+            if retained > max_retained_bytes:
+                raise InstrumentRecordLoadRefused(
+                    f"retained tips exceed {max_retained_bytes} bytes"
+                )
+            tips[sk] = rec
+            sizes[sk] = len(raw)
+    return list(tips.values())
+
+
+def load_instrument_record_tips(path: Path | str | None, *, env: dict | None = None) -> list[dict]:
+    """Bounded loader for the selector. Fails closed: on a bound or read error
+    the instrument_record_due source is empty for this wake and an ERROR is
+    logged; the other wake sources still run."""
+    if not path:
+        return []
+    p = Path(path)
+    if not p.is_file():
+        return []
+    e = env or {}
+    try:
+        return stream_instrument_record_tips(
+            p,
+            max_subjects=_env_int(e, "TRADEAI_WAKE_IR_MAX_SUBJECTS", IR_MAX_SUBJECTS_DEFAULT),
+            max_line_bytes=_env_int(e, "TRADEAI_WAKE_IR_MAX_LINE_BYTES", IR_MAX_LINE_BYTES_DEFAULT),
+            max_retained_bytes=_env_int(
+                e, "TRADEAI_WAKE_IR_MAX_RETAINED_BYTES", IR_MAX_RETAINED_BYTES_DEFAULT
+            ),
+        )
+    except InstrumentRecordLoadRefused as exc:
+        _log_error(f"instrument_record_load_refused path={p} reason={exc}; "
+                   "instrument_record_due source withheld this wake")
+        return []
+    except OSError as exc:
+        _log_error(f"instrument_record_load_failed path={p} error={type(exc).__name__}: {exc}")
+        return []
+
+
 def operator_turn_is_consumed(
     *,
     agent_id: str,
@@ -591,7 +709,7 @@ def load_selection_inputs(env: dict | None = None) -> dict[str, list[dict]]:
         "research_objects": _load_jsonl(e.get("TRADEAI_WAKE_RESEARCH_OBJECTS_PATH")),
         "receipts": _load_jsonl(e.get("TRADEAI_WAKE_RECEIPTS_PATH")),
         "material_changes": _load_jsonl(e.get("TRADEAI_WAKE_MATERIAL_CHANGES_PATH")),
-        "instrument_records": _load_jsonl(ir_path),
+        "instrument_records": load_instrument_record_tips(ir_path, env=e),
         "operator_turns": _load_operator_turns(e),
     }
 
@@ -613,4 +731,7 @@ __all__ = [
     "latest_record_per_subject",
     "select_subjects",
     "load_selection_inputs",
+    "load_instrument_record_tips",
+    "stream_instrument_record_tips",
+    "InstrumentRecordLoadRefused",
 ]
