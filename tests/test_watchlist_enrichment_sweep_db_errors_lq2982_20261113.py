@@ -1,0 +1,135 @@
+"""LQ-20261107-2982 (SEV-1 silent failure): a lock timeout inside the sweep's write transaction aborted the batch,
+every later statement raised InFailedSqlTransaction, each was swallowed as "non-fatal", the commit was a rollback, and the
+lane receipt said RUN_DONE with the rolled-back rows still counted. Synthetic fixtures only (no DB, no real symbols)."""
+from __future__ import annotations
+
+import sys
+import types
+from pathlib import Path
+
+import psycopg2.errors as pge
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+for _p in (str(ROOT), str(ROOT / "scripts")):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+import watchlist_enrichment_sweep as W  # noqa: E402
+
+
+class _Cur:
+    """Postgres abort semantics: after an error every statement fails until ROLLBACK TO SAVEPOINT / rollback."""
+
+    def __init__(self, conn):
+        self.c, self.rowcount = conn, 0
+
+    def execute(self, sql, params=None):
+        s = " ".join(sql.split())
+        c = self.c
+        if s.startswith("SAVEPOINT"):
+            if c.aborted:
+                raise pge.InFailedSqlTransaction("current transaction is aborted")
+            c.sp_pending = list(c.pending)
+            return
+        if s.startswith("ROLLBACK TO SAVEPOINT"):
+            c.pending, c.aborted = list(c.sp_pending), False
+            return
+        if s.startswith("RELEASE SAVEPOINT"):
+            return
+        if c.aborted:
+            raise pge.InFailedSqlTransaction("current transaction is aborted, commands ignored until end of transaction block")
+        if s.startswith("UPDATE watchlist_items"):
+            sym = params[-1]
+            if sym in c.lock_timeout_on:
+                c.aborted = True
+                raise pge.LockNotAvailable("canceling statement due to lock timeout")
+            c.pending.append(sym)
+            self.rowcount = 1
+
+
+class _Conn:
+    def __init__(self, lock_timeout_on=(), commit_fails=False):
+        self.lock_timeout_on, self.commit_fails = set(lock_timeout_on), commit_fails
+        self.pending, self.sp_pending, self.aborted, self.committed = [], [], False, []
+
+    def cursor(self):
+        return _Cur(self)
+
+    def commit(self):
+        if self.commit_fails:
+            self.pending, self.aborted = [], False
+            raise pge.InFailedSqlTransaction("commit failed")
+        if self.aborted:                      # Postgres: COMMIT of an aborted txn is a ROLLBACK, no error
+            self.pending, self.aborted = [], False
+            return
+        self.committed += self.pending
+        self.pending = []
+
+    def rollback(self):
+        self.pending, self.aborted = [], False
+
+    def close(self):
+        pass
+
+
+@pytest.fixture()
+def harness(monkeypatch):
+    mods = {
+        "finviz_enrichment": types.SimpleNamespace(enrich_tickers=lambda *a, **k: None,
+                                                   get_enriched=lambda *a, **k: {"rsi": "50"}),
+        "open_trades_intelligence": types.SimpleNamespace(_trend_label=lambda a, b: "neutral"),
+        "setup_quality_prior": types.SimpleNamespace(rsi_band=lambda r: "mid"),
+        "directive_promotion": types.SimpleNamespace(classify_tradeable=lambda s, t: []),
+        "price_db_sync": types.SimpleNamespace(sync_quotes_to_ticker_prices=lambda s: None),
+    }
+    for k, v in mods.items():
+        monkeypatch.setitem(sys.modules, k, v)
+    monkeypatch.setattr(W, "_price", lambda conn, sym, allow_fetch=True: (10.0, 1.0, "market_quotes"))
+    monkeypatch.setattr(W, "price_capture_available", lambda cur: False)
+
+    def run(conn, syms):
+        monkeypatch.setattr(W, "_conn", lambda: conn)
+        return W.enrich_symbols(syms)
+    return run
+
+
+def test_clean_run_has_no_db_errors(harness):
+    conn = _Conn()
+    res = harness(conn, ["AAA", "BBB", "CCC"])
+    assert res["enriched"] == 3 and res.get("db_errors", 0) == 0
+    assert conn.committed == ["AAA", "BBB", "CCC"]
+
+
+def test_lock_timeout_on_one_row_is_counted_and_does_not_poison_the_batch(harness):
+    conn = _Conn(lock_timeout_on={"BBB"})
+    res = harness(conn, ["AAA", "BBB", "CCC", "DDD"])
+    assert res["db_errors"] == 1
+    assert "lock timeout" in res["db_error_sample"]
+    assert conn.committed == ["AAA", "CCC", "DDD"]      # the rows after the failure still land
+    assert res["enriched"] == 3                         # and the failed one is not counted
+
+
+def test_failed_commit_removes_the_batch_from_enriched(harness):
+    conn = _Conn(commit_fails=True)
+    res = harness(conn, ["AAA", "BBB"])
+    assert res["db_errors"] >= 1 and res["enriched"] == 0
+
+
+def test_main_exits_nonzero_and_receipt_names_db_errors(monkeypatch, harness):
+    seen = {}
+    monkeypatch.setattr(W, "sweep", lambda **k: {"total": 4, "enriched": 3, "deferred": 0,
+                                                 "db_errors": 1, "db_error_sample": "lock timeout"})
+    fake = types.SimpleNamespace(write_lane_receipt=lambda lane, **kw: seen.update(kw))
+    monkeypatch.setattr(W, "_receipt_lib", lambda: fake)
+    rc = W.main(["--once"])
+    assert rc == 1 and seen["ok"] is False and seen["exit_code"] == 1
+    assert seen["summary"]["db_errors"] == 1 and seen["summary"]["db_error_sample"] == "lock timeout"
+    assert seen["output"]["skipped_reasons"]["db_error"] == 1
+
+
+def test_main_stays_zero_without_db_errors(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(W, "sweep", lambda **k: {"total": 4, "enriched": 4, "deferred": 0, "db_errors": 0})
+    monkeypatch.setattr(W, "_receipt_lib", lambda: types.SimpleNamespace(write_lane_receipt=lambda lane, **kw: seen.update(kw)))
+    assert W.main(["--once"]) == 0 and seen["ok"] is True and "db_errors" not in seen["summary"]

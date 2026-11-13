@@ -168,6 +168,15 @@ def _write_row(cur, sym, *, rsi, trend, score, advisory, price, chg, floatm, rvo
                  price, score_kind, sym))
 
 
+def _is_db_error(exc: BaseException) -> bool:
+    """True for a psycopg2 database error (lock timeout, aborted transaction, connection loss...)."""
+    try:
+        import psycopg2
+        return isinstance(exc, psycopg2.Error)
+    except ImportError:  # pragma: no cover - psycopg2 is a hard dependency of the db adapter
+        return type(exc).__module__.startswith("psycopg2")
+
+
 def enrich_symbols(symbols: list[str], *, dry: bool = False, deadline: float | None = None,
                    clock=time.monotonic) -> dict:
     """Enrich explicit symbols (used by manual watchlist refresh in CC v3).
@@ -194,6 +203,7 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False, deadline: float | N
     enriched = 0
     reached: list[str] = []
     deferred = 0
+    db_errors, db_error_sample = 0, None   # LQ-20261107-2982: a database error is a counted fact, never "non-fatal"
     for i in range(0, len(syms), BATCH):
         if deadline is not None and i and clock() >= deadline:
             deferred = len(syms) - i
@@ -206,8 +216,14 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False, deadline: float | N
                 enrich_tickers(batch, project_root=str(PROJECT_ROOT))
             except Exception as e:
                 print(f"  [sweep] enrich_tickers batch failed (non-fatal): {str(e)[:80]}")
+        batch_enriched = 0
         for sym in batch:
+            sp_open = False
             try:
+                if not dry:
+                    # A savepoint per symbol: a lock timeout on one row aborts only that row, not the whole batch.
+                    cur.execute("SAVEPOINT sweep_sym")
+                    sp_open = True
                 tech = get_enriched(sym, project_root=str(PROJECT_ROOT)) or {}
                 rsi = _num(tech.get("rsi"))
                 sma50, sma200 = _num(tech.get("sma50_pct")), _num(tech.get("sma200_pct"))
@@ -239,12 +255,43 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False, deadline: float | N
                 _write_row(cur, sym, rsi=rsi, trend=trend, score=score, advisory=advisory, price=price, chg=chg,
                            floatm=floatm, rvol=rvol, score_kind=score_kind,
                            price_source=price_source, capture=capture)
+                cur.execute("RELEASE SAVEPOINT sweep_sym")
+                sp_open = False
                 if cur.rowcount:
                     enriched += 1
+                    batch_enriched += 1
             except Exception as e:
-                print(f"  [sweep] {sym} failed (non-fatal): {str(e)[:80]}")
+                if _is_db_error(e):
+                    db_errors += 1
+                    db_error_sample = db_error_sample or f"{sym}: {type(e).__name__}: {str(e).strip()[:120]}"
+                    print(f"  [sweep] {sym} DATABASE ERROR (counted): {type(e).__name__}: {str(e).strip()[:80]}")
+                    try:
+                        if sp_open:
+                            cur.execute("ROLLBACK TO SAVEPOINT sweep_sym")
+                        else:
+                            conn.rollback()
+                    except Exception:  # the connection itself is gone: nothing later in this batch can be written
+                        enriched -= batch_enriched
+                        batch_enriched = 0
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                else:
+                    print(f"  [sweep] {sym} failed (non-fatal): {str(e)[:80]}")
         if not dry:
-            conn.commit()
+            try:
+                conn.commit()
+            except Exception as e:
+                # The batch did not land: its rows must not be counted as enriched.
+                enriched -= batch_enriched
+                db_errors += 1
+                db_error_sample = db_error_sample or f"commit: {type(e).__name__}: {str(e).strip()[:120]}"
+                print(f"  [sweep] batch commit FAILED (counted, {batch_enriched} row(s) not enriched): {type(e).__name__}")
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
     # Persist intraday quotes into ticker_prices so strategy cards / agents see close history.
     if not dry and reached:
         try:
@@ -253,7 +300,8 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False, deadline: float | N
         except Exception as e:
             print(f"  [sweep] ticker_prices sync failed (non-fatal): {str(e)[:80]}")
     conn.close()
-    return {"total": len(syms), "enriched": enriched, "symbols": syms, "deferred": deferred}
+    return {"total": len(syms), "enriched": enriched, "symbols": syms, "deferred": deferred,
+            "db_errors": db_errors, "db_error_sample": db_error_sample}
 
 
 def sweep(limit=None, dry=False, budget_s=None, clock=time.monotonic):
@@ -319,7 +367,8 @@ def sweep(limit=None, dry=False, budget_s=None, clock=time.monotonic):
     print(f"[sweep] {'would enrich' if dry else 'enriched'} {enriched}/{len(symbols)} active watchlist items"
           + (f" ({deferred} deferred: budget {budget:g}s)" if deferred else "")
           + f" in {clock() - started:.0f}s")
-    return {"total": len(symbols), "enriched": enriched, "deferred": deferred}
+    return {"total": len(symbols), "enriched": enriched, "deferred": deferred,
+            "db_errors": result.get("db_errors", 0), "db_error_sample": result.get("db_error_sample")}
 
 
 def main(argv=None) -> int:
@@ -352,11 +401,16 @@ def main(argv=None) -> int:
                                           output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     # selected symbols but none updated = every per-symbol step failed; an empty watchlist is not a failure
-    rc = 1 if res["total"] and not res["enriched"] else 0
+    # LQ-20261107-2982: a database error (e.g. lock timeout aborting the write transaction) is a failed run, not a
+    # RUN_DONE: the next run takes the stalest rows first, so failing loudly costs nothing and silence hid it.
+    db_errors = int(res.get("db_errors") or 0)
+    rc = 1 if (res["total"] and not res["enriched"]) or db_errors else 0
     _receipt_lib().write_lane_receipt(LANE_ID, ok=(rc == 0), exit_code=rc, started_at=started,
                                       script="watchlist_enrichment_sweep.py",
                                       summary={"selected": res["total"], "enriched": res["enriched"],
-                                               **({"deferred": res["deferred"]} if res.get("deferred") else {})},
+                                               **({"deferred": res["deferred"]} if res.get("deferred") else {}),
+                                               **({"db_errors": db_errors, "db_error_sample": res.get("db_error_sample")}
+                                                  if db_errors else {})},
                                       output=lane_output(res))
     return rc
 
@@ -370,6 +424,9 @@ def lane_output(res: dict) -> dict:
     skipped = {"not_enriched": max(total - enriched - deferred, 0)}
     if deferred:
         skipped["deadline_deferred"] = deferred  # budget reached; the next run takes them first (not fatal)
+    db_errors = int(res.get("db_errors") or 0)
+    if db_errors:
+        skipped["db_error"] = db_errors  # symbols/batches whose write was rolled back by a database error
     if total == 0:
         skipped["universe_empty_unexpected"] = 1
     return {"produced_count": enriched, "attempted_count": max(total, enriched), "skipped_reasons": skipped,
