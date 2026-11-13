@@ -630,11 +630,102 @@ def held(symbol, asset_type, as_of, mv=1000.0):
     return {"symbol": symbol, "asset_type": asset_type, "as_of": as_of, "market_value": mv}
 
 
+def nav_held(symbol, asset_type, quote_as_of, broker_as_of, broker_source="schwab_api", mv=5000.0):
+    """A held row as DATA_SQL returns it after LQ-2643: the intraday quote AND the broker NAV read."""
+    return {**held(symbol, asset_type, quote_as_of, mv), "broker_as_of": broker_as_of,
+            "broker_source": broker_source if broker_as_of is not None else None}
+
+
 def test_i2_data_missing_quotes_are_never_healthy_mutual_funds_are_not_exempt():
+    """LQ-2643: a fund's missing NAV is a per-symbol UNKNOWN, not a gate-wide NEEDS BACKEND."""
     t = NOW - timedelta(minutes=2)
-    rows = [held("$VIX", "INDEX", t, None), held("ZQA", "EQUITY", t), held("ZQFNDX", "MUTUAL_FUND", None, 5000.0)]
+    rows = [held("$VIX", "INDEX", t, None), held("ZQA", "EQUITY", t), nav_held("ZQFNDX", "MUTUAL_FUND", None, None)]
     r = lane.read_data(FakeDB({"WITH held": rows}), NOW)
-    assert r.state == htr.UNKNOWN and r.value["missing"] == ["ZQFNDX"] and r.needs_backend
+    assert r.state == htr.UNKNOWN and r.value["missing"] == ["ZQFNDX"] and not r.needs_backend
+    assert r.value["missing_nav"] == ["ZQFNDX"] and r.value["missing_quotes"] == []
+    assert r.value["symbols"] == 3 and "no daily NAV for 1 counted mutual fund(s): ZQFNDX" in r.reason
+    # The rest of the gate is still computed: the priced symbols' oldest read is carried with the unknown.
+    assert r.value["oldest_symbol"] in ("$VIX", "ZQA") and r.as_of is not None
+
+
+def test_a_mutual_fund_is_graded_on_its_daily_broker_nav_source_named():
+    """LQ-2643 (operator P0): a fund has one NAV a day; the broker row that carries it is the named source."""
+    t = NOW - timedelta(minutes=2)
+    broker = NOW - timedelta(minutes=5)
+    rows = [held("$VIX", "INDEX", t, None), held("ZQA", "EQUITY", t),
+            nav_held("ZQFNDX", "MUTUAL_FUND", None, broker)]
+    r = lane.read_data(FakeDB({"WITH held": rows}), NOW)
+    assert r.state == htr.OK and not r.needs_backend
+    assert r.value["fund_nav"] == {"ZQFNDX": "positions_current:schwab_api"}
+    assert r.value["oldest_symbol"] == "ZQFNDX"            # the NAV read is graded, not ignored
+    assert r.source_id == "market_quotes+positions_current:schwab_api" and r.as_of is not None
+
+
+def test_a_fund_nav_from_the_last_close_is_fresh_while_the_market_is_open():
+    """LQ-2643: fresh = the last trading day's NAV. At 10:30 ET a 19:00 ET NAV read must not be STALE."""
+    t = NOW - timedelta(minutes=2)
+    rows = [held("$VIX", "INDEX", t, None), held("ZQA", "EQUITY", t),
+            nav_held("ZQFNDX", "MUTUAL_FUND", None, NOW - timedelta(hours=16))]
+    r = lane.read_data(FakeDB({"WITH held": rows}), NOW)
+    assert r.state == htr.OK and r.value["oldest_symbol"] == "ZQFNDX"
+    assert r.threshold_s == 72 * 3600                       # graded against the closed (daily NAV) threshold
+
+
+def test_a_stale_fund_nav_ages_the_gate_and_names_the_fund():
+    t = NOW - timedelta(minutes=2)
+    rows = [held("$VIX", "INDEX", t, None), held("ZQA", "EQUITY", t),
+            nav_held("ZQFNDX", "MUTUAL_FUND", None, NOW - timedelta(hours=80))]
+    r = lane.read_data(FakeDB({"WITH held": rows}), NOW)
+    assert r.state == htr.STALE and r.value["oldest_symbol"] == "ZQFNDX"
+    assert "mutual fund NAV" in (r.cause or "")
+
+
+def test_a_stale_quote_is_not_masked_by_an_older_but_fresh_fund_nav():
+    """Each counted symbol is graded on its own rule; the gate's state is the worst, not the oldest."""
+    rows = [held("$VIX", "INDEX", NOW - timedelta(minutes=2), None), held("ZQA", "EQUITY", NOW - timedelta(hours=1)),
+            nav_held("ZQFNDX", "MUTUAL_FUND", None, NOW - timedelta(hours=16))]
+    r = lane.read_data(FakeDB({"WITH held": rows}), NOW)
+    assert r.state == htr.STALE and r.value["oldest_symbol"] == "ZQA" and r.cause == "quotes behind"
+
+
+def test_a_fund_with_only_a_non_yfinance_quote_still_grades_on_it():
+    t = NOW - timedelta(minutes=2)
+    rows = [held("$VIX", "INDEX", t, None), nav_held("ZQFNDX", "MUTUAL_FUND", t, None)]
+    r = lane.read_data(FakeDB({"WITH held": rows}), NOW)
+    assert r.state == htr.OK and "fund_nav" not in r.value and r.source_id == "market_quotes"
+
+
+def test_an_equity_with_a_stale_quote_stays_stale_even_with_a_fresh_broker_row():
+    """LQ-2684 (REVIEW-2671 survivor 1): the NAV rule is a FUND rule. A broker positions read must never grade
+    an equity, or a fresh positions read would hide a stale quote for every held equity."""
+    t = NOW - timedelta(minutes=2)
+    rows = [held("$VIX", "INDEX", t, None),
+            nav_held("ZQETA", "EQUITY", NOW - timedelta(hours=1), NOW - timedelta(minutes=1))]
+    r = lane.read_data(FakeDB({"WITH held": rows}), NOW)
+    assert r.state == htr.STALE and r.value["oldest_symbol"] == "ZQETA"
+    assert r.cause == "quotes behind"                    # not "mutual fund NAV behind"
+    assert "fund_nav" not in r.value and r.source_id == "market_quotes"
+
+
+def test_a_fund_with_both_a_quote_and_a_nav_is_graded_on_the_nav():
+    """LQ-2684 (REVIEW-2671 survivor 2): the documented order is NAV first. When a fund also carries a quote,
+    the NAV is still the price that grades it and the one the gate names."""
+    t = NOW - timedelta(minutes=2)
+    rows = [held("$VIX", "INDEX", t, None),
+            nav_held("ZQFNDX", "MUTUAL_FUND", t, NOW - timedelta(hours=1))]   # quote 2 min, NAV 1 h
+    r = lane.read_data(FakeDB({"WITH held": rows}), NOW)
+    assert r.state == htr.OK
+    assert r.value["fund_nav"] == {"ZQFNDX": "positions_current:schwab_api"}
+    assert r.value["oldest_symbol"] == "ZQFNDX"          # the NAV read, not the fresher quote
+    assert r.source_id == "market_quotes+positions_current:schwab_api"
+
+
+def test_a_missing_equity_quote_is_still_a_missing_source_needing_backend():
+    """Unchanged rail: no quote and no broker NAV for a non-fund is a source gap (NEEDS BACKEND)."""
+    t = NOW - timedelta(minutes=2)
+    rows = [held("$VIX", "INDEX", t, None), nav_held("ZQA", "EQUITY", None, None)]
+    r = lane.read_data(FakeDB({"WITH held": rows}), NOW)
+    assert r.state == htr.UNKNOWN and r.needs_backend and r.value["missing"] == ["ZQA"]
 
 
 def test_data_lines_under_100_dollars_are_listed_not_counted_and_unknown_value_is_counted():
@@ -651,6 +742,13 @@ def test_data_lines_under_100_dollars_are_listed_not_counted_and_unknown_value_i
 
 def test_data_sql_never_reads_yfinance():
     assert "m.source <> 'yfinance'" in lane.DATA_SQL
+
+
+def test_data_sql_reads_the_broker_nav_of_a_held_mutual_fund():
+    """LQ-2643: the fund's NAV and its source must come from the broker row itself, not be fabricated in Python."""
+    assert "FROM positions_current" in lane.DATA_SQL
+    assert "THEN as_of END) AS broker_as_of" in lane.DATA_SQL
+    assert "THEN source END) AS broker_source" in lane.DATA_SQL
 
 
 def test_portfolio_fresh_but_last_sync_partial_is_warn():

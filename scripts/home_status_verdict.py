@@ -27,7 +27,9 @@ Inputs (spec HOME-BACKEND-SPEC-20261111 section 2, LQ-2144); each provider is a 
 * ``portfolio``: ``positions_current.max(as_of)`` judged by ``session_freshness`` with the ``positions_store``
   authority thresholds, plus the last ``positions_sync_runs`` status.
 * ``orders``: the ``stop-coverage-incidents`` receipt (LQ-2145) fresh AND zero open ``position_unprotected``.
-* ``data``: ``market_quotes`` for ``$VIX`` and every held symbol (never yfinance), ``quote_price`` thresholds.
+* ``data``: ``market_quotes`` for ``$VIX`` and every held symbol (never yfinance), ``quote_price`` thresholds;
+  a held mutual fund is graded on its daily broker NAV from ``positions_current`` (LQ-20261107-2643), and a
+  fund with no NAV is UNKNOWN for that symbol only, never a gate-wide NEEDS BACKEND.
 * ``schedulers``: ``lane_health_current`` (LQ-2148), informational.
 
 Read-only advisory surface: MBI_BEHAVIOR = 0. No broker, no order path, no send.
@@ -74,6 +76,12 @@ SYNC_OK_STATUSES = ("complete",)      # measured 2026-11-11: complete | partial
 # under $100 is listed, not counted, not hidden. Cash lines never reach the data input (is_cash is filtered in SQL).
 DATA_EXEMPT_ASSET_TYPES = ("CASH", "MONEY_MARKET", "MONEY_MARKET_FUND", "SWEEP", "SWEEP_VEHICLE")
 DATA_NOT_COUNTED_UNDER_USD = 100.0
+# LQ-20261107-2643 (operator P0 2026-11-12 19:08 ET): a mutual fund strikes ONE NAV a day, after the close, so it
+# has no intraday quote to read. The broker positions row carries that NAV (market value / qty) and the time it was
+# read; a held fund is graded on that row — source named — instead of demanding an intraday quote. A fund with
+# neither a broker NAV nor a non-yfinance quote is UNKNOWN for that symbol only and never blanks the gate.
+MUTUAL_FUND_ASSET_TYPES = ("MUTUAL_FUND", "MUTUAL FUND", "MUTUALFUND", "FUND")
+BROKER_NAV_SOURCE = "positions_current"
 
 Query = Callable[[str, Optional[tuple]], list[dict[str, Any]]]
 
@@ -347,16 +355,34 @@ def read_orders(q: Query, now: datetime, state_root: Optional[Path], incident_ro
 
 DATA_SQL = (
     "WITH held AS (SELECT symbol, upper(COALESCE(asset_type, '')) AS asset_type, "
-    "CASE WHEN count(broker_market_value) = count(*) THEN sum(broker_market_value) END AS market_value "
+    "CASE WHEN count(broker_market_value) = count(*) THEN sum(broker_market_value) END AS market_value, "
+    "max(CASE WHEN broker_market_value IS NOT NULL THEN as_of END) AS broker_as_of, "
+    "max(CASE WHEN broker_market_value IS NOT NULL THEN source END) AS broker_source "
     "FROM positions_current WHERE NOT COALESCE(is_cash, false) AND qty > 0 GROUP BY 1, 2), "
-    "want AS (SELECT symbol, asset_type, market_value FROM held UNION ALL SELECT %s, 'INDEX', NULL) "
-    "SELECT w.symbol, w.asset_type, w.market_value, max(m.fetched_at) AS as_of FROM want w LEFT JOIN market_quotes m "
-    "ON m.symbol = w.symbol AND m.source <> 'yfinance' GROUP BY w.symbol, w.asset_type, w.market_value"
+    "want AS (SELECT symbol, asset_type, market_value, broker_as_of, broker_source FROM held "
+    "UNION ALL SELECT %s, 'INDEX', NULL, NULL::timestamp with time zone, NULL::text) "
+    "SELECT w.symbol, w.asset_type, w.market_value, w.broker_as_of, w.broker_source, max(m.fetched_at) AS as_of "
+    "FROM want w LEFT JOIN market_quotes m ON m.symbol = w.symbol AND m.source <> 'yfinance' "
+    "GROUP BY w.symbol, w.asset_type, w.market_value, w.broker_as_of, w.broker_source"
 )
 
 
 def data_exempt(row: dict[str, Any]) -> bool:
     return str(row.get("asset_type") or "").upper() in DATA_EXEMPT_ASSET_TYPES
+
+
+def data_is_mutual_fund(row: dict[str, Any]) -> bool:
+    return str(row.get("asset_type") or "").upper() in MUTUAL_FUND_ASSET_TYPES
+
+
+def _data_price(row: dict[str, Any]) -> tuple[Any, Optional[str]]:
+    """(as_of, source) that grades one counted symbol: a fund's broker NAV first, then a non-yfinance quote."""
+    if data_is_mutual_fund(row) and row.get("broker_as_of") is not None:
+        broker = str(row.get("broker_source") or "").strip()
+        return row.get("broker_as_of"), f"{BROKER_NAV_SOURCE}:{broker}" if broker else BROKER_NAV_SOURCE
+    if row.get("as_of") is not None:
+        return row.get("as_of"), "market_quotes"
+    return None, None
 
 
 def data_not_counted(row: dict[str, Any]) -> bool:
@@ -369,25 +395,90 @@ def data_not_counted(row: dict[str, Any]) -> bool:
         return False
 
 
+_DATA_STATE_RANK = {htr.OK: 0, htr.STALE: 1, htr.UNKNOWN: 2}
+
+
+def _quote_reading(name: str, as_of: Any, source: str, now: datetime, *, source_id: str, lane_id: str,
+                   owner: str) -> Reading:
+    """Grade ONE counted reading under the ``quote_price`` authority.
+
+    A fund's NAV is struck once a day, after the close, so it is graded against the closed threshold even while
+    the market is open: the last trading day's NAV is the freshest value that can exist for it (LQ-2643). A quote
+    keeps the session-aware rule (wall clock while open, latest close while shut).
+    """
+    from scripts.lib.session_freshness import authority_thresholds, evaluate
+    th = authority_thresholds("quote_price")
+    if not th:
+        return htr.unknown(name, "no authority thresholds for domain quote_price", source_id=source_id,
+                           lane_id=lane_id, owner=owner)
+    closed_h = float(th.get("closed_h", th["open_h"]))
+    nav = source.startswith(BROKER_NAV_SOURCE)
+    ev = evaluate(as_of, now, max_age_h=closed_h if nav else float(th["open_h"]), closed_max_age_h=closed_h)
+    limit_h = closed_h if nav or not ev.get("market_open") else float(th["open_h"])
+    state = {"fresh": htr.OK, "latest_close": htr.OK, "stale": htr.STALE}.get(ev.get("state"), htr.UNKNOWN)
+    return Reading(name=name, state=state, as_of=htr.iso(htr.to_utc(as_of)), threshold_s=limit_h * 3600,
+                   threshold_basis="since_last_close" if ev.get("state") == "latest_close" else "fixed",
+                   source_id=source_id, lane_id=lane_id, owner=owner,
+                   cause={htr.STALE: "mutual fund NAV behind" if nav else "quotes behind",
+                          htr.UNKNOWN: "mutual fund NAV unreadable" if nav else "quote store unreadable"}.get(state),
+                   reason=ev.get("reason"))
+
+
 def read_data(q: Query, now: datetime) -> Reading:
     all_rows = q(DATA_SQL, (VIX_SYMBOL,))
     exempt = sorted(str(r.get("symbol")) for r in all_rows if data_exempt(r))
     small = sorted(str(r.get("symbol")) for r in all_rows if not data_exempt(r) and data_not_counted(r))
     rows = [r for r in all_rows if not data_exempt(r) and not data_not_counted(r)]
-    kw = {"source_id": "market_quotes", "lane_id": "market-quotes", "owner": "data"}
     if not any(r.get("symbol") == VIX_SYMBOL for r in rows):
-        return htr.unknown(htr.DATA, "no quote rows read", **kw)
-    missing = sorted(str(r["symbol"]) for r in rows if r.get("as_of") is None)
+        return htr.unknown(htr.DATA, "no quote rows read", source_id="market_quotes", lane_id="market-quotes",
+                           owner="data")
+    priced: list[tuple[dict[str, Any], Any, str]] = []
+    missing_quotes: list[str] = []
+    missing_nav: list[str] = []
+    for row in rows:
+        as_of, src = _data_price(row)
+        if as_of is not None:
+            priced.append((row, as_of, str(src)))
+        elif data_is_mutual_fund(row):
+            missing_nav.append(str(row.get("symbol")))
+        else:
+            missing_quotes.append(str(row.get("symbol")))
+    missing_quotes.sort()
+    missing_nav.sort()
+    sources = {src for _row, _as_of, src in priced}
+    fund_nav = {str(row.get("symbol")): src for row, _as_of, src in priced
+                if src.startswith(BROKER_NAV_SOURCE)}
+    source_id = "+".join(sorted(sources)) if sources else "market_quotes"
+    kw = {"source_id": source_id, "lane_id": "market-quotes", "owner": "data"}
+    missing = sorted(missing_quotes + missing_nav)
     if missing:
-        # I2: missing data is never healthy. A counted line with no quote from any non-yfinance source has no feed.
-        r = htr.no_source(htr.DATA, f"no quote source for {len(missing)} counted symbol(s): {', '.join(missing)}",
-                          **kw)
-        r.value = {"symbols": len(rows), "missing": missing, "listed_not_counted": small, "exempt": exempt}
+        # I2: missing data is never healthy. A fund's missing NAV is a per-symbol unknown, not a missing backend:
+        # the broker positions source was read and simply carried no value for it.
+        if missing_quotes:
+            r = htr.no_source(htr.DATA, f"no quote source for {len(missing)} counted symbol(s): "
+                                        f"{', '.join(missing)}", **kw)
+        else:
+            r = htr.unknown(htr.DATA, f"no daily NAV for {len(missing_nav)} counted mutual fund(s): "
+                                      f"{', '.join(missing_nav)}", **kw)
+        r.value = {"symbols": len(rows), "missing": missing, "missing_quotes": missing_quotes,
+                   "missing_nav": missing_nav, "listed_not_counted": small, "exempt": exempt}
+        if priced:
+            oldest_row, oldest_at, _ = min(priced, key=lambda p: htr.to_utc(p[1]) or now)
+            r.value["oldest_symbol"] = oldest_row.get("symbol")
+            r.as_of = htr.iso(htr.to_utc(oldest_at))
+        if fund_nav:
+            r.value["fund_nav"] = fund_nav
         return r
-    oldest = min(rows, key=lambda r: htr.to_utc(r["as_of"]) or now)
-    r = _session_reading(htr.DATA, oldest["as_of"], now, "quote_price",
-                         causes={htr.STALE: "quotes behind", htr.UNKNOWN: "quote store unreadable"}, **kw)
-    r.value = {"symbols": len(rows), "listed_not_counted": small, "exempt": exempt, "oldest_symbol": oldest["symbol"]}
+    # One row per counted symbol is graded on its own reading, so a fund's daily NAV cannot mask a stale quote
+    # and a stale quote cannot make a fresh NAV look old. The gate takes the worst, oldest on a tie.
+    graded = [(str(row.get("symbol")),
+               _quote_reading(htr.DATA, as_of, src, now, source_id=source_id, lane_id="market-quotes", owner="data"))
+              for row, as_of, src in priced]
+    graded_on, r = min(graded, key=lambda g: (-_DATA_STATE_RANK.get(g[1].state, 2), g[1].as_of or ""))
+    # oldest_symbol names the symbol this gate's state is graded on: the worst reading, the oldest on a tie.
+    r.value = {"symbols": len(rows), "listed_not_counted": small, "exempt": exempt, "oldest_symbol": graded_on}
+    if fund_nav:
+        r.value["fund_nav"] = fund_nav
     return r
 
 
