@@ -132,6 +132,21 @@ def test_partial_and_malformed_lines_are_skipped(tmp_path):
     assert [(t["subject_key"], t["rev"]) for t in tips] == [("WATCH:A", 1)]
 
 
+def test_a_valid_but_unterminated_final_line_is_skipped(tmp_path):
+    # REVIEW-2958 N2: a complete, valid JSON tail with no newline may be a concurrent append still in
+    # flight (the writers always end a row with "\n"), so it is not a tip yet. The truncated-JSON case
+    # above is invalid either way; this one pins the newline check itself.
+    p = tmp_path / "ir.jsonl"
+    _write(p, [_row("WATCH:A", 0, as_of="2026-11-01T00:00:00Z")],
+           tail=json.dumps(_row("WATCH:A", 1, as_of="2026-11-02T00:00:00Z")))
+    tips = wss.stream_instrument_record_tips(p)
+    assert [(t["subject_key"], t["rev"]) for t in tips] == [("WATCH:A", 0)]
+    with open(p, "a", encoding="utf-8") as fh:
+        fh.write("\n")
+    tips = wss.stream_instrument_record_tips(p)
+    assert [(t["subject_key"], t["rev"]) for t in tips] == [("WATCH:A", 1)]
+
+
 def test_missing_or_unset_path_is_empty(tmp_path):
     assert wss.load_instrument_record_tips(None) == []
     assert wss.load_instrument_record_tips(tmp_path / "absent.jsonl") == []
