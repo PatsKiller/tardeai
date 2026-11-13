@@ -44,6 +44,11 @@ const routes = [...app.matchAll(/<Route path="([^"]+)" element=\{(.*)$/gm)].map(
 check('App.tsx routes discovered', routes.length >= 60, String(routes.length))
 for (const r of routes) {
   if (r.path === '//*') continue // the App shell catch-all, not a page
+  if (r.path === '/*' && /<NotFoundPage\b/.test(r.element)) {
+    // The shell's unknown-path page (LQ-175) is not a menu page: an unknown path must locate nothing, never a guessed page.
+    check('route /* is the unknown-path page and an unknown path locates no menu page', locateNav('/no-such-page-lq2994') === null)
+    continue
+  }
   const redirect = /<Navigate to="([^"?]+)/.exec(r.element)
   const target = redirect ? redirect[1] : r.path.replace(/:[A-Za-z]+/g, 'x')
   const here = locateNav(target)

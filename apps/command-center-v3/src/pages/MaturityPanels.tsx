@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import { useApi } from '../hooks/useApi'
 
 const panel: CSSProperties = {
@@ -8,7 +8,7 @@ const label: CSSProperties = {
   fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: .5, fontWeight: 750,
 }
 
-function Badge({ children, tone = 'slate' }: { children: string; tone?: string }) {
+function Badge({ children, tone = 'slate' }: { children: ReactNode; tone?: string }) {
   const color = tone === 'green' ? 'var(--green)' : tone === 'amber' ? 'var(--amber)' : tone === 'red' ? 'var(--red)' : 'var(--text2)'
   return <span style={{ fontSize: 10, fontWeight: 800, color, border: '1px solid var(--border)', borderRadius: 999, padding: '2px 7px' }}>{children}</span>
 }

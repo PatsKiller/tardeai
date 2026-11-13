@@ -64,7 +64,7 @@ export const NAV: NavSection[] = [
   {
     id: 'portfolio', label: 'Portfolio', groups: [
       { label: 'What I own', pages: [
-        { to: '/portfolio', label: 'Holdings', exact: true },
+        { to: '/portfolio', label: 'Holdings', exact: true, match: ['/portfolio-classic'] },  // Portfolio v002: the old page stays reachable
         { to: '/retirement', label: 'Retirement' },
       ] },
       { label: 'Protect', pages: [
