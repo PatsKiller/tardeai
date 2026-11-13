@@ -19,10 +19,11 @@ Rules (each one pinned by a test):
 * Thresholds follow the v002 plan (W-01/W-04/W-06/W-07): My List and Prospects 30 min in regular trading hours and 26 h
   otherwise; Alerts 20 min in RTH and 26 h otherwise; Regime 26 h. If the session cannot be determined the RTH
   (stricter) limits apply and the session is reported as ``unknown``.
-* Alerts has **no evaluator run record today** (``watch_alerts_eval`` is cron with no heartbeat; W-06/WV-07 adds it), so
-  it reads UNKNOWN with ``needs_backend`` until ``watch_alerts_eval_runs`` exists: that table, with ``finished_at`` and
-  ``status``, is the contract this module reads once the lane lands. ``watch_alerts.last_fired_at`` is not liveness and
-  is not used.
+* Alerts reads the evaluator's own last-run receipt, ``data/runtime/watch-alerts-eval_last.json`` (LaneRunReceipt@v2,
+  written by ``scripts/watch_alerts_eval.py``), and grades ``ok_at`` (its last SUCCESSFUL run) by age. A missing or
+  unreadable receipt, or one with no ``ok_at``, is UNKNOWN (never OK); an old ``ok_at`` is STALE. (LQ-20261107-2986: it
+  used to read a ``watch_alerts_eval_runs`` table that does not exist, so it was UNKNOWN for a false reason.)
+  ``watch_alerts.last_fired_at`` is not liveness and is not used.
 
 Served body (the route wraps it in the api_v2 ``{"ok": true, "data": ...}`` envelope):
 ``{"schema": "WatchStatus@v1", "verdict", "cause", "computed_at", "session", "read_from", "required_inputs": [...ids],
@@ -51,7 +52,7 @@ MIN20 = 20 * 60
 INPUTS = (
     ("my_list", "My List", "watchlist_items", "watch curation", MIN30, H26),
     ("prospects", "Prospects", "cio_prospect", "cio", MIN30, H26),
-    ("alerts", "Alerts", "watch_alerts_eval_runs", "watch alerts", MIN20, H26),
+    ("alerts", "Alerts", "watch-alerts-eval_last.json", "watch alerts", MIN20, H26),
     ("regime", "Regime", "market_regime_snapshots", "market regime", H26, H26),
 )
 REQUIRED_INPUTS = tuple(i[0] for i in INPUTS)
@@ -61,8 +62,33 @@ _SQL = {
     "prospects": "SELECT max(as_of) AS as_of FROM cio_prospect",
     "regime": "SELECT max(generated_at) AS as_of FROM market_regime_snapshots",
 }
-_ALERTS_PRESENT = "SELECT to_regclass('public.watch_alerts_eval_runs') IS NOT NULL AS present"
-_ALERTS_SQL = "SELECT max(finished_at) AS as_of FROM watch_alerts_eval_runs WHERE status IN ('ok', 'OK', 'success')"
+ALERTS_LANE_ID = "watch-alerts-eval"
+
+
+def _read_alerts_receipt() -> Optional[dict]:
+    """The evaluator's last-run receipt (``data/runtime/watch-alerts-eval_last.json``, LaneRunReceipt@v2), or None when
+    the file does not exist. Raises on an unreadable or non-object file: the caller turns that into UNKNOWN."""
+    import json
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.lib.watch_status_live
+        from scripts.lib import lane_last_receipt as lr
+    path = lr.receipt_path(ALERTS_LANE_ID)
+    if not path.exists():
+        return None
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(doc, dict):
+        raise ValueError("receipt is not an object")
+    return doc
+
+
+def _parse_ts(v: Any) -> Optional[datetime]:
+    if not isinstance(v, str) or not v.strip():
+        return None
+    try:
+        return _utc(datetime.fromisoformat(v.strip().replace("Z", "+00:00")))
+    except ValueError:
+        return None
 
 _CACHE: dict[str, Any] = {}
 _LOCK = threading.Lock()
@@ -112,19 +138,33 @@ def _grade(spec: tuple, as_of: Any, limit: int, now: datetime, empty_reason: str
     return _row(spec, OK, as_of=d, limit=limit, now=now)
 
 
-def read_input(spec: tuple, q: Callable[..., list], now: datetime, rth: Optional[bool]) -> dict[str, Any]:
+def _read_alerts(spec: tuple, now: datetime, limit: int,
+                 reader: Callable[[], Optional[dict]]) -> dict[str, Any]:
+    """Alerts from the evaluator's last-run receipt: the time of its last SUCCESSFUL run (``ok_at``), graded by age.
+    A missing, unreadable or timestamp-less receipt is UNKNOWN; an old one is STALE. ``watch_alerts.last_fired_at``
+    is not liveness and is not used."""
+    try:
+        doc = reader()
+    except Exception as exc:  # noqa: BLE001 -- unread is UNKNOWN with the failure named, never OK
+        return _row(spec, UNKNOWN, reason=f"evaluator receipt unreadable: {type(exc).__name__}", limit=limit, now=now)
+    if doc is None:
+        return _row(spec, UNKNOWN, reason="no evaluator run record: data/runtime/watch-alerts-eval_last.json does not exist "
+                    "(the lane has not run on this host)", limit=limit, now=now, needs_backend=True)
+    ok_at = _parse_ts(doc.get("ok_at"))
+    if ok_at is None:
+        return _row(spec, UNKNOWN, reason="the evaluator receipt records no successful run (no ok_at)", limit=limit, now=now)
+    return _grade(spec, ok_at, limit, now, "the evaluator receipt records no successful run (no ok_at)")
+
+
+def read_input(spec: tuple, q: Callable[..., list], now: datetime, rth: Optional[bool],
+               alerts_reader: Optional[Callable[[], Optional[dict]]] = None) -> dict[str, Any]:
     """One input as a graded row. Never raises: any failure is an UNKNOWN row with the failure named."""
     iid = spec[0]
     limit = spec[4] if rth in (True, None) else spec[5]
+    if iid == "alerts":
+        return _read_alerts(spec, now, limit, alerts_reader or _read_alerts_receipt)
     try:
-        if iid == "alerts":
-            present = q(_ALERTS_PRESENT, None)
-            if not present or not present[0].get("present"):
-                return _row(spec, UNKNOWN, reason="no evaluator run record: watch_alerts_eval has no heartbeat or run table "
-                            "yet (W-06 / WV-07); last_fired_at is not liveness", limit=limit, now=now, needs_backend=True)
-            rows = q(_ALERTS_SQL, None)
-        else:
-            rows = q(_SQL[iid], None)
+        rows = q(_SQL[iid], None)
     except Timeout:
         return _row(spec, UNKNOWN, reason="query exceeded the 2000 ms statement timeout", limit=limit, now=now,
                     timed_out=True)
@@ -149,10 +189,10 @@ def verdict_of(inputs: list[dict[str, Any]]) -> tuple[str, str]:
     return OK, "all four required inputs read OK within their limits"
 
 
-def compute(q: Callable[..., list], now: datetime, *, session_fn: Optional[Callable[[datetime], Optional[bool]]] = None
-            ) -> dict[str, Any]:
+def compute(q: Callable[..., list], now: datetime, *, session_fn: Optional[Callable[[datetime], Optional[bool]]] = None,
+            alerts_reader: Optional[Callable[[], Optional[dict]]] = None) -> dict[str, Any]:
     rth = (session_fn or _default_session)(now)
-    inputs = [read_input(spec, q, now, rth) for spec in INPUTS]
+    inputs = [read_input(spec, q, now, rth, alerts_reader) for spec in INPUTS]
     verdict, cause = verdict_of(inputs)
     return {"schema": SCHEMA, "verdict": verdict, "cause": cause, "computed_at": _iso(now),
             "session": "unknown" if rth is None else ("rth" if rth else "off"), "read_from": READ_FROM,

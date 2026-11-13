@@ -57,6 +57,24 @@ class FakeQ:
         return [{"as_of": self.as_of[key]}]
 
 
+def _alerts_reader(q):
+    """Bridge FakeQ's alerts knobs to the receipt reader the module now uses (LQ-2986)."""
+    def reader():
+        if "alerts" in q.errors:
+            raise q.errors["alerts"]
+        if not q.alerts_table:
+            return None
+        v = q.as_of["alerts"]
+        return {"ok_at": v.isoformat()} if v is not None else {}
+    return reader
+
+
+def _compute(q, now, **kw):
+    if isinstance(q, FakeQ):
+        kw.setdefault("alerts_reader", _alerts_reader(q))
+    return wsl.compute(q, now, **kw)
+
+
 def by_id(out):
     return {i["id"]: i for i in out["inputs"]}
 
@@ -65,7 +83,7 @@ def by_id(out):
 
 
 def test_exactly_four_required_inputs_in_order():
-    out = wsl.compute(FakeQ(), NOW, session_fn=RTH)
+    out = _compute(FakeQ(), NOW, session_fn=RTH)
     assert [i["id"] for i in out["inputs"]] == ["my_list", "prospects", "alerts", "regime"]
     assert out["required_inputs"] == ["my_list", "prospects", "alerts", "regime"]
     assert all(i["required"] for i in out["inputs"])
@@ -73,7 +91,7 @@ def test_exactly_four_required_inputs_in_order():
 
 
 def test_all_four_fresh_is_ok_with_per_input_fields():
-    out = wsl.compute(FakeQ(), NOW, session_fn=RTH)
+    out = _compute(FakeQ(), NOW, session_fn=RTH)
     assert out["verdict"] == "OK" and out["session"] == "rth"
     for i in out["inputs"]:
         assert i["state"] == "OK" and i["as_of"] and i["age_s"] is not None and i["threshold_s"]
@@ -83,34 +101,34 @@ def test_all_four_fresh_is_ok_with_per_input_fields():
 
 def test_my_list_30_min_in_rth_26_h_off_session():
     q = FakeQ(my_list=ago(40 * 60))
-    assert by_id(wsl.compute(q, NOW, session_fn=RTH))["my_list"]["state"] == "STALE"
-    assert by_id(wsl.compute(q, NOW, session_fn=OFF))["my_list"]["state"] == "OK"
-    assert by_id(wsl.compute(FakeQ(my_list=ago(27 * 3600)), NOW, session_fn=OFF))["my_list"]["state"] == "STALE"
+    assert by_id(_compute(q, NOW, session_fn=RTH))["my_list"]["state"] == "STALE"
+    assert by_id(_compute(q, NOW, session_fn=OFF))["my_list"]["state"] == "OK"
+    assert by_id(_compute(FakeQ(my_list=ago(27 * 3600)), NOW, session_fn=OFF))["my_list"]["state"] == "STALE"
 
 
 def test_prospects_30_min_in_rth_26_h_off_session():
     q = FakeQ(prospects=ago(31 * 60))
-    assert by_id(wsl.compute(q, NOW, session_fn=RTH))["prospects"]["state"] == "STALE"
-    assert by_id(wsl.compute(q, NOW, session_fn=OFF))["prospects"]["state"] == "OK"
+    assert by_id(_compute(q, NOW, session_fn=RTH))["prospects"]["state"] == "STALE"
+    assert by_id(_compute(q, NOW, session_fn=OFF))["prospects"]["state"] == "OK"
 
 
 def test_regime_limit_is_26_h_in_every_session():
     for fn in (RTH, OFF):
-        assert by_id(wsl.compute(FakeQ(regime=ago(25 * 3600)), NOW, session_fn=fn))["regime"]["state"] == "OK"
-        assert by_id(wsl.compute(FakeQ(regime=ago(27 * 3600)), NOW, session_fn=fn))["regime"]["state"] == "STALE"
+        assert by_id(_compute(FakeQ(regime=ago(25 * 3600)), NOW, session_fn=fn))["regime"]["state"] == "OK"
+        assert by_id(_compute(FakeQ(regime=ago(27 * 3600)), NOW, session_fn=fn))["regime"]["state"] == "STALE"
 
 
 def test_alerts_20_min_in_rth_once_the_run_record_exists():
-    out = wsl.compute(FakeQ(alerts=ago(21 * 60)), NOW, session_fn=RTH)
+    out = _compute(FakeQ(alerts=ago(21 * 60)), NOW, session_fn=RTH)
     assert by_id(out)["alerts"]["state"] == "STALE" and out["verdict"] == "STALE"
-    out = wsl.compute(FakeQ(alerts=ago(21 * 60)), NOW, session_fn=OFF)
+    out = _compute(FakeQ(alerts=ago(21 * 60)), NOW, session_fn=OFF)
     assert by_id(out)["alerts"]["state"] == "OK"
 
 
 def test_alerts_without_a_run_record_is_unknown_needs_backend_and_turns_the_chip():
     q = FakeQ()
     q.alerts_table = False
-    out = wsl.compute(q, NOW, session_fn=RTH)
+    out = _compute(q, NOW, session_fn=RTH)
     a = by_id(out)["alerts"]
     assert a["state"] == "UNKNOWN" and a["needs_backend"] is True and "run record" in a["reason"]
     assert out["verdict"] == "UNKNOWN"          # the other three are OK; one unread input is enough
@@ -118,7 +136,7 @@ def test_alerts_without_a_run_record_is_unknown_needs_backend_and_turns_the_chip
 
 def test_empty_store_is_unknown_never_ok():
     for iid in ("my_list", "prospects", "regime"):
-        out = wsl.compute(FakeQ(**{iid: None}), NOW, session_fn=RTH)
+        out = _compute(FakeQ(**{iid: None}), NOW, session_fn=RTH)
         assert by_id(out)[iid]["state"] == "UNKNOWN" and by_id(out)[iid]["reason"]
         assert out["verdict"] == "UNKNOWN"
 
@@ -127,7 +145,7 @@ def test_a_read_error_is_unknown_and_names_the_failure():
     for iid in ("my_list", "prospects", "regime", "alerts"):
         q = FakeQ()
         q.errors[iid] = RuntimeError("boom")
-        out = wsl.compute(q, NOW, session_fn=RTH)
+        out = _compute(q, NOW, session_fn=RTH)
         r = by_id(out)[iid]
         assert r["state"] == "UNKNOWN" and "RuntimeError" in r["reason"] and out["verdict"] == "UNKNOWN"
 
@@ -135,38 +153,38 @@ def test_a_read_error_is_unknown_and_names_the_failure():
 def test_statement_timeout_is_unknown_and_flagged():
     q = FakeQ()
     q.errors["prospects"] = wsl.Timeout()
-    out = wsl.compute(q, NOW, session_fn=RTH)
+    out = _compute(q, NOW, session_fn=RTH)
     r = by_id(out)["prospects"]
     assert r["state"] == "UNKNOWN" and r["timed_out"] is True and "2000 ms" in r["reason"]
 
 
 def test_a_future_as_of_is_unknown_not_ok():
-    out = wsl.compute(FakeQ(regime=NOW + timedelta(hours=2)), NOW, session_fn=RTH)
+    out = _compute(FakeQ(regime=NOW + timedelta(hours=2)), NOW, session_fn=RTH)
     assert by_id(out)["regime"]["state"] == "UNKNOWN" and "future" in by_id(out)["regime"]["reason"]
     # a small forward skew (< 5 min) is tolerated
-    assert by_id(wsl.compute(FakeQ(regime=NOW + timedelta(seconds=60)), NOW, session_fn=RTH))["regime"]["state"] == "OK"
+    assert by_id(_compute(FakeQ(regime=NOW + timedelta(seconds=60)), NOW, session_fn=RTH))["regime"]["state"] == "OK"
 
 
 def test_unknown_beats_stale_and_the_cause_names_both_sides():
     q = FakeQ(my_list=ago(3 * 3600), regime=None)
-    out = wsl.compute(q, NOW, session_fn=RTH)
+    out = _compute(q, NOW, session_fn=RTH)
     assert out["verdict"] == "UNKNOWN" and "Regime" in out["cause"]
     assert by_id(out)["my_list"]["state"] == "STALE"          # still reported per input
 
 
 def test_stale_only_names_the_stale_inputs():
-    out = wsl.compute(FakeQ(my_list=ago(3 * 3600), prospects=ago(3 * 3600)), NOW, session_fn=RTH)
+    out = _compute(FakeQ(my_list=ago(3 * 3600), prospects=ago(3 * 3600)), NOW, session_fn=RTH)
     assert out["verdict"] == "STALE" and "My List" in out["cause"] and "Prospects" in out["cause"]
     assert "Regime" not in out["cause"]
 
 
 def test_unknown_session_uses_the_stricter_limits_and_says_so():
-    out = wsl.compute(FakeQ(my_list=ago(40 * 60)), NOW, session_fn=UNK)
+    out = _compute(FakeQ(my_list=ago(40 * 60)), NOW, session_fn=UNK)
     assert out["session"] == "unknown" and by_id(out)["my_list"]["state"] == "STALE"
 
 
 def test_verdict_is_ok_only_for_four_ok_inputs():
-    rows = wsl.compute(FakeQ(), NOW, session_fn=RTH)["inputs"]
+    rows = _compute(FakeQ(), NOW, session_fn=RTH)["inputs"]
     assert wsl.verdict_of(rows)[0] == "OK"
     assert wsl.verdict_of(rows[:3])[0] == "UNKNOWN"                      # a missing input is never OK
     assert wsl.verdict_of(rows + rows[:1])[0] == "UNKNOWN"               # nor is a duplicated one
@@ -174,8 +192,8 @@ def test_verdict_is_ok_only_for_four_ok_inputs():
 
 def test_every_statement_is_a_select():
     q = FakeQ()
-    wsl.compute(q, NOW, session_fn=RTH)
-    assert len(q.sql) == 5
+    _compute(q, NOW, session_fn=RTH)
+    assert len(q.sql) == 3
     for s in q.sql:
         low = s.strip().lower()
         assert low.startswith("select") and not re.search(r"\b(insert|update|delete|copy|alter|drop|truncate)\b", low)
@@ -207,22 +225,23 @@ def test_cache_30_s_and_the_double_checked_lock(monkeypatch):
             calls.append(sql)
             import time as _t
             _t.sleep(0.01)
-            return [{"present": True}] if "to_regclass" in sql else [{"as_of": ago(30)}]
+            return [{"as_of": ago(30)}]
         return q
 
     monkeypatch.setattr(hsl, "readonly_query", fake_readonly)
+    monkeypatch.setattr(wsl, "_read_alerts_receipt", lambda: {"ok_at": ago(30).isoformat()})
     wsl._CACHE.clear()
     outs = []
     ts = [threading.Thread(target=lambda: outs.append(wsl.serve(lambda: _Conn(), now=NOW, session_fn=RTH))) for _ in range(12)]
     [t.start() for t in ts]
     [t.join() for t in ts]
-    assert len(calls) == 5, "a miss storm must cost ONE computation (5 statements), not one per request"
+    assert len(calls) == 3, "a miss storm must cost ONE computation (3 statements), not one per request"
     assert len(outs) == 12 and all(o["verdict"] == "OK" for o in outs)
     n = len(calls)
     wsl.serve(lambda: _Conn(), now=NOW, session_fn=RTH)
     assert len(calls) == n                                   # cached
     wsl.serve(lambda: _Conn(), now=NOW, use_cache=False, session_fn=RTH)
-    assert len(calls) == n + 5                               # use_cache=False recomputes
+    assert len(calls) == n + 3                               # use_cache=False recomputes
     wsl._CACHE.clear()
 
 
@@ -271,7 +290,7 @@ def test_the_committed_frontend_fixture_has_the_real_envelope_shape(monkeypatch)
     broken because its fixtures were unwrapped)."""
     fx = json.loads((ROOT / "tests" / "fixtures" / "watch_status_envelope.json").read_text())
     assert set(fx) == {"ok", "data"} and fx["ok"] is True
-    real = {"ok": True, "data": wsl.compute(FakeQ(), NOW, session_fn=RTH)}
+    real = {"ok": True, "data": _compute(FakeQ(), NOW, session_fn=RTH)}
     assert set(fx["data"]) == set(real["data"])
     assert [set(i) for i in fx["data"]["inputs"]] == [set(i) for i in real["data"]["inputs"]]
     assert [i["id"] for i in fx["data"]["inputs"]] == list(wsl.REQUIRED_INPUTS)
@@ -282,10 +301,10 @@ def test_the_committed_frontend_fixture_has_the_real_envelope_shape(monkeypatch)
 
 def test_the_limit_itself_is_ok_one_second_over_is_stale():
     for iid, lim in (("my_list", 1800), ("prospects", 1800), ("alerts", 1200)):
-        assert by_id(wsl.compute(FakeQ(**{iid: ago(lim)}), NOW, session_fn=RTH))[iid]["state"] == "OK"
-        assert by_id(wsl.compute(FakeQ(**{iid: ago(lim + 1)}), NOW, session_fn=RTH))[iid]["state"] == "STALE"
-    assert by_id(wsl.compute(FakeQ(regime=ago(26 * 3600)), NOW, session_fn=OFF))["regime"]["state"] == "OK"
-    assert by_id(wsl.compute(FakeQ(regime=ago(26 * 3600 + 1)), NOW, session_fn=OFF))["regime"]["state"] == "STALE"
+        assert by_id(_compute(FakeQ(**{iid: ago(lim)}), NOW, session_fn=RTH))[iid]["state"] == "OK"
+        assert by_id(_compute(FakeQ(**{iid: ago(lim + 1)}), NOW, session_fn=RTH))[iid]["state"] == "STALE"
+    assert by_id(_compute(FakeQ(regime=ago(26 * 3600)), NOW, session_fn=OFF))["regime"]["state"] == "OK"
+    assert by_id(_compute(FakeQ(regime=ago(26 * 3600 + 1)), NOW, session_fn=OFF))["regime"]["state"] == "STALE"
 
 
 def test_the_cache_expires_after_30_s(monkeypatch):
@@ -296,30 +315,30 @@ def test_the_cache_expires_after_30_s(monkeypatch):
     def fake_readonly(get_conn, timeout_cls):
         def q(sql, params=None):
             calls.append(sql)
-            return [{"present": True}] if "to_regclass" in sql else [{"as_of": ago(30)}]
+            return [{"as_of": ago(30)}]
         return q
 
     clock = [1000.0]
     monkeypatch.setattr(hsl, "readonly_query", fake_readonly)
+    monkeypatch.setattr(wsl, "_read_alerts_receipt", lambda: {"ok_at": ago(30).isoformat()})
     monkeypatch.setattr(wsl.time, "monotonic", lambda: clock[0])
     wsl._CACHE.clear()
     wsl.serve(lambda: _Conn(), now=NOW, session_fn=RTH)
     clock[0] += 29
     wsl.serve(lambda: _Conn(), now=NOW, session_fn=RTH)
-    assert len(calls) == 5                                   # still cached at 29 s
+    assert len(calls) == 3                                   # still cached at 29 s
     clock[0] += 2
     wsl.serve(lambda: _Conn(), now=NOW, session_fn=RTH)
-    assert len(calls) == 10                                  # recomputed after 30 s
+    assert len(calls) == 6                                  # recomputed after 30 s
     wsl._CACHE.clear()
 
 
 def test_each_input_reads_its_documented_store_and_column():
     q = FakeQ()
-    wsl.compute(q, NOW, session_fn=RTH)
+    _compute(q, NOW, session_fn=RTH)
     sql = " | ".join(s.lower() for s in q.sql)
     assert "max(updated_at)" in sql and "from watchlist_items" in sql
     assert "max(as_of)" in sql and "from cio_prospect" in sql
     assert "max(generated_at)" in sql and "from market_regime_snapshots" in sql
-    # alerts: the evaluator's last SUCCESSFUL run, never watch_alerts.last_fired_at
-    assert "max(finished_at)" in sql and "from watch_alerts_eval_runs" in sql and "status in" in sql
-    assert "last_fired_at" not in sql and "from watch_alerts " not in sql
+    # alerts: the evaluator receipt (ok_at), no SQL, never watch_alerts.last_fired_at
+    assert "watch_alerts" not in sql and "last_fired_at" not in sql
