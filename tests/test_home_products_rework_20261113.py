@@ -289,6 +289,11 @@ def api():
     reader_flag.reload("")
 
 
+def _legacy_name(api, fn):
+    """On the mem-contain fold the legacy side of analyst links is the bounded SWR wrapper (``*_swr``)."""
+    return fn + "_swr" if hasattr(api, fn + "_swr") else fn
+
+
 def _call(api, path, query):
     h = api.ROUTES[path]
     return h(query) if query is not None else h()
@@ -303,6 +308,7 @@ def _trip(name):
 @pytest.mark.parametrize("path", sorted(LEGACY_FNS))
 def test_flag_legacy_serves_exactly_the_legacy_path(api, monkeypatch, path):
     product, fn, query = LEGACY_FNS[path]
+    fn = _legacy_name(api, fn)
     reader_flag.reload("")
     sentinel = {"legacy": fn}
     monkeypatch.setattr(api, fn, lambda *a, **k: sentinel)
@@ -313,6 +319,7 @@ def test_flag_legacy_serves_exactly_the_legacy_path(api, monkeypatch, path):
 @pytest.mark.parametrize("path", sorted(LEGACY_FNS))
 def test_flag_flips_both_ways(api, monkeypatch, path):
     product, fn, query = LEGACY_FNS[path]
+    fn = _legacy_name(api, fn)
     sentinel = {"legacy": fn}
     monkeypatch.setattr(api, fn, lambda *a, **k: sentinel)
     monkeypatch.setattr(api, "_db_query_raising", lambda *a, **k: [])  # missing product
@@ -329,11 +336,15 @@ def test_flag_flips_both_ways(api, monkeypatch, path):
 
 def test_inline_market_risk_get_follows_the_flag(api, monkeypatch):
     monkeypatch.setattr(api, "_market_risk_latest_projection", lambda: {"state": "evaluated", "tier": "LEGACY"})
+    if hasattr(api, "_market_risk_latest_swr"):  # mem-contain fold: legacy = the bounded SWR path
+        monkeypatch.setattr(api, "_market_risk_latest_swr", lambda: {"state": "evaluated", "tier": "LEGACY"})
     monkeypatch.setattr(api, "_db_query_raising", lambda *a, **k: [])
     reader_flag.reload("")
     assert api.handle("/api/v2/market-risk/latest", "GET", None, {})[1]["data"]["tier"] == "LEGACY"
     reader_flag.reload("market_risk.latest=stored")
     monkeypatch.setattr(api, "_market_risk_latest_projection", _trip("_market_risk_latest_projection"))
+    if hasattr(api, "_market_risk_latest_swr"):
+        monkeypatch.setattr(api, "_market_risk_latest_swr", _trip("_market_risk_latest_swr"))
     assert api.handle("/api/v2/market-risk/latest", "GET", None, {})[1]["data"]["tier"] == "UNKNOWN"
 
 
@@ -348,6 +359,7 @@ _SUBPROC = textwrap.dedent('''
             raise SystemExit("LEGACY CALLED " + n)
         return f
     for n in ("_market_risk_latest_projection", "_home_cio_card", "_risk_payload_cached", "_reports_analyst_links",
+              "_market_risk_latest_swr", "_reports_analyst_links_swr",
               "_home_since_close", "_home_incidents", "_home_priorities_live", "_home_status", "_home_gates",
               "_w7_cio_pages_legacy", "_cio_pages_build", "_shared_get_cached"):
         setattr(api, n, trip(n))
