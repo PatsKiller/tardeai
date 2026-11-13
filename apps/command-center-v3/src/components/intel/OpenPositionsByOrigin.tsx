@@ -6,6 +6,7 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
+import { RADIUS } from '../../lib/designTokens'
 import { realTrades } from '../../lib/intelConsolidation'
 
 type OpenPosition = {
@@ -52,7 +53,7 @@ export default function OpenPositionsByOrigin({ linkSearch = '' }: { linkSearch?
         {positions.length} open position{positions.length === 1 ? '' : 's'} by discovery origin · real accounts only · unrealized P&amp;L from the broker sync
       </div>
       {groups.map(g => (
-        <section key={g.origin} style={{ border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg2)', padding: 10, minWidth: 0 }}>
+        <section key={g.origin} style={{ border: '1px solid var(--border)', borderRadius: RADIUS.md, background: 'var(--bg2)', padding: 10, minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
             <b style={{ textTransform: 'capitalize' }}>{g.origin.replace(/_/g, ' ')}</b>
             <span style={{ fontSize: 12, color: 'var(--text2)' }}>{g.rows.length} · <span style={{ color: tone(g.total) }}>{usd(g.total)}</span></span>
@@ -68,7 +69,7 @@ export default function OpenPositionsByOrigin({ linkSearch = '' }: { linkSearch?
                   <span style={{ whiteSpace: 'nowrap', color: tone(p.unrealized_pnl), fontSize: 12 }}>{usd(p.unrealized_pnl)} · {pct(p.unrealized_pnl_pct)}</span>
                 </>
               )
-              const style = { display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', minHeight: 44, padding: '4px 6px', borderRadius: 6, color: 'var(--text)', textDecoration: 'none', minWidth: 0 } as const
+              const style = { display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', minHeight: 44, padding: '4px 6px', borderRadius: RADIUS.md, color: 'var(--text)', textDecoration: 'none', minWidth: 0 } as const
               return SYMBOL_RE.test(sym)
                 ? <Link key={`${sym}-${p.account}-${i}`} to={{ pathname: `/prospectus/${encodeURIComponent(sym)}`, search: linkSearch }} style={style} data-testid={`history-${sym}`}>{body}</Link>
                 : <div key={`${sym}-${p.account}-${i}`} style={style}>{body}</div>

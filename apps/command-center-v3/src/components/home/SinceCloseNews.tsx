@@ -9,7 +9,7 @@
  *  paints them. Mobile first: minmax(320px, 1fr) is one column at 390-412 px and 2-3 at 768-1280.
  */
 import { useState, type CSSProperties } from 'react'
-import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../../lib/designTokens'
+import { RADIUS, TOKENS, TYPE, FONT, toneVars, shadowGlow } from '../../lib/designTokens'
 import { newsModel, GLOW_LABEL, type Glow, type NewsCard } from '../../lib/sinceCloseNews'
 import { cioFrom, type SinceCloseWire } from '../../lib/sinceClose'
 import { storyFromCard } from '../../lib/homeStory'
@@ -24,7 +24,7 @@ const GLOW_TONE: Record<Glow, string> = { red: TOKENS.danger, amber: TOKENS.warn
 /** border + halo, the mockup's recipe; color-mix keeps it a token, not a hardcoded rgba. */
 const glowStyle = (g: Glow): CSSProperties => ({
   borderColor: GLOW_TONE[g],
-  boxShadow: `0 0 0 1px ${GLOW_TONE[g]}, 0 0 18px 2px color-mix(in srgb, ${GLOW_TONE[g]} 45%, transparent)`,
+  boxShadow: shadowGlow(GLOW_TONE[g]),
 })
 
 const S = {

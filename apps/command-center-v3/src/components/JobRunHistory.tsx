@@ -18,8 +18,8 @@ const chip = (tone: Tone): CSSProperties => ({ display: 'inline-block', padding:
 const muted: CSSProperties = { color: TOKENS.text[2], fontSize: TYPE.sm }
 const wrap: CSSProperties = { overflowWrap: 'anywhere', minWidth: 0 }
 
-function Fact({ label, children }: { label: string; children: ReactNode }) {
-  return <div style={{ minWidth: 0 }}><div style={muted}>{label}</div><div style={{ ...wrap, fontSize: TYPE.base }}>{children}</div></div>
+function Fact({ label, tip, children }: { label: string; tip: string; children: ReactNode }) {
+  return <div style={{ minWidth: 0 }} title={tip}><div style={muted}>{label}</div><div style={{ ...wrap, fontSize: TYPE.base }}>{children}</div></div>
 }
 
 /** One job in the list. Pure: renders from the wire row and the projection's computed_at. The status chip is the
@@ -37,10 +37,10 @@ export function HistoryCard({ row, computedAt, onOpen }: { row: HistoryListRow; 
     </div>
     {display.reason && <div style={{ ...wrap, color: TOKENS.text[1], fontSize: TYPE.sm }}>{display.reason}</div>}
     <div className="job-history-facts">
-      <Fact label="Last run">{last ? <>{etTime(last.started_at || last.finished_at)} <span style={chip(resultTone(last.result))}>{RESULT_LABEL[last.result]}</span></> : 'No run recorded'}</Fact>
-      <Fact label="Last success">{row.last_success_at ? `${etTime(row.last_success_at)} (${ago(row.last_success_at, computedAt)})` : 'None recorded'}</Fact>
-      <Fact label="Missed runs">{missedText(row)}</Fact>
-      <Fact label="Fixed (14 days)">{row.fix_count ? `${row.fix_count} event${row.fix_count === 1 ? '' : 's'} · latest ${fixLabel(row.last_fix!.kind).toLowerCase()} ${etTime(row.last_fix!.at)}` : 'None recorded'}</Fact>
+      <Fact label="Last run" tip="The most recent recorded run of this job: its start time (ET) and the result the backend recorded for it">{last ? <>{etTime(last.started_at || last.finished_at)} <span style={chip(resultTone(last.result))}>{RESULT_LABEL[last.result]}</span></> : 'No run recorded'}</Fact>
+      <Fact label="Last success" tip="When this job last completed successfully (ET), and how long before this view was computed">{row.last_success_at ? `${etTime(row.last_success_at)} (${ago(row.last_success_at, computedAt)})` : 'None recorded'}</Fact>
+      <Fact label="Missed runs" tip="Of the last 10 runs its schedule expected, how many have no recorded run; Not measured names why the run store cannot tell">{missedText(row)}</Fact>
+      <Fact label="Fixed (14 days)" tip="Fix events recorded for this job in the last 14 days, and the latest one">{row.fix_count ? `${row.fix_count} event${row.fix_count === 1 ? '' : 's'} · latest ${fixLabel(row.last_fix!.kind).toLowerCase()} ${etTime(row.last_fix!.at)}` : 'None recorded'}</Fact>
     </div>
     {row.history_gap && <div style={{ ...muted, ...wrap }}>Run history: {row.history_gap}</div>}
     <button type="button" onClick={() => onOpen(row.lane_id)} style={{ minHeight: 44, width: '100%', borderRadius: RADIUS.sm, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[2], color: TOKENS.info, fontSize: TYPE.base, cursor: 'pointer' }}>Run history &amp; fixes</button>
@@ -71,10 +71,10 @@ export function HistoryDetail({ row, computedAt }: { row: HistoryDetailRow; comp
     {display.reason && <p style={{ ...wrap, margin: 0 }}>{display.reason}</p>}
     <QualityDetail q={row.quality} statusLabel={STATUS_LABEL[row.status]} />
     <div className="job-history-facts">
-      <Fact label="Expected">{cadenceText(row.cadence)}</Fact>
-      <Fact label="Last success">{row.last_success_at ? `${etTime(row.last_success_at)} (${ago(row.last_success_at, computedAt)})` : 'None recorded'}</Fact>
-      <Fact label="Missed runs">{missedText(row)}</Fact>
-      <Fact label="Run history from">{row.history_sources.length ? row.history_sources.join(' + ') : 'No run store'}</Fact>
+      <Fact label="Expected" tip="The schedule this job is declared to run on">{cadenceText(row.cadence)}</Fact>
+      <Fact label="Last success" tip="When this job last completed successfully (ET), and how long before this view was computed">{row.last_success_at ? `${etTime(row.last_success_at)} (${ago(row.last_success_at, computedAt)})` : 'None recorded'}</Fact>
+      <Fact label="Missed runs" tip="Of the last 10 runs its schedule expected, how many have no recorded run; Not measured names why the run store cannot tell">{missedText(row)}</Fact>
+      <Fact label="Run history from" tip="The run stores this history was read from; No run store means none records this job">{row.history_sources.length ? row.history_sources.join(' + ') : 'No run store'}</Fact>
     </div>
     {row.history_gap && <p role="note" style={{ ...panel, margin: 0, borderColor: toneVars('warning').border, color: TOKENS.text[1] }}>Why the run history is limited: {row.history_gap}</p>}
     {row.output?.written_at && <p style={{ ...muted, margin: 0 }}>Output file last written {etTime(row.output.written_at)}. {row.output.note}.</p>}
