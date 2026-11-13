@@ -1,0 +1,21 @@
+--- a/scripts/api_v2.py	2026-11-12 10:39:12.000000000 -0500
++++ b/scripts/api_v2.py	2026-11-12 18:03:56.168042270 -0500
+@@ -48289,12 +48289,13 @@
+ 
+ 
+ def _w7_cio_pages():
+-    """Read-only W7 page projection over one CIO truth document. Cached 60 s, single-flight."""
+-    from scripts.lib.w7_pages import page_payload
++    """GET /api/v2/cio/pages: the stored ``cio.pages`` product plus its clocks (LQ-20261107-2595).
+ 
+-    return _shared_get_cached(
+-        "cio_pages", 60.0, lambda: page_payload(STATE_DIR.parents[2], db_query=_db_query, ledger_root=_conflict_ledger_root())
+-    )
++    One primary-key read (hot tier, then Postgres with a 250 ms statement timeout). Never builds: the
++    page projection runs only in the background builder. A store failure reads UNKNOWN, never a compute."""
++    from scripts.lib.cc_products import cio_pages_route as _cpr
++
++    return _cpr.serve_cio_pages(fetch_row=_cpr.make_pg_fetch_row(_db_query_raising), hot=_cpr.production_hot())
+ 
+ 
+ def _risk_payload_cached():

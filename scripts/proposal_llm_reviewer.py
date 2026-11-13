@@ -257,6 +257,42 @@ def _deterministic_review(proposal, technical, backtest, stock_history):
     })
 
 
+LOCAL_LLM_RUNS_WRITE_FAILURES = 0  # process-lifetime count of failed local_llm_runs audit writes (LQ-20261107-2601)
+
+
+def _record_review_run(conn, cur, model, symbol, proposal, review, narrative_source, now):
+    """Audit row for one proposal review, using only columns local_llm_runs really has
+    (model_name, status, run_type, started_at, finished_at, items_processed, payload).
+    A failure is a WARNING with a running count, never a silent debug line; it never fails the review."""
+    global LOCAL_LLM_RUNS_WRITE_FAILURES
+    payload = {
+        "symbol": symbol,
+        "strategy_id": proposal.get("strategy_id"),
+        "proposal_id": proposal.get("id"),
+        "narrative_source": narrative_source,
+        "decision": review.get("decision"),
+        "confidence_score": review.get("confidence_score"),
+    }
+    try:
+        cur.execute(
+            """
+            INSERT INTO local_llm_runs
+                (model_name, status, run_type, started_at, finished_at, items_processed, payload)
+            VALUES (%s, 'completed', 'proposal_review', %s, %s, 1, %s::jsonb)
+            """,
+            [model, now, now, json.dumps(payload, default=str)],
+        )
+        return True
+    except Exception as e:
+        LOCAL_LLM_RUNS_WRITE_FAILURES += 1
+        log.warning(f"local_llm_runs audit write failed ({LOCAL_LLM_RUNS_WRITE_FAILURES} this process): {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return False
+
+
 def review_proposal(conn, proposal_id):
     """Generate LLM review for a single proposal."""
     cur = conn.cursor()
@@ -409,20 +445,9 @@ def review_proposal(conn, proposal_id):
         review = _deterministic_review(proposal, technical, backtest, stock_history)
         narrative_source = "deterministic_fallback"
 
-    # Store in local_llm_runs
+    # Store in local_llm_runs (real columns only; the rest of the review context goes in payload)
     now = datetime.now(timezone.utc)
-    try:
-        cur.execute("""
-            INSERT INTO local_llm_runs
-                (run_type, symbol, strategy_id, model_used, prompt_tokens, response_tokens,
-                 result, narrative_source, created_at)
-            VALUES ('proposal_review', %s, %s, %s, 0, 0, %s, %s, %s)
-        """, [symbol, proposal.get('strategy_id'), model,
-              json.dumps(review, default=str), narrative_source, now])
-    except Exception as e:
-        log.debug(f"local_llm_runs insert failed (table may differ): {e}")
-        try: conn.rollback()
-        except: pass
+    _record_review_run(conn, cur, model, symbol, proposal, review, narrative_source, now)
 
     # Update proposal with chunk state
     try:
