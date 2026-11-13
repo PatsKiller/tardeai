@@ -45,8 +45,8 @@ def assemble_stop_alert_data(symbol, account=""):
     if risk_data.get("status") == "UNKNOWN":
         why = risk_data.get("reason") or "unknown"
         return {"symbol": symbol, "status": "UNKNOWN", "reason": f"risk data still building ({why})"}
-    positions = risk_data.get("positions") or []
-    if not isinstance(positions, list):
+    positions = risk_data.get("positions")
+    if not isinstance(positions, list):  # null or absent is unread, never an empty book (independent re-review B2-b)
         return {"symbol": symbol, "status": "UNKNOWN", "reason": "risk data unavailable (positions unreadable)"}
     pos = next((p for p in positions if isinstance(p, dict) and p.get("symbol") == symbol), None)
     if not pos:
