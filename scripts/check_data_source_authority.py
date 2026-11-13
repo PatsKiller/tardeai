@@ -83,6 +83,7 @@ EXIT 0 clean · 1 findings · 2 could not run
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import re
 import sys
@@ -233,8 +234,44 @@ def check_approvals(auth: dict) -> list[dict]:
     return findings
 
 
+#: Source text shared by the scans of ONE gate run. ``None`` outside a run: a module-global cache kept
+#: ~134 MB resident and served stale text to a long-lived caller (portfolio_server imports this gate through
+#: the Ops Controls view; REVIEW-2609 C1). ``main()`` opens it and always clears it.
+_TEXT_CACHE: dict[Path, str | None] | None = None
+
+
+def _read(p: Path) -> str | None:
+    try:
+        return p.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _text(p: Path) -> str | None:
+    """A source file's text; read once per gate run when a run is open, else read fresh (LQ-20261107-2593).
+
+    count_writers re-read and re-scanned every scripts/ file once per declared table (~70 tables x ~2000 files),
+    and each gated-store reader check did it again: 120 s of CPU for one gate, past the lane's 120 s timeout.
+    """
+    cache = _TEXT_CACHE
+    if cache is None:
+        return _read(p)
+    if p not in cache:
+        cache[p] = _read(p)
+    return cache[p]
+
+
+@functools.lru_cache(maxsize=64)
+def _reads_re(tables: tuple) -> re.Pattern | None:
+    if not tables:
+        return None
+    alt = "|".join(re.escape(t) for t in tables)
+    return re.compile(rf"\b(?:FROM|JOIN)\s+(?:{alt})\b", re.I)
+
+
 def _reads_table(text: str, tables) -> bool:
-    return any(re.search(rf"\b(FROM|JOIN)\s+{re.escape(t)}\b", text, re.I) for t in tables)
+    pat = _reads_re(tuple(tables))
+    return bool(pat and pat.search(text))
 
 
 def check_readers(auth: dict, files: list[Path]) -> list[dict]:
@@ -264,7 +301,7 @@ def check_readers(auth: dict, files: list[Path]) -> list[dict]:
                 if not p.is_file():
                     findings.append({"check": "READER_GRANT_INVALID", "domain": name, "entry": i, "file": f,
                                      "why": "file does not exist"})
-                elif not _reads_table(p.read_text(encoding="utf-8", errors="replace"), r["tables"]):
+                elif not _reads_table(_text(p) or "", r["tables"]):
                     findings.append({"check": "READER_GRANT_INVALID", "domain": name, "entry": i, "file": f,
                                      "why": f"file no longer reads {r['tables']}; remove or correct the entry"})
                 approved_files.add(f)
@@ -275,9 +312,8 @@ def check_readers(auth: dict, files: list[Path]) -> list[dict]:
             rel = _rel(p)
             if rel in allowed or rel == "scripts/check_data_source_authority.py":
                 continue
-            try:
-                text = p.read_text(encoding="utf-8", errors="replace")
-            except OSError:
+            text = _text(p)
+            if text is None:
                 continue
             if _reads_table(text, tables):
                 findings.append({"check": "UNAPPROVED_READER", "domain": name, "file": rel,
@@ -310,23 +346,39 @@ def check_domains(auth: dict) -> list[dict]:
     return findings
 
 
+_WRITE_TOKEN_RE = re.compile(r"\b(?:INSERT\s+INTO|UPDATE|COPY)\s+([\w.]+)", re.I)
+
+
 def count_writers(auth: dict, files: list[Path]) -> dict[str, int]:
-    """Files that INSERT/UPDATE/COPY into each declared table (regex over source)."""
-    out: dict[str, int] = {}
+    """Files that INSERT/UPDATE/COPY into each declared table (regex over source).
+
+    One pass per file: the write targets are collected once and each table is a set lookup. A table
+    ``t`` matches target token ``tk`` when ``tk == t`` or ``tk`` continues ``t`` with a ``.`` (what
+    ``\\bt\\b`` accepted), compared case-insensitively.
+    """
+    tables = {}
     for d in auth["domains"]:
         table = (d.get("store") or {}).get("table")
-        if not table:
+        if table:
+            tables[table] = table.lower()
+    counts = {t: 0 for t in tables}
+    by_lower: dict[str, list[str]] = {}
+    for t, low in tables.items():
+        by_lower.setdefault(low, []).append(t)
+    for p in files:
+        text = _text(p)
+        if not text:
             continue
-        pat = re.compile(rf"\b(INSERT\s+INTO|UPDATE|COPY)\s+{re.escape(table)}\b", re.I)
-        n = 0
-        for p in files:
-            try:
-                if pat.search(p.read_text(encoding="utf-8", errors="replace")):
-                    n += 1
-            except OSError:
-                pass
-        out[table] = n
-    return out
+        hit: set[str] = set()
+        for m in _WRITE_TOKEN_RE.finditer(text):
+            tk = m.group(1).lower()
+            # a token also counts for every dotted prefix: "a.b.c" satisfies tables "a", "a.b" and "a.b.c"
+            parts = tk.split(".")
+            for k in range(1, len(parts) + 1):
+                hit.update(by_lower.get(".".join(parts[:k]), ()))
+        for t in hit:
+            counts[t] += 1
+    return {t: counts[t] for t in tables}
 
 
 def count_direct_reads(auth: dict) -> dict[str, int]:
@@ -535,6 +587,15 @@ def check_dictionary(auth: dict, root: Path | None = None) -> tuple[list[dict], 
 
 
 def main() -> int:
+    global _TEXT_CACHE
+    _TEXT_CACHE = {}
+    try:
+        return _main()
+    finally:
+        _TEXT_CACHE = None
+
+
+def _main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--write-baseline", action="store_true", help="record current writer/direct-read counts as the ceiling")
