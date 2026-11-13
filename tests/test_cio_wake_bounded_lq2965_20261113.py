@@ -311,3 +311,23 @@ def test_a_real_run_also_writes_the_lanes_v2_receipt_and_a_dry_run_does_not(tmp_
            sampler=FakeSampler([5], ooms=1), sleep=lambda s: None, now=_clock(), show=lambda u: {})
     doc = json.loads(lane.read_text())
     assert doc["outcome"] == "error" and doc["outcome_reason"] == "oom_killed" and doc["produced_count"] == 0
+
+
+def test_a_wake_dry_run_probe_never_advances_ok_at_nor_touches_the_lane_receipt(tmp_path):
+    """--apply --wake-dry-run runs selection under the bounds but no wake: it must not read as a real run."""
+    runtime = tmp_path / "state" / "data" / "runtime"
+    seen = {}
+
+    def popen(argv, env, cwd):
+        seen["argv"] = argv
+        return FakeProc(0, polls=2)
+
+    rc = rb.run(_args(tmp_path, wake_dry_run=True), admit=lambda a: {"refusals": []}, popen=popen,
+                sampler=FakeSampler([50, 80]), sleep=lambda s: None, now=_clock(),
+                show=lambda u: {"LoadState": "not-found"})
+    probe = json.loads((runtime / rb.WAKE_DRY_RUN_RECEIPT).read_text())
+    assert rc == 0 and seen["argv"][-1] == "--dry-run"
+    assert probe["outcome"] == "ok" and probe["wake_dry_run"] is True and probe["ok_at"] is None
+    assert probe["peak_memory_bytes"] == 80
+    assert not (runtime / "cio-persistent-wake_bounded_last.json").exists()
+    assert not (runtime / "cio-persistent-wake_last.json").exists()

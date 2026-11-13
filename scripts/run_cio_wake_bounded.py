@@ -42,6 +42,7 @@ _PROJECT = Path(__file__).resolve().parents[1]
 
 SCHEMA = "CioWakeBoundedRun@v1"
 LANE_ID = "cio-persistent-wake"
+WAKE_DRY_RUN_RECEIPT = f"{LANE_ID}_bounded_wake_dry_run_last.json"
 DEFAULT_LOCK = "/tmp/cio_wake_bounded.lock"
 DEFAULT_TIMEOUT_S = 1800
 DEFAULT_KILL_AFTER_S = 30
@@ -359,7 +360,9 @@ def write_receipt(path: Path, doc: dict[str, Any]) -> dict[str, Any]:
         prior_ok = json.loads(path.read_text(encoding="utf-8")).get("ok_at")
     except (OSError, ValueError, AttributeError):
         prior_ok = None
-    doc = {**doc, "ok_at": doc["ended_at"] if doc.get("outcome") == "ok" else prior_ok}
+    # A --wake-dry-run is a probe (selection + memory, no wake writes): it never proves the lane ran.
+    real_ok = doc.get("outcome") == "ok" and not doc.get("wake_dry_run")
+    doc = {**doc, "ok_at": doc["ended_at"] if real_ok else prior_ok}
     out = doc
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -394,6 +397,7 @@ def run(
         "schema": SCHEMA, "lane_id": LANE_ID, "agent_id": args.agent_id, "unit": unit,
         "memory_max": args.memory_max, "timeout_s": args.timeout_s, "argv": argv,
         "started_at": _iso(started), "mode": "apply" if args.apply else "dry_run",
+        "wake_dry_run": bool(args.wake_dry_run),
     }
 
     lock_fd = os.open(args.lock, os.O_RDWR | os.O_CREAT, 0o664)
@@ -414,11 +418,16 @@ def run(
             return 0
 
         rpath = receipt_path(args.state_root)
+        if args.wake_dry_run:
+            # Probe receipts go to their own file and never touch the lane receipt, so a probe can neither
+            # advance ok_at nor overwrite the last real run's evidence.
+            rpath = rpath.with_name(WAKE_DRY_RUN_RECEIPT)
         if adm["refusals"]:
             doc = {**base, "outcome": "refused", "exit_code": EXIT_REFUSED, "ended_at": _iso(now()),
                    "peak_memory_bytes": None, "oom_kill_events": None}
             doc = write_receipt(rpath, doc)
-            write_lane_run_receipt(lane_receipt_path(args.state_root), doc)
+            if not args.wake_dry_run:
+                write_lane_run_receipt(lane_receipt_path(args.state_root), doc)
             print(json.dumps(doc, sort_keys=True))
             return EXIT_REFUSED
 
@@ -465,7 +474,8 @@ def run(
             "samples": smp.samples,
         }
         doc = write_receipt(rpath, doc)
-        write_lane_run_receipt(lane_receipt_path(args.state_root), doc)
+        if not args.wake_dry_run:
+            write_lane_run_receipt(lane_receipt_path(args.state_root), doc)
         print(json.dumps(doc, sort_keys=True))
         return doc["exit_code"]
     finally:
