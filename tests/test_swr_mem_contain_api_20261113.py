@@ -56,7 +56,7 @@ def test_wired_routes_never_build_on_the_request_thread(api, monkeypatch, call, 
     _wait_idle()
     assert seen and all(n.startswith("swr-build-") and n != me for n in seen)
     second = call(api)
-    assert second.get("built") is True and second["stale"] is False
+    assert second.get("built") is True and second["cache_stale"] is False  # review B1: the cache freshness, never the payload's own
 
 
 def test_risk_route_never_builds_on_the_request_thread(api, monkeypatch):

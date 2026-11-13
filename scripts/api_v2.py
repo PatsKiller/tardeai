@@ -2811,6 +2811,7 @@ def _reports_analyst_links_swr(query=None):
     return _shared_get_cached(
         key, 120.0, lambda: _reports_analyst_links({"symbol": sym, "limit": limit}), stale_ok=True,
         unknown=_analyst_links_unknown, route="/api/v2/reports/analyst/links",
+        annotate=lambda p, m: _swr_module().preserve_annotate(p, m),  # review B1: never overwrite payload fields
     )
 
 
@@ -31916,7 +31917,10 @@ def _market_risk_projection_build():
 def _market_risk_latest_swr():
     """GET /api/v2/market-risk/latest body (MEM-CONTAIN 2026-11-13): serve-last-good SWR, never built on a request."""
     return _shared_get_cached(_market_risk_key(), _MARKET_RISK_TTL_S, _market_risk_projection_build, stale_ok=True,
-                              unknown=_market_risk_unknown, route="/api/v2/market-risk/latest")
+                              unknown=_market_risk_unknown, route="/api/v2/market-risk/latest",
+                              # review B1: the projection's own as_of/stale/state are the ENGINE's freshness (the
+                              # banner gates on !stale); the cache's goes out as cache_as_of/cache_age_s/cache_stale
+                              annotate=lambda p, m: _swr_module().cache_annotate(p, m))
 
 
 def _home_since_close():
@@ -32055,13 +32059,13 @@ def _home_cio_card():
     key = _swr_scope_key("home_cio_card")
     mr_key = _market_risk_key()  # resolved on the request thread: the principal is thread-local
     return _shared_get_cached(key, _HOME_CIO_CARD_TTL_S, lambda: _home_cio_card_build(mr_key), stale_ok=True,
-                              route="/api/v2/home/cio-card")
+                              route="/api/v2/home/cio-card",
+                              annotate=lambda p, m: _swr_module().preserve_annotate(p, m))  # review B1
 
 
 def _home_cio_card_build(mr_key: str | None = None):
     """The HomeCioCard@v1 build. Runs ONLY on the SWR background thread (MEM-CONTAIN 2026-11-13); the request
     path is _home_cio_card. Reuses a fresh market-risk projection from the SWR store instead of building it twice."""
-    import time as _t
     from datetime import date as _date, datetime as _dt, timedelta as _td, timezone as _tz
     from zoneinfo import ZoneInfo as _Z
 
@@ -32137,7 +32141,6 @@ def _home_cio_card_build(mr_key: str | None = None):
                   for g in _stock_groups}
     out = _json_clean(_hcc.build(mr, snap, defense=defense, momentum=momentum, bars=bars, bars_meta=bars_meta,
                                  quotes=quotes, holdings=holdings, stocks=stocks, now=_dt.now(_tz.utc)))
-    _HOME_CIO_CARD_CACHE["v"] = (_t.monotonic(), out)
     return out
 
 
@@ -48871,6 +48874,7 @@ def _risk_payload_cached():
     return _shared_get_cached(
         _swr_scope_key("risk"), 60.0, lambda: _cio_truth_readers().risk_payload(db_query=_db_query),
         stale_ok=True, unknown=_risk_unknown, route="/api/v2/risk",
+        annotate=lambda p, m: _swr_module().preserve_annotate(p, m),  # review B1
     )
 
 

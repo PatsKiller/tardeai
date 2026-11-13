@@ -76,6 +76,10 @@ def test_cio_pages_and_risk_routes_use_the_cache(monkeypatch):
         api._risk_payload_cached()
     # LQ-2600 (REVIEW-2606 F1): while the stored product is fresh, cio/pages never computes in the request process
     # (a miss computes on the SWR thread, LQ-2743).
+    import time as _time
+    deadline = _time.time() + 5  # the build's finally runs just after the build returns (was a ~50% race at 93728de3f)
+    while swr.inflight() and _time.time() < deadline:
+        _time.sleep(0.01)
     assert n == {"pages": 0, "risk": 1} and not swr.inflight()
     # LQ-1907 wiring moved with the build: the cio.pages builder reads the durable ledger root, not the release dir.
     from scripts.lib.conflicts.api import _root as _durable_root
