@@ -155,11 +155,14 @@ export const STOP_READ_MAX_AGE_MS = { session: 900_000, offHours: 72 * 3_600_000
  *  when that file is absent or invalid. The LQ-2708 contract test pins this to the file when it exists. */
 export const R1_EXPIRED_OPEN_SESSION: 'UNKNOWN' | 'GAP' | 'WARN' = 'UNKNOWN'
 
-/** No usable value: missing, not a number, or <= 0 (a feed that writes 0 for no quote). Never "under the floor"
- *  (owner rule: protection_verdict.price_missing_of, LQ-2436 F3; cio_truth.protection_for after LQ-2436). */
+/** No usable value: missing, not a number, or <= 0 (a feed that writes 0 for no quote). Never "under the floor".
+ *  The value alone decides, exactly as the owner does (protection_verdict.price_missing_of, LQ-2436 F3) and as
+ *  cio_truth.protection_for sets protection.price_missing. A wire flag beside a known positive value (the row was
+ *  repriced after the protection read) is not used: the owner and the summary both list that row, so counting it
+ *  here would draw a GAP the served verdict reads OK (LQ-2708). */
 export function priceMissing(h: HoldingWire): boolean {
   const v = num(h.market_value)
-  return v == null || v <= 0 || h.protection?.price_missing === true
+  return v == null || v <= 0
 }
 
 /** Regular US equity session, 09:30-16:00 ET Mon-Fri. No holiday calendar: a holiday reads as open, which picks the

@@ -19,15 +19,20 @@ DOC = json.loads((ROOT / "tests" / "fixtures" / "portfolio_protection_books_lq27
 BOOKS = DOC["books"]
 
 
+def _wire(book):
+    return [{**r, **truth.protection_for(r, broker_available=True)} for r in book["raw"]]
+
+
 @pytest.mark.parametrize("book", BOOKS, ids=[b["name"] for b in BOOKS])
 def test_wire_is_protection_for_output(book):
-    wire = [{**r, **truth.protection_for(r, broker_available=True)} for r in book["raw"]]
-    assert wire == book["wire"], "cio_truth.protection_for changed: regenerate the fixture and re-check the page test"
+    assert _wire(book) == book["wire"], "cio_truth.protection_for changed: regenerate the fixture and re-check the page test"
 
 
 @pytest.mark.parametrize("book", BOOKS, ids=[b["name"] for b in BOOKS])
 def test_summary_verdict_and_one_book_invariants(book):
-    got = sp.summary(book["wire"], [])["verdict"]
+    # The backend verdict is computed from the live protection_for output, not the stored wire: a backend that drops
+    # an unpriced row reads OK here while the page (same book) reads GAP, which is the split this contract forbids.
+    got = sp.summary(_wire(book), [])["verdict"]
     assert got == book["expect"]["summary"]
     page = book["expect"]["page"]
     assert not (page == "GAP" and got == "OK"), "page GAP while the backend reads OK"

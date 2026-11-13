@@ -83,5 +83,12 @@ for (const mv of [0, -5]) {
   assert.equal(m.verdict, 'OK'); assert.equal(m.listedNotCounted, 1)
   assert.equal(priceMissing(gapRow({ market_value: 40 })), false)
 }
+// A known positive value with a stale price_missing flag (repriced after the protection read) is listed, as the owner
+// (price_missing_of reads the value) and stops_protection.summary (reads counted:false) both list it: no page-only GAP.
+{
+  const stale = gapRow({ market_value: 40, protection: { state: 'GAP', counted: false, price_missing: true, as_of: doc.now } })
+  const m = verdictOf({ holdings: [protRow, stale], position_counts: { agree: true } })
+  assert.equal(m.verdict, 'OK'); assert.equal(m.listedNotCounted, 1); assert.equal(priceMissing(stale), false)
+}
 
 console.log('portfolioV002.contract.test.ts: ok')
