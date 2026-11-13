@@ -8,6 +8,8 @@ import json
 import math
 import logging
 import os
+import threading
+import time
 import re
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
@@ -14174,8 +14176,71 @@ def _llm_spend():
     }
 
 
-def _system_health_dashboard():
-    """GET /api/v2/system-health — comprehensive system status."""
+_SH_TTL_S = 60.0  # LQ-20261107-2960: a cached dashboard younger than this is served as OK
+_SH_WAIT_S = 6.0  # a caller with nothing cached waits this long for the first computation, then gets UNAVAILABLE
+_SH_LOCK = threading.Lock()
+_SH_STATE: dict = {"value": None, "computed_at": None, "running": None, "error": None}
+
+
+def _sh_refresh():
+    """Compute the dashboard off the request thread; keep the last good value, record a failure beside it."""
+    try:
+        val = _system_health_compute()
+        with _SH_LOCK:
+            _SH_STATE.update(value=val, computed_at=time.time(), error=None)
+    except Exception as e:  # noqa: BLE001
+        with _SH_LOCK:
+            _SH_STATE["error"] = f"{type(e).__name__}: {str(e)[:160]}"
+    finally:
+        with _SH_LOCK:
+            _SH_STATE["running"] = None
+
+
+def _sh_kick():
+    """Single-flight: start at most one background computation; returns its thread."""
+    with _SH_LOCK:
+        t = _SH_STATE["running"]
+        if t is not None and t.is_alive():
+            return t
+        t = threading.Thread(target=_sh_refresh, name="system-health-refresh", daemon=True)
+        _SH_STATE["running"] = t
+    t.start()
+    return t
+
+
+def _system_health_dashboard(now=None):
+    """GET /api/v2/system-health — last good dashboard WITH its age; the computation never runs on the request thread.
+
+    LQ-20261107-2960: the inline computation took 17-44 s under load (every request thread held its slot, the client
+    aborted at 30 s). Now a single-flight background thread refreshes it; a request returns the newest good value at
+    once, labelled freshness OK (<= TTL) or STALE (older, with the live failure beside it), or UNAVAILABLE when none
+    has ever been computed (never a fabricated empty dashboard).
+    """
+    now = time.time() if now is None else now
+    with _SH_LOCK:
+        computed = _SH_STATE["computed_at"]
+    if computed is None or now - computed > _SH_TTL_S:
+        t = _sh_kick()
+        if computed is None:
+            t.join(_SH_WAIT_S)
+    with _SH_LOCK:
+        val, computed, err = _SH_STATE["value"], _SH_STATE["computed_at"], _SH_STATE["error"]
+        running = _SH_STATE["running"] is not None
+    if val is None:
+        return {"status": "UNAVAILABLE", "freshness": "UNAVAILABLE", "value": None,
+                "reason": err or "first computation still running", "refreshing": running,
+                "note": "System health dashboard; no good computation yet."}
+    age = max(0.0, now - computed)
+    out = dict(val)
+    out.update(freshness="OK" if age <= _SH_TTL_S else "STALE", age_s=round(age, 1),
+               as_of=datetime.fromtimestamp(computed, tz=timezone.utc).isoformat(), refreshing=running)
+    if err:
+        out["refresh_error"] = err
+    return out
+
+
+def _system_health_compute():
+    """The dashboard computation (was inline in the route). Table sizes are planner estimates, not COUNT(*)."""
     import subprocess
     from pathlib import Path as _Path
 
@@ -14192,8 +14257,11 @@ def _system_health_dashboard():
         "decision_outcomes",
         "ticker_strategy_classifications",
     ]:
-        row = _db_query(f"SELECT COUNT(*) as cnt FROM {t}", fetch="one") or {}
-        key_tables[t] = row.get("cnt", 0)
+        # pg_class estimate: COUNT(*) of fused_signals alone cost 141 ms and held a request thread (LQ-2960)
+        row = _db_query("SELECT reltuples::bigint AS cnt FROM pg_class WHERE relname = %s AND relkind IN ('r','p')",
+                        (t,), fetch="one") or {}
+        _est = row.get("cnt")
+        key_tables[t] = _est if isinstance(_est, int) and _est >= 0 else None  # -1 = never analyzed: unknown, not 0
     # CIO summary
     cio_summary = _db_query("SELECT action, COUNT(*) as cnt FROM cio_decisions GROUP BY action ORDER BY cnt DESC") or []
     # Cron status
@@ -14252,6 +14320,7 @@ def _system_health_dashboard():
     return {
         "llm": llm,
         "db_tables": key_tables,
+        "db_tables_basis": "pg_class.reltuples estimate (approximate; null = never analyzed)",
         "cio_decisions": [{k: v for k, v in r.items()} for r in cio_summary],
         "cron_jobs": cron_count,
         "finviz_screeners": screeners.get("cnt", 0),
