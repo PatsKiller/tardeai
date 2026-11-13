@@ -13,6 +13,10 @@ with ``alert_type='data_integrity'`` (24 h evidence count). Writes nothing; a GE
   shown labelled, never counted as fresh. Unknown ttl -> ``null``.
 * Failure: unreadable -> ``state: UNKNOWN`` and counts ``null``; a statement timeout -> ``TIMED_OUT``.
   Never an empty list.
+* LQ-20261107-2968: a ``position_unprotected`` row whose producer is NOT the structured ``stop_coverage_incidents`` lane
+  (the legacy ``legacy_send_telegram`` row has no account) is SUPERSEDED, hidden and counted as ``superseded_count``,
+  while that lane's heartbeat is ``status: ok`` and fresh. Consumer-side only: the row is not written or closed.
+  With no fresh heartbeat the legacy row stays visible (unknown beats wrong).
 """
 from __future__ import annotations
 
@@ -23,6 +27,9 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 SCHEMA = "HomeIncidents@v1"
+UNPROTECTED_TYPE = "position_unprotected"
+STRUCTURED_PRODUCER = "stop_coverage_incidents"
+STRUCTURED_HEARTBEAT = "stop_coverage_incidents_last.json"
 REGISTRY_PATH = Path(__file__).resolve().parents[2] / "config" / "home_status_registry.json"
 MAX_ROWS = 500
 STATEMENT_TIMEOUT_MS = 2000
@@ -176,6 +183,21 @@ def restamp(body: dict, held_s: int, *, now: Optional[datetime] = None) -> dict:
     return out
 
 
+def structured_producer_fresh(now: datetime, state_root: Optional[Path] = None) -> bool:
+    """True when the structured stop-coverage lane's own heartbeat says ok and is inside its freshness bar."""
+    try:
+        from scripts.lib.lane_last_receipt import runtime_dir
+        from scripts.lib import home_trade_ready as htr
+        doc = json.loads((Path(runtime_dir(state_root)) / STRUCTURED_HEARTBEAT).read_text(encoding="utf-8"))
+        ok_at = htr.to_utc(doc.get("ok_at")) if isinstance(doc, dict) else None
+        if ok_at is None or doc.get("status") != "ok":
+            return False
+        limit = 900 if htr.in_session_window(now) else 5400
+        return 0 <= (now - ok_at).total_seconds() <= limit
+    except Exception:  # noqa: BLE001 -- unreadable means "not proven fresh": the legacy row stays visible
+        return False
+
+
 def build(db_query: Callable[..., Any], *, now: Optional[datetime] = None, classes: Optional[dict] = None) -> dict:
     now = now or datetime.now(timezone.utc)
     cl = load_classes() if classes is None else classes
@@ -190,9 +212,14 @@ def build(db_query: Callable[..., Any], *, now: Optional[datetime] = None, class
     if rows is None:
         return _failed(base, UNKNOWN, "alert_incidents read returned no result")
 
-    items, hidden = [], 0
+    items, hidden, superseded = [], 0, 0
+    structured_fresh = structured_producer_fresh(now)
     for r in rows:
         r = dict(r)
+        if (structured_fresh and r.get("alert_type") == UNPROTECTED_TYPE
+                and r.get("source_producer") != STRUCTURED_PRODUCER):
+            superseded += 1
+            continue
         cls = cl.get(str(r.get("alert_type")))
         if cls is not None and cls.get("home_visible") is False:
             hidden += 1
@@ -218,4 +245,4 @@ def build(db_query: Callable[..., Any], *, now: Optional[datetime] = None, class
         di["state"] = "TIMED_OUT" if _is_timeout(exc) else UNKNOWN
         di["reason"] = f"alert_events could not be read ({type(exc).__name__})"
     return {**base, "state": "OK", "reason": None, "counts": counts, "items": items,
-            "hidden_count": hidden, "truncated": len(rows) >= MAX_ROWS, "data_integrity_24h": di}
+            "hidden_count": hidden, "superseded_count": superseded, "truncated": len(rows) >= MAX_ROWS, "data_integrity_24h": di}

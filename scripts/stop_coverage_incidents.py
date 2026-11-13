@@ -21,6 +21,11 @@ A position missing from the scan, a blind Schwab read, or a legacy row with no a
 reported as ``unresolved_unknown`` (unknown beats wrong). Off-hours, a DAY-duration stop that expired at the close is
 reported as ``day_stop_expired`` and opens no incident (open decision D1: is that OK or WARN on Home?).
 
+LQ-20261107-2968: the input is the PERSISTED ``stop_lifecycle`` snapshot (written every ~10 min in session by
+``stop_health_check.py`` via system cron ``*/10 9-16 * * 1-5``, and on demand by ``/api/v2/stop-lifecycle``) joined to
+``positions_current``. This lane NEVER calls Schwab, so it needs no broker-read grant. A snapshot older than 900 s in
+session (5400 s off-hours) makes every position UNAVAILABLE: not covered, not uncovered, nothing opened or resolved.
+
 Dry-run by default: prints the plan and writes nothing. ``--apply`` publishes. Account ids are stored as a hash only.
 Never places, modifies or cancels an order; never calls a broker write route.
 """
@@ -120,6 +125,84 @@ def _open_keys(conn) -> list[tuple[str, str]]:
         return [(a, s) for a, s in cur.fetchall()]
 
 
+MAX_AGE_SESSION_S = 900     # */10 writer + margin; the Home reader's bar (ORDERS_MAX_AGE_SESSION_S)
+MAX_AGE_OFF_S = 5400
+POSITIONS_MAX_AGE_SESSION_S = 7200
+WORKING = ("working", "near_trigger")
+SNAPSHOT_SQL = ("SELECT account, symbol, status, lifecycle, health, flags, held_qty, snapshot_at FROM stop_lifecycle")
+POSITIONS_SQL = ("SELECT account_key, symbol, qty, broker_market_value, asset_type, is_cash, as_of "
+                 "FROM positions_current WHERE NOT is_cash AND qty > 0")
+
+
+def _held_filter() -> dict:
+    """The held-position bar the desk-truth coverage check already uses (floor, paper accounts, aliases, exempt)."""
+    try:
+        cfg = json.loads((PROJECT_ROOT / "config" / "desk_truth_monitors.json").read_text(encoding="utf-8"))
+        return dict(cfg.get("held_exit_coverage") or {})
+    except (OSError, ValueError):
+        return {}
+
+
+def scan_from_snapshot(snapshot: list[dict], positions: list[dict], *, now: datetime, session_open: bool = True,
+                       cfg: dict | None = None) -> dict:
+    """Pure. Build a ``scan``-shaped dict from the persisted snapshot + positions; no broker is read.
+
+    * snapshot missing or older than the limit -> ``stale_snapshot`` (every position UNAVAILABLE);
+    * a held position with no WORKING stop in a snapshotted account -> one ``unprotected`` record (a gap);
+    * a held position with a WORKING stop -> a healthy record (covered);
+    * a held position in an account the snapshot has no row for at all (another broker) -> omitted: unknown, never a gap.
+    """
+    cfg = _held_filter() if cfg is None else cfg
+    aliases = dict(cfg.get("account_aliases") or {})
+    paper = {str(x) for x in cfg.get("paper_accounts") or []}
+    exempt = {(str(e.get("account")), str(e.get("symbol")).upper()) for e in cfg.get("exempt") or []
+              if isinstance(e, dict)}
+    floor = float(cfg.get("min_position_value_usd", 0) or 0)
+    skip_types = {str(x).lower() for x in cfg.get("exclude_asset_types") or []}
+    limit = MAX_AGE_SESSION_S if session_open else MAX_AGE_OFF_S
+    newest = max((t for t in (_when(r.get("snapshot_at")) for r in snapshot) if t is not None), default=None)
+    if newest is None:
+        return {"ok": False, "reason": "snapshot_missing", "stops": [], "snapshot_age_s": None}
+    age = (now - newest).total_seconds()
+    if age > limit:
+        return {"ok": False, "reason": "snapshot_stale", "stops": [], "snapshot_age_s": round(age),
+                "limit_s": limit}
+    pos_at = max((t for t in (_when(r.get("as_of")) for r in positions) if t is not None), default=None)
+    # positions are synced less often than the stop snapshot is written; in session a 2 h bar (the desk-truth check's
+    # own), off-hours nothing moves so only "no positions at all" is unavailable
+    if pos_at is None or (session_open and (now - pos_at).total_seconds() > POSITIONS_MAX_AGE_SESSION_S):
+        return {"ok": False, "reason": "positions_stale", "stops": [], "snapshot_age_s": round(age),
+                "limit_s": POSITIONS_MAX_AGE_SESSION_S}
+    live_accts = {str(aliases.get(r.get("account"), r.get("account"))) for r in snapshot
+                  if str(aliases.get(r.get("account"), r.get("account"))) not in paper}
+    working = {(str(aliases.get(r.get("account"), r.get("account"))), str(r.get("symbol") or "").upper())
+               for r in snapshot if str(r.get("lifecycle") or "") in WORKING}
+    stops: list[dict] = []
+    for p in positions:
+        acct, sym = str(p.get("account_key")), str(p.get("symbol") or "").strip().upper()
+        if not sym or acct in paper or acct not in live_accts or (acct, sym) in exempt:
+            continue
+        if str(p.get("asset_type") or "").lower() in skip_types:
+            continue
+        mv = p.get("broker_market_value")
+        if floor and mv is not None and abs(float(mv)) < floor:
+            continue                       # dust: not checked (a missing value is checked)
+        if (acct, sym) in working:
+            stops.append({"account": acct, "symbol": sym, "health": "ok", "flags": []})
+        else:
+            stops.append({"account": acct, "symbol": sym, "health": "alert", "flags": ["unprotected"],
+                          "held_qty": float(p.get("qty") or 0), "status": None})
+    return {"ok": True, "stops": stops, "generated_at": now, "snapshot_age_s": round(age),
+            "summary": {"total": len(stops)}, "errors": [], "schwab_stops_status": "SNAPSHOT"}
+
+
+def _fetch(conn, sql: str) -> list[dict]:
+    with conn.cursor() as cur:
+        cur.execute(sql)
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
 def run(scan: dict, *, conn: Any = None, publish: Callable | None = None, apply: bool = False,
         session_open: bool = True) -> dict:
     """Plan, and with ``apply`` publish one occurrence per gap and one resolving occurrence per proven recovery."""
@@ -161,11 +244,18 @@ def main(argv: list[str] | None = None) -> int:
     apply = "--apply" in argv
     started = datetime.now(timezone.utc).isoformat()
     try:
-        import stop_lifecycle_monitor as slm
-        scan = slm.scan(persist=False)
-        # the -offhours lane passes --offhours; the in-session lane does not (no clock guessing in this script)
-        out = run(scan, apply=apply, session_open="--offhours" not in argv)
-        status = "ok" if out["ok"] else "error"
+        from db_adapter import _get_conn
+        conn = _get_conn()
+        now = datetime.now(timezone.utc)
+        session_open = "--offhours" not in argv   # the -offhours lane passes --offhours (no clock guessing here)
+        scan = scan_from_snapshot(_fetch(conn, SNAPSHOT_SQL), _fetch(conn, POSITIONS_SQL), now=now,
+                                  session_open=session_open)
+        out = run(scan, conn=conn, apply=apply, session_open=session_open)
+        if scan.get("reason") in ("snapshot_missing", "snapshot_stale", "positions_stale"):
+            out["reason"] = scan["reason"]
+            out["snapshot_age_s"] = scan.get("snapshot_age_s")
+        status = "ok" if out["ok"] else ("unavailable" if out.get("reason") in
+                                         ("snapshot_missing", "snapshot_stale", "positions_stale") else "error")
         doc = {"started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(), "status": status,
                "dry_run": not apply, **{k: len(v) if isinstance(v, list) else v for k, v in out.items()}}
     except BaseException as exc:

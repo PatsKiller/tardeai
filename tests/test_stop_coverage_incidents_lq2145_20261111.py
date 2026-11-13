@@ -175,11 +175,15 @@ def test_c3_one_raising_key_does_not_hide_the_rest_and_fails_the_run():
 def test_c3_failed_run_exits_nonzero_and_leaves_no_fresh_ok_at(tmp_path, monkeypatch):
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
 
-    class Slm:
-        @staticmethod
-        def scan(persist=False):
-            return scan([rec("AAA")])
-    monkeypatch.setitem(sys.modules, "stop_lifecycle_monitor", Slm)
+    # LQ-2968: main() reads the persisted snapshot, not the broker; run() is stubbed below, so the inputs are empty
+    fake_db = type(sys)("db_adapter")
+    fake_db._get_conn = lambda: Conn()
+    monkeypatch.setitem(sys.modules, "db_adapter", fake_db)
+    _now = datetime.now(timezone.utc)   # a fresh snapshot, so the stubbed run() result is what main() reports
+    monkeypatch.setattr(sci, "_fetch", lambda conn, sql: [{"account": ACCT, "symbol": "AAA", "lifecycle": "working",
+                                                           "snapshot_at": _now, "as_of": _now, "account_key": ACCT,
+                                                           "qty": 1, "broker_market_value": 5000.0,
+                                                           "asset_type": "EQUITY", "is_cash": False}])
     monkeypatch.setattr(sci, "run", lambda s, **k: {"ok": False, "reason": "publish_failed", "failed": 1,
                                                     "gaps": [1], "resolve": [], "unresolved_unknown": [],
                                                     "day_stop_expired": [], "applied": False})
@@ -198,11 +202,15 @@ def test_heartbeat_follows_state_root_the_reader_uses(tmp_path, monkeypatch):
 def test_dry_run_main_writes_no_heartbeat(tmp_path, monkeypatch):
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
 
-    class Slm:
-        @staticmethod
-        def scan(persist=False):
-            return scan([rec("AAA")])
-    monkeypatch.setitem(sys.modules, "stop_lifecycle_monitor", Slm)
+    # LQ-2968: main() reads the persisted snapshot, not the broker; run() is stubbed below, so the inputs are empty
+    fake_db = type(sys)("db_adapter")
+    fake_db._get_conn = lambda: Conn()
+    monkeypatch.setitem(sys.modules, "db_adapter", fake_db)
+    _now = datetime.now(timezone.utc)   # a fresh snapshot, so the stubbed run() result is what main() reports
+    monkeypatch.setattr(sci, "_fetch", lambda conn, sql: [{"account": ACCT, "symbol": "AAA", "lifecycle": "working",
+                                                           "snapshot_at": _now, "as_of": _now, "account_key": ACCT,
+                                                           "qty": 1, "broker_market_value": 5000.0,
+                                                           "asset_type": "EQUITY", "is_cash": False}])
     monkeypatch.setattr(sci, "run", lambda s, **k: {"ok": True, "gaps": [1], "resolve": [], "unresolved_unknown": [],
                                                     "day_stop_expired": [], "applied": False, "reason": None})
     assert sci.main([]) == 0
