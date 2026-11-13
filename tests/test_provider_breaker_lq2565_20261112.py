@@ -40,6 +40,19 @@ import scripts.lib.llm_consumption as lc  # noqa: E402
 from lib import provider_breaker as pb  # noqa: E402
 from lib import oauth_lane_status as ols  # noqa: E402
 
+#: The ``lib.*`` submodules this file bound at import. A neighbour that drops ``lib.*`` from ``sys.modules`` at its
+#: module teardown (test_lane_repair_ri_hermes_litmus_20261015) would otherwise make the code under test
+#: re-import fresh copies at call time, so the ``ols``/``pb`` patches below would miss it (LQ-20261107-2704, D3).
+#: The ``lib`` package itself is NOT pinned: ``import lib.x as y`` binds through the package attribute, and a stale
+#: package would hand a test an old ``lib.x`` while the code under test resolves the current one.
+_LIB_MODULES = {n: m for n, m in sys.modules.items() if n.startswith("lib.")}
+
+
+@pytest.fixture(autouse=True)
+def _pin_lib_modules(monkeypatch):
+    for name, mod in _LIB_MODULES.items():
+        monkeypatch.setitem(sys.modules, name, mod)
+
 ET = ZoneInfo("America/New_York")
 PROCESS = "topic_curator"  # registry lane_policy "either": grok + chatgpt
 CFG = {

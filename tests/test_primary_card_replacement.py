@@ -30,6 +30,19 @@ PRES = ROOT / "apps" / "command-center-v3" / "src" / "lib" / "operatorDecisionCa
 
 # ── backend: packet delivered inline on the item ──────────────────────────────
 
+def _wl_items_or_skip(api_v2, params):
+    """``_wl_items`` reads through ``_db_required`` (LQ-2485 / 2622): an unreadable store raises
+    ``_DbReadError`` instead of answering ``items: []``. With no database here (connection class,
+    ``unavailable``) there is nothing to measure, so skip; a query/schema failure is a real regression
+    in the items SQL and still fails (LQ-20261107-2704, REVIEW-2663 S1)."""
+    try:
+        return api_v2._wl_items(params)
+    except api_v2._DbReadError as exc:
+        if not exc.unavailable:
+            raise
+        pytest.skip(f"watchlist store not reachable in this environment: {exc.cause}")
+
+
 def test_items_query_joins_the_latest_live_packet():
     import api_v2
     src = Path(api_v2.__file__).read_text()
@@ -41,11 +54,33 @@ def test_items_query_joins_the_latest_live_packet():
     assert "ORDER BY dpp.generated_at DESC LIMIT 1" in j[:400]
 
 
+def test_adapter_skips_only_a_missing_database_never_a_broken_query(monkeypatch):
+    """S1 guard: an unreachable store is "cannot measure here"; a schema/query error must stay red."""
+    import api_v2
+
+    def boom(unavailable):
+        def _raise(_params):
+            raise api_v2._DbReadError("synthetic", unavailable=unavailable)
+        return _raise
+
+    monkeypatch.setattr(api_v2, "_wl_items", boom(True))
+    with pytest.raises(pytest.skip.Exception):
+        _wl_items_or_skip(api_v2, {})
+    monkeypatch.setattr(api_v2, "_wl_items", boom(False))
+    try:
+        _wl_items_or_skip(api_v2, {})
+    except api_v2._DbReadError:
+        pass
+    except pytest.skip.Exception:  # a skip here would hide a broken items query: fail, never skip
+        pytest.fail("a query/schema _DbReadError was skipped instead of failing")
+    else:
+        pytest.fail("a query/schema _DbReadError was swallowed")
+
 def test_analysed_symbol_carries_a_packet_and_others_do_not():
     import importlib
     import api_v2
     importlib.reload(api_v2)
-    r = api_v2._wl_items({"symbol": ["BETA"]})
+    r = _wl_items_or_skip(api_v2, {"symbol": ["BETA"]})
     items = r.get("items") or []
     if not items or not items[0].get("decision_packet"):
         pytest.skip("no live BETA packet persisted in this environment")
@@ -60,7 +95,7 @@ def test_inline_packet_does_not_blow_up_list_latency():
     import api_v2
     importlib.reload(api_v2)
     t0 = time.time()
-    r = api_v2._wl_items({"sort": ["hermes"]})
+    r = _wl_items_or_skip(api_v2, {"sort": ["hermes"]})
     dt = (time.time() - t0) * 1000
     assert len(r.get("items") or []) > 0
     assert dt < 6000, f"items list took {dt:.0f}ms — the packet join regressed it"
