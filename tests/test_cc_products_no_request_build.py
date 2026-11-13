@@ -225,13 +225,17 @@ def iso_pg():
         pg.verify_isolated()
         conn = psycopg2.connect(host=pg.host, port=pg.port, dbname=pg.dbname, user=pg.user, password=pg.password)
         with conn.cursor() as cur:
-            cur.execute(store_pg.TEST_DDL)
+            cur.execute("CREATE ROLE trade_ai NOLOGIN")
+            cur.execute("GRANT CREATE, USAGE ON SCHEMA public TO trade_ai")
+            cur.execute("SET ROLE trade_ai")
+            cur.execute(store_pg.MIGRATION_PATH.read_text())  # LQ-2646: the operator migration, not a DDL copy
+            cur.execute("RESET ROLE")
             body = json.dumps(small_payload()).encode()
             cur.execute(
                 "INSERT INTO cc_product_current (product_id, scope_key, body, etag, seq, as_of, built_at, "
-                "next_refresh_at, stale_after_s, hard_expiry_s, purge_after_s, status) "
-                "VALUES ('cio.pages','global',%s,'sha256:x',3,now(),now(),now(),360,1800,604800,'OK')",
-                (psycopg2.Binary(body),))
+                "next_refresh_at, stale_after_s, hard_expiry_s, purge_after_s, status, checked_at, bytes) "
+                "VALUES ('cio.pages','global',%s,'sha256:x',3,now(),now(),now(),360,1800,604800,'OK',now(),%s)",
+                (psycopg2.Binary(body), len(body)))
         conn.commit()
         yield pg, conn
         conn.close()

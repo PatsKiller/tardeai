@@ -1,4 +1,8 @@
-"""store_pg against a disposable initdb cluster (LQ-20261107-2595). Never touches the production database."""
+"""store_pg against a disposable initdb cluster (LQ-20261107-2595). Never touches the production database.
+
+LQ-20261107-2646 (REVIEW-2606 F3): the cluster is stood up from the operator migration itself
+(``store_pg.MIGRATION_PATH``, applied as role trade_ai), not from a private DDL copy.
+"""
 
 from __future__ import annotations
 
@@ -19,7 +23,7 @@ from support.isolated_pg import IsolatedPostgres  # noqa: E402
 from scripts.lib.cc_products import store_pg  # noqa: E402
 from scripts.lib.cc_products.store_pg import (  # noqa: E402
     MAX_BODY_BYTES,
-    TEST_DDL,
+    MIGRATION_PATH,
     BodyTooLarge,
     log_build,
     read_current,
@@ -50,7 +54,11 @@ def cluster():
         conn = _connect(pg)
         conn.autocommit = True
         with conn.cursor() as cur:
-            cur.execute(TEST_DDL)
+            cur.execute("CREATE ROLE trade_ai NOLOGIN")
+            cur.execute("GRANT CREATE, USAGE ON SCHEMA public TO trade_ai")
+            cur.execute("SET ROLE trade_ai")
+            cur.execute(MIGRATION_PATH.read_text())
+            cur.execute("RESET ROLE")
         conn.close()
         yield pg
     finally:
@@ -118,7 +126,7 @@ def test_read_works_with_a_dict_cursor(conn):
         assert try_lock(cur, "cio.pages") is True
 
 
-def test_unchanged_body_keeps_seq_and_moves_built_at(conn):
+def test_unchanged_body_keeps_seq_and_built_at_and_moves_checked_at(conn):
     with conn.cursor() as cur:
         _write(cur, b'{"a":1}')
         later = T0 + timedelta(seconds=120)
@@ -127,7 +135,10 @@ def test_unchanged_body_keeps_seq_and_moves_built_at(conn):
         assert res == {"changed": False, "seq": 1, "etag": store_pg.etag_for(b'{"a":1}')}
         row = read_current(cur, "cio.pages")
     assert row["seq"] == 1
-    assert row["built_at"] == later
+    assert row["built_at"] == T0  # phase-0 DDL: built_at = when this body was produced (LQ-2646)
+    with conn.cursor() as cur:
+        cur.execute("SELECT checked_at FROM cc_product_current WHERE product_id = 'cio.pages'")
+        assert cur.fetchone()[0] == later
     assert row["next_refresh_at"] == later + timedelta(seconds=120)
     # LQ-2595 integration: an unchanged body keeps body/seq/etag, but as_of is the new build's source
     # watermark (else a product whose content is steady would read STALE, then UNKNOWN, while rebuilding fine)
@@ -151,12 +162,12 @@ def test_changed_body_bumps_seq(conn):
 def test_scopes_are_independent(conn):
     with conn.cursor() as cur:
         _write(cur, b"1")
-        write_current(cur, "cio.pages", "acct:9", b"2", as_of=None, built_at=T0, next_refresh_at=None,
+        write_current(cur, "cio.pages", "acct:9", b"2", as_of=T0, built_at=T0, next_refresh_at=None,
                       stale_after_s=1, hard_expiry_s=2, purge_after_s=3, source_watermarks={}, builder_sha="",
                       build_ms=0)
         assert read_current(cur, "cio.pages")["body"] == b"1"
         other = read_current(cur, "cio.pages", "acct:9")
-    assert other["body"] == b"2" and other["seq"] == 1 and other["as_of"] is None
+    assert other["body"] == b"2" and other["seq"] == 1 and other["as_of"] == T0
 
 
 def test_body_over_two_megabytes_raises_and_writes_nothing(conn):
@@ -172,18 +183,20 @@ def test_log_build_inserts_a_row(conn):
     with conn.cursor() as cur:
         log_build(cur, "cio.pages", "global", "OK", started_at=T0, finished_at=T0 + timedelta(seconds=2),
                   build_ms=2000, lane="dp-fast", peak_rss_kb=123456, bytes_=789, error=None)
-        log_build(cur, "cio.pages", "global", "SKIPPED_BUSY", started_at=T0, finished_at=T0, build_ms=0)
-        cur.execute("SELECT product_id, scope_key, lane, outcome, build_ms, peak_rss_kb, bytes, error, started_at "
+        log_build(cur, "cio.pages", "global", "SKIPPED_BUSY", started_at=T0, finished_at=T0, build_ms=0,
+                  lane="dp-fast")
+        cur.execute("SELECT product_id, scope_key, lane, outcome, build_ms, peak_rss_kb, bytes_written, error, "
+                    "started_at "
                     "FROM cc_product_build_log ORDER BY id")
         rows = cur.fetchall()
-    assert rows[0] == ("cio.pages", "global", "dp-fast", "OK", 2000, 123456, 789, None, T0)
-    assert rows[1][3] == "SKIPPED_BUSY" and rows[1][2] is None
+    assert rows[0] == ("cio.pages", "global", "dp-fast", "BUILT", 2000, 123456, 789, None, T0)  # receipt OK
+    assert rows[1][3] == "SKIPPED_BUSY" and rows[1][2] == "dp-fast"
     assert len(rows) == 2
 
 
 def test_log_build_rejects_unknown_outcome(conn):
     with conn.cursor() as cur, pytest.raises(ValueError):
-        log_build(cur, "cio.pages", "global", "MAYBE", started_at=T0, finished_at=T0, build_ms=0)
+        log_build(cur, "cio.pages", "global", "MAYBE", started_at=T0, finished_at=T0, build_ms=0, lane="dp-fast")
 
 
 def test_try_lock_is_false_while_held_and_never_blocks(cluster, conn):

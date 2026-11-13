@@ -32,6 +32,7 @@ from typing import Any, Callable
 
 PRODUCT_ID = "cio.pages"
 SCOPE_KEY = "global"
+LANE = "dp-fast"  # phase-0 tier lane for cio.pages (FAST); cc_product_build_log.lane is NOT NULL
 CADENCE_S = 120
 #: Build deadline. Under the cadence so a build never runs into the next tick. The 12 Nov cold dry run took
 #: 73.9 s at host load ~29 (receipt in the LQ-2595 READY); p95 above half the cadence is an open finding.
@@ -361,7 +362,7 @@ def _iso(value) -> str | None:
 
 
 def run_once(*, connect, root, hot=None, dry_run: bool, now=None, builder_sha="", timeout_s=BUILD_TIMEOUT_S,
-             store=None, codec=None, scope_key: str = SCOPE_KEY, lane: str | None = None, **kw) -> dict:
+             store=None, codec=None, scope_key: str = SCOPE_KEY, lane: str = LANE, **kw) -> dict:
     """One build of ``cio.pages``. Returns the receipt dict (same shape for a dry run).
 
     Live: try-lock (busy → log SKIPPED_BUSY, no build) → ``build_in_child`` → ``write_current`` + log OK|UNCHANGED in
@@ -438,6 +439,13 @@ def run_once(*, connect, root, hot=None, dry_run: bool, now=None, builder_sha=""
             return receipt
         built_at = clock()
         as_of_dt = _parse_ts(result["as_of"])
+        if as_of_dt is None:  # cc_product_current.as_of is NOT NULL: a clockless body is a failed build, last good stays
+            err = f"build produced no readable as_of ({result.get('as_of')!r})"
+            store.log_build(cur, PRODUCT_ID, scope_key, "FAILED", started_at=started_at, finished_at=built_at,
+                            build_ms=result["build_ms"], lane=lane, peak_rss_kb=result["peak_rss_kb"], error=err)
+            conn.commit()
+            receipt.update(outcome="FAILED", error=err, finished_at=_iso(built_at))
+            return receipt
         try:
             written = store.write_current(
                 cur, PRODUCT_ID, scope_key, result["body"], as_of=as_of_dt, built_at=built_at,
@@ -520,7 +528,7 @@ def main(argv=None) -> int:
     ap.add_argument("--timeout", type=float, default=BUILD_TIMEOUT_S, help="build deadline in seconds (default %(default)s)")
     ap.add_argument("--rlimit-mb", type=int, default=DEFAULT_RLIMIT_AS // (1024 * 1024))
     ap.add_argument("--builder-sha", default=os.environ.get("TRADEAI_BUILDER_SHA", ""))
-    ap.add_argument("--lane", default=None)
+    ap.add_argument("--lane", default=LANE)
     args = ap.parse_args(argv)
     root = Path(args.root) if args.root else default_state_root()
     common = dict(root=root, dry_run=args.dry_run, builder_sha=args.builder_sha, timeout_s=args.timeout,
