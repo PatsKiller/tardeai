@@ -45041,7 +45041,7 @@
       "id": "cio-pages-product",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "lq_2743_cio_pages_product_builder_20261112",
       "stage": "shadow",
       "purpose": {
@@ -45154,12 +45154,12 @@
       "review_by": "2026-11-26",
       "review": {
         "prepared_by": "agent draft (cc-opus-2, LQ-2743, 2026-11-12)",
-        "status": "DRAFT",
-        "reviewed_by": null,
-        "reviewed_on": null,
+        "status": "REVIEWED",
+        "reviewed_by": "cc-sonnet-6 (non-author; LQ-20261107-2969)",
+        "reviewed_on": "2026-11-13",
         "requested_of": null,
         "requested_on": null,
-        "note": "Draft at shadow per the lead's assignment (LQ-2743); needs a non-author reviewer before the registry change merges."
+        "note": "Reviewed by a non-author against scripts/cc_products_cio_pages.py, scripts/lib/cc_products/cio_pages.py, the registry row and the allowlist row (LQ-2969). Shadow-stage review: the live-run checks (output_advanced, stale) and the */2 freshness tightening are re-reviewed at promotion."
       }
     }
   ],
