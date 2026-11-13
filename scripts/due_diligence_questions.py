@@ -857,6 +857,11 @@ def route(cur, limit: int) -> dict:
         out["_db"] = (conn, cur)
     if not lanes:
         out["detail"].append("no research lane met the minimum success rate")
+        # LQ-20261107-2641 (REVIEW-2632 G1): the rows were SELECTED and every one of them is now a
+        # standing gap, exactly like a lane refusing per question. Reporting failed=0 here made
+        # `_route_verdict` read the run as an empty backlog and write ok over it. With no rows the
+        # same branch is an idle lane and stays nothing_due.
+        out["failed"] = len(rows)
         if rows:
             cur.execute("UPDATE due_diligence_questions SET routed_at = NULL "
                         "WHERE question_guid = ANY(%s) AND status = 'ASKED'", ([r[0] for r in rows],))
