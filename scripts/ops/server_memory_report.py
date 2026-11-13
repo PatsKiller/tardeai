@@ -13,6 +13,7 @@ reports:
   pid_changes     every sample whose pid changed (restart), with the release before and after
   release_changes every release change
   recreated       every ``cgroup_recreated`` marker
+  unit_read_failures  samples whose systemctl read failed (pid null); never counted as a restart
   correlation     for the peak sample and for each burst: the window [ts-window, ts+window] with that window's max of
                   memory, pressure, threads, close_wait and the number of reaped-compute log lines
 Lines that do not parse are counted in ``bad_lines`` and skipped.
@@ -24,7 +25,17 @@ import json
 import re
 import sys
 from pathlib import Path
+from datetime import datetime
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
+
+ET = ZoneInfo("America/New_York")
+
+
+def et(ts: Optional[float]) -> Optional[str]:
+    """Epoch seconds as an ISO-8601 US Eastern string, so a reader can match a sample to the freeze (review 3020r Low)."""
+    return None if ts is None else datetime.fromtimestamp(ts, ET).isoformat(timespec="seconds")
+
 
 PSI_RE = re.compile(r"(some|full) avg10=([\d.]+)")
 
@@ -43,7 +54,7 @@ def load(path: Path) -> tuple[list[dict[str, Any]], int]:
                 continue
             if not isinstance(d, dict) or not isinstance(d.get("ts"), (int, float)):
                 bad += 1
-            elif d.get("markers") != ["stopped_at_cap"]:   # the cap line is a marker, not a sample
+            elif d.get("markers") not in (["stopped_at_cap"], ["stopped_on_error"]):   # stop lines are markers, not samples
                 rows.append(d)
     rows.sort(key=lambda r: r["ts"])
     return rows, bad
@@ -71,7 +82,7 @@ def _max(rows: list[dict[str, Any]], key: str) -> Optional[dict[str, Any]]:
     for r in rows:
         v = metrics(r)[key]
         if v is not None and (best is None or v > best["value"]):
-            best = {"value": v, "ts": r["ts"]}
+            best = {"value": v, "ts": r["ts"], "ts_et": et(r["ts"])}
     return best
 
 
@@ -94,7 +105,7 @@ def bursts(rows: list[dict[str, Any]], gap: float) -> list[dict[str, Any]]:
         if d <= 0:
             continue
         if cur is None or r["ts"] - cur["end"] > gap:
-            cur = {"start": r["ts"], "end": r["ts"], "high_events": 0, "_rows": []}
+            cur = {"start": r["ts"], "start_et": et(r["ts"]), "end": r["ts"], "high_events": 0, "_rows": []}
             out.append(cur)
         cur["end"] = r["ts"]
         cur["high_events"] += d
@@ -114,13 +125,19 @@ def report(rows: list[dict[str, Any]], bad: int, window_s: float = 10.0, gap_s: 
     big = max(gaps) if gaps else (0.0, rows[0]["ts"])
     peaks = {k: _max(rows, k) for k in ("cg_current_b", "rss_kb", "hwm_kb", "threads", "psi_some10", "psi_full10",
                                          "tcp_est", "tcp_close_wait")}
-    pid_changes, rel_changes, recreated = [], [], []
-    for a, b in zip(rows, rows[1:]):
-        if a.get("pid") != b.get("pid"):
-            pid_changes.append({"ts": b["ts"], "from": a.get("pid"), "to": b.get("pid"),
-                                "release_from": a.get("release"), "release_to": b.get("release")})
-        if a.get("release") != b.get("release"):
-            rel_changes.append({"ts": b["ts"], "from": a.get("release"), "to": b.get("release")})
+    pid_changes, rel_changes, recreated, unit_failed = [], [], [], []
+    last_pid, last_rel = None, None          # last KNOWN values: a null pid (unit read failed) is an unknown, not a change
+    for r in rows:
+        if "unit_read_failed" in (r.get("markers") or []) or ("pid" in r and r["pid"] is None):
+            unit_failed.append({"ts": r["ts"], "ts_et": et(r["ts"])})
+        elif last_pid is not None and r.get("pid") != last_pid:
+            pid_changes.append({"ts": r["ts"], "ts_et": et(r["ts"]), "from": last_pid, "to": r.get("pid"),
+                                "release_from": last_rel, "release_to": r.get("release")})
+        if not ("unit_read_failed" in (r.get("markers") or []) or ("pid" in r and r["pid"] is None)):
+            last_pid = r.get("pid")
+        if last_rel is not None and r.get("release") != last_rel:
+            rel_changes.append({"ts": r["ts"], "ts_et": et(r["ts"]), "from": last_rel, "to": r.get("release")})
+        last_rel = r.get("release")
     for r in rows:
         if "cgroup_recreated" in (r.get("markers") or []):
             recreated.append(r["ts"])
@@ -131,9 +148,9 @@ def report(rows: list[dict[str, Any]], bad: int, window_s: float = 10.0, gap_s: 
     for b in bs:
         corr.append({"what": "high_burst", "start": b["start"], **window(rows, (b["start"] + b["end"]) / 2, max(window_s, (b["end"] - b["start"]) / 2 + window_s))})
     return {"samples": len(rows), "bad_lines": bad,
-            "span": {"first_ts": rows[0]["ts"], "last_ts": rows[-1]["ts"], "max_gap_s": round(big[0], 3), "max_gap_at": big[1]},
+            "span": {"first_ts": rows[0]["ts"], "first_ts_et": et(rows[0]["ts"]), "last_ts": rows[-1]["ts"], "last_ts_et": et(rows[-1]["ts"]), "max_gap_s": round(big[0], 3), "max_gap_at": big[1]},
             "peaks": peaks, "high_bursts": bs, "pid_changes": pid_changes, "release_changes": rel_changes,
-            "recreated": recreated, "correlation": corr}
+            "recreated": recreated, "unit_read_failures": unit_failed, "correlation": corr}
 
 
 def main(argv: Optional[list[str]] = None) -> int:

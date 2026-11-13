@@ -32,7 +32,7 @@ def test_peaks_gap_and_bursts(tmp_path):
     rows[8] = row(16, high=1)
     rows = [r for r in rows if r["ts"] != 12]   # a stall: 10 -> 14 is a 4 s gap
     rep = rp.report(*rp.load(write(tmp_path, rows)))
-    assert rep["peaks"]["cg_current_b"] == {"value": 2_800_000_000, "ts": 6}
+    assert {k: rep["peaks"]["cg_current_b"][k] for k in ("value", "ts")} == {"value": 2_800_000_000, "ts": 6}
     assert rep["peaks"]["threads"]["value"] == 140 and rep["peaks"]["tcp_close_wait"]["value"] == 9
     assert rep["peaks"]["psi_some10"]["value"] == 12.5
     assert rep["span"]["max_gap_s"] == 4 and rep["span"]["max_gap_at"] == 10
@@ -43,8 +43,8 @@ def test_peaks_gap_and_bursts(tmp_path):
 def test_pid_and_release_changes(tmp_path):
     rows = [row(1), row(3), row(5, pid=2, rel="b"), row(7, pid=2, rel="b")]
     rep = rp.report(*rp.load(write(tmp_path, rows)))
-    assert rep["pid_changes"] == [{"ts": 5, "from": 1, "to": 2, "release_from": "a", "release_to": "b"}]
-    assert rep["release_changes"] == [{"ts": 5, "from": "a", "to": "b"}]
+    assert [{k: v for k, v in c.items() if k != "ts_et"} for c in rep["pid_changes"]] == [{"ts": 5, "from": 1, "to": 2, "release_from": "a", "release_to": "b"}]
+    assert [{k: v for k, v in c.items() if k != "ts_et"} for c in rep["release_changes"]] == [{"ts": 5, "from": "a", "to": "b"}]
 
 
 def test_correlation_window_counts_reaped_lines(tmp_path):
@@ -77,3 +77,22 @@ def test_empty_and_missing_file(tmp_path, capsys):
     assert rp.main([str(tmp_path / "none.jsonl")]) == 2
     p = write(tmp_path, [row(1)])
     assert rp.main([str(p)]) == 0 and '"samples": 1' in capsys.readouterr().out
+
+
+def test_rework_a_failed_unit_read_is_not_a_pid_change_in_the_report(tmp_path):
+    rows = [row(1, pid=100), row(3, pid=None, markers=["unit_read_failed"]), row(5, pid=100), row(7, pid=101)]
+    rep = rp.report(*rp.load(write(tmp_path, rows)))
+    assert [(c["from"], c["to"]) for c in rep["pid_changes"]] == [(100, 101)]
+    assert [f["ts"] for f in rep["unit_read_failures"]] == [3]
+
+
+def test_rework_times_carry_an_eastern_string(tmp_path):
+    rep = rp.report(*rp.load(write(tmp_path, [row(1_794_600_000), row(1_794_600_002, cur=2_000_000_000)])))
+    assert rep["peaks"]["cg_current_b"]["ts_et"] == rp.et(1_794_600_002) and rep["span"]["first_ts_et"].endswith(("-05:00", "-04:00"))
+    assert rp.et(None) is None
+
+
+def test_rework_a_stopped_on_error_line_is_a_marker_not_a_sample(tmp_path):
+    p = write(tmp_path, [row(1)], extra=json.dumps({"ts": 2, "markers": ["stopped_on_error"]}) + "\n")
+    rows, bad = rp.load(p)
+    assert len(rows) == 1 and bad == 0
