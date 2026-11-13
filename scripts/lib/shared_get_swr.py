@@ -56,6 +56,10 @@ parallel reports/analyst/links + cio-card + market-risk/latest builds):
   abandoned_total. The thread keeps running (it cannot be killed) but no longer holds a cap token or a host slot;
   its late result still goes through the older-never-overwrites-newer rule. Two hung builds therefore no longer
   starve every key until a restart. A canary alerts on abandoned_builds > 0.
+  Review v2 NB1: the reap releases the build SLOT only; the per-key host lock stays held until the abandoned thread
+  really ends, and the key is refused (REFUSED_DUPLICATE) meanwhile, so a hung build never gains a same-key twin.
+  At most SWR_MAX_ABANDONED (default 2) abandoned threads exist; past that, expired builds are not reaped (they keep
+  their cap token: new builds are refused, the bounded v1 behaviour) and ABANDONED_LEASE_LIMIT is logged.
 * LOCKING (review N5): the cgroup / proc reads and the slot-dir open + flock run OUTSIDE _LOCK. A build is first
   RESERVED under the lock (it counts against the cap and dedupes the key at once), the I/O runs unlocked, and the
   reservation is then committed (thread started) or rolled back (refusal recorded) under the lock again.
@@ -85,6 +89,7 @@ DEFAULT_MAX_ENTRIES = 256
 DEFAULT_REFUSE_LOG_INTERVAL_S = 30.0
 DEFAULT_STATS_LOG_INTERVAL_S = 60.0
 DEFAULT_BUILD_LEASE_S = 300.0
+DEFAULT_MAX_ABANDONED = 2
 
 _LOCK = threading.Lock()
 _ENTRIES: dict = {}  # key -> {"mono", "wall", "payload", "started"}
@@ -93,6 +98,7 @@ _ERRORS: dict = {}  # key -> {"mono", "wall", "error"}
 _RUNNING: dict = {}  # token -> {"key", "started", "slots", "thread"}: builds holding a cap token (incl. stuck)
 _ABANDONED: dict = {}  # token -> {"key", "started", "abandoned_wall"}: lease-expired threads still alive
 _ABANDONED_TOTAL = [0]
+_ABANDON_LIMIT_LOGGED = [0.0]
 _REFUSED: dict = {}  # key -> {"mono", "wall", "outcome", "detail", "logged_mono"}
 _COUNTERS: dict = {}  # route -> {"hit", "stale", "unknown", "built", "failed", "refused_cap", "refused_memory"}
 _ROUTES: dict = {}  # key -> route
@@ -113,6 +119,10 @@ def max_concurrent_builds() -> int:
 
 def build_lease_s() -> float:
     return _env_float("SWR_BUILD_LEASE_S", DEFAULT_BUILD_LEASE_S)
+
+
+def max_abandoned() -> int:
+    return max(0, int(_env_float("SWR_MAX_ABANDONED", DEFAULT_MAX_ABANDONED)))
 
 
 def _iso(wall: float) -> str:
@@ -404,7 +414,10 @@ def _run(key: str, build, started: float, token: int, wall0: float, rss0) -> Non
             if cur is not None and cur.get("token") == token:
                 _INFLIGHT.pop(key, None)
             run = _RUNNING.pop(token, None)  # None when the lease reaper (or clear) already took ownership
-            abandoned = _ABANDONED.pop(token, None) is not None
+            ab = _ABANDONED.pop(token, None)
+            abandoned = ab is not None
+            if ab is not None:
+                release_slots(ab.get("key_slots"))  # the key lock was kept while the abandoned thread ran (NB1)
             if run is not None:
                 release_slots(run.get("slots"))  # the only owner left: released exactly once
             counters = _count(route, "built" if outcome == "BUILT" else "failed")
@@ -445,17 +458,34 @@ def _reap_leases() -> list:
         return []
     now = time.monotonic()
     docs = []
+    limit = max_abandoned()
     for token, run in list(_RUNNING.items()):
         if run.get("thread") is None or now - run["started"] < lease:
             continue
+        if len(_ABANDONED) >= limit:
+            # Review v2 NB1: abandoned threads are bounded. Past the limit the expired build keeps its cap token and
+            # slots (the bounded v1 behaviour: new builds are refused) and one rate-limited line says so.
+            if now - _ABANDON_LIMIT_LOGGED[0] >= _env_float("SWR_REFUSE_LOG_INTERVAL_S", DEFAULT_REFUSE_LOG_INTERVAL_S):
+                _ABANDON_LIMIT_LOGGED[0] = now
+                route = _ROUTES.get(run["key"], run["key"])
+                docs.append({"event": "swr_build", "key": run["key"], "route": route,
+                             "outcome": "ABANDONED_LEASE_LIMIT", "start": None, "end": None,
+                             "running_s": round(now - run["started"], 1), "lease_s": lease, "rss_kb": None,
+                             "abandoned_builds": len(_ABANDONED), "max_abandoned": limit,
+                             "running_builds_after": len(_RUNNING)})
+            break
         _RUNNING.pop(token, None)
-        slots, run["slots"] = run.get("slots"), None
-        release_slots(slots)
+        slots, run["slots"] = list(run.get("slots") or []), None
+        # Review v2 NB1: release the build SLOT but KEEP the per-key host lock until the thread really ends, so the same
+        # key can never be built twice at once (here or in another process). _run's finally releases it.
+        key_slots, slot_fds = slots[:1], slots[1:]
+        release_slots(slot_fds)
         key = run["key"]
         cur = _INFLIGHT.get(key)
         if cur is not None and cur.get("token") == token:
             _INFLIGHT.pop(key, None)
-        _ABANDONED[token] = {"key": key, "started": run["started"], "abandoned_wall": time.time()}
+        _ABANDONED[token] = {"key": key, "started": run["started"], "abandoned_wall": time.time(),
+                             "key_slots": key_slots}
         _ABANDONED_TOTAL[0] += 1
         route = _ROUTES.get(key, key)
         docs.append({"event": "swr_build", "key": key, "route": route, "outcome": "ABANDONED_LEASE",
@@ -477,6 +507,9 @@ def _reserve(key: str, ttl_s: float):
         return None, docs
     err = _ERRORS.get(key)
     if err is not None and now - err["mono"] < max(ttl_s, MIN_BACKOFF_S):
+        return None, docs
+    if any(a["key"] == key for a in _ABANDONED.values()):
+        docs.append(_refuse(key, "REFUSED_DUPLICATE", "an abandoned (lease-expired) build of this key is still running", now))
         return None, docs
     cap = max_concurrent_builds()
     if len(_RUNNING) >= cap:
@@ -650,8 +683,12 @@ def clear() -> None:  # tests
         _ERRORS.clear()
         _INFLIGHT.clear()
         _RUNNING.clear()
+        for ab in _ABANDONED.values():
+            release_slots(ab.get("key_slots"))
+            ab["key_slots"] = None
         _ABANDONED.clear()
         _ABANDONED_TOTAL[0] = 0
+        _ABANDON_LIMIT_LOGGED[0] = 0.0
         _REFUSED.clear()
         _COUNTERS.clear()
         _ROUTES.clear()

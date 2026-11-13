@@ -45,6 +45,21 @@ def assemble_stop_alert_data(symbol, account=""):
     if risk_data.get("status") == "UNKNOWN":
         why = risk_data.get("reason") or "unknown"
         return {"symbol": symbol, "status": "UNKNOWN", "reason": f"risk data still building ({why})"}
+    # Review v2 C1: SWR serves last-good with its age. A stop decision may not be built from a book older than
+    # STOP_ALERT_MAX_RISK_AGE_S (default 600 s): past it, or when the payload says stale without an age, UNKNOWN.
+    try:
+        max_age = float(os.environ.get("STOP_ALERT_MAX_RISK_AGE_S", "600"))
+    except ValueError:
+        max_age = 600.0
+    age_s = risk_data.get("age_s")
+    try:
+        age_s = float(age_s) if age_s is not None else None
+    except (TypeError, ValueError):
+        age_s = None
+    if (age_s is not None and age_s > max_age) or (risk_data.get("stale") and age_s is None):
+        shown = f"{age_s:.0f}s" if age_s is not None else "unknown age"
+        return {"symbol": symbol, "status": "UNKNOWN", "stale": True, "age_s": age_s,
+                "reason": f"risk data stale ({shown} > {max_age:.0f}s); stop decision not assembled from it"}
     positions = risk_data.get("positions")
     if not isinstance(positions, list):  # null or absent is unread, never an empty book (independent re-review B2-b)
         return {"symbol": symbol, "status": "UNKNOWN", "reason": "risk data unavailable (positions unreadable)"}

@@ -197,11 +197,12 @@ def test_b3_two_hung_builds_no_longer_starve_every_key(monkeypatch, tmp_path, ca
     assert st["abandoned_builds"] == 2 and st["abandoned_total"] == 2
     out = capsys.readouterr().out
     assert out.count('"outcome": "ABANDONED_LEASE"') == 2
-    # the hung threads return later: their slots are not released a second time, the late result still stores
+    # the hung threads return later. Review v2 NB1: the lease released only their build slots and kept each key
+    # lock, so each finished thread releases exactly its key lock once (+2), and nothing is released twice
     n_before = len(released)
     gate.set()
     assert _wait(lambda: swr.stats()["abandoned_builds"] == 0)
-    assert len(released) == n_before and len(released) == len(set(released))
+    assert len(released) == n_before + 2 and len(released) == len(set(released))
     assert swr.peek("k1", 60) == {"late": True}
 
 
@@ -215,12 +216,13 @@ def test_b3_lease_without_slot_pool_frees_the_process_cap(monkeypatch):
     swr.get("b", 60, lambda: {"b": 1})
     assert _wait(lambda: swr.peek("b", 60) == {"b": 1})
     assert swr.running_builds() == 0 and swr.stats()["abandoned_builds"] == 1
-    # the abandoned key can build again (its in-flight mark went with the lease)
-    swr.get("a", 60, lambda: {"a": 2})
-    assert _wait(lambda: swr.peek("a", 60) == {"a": 2})
+    # Review v2 NB1: the abandoned key may NOT build again while its old thread still runs (no duplicate builds)
+    assert swr.get("a", 60, lambda: {"a": 2}).get("build_refused") == "REFUSED_DUPLICATE"
     gate.set()
     assert _wait(lambda: swr.stats()["abandoned_builds"] == 0)
-    assert swr.peek("a", 60) == {"a": 2}  # the older abandoned build never overwrites the newer result
+    # once the abandoned thread has ended, the key builds normally again
+    swr.get("a", 0, lambda: {"a": 2})
+    assert _wait(lambda: swr.peek("a", 60) == {"a": 2})
 
 
 def test_b3_lease_default_is_300s(monkeypatch):

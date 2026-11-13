@@ -185,7 +185,11 @@ load_kills() {
 save_kills() {  # $1 = optional new kill epoch
   local content="$KEPT_KILLS"
   [ -n "${1:-}" ] && content="${content}${1}"$'\n'
-  printf '%s' "$content" > "$KILL_STATE.tmp.$$" && mv -f "$KILL_STATE.tmp.$$" "$KILL_STATE"
+  if printf '%s' "$content" 2>/dev/null > "$KILL_STATE.tmp.$$" && mv -f "$KILL_STATE.tmp.$$" "$KILL_STATE" 2>/dev/null; then
+    return 0
+  fi
+  rm -f "$KILL_STATE.tmp.$$" 2>/dev/null
+  return 1
 }
 # 0 = a kill may proceed (and is recorded first); 1 = budget spent or cooling down: logged, no kill.
 kill_allowed() {
@@ -205,7 +209,13 @@ kill_allowed() {
     log "COOLDOWN: last kill $(( now - LAST_KILL ))s ago (< ${KILL_COOLDOWN_S}s) — NOT killing pid ${target} this run"
     return 1
   fi
-  save_kills "$now"
+  # Review v2 NB2: a kill that cannot be recorded is NOT budgeted, so it does not happen (fail closed, escalate).
+  if ! save_kills "$now"; then
+    cgroup_evidence
+    log "ESCALATE: KILL_STATE unwritable ($KILL_STATE) — refusing to kill pid ${target}; the restart budget cannot be enforced"
+    write_escalation "$target"
+    return 1
+  fi
   return 0
 }
 
