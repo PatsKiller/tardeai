@@ -47,12 +47,15 @@ FUTURE_SKEW_S = 300
 H26 = 26 * 3600
 MIN30 = 30 * 60
 MIN20 = 20 * 60
+# LQ-2991 F3: the evaluator runs */20 in RTH, so a 20 min limit equals its period and flaps STALE whenever a run is a
+# little later than the last (flock skip, slow run). Two periods = one missed run tolerated before it is called STALE.
+ALERTS_RTH_LIMIT_S = 2 * MIN20
 
 # id, label, source_id, owner, rth limit, off-session limit
 INPUTS = (
     ("my_list", "My List", "watchlist_items", "watch curation", MIN30, H26),
     ("prospects", "Prospects", "cio_prospect", "cio", MIN30, H26),
-    ("alerts", "Alerts", "watch-alerts-eval_last.json", "watch alerts", MIN20, H26),
+    ("alerts", "Alerts", "watch-alerts-eval_last.json", "watch alerts", ALERTS_RTH_LIMIT_S, H26),
     ("regime", "Regime", "market_regime_snapshots", "market regime", H26, H26),
 )
 REQUIRED_INPUTS = tuple(i[0] for i in INPUTS)

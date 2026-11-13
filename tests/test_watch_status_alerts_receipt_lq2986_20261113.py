@@ -48,9 +48,9 @@ def test_a_fresh_receipt_makes_alerts_ok_with_its_age(tmp_path, monkeypatch):
 
 
 def test_an_old_receipt_is_stale_not_ok(tmp_path, monkeypatch):
-    _receipt(tmp_path, monkeypatch, {"status": "ok", "ok_at": _iso(1201)})
+    _receipt(tmp_path, monkeypatch, {"status": "ok", "ok_at": _iso(2401)})
     a = _alerts(wsl.compute(_q, NOW, session_fn=RTH))
-    assert a["state"] == "STALE" and a["age_s"] == 1201
+    assert a["state"] == "STALE" and a["age_s"] == 2401
     assert _alerts(wsl.compute(_q, NOW, session_fn=OFF))["state"] == "OK"      # 26 h off-session
 
 
@@ -84,3 +84,10 @@ def test_a_future_ok_at_is_unknown(tmp_path, monkeypatch):
 def test_alerts_issues_no_sql_and_never_names_the_missing_table():
     src = (ROOT / "scripts" / "lib" / "watch_status_live.py").read_text(encoding="utf-8")
     assert "to_regclass" not in src and "FROM watch_alerts_eval_runs" not in src
+
+
+def test_a_run_one_period_late_is_not_stale_in_rth(tmp_path, monkeypatch):
+    """LQ-2991 F3: the evaluator is */20 in RTH; ok_at 20 min 30 s old (next run a little late) must stay OK."""
+    _receipt(tmp_path, monkeypatch, {"status": "ok", "ok_at": _iso(1230)})
+    a = _alerts(wsl.compute(_q, NOW, session_fn=RTH))
+    assert a["state"] == "OK" and a["age_s"] == 1230 and a["threshold_s"] == 2400

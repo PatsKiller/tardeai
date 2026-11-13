@@ -118,8 +118,8 @@ def test_regime_limit_is_26_h_in_every_session():
         assert by_id(_compute(FakeQ(regime=ago(27 * 3600)), NOW, session_fn=fn))["regime"]["state"] == "STALE"
 
 
-def test_alerts_20_min_in_rth_once_the_run_record_exists():
-    out = _compute(FakeQ(alerts=ago(21 * 60)), NOW, session_fn=RTH)
+def test_alerts_two_periods_in_rth_once_the_run_record_exists():
+    out = _compute(FakeQ(alerts=ago(41 * 60)), NOW, session_fn=RTH)
     assert by_id(out)["alerts"]["state"] == "STALE" and out["verdict"] == "STALE"
     out = _compute(FakeQ(alerts=ago(21 * 60)), NOW, session_fn=OFF)
     assert by_id(out)["alerts"]["state"] == "OK"
@@ -300,7 +300,7 @@ def test_the_committed_frontend_fixture_has_the_real_envelope_shape(monkeypatch)
 
 
 def test_the_limit_itself_is_ok_one_second_over_is_stale():
-    for iid, lim in (("my_list", 1800), ("prospects", 1800), ("alerts", 1200)):
+    for iid, lim in (("my_list", 1800), ("prospects", 1800), ("alerts", 2400)):
         assert by_id(_compute(FakeQ(**{iid: ago(lim)}), NOW, session_fn=RTH))[iid]["state"] == "OK"
         assert by_id(_compute(FakeQ(**{iid: ago(lim + 1)}), NOW, session_fn=RTH))[iid]["state"] == "STALE"
     assert by_id(_compute(FakeQ(regime=ago(26 * 3600)), NOW, session_fn=OFF))["regime"]["state"] == "OK"
