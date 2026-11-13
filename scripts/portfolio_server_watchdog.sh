@@ -18,6 +18,13 @@
 #   * the lock and the kill-time state persist across separate cron invocations (files beside the log; the state file
 #     is rewritten atomically: tmp + mv, under the lock).
 #   * test knobs (env): PORTFOLIO_WATCHDOG_URL / _LOG / _PROC / _KILL_STATE / _LOCK / _KILL_CAP / _KILL_WINDOW_S.
+#   * ESCALATE is durable, not only a log line (review N2): one JSON line appended (under the flock, single write) to
+#     $ESCALATION_LOG (production: persistent-state/data/ops/watchdog_escalations.jsonl) on every ESCALATE run, and one
+#     FINDING-portfolio-server-watchdog-ESCALATE-<episode>.md (tmp + mv, written once per episode = oldest in-window
+#     kill) in $FINDING_DIR (production: the claude-lead inbox). No Telegram / email / text send. A failed artifact
+#     write is logged ("escalation artifact write failed") and never changes the run's outcome.
+#     A test or ad-hoc run that overrides PORTFOLIO_WATCHDOG_LOG keeps both artifacts beside that log unless
+#     PORTFOLIO_WATCHDOG_ESCALATION_LOG / PORTFOLIO_WATCHDOG_FINDING_DIR say otherwise (never the live stores).
 
 set -uo pipefail
 # n8n onboarding (lane disposition 2026-10-15, MIGRATE_N8N): --dry-run anywhere in argv is an OFFLINE plan and
@@ -25,7 +32,7 @@ set -uo pipefail
 # the plan on stdout and one LaneOutput@v1 line on stderr (produced 0, empty_reason dry_run).
 for _dr_a in "$@"; do
   [ "$_dr_a" = "--dry-run" ] || continue
-  echo "DRY-RUN portfolio-server-watchdog: would take a non-blocking flock (skip when the previous run still holds it), probe http://localhost:7777/api/health up to 3 times and, when unresponsive, start portfolio-server.service or kill the hung johnclaw-owned pid so systemd respawns it (never on unknown systemd state; never after 3 kills in 30 min: then log ESCALATE with cgroup evidence and leave the server alone); heartbeat + action log + kill-cycle state file; argv=$*; dry-run wins over live flags; nothing executed or written"
+  echo "DRY-RUN portfolio-server-watchdog: would take a non-blocking flock (skip when the previous run still holds it), probe http://localhost:7777/api/health up to 3 times and, when unresponsive, start portfolio-server.service or kill the hung johnclaw-owned pid so systemd respawns it (never on unknown systemd state; never after 3 kills in 30 min: then log ESCALATE with cgroup evidence, append one record to data/ops/watchdog_escalations.jsonl, write one FINDING per episode to the claude-lead inbox, send nothing, and leave the server alone); heartbeat + action log + kill-cycle state file; argv=$*; dry-run wins over live flags; nothing executed or written"
   printf 'LANE_OUTPUT {"attempted_count": 0, "empty_reason": "dry_run", "lane_id": "%s", "mode": "dry_run", "pid": %d, "produced_count": 0, "schema": "LaneOutput@v1", "skipped_reasons": {}, "unit": "%s"}\n' \
     "portfolio-server-watchdog" "$$" "probe" >&2
   exit 0
@@ -39,6 +46,14 @@ LOCK_FILE="${PORTFOLIO_WATCHDOG_LOCK:-$(dirname "$LOG")/.portfolio_server_watchd
 KILL_CAP="${PORTFOLIO_WATCHDOG_KILL_CAP:-3}"            # kills allowed inside the window before ESCALATE
 KILL_WINDOW_S="${PORTFOLIO_WATCHDOG_KILL_WINDOW_S:-1800}"
 KILL_COOLDOWN_S="${PORTFOLIO_WATCHDOG_KILL_COOLDOWN_S:-300}"  # no second kill within this long of the last one
+if [ -n "${PORTFOLIO_WATCHDOG_LOG:-}" ]; then  # overridden log (tests, ad-hoc): artifacts stay beside it
+  _ART_DEFAULT_DIR="$(dirname "$LOG")"
+  ESCALATION_LOG="${PORTFOLIO_WATCHDOG_ESCALATION_LOG:-$_ART_DEFAULT_DIR/watchdog_escalations.jsonl}"
+  FINDING_DIR="${PORTFOLIO_WATCHDOG_FINDING_DIR:-$_ART_DEFAULT_DIR}"
+else
+  ESCALATION_LOG="${PORTFOLIO_WATCHDOG_ESCALATION_LOG:-$HOME/trade-ai-releases/persistent-state/data/ops/watchdog_escalations.jsonl}"
+  FINDING_DIR="${PORTFOLIO_WATCHDOG_FINDING_DIR:-$HOME/trade-ai-releases/persistent-state/data/coordination/coordinator/inbox/claude-lead}"
+fi
 FAILS=3          # consecutive failed probes before acting (was 2 — too twitchy; a transiently
                  # backed-up single-threaded server got cold-killed and re-wedged on restart = kill-loop)
 TIMEOUT=12       # seconds per probe (was 8)
@@ -87,6 +102,7 @@ cgroup_evidence() {
   local runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
   local bus="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${runtime_dir}/bus}"
   local cg dir cur high events psi
+  EVIDENCE="cgroup unavailable"
   cg=$(XDG_RUNTIME_DIR="$runtime_dir" DBUS_SESSION_BUS_ADDRESS="$bus" \
     systemctl --user show -p ControlGroup --value portfolio-server.service 2>/dev/null)
   dir="/sys/fs/cgroup${cg}"
@@ -95,7 +111,54 @@ cgroup_evidence() {
   high=$(cat "$dir/memory.high" 2>/dev/null || echo ?)
   events=$(tr '\n' ' ' < "$dir/memory.events" 2>/dev/null)
   psi=$(head -1 "$dir/memory.pressure" 2>/dev/null)
-  log "evidence: memory.current=$cur memory.high=$high events=[${events}] pressure=[${psi}]"
+  EVIDENCE="memory.current=$cur memory.high=$high events=[${events}] pressure=[${psi}]"
+  log "evidence: $EVIDENCE"
+}
+
+json_str() {  # JSON string body: backslash, quote and control characters
+  local v="$1"
+  v="${v//\\/\\\\}"
+  v="${v//\"/\\\"}"
+  v="${v//$'\n'/ }"; v="${v//$'\r'/ }"; v="${v//$'\t'/ }"
+  printf '%s' "$v"
+}
+# Review N2: durable ESCALATE artifacts. Caller holds the flock; never fails the run, never sends anything.
+write_escalation() {  # $1 = pid NOT killed
+  local target="$1" now at_utc at_et episode t line finding tmp
+  now=$(date +%s)
+  at_utc=$(date -u -d "@$now" '+%Y-%m-%dT%H:%M:%SZ')
+  at_et=$(TZ=America/New_York date -d "@$now" '+%Y-%m-%dT%H:%M:%S%z')
+  episode=$now
+  while read -r t; do
+    case "$t" in ''|*[!0-9]*) continue ;; esac
+    [ "$t" -lt "$episode" ] && episode=$t
+  done <<< "$KEPT_KILLS"
+  case "$target" in ''|*[!0-9]*) target=0 ;; esac
+  line=$(printf '{"event": "ESCALATE", "pid": %d, "recent_kills": %d, "kill_cap": %d, "window_s": %d, "at_utc": "%s", "at_et": "%s", "episode": %d, "state_file": "%s", "evidence": "%s"}' \
+    "$target" "$RECENT_KILLS" "$KILL_CAP" "$KILL_WINDOW_S" "$at_utc" "$at_et" "$episode" "$(json_str "$KILL_STATE")" "$(json_str "${EVIDENCE:-}")")
+  if ! { mkdir -p "$(dirname "$ESCALATION_LOG")" && printf '%s\n' "$line" >> "$ESCALATION_LOG"; } 2>/dev/null; then
+    log "escalation artifact write failed: $ESCALATION_LOG"
+  fi
+  finding="$FINDING_DIR/FINDING-portfolio-server-watchdog-ESCALATE-${episode}.md"
+  [ -e "$finding" ] && return 0  # one FINDING per episode; every ESCALATE run still appends its jsonl record
+  tmp="$FINDING_DIR/.FINDING-portfolio-server-watchdog-ESCALATE-${episode}.md.tmp.$$"
+  if { mkdir -p "$FINDING_DIR" && cat > "$tmp" <<FINDING_EOF
+# FINDING: portfolio-server watchdog ESCALATE (episode ${episode})
+
+- At: ${at_et} ET (${at_utc})
+- What: ${RECENT_KILLS} watchdog kills in the last ${KILL_WINDOW_S}s reached the cap of ${KILL_CAP}. The unresponsive
+  portfolio server (pid ${target}) was NOT killed; the watchdog leaves it alone until the window drains.
+- Evidence: ${EVIDENCE:-none}
+- Kill-time state: ${KILL_STATE}
+- Every ESCALATE run of this episode appends one record to: ${ESCALATION_LOG}
+- The watchdog sent no Telegram, email or text. Next step (lead): read the jsonl and the server journal, decide.
+FINDING_EOF
+  } 2>/dev/null && mv -f "$tmp" "$finding" 2>/dev/null; then
+    return 0
+  fi
+  rm -f "$tmp" 2>/dev/null
+  log "escalation artifact write failed: $finding"
+  return 0
 }
 
 # The signal sender. PORTFOLIO_WATCHDOG_KILL_CMD lets a test substitute a recorder (the default is the bash builtin).
@@ -133,6 +196,7 @@ kill_allowed() {
     save_kills
     cgroup_evidence
     log "ESCALATE: ${RECENT_KILLS} kills in the last ${KILL_WINDOW_S}s (cap ${KILL_CAP}) — NOT killing pid ${target}; leaving the server alone for the operator/lead (state $KILL_STATE)"
+    write_escalation "$target"
     return 1
   fi
   if [ "$LAST_KILL" -gt 0 ] && [ $(( now - LAST_KILL )) -lt "$KILL_COOLDOWN_S" ]; then
