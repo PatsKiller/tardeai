@@ -56,6 +56,23 @@ def lane_ok_at_reader(root: Path):
     return _read
 
 
+def _refusal_event(cur, f: Path, reason: str, now: datetime, run_id: str) -> int:
+    """Record the refusal in validation_events (once per file content). A failure to record never hides the refusal:
+    it is still counted, moved to refused/ and reported in the receipt."""
+    try:
+        raw = f.read_bytes()
+    except OSError:
+        return 0
+    cur.execute("SAVEPOINT refusal")
+    try:
+        n = int(VG.record_refusal(cur, raw, file_name=f.name, reason=reason, occurred_at=now, run_id=run_id))
+        cur.execute("RELEASE SAVEPOINT refusal")
+        return n
+    except Exception:  # noqa: BLE001
+        cur.execute("ROLLBACK TO SAVEPOINT refusal")
+        return 0
+
+
 def run(conn, *, root: Path, queries: dict, now: datetime, apply: bool, run_id: str, postgres: bool = True) -> dict:
     """One lane run against an open connection. Commits only when ``apply``; never moves files itself on a dry run."""
     cur = conn.cursor()
@@ -63,7 +80,7 @@ def run(conn, *, root: Path, queries: dict, now: datetime, apply: bool, run_id: 
         cur.execute(f"SET LOCAL statement_timeout = {STATEMENT_TIMEOUT_MS}")
     inbox = root / "data" / "coordination" / "validation_gates" / "inbox"
     ingested_dir = root / "data" / "coordination" / "validation_gates" / "ingested"
-    out = {"ingested": 0, "refused": 0, "unchanged": 0, "errors": 0, "files": []}
+    out = {"ingested": 0, "refused": 0, "unchanged": 0, "errors": 0, "refusal_events": 0, "files": []}
     done_files = []
     refused_files = []  # (path, reason): moved aside on apply so one bad file is not re-counted every 5 minutes
     for f in sorted(inbox.glob("*.json")) if inbox.is_dir() else []:
@@ -73,6 +90,7 @@ def run(conn, *, root: Path, queries: dict, now: datetime, apply: bool, run_id: 
             out["refused"] += 1
             out["files"].append({"file": f.name, "refused": str(exc)[:200]})
             refused_files.append((f, str(exc)[:200]))
+            out["refusal_events"] += _refusal_event(cur, f, str(exc), now, run_id)
             continue
         cur.execute("SAVEPOINT decl")
         try:
@@ -83,6 +101,7 @@ def run(conn, *, root: Path, queries: dict, now: datetime, apply: bool, run_id: 
             out["refused"] += 1
             out["files"].append({"file": f.name, "refused": f"{type(exc).__name__}: {str(exc)[:160]}"})
             refused_files.append((f, f"{type(exc).__name__}: {str(exc)[:160]}"))
+            out["refusal_events"] += _refusal_event(cur, f, f"{type(exc).__name__}: {str(exc)[:160]}", now, run_id)
             continue
         if res["action"] == "noop":
             out["unchanged"] += 1

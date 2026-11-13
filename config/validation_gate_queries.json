@@ -9,6 +9,14 @@
     "alert_incidents_newest_seen": {
       "sql": "SELECT max(first_seen_at) AS value FROM alert_incidents",
       "returns": "timestamp"
+    },
+    "lane_health_newest_measured": {
+      "sql": "SELECT max(measured_at) AS value FROM lane_health_current",
+      "returns": "timestamp"
+    },
+    "amanx_quote_business_days_stale": {
+      "sql": "SELECT (SELECT count(*) FROM generate_series((max(q.fetched_at) AT TIME ZONE 'America/New_York')::date + 1, (now() AT TIME ZONE 'America/New_York')::date, interval '1 day') d WHERE extract(isodow FROM d) < 6) AS value FROM market_quotes q WHERE q.symbol = 'AMANX'",
+      "returns": "number"
     }
   }
 }

@@ -1,0 +1,65 @@
+{
+  "schema": "ValidationGateCatalog@v1",
+  "_doc": "Release gates that scripts/validation_gate_declare.py turns into ValidationGateDecl@v1 files. Every gate reads REAL evidence: a lane receipt ok_at (lane_fresh: data/runtime/<lane_id>_last.json) or a NAMED read-only query in config/validation_gate_queries.json. There are no manual_evidence gates and no pre-passed results here. blocks_trading is omitted on purpose: not declared is unknown, never false (REVIEW-2692). due_in_h is relative to the first apply; the declaration is then frozen (apply_decl refuses any later change of check, blocks_trading or due_at). NOT declared, for lack of a durable evidence source on this host: cio-wake peak RSS (no recorder; run_persistent_wake.py writes none) and system-health p95 (no latency store).",
+  "gates": [
+    {
+      "gate_id": "VG-R3-STOP-COVERAGE-HEARTBEAT",
+      "title": "Stop-coverage producer heartbeat is fresh",
+      "category": "Order protection",
+      "blocks": "Home Orders / protection tile: without a fresh heartbeat a missing stop alert cannot be told from a silent producer",
+      "lq_id": "LQ-20261107-2145",
+      "owner": "platform",
+      "due_in_h": 24,
+      "check_kind": "lane_fresh",
+      "check_spec": {"lane_id": "stop_coverage_incidents", "max_age_h": 1.5, "proof_window_h": 24},
+      "evidence": "heartbeat data/runtime/stop_coverage_incidents_last.json ok_at, written by scripts/stop_coverage_incidents.py --apply only (2145+2146 bd6f20101). 1.5 h = the 5400 s off-hours bound; in session the bound is 900 s."
+    },
+    {
+      "gate_id": "VG-R3-LANE-HEALTH-SNAPSHOT-RECEIPT",
+      "title": "Lane-health snapshot lane has run (receipt fresh)",
+      "category": "Scheduler health",
+      "blocks": "Home Schedulers row",
+      "lq_id": "LQ-20261107-2148",
+      "owner": "platform",
+      "due_in_h": 24,
+      "check_kind": "lane_fresh",
+      "check_spec": {"lane_id": "lane-health-snapshot", "max_age_h": 0.5, "proof_window_h": 24},
+      "evidence": "data/runtime/lane-health-snapshot_last.json ok_at (success only), lane */10 min (2148 db579f096)."
+    },
+    {
+      "gate_id": "VG-R3-LANE-HEALTH-ROWS-FRESH",
+      "title": "lane_health_current has a row measured in the last 30 minutes",
+      "category": "Scheduler health",
+      "blocks": "Home Schedulers row",
+      "lq_id": "LQ-20261107-2148",
+      "owner": "platform",
+      "due_in_h": 24,
+      "check_kind": "db_max",
+      "check_spec": {"query_id": "lane_health_newest_measured", "max_age_h": 0.5, "proof_window_h": 24},
+      "evidence": "named query lane_health_newest_measured = max(lane_health_current.measured_at); the table has 0 rows today, so this reads ERROR (never PASS) until the snapshot lane writes."
+    },
+    {
+      "gate_id": "VG-R3-AMANX-QUOTE-FRESH",
+      "title": "AMANX has a quote fetched within 1 trading day",
+      "category": "Data freshness",
+      "blocks": "AMANX valuation and its Home tile",
+      "owner": "data",
+      "due_in_h": 24,
+      "check_kind": "sql_threshold",
+      "check_spec": {"query_id": "amanx_quote_business_days_stale", "op": "<=", "value": 1, "proof_window_h": 24},
+      "evidence": "named query amanx_quote_business_days_stale = Mon-Fri days between the newest market_quotes.fetched_at for AMANX (ET date) and today (ET). Exchange holidays are not modelled. Read-only run 2026-11-13: 4 (newest quote 2026-11-09), so this gate FAILS today."
+    },
+    {
+      "gate_id": "VG-R3-VALIDATION-SYNC-ALIVE",
+      "title": "validation-gates-sync has applied recently (its own receipt is fresh)",
+      "category": "Scheduler health",
+      "blocks": "Home Gates tile (an empty or stale gate list is only trustworthy while the writer runs)",
+      "lq_id": "LQ-20261107-2141",
+      "owner": "platform",
+      "due_in_h": 24,
+      "check_kind": "lane_fresh",
+      "check_spec": {"lane_id": "validation-gates-sync", "max_age_h": 0.25, "proof_window_h": 24},
+      "evidence": "data/runtime/validation-gates-sync_last.json ok_at, written only on --apply (rev4 scripts/validation_gates_sync.py)."
+    }
+  ]
+}

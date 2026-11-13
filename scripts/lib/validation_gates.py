@@ -342,6 +342,31 @@ def record_event(cur: Any, gate: Mapping[str, Any], transition: str, *, occurred
     return cur.rowcount == 1
 
 
+def record_refusal(cur: Any, raw: bytes, *, file_name: str, reason: str, occurred_at: datetime, run_id: str) -> bool:
+    """A refused declaration becomes a validation_events row (source_kind 'declaration', transition 'refused'), deduped
+    on the file's sha256 so one refusal shows once, not every run (LQ-2966, closes REVIEW-2963 C3). Never raises on a
+    garbage file: the gate id is read from the JSON when there is one, else the file name is the source id."""
+    gate_id, category, owner = None, "Declaration", None
+    try:
+        doc = json.loads(raw.decode("utf-8"))
+        if isinstance(doc, Mapping):
+            gate_id = doc.get("gate_id") if isinstance(doc.get("gate_id"), str) else None
+            category = doc.get("category") if isinstance(doc.get("category"), str) and doc["category"].strip() else category
+            owner = doc.get("owner") if isinstance(doc.get("owner"), str) else None
+    except (ValueError, UnicodeDecodeError):
+        pass
+    source_id = (gate_id or file_name)[:200]
+    digest = hashlib.sha256(raw).hexdigest()
+    cur.execute(
+        "INSERT INTO validation_events (dedupe_key, source_kind, source_id, category, transition, occurred_at, "
+        "detected_at, summary, owner, evidence, run_id) "
+        "VALUES (%s,'declaration',%s,%s,'refused',%s,%s,%s,%s,%s,%s) ON CONFLICT (dedupe_key) DO NOTHING",
+        (f"declaration:{source_id}:refused:{digest}", source_id, category, _iso(occurred_at), _iso(occurred_at),
+         f"declaration refused: {reason}"[:500], owner, _j({"file": file_name, "sha256": digest, "reason": reason[:300]}),
+         run_id))
+    return cur.rowcount == 1
+
+
 GATE_EVAL_COLS = ("gate_id", "title", "category", "status", "due_at", "owner", "check_kind", "check_spec")
 SELECT_OPEN_FOR_EVAL = ("SELECT gate_id, title, category, status, due_at, owner, check_kind, check_spec "
                         "FROM validation_gates WHERE source = 'declaration' AND status IN ('OPEN','OVERDUE','FAILED') "
