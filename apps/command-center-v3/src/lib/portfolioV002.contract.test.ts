@@ -53,7 +53,7 @@ assert.equal(STOP_READ_MAX_AGE_MS.offHours, doc.stop_read_max_age_s.off_hours * 
 const reg = JSON.parse(readFileSync(join(REPO, 'config', 'data_source_authority.json'), 'utf8')) as Record<string, unknown>
 const stopsDom = ['domains', 'proposed_domains'].flatMap(g => (reg[g] as { domain?: string }[] | undefined) || [])
   .find(d => d && d.domain === 'broker_stops') as { stale_after_hours: number; stale_after_hours_closed: number } | undefined
-assert.ok(stopsDom, 'config/data_source_authority.json has no broker_stops domain')
+if (!stopsDom) throw new Error('config/data_source_authority.json has no broker_stops domain')
 assert.equal(STOP_READ_MAX_AGE_MS.session, stopsDom.stale_after_hours * 3_600_000, 'session limit differs from the registry')
 assert.equal(STOP_READ_MAX_AGE_MS.offHours, stopsDom.stale_after_hours_closed * 3_600_000, 'closed limit differs from the registry')
 assert.equal(R1_EXPIRED_OPEN_SESSION, doc.r1_expired_open_session)
