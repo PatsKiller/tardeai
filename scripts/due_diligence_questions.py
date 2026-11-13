@@ -835,7 +835,7 @@ def route(cur, limit: int) -> dict:
     rows = cur.fetchall()
     conn = getattr(cur, "connection", None)
     if rows:
-        cur.execute("UPDATE due_diligence_questions SET routed_at = now() WHERE question_guid = ANY(%s)",
+        cur.execute("UPDATE due_diligence_questions SET routed_at = now() WHERE question_guid = ANY(%s::uuid[])",
                     ([r[0] for r in rows],))
     _end_txn(conn)
     lanes = rank_research_lanes(cur)
@@ -864,7 +864,7 @@ def route(cur, limit: int) -> dict:
         out["failed"] = len(rows)
         if rows:
             cur.execute("UPDATE due_diligence_questions SET routed_at = NULL "
-                        "WHERE question_guid = ANY(%s) AND status = 'ASKED'", ([r[0] for r in rows],))
+                        "WHERE question_guid = ANY(%s::uuid[]) AND status = 'ASKED'", ([r[0] for r in rows],))
             _end_txn(conn)
         return out
     # A lane that refuses BEFORE attempting (budget guard, open circuit breaker, not a bridge

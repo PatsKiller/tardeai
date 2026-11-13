@@ -198,3 +198,17 @@ def test_a_tiered_trigger_reaches_the_provider_boundary_in_a_dry_run(researcher,
     assert "budget-guard" not in out, out
     assert "(dry-run — nothing sent" in out, out
     assert rc in (None, 0), rc
+
+
+def test_the_claim_and_release_updates_cast_the_guid_list_to_uuid(ddq, monkeypatch):
+    """2026-11-13: question_guid is uuid and psycopg2 binds a Python str list as text[], so
+    ``question_guid = ANY(%s)`` raised "operator does not exist: uuid = text" on the first run
+    that selected a question (every slot from 10:20 ET; breaker opened 16:02Z). Both array
+    UPDATEs (claim and failed-route release) must carry the explicit ``::uuid[]`` cast."""
+    cur = _Cur([("q1", "NVDA", "Q?")], [None])
+    monkeypatch.setattr(ddq, "rank_research_lanes", lambda _c: [])
+    monkeypatch.setattr(ddq, "via_bridge", lambda: False)
+    ddq.route(cur, 2)
+    array_updates = [s for s in cur.sql if "ANY(" in s and s.lstrip().upper().startswith("UPDATE")]
+    assert len(array_updates) == 2, cur.sql
+    assert all("ANY(%s::uuid[])" in s for s in array_updates), array_updates
