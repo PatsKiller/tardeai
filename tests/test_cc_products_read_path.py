@@ -102,16 +102,14 @@ def test_fresh_from_hot():
     assert pg.calls == 0 and hot.sets == []
 
 
-def test_hot_miss_pg_hit_sets_hot_with_remaining_ttl():
+def test_hot_miss_pg_hit_never_writes_hot():
+    """Rework 2026-11-13 (blocker 3): the read path never sets the hot key; only the builder does, under its flock."""
     hot = FakeHot()
     row = make_row(100)
     env = read_product("cio.pages", fetch_row=PG(row), hot=hot, now=NOW)
     assert env["status"] == "OK" and env["served_from"] == "pg"
     assert env["data"] == {"pages": [1, 2, 3]}
-    assert len(hot.sets) == 1
-    key, value, ex = hot.sets[0]
-    assert key == KEY and ex == HARD - 100
-    assert unpack(value) == row
+    assert hot.sets == []
 
 
 def test_hot_down_closed_port_falls_back_to_pg():
@@ -192,14 +190,11 @@ def test_age_falls_back_to_built_at_when_as_of_null():
     assert env["age_s"] == STALE + 10 and env["status"] == "STALE" and env["as_of"] is None
 
 
-def test_never_sets_hot_when_remaining_ttl_not_positive():
+def test_never_sets_hot_for_any_age():
     hot = FakeHot()
-    read_product("cio.pages", fetch_row=PG(make_row(HARD)), hot=hot, now=NOW)  # remaining exactly 0
-    read_product("cio.pages", fetch_row=PG(make_row(HARD + 500)), hot=hot, now=NOW)
-    read_product("cio.pages", fetch_row=PG(make_row(HARD - 0.5)), hot=hot, now=NOW)  # floor(0.5) = 0
+    for age in (0, 5, HARD - 1, HARD, HARD + 500):
+        read_product("cio.pages", fetch_row=PG(make_row(age)), hot=hot, now=NOW)
     assert hot.sets == []
-    read_product("cio.pages", fetch_row=PG(make_row(HARD - 1)), hot=hot, now=NOW)
-    assert [s[2] for s in hot.sets] == [1]
 
 
 def test_hot_set_failure_still_answers():

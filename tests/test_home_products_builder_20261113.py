@@ -61,7 +61,7 @@ def test_held_product_lock_skips_and_never_builds(tmp_path):
 
 
 def test_full_slot_pool_skips(tmp_path):
-    a, b = pb.HostLocks(tmp_path, slots=1), pb.HostLocks(tmp_path, slots=1)
+    a, b = pb.HostLocks(tmp_path, slots=1, slot_wait_s=0), pb.HostLocks(tmp_path, slots=1, slot_wait_s=0)
     with a.acquire("syn.one", "global") as busy:
         assert busy is None
         with b.acquire("syn.two", "global") as busy2:

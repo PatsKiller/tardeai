@@ -1,4 +1,5 @@
-"""home-products (operator 13 Nov 2026): every product route serves the STORED product and never computes.
+"""home-products (operator 13 Nov 2026): with the reader flag at ``stored``, every product route serves the STORED
+product and never computes (rework 13 Nov: the flag is per product, default legacy; these tests flip all to stored).
 
 For each route and each case the operator named - cold start / missing product, expired product, Valkey down,
 store unreadable - every builder and every legacy request-time compute function is replaced by a tripwire that
@@ -53,9 +54,20 @@ LIB_COMPUTE = {
 }
 
 
+ALL_STORED = "market_risk.latest=stored,risk=stored,reports.analyst_links=stored,home=stored,cio.pages=stored"
+
+
 @pytest.fixture
 def api(monkeypatch):
     import scripts.api_v2 as api
+    from scripts.lib.cc_products import reader_flag
+
+    assert reader_flag.reload(ALL_STORED)["error"] is None
+    yield from _tripwired(api, monkeypatch)
+    reader_flag.reload("")
+
+
+def _tripwired(api, monkeypatch):
 
     for name in API_COMPUTE:
         monkeypatch.setattr(api, name, _trip("api_v2." + name))
@@ -74,7 +86,7 @@ def api(monkeypatch):
         monkeypatch.setattr(reporting_engine, "report_links_map", _trip("reporting_engine.report_links_map"))
     except Exception:  # noqa: BLE001
         pass
-    return api
+    yield api
 
 
 # ------------------------------------------------------------------------------------------------ synthetic rows
@@ -189,13 +201,16 @@ def test_market_risk_latest_inline_route_never_computes(api, monkeypatch):
     for case in CASES:
         wire(monkeypatch, api, case)
         out = api._stored_market_risk_latest()
-        assert out.get("state") in ("evaluated", "not_evaluated")
+        assert out.get("state") in ("evaluated", "stale", "not_evaluated")
         if case in ("missing", "store_down"):
             assert out["state"] == "not_evaluated" and "unavailable" in out["reason"]
     src = (ROOT / "scripts" / "api_v2.py").read_text()
     i = src.index('if base_path == "/api/v2/market-risk/latest" and method == "GET":')
     block = src[i:i + 600]
-    assert "_stored_market_risk_latest()" in block and "_market_risk_latest_projection()" not in block
+    assert '_by_reader_flag(\n                "market_risk.latest", _stored_market_risk_latest,' in block
+    # flag stored: the inline GET answers from the store with the projection tripwired
+    status, out = api.handle("/api/v2/market-risk/latest", "GET", None, {})
+    assert status == 200 and out["data"]["state"] == "not_evaluated" and out["data"]["tier"] == "UNKNOWN"
 
 
 def test_unavailable_bodies_are_null_not_empty(api, monkeypatch):
@@ -214,10 +229,18 @@ def test_analyst_links_filters_and_limits_the_stored_map(api, monkeypatch):
     assert h({"limit": "1"})["count"] == 1
 
 
-def test_cio_pages_fallback_is_removed():
-    src = (ROOT / "scripts" / "api_v2.py").read_text()
-    assert "def _cio_pages_build" not in src
-    assert "_CIO_PAGES_COMPUTED_TTL_S" not in src
+def test_cio_pages_stored_reader_has_no_fallback():
+    """Rework: the compute fallback lives only in the LEGACY reader (flag cio.pages=legacy); the stored reader never
+    references it."""
+    import inspect
+
+    import scripts.api_v2 as api
+    import ast
+    import textwrap
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(api._w7_cio_pages_stored)))
+    names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    assert not names & {"_cio_pages_build", "_shared_get_cached", "_w7_cio_pages_legacy"}
 
 
 def test_per_product_hit_miss_is_counted_and_logged(api, monkeypatch, caplog):

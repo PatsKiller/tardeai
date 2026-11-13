@@ -6,6 +6,14 @@ failure, or a read over ``budget_ms``, answers UNKNOWN "product store unavailabl
 
 ``budget_ms`` is checked after the Postgres read returns; it does not interrupt a running query. Bound the real wait
 inside ``fetch_row`` (for example ``SET LOCAL statement_timeout``).
+
+The read path never writes the hot tier (rework 2026-11-13, blocker 3). Only the builder sets the hot key, after its
+Postgres commit and while it still holds the host flock for (product, scope), so a slow reader can never overwrite a
+newer row with the older one it fetched.
+
+Schema compatibility: ``schema_version`` is the body schema this reader understands. The hot key carries it, and a
+Postgres row with a different ``schema_version`` is rejected as UNKNOWN "incompatible schema_version" with no data and
+no last good: an incompatible body is never parsed or served, and there is no fallback to a legacy path.
 """
 
 from __future__ import annotations
@@ -16,7 +24,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from scripts.lib.cc_products.hot_tier import HotTier, HotTierDown, pack, product_key, unpack
+from scripts.lib.cc_products.hot_tier import HotTier, HotTierDown, product_key, unpack
 
 STORE_UNAVAILABLE = "product store unavailable"
 
@@ -29,8 +37,7 @@ READ_COUNTERS: dict[str, int] = {
     "hot_miss": 0,
     "hot_down": 0,
     "hot_bad_entry": 0,
-    "hot_set": 0,
-    "hot_set_failed": 0,
+    "incompatible_schema": 0,
     "pg_hit": 0,
     "pg_miss": 0,
     "store_unavailable": 0,
@@ -99,10 +106,10 @@ def _age_seconds(row: dict, now: datetime) -> float:
 
 
 def read_product(product_id: str, scope_key: str = "global", *, fetch_row, hot: HotTier | None = None,
-                 now: datetime | None = None, budget_ms: int = 250) -> dict:
+                 now: datetime | None = None, budget_ms: int = 250, schema_version: int = 1) -> dict:
     t0 = time.monotonic()
     now = _aware(now) if now is not None else datetime.now(timezone.utc)
-    key = product_key(product_id, scope_key)
+    key = product_key(product_id, scope_key, schema_version)
 
     row = None
     served_from = None
@@ -145,14 +152,15 @@ def read_product(product_id: str, scope_key: str = "global", *, fetch_row, hot: 
     hard = row.get("hard_expiry_s")
     stale = row.get("stale_after_s")
 
-    if served_from == "pg" and hot is not None and hard is not None and not math.isinf(age):
-        ex_s = math.floor(hard - age)
-        if ex_s > 0:
-            try:
-                hot.set(key, pack(row), ex_s)
-                _count("hot_set")
-            except HotTierDown:
-                _count("hot_set_failed")
+    # The column is NOT NULL DEFAULT 1; a row without the field is a v1 row.
+    row_schema = row.get("schema_version")
+    row_schema = 1 if row_schema is None else row_schema
+    if row_schema != schema_version:
+        _count("incompatible_schema")
+        _count("UNKNOWN")
+        return _envelope(product_id, scope_key, "UNKNOWN", row={**row, "body": None}, age_s=age_s,
+                         reason=f"incompatible schema_version {row_schema} (reader expects {schema_version})",
+                         served_from=served_from)
 
     try:
         body = row.get("body")

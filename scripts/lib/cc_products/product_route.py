@@ -104,8 +104,25 @@ def serve_market_risk_latest(*, now=None, **io) -> dict:
     env = read_envelope("market_risk.latest", now=now, **io)
     body, meta = _pick(env, now, lambda d: d.get("projection"))
     if isinstance(body, dict):
-        return {**body, "_product": meta}
-    return {"state": "not_evaluated", "reason": f"market risk record unavailable: {_why(meta)}", "_product": meta}
+        return {**_mark_product_stale(body, meta), "_product": meta}
+    # MISSING (no row, store down, incompatible schema): UNKNOWN, never a tier, never "nothing at risk".
+    return {"state": "not_evaluated", "tier": "UNKNOWN", "score": None, "stale": False, "unknown": True,
+            "reason": f"market risk record unavailable: {_why(meta)}", "_product": meta}
+
+
+def _mark_product_stale(body: dict, meta: dict) -> dict:
+    """Risk display rule (operator 13 Nov 2026): a tier whose stored product went STALE, or past hard expiry (last
+    good, greyed), keeps its tier and is MARKED stale; it is never downgraded or cleared, so a RED warning and banner
+    stay up, labelled stale, until a fresh evaluation replaces them. A fresh (OK) product passes through untouched."""
+    if meta.get("status") == "OK" and not meta.get("greyed"):
+        return body
+    out = dict(body)
+    out["stale"] = True
+    if out.get("state") == "evaluated":
+        out["state"] = "stale"
+    out["product_stale"] = {"status": meta.get("status"), "greyed": bool(meta.get("greyed")),
+                            "age_s": meta.get("age_s"), "as_of": meta.get("as_of"), "reason": meta.get("reason")}
+    return out
 
 
 def serve_home_cio_card(*, now=None, **io) -> dict:
@@ -114,7 +131,7 @@ def serve_home_cio_card(*, now=None, **io) -> dict:
     env = read_envelope("market_risk.latest", now=now, **io)
     body, meta = _pick(env, now, lambda d: d.get("home_cio_card"))
     if isinstance(body, dict):
-        return {**body, "_product": meta}
+        return {**_mark_product_stale(body, meta), "_product": meta}
     return {"schema": "HomeCioCard@v1", "state": "UNKNOWN", "advisory_only": True,
             "reason": f"CIO card record unavailable: {_why(meta)}", "_product": meta}
 

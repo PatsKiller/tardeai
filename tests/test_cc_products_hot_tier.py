@@ -101,8 +101,9 @@ def closed_port() -> int:
 
 
 def test_product_key_shape():
-    assert product_key("cio.pages") == "cc:product:cio.pages:global"
-    assert product_key("x", "acct:1") == "cc:product:x:acct:1"
+    assert product_key("cio.pages") == "cc:product:cio.pages:global:v1"
+    assert product_key("x", "acct:1") == "cc:product:x:acct:1:v1"
+    assert product_key("x", "acct:1", 2) == "cc:product:x:acct:1:v2"
 
 
 def test_get_hit(fake):

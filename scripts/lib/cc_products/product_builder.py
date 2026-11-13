@@ -65,6 +65,14 @@ OFF_HOURS = {"cadence_s": 3600, "stale_after_s": 9000, "hard_expiry_s": 14400}
 LOCK_DIR = Path(os.environ.get("TRADEAI_CC_PRODUCT_LOCK_DIR")
                 or (PERSISTENT_STATE_ROOT / "data" / "ops" / "cc_products_locks"))
 SLOT_COUNT = int(os.environ.get("TRADEAI_CC_BUILDER_SLOTS", "2"))
+#: Bounded wait for a free builder slot (rework 2026-11-13 item 5). Lanes whose crons fire in the same minute used to
+#: lose the slot race and log SKIPPED_BUSY; a waiter now polls for up to this long. The product lock stays
+#: non-blocking: a second build of the SAME product/scope is still SKIPPED_BUSY at once. slot wait + builder timeout
+#: stays under the lane runner timeout (ProductSpec.runner_timeout_s, asserted in tests).
+SLOT_WAIT_S = float(os.environ.get("TRADEAI_CC_BUILDER_SLOT_WAIT_S", "20"))
+SLOT_POLL_S = 0.25
+#: Publish margin after the child returns (connect, UPSERT, log, commit, hot SET).
+PUBLISH_MARGIN_S = 10.0
 
 _OK, _ERR = b"O", b"E"
 
@@ -82,21 +90,26 @@ class ProductSpec:
     schema_version: int = 1
     off_hours: bool = True  # False for nightly tiers whose limits are already longer than the off-hours tier
     rlimit_mb: int = DEFAULT_RLIMIT_MB
+    #: n8n allowlist timeout_s for the lane that runs this product (generator: builder timeout + 40).
+    runner_timeout_s: float = 0.0
 
 
 CATALOGUE: dict[str, ProductSpec] = {s.product_id: s for s in (
     # DSN catalogue live.market_risk: 60 s / 3 min / 5 min (operator Q1: 5 min in market hours, 4 h off-hours).
     # One body serves /api/v2/market-risk/latest AND /api/v2/home/cio-card (LQ-1352: one record, two routes).
-    ProductSpec("market_risk.latest", "dp-live", "builders:build_market_risk", 60, 180, 300, 50.0),
+    ProductSpec("market_risk.latest", "dp-live", "builders:build_market_risk", 60, 180, 300, 50.0,
+                runner_timeout_s=90.0),
     # Phase 7 risk tier (cio.pages limits): 2 min / 6 min / 30 min.
-    ProductSpec("risk", "dp-fast", "builders:build_risk", 120, 360, 1800, 100.0),
+    ProductSpec("risk", "dp-fast", "builders:build_risk", 120, 360, 1800, 100.0,
+                runner_timeout_s=140.0),
     # shell.static tier: nightly / 36 h / 7 d. The legacy route re-verified files on disk per request; the
     # builder verifies them once per run. Cadence 6 h so a report generated during the day appears the same day.
     ProductSpec("reports.analyst_links", "dp-slow", "builders:build_analyst_links", 21600, 129600, 604800, 240.0,
-                off_hours=False),
+                off_hours=False, runner_timeout_s=280.0),
     # home.status tier: 1 min / 3 min / 15 min. Slices: since_close, incidents, approvals_summary,
     # priorities_live, status, gates - each with its own source clock.
-    ProductSpec("home", "dp-live", "builders:build_home", 60, 180, 900, 50.0),
+    ProductSpec("home", "dp-live", "builders:build_home", 60, 180, 900, 50.0,
+                runner_timeout_s=90.0),
 )}
 
 
@@ -159,12 +172,17 @@ def parse_ts(value) -> datetime | None:
 
 
 class HostLocks:
-    """flock per (product, scope) + a SLOT_COUNT pool. Non-blocking; released when the context exits or the process
-    dies (the kernel drops flocks with the fd), so a crashed builder never leaves a stale lock."""
+    """flock per (product, scope) + a SLOT_COUNT pool, released when the context exits or the process dies (the
+    kernel drops flocks with the fd), so a crashed builder never leaves a stale lock.
 
-    def __init__(self, lock_dir: Path | None = None, slots: int | None = None):
+    The product lock is non-blocking. The slot pool waits up to ``slot_wait_s`` (bounded, polling) so lanes that fire
+    in the same minute queue briefly instead of skipping."""
+
+    def __init__(self, lock_dir: Path | None = None, slots: int | None = None, slot_wait_s: float | None = None):
         self.lock_dir = Path(lock_dir or LOCK_DIR)
         self.slots = int(SLOT_COUNT if slots is None else slots)
+        self.slot_wait_s = max(0.0, float(SLOT_WAIT_S if slot_wait_s is None else slot_wait_s))
+        self.slot_waited_s = 0.0
 
     def _try(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -189,14 +207,22 @@ class HostLocks:
                 yield f"busy: another {product_id}/{scope_key} build holds the host lock"
                 return
             held.append(fd)
-            for i in range(max(1, self.slots)):
-                sfd = self._try(self.lock_dir / f"slot-{i}.lock")
-                if sfd is not None:
-                    held.append(sfd)
+            t0 = time.monotonic()
+            deadline = t0 + self.slot_wait_s
+            sfd = None
+            while True:
+                for i in range(max(1, self.slots)):
+                    sfd = self._try(self.lock_dir / f"slot-{i}.lock")
+                    if sfd is not None:
+                        break
+                if sfd is not None or time.monotonic() >= deadline:
                     break
-            else:
-                yield f"busy: all {self.slots} host builder slots in use"
+                time.sleep(min(SLOT_POLL_S, max(0.0, deadline - time.monotonic())))
+            self.slot_waited_s = round(time.monotonic() - t0, 3)
+            if sfd is None:
+                yield f"busy: all {self.slots} host builder slots in use after waiting {self.slot_wait_s:g}s"
                 return
+            held.append(sfd)
             yield None
         finally:
             for fd in held:
@@ -592,7 +618,7 @@ def _run_locked(spec, *, connect, hot, dry_run, clock, started_at, lim, builder_
         receipt["hot"] = "skipped: past hard expiry"
         return receipt
     try:
-        hot.set(codec.product_key(pid_, scope_key), codec.pack(row), ex_s)
+        hot.set(codec.product_key(pid_, scope_key, int(row.get("schema_version") or 1)), codec.pack(row), ex_s)
         receipt["hot"] = "set"
     except Exception as exc:  # noqa: BLE001 - the PG row is authoritative
         receipt["hot"] = "error: " + type(exc).__name__
@@ -641,7 +667,9 @@ def run_cli(args) -> int:
         receipt = run_once(spec, connect=_rw_connect, hot=HotTier(), dry_run=False, builder_sha=args.builder_sha,
                            **kw)
     print(json.dumps(receipt, sort_keys=True, default=json_default))
-    return 0 if receipt.get("outcome") in ("OK", "UNCHANGED", "SKIPPED_BUSY") else 1
+    # REFUSED_OLDER exits 0: the conditional publish kept a NEWER stored row (another builder won the race). It is
+    # DEGRADED (health contract check refused_older reads cc_product_build_log), never RUN_FAILED.
+    return 0 if receipt.get("outcome") in ("OK", "UNCHANGED", "SKIPPED_BUSY", "REFUSED_OLDER") else 1
 
 
 if __name__ == "__main__":
