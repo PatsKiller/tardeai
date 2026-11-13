@@ -48,6 +48,7 @@ Never: a broker call, a model call, a send, a DDL statement, a delete.
 from __future__ import annotations
 
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -194,13 +195,42 @@ def _sans_times(obj: Any) -> Any:
     return obj
 
 
+# LQ-2961 (2026-11-13): the size-cap curation reason embeds the stage-wide member count and the record's own
+# conviction ("size cap: stage watching holds 3347 > cap 120; lowest conviction 11.2"). The count moves whenever any
+# member enters or leaves the stage, so every capped member compared as a `watchlist` change on every run: 1,575 of
+# 1,701 consecutive versions in the store's last 60 MB differed ONLY there, re-appending ~3.6k WATCH records (~8 KB
+# each) every 30 minutes (~600 MB/day; the file reached 2.96 GB and the cio wake 13 GB RSS, LQ-2954). The decision,
+# stage and cap stay material; the count and the sub-tolerance conviction in the text do not. The stored row keeps
+# the full current reason whenever a version IS written.
+_SIZE_CAP_REASON = re.compile(r"^(size cap: stage \S+ )holds \d+( > cap \S+); lowest conviction -?[\d.]+$")
+
+
+def _curation_reason_view(reason: Any) -> Any:
+    if isinstance(reason, str):
+        m = _SIZE_CAP_REASON.match(reason)
+        if m:
+            return f"{m.group(1)}holds N{m.group(2)}"
+    return reason
+
+
+def _material_view(field: str, value: Any) -> Any:
+    """``value`` as the materiality check compares it: no timestamps; for ``watchlist``, a size-cap curation reason
+    without its moving count and conviction."""
+    out = _sans_times(value)
+    if field == "watchlist" and isinstance(out, dict) and isinstance(out.get("curation"), dict):
+        cur = dict(out["curation"])
+        cur["reason"] = _curation_reason_view(cur.get("reason"))
+        out = {**out, "curation": cur}
+    return out
+
+
 def material_changes(prior: Optional[dict[str, Any]], rec: dict[str, Any]) -> list[str]:
     """The prospect fields whose change makes a new version (the opportunity store's material-change rule, applied
     to the prospect): any non-volatile field, the conviction beyond CONVICTION_TOLERANCE, or a component's value."""
     if prior is None or not ir.is_prospect_record(prior):
         return ["mint"]
     out = [k for k in ir.PROSPECT_FIELDS
-           if k not in _VOLATILE and _sans_times(prior.get(k)) != _sans_times(rec.get(k))]
+           if k not in _VOLATILE and _material_view(k, prior.get(k)) != _material_view(k, rec.get(k))]
     try:
         if abs(float(prior.get("conviction") or 0) - float(rec.get("conviction") or 0)) >= CONVICTION_TOLERANCE:
             out.append("conviction")
