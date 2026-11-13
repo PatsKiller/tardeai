@@ -110,7 +110,7 @@ def _query(rows):
 def test_the_cio_card_counts_only_the_decisions_the_book_does_not_answer(served, monkeypatch):
     """Fail-before: the chip served the writer's '5 to decide' beside a Do-now list of one (XAR)."""
     monkeypatch.setattr(api_v2, "_db_query", _query(BROKER_STOPS))
-    card = api_v2._home_cio_card()["card"]
+    card = api_v2._home_cio_card_build()["card"]  # MEM-CONTAIN: the route serves SWR; the build is tested directly
 
     assert card["stops_total"]["value"] == 10          # every item is still shown
     assert card["stops_actionable"]["value"] == 1      # but only XAR still needs a decision
@@ -140,7 +140,7 @@ def test_the_since_close_route_serves_the_reconciled_do_now_but_not_the_stale_co
 def test_an_unread_stop_book_settles_nothing(served, monkeypatch):
     """A read that did not happen is not an answer: every ask stays to do, and the card says the book is unread."""
     monkeypatch.setattr(api_v2, "_db_query", _query(None))
-    card = api_v2._home_cio_card()["card"]
+    card = api_v2._home_cio_card_build()["card"]  # MEM-CONTAIN: the route serves SWR; the build is tested directly
 
     assert card["stops_actionable"]["value"] == 5       # unknown is not 'done'
     assert [a["symbol"] for a in card["actions"]] == ["SKYD", "SPCX", "ANET", "SPCX", "XAR"]

@@ -2788,6 +2788,32 @@ def _reports_analyst_links(query=None):
     )
 
 
+def _analyst_links_unknown(key: str, meta: dict) -> dict:
+    # links None (not {}): "not built yet" must never read as "no reports exist" (no false positives)
+    out = {"status": "UNKNOWN", "stale": True, "as_of": None, "age_s": None, "links": None, "count": None,
+           "updated_at": None}
+    out.update(meta)
+    return out
+
+
+def _reports_analyst_links_swr(query=None):
+    """GET /api/v2/reports/analyst/links through serve-last-good SWR (MEM-CONTAIN 2026-11-13). Four concurrent
+    identical ``limit=500`` polls each ran the full registry + per-symbol JSON scan in-request (one 48.7 s) minutes
+    before the 14:30 ET SIGKILL. The key carries every input the payload depends on (symbol, limit, principal);
+    an invalid limit is a 400-style error body, not a build."""
+    q = query or {}
+    sym = (q.get("symbol") or "").strip().upper()
+    try:
+        limit = int(q.get("limit", 300) or 300)
+    except (TypeError, ValueError):
+        return 400, {"ok": False, "error": "limit must be an integer"}
+    key = _swr_scope_key("reports_analyst_links", symbol=sym, limit=limit)
+    return _shared_get_cached(
+        key, 120.0, lambda: _reports_analyst_links({"symbol": sym, "limit": limit}), stale_ok=True,
+        unknown=_analyst_links_unknown, route="/api/v2/reports/analyst/links",
+    )
+
+
 def _reports_analyst_validate(query=None):
     """GET /api/v2/reports/analyst/validate — coverage check: eligible vs on-disk links."""
     import sys as _s
@@ -31868,6 +31894,31 @@ def _market_risk_latest_projection():
     return _proj
 
 
+_MARKET_RISK_TTL_S = 30.0
+_HOME_CIO_CARD_TTL_S = 30.0
+
+
+def _market_risk_key() -> str:
+    return _swr_scope_key("market_risk_projection")
+
+
+def _market_risk_unknown(key: str, meta: dict) -> dict:
+    out = {"state": "not_evaluated", "status": "UNKNOWN", "stale": True, "as_of": None, "age_s": None}
+    out.update(meta)  # reason building | build_failed | build_stuck | build_deferred
+    return out
+
+
+def _market_risk_projection_build():
+    """The SWR background build: the projection, JSON-cleaned once (the stored payload is what every route serves)."""
+    return _json_clean(_market_risk_latest_projection())
+
+
+def _market_risk_latest_swr():
+    """GET /api/v2/market-risk/latest body (MEM-CONTAIN 2026-11-13): serve-last-good SWR, never built on a request."""
+    return _shared_get_cached(_market_risk_key(), _MARKET_RISK_TTL_S, _market_risk_projection_build, stale_ok=True,
+                              unknown=_market_risk_unknown, route="/api/v2/market-risk/latest")
+
+
 def _home_since_close():
     """GET /api/v2/home/since-close — the Home "Since last close" card (LQ-20261107-1253). Reads the snapshot file
     scripts/since_close_snapshot.py writes overnight (n8n); never builds it and never calls an LLM on this thread.
@@ -31999,19 +32050,28 @@ def _home_cio_card():
     One read-only projection (HomeCioCard@v1, scripts/lib/home_cio_card.py) over the market-risk record, the
     since-close CIO synopsis and stop advice, daily bars for the rotation ETFs, and — for the disagreement notes only —
     the defense desk and sector-momentum records. Every value carries source_id + as_of; untraceable values are dropped;
-    a stale input turns advice off. Never writes, never reaches a broker. Cached 30 s."""
+    a stale input turns advice off. Never writes, never reaches a broker. Serve-last-good SWR, 30 s TTL: the request
+    never builds (MEM-CONTAIN 2026-11-13; 37.9 s in-request build before the 14:30 ET SIGKILL)."""
+    key = _swr_scope_key("home_cio_card")
+    mr_key = _market_risk_key()  # resolved on the request thread: the principal is thread-local
+    return _shared_get_cached(key, _HOME_CIO_CARD_TTL_S, lambda: _home_cio_card_build(mr_key), stale_ok=True,
+                              route="/api/v2/home/cio-card")
+
+
+def _home_cio_card_build(mr_key: str | None = None):
+    """The HomeCioCard@v1 build. Runs ONLY on the SWR background thread (MEM-CONTAIN 2026-11-13); the request
+    path is _home_cio_card. Reuses a fresh market-risk projection from the SWR store instead of building it twice."""
     import time as _t
     from datetime import date as _date, datetime as _dt, timedelta as _td, timezone as _tz
     from zoneinfo import ZoneInfo as _Z
 
-    hit = _HOME_CIO_CARD_CACHE.get("v")
-    if hit and _t.monotonic() - hit[0] < 30:
-        return hit[1]
     from lib import home_cio_card as _hcc
     from lib import since_close_card as _sc
 
     try:
-        mr = _market_risk_latest_projection()
+        mr = _swr_module().peek(mr_key, _MARKET_RISK_TTL_S) if mr_key else None
+        if mr is None:
+            mr = _market_risk_latest_projection()
     except Exception as e:  # noqa: BLE001 — the card renders "market risk unavailable", never a 500
         mr = {"state": "not_evaluated", "reason": f"market risk projection failed: {type(e).__name__}"}
     snap = _sc.load_json(STATE_DIR / "since_close_latest.json")
@@ -48644,7 +48704,31 @@ _SHARED_GET_LOCKS: dict = {}
 _SHARED_GET_LOCKS_GUARD = _sg_threading.Lock()
 
 
-def _shared_get_cached(key: str, ttl_s: float, build, stale_ok: bool = False, annotate=None, unknown=None):
+def _swr_module():
+    try:
+        from scripts.lib import shared_get_swr as _swr
+    except ImportError:  # pragma: no cover - flat lib.* layout
+        from lib import shared_get_swr as _swr
+    return _swr
+
+
+def _swr_scope_key(name: str, **inputs) -> str:
+    """SWR cache key over EVERY input a payload depends on (MEM-CONTAIN 2026-11-13): the route name, the request's
+    authenticated principal (auth/role scope, so one principal's payload is never served to another) and the
+    normalised query inputs the builder reads. Account scope: none of the wired builders takes an account parameter
+    (each projects the whole book); a builder that gains one must pass it here."""
+    try:
+        from lib import cc_auth as _cca
+
+        principal = _cca.current_principal() or "anon"
+    except Exception:  # noqa: BLE001 - no auth module = one anonymous scope, never a shared one by accident
+        principal = "anon"
+    parts = [name, f"principal={principal}"] + [f"{k}={inputs[k]}" for k in sorted(inputs)]
+    return "|".join(parts)
+
+
+def _shared_get_cached(key: str, ttl_s: float, build, stale_ok: bool = False, annotate=None, unknown=None,
+                       route: str | None = None):
     """Serve one computed GET payload to every caller for ttl_s seconds, single-flight.
 
     /api/v2/cio/pages (20-30 s) and /api/v2/risk (11-21 s) were recomputed for every poll from
@@ -48655,7 +48739,9 @@ def _shared_get_cached(key: str, ttl_s: float, build, stale_ok: bool = False, an
     stale_ok=True (LQ-20261107-2572): a caller NEVER waits on a build. It gets the last-good payload with
     as_of/age_s/stale, or UNKNOWN 'building' before the first build lands; one background build per key
     survives the request watchdog and its result is stored (scripts/lib/shared_get_swr.py). Opt-in for
-    slow GETs: cio/pages, cio/asks/tracked (wired); reports/analyst/links, market-risk/latest, risk (not yet)."""
+    slow GETs: cio/pages, cio/asks/tracked, reports/analyst/links, market-risk/latest (+ the cio-card projection),
+    home/cio-card and risk (MEM-CONTAIN 2026-11-13: all wired). The SWR module also caps concurrent builds across all
+    keys and refuses to START a build near the cgroup memory.high (scripts/lib/shared_get_swr.py)."""
     import time as _t
 
     if stale_ok:
@@ -48663,7 +48749,7 @@ def _shared_get_cached(key: str, ttl_s: float, build, stale_ok: bool = False, an
             from scripts.lib import shared_get_swr as _swr
         except ImportError:  # pragma: no cover - flat lib.* layout
             from lib import shared_get_swr as _swr
-        return _swr.get(key, ttl_s, build, annotate=annotate, unknown=unknown)
+        return _swr.get(key, ttl_s, build, annotate=annotate, unknown=unknown, route=route)
 
     hit = _SHARED_GET_CACHE.get(key)
     if hit and _t.monotonic() - hit[0] < ttl_s:
@@ -48772,10 +48858,19 @@ def warm_swr_caches() -> list:
     return []
 
 
+def _risk_unknown(key: str, meta: dict) -> dict:
+    out = {"status": "UNKNOWN", "stale": True, "as_of": None, "age_s": None, "positions": None, "stops": None,
+           "portfolio_heat_pct": None, "total_risk_dollars": None, "pct_protected": None, "source": "cio_truth"}
+    out.update(meta)
+    return out
+
+
 def _risk_payload_cached():
-    """GET /api/v2/risk — cached 60 s, single-flight (see _shared_get_cached)."""
+    """GET /api/v2/risk — serve-last-good SWR, 60 s TTL (MEM-CONTAIN 2026-11-13). The cio_truth resolve runs on one
+    background build thread; a request never builds and never waits (see _shared_get_cached stale_ok)."""
     return _shared_get_cached(
-        "risk", 60.0, lambda: _cio_truth_readers().risk_payload(db_query=_db_query)
+        _swr_scope_key("risk"), 60.0, lambda: _cio_truth_readers().risk_payload(db_query=_db_query),
+        stale_ok=True, unknown=_risk_unknown, route="/api/v2/risk",
     )
 
 
@@ -51138,7 +51233,7 @@ ROUTES = {
     "/api/v2/reports/analyst/export": _reports_analyst_export,
     "/api/v2/reports/analyst/generate": _reports_analyst_generate,
     "/api/v2/reports/analyst/registry": _reports_analyst_registry,
-    "/api/v2/reports/analyst/links": _reports_analyst_links,
+    "/api/v2/reports/analyst/links": _reports_analyst_links_swr,
     "/api/v2/reports/analyst/eligible": _reports_analyst_eligible,
     "/api/v2/reports/analyst/validate": _reports_analyst_validate,
     "/api/v3/alerts/active": _v3_alerts_active,
@@ -70501,7 +70596,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # POST ack: records the operator's acknowledgment in the episode ledger (P3-T7, lib.market_risk.escalation).
     if base_path == "/api/v2/market-risk/latest" and method == "GET":
         try:
-            return 200, {"ok": True, "data": _json_clean(_market_risk_latest_projection())}
+            return 200, {"ok": True, "data": _market_risk_latest_swr()}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
     if base_path == "/api/v2/market-risk/ack" and method == "POST":

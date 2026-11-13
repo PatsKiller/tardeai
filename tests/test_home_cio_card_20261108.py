@@ -333,7 +333,7 @@ def test_the_route_passes_the_fresh_quote_batch_into_the_card(monkeypatch):
 
     monkeypatch.setattr(hcc, "build", _spy)
 
-    out = api_v2._home_cio_card()
+    out = api_v2._home_cio_card_build()  # MEM-CONTAIN: the route serves SWR; the build is tested directly
     assert asked["symbols"] == ["XLP", "XLU", "XLV"]          # the defensive rotation universe is quoted
     assert passed["quotes"]["XLV"]["price"] == PRICE           # ...and the batch reaches the projection
     xlv = {c["symbol"]: c for c in out["panel"]["rotate"]["candidates"]}["XLV"]
