@@ -20,16 +20,19 @@
  *    - R1: a GAP whose only stop expired is UNKNOWN in the regular session, WARN after the close (D1);
  *    - R2: a GAP whose stop read is older than the freshness limit is UNKNOWN; the last-known GAP stays listed.
  *      The limit itself is fresh (age > limit is stale). The session is 09:30:00 <= ET < 16:00:00, Mon-Fri.
- *  One verdict for one book (LQ-2483): the rollup ORDER matches the backend. Row MEMBERSHIP matches
- *  stops_protection.summary only once LQ-2431 (e5afdf19d) is folded. Before that, the backend marks an unpriced row
- *  counted:false and drops it, while this module counts it, so the page can read GAP where the served rollup reads
- *  OK. That is the safe direction, and it closes when 2431 folds; fold 2431 with or before this module. R1 has no
- *  effect until LQ-2412 (b66945cf2) folds, because protection.expired_stop is absent from the wire before then.
- *  Second known split: a book with zero counted positions. stops_protection.summary reads OK (counted 0); this module
- *  reads UNKNOWN and shows its cause, unless the position count confirms zero (F2, the 2412 rule). Also the safe side.
- *  The served summary also turns UNKNOWN for an unverified broker stop read (unverified_brokers). This module has
- *  no broker-state input, so it sees that only through the rows (G2: render the served verdict instead).
- *
+ *  One verdict for one book (LQ-2483, LQ-2708). The owner of the served verdict is protection_verdict.headline
+ *  (LQ-2412/2436, lead ruling); no route serves it yet (G2). Until one does, this module applies the owner's rules to
+ *  the rows it has, and the shared fixture tests/fixtures/portfolio_protection_books_lq2708.json is read by both sides:
+ *  the Python test runs each book's positions through cio_truth.protection_for (the wire) and stops_protection.summary;
+ *  the page test runs the same wire through this module. Invariants on every book: the page never reads GAP where the
+ *  backend reads OK, and never OK where it reads anything else. Membership agrees because this branch carries LQ-2431
+ *  (e5afdf19d) and LQ-2436 (c280ec89d): an unpriced or <= 0 row is counted on the wire too.
+ *  Declared splits, all with the page on the owner's side and never less alarmed than OK:
+ *    - zero counted, count not confirmed: summary OK, page UNKNOWN with its cause (owner: UNKNOWN, LQ-2412 21083f476);
+ *    - R1 expired stop in session and R2 stale GAP read: summary GAP (no clock), page UNKNOWN with the last-known GAP
+ *      kept as a P0 row (owner: UNKNOWN). R1 reads protection.expired_stop (LQ-2412) or stop_state 'expired'.
+ *  Not mirrored: the owner's 2169 counted set (an operator-exempt class) and its per-broker read ages. The rows carry
+ *  neither, so the page cannot see them; rendering the served verdict (G2) is what closes that.
  *  I1/I2 defaults: unreadable -> UNKNOWN; no source -> UNKNOWN + NEEDS BACKEND; timeout (30 s) -> TIMED OUT;
  *  missing data -> UNKNOWN. Missing is never healthy. No /api/v2/overview read. */
 
@@ -142,8 +145,22 @@ export interface PositionModel {
   raw: HoldingWire
 }
 
-/** Stop-read freshness limits (config/home_status_registry.json stop_freshness_contract: open 900 s, closed 72 h). */
+/** Stop-read freshness limits: config/data_source_authority.json domain `broker_stops` (stale_after_hours 0.25,
+ *  stale_after_hours_closed 72), read by cio_truth.stop_freshness_contract() and by the owner rollup
+ *  protection_verdict.headline (LQ-2436 F1). The LQ-2708 contract test pins this to the same file. */
 export const STOP_READ_MAX_AGE_MS = { session: 900_000, offHours: 72 * 3_600_000 } as const
+
+/** R1: what an expired-only stop reads while the regular session is open. config/protection_verdict.json
+ *  `protection_verdict.expired_day_stop_open_session` (LQ-2412, shipped UNKNOWN); UNKNOWN is also the owner's fallback
+ *  when that file is absent or invalid. The LQ-2708 contract test pins this to the file when it exists. */
+export const R1_EXPIRED_OPEN_SESSION: 'UNKNOWN' | 'GAP' | 'WARN' = 'UNKNOWN'
+
+/** No usable value: missing, not a number, or <= 0 (a feed that writes 0 for no quote). Never "under the floor"
+ *  (owner rule: protection_verdict.price_missing_of, LQ-2436 F3; cio_truth.protection_for after LQ-2436). */
+export function priceMissing(h: HoldingWire): boolean {
+  const v = num(h.market_value)
+  return v == null || v <= 0 || h.protection?.price_missing === true
+}
 
 /** Regular US equity session, 09:30-16:00 ET Mon-Fri. No holiday calendar: a holiday reads as open, which picks the
  *  stricter limit (R2) and UNKNOWN over WARN (R1), the safe side of both rules. */
@@ -179,7 +196,8 @@ function rowView(h: HoldingWire, ctx: RowContext): Omit<RowView, 'lastKnownGap'>
     // R1/D1: the backend keeps an expired-only stop as GAP and marks it (LQ-2412 protection.expired_stop).
     if (p.expired_stop === true || String(h.stop_state || '').toLowerCase() === 'expired') {
       return open
-        ? { protection: 'UNKNOWN', chip: 'EXPIRED', reason: 'The stop expired during the session; protection cannot be verified (R1: UNKNOWN)',
+        ? { protection: R1_EXPIRED_OPEN_SESSION, chip: 'EXPIRED',
+          reason: `The stop expired and the session is open; protection cannot be verified (R1: ${R1_EXPIRED_OPEN_SESSION})`,
           cause: 'Expired Stop', source, verifiedAt, stopPrice }
         : { protection: 'WARN', chip: 'EXPIRED', reason: 'The stop expired after the close; protection existed but is no longer active (D1: WARN, never OK)',
           cause: 'Expired Stop', source, verifiedAt, stopPrice }
@@ -214,10 +232,10 @@ export function positionsFrom(w: HoldingsWire | null, nowMs: number = Date.now()
     const isCash = !!h.is_cash
     const pr = rowProtection(h, ctx)
     const countedFlag = h.protection?.counted
-    // F1 (REVIEW-2448, folded from LQ-2469): an unknown value is never small. An unpriced row stays counted even when
-    // the wire says counted:false, so an unpriced GAP stays a GAP. Only a KNOWN value under the floor is listed, not
-    // counted (operator DECISIONS-20261111: "under $100: listed, not counted, not hidden"; cio_truth after LQ-2431).
-    const unpriced = value == null || h.protection?.price_missing === true
+    // F1 (REVIEW-2448, folded from LQ-2469): an unknown value is never small. An unpriced row (no value, or <= 0) stays
+    // counted even when the wire says counted:false, so an unpriced GAP stays a GAP. Only a KNOWN positive value under
+    // the floor is listed, not counted (operator DECISIONS-20261111: "under $100: listed, not counted, not hidden").
+    const unpriced = priceMissing(h)
     const counted = pr.protection !== 'EXEMPT' && !isCash && ((countedFlag ?? true) || unpriced)
     const symbol = String(h.symbol || '?').toUpperCase()
     const account = String(h.account_label || h.account || h.account_id || '—')

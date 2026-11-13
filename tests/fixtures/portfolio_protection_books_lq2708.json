@@ -1,0 +1,643 @@
+{
+ "schema": "PortfolioProtectionBooks@v1",
+ "task": "LQ-20261107-2708",
+ "now": "2031-03-07T15:00:00Z",
+ "note": "Synthetic. Wire rows are cio_truth.protection_for output; tests on both sides read this one file.",
+ "stop_read_max_age_s": {
+  "session": 900,
+  "off_hours": 259200
+ },
+ "r1_expired_open_session": "UNKNOWN",
+ "books": [
+  {
+   "name": "all_protected",
+   "raw": [
+    {
+     "symbol": "SYNA",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 5000.0,
+     "stop_state": "active",
+     "stop_source": "broker_resting",
+     "stop_price": 90.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z"
+    },
+    {
+     "symbol": "SYNB",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 3000.0,
+     "stop_state": "active",
+     "stop_source": "broker_resting",
+     "stop_price": 90.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z"
+    }
+   ],
+   "wire": [
+    {
+     "symbol": "SYNA",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 5000.0,
+     "stop_state": "active",
+     "stop_source": "broker_resting",
+     "stop_price": 90.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z",
+     "protection_state": "PROTECTED",
+     "protection": {
+      "state": "PROTECTED",
+      "reason": "Active resting stop",
+      "cause": null,
+      "source": "broker_resting",
+      "as_of": "2031-03-07T14:59:00Z",
+      "counted": true,
+      "price_missing": false
+     }
+    },
+    {
+     "symbol": "SYNB",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 3000.0,
+     "stop_state": "active",
+     "stop_source": "broker_resting",
+     "stop_price": 90.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z",
+     "protection_state": "PROTECTED",
+     "protection": {
+      "state": "PROTECTED",
+      "reason": "Active resting stop",
+      "cause": null,
+      "source": "broker_resting",
+      "as_of": "2031-03-07T14:59:00Z",
+      "counted": true,
+      "price_missing": false
+     }
+    }
+   ],
+   "expect": {
+    "page": "OK",
+    "summary": "OK"
+   }
+  },
+  {
+   "name": "known_40_gap_is_listed_not_counted",
+   "raw": [
+    {
+     "symbol": "SYNA",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 5000.0,
+     "stop_state": "active",
+     "stop_source": "broker_resting",
+     "stop_price": 90.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z"
+    },
+    {
+     "symbol": "SYNS",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 40.0,
+     "stop_state": null,
+     "stop_source": null,
+     "stop_price": null,
+     "stop_captured_at": "2031-03-07T14:59:00Z"
+    }
+   ],
+   "wire": [
+    {
+     "symbol": "SYNA",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 5000.0,
+     "stop_state": "active",
+     "stop_source": "broker_resting",
+     "stop_price": 90.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z",
+     "protection_state": "PROTECTED",
+     "protection": {
+      "state": "PROTECTED",
+      "reason": "Active resting stop",
+      "cause": null,
+      "source": "broker_resting",
+      "as_of": "2031-03-07T14:59:00Z",
+      "counted": true,
+      "price_missing": false
+     }
+    },
+    {
+     "symbol": "SYNS",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 40.0,
+     "stop_state": null,
+     "stop_source": null,
+     "stop_price": null,
+     "stop_captured_at": "2031-03-07T14:59:00Z",
+     "protection_state": "GAP",
+     "protection": {
+      "state": "GAP",
+      "reason": "Stop read succeeded and shows no resting stop",
+      "cause": null,
+      "source": null,
+      "as_of": "2031-03-07T14:59:00Z",
+      "counted": false,
+      "price_missing": false
+     }
+    }
+   ],
+   "expect": {
+    "page": "OK",
+    "summary": "OK"
+   }
+  },
+  {
+   "name": "unpriced_gap_counts",
+   "raw": [
+    {
+     "symbol": "SYNA",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 5000.0,
+     "stop_state": "active",
+     "stop_source": "broker_resting",
+     "stop_price": 90.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z"
+    },
+    {
+     "symbol": "SYNU",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": null,
+     "stop_state": null,
+     "stop_source": null,
+     "stop_price": null,
+     "stop_captured_at": "2031-03-07T14:59:00Z"
+    }
+   ],
+   "wire": [
+    {
+     "symbol": "SYNA",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 5000.0,
+     "stop_state": "active",
+     "stop_source": "broker_resting",
+     "stop_price": 90.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z",
+     "protection_state": "PROTECTED",
+     "protection": {
+      "state": "PROTECTED",
+      "reason": "Active resting stop",
+      "cause": null,
+      "source": "broker_resting",
+      "as_of": "2031-03-07T14:59:00Z",
+      "counted": true,
+      "price_missing": false
+     }
+    },
+    {
+     "symbol": "SYNU",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": null,
+     "stop_state": null,
+     "stop_source": null,
+     "stop_price": null,
+     "stop_captured_at": "2031-03-07T14:59:00Z",
+     "protection_state": "GAP",
+     "protection": {
+      "state": "GAP",
+      "reason": "Stop read succeeded and shows no resting stop",
+      "cause": null,
+      "source": null,
+      "as_of": "2031-03-07T14:59:00Z",
+      "counted": true,
+      "price_missing": true
+     }
+    }
+   ],
+   "expect": {
+    "page": "GAP",
+    "summary": "GAP"
+   }
+  },
+  {
+   "name": "zero_value_gap_counts",
+   "raw": [
+    {
+     "symbol": "SYNA",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 5000.0,
+     "stop_state": "active",
+     "stop_source": "broker_resting",
+     "stop_price": 90.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z"
+    },
+    {
+     "symbol": "SYNZ",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 0.0,
+     "stop_state": null,
+     "stop_source": null,
+     "stop_price": null,
+     "stop_captured_at": "2031-03-07T14:59:00Z"
+    }
+   ],
+   "wire": [
+    {
+     "symbol": "SYNA",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 5000.0,
+     "stop_state": "active",
+     "stop_source": "broker_resting",
+     "stop_price": 90.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z",
+     "protection_state": "PROTECTED",
+     "protection": {
+      "state": "PROTECTED",
+      "reason": "Active resting stop",
+      "cause": null,
+      "source": "broker_resting",
+      "as_of": "2031-03-07T14:59:00Z",
+      "counted": true,
+      "price_missing": false
+     }
+    },
+    {
+     "symbol": "SYNZ",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 0.0,
+     "stop_state": null,
+     "stop_source": null,
+     "stop_price": null,
+     "stop_captured_at": "2031-03-07T14:59:00Z",
+     "protection_state": "GAP",
+     "protection": {
+      "state": "GAP",
+      "reason": "Stop read succeeded and shows no resting stop",
+      "cause": null,
+      "source": null,
+      "as_of": "2031-03-07T14:59:00Z",
+      "counted": true,
+      "price_missing": true
+     }
+    }
+   ],
+   "expect": {
+    "page": "GAP",
+    "summary": "GAP"
+   }
+  },
+  {
+   "name": "unknown_stop_state",
+   "raw": [
+    {
+     "symbol": "SYNA",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 5000.0,
+     "stop_state": "active",
+     "stop_source": "broker_resting",
+     "stop_price": 90.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z"
+    },
+    {
+     "symbol": "SYNQ",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 4000.0,
+     "stop_state": "unknown",
+     "stop_source": "stop_last_known",
+     "stop_price": null,
+     "stop_captured_at": "2031-03-07T14:59:00Z"
+    }
+   ],
+   "wire": [
+    {
+     "symbol": "SYNA",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 5000.0,
+     "stop_state": "active",
+     "stop_source": "broker_resting",
+     "stop_price": 90.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z",
+     "protection_state": "PROTECTED",
+     "protection": {
+      "state": "PROTECTED",
+      "reason": "Active resting stop",
+      "cause": null,
+      "source": "broker_resting",
+      "as_of": "2031-03-07T14:59:00Z",
+      "counted": true,
+      "price_missing": false
+     }
+    },
+    {
+     "symbol": "SYNQ",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 4000.0,
+     "stop_state": "unknown",
+     "stop_source": "stop_last_known",
+     "stop_price": null,
+     "stop_captured_at": "2031-03-07T14:59:00Z",
+     "protection_state": "UNKNOWN",
+     "protection": {
+      "state": "UNKNOWN",
+      "reason": "The last stop observation is stale or its status is unmapped",
+      "cause": "Stop State Unproven",
+      "source": "stop_last_known",
+      "as_of": "2031-03-07T14:59:00Z",
+      "counted": true,
+      "price_missing": false
+     }
+    }
+   ],
+   "expect": {
+    "page": "UNKNOWN",
+    "summary": "UNKNOWN"
+   }
+  },
+  {
+   "name": "cash_only_count_not_confirmed",
+   "raw": [
+    {
+     "symbol": "SYNCASH",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 1,
+     "market_value": 2500.0,
+     "is_cash": true,
+     "asset_type": "cash",
+     "stop_state": null,
+     "stop_source": null,
+     "stop_price": null,
+     "stop_captured_at": null
+    }
+   ],
+   "wire": [
+    {
+     "symbol": "SYNCASH",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 1,
+     "market_value": 2500.0,
+     "is_cash": true,
+     "asset_type": "cash",
+     "stop_state": null,
+     "stop_source": null,
+     "stop_price": null,
+     "stop_captured_at": null,
+     "protection_state": "EXEMPT",
+     "protection": {
+      "state": "EXEMPT",
+      "reason": "Exempt: cash",
+      "cause": null,
+      "source": "policy",
+      "as_of": null,
+      "counted": false,
+      "price_missing": false
+     }
+    }
+   ],
+   "expect": {
+    "page": "UNKNOWN",
+    "summary": "OK"
+   },
+   "position_counts": {
+    "agree": true,
+    "position_count": 1
+   },
+   "split": "summary has no confirm-zero rule; the owner (protection_verdict.headline) and the page read UNKNOWN"
+  },
+  {
+   "name": "cash_only_confirmed_zero",
+   "raw": [
+    {
+     "symbol": "SYNCASH",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 1,
+     "market_value": 2500.0,
+     "is_cash": true,
+     "asset_type": "cash",
+     "stop_state": null,
+     "stop_source": null,
+     "stop_price": null,
+     "stop_captured_at": null
+    }
+   ],
+   "wire": [
+    {
+     "symbol": "SYNCASH",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 1,
+     "market_value": 2500.0,
+     "is_cash": true,
+     "asset_type": "cash",
+     "stop_state": null,
+     "stop_source": null,
+     "stop_price": null,
+     "stop_captured_at": null,
+     "protection_state": "EXEMPT",
+     "protection": {
+      "state": "EXEMPT",
+      "reason": "Exempt: cash",
+      "cause": null,
+      "source": "policy",
+      "as_of": null,
+      "counted": false,
+      "price_missing": false
+     }
+    }
+   ],
+   "expect": {
+    "page": "OK",
+    "summary": "OK"
+   },
+   "position_counts": {
+    "agree": true,
+    "position_count": 0
+   }
+  },
+  {
+   "name": "stale_gap_read_in_session",
+   "raw": [
+    {
+     "symbol": "SYNA",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 5000.0,
+     "stop_state": "active",
+     "stop_source": "broker_resting",
+     "stop_price": 90.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z"
+    },
+    {
+     "symbol": "SYNG",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 4000.0,
+     "stop_state": null,
+     "stop_source": null,
+     "stop_price": null,
+     "stop_captured_at": "2031-03-05T03:00:00Z"
+    }
+   ],
+   "wire": [
+    {
+     "symbol": "SYNA",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 5000.0,
+     "stop_state": "active",
+     "stop_source": "broker_resting",
+     "stop_price": 90.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z",
+     "protection_state": "PROTECTED",
+     "protection": {
+      "state": "PROTECTED",
+      "reason": "Active resting stop",
+      "cause": null,
+      "source": "broker_resting",
+      "as_of": "2031-03-07T14:59:00Z",
+      "counted": true,
+      "price_missing": false
+     }
+    },
+    {
+     "symbol": "SYNG",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 4000.0,
+     "stop_state": null,
+     "stop_source": null,
+     "stop_price": null,
+     "stop_captured_at": "2031-03-05T03:00:00Z",
+     "protection_state": "GAP",
+     "protection": {
+      "state": "GAP",
+      "reason": "Stop read succeeded and shows no resting stop",
+      "cause": null,
+      "source": null,
+      "as_of": "2031-03-05T03:00:00Z",
+      "counted": true,
+      "price_missing": false
+     }
+    }
+   ],
+   "expect": {
+    "page": "UNKNOWN",
+    "summary": "GAP"
+   },
+   "split": "R2: summary does not age a read; the page and the owner read UNKNOWN and keep the last-known GAP as a P0 row"
+  },
+  {
+   "name": "expired_stop_in_session",
+   "raw": [
+    {
+     "symbol": "SYNA",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 5000.0,
+     "stop_state": "active",
+     "stop_source": "broker_resting",
+     "stop_price": 90.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z"
+    },
+    {
+     "symbol": "SYNE",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 4000.0,
+     "stop_state": "expired",
+     "stop_source": "broker_resting",
+     "stop_price": 80.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z"
+    }
+   ],
+   "wire": [
+    {
+     "symbol": "SYNA",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 5000.0,
+     "stop_state": "active",
+     "stop_source": "broker_resting",
+     "stop_price": 90.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z",
+     "protection_state": "PROTECTED",
+     "protection": {
+      "state": "PROTECTED",
+      "reason": "Active resting stop",
+      "cause": null,
+      "source": "broker_resting",
+      "as_of": "2031-03-07T14:59:00Z",
+      "counted": true,
+      "price_missing": false
+     }
+    },
+    {
+     "symbol": "SYNE",
+     "account_id": "schwab_synth_taxable",
+     "broker": "schwab",
+     "shares": 10,
+     "market_value": 4000.0,
+     "stop_state": "expired",
+     "stop_source": "broker_resting",
+     "stop_price": 80.0,
+     "stop_captured_at": "2031-03-07T14:59:00Z",
+     "protection_state": "GAP",
+     "protection": {
+      "state": "GAP",
+      "reason": "Stop read succeeded and shows no resting stop",
+      "cause": null,
+      "source": "broker_resting",
+      "as_of": "2031-03-07T14:59:00Z",
+      "counted": true,
+      "price_missing": false
+     }
+    }
+   ],
+   "expect": {
+    "page": "UNKNOWN",
+    "summary": "GAP"
+   },
+   "split": "R1: summary has no session rule; the page and the owner read UNKNOWN while the session is open"
+  }
+ ]
+}
