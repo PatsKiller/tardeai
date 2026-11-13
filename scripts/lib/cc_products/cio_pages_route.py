@@ -29,10 +29,11 @@ SCOPE_KEY = "global"
 STATEMENT_TIMEOUT_MS = 250
 
 _PRODUCT_FIELDS = ("status", "as_of", "built_at", "age_s", "stale_after_s", "hard_expiry_s", "next_refresh_at",
-                   "seq", "reason", "served_from")
+                   "seq", "reason", "served_from", "build_status", "build_failure")
 
 _COLUMNS = ("product_id, scope_key, body, etag, seq, as_of, built_at, next_refresh_at, stale_after_s, "
-            "hard_expiry_s, purge_after_s, status, source_watermarks, builder_sha, bytes, build_ms")
+            "hard_expiry_s, purge_after_s, status, reason, schema_version, source_watermarks, builder_sha, bytes, "
+            "build_ms")
 
 
 class StoreUnavailable(RuntimeError):

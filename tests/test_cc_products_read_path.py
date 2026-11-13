@@ -20,6 +20,7 @@ ENVELOPE_KEYS = {
     "product", "scope", "status", "as_of", "built_at", "next_refresh_at", "stale_after_s", "hard_expiry_s",
     "age_s", "seq", "etag", "reason", "data", "last_good", "served_from",
     "source_watermarks",  # LQ-2600 (REVIEW-2606 F2): the stored per-section clocks travel with the envelope
+    "build_status", "build_failure", "schema_version",  # home-products 13 Nov 2026: row status + last-build failure
 }
 
 

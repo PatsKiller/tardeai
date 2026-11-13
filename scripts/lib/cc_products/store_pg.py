@@ -32,6 +32,9 @@ TABLE_OUTCOME = {
     "TIMEOUT": "FAILED",
     "REFUSED": "REFUSED_SIZE",
     "SKIPPED_BUSY": "SKIPPED_BUSY",
+    # A build whose source clock (as_of) is older than the stored row's: the conditional upsert refused it, the
+    # newer row stays (operator 13 Nov: no older build overwrites a newer one). Stored as FAILED + receipt word.
+    "REFUSED_OLDER": "FAILED",
 }
 BUILD_OUTCOMES = frozenset(TABLE_OUTCOME)
 
@@ -48,6 +51,8 @@ COLUMNS = (
     "hard_expiry_s",
     "purge_after_s",
     "status",
+    "reason",
+    "schema_version",
     "source_watermarks",
     "builder_sha",
     "bytes",
@@ -95,11 +100,12 @@ WITH prev AS (
 )
 INSERT INTO cc_product_current (
     product_id, scope_key, body, etag, seq, as_of, built_at, next_refresh_at,
-    stale_after_s, hard_expiry_s, purge_after_s, status, source_watermarks, builder_sha, bytes, build_ms, checked_at
+    stale_after_s, hard_expiry_s, purge_after_s, status, source_watermarks, builder_sha, bytes, build_ms, checked_at,
+    reason, schema_version
 ) VALUES (
     %(product_id)s, %(scope_key)s, %(body)s, %(etag)s, 1, %(as_of)s, %(built_at)s, %(next_refresh_at)s,
     %(stale_after_s)s, %(hard_expiry_s)s, %(purge_after_s)s, %(status)s, %(source_watermarks)s::jsonb,
-    %(builder_sha)s, %(bytes)s, %(build_ms)s, %(built_at)s
+    %(builder_sha)s, %(bytes)s, %(build_ms)s, %(built_at)s, %(reason)s, %(schema_version)s
 )
 ON CONFLICT (product_id, scope_key) DO UPDATE SET
     checked_at        = EXCLUDED.checked_at,
@@ -122,7 +128,11 @@ ON CONFLICT (product_id, scope_key) DO UPDATE SET
                              THEN cc_product_current.bytes ELSE EXCLUDED.bytes END,
     build_ms          = CASE WHEN cc_product_current.etag = EXCLUDED.etag
                              THEN cc_product_current.build_ms ELSE EXCLUDED.build_ms END,
+    reason            = EXCLUDED.reason,
+    schema_version    = EXCLUDED.schema_version,
     etag              = EXCLUDED.etag
+WHERE EXCLUDED.as_of >= cc_product_current.as_of
+  AND EXCLUDED.checked_at >= cc_product_current.checked_at
 RETURNING seq, etag, (SELECT etag FROM prev) AS prev_etag
 """
 
@@ -143,12 +153,19 @@ def write_current(
     builder_sha: str,
     build_ms: int,
     status: str = "OK",
+    reason: str | None = None,
+    schema_version: int = 1,
 ) -> dict:
     """One UPSERT. An unchanged body (same etag) keeps body/seq/built_at and moves checked_at, as_of and
     next_refresh_at (phase-0 DDL: ``built_at`` = when this body was produced, ``checked_at`` = the last build that
     found it unchanged or built it). ``as_of`` is required (NOT NULL): None raises ValueError before the database.
 
-    Returns {"changed": bool, "seq": int, "etag": str}. Raises BodyTooLarge before touching the database when
+    Conditional (operator 13 Nov 2026): the update applies only when the new ``as_of`` and ``checked_at`` are not
+    older than the stored row's. An older build is refused and the newer row stays; the return is then
+    ``{"changed": False, "refused": True, "seq": None, "etag": None}``. A successful write sets ``reason`` (None
+    clears a failure reason left by ``mark_failed``).
+
+    Returns {"changed": bool, "refused": False, "seq": int, "etag": str}. Raises BodyTooLarge before touching the database when
     the body exceeds 2 MB.
     """
     import psycopg2  # local: keeps the module importable without a DB driver for pure-unit callers
@@ -176,14 +193,27 @@ def write_current(
         "builder_sha": builder_sha,
         "bytes": len(body),
         "build_ms": None if build_ms is None else int(build_ms),
+        "reason": reason,
+        "schema_version": int(schema_version),
     }
     cur.execute(_UPSERT_SQL, params)
     row = cur.fetchone()
+    if row is None:  # ON CONFLICT ... WHERE false: the stored row is newer, nothing was written
+        return {"changed": False, "refused": True, "seq": None, "etag": None}
     if isinstance(row, dict):
         seq, new_etag, prev_etag = row["seq"], row["etag"], row["prev_etag"]
     else:
         seq, new_etag, prev_etag = row
-    return {"changed": prev_etag != new_etag, "seq": int(seq), "etag": new_etag}
+    return {"changed": prev_etag != new_etag, "refused": False, "seq": int(seq), "etag": new_etag}
+
+
+_MARK_FAILED_SQL = "UPDATE cc_product_current SET reason = %s WHERE product_id = %s AND scope_key = %s"
+
+
+def mark_failed(cur, product_id: str, scope_key: str, reason: str) -> None:
+    """Expose a failed build on the stored row WITHOUT touching it otherwise: body, seq and every clock stay, so
+    the last good is still served and still ages from its own ``as_of``. The next successful write clears it."""
+    cur.execute(_MARK_FAILED_SQL, (("last build failed: " + str(reason or "unknown"))[:500], product_id, scope_key))
 
 
 _LOG_SQL = """
@@ -207,6 +237,7 @@ def log_build(
     peak_rss_kb=None,
     bytes_=None,
     error=None,
+    detail: dict | None = None,
 ) -> None:
     """Append one build-attempt row (the receipt and the measurement, DSN §4.2).
 
@@ -218,7 +249,9 @@ def log_build(
     if not lane:
         raise ValueError(f"{product_id}/{scope_key}: lane is required (cc_product_build_log.lane is NOT NULL)")
     stored = TABLE_OUTCOME[outcome]
-    detail = {} if stored == outcome else {"receipt_outcome": outcome}
+    detail = dict(detail or {})
+    if stored != outcome:
+        detail["receipt_outcome"] = outcome
     cur.execute(
         _LOG_SQL,
         (product_id, scope_key, lane, started_at, finished_at, stored, build_ms, peak_rss_kb, bytes_, error,

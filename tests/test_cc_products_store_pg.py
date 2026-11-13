@@ -132,7 +132,7 @@ def test_unchanged_body_keeps_seq_and_built_at_and_moves_checked_at(conn):
         later = T0 + timedelta(seconds=120)
         res = _write(cur, b'{"a":1}', built_at=later, as_of=later - timedelta(seconds=5), builder_sha="sha-2",
                      build_ms=99)
-        assert res == {"changed": False, "seq": 1, "etag": store_pg.etag_for(b'{"a":1}')}
+        assert res == {"changed": False, "refused": False, "seq": 1, "etag": store_pg.etag_for(b'{"a":1}')}
         row = read_current(cur, "cio.pages")
     assert row["seq"] == 1
     assert row["built_at"] == T0  # phase-0 DDL: built_at = when this body was produced (LQ-2646)

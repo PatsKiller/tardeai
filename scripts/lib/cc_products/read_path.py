@@ -79,6 +79,11 @@ def _envelope(product_id, scope_key, status, *, row=None, age_s=None, reason=Non
         # LQ-2600 (REVIEW-2606 F2): the stored per-section clocks travel with the envelope, so a reader can show the
         # oldest section's age instead of only the product clock (cio.pages stamps as_of at sources-read time).
         "source_watermarks": row.get("source_watermarks"),
+        # Failure state of the stored row (operator 13 Nov contract): a DEGRADED body, or the reason the most recent
+        # build failed while this last good was kept (``store_pg.mark_failed``). None when the last build succeeded.
+        "build_status": row.get("status"),
+        "build_failure": row.get("reason"),
+        "schema_version": row.get("schema_version"),
     }
 
 

@@ -48688,56 +48688,81 @@ def _conflict_ledger_root():
 
 #: Stored ``cio.pages`` statuses served as they are. Anything else (BUILDING = no row, UNKNOWN = store unreadable or
 #: past hard expiry) falls back to the computed page (LQ-20261107-2743).
-_CIO_PAGES_FRESH = ("OK", "STALE")
-_CIO_PAGES_COMPUTED_TTL_S = 60.0
+def _product_io():
+    """fetch_row + hot tier for every stored-product read (DSN-20261112 §6.1): api_v2's RAISING query (so "store
+    down" is UNKNOWN, never "no row") and the process-wide Valkey client. Reads only; never builds."""
+    from scripts.lib.cc_products import cio_pages_route as _cpr
+
+    return {"fetch_row": _cpr.make_pg_fetch_row(_db_query_raising), "hot": _cpr.production_hot()}
 
 
 def _w7_cio_pages():
-    """GET /api/v2/cio/pages: stored first, computed on a miss (LQ-20261107-2595, LQ-20261107-2743).
+    """GET /api/v2/cio/pages: the stored ``cio.pages`` product ONLY (LQ-20261107-2595; LQ-20261107-2743 part 1).
 
-    1. The stored ``cio.pages`` product (one primary-key read: hot tier, then Postgres under a 250 ms statement
-       timeout). OK or STALE is served as stored and nothing is computed.
-    2. No fresh stored row (BUILDING, or UNKNOWN: store unreadable / past hard expiry): the pre-2595 computed page,
-       through the serve-last-good SWR cache (LQ-2572). A request never waits on that build: it runs on one
-       background thread per process and the request gets the last computed page with its age.
-    3. Nothing computed yet (the first poll after a start, or the build failed): the stored response as it was
-       (BUILDING gaps, or the greyed last good), with the compute state named in ``_product.computed``.
-
-    Why: release 2 (d014c75d5) was rolled back 2026-11-12 21:39 ET because nothing schedules the ``cio.pages``
-    builder, ``cc_product_current`` had 0 rows, and every section read "being built" indefinitely."""
+    One primary-key read (hot tier, then Postgres under a 250 ms statement timeout). OK/STALE is served as stored;
+    past hard expiry the last good is served greyed (UNKNOWN); no row / store down is the UNKNOWN gap shape. The
+    in-server compute fallback (``_cio_pages_build`` on the SWR thread) is REMOVED (operator 13 Nov 2026: a GET
+    never triggers heavy compute, not on cold start, a missing or expired product, or a Valkey outage). The
+    ``cio-pages-product`` lane must be promoted and have landed a row BEFORE this ships (release-2 rollback lesson)."""
     from scripts.lib.cc_products import cio_pages_route as _cpr
+    from scripts.lib.cc_products import product_route as _pr
 
-    stored = _cpr.serve_cio_pages(fetch_row=_cpr.make_pg_fetch_row(_db_query_raising), hot=_cpr.production_hot())
-    meta = stored.get("_product") if isinstance(stored, dict) else None
-    stored_status = (meta or {}).get("status")
-    if stored_status in _CIO_PAGES_FRESH:
-        return stored
-    computed = _shared_get_cached(
-        "cio_pages", _CIO_PAGES_COMPUTED_TTL_S, _cio_pages_build, stale_ok=True,
-        annotate=lambda payload, m: (payload, m), unknown=lambda key, m: (None, m),
-    )
-    payload, cmeta = computed if isinstance(computed, tuple) and len(computed) == 2 else (None, {})
-    stored_reason = (meta or {}).get("reason")
-    if isinstance(payload, dict):
-        product = {
-            "status": "STALE" if cmeta.get("stale") else "OK",
-            "as_of": cmeta.get("as_of"), "built_at": cmeta.get("as_of"), "age_s": cmeta.get("age_s"),
-            "stale_after_s": None, "hard_expiry_s": None, "next_refresh_at": None, "seq": None,
-            "reason": f"computed in the server: the stored cio.pages product is {stored_status} ({stored_reason})",
-            "served_from": "computed", "greyed": False, "stored_status": stored_status,
-            "computed": dict(cmeta),
-        }
-        return {**payload, "_product": product}
-    out = dict(stored) if isinstance(stored, dict) else {}
-    out["_product"] = {**(meta or {}), "computed": dict(cmeta)}
+    io = _product_io()
+    out = _cpr.serve_cio_pages(fetch_row=io["fetch_row"], hot=io["hot"])
+    meta = out.get("_product") if isinstance(out, dict) else None
+    _pr._count("cio.pages", str((meta or {}).get("status")), "hit" if (meta or {}).get("status") in ("OK", "STALE") else "miss")
+    _pr.log.info("cc_product_read product=cio.pages scope=global status=%s served_from=%s greyed=%s",
+                 (meta or {}).get("status"), (meta or {}).get("served_from"), (meta or {}).get("greyed"))
     return out
 
 
-def _cio_pages_build():
-    """The computed W7 page (the pre-2595 route body). Runs only on the SWR background thread, never a request."""
-    from scripts.lib.w7_pages import page_payload
+def _stored_market_risk_latest():
+    """GET /api/v2/market-risk/latest from the stored ``market_risk.latest`` product. Never computes."""
+    from scripts.lib.cc_products import product_route as _pr
 
-    return page_payload(STATE_DIR.parents[2], db_query=_db_query, ledger_root=_conflict_ledger_root())
+    return _pr.serve_market_risk_latest(**_product_io())
+
+
+def _stored_home_cio_card():
+    """GET /api/v2/home/cio-card from the stored ``market_risk.latest`` product. Never computes."""
+    from scripts.lib.cc_products import product_route as _pr
+
+    return _pr.serve_home_cio_card(**_product_io())
+
+
+def _stored_risk():
+    """GET /api/v2/risk from the stored ``risk`` product. Never computes."""
+    from scripts.lib.cc_products import product_route as _pr
+
+    return _pr.serve_risk(**_product_io())
+
+
+def _stored_analyst_links(query=None):
+    """GET /api/v2/reports/analyst/links from the stored ``reports.analyst_links`` map. Never verifies files."""
+    from scripts.lib.cc_products import product_route as _pr
+
+    return _pr.serve_analyst_links(query, **_product_io())
+
+
+def _stored_home_product(query=None):
+    """GET /api/v2/products/home: the stored ``home`` product (both Home sections' server reads). Never computes."""
+    from scripts.lib.cc_products import product_route as _pr
+
+    return _pr.serve_home_product(query, **_product_io())
+
+
+def _stored_home_slice(name):
+    """One Home route (since-close, incidents, priorities-live, status, gates) from its stored ``home`` slice."""
+    from scripts.lib.cc_products import product_route as _pr
+
+    return _pr.serve_home_slice(name, **_product_io())
+
+
+def _product_read_counters():
+    """GET /api/v2/products/counters: per-product read hit/miss counts in this process (operator: log hit/miss)."""
+    from scripts.lib.cc_products import product_route as _pr
+
+    return _pr.counters()
 
 
 def _asks_tracked_annotate(out, meta: dict):
@@ -50941,7 +50966,7 @@ ROUTES = {
     "/api/v2/journal/closed-trades/action-dashboard": _journal_closed_action_dashboard,
     "/api/v2/journal/closed-trades/action-items": _journal_closed_action_items,
     "/api/v2/journal/closed-trades/lessons": _journal_closed_lessons,
-    "/api/v2/risk": _risk_payload_cached,
+    "/api/v2/risk": _stored_risk,  # stored product (home-products 13 Nov); legacy compute: _risk_payload_cached
     "/api/v2/tax-lots": tax_lots,
     "/api/v2/correlation": correlation,
     "/api/v2/rebalance": rebalance,
@@ -51036,12 +51061,17 @@ ROUTES = {
     "/api/v2/system/pipeline-failures": lambda: _system_pipeline_failures(_current_query),
     "/api/v2/needs-action": lambda: _needs_action(),
     "/api/v2/home/do-now": lambda: _home_do_now(),
-    "/api/v2/home/since-close": lambda: _home_since_close(),
-    "/api/v2/home/gates": lambda: _home_gates(),
-    "/api/v2/home/cio-card": lambda: _home_cio_card(),
-    "/api/v2/home/incidents": lambda: _home_incidents(),
-    "/api/v2/home/priorities-live": lambda: _home_priorities_live(),
-    "/api/v2/home/status": lambda: _home_status(),
+    # Stored products (home-products, operator 13 Nov 2026): no request-time compute. Legacy compute functions
+    # (_home_since_close, _home_gates, _home_cio_card, _home_incidents, _home_priorities_live, _home_status) are no
+    # longer routed; delete at fold once the mem-contain SWR stopgap is folded.
+    "/api/v2/home/since-close": lambda: _stored_home_slice("since_close"),
+    "/api/v2/home/gates": lambda: _stored_home_slice("gates"),
+    "/api/v2/home/cio-card": lambda: _stored_home_cio_card(),
+    "/api/v2/home/incidents": lambda: _stored_home_slice("incidents"),
+    "/api/v2/home/priorities-live": lambda: _stored_home_slice("priorities_live"),
+    "/api/v2/home/status": lambda: _stored_home_slice("status"),
+    "/api/v2/products/home": _stored_home_product,
+    "/api/v2/products/counters": lambda: _product_read_counters(),
     "/api/v2/watch/status": lambda: _watch_status(),
     "/api/v2/queue/pending": lambda: _queue_pending(),
     "/api/v2/queue/completed": lambda: _queue_completed(),
@@ -51138,7 +51168,7 @@ ROUTES = {
     "/api/v2/reports/analyst/export": _reports_analyst_export,
     "/api/v2/reports/analyst/generate": _reports_analyst_generate,
     "/api/v2/reports/analyst/registry": _reports_analyst_registry,
-    "/api/v2/reports/analyst/links": _reports_analyst_links,
+    "/api/v2/reports/analyst/links": _stored_analyst_links,  # stored product; legacy: _reports_analyst_links
     "/api/v2/reports/analyst/eligible": _reports_analyst_eligible,
     "/api/v2/reports/analyst/validate": _reports_analyst_validate,
     "/api/v3/alerts/active": _v3_alerts_active,
@@ -70501,7 +70531,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # POST ack: records the operator's acknowledgment in the episode ledger (P3-T7, lib.market_risk.escalation).
     if base_path == "/api/v2/market-risk/latest" and method == "GET":
         try:
-            return 200, {"ok": True, "data": _json_clean(_market_risk_latest_projection())}
+            # stored ``market_risk.latest`` product (home-products 13 Nov); never _market_risk_latest_projection here
+            return 200, {"ok": True, "data": _stored_market_risk_latest()}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
     if base_path == "/api/v2/market-risk/ack" and method == "POST":
