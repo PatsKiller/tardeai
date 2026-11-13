@@ -250,9 +250,10 @@ check('the TODAY value and census wiring are unchanged',
 const todayPassThrough = todayStateLib
   .replace('finite(overview?.today_change)', '')
   .replace('finite(overview?.today_pct)', '')
+  .replace('Math.round((move.change_pct as number) * 100) / 100', '')   // display rounding of the server's pct
 check('the TODAY state helper computes no money or coverage counts',
   !/today_change|today_pct|fmt\$|\.reduce\(|\+=/.test(todayPassThrough) &&
-  !/change\s*[-+*]\s*[A-Za-z_(]|[A-Za-z_)]\s*[-+]\s*[A-Za-z_(]*change\b/.test(todayPassThrough))
+  !/\w*change\w*(?:\s+as\s+\w+)?\)?\s*[-+*\/]\s*[\w(]|[\w)]\s*[-+*\/]\s*\(?[\w.?]*change\w*\b/i.test(todayPassThrough))
 
 console.log(`\nmetric_strip_labels: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
