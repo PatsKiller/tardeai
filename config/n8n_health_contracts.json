@@ -92,7 +92,7 @@
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
       "target_reason": "lq2965_cio_wake_bounded",
-      "stage": "shadow",
+      "stage": "canary",
       "purpose": {
         "text": "Run the hourly CIO persistent wake (L1/L2/L3 subject selection, provider judgment, settlement, outbound) inside a 2 GB memory-capped, low-priority systemd scope so a runaway wake is killed alone instead of taking the host and :443 down.",
         "business_function": "cio",

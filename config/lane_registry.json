@@ -2849,7 +2849,7 @@
         "match": "scripts/run_cio_wake_bounded.py",
         "cadence": "0 * * * *",
         "timezone": "America/New_York",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W5"
       },
       "expected_cadence_hours": 1.0,
@@ -2879,7 +2879,7 @@
       "severity": "Medium",
       "note": "0 * * * * = hourly, all week, matching the paused cron line. At cutover the cron-scheduled persistent-wake-hourly row goes RETIRED (its cron line stays commented); both rows describe the same wake and the runner refuses to start while that cron line is uncommented, so they cannot both fire. Re-running a slot is idempotent (wake_id is minted from agent, reason, hourly slot and subject; a terminal wake replays as replay_suppressed), so retry stays none: a failed fire waits for the next slot rather than re-spending provider calls.",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "0 * * * *"
         ],

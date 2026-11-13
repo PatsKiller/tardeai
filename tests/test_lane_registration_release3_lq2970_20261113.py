@@ -5,7 +5,7 @@ config, and what it deliberately did not do:
 
 * lane-health-snapshot, validation-gates-sync and validation-gate-declare are canary / dispatch live, and their
   live fire is ``--apply``. Each has a REVIEWED health contract at the same stage, and the dispatcher admits it.
-* cio-persistent-wake stays shadow / dry_run. The lead promotes it after the bounded canary.
+* cio-persistent-wake: promoted to canary / live by the lead in release 3c after the bounded canary.
 * stop-coverage-incidents is NOT a plain n8n row. The dispatcher's token rail refuses any lane id containing
   ``stop``, and a ``live`` dispatch block cannot override that. Registering it is an operator/lead decision.
 
@@ -100,11 +100,13 @@ def test_lane_health_freshness_contract_names_the_monitor_it_replaces():
     assert fc["replaces"] == ["pipeline-freshness-monitor"]
 
 
-def test_cio_persistent_wake_stays_shadow_dry_run():
+def test_cio_persistent_wake_promoted_canary_live():
+    """Release 3c (lead, 2026-11-13): promoted after the bounded --wake-dry-run canary in production
+    (peak 589 MB under MemoryMax=2G, 0 OOM, 0 swap). Rollback = dispatch back to dry_run."""
     row = ROWS["cio-persistent-wake"]
-    assert row["scheduler"]["stage"] == "shadow"
-    assert row["dispatch"]["mode"] == "dry_run"
-    assert CONTRACTS["cio-persistent-wake"]["stage"] == "shadow"
+    assert row["scheduler"]["stage"] == "canary"
+    assert row["dispatch"]["mode"] == "live"
+    assert CONTRACTS["cio-persistent-wake"]["stage"] == "canary"
 
 
 @pytest.mark.parametrize("lane_id", ["stop-coverage-incidents", "stop-coverage-incidents-offhours"])
