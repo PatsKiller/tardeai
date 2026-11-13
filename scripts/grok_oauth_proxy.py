@@ -44,6 +44,72 @@ _ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07")
 _RELOGIN = ("hermes " + (f"-p {HERMES_PROFILE} " if HERMES_PROFILE else "")
             + "auth add xai-oauth --type oauth")
 
+# A rate-limited free quota heals by waiting. Advertise that rather than letting the caller
+# treat it as a dead bridge and retry immediately into the same wall.
+RATE_LIMIT_RETRY_AFTER = int(os.environ.get("GROK_PROXY_RETRY_AFTER", "900"))
+
+# What the upstream did last, so /health can stop implying the lane is serving when it is not.
+# LQ-20261107-2565 (2026-11-12): xAI answered HTTP 403 ``personal-team-blocked:spending-limit``
+# ("You have run out of credits or need a Grok subscription") to every call from 2026-11-10 10:35 ET.
+# This proxy folded it into GROK_RUN_FAILED -> 502; the client kept only the status line, so 2,284
+# rows over 54 h carried the same anonymous "502 Bad Gateway" and the cause lived only in the hermes
+# logs on the host. Same shape as the chatgpt proxy's 2026-09-19 free-quota incident.
+_LAST_UPSTREAM = {"state": "unknown", "at": None, "detail": ""}
+
+# Upstream text that means "this account may not use the model", not "the bridge is broken".
+_ENTITLEMENT_MARKERS = (
+    "spending-limit", "personal-team-blocked", "entitlement_exhausted",
+    "run out of credits", "need a grok subscription", "insufficient credits",
+)
+_RATE_LIMIT_MARKERS = ("http 429", "429:", "rate limit", "rate_limit", "too many requests",
+                       "quota exceeded")
+
+
+def _note_upstream(state: str, detail: str = "") -> None:
+    """Record what the upstream did last. Plain assignment of a fresh dict: one consistent snapshot."""
+    global _LAST_UPSTREAM
+    _LAST_UPSTREAM = {"state": state, "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                      "detail": str(detail)[:200]}
+
+
+def _health_body() -> dict:
+    """The /health payload. 200 means THIS PROCESS is alive; ``serving`` is the field to read."""
+    present, expired = _xai_token_state()
+    note = ("ready" if present and not expired else
+            "session may be expired — a call will confirm; re-login: " + _RELOGIN
+            if present else "xai-oauth not logged in — " + _RELOGIN)
+    last = _LAST_UPSTREAM
+    if last["state"] == "entitlement_exhausted":
+        note = ("xAI account has no entitlement (out of credits / no Grok subscription) — adding "
+                "credits at the xAI account is the fix; re-login will not help")
+    return {"status": "ok", "upstream": "Grok xAI OAuth",
+            "authenticated": bool(present), "token_expired": expired,
+            "serving": last["state"] in ("ok", "unknown"),
+            "last_upstream": last, "note": note}
+
+
+def _failure_response(exc: Exception) -> tuple[int, dict]:
+    """HTTP status and body for one failed completion: the CAUSE, not an anonymous gateway error.
+
+    ``502`` is reserved for a genuinely unexplained run failure. An entitlement or quota wall is a
+    typed refusal the callers and the consumption ledger can act on (and a monitor can see without
+    spending a call, through /health ``serving``).
+    """
+    msg = str(exc)
+    if msg.startswith("AUTH_EXPIRED"):
+        return 401, {"error": {"message": "Grok xai-oauth session ended — re-login: " + _RELOGIN,
+                               "type": "auth_expired"}}
+    if msg.startswith("ENTITLEMENT_EXHAUSTED"):
+        detail = ("Grok lane entitlement exhausted — the xAI account has run out of credits or has no "
+                  "Grok subscription. This is NOT a bridge failure; re-login will not help. "
+                  + msg[len("ENTITLEMENT_EXHAUSTED: "):])[:300]
+        return 402, {"error": {"message": detail, "type": "entitlement_exhausted"}}
+    if msg.startswith("RATE_LIMITED"):
+        detail = ("Grok free OAuth usage limit reached — the quota resets on its own. This is NOT a "
+                  "bridge failure: " + msg[len("RATE_LIMITED: "):])[:300]
+        return 429, {"error": {"message": detail, "type": "rate_limited"}}
+    return 502, {"error": {"message": msg[:300], "type": "grok_proxy_error"}}
+
 
 def _xai_token_state():
     """Returns (present, expired) from AUTH_JSON (the profile's auth.json) — exp claim only, no secret use.
@@ -158,9 +224,24 @@ def _run_grok(prompt, model):
         "session has ended", "please log in again", "token refresh failed",
         "not logged in", "auth_pending", "unauthorized", "invalid_grant",
     )):
+        _note_upstream("auth_expired")
         raise RuntimeError("AUTH_EXPIRED")
+    # LQ-20261107-2565: an account that may not use the model is not a broken bridge. Folding this
+    # into GROK_RUN_FAILED made every caller log "502 Bad Gateway" for 54 h while xAI was answering
+    # 403 personal-team-blocked:spending-limit ("You have run out of credits or need a Grok subscription").
+    if any(s in low for s in _ENTITLEMENT_MARKERS):
+        detail = (err or out)[-300:].strip() or "upstream entitlement exhausted"
+        _note_upstream("entitlement_exhausted", detail)
+        raise RuntimeError(f"ENTITLEMENT_EXHAUSTED: {detail}")
+    if any(s in low for s in _RATE_LIMIT_MARKERS):
+        detail = (err or out)[-200:].strip() or "upstream usage limit reached"
+        _note_upstream("rate_limited", detail)
+        raise RuntimeError(f"RATE_LIMITED: {detail}")
     if r.returncode != 0 or not out:
-        raise RuntimeError(f"GROK_RUN_FAILED: {(err or out)[-300:] or 'empty response'}")
+        detail = (err or out)[-300:].strip() or "empty response"
+        _note_upstream("failed", detail)
+        raise RuntimeError(f"GROK_RUN_FAILED: {detail}")
+    _note_upstream("ok")
     return out
 
 
@@ -192,22 +273,19 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def _send(self, code, obj):
+    def _send(self, code, obj, headers=None):
         b = json.dumps(obj).encode()
         self.send_response(code)
         self.send_header("content-type", "application/json")
         self.send_header("content-length", str(len(b)))
+        for k, v in (headers or {}).items():
+            self.send_header(k, str(v))
         self.end_headers()
         self.wfile.write(b)
 
     def do_GET(self):
         if self.path.startswith("/health"):
-            present, expired = _xai_token_state()
-            note = ("ready" if present and not expired else
-                    "session may be expired — a call will confirm; re-login: " + _RELOGIN
-                    if present else "xai-oauth not logged in — " + _RELOGIN)
-            return self._send(200, {"status": "ok", "upstream": "Grok xAI OAuth",
-                                    "authenticated": bool(present), "token_expired": expired, "note": note})
+            return self._send(200, _health_body())
         if self.path.startswith("/v1/models"):
             return self._send(200, {"object": "list", "data": [{"id": m, "object": "model"} for m in MODELS]})
         return self._send(404, {"error": "not found"})
@@ -241,20 +319,14 @@ class Handler(BaseHTTPRequestHandler):
             text = (_run_grok_streaming(self, completion_id, model, created, prompt, model)
                     if stream else _run_grok(prompt, model))
         except RuntimeError as e:
-            msg = str(e)
-            if msg.startswith("AUTH_EXPIRED"):
-                if stream:
-                    _finish_sse_stream(self, completion_id, model, created,
-                                        "Grok xai-oauth session ended — re-login: " + _RELOGIN,
-                                        include_usage=include_usage)
-                    return
-                return self._send(401, {"error": {"message": "Grok xai-oauth session ended — re-login: "
-                                                  + _RELOGIN, "type": "auth_expired"}})
+            status, obj = _failure_response(e)
             if stream:
-                _finish_sse_stream(self, completion_id, model, created, f"Grok proxy error: {msg[:300]}",
-                                    include_usage=include_usage)
+                # The 200 header is already on the wire; the reason has to travel as content.
+                _finish_sse_stream(self, completion_id, model, created,
+                                    obj["error"]["message"][:300], include_usage=include_usage)
                 return
-            return self._send(502, {"error": {"message": msg[:300], "type": "grok_proxy_error"}})
+            return self._send(status, obj,
+                              {"retry-after": RATE_LIMIT_RETRY_AFTER} if status == 429 else None)
         except Exception as e:
             if stream:
                 _finish_sse_stream(self, completion_id, model, created, f"Grok proxy error: {str(e)[:300]}",

@@ -36,6 +36,26 @@ def via_bridge() -> bool:
     return os.environ.get(VIA_BRIDGE_ENV, "off").strip().lower() in {"1", "on", "bridge"}
 
 
+def _executed_lane(requested: str, provenance) -> str:
+    """The provider that actually answered, not the one this loop asked for (LQ-20261107-2565 F1).
+
+    ``gate_and_generate`` may execute a lane other than the requested one — the provider breaker reroutes
+    grok -> chatgpt -> deepseek, and the anthropic promotion routes itself — and records that in its
+    provenance. Callers persist the returned label, so naming the requested lane here would publish the
+    answer under a provider that never saw it.
+    """
+    if not isinstance(provenance, dict):
+        return requested
+    reroute = provenance.get("reroute")
+    if isinstance(reroute, dict) and reroute.get("executed"):
+        return str(reroute["executed"]).strip().lower()
+    for key in ("provider", "executed_provider", "executed_policy"):
+        value = provenance.get(key)
+        if value:
+            return str(value).strip().lower()
+    return requested
+
+
 def generate_cloud(
     prompt: str,
     *,
@@ -48,6 +68,10 @@ def generate_cloud(
     manual_trigger: bool = False,
 ) -> tuple[str, str]:
     """Return ``(text, lane)`` from the first available governed cloud lane (or the governed bridge, see above).
+
+    ``lane`` is the provider that actually answered. When the call was not rerouted it is the requested
+    lane; when the provider breaker (LQ-20261107-2565) or the promotion executed another one, it is the
+    executed lane from the gate's provenance — never a provider that did not produce the text.
 
     ``timeout=None`` (the default) resolves the lane's measured budget from
     ``config/llm_lane_budgets.json`` via :func:`lib.llm_lane_budgets.budget_s`, falling back to 90 s
@@ -106,7 +130,7 @@ def generate_cloud(
             continue
         attempted = True
         try:
-            text = llm_lane.generate(
+            result = llm_lane.generate(
                 prompt,
                 lane=lane_name,
                 timeout=timeout,
@@ -115,10 +139,13 @@ def generate_cloud(
                 max_tokens=max_tokens,
                 response_json=response_json,
                 manual_trigger=manual_trigger is True,
+                # LQ-20261107-2565 F1: the gate may reroute; ask it which lane executed the call.
+                return_provenance=True,
                 **({"metadata": {"provider_pinned": True}} if pinned_lanes else {}),
             )
+            text, provenance = result if isinstance(result, tuple) else (result, {})
             if text and str(text).strip():
-                return str(text).strip(), lane_name
+                return str(text).strip(), _executed_lane(lane_name, provenance)
             errors.append(f"{lane_name}:empty")
         except Exception as exc:
             errors.append(f"{lane_name}:{type(exc).__name__}:{str(exc)[:120]}")

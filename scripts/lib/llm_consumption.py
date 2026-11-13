@@ -1368,6 +1368,45 @@ def gate_and_generate(
     if lane == "anthropic" and not is_anthropic_lane:
         raise RuntimeError("POLICY_NOT_ALLOWED: promotional adapter requires governed routing")
 
+    # ── Provider-exhausted breaker + automatic reroute (LQ-20261107-2565 ADDENDUM 2) ──────────────────
+    # Every caller that reaches this funnel (all log_call callers) asks the SHARED breaker before it
+    # spends anything: a provider that answered quota/5xx N times in a row is skipped for everyone until
+    # its probe window expires, and the call goes to the next provider in grok -> chatgpt -> deepseek.
+    # A caller that pinned a provider — or an exact model, which is provider-specific and is forwarded
+    # verbatim to the proxy (llm_lane: model or "grok-3-mini" / "gpt-5.4") — is untouched, and so is the
+    # Anthropic promotion, which routes itself.
+    # Placement is deliberate: after should_call (an unpermitted requested lane is still refused as its
+    # own error, never silently swapped) and before any reservation or deferral, so a rerouted call
+    # reserves against — and defers on — the provider that will actually serve it.
+    if not _anthropic_route and not meta.get("provider_pinned") and model is None:
+        _NoProviderLeft = None
+        _pb = None
+        for _mod in ("lib.provider_breaker", "scripts.lib.provider_breaker"):
+            try:
+                _pb = __import__(_mod, fromlist=["routed_lane"])
+                break
+            except ImportError:  # noqa: BLE001 - try the other import root once
+                continue
+        if _pb is not None:
+            _NoProviderLeft = getattr(_pb, "NoProviderLeft", None)
+            try:
+                _route = _pb.routed_lane(process_id, lane,
+                                         allowed_lanes=(_promo_cfg or {}).get("allowed_lanes"))
+                if _route.get("reroute"):
+                    meta["reroute"] = _route["reroute"]
+                    meta["requested_lane"] = _route["requested"]
+                    lane = _route["lane"]
+            except Exception as _route_err:  # noqa: BLE001 - a broken breaker must not take the call path down
+                if _NoProviderLeft is not None and isinstance(_route_err, _NoProviderLeft):
+                    # Nothing was sent and nothing may be invented. Record the refusal where a monitor can
+                    # see it (no consumption row: a row per refused call is the noise this change removes).
+                    try:
+                        _pb.note_refusal(process_id, lane, str(_route_err))
+                    except Exception:  # noqa: BLE001 - the refusal must not depend on its own bookkeeping
+                        pass
+                    raise
+                # Any other breaker fault: carry on with the requested lane, exactly as before it existed.
+
     is_deepseek_lane = lane.startswith("deepseek") or lane in (
         "fast", "fast_think", "pro", "pro_think", "pro_max",
     )
@@ -1521,7 +1560,15 @@ def gate_and_generate(
                 metadata={"funding_source": "oauth_subscription", "paid_component_usd": 0})
 
     if lane in ("grok", "chatgpt") and not lane_available(lane):
-        raise RuntimeError(f"{lane} OAuth lane unavailable — check grok-oauth-proxy / chatgpt-oauth-proxy")
+        # LQ-20261107-2565: say WHY. A refused caller used to read only "check the proxy", which is
+        # true of a dead process and of an account with no credits alike.
+        try:
+            from lib.oauth_lane_status import lane_blocked_reason as _blocked_reason
+            _why = _blocked_reason(lane)
+        except Exception:  # noqa: BLE001 - the refusal must not depend on the explanation
+            _why = None
+        raise RuntimeError(f"{lane} OAuth lane unavailable — "
+                           + (_why or "check grok-oauth-proxy / chatgpt-oauth-proxy"))
     import llm_lane
     trigger = "manual" if manual_trigger else ("automated" if decision.get("mode") == "automated" else "manual")
     t0 = time.time()
@@ -1608,6 +1655,14 @@ def gate_and_generate(
                 _lane_note_success(lane)
             except Exception:  # noqa: BLE001
                 pass
+        try:  # LQ-20261107-2565 ADDENDUM 2: a success is proof the provider is serving again
+            try:
+                from lib.provider_breaker import note_result as _pb_note_result
+            except ImportError:
+                from scripts.lib.provider_breaker import note_result as _pb_note_result
+            _pb_note_result(lane, ok=True)
+        except Exception:  # noqa: BLE001 - observability must never fail a served call
+            pass
         tradeai_ok = (prov.get("_tradeai") or {}) if isinstance(prov, dict) else {}
         # Success implies the network request completed
         billable_attempt = bool(
@@ -1624,6 +1679,14 @@ def gate_and_generate(
                 _lane_note_failure(lane, err)
             except Exception:  # noqa: BLE001
                 pass
+        try:  # LQ-20261107-2565 ADDENDUM 2: N consecutive quota/5xx → provider exhausted for everyone
+            try:
+                from lib.provider_breaker import note_result as _pb_note_result
+            except ImportError:
+                from scripts.lib.provider_breaker import note_result as _pb_note_result
+            _pb_note_result(lane, ok=False, error=err)
+        except Exception:  # noqa: BLE001 - never mask the provider's own error with breaker bookkeeping
+            pass
         # AUTH/policy before send → request_sent False → release
         # timeout/network after send → possibly_billable True → settle projected
         billable_attempt = bool(
@@ -1684,8 +1747,13 @@ def gate_and_generate(
                 reasoning_tokens=usage.get("reasoning_tokens"),
                 cache_hit_tokens=usage.get("prompt_cache_hit_tokens"),
                 cache_miss_tokens=usage.get("prompt_cache_miss_tokens"),
-                requested_policy=tradeai.get("requested_policy") or policy,
-                executed_policy=tradeai.get("executed_policy"),
+                # LQ-20261107-2565 ADDENDUM 2: a rerouted call names both providers. requested_policy keeps
+                # the DeepSeek policy vocabulary when the row IS a DeepSeek call; otherwise the requested
+                # lane is what the caller asked for and executed_policy is the provider that answered.
+                requested_policy=(tradeai.get("requested_policy") or policy
+                                  or (meta.get("reroute") or {}).get("requested")),
+                executed_policy=(tradeai.get("executed_policy")
+                                 or (meta.get("reroute") or {}).get("executed")),
                 requested_model_id=tradeai.get("requested_model_id"),
                 returned_model=tradeai.get("returned_model"),
                 thinking=tradeai.get("thinking"),
@@ -1710,6 +1778,9 @@ def gate_and_generate(
             "latency_ms": tradeai.get("latency_ms"),
             "fallback_used": tradeai.get("fallback_used", False),
             "effective_max_tokens": effective_out,
+            # LQ-20261107-2565 ADDENDUM 2: a caller that stores provenance must record which provider
+            # actually answered, not the one it asked for. None on a normal, un-rerouted call.
+            "reroute": meta.get("reroute"),
         }
     return text
 

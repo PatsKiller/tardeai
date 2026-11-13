@@ -322,8 +322,10 @@ def refresh_one(conn, holding, dry_run=False):
         confidence = min(100, max(0, int(result.get('confidence', 50))))
 
         # lane "bridge": the n8n path (allowlist llm_route -> lib.governed_cloud_generation's governed-bridge branch,
-        # process holdings_llm_refresh); the bridge, not this script, chose the provider.
-        model = "governed-bridge" if lane == "bridge" else "grok-3-mini" if lane == "grok" else "gpt-5.4"
+        # process holdings_llm_refresh); the bridge, not this script, chose the provider. Otherwise ``lane`` is the
+        # provider that ANSWERED — after LQ-20261107-2565 that can be a lane this caller did not request
+        # (grok -> chatgpt -> deepseek), so an unknown lane names itself rather than claiming gpt-5.4 ran.
+        model = {"bridge": "governed-bridge", "grok": "grok-3-mini", "chatgpt": "gpt-5.4"}.get(lane, lane)
 
         # Validate
         if health not in ('STRONG', 'STABLE', 'WATCH', 'CONCERN', 'EXIT'):

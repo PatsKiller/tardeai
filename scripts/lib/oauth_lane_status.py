@@ -110,19 +110,31 @@ def lane_status(lane: str, *, use_cache: bool = True) -> dict:
 # instead of adding another failure. A success clears it. This never changes a spend cap.
 # A read timeout is the caller's deadline, not the proxy's state: an ``unreachable`` cooldown therefore
 # yields to a proxy that still reports /health ready — see ``lane_available`` (LQ-20261107-978).
-COOLDOWN_BASE_S = {"rate_limited": 120.0, "unreachable": 60.0}
+# An ``entitlement`` wall (xAI/OpenAI says the account may not use the model) is the strongest of the
+# three: no retry inside the window can succeed. LQ-20261107-2565: the grok proxy answered 502 for it,
+# classify_failure knew neither class, and every caller retried into the wall — 2,284 failed rows in 54 h.
+COOLDOWN_BASE_S = {"rate_limited": 120.0, "unreachable": 60.0, "entitlement": 900.0}
 COOLDOWN_MAX_S = 900.0
 _COOLDOWN_FILE = (Path(__file__).resolve().parent.parent.parent / "data" / "runtime" / "oauth_lane_cooldown.json")
 _RATE_MARKERS = ("429", "too many requests", "rate limit", "rate_limit")
+_ENTITLEMENT_MARKERS = ("entitlement_exhausted", "entitlement exhausted", "spending-limit",
+                        "personal-team-blocked", "run out of credits", "need a grok subscription",
+                        "insufficient credits")
 _UNREACHABLE_MARKERS = ("read timed out", "timed out", "max retries exceeded", "connection refused",
                         "remotedisconnected", "remote end closed", "connection aborted", "connection reset")
 
 
 def classify_failure(error: str | None) -> str | None:
-    """'rate_limited' / 'unreachable' for the errors worth backing off from; None for everything else."""
+    """'rate_limited' / 'entitlement' / 'unreachable' for errors worth backing off from; else None.
+
+    ``entitlement`` is checked before ``unreachable`` and after ``rate_limited``: a quota wall is
+    reported by the upstream itself, and its text never carries a transport marker.
+    """
     text = (error or "").lower()
     if any(m in text for m in _RATE_MARKERS):
         return "rate_limited"
+    if any(m in text for m in _ENTITLEMENT_MARKERS):
+        return "entitlement"
     if any(m in text for m in _UNREACHABLE_MARKERS):
         return "unreachable"
     return None
@@ -211,6 +223,26 @@ def lane_available(lane: str) -> bool:
 
 def lanes_available() -> dict[str, bool]:
     return {ln: lane_available(ln) for ln in ("grok", "chatgpt")}
+
+
+def lane_blocked_reason(lane: str) -> str | None:
+    """Why ``lane_available`` says no, in the lane's own words; None when the lane is available.
+
+    LQ-20261107-2565: a refused caller used to read only "OAuth lane unavailable — check the proxy",
+    which is true of a dead process and of an account with no credits alike. The cooldown record
+    carries the classified cause and the text that set it.
+    """
+    lane = (lane or "").strip().lower()
+    entry = _read_cooldowns().get(lane) or {}
+    until = entry.get("until")
+    if isinstance(until, (int, float)) and float(until) > time.time():
+        return (f"{entry.get('kind') or 'cooldown'} — {int(float(until) - time.time())}s left"
+                + (f": {entry.get('error')}" if entry.get("error") else ""))[:200]
+    snap = lane_status(lane)
+    if not snap.get("ready"):
+        return (str(snap.get("status") or "not ready")
+                + (f": {snap.get('hint')}" if snap.get("hint") else ""))[:200]
+    return None
 
 
 def all_lanes(*, include_local: bool = True, use_cache: bool = True) -> list[dict]:

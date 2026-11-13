@@ -52,6 +52,25 @@ _ANTHROPIC_DEFAULT = {
 
 _CHATGPT_URL = os.environ.get("CHATGPT_PROXY_URL", "http://127.0.0.1:8646").rstrip("/")
 
+
+def _proxy_error_message(resp) -> str:
+    """The proxy's own explanation of a failed call, never just the status line.
+
+    ``requests.raise_for_status()`` raises "502 Server Error: Bad Gateway for url: ..." and DISCARDS the
+    body, which for the OAuth proxies is the only place the cause is named. LQ-20261107-2565: xAI
+    answered 403 ``personal-team-blocked:spending-limit`` for every call from 2026-11-10 10:35 ET; the
+    grok proxy answered 502 with that text in the body, and 2,284 consumption rows recorded the same
+    anonymous 502 while nothing in the ledger said "out of credits".
+    """
+    try:
+        body = resp.json()
+    except Exception:
+        return (getattr(resp, "text", "") or "")[:300]
+    err = body.get("error") if isinstance(body, dict) else None
+    if isinstance(err, dict):
+        return str(err.get("message") or err.get("type") or "")[:300]
+    return str(err or body or "")[:300]
+
 # Legacy lane names still accepted as *logical* aliases → registry policies.
 # They must NOT map to deepseek-chat / deepseek-reasoner model IDs.
 _DEEPSEEK_LANES = frozenset({
@@ -411,7 +430,12 @@ def generate(
         r = requests.post(_GROK_URL, json={"model": model or "grok-3-mini",
                                            "messages": [{"role": "user", "content": prompt}], "temperature": 0.3},
                           timeout=timeout)
-        r.raise_for_status()
+        # LQ-20261107-2565: carry the proxy's typed refusal into the raised error (see
+        # _proxy_error_message). 401 keeps the AUTH_EXPIRED contract the callers already handle.
+        if r.status_code == 401:
+            raise RuntimeError("AUTH_EXPIRED: " + _proxy_error_message(r))
+        if r.status_code >= 400:  # status_code, not r.ok: the test fakes, like several callers', carry only it
+            raise RuntimeError(f"GROK_PROXY_{r.status_code}: {_proxy_error_message(r)}")
         body = r.json()
         if process_id and not _skip_consumption:
             try:

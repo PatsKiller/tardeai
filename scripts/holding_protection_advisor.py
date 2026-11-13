@@ -574,10 +574,18 @@ def run(lane="grok", symbols=None, limit=12, manual_trigger=False, batch=False):
         done += 1
         outcomes.append({"symbol": sym, "ok": True, "lane": used_lane, "model": model,
                          "stop_price": rec.get("stop_price"), "trail_recommended": rec.get("trail_recommended")})
-    summary = {"lane": lane, "advised": done, "failed": failed, "fellback_to_local": fellback,
-               "outcomes": outcomes,
+    # LQ-20261107-2565: a run in which NOTHING was advised is a failed run, not a quiet one. Between
+    # 2026-11-10 10:35 and 2026-11-12 this printed a summary with "advised": 0, wrote no rows, exited 0 —
+    # and the lane registry watched the cron log's mtime, so the lane read LIVE through 200 failed Grok
+    # calls. The exit status is the one signal a scheduler sees without parsing anything.
+    status = "FAILED" if (done == 0 and failed > 0) else "OK"
+    summary = {"status": status, "lane": lane, "advised": done, "failed": failed,
+               "fellback_to_local": fellback, "outcomes": outcomes,
                "note": "advisory only — surfaced on Portfolio cards + monthly Claude meta-review"}
     print(json.dumps(summary))
+    if status == "FAILED":
+        print(f"holding_protection_advisor: FAILED — 0 positions advised, {failed} failed; no provider "
+              "served a call (see the lane error above)", file=sys.stderr)
     return summary
 
 
@@ -589,8 +597,10 @@ def main():
     ap.add_argument("--batch", action="store_true",
                     help="Manual-batch mode: uses holding_protection_advisor_batch process_id + manual_trigger (for cron/UI top-N)")
     a = ap.parse_args()
-    run(lane=a.lane, symbols=a.symbols.split(",") if a.symbols else None, limit=a.limit,
-        manual_trigger=bool(a.batch), batch=bool(a.batch))
+    summary = run(lane=a.lane, symbols=a.symbols.split(",") if a.symbols else None, limit=a.limit,
+                  manual_trigger=bool(a.batch), batch=bool(a.batch))
+    if isinstance(summary, dict) and summary.get("status") == "FAILED":
+        sys.exit(2)
 
 
 if __name__ == "__main__":
