@@ -46,17 +46,24 @@ class FinvizRateLimited(RuntimeError):
 
 def finviz_get(url: str, *, headers: Optional[dict] = None, timeout: int = 30,
                throttle_timeout: float = 300, raise_on_429: bool = True,
+               deadline_monotonic: Optional[float] = None,
                **kwargs):
     """Throttled GET against any finviz host.
 
     raise_on_429=True  -> FinvizRateLimited after publishing the cooldown
     raise_on_429=False -> the 429 response is returned; cooldown still published
                           (for callers that treat rate limiting as a soft skip)
+    deadline_monotonic -> LQ-20261107-2971: an absolute ``time.monotonic()`` bound on the throttle
+                          wait. When it passes, ``TimeoutError`` is raised and NO request is sent
+                          (the default waits up to ``throttle_timeout`` and then fails open).
     """
     import requests
     import finviz_throttle
 
-    finviz_throttle.acquire(timeout=throttle_timeout)
+    if deadline_monotonic is None:
+        finviz_throttle.acquire(timeout=throttle_timeout)
+    else:
+        finviz_throttle.acquire(timeout=throttle_timeout, deadline_monotonic=deadline_monotonic)
     resp = requests.get(url, headers=headers or {}, timeout=timeout, **kwargs)
     if resp.status_code == 429:
         # Publish globally so sibling processes back off too — the single most

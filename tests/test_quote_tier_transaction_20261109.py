@@ -122,7 +122,7 @@ class Harness:
         return self.conns[-1]
 
     # provider
-    def _quote(self, sym: str) -> dict:
+    def _quote(self, sym: str, deadline=None) -> dict:
         conn = self.current
         conn.provider_calls += 1
         if conn.in_tx:

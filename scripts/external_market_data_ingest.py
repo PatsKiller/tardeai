@@ -231,13 +231,17 @@ def ingest_alpaca_quotes(symbols: list = None) -> dict:
 _FINVIZ_UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"}
 
 
-def _finviz_quote(sym: str) -> dict:
-    """Parse finviz.com/quote.ashx?t=SYM snapshot table -> {price, prev, rvol, volume}. Live values."""
+def _finviz_quote(sym: str, deadline: float | None = None) -> dict:
+    """Parse finviz.com/quote.ashx?t=SYM snapshot table -> {price, prev, rvol, volume}. Live values.
+
+    ``deadline`` (``time.monotonic()``) bounds the global-throttle wait: past it ``TimeoutError`` is
+    raised and nothing is sent (LQ-20261107-2971)."""
     import requests, re
     if not _ticker_classify(sym, "finviz")[0]:
         return {}  # GAP 14: a CUSIP / ISIN / non-ticker is never sent (ingest_finviz_quotes reports it missing)
+    kw = {} if deadline is None else {"deadline_monotonic": deadline}
     r = finviz_get(f"https://finviz.com/quote.ashx?t={sym}", headers=_FINVIZ_UA, timeout=15,
-                   raise_on_429=False)
+                   raise_on_429=False, **kw)
     if r.status_code != 200:
         return {}
     h = r.text
@@ -255,6 +259,12 @@ def _finviz_quote(sym: str) -> dict:
 # None, and lib.pg_reconnect resolves psycopg2's lazily (importing this module still needs no driver).
 CONNECTION_LOST_ERRORS: tuple[type[BaseException], ...] | None = None
 FINVIZ_MAX_RECONNECTS = 2
+# LQ-20261107-2971 — wall-clock budget for the whole finviz fallback tier. The tier is one request per
+# symbol behind a 2.5 s global throttle (FINVIZ_MIN_INTERVAL) shared with every other Finviz consumer,
+# so ~179 symbols need >= 7.5 min uncontended; on 2026-11-13 it held the 15-min slot's flock past the
+# next slot and the 10:00 run was skipped. Alpaca has already been committed when this tier starts, so
+# the budget only decides how many fallback symbols are attempted this slot, never the Alpaca write.
+FINVIZ_TIER_BUDGET_S = float(os.getenv("FINVIZ_TIER_BUDGET_S", "420"))
 
 
 def _finviz_connector():
@@ -275,7 +285,20 @@ def _is_connection_lost(db, exc: BaseException) -> bool:
         return False
 
 
-def ingest_finviz_quotes(symbols: list = None) -> dict:
+def _monotonic() -> float:
+    return time.monotonic()
+
+
+def _rotate(symbols: list, slot: int) -> list:
+    """Start the walk at a different symbol each 15-min slot. With a budget the tail of a fixed order
+    would never be attempted; rotating gives every symbol a turn within ceil(n / attempted) slots."""
+    if not symbols:
+        return []
+    k = slot % len(symbols)
+    return symbols[k:] + symbols[:k]
+
+
+def ingest_finviz_quotes(symbols: list = None, budget_s: float | None = None) -> dict:
     """Per-symbol live quotes from finviz quote.ashx (price/prev/rvol/volume). Used as a FALLBACK for
     the handful Alpaca can't price — finviz is one HTTP request per symbol (rate-limited if hammered),
     so it's not for the full universe, only the gap.
@@ -294,20 +317,33 @@ def ingest_finviz_quotes(symbols: list = None) -> dict:
 
     ``missing`` means finviz answered and had no quote. ``unwritten`` means we could not tell. They are
     different facts and the receipt must not merge them.
+
+    LQ-20261107-2971 — the tier has a wall-clock budget (``budget_s``, default ``FINVIZ_TIER_BUDGET_S``).
+    When it is spent, or the global throttle cannot grant a slot before it, the remaining symbols are
+    returned in ``deferred`` (never asked: not ``missing``); ``ingest_quotes`` rotates the start each slot
+    so the tail is not starved. The run therefore ends inside its slot and the next slot is not lock-skipped.
     """
-    import time
     if not symbols:
         symbols = _get_symbols()
+    budget = FINVIZ_TIER_BUDGET_S if budget_s is None else float(budget_s)
+    deadline = _monotonic() + budget
     db = _finviz_connector()
     cur = db.cursor()
     fetched = 0; got = set()
     unwritten: list[str] = []
+    deferred: list[str] = []
     try:
-        for sym in symbols:
+        for idx, sym in enumerate(symbols):
+            if _monotonic() >= deadline:
+                deferred = symbols[idx:]
+                break
             # Provider call FIRST, with no transaction open: this is the idle window the role's
             # 120 s idle_in_transaction_session_timeout measures.
             try:
-                q = _finviz_quote(sym)
+                q = _finviz_quote(sym, deadline)
+            except TimeoutError:  # the throttle could not grant a slot before the deadline
+                deferred = symbols[idx:]
+                break
             except Exception:
                 q = {}
             finally:
@@ -338,11 +374,13 @@ def ingest_finviz_quotes(symbols: list = None) -> dict:
                 unwritten.append(sym)
     finally:
         db.close()
-    missing = [s for s in symbols if s not in got and s not in unwritten]
+    skipped = set(unwritten) | set(deferred)
+    missing = [s for s in symbols if s not in got and s not in skipped]
     print(f"[finviz] Fetched {fetched}/{len(symbols)} quotes ({len(missing)} missing, "
-          f"{len(unwritten)} unwritten, {db.reconnects} reconnect(s))")
+          f"{len(unwritten)} unwritten, {len(deferred)} deferred past the {budget:.0f} s budget, "
+          f"{db.reconnects} reconnect(s))")
     return {"source": "finviz", "fetched": fetched, "total": len(symbols),
-            "missing": missing, "unwritten": unwritten,
+            "missing": missing, "unwritten": unwritten, "deferred": deferred,
             "reconnects": db.reconnects, "rows_dropped": db.dropped_ops}
 
 
@@ -368,7 +406,7 @@ def ingest_quotes(symbols: list = None) -> dict:
     fv = {"fetched": 0, "missing": miss1, "unwritten": []}
     if miss1:
         try:
-            fv = ingest_finviz_quotes(miss1)
+            fv = ingest_finviz_quotes(_rotate(list(miss1), int(time.time() // 900)))
         except Exception as e:
             # The tier did not run to completion: none of its symbols was priced or refused, so none
             # of them may be routed on. Not "missing" — that word would be a claim about finviz.
@@ -376,7 +414,8 @@ def ingest_quotes(symbols: list = None) -> dict:
                   "error": f"{type(e).__name__}: {e}"}
             print(f"  [fallback] finviz tier UNAVAILABLE: {e} — {len(miss1)} symbol(s) not routed on")
     miss2 = fv.get("missing", [])
-    tier_unavailable = list(fv.get("unwritten") or [])
+    # A deferred symbol was never asked (budget spent): the same fact as "tier could not attempt it".
+    tier_unavailable = list(fv.get("unwritten") or []) + list(fv.get("deferred") or [])
     # A tier that raised has no measured count: "we could not read it" is None, never 0 (tq taxonomy
     # #2 — a swallowed failure reported as an empty success is the same defect one level up).
     counts = {"alpaca": a.get("fetched"), "finviz": fv.get("fetched")}

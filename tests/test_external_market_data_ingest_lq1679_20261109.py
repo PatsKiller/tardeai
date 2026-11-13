@@ -142,7 +142,7 @@ def test_one_emulated_cycle_writes_only_alpaca_and_finviz_rows(monkeypatch):
     monkeypatch.setattr(ingest, "_alpaca_creds", lambda: ("ZQKEY", "ZQSECRET"))
     monkeypatch.setattr(ingest.time, "sleep", lambda _s: None)
     monkeypatch.setattr(ingest, "_finviz_quote",
-                        lambda sym: ({"price": "20.5", "prev": "20.0", "rvol": None, "volume": "300"}
+                        lambda sym, *a, **k: ({"price": "20.5", "prev": "20.0", "rvol": None, "volume": "300"}
                                      if sym == "ZQB" else {}))
 
     import requests
