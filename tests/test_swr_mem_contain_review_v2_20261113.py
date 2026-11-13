@@ -1,5 +1,6 @@
 """MEM-CONTAIN v2 independent review (REWORK, 2026-11-13): regression tests for NB1, NB2, C1 and C5.
 Adapted from the reviewer's findings file. Synthetic keys, pids and payloads only; nothing is ever signalled."""
+import json
 import os
 import subprocess
 import threading
@@ -17,7 +18,7 @@ FAKE_PID = "2147483000"
 
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
-    for k in ("SWR_SLOT_DIR", "SWR_BUILD_LEASE_S", "SWR_MAX_CONCURRENT_BUILDS", "SWR_MAX_ABANDONED"):
+    for k in ("SWR_SLOT_DIR", "SWR_BUILD_LEASE_S", "SWR_MAX_CONCURRENT_BUILDS"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(swr, "cgroup_memory", lambda: (None, None))
     swr.clear()
@@ -46,8 +47,8 @@ def test_same_key_is_never_built_twice_after_lease_expiry(monkeypatch):
         gate.set()
 
 
-# ── NB1 / F1b: abandoned (lease-expired, still running) builds stay bounded ─────────────────────────────────
-def test_abandoned_builds_are_bounded(monkeypatch):
+# ── NB1 / F1b + operator point 3: overdue (lease-expired, still running) builds keep the cap ────────────────
+def test_overdue_builds_never_exceed_the_cap(monkeypatch):
     monkeypatch.setenv("SWR_BUILD_LEASE_S", "0.1")
     gate, calls = threading.Event(), []
     try:
@@ -56,27 +57,83 @@ def test_abandoned_builds_are_bounded(monkeypatch):
             swr.get(f"x{i}", 60, _hang(gate, calls))
             time.sleep(0.15)
         st = swr.stats()
-        assert st["abandoned_builds"] <= swr.max_abandoned() == 2
-        assert len(calls) <= swr.max_concurrent_builds() + swr.max_abandoned()
+        assert st["abandoned_builds"] <= swr.max_concurrent_builds() == 2
+        assert len(calls) <= swr.max_concurrent_builds()
     finally:
         gate.set()
 
 
-def test_abandon_limit_keeps_cap_and_logs(monkeypatch, capsys):
+def test_all_slots_overdue_keeps_cap_and_logs(monkeypatch, capsys):
     monkeypatch.setenv("SWR_BUILD_LEASE_S", "0.05")
-    monkeypatch.setenv("SWR_MAX_ABANDONED", "0")
     gate, calls = threading.Event(), []
     try:
         swr.get("a", 60, _hang(gate, calls))
         swr.get("b", 60, _hang(gate, calls))
         time.sleep(0.1)
         out = swr.get("c", 60, _hang(gate, calls))
-        assert out.get("build_refused") == "REFUSED_CAP"  # expired builds were NOT reaped: they still hold the cap
-        assert len(calls) == 2 and swr.stats()["abandoned_builds"] == 0
-        # Review v2c T2 (mutant NB1-i): the limit state is loud, never silent.
-        assert '"outcome": "ABANDONED_LEASE_LIMIT"' in capsys.readouterr().out
+        assert out.get("build_refused") == "REFUSED_CAP"  # overdue builds still hold the cap
+        assert len(calls) == 2 and swr.stats()["abandoned_builds"] == 2
+        assert '"outcome": "ALL_SLOTS_OVERDUE"' in capsys.readouterr().out  # loud, never silent
     finally:
         gate.set()
+
+
+# ── operator point 3, across processes: an overdue build in one process holds its host slot and key ─────────
+_HOLDER = r"""
+import os, sys, threading, time
+sys.path.insert(0, {root!r})
+from scripts.lib import shared_get_swr as swr
+swr.cgroup_memory = lambda: (None, None)
+stop = {stop!r}
+def hang():
+    while not os.path.exists(stop):
+        time.sleep(0.02)
+    return {{"held": True}}
+swr.get("xk", 60, hang)
+time.sleep(0.3)  # past the 0.1 s lease
+swr.get("other", 60, lambda: {{}})  # runs the reaper: the build is now overdue
+assert swr.stats()["abandoned_builds"] == 1 and swr.running_builds() == 1
+open({ready!r}, "w").write("overdue")
+deadline = time.time() + 30
+while swr.running_builds() and time.time() < deadline:
+    time.sleep(0.02)
+"""
+
+_PROBE = r"""
+import json, sys
+sys.path.insert(0, {root!r})
+from scripts.lib import shared_get_swr as swr
+swr.cgroup_memory = lambda: (None, None)
+print(json.dumps([swr.get(k, 60, lambda: {{}}).get("build_refused") for k in {keys!r}]))
+"""
+
+
+def test_overdue_build_holds_host_slot_and_key_across_processes(tmp_path):
+    slots, stop, ready = tmp_path / "slots", tmp_path / "stop", tmp_path / "ready"
+    env = {**os.environ, "SWR_SLOT_DIR": str(slots), "SWR_MAX_CONCURRENT_BUILDS": "1", "SWR_BUILD_LEASE_S": "0.1",
+           "PYTHONDONTWRITEBYTECODE": "1"}
+    env.pop("PYTEST_CURRENT_TEST", None)
+    holder = subprocess.Popen([os.sys.executable, "-c", _HOLDER.format(root=str(ROOT), stop=str(stop), ready=str(ready))],
+                              env=env, cwd=str(tmp_path), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        deadline = time.time() + 20
+        while not ready.exists() and time.time() < deadline and holder.poll() is None:
+            time.sleep(0.02)
+        assert ready.exists(), holder.communicate(timeout=5)
+        probe = lambda keys=("xk", "yk"): json.loads(subprocess.run(  # noqa: E731
+            [os.sys.executable, "-c", _PROBE.format(root=str(ROOT), keys=list(keys))], env=env, cwd=str(tmp_path),
+            capture_output=True, text=True, timeout=30).stdout.strip().splitlines()[-1])
+        for _ in range(3):  # repeated attempts while the overdue build still computes
+            assert probe() == ["REFUSED_DUPLICATE", "REFUSED_CAP"]
+            time.sleep(0.15)
+        stop.write_text("1")
+        assert holder.wait(timeout=30) == 0, holder.stderr.read()
+        # the build truly ended: its key and its host slot are free again (one key per probe process: cap 1)
+        assert probe(("xk",)) == [None] and probe(("yk",)) == [None]
+    finally:
+        stop.write_text("1")
+        if holder.poll() is None:
+            holder.kill()
 
 
 # ── NB2 / F2 and C5: watchdog fixture ───────────────────────────────────────────────────────────────────────

@@ -169,7 +169,9 @@ def test_b1_routes_without_own_fields_still_carry_top_level_freshness(monkeypatc
 
 
 # ── B3: a hung build is released after the lease ──────────────────────────────────────────────────────────────
-def test_b3_two_hung_builds_no_longer_starve_every_key(monkeypatch, tmp_path, capsys):
+def test_b3_overdue_builds_keep_the_cap_until_they_end(monkeypatch, tmp_path, capsys):
+    # Operator 13 Nov 2026 (containment point 3): an overdue build keeps its global slot and its key lock until its
+    # thread truly ends. The lease only marks it overdue (loud), never frees capacity.
     monkeypatch.setenv("SWR_SLOT_DIR", str(tmp_path / "slots"))
     monkeypatch.setenv("SWR_MAX_CONCURRENT_BUILDS", "2")
     monkeypatch.setenv("SWR_BUILD_LEASE_S", "0.5")
@@ -191,38 +193,66 @@ def test_b3_two_hung_builds_no_longer_starve_every_key(monkeypatch, tmp_path, ca
     assert swr.get("k3", 60, lambda: {"ok": 1}).get("build_refused") == "REFUSED_CAP"
     time.sleep(0.6)  # past the lease
     r3 = swr.get("k3", 60, lambda: {"ok": 1})
-    assert r3.get("build_refused") is None and r3["reason"] == "building"
-    assert _wait(lambda: swr.peek("k3", 60) == {"ok": 1})
+    assert r3.get("build_refused") == "REFUSED_CAP"  # the lease freed nothing
+    assert swr.running_builds() == 2 and len(released) == 0
     st = swr.stats()
     assert st["abandoned_builds"] == 2 and st["abandoned_total"] == 2
     out = capsys.readouterr().out
-    assert out.count('"outcome": "ABANDONED_LEASE"') == 2
-    # the hung threads return later. Review v2 NB1: the lease released only their build slots and kept each key
-    # lock, so each finished thread releases exactly its key lock once (+2), and nothing is released twice
-    n_before = len(released)
+    assert out.count('"outcome": "ABANDONED_LEASE"') == 2 and '"holds_capacity": true' in out
+    assert '"outcome": "ALL_SLOTS_OVERDUE"' in out
     gate.set()
-    assert _wait(lambda: swr.stats()["abandoned_builds"] == 0)
-    assert len(released) == n_before + 2 and len(released) == len(set(released))
+    assert _wait(lambda: swr.stats()["abandoned_builds"] == 0 and swr.running_builds() == 0)
+    assert len(released) == 2 and len(set(released)) == 2  # each build's slots released exactly once, at its end
     assert swr.peek("k1", 60) == {"late": True}
+    swr.get("k3", 60, lambda: {"ok": 1})
+    assert _wait(lambda: swr.peek("k3", 60) == {"ok": 1})
 
 
-def test_b3_lease_without_slot_pool_frees_the_process_cap(monkeypatch):
+def test_b3_lease_without_slot_pool_keeps_the_process_cap(monkeypatch):
     monkeypatch.setenv("SWR_MAX_CONCURRENT_BUILDS", "1")
     monkeypatch.setenv("SWR_BUILD_LEASE_S", "0.3")
     gate = threading.Event()
     swr.get("a", 60, lambda: gate.wait(30) or {"a": 1})
     assert swr.get("b", 60, lambda: {"b": 1}).get("build_refused") == "REFUSED_CAP"
     time.sleep(0.35)
+    assert swr.get("b", 60, lambda: {"b": 1}).get("build_refused") == "REFUSED_CAP"
+    assert swr.running_builds() == 1 and swr.stats()["abandoned_builds"] == 1
+    swr.get("a", 0, lambda: {"a": 2})  # the overdue key is deduplicated: no second build of it starts
+    assert swr.running_builds() == 1 and swr.peek("a", 60) is None
+    gate.set()
+    assert _wait(lambda: swr.stats()["abandoned_builds"] == 0 and swr.running_builds() == 0)
     swr.get("b", 60, lambda: {"b": 1})
     assert _wait(lambda: swr.peek("b", 60) == {"b": 1})
-    assert swr.running_builds() == 0 and swr.stats()["abandoned_builds"] == 1
-    # Review v2 NB1: the abandoned key may NOT build again while its old thread still runs (no duplicate builds)
-    assert swr.get("a", 60, lambda: {"a": 2}).get("build_refused") == "REFUSED_DUPLICATE"
-    gate.set()
-    assert _wait(lambda: swr.stats()["abandoned_builds"] == 0)
-    # once the abandoned thread has ended, the key builds normally again
-    swr.get("a", 0, lambda: {"a": 2})
-    assert _wait(lambda: swr.peek("a", 60) == {"a": 2})
+
+
+def test_b3_repeated_lease_cycles_never_exceed_the_cap(monkeypatch):
+    # Repeated request/lease-timeout cycles: concurrency stays tied to real work, never cap + abandoned.
+    monkeypatch.setenv("SWR_MAX_CONCURRENT_BUILDS", "2")
+    monkeypatch.setenv("SWR_BUILD_LEASE_S", "0.05")
+    gate, live, peak = threading.Event(), [0], [0]
+    lock = threading.Lock()
+
+    def hang():
+        with lock:
+            live[0] += 1
+            peak[0] = max(peak[0], live[0])
+        try:
+            gate.wait(10)
+        finally:
+            with lock:
+                live[0] -= 1
+        return {"x": 1}
+    try:
+        for cycle in range(20):
+            for k in range(4):
+                swr.get(f"c{cycle}-{k}", 0, hang)
+                swr.get(f"k{k}", 0, hang)
+            time.sleep(0.06)  # every running build passes its lease each cycle
+            assert swr.running_builds() <= 2 and peak[0] <= 2
+        assert peak[0] == 2 and swr.stats()["abandoned_builds"] == 2
+    finally:
+        gate.set()
+    assert _wait(lambda: swr.running_builds() == 0)
 
 
 def test_b3_lease_default_is_300s(monkeypatch):

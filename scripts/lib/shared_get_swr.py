@@ -17,10 +17,9 @@ REVIEW-2580 (LQ-2584):
   with last_build_error / last_build_error_at; with a last-good it carries last_build_error. After a failure
   no new build starts for max(ttl_s, MIN_BACKOFF_S) so a persistent failure is not a back-to-back burn.
 * R2 a running build is visible (build_running_s). Past STUCK_FACTOR x ttl_s it is "build_stuck" (cold:
-  reason build_stuck; stale: build_stuck true) and ONE replacement build may start; a replaced build that
-  returns later is discarded if it started before the stored result. With the host slot pool on, the stuck build
-  still holds its per-key lock, so the replacement is refused REFUSED_DUPLICATE ("this process ...") until the
-  build lease below releases it.
+  reason build_stuck; stale: build_stuck true). Operator 13 Nov 2026 (containment point 3): NO replacement build
+  starts while the stuck one runs. The replacement is refused REFUSED_DUPLICATE ("this process already runs a build
+  of this key") until the stuck build truly ends; a lease or request timeout never releases its slot or key.
 * N1 a build that RETURNS an HTTP-error tuple (status >= 400) is a failure, never stored as last-good.
 
 MEM-CONTAIN 2026-11-13 (watchdog SIGKILL 14:30:57 ET, cgroup 2,861,133,824 B > memory.high, after four
@@ -50,16 +49,14 @@ parallel reports/analyst/links + cio-card + market-risk/latest builds):
   Nothing waits: no free slot -> REFUSED_CAP, the caller is served last-good / UNKNOWN (queue length 0).
   An unusable slot dir fails open to the per-process cap and is logged once. SWR_SLOT_DIR=off disables it.
   Under pytest the pool is off unless SWR_SLOT_DIR is set (tests never touch the live slots).
-* BUILD LEASE (review B3): a build older than SWR_BUILD_LEASE_S (default 300) is ABANDONED at the next build start:
-  under _LOCK its host slots move out of _RUNNING and are released exactly once, its in-flight mark is dropped, one
-  ``ABANDONED_LEASE`` line is logged, and stats() reports it in abandoned_builds (threads still alive) and
-  abandoned_total. The thread keeps running (it cannot be killed) but no longer holds a cap token or a host slot;
-  its late result still goes through the older-never-overwrites-newer rule. Two hung builds therefore no longer
-  starve every key until a restart. A canary alerts on abandoned_builds > 0.
-  Review v2 NB1: the reap releases the build SLOT only; the per-key host lock stays held until the abandoned thread
-  really ends, and the key is refused (REFUSED_DUPLICATE) meanwhile, so a hung build never gains a same-key twin.
-  At most SWR_MAX_ABANDONED (default 2) abandoned threads exist; past that, expired builds are not reaped (they keep
-  their cap token: new builds are refused, the bounded v1 behaviour) and ABANDONED_LEASE_LIMIT is logged.
+* BUILD LEASE / OVERDUE (operator 2026-11-13 evening, supersedes review B3/NB1 reaping): a build older than
+  SWR_BUILD_LEASE_S (default 300) is marked OVERDUE at the next build start, once: one ``ABANDONED_LEASE`` line is
+  logged and stats() reports it in abandoned_builds (overdue threads still alive) and abandoned_total. An overdue
+  build KEEPS its cap token, its host-wide build slot and its per-key lock until its thread really ends: capacity is
+  tied to actual work, so a request or lease timeout never frees capacity while computation continues, and the same
+  key is never built twice at once (REFUSED_DUPLICATE). When every slot is held by overdue builds, new builds are
+  refused (REFUSED_CAP), callers are served last-good / UNKNOWN, and one rate-limited ``ALL_SLOTS_OVERDUE`` line is
+  logged; the portfolio-server watchdog restart path (and its escalation) is what clears hung builds.
 * LOCKING (review N5): the cgroup / proc reads and the slot-dir open + flock run OUTSIDE _LOCK. A build is first
   RESERVED under the lock (it counts against the cap and dedupes the key at once), the I/O runs unlocked, and the
   reservation is then committed (thread started) or rolled back (refusal recorded) under the lock again.
@@ -89,14 +86,13 @@ DEFAULT_MAX_ENTRIES = 256
 DEFAULT_REFUSE_LOG_INTERVAL_S = 30.0
 DEFAULT_STATS_LOG_INTERVAL_S = 60.0
 DEFAULT_BUILD_LEASE_S = 300.0
-DEFAULT_MAX_ABANDONED = 2
 
 _LOCK = threading.Lock()
 _ENTRIES: dict = {}  # key -> {"mono", "wall", "payload", "started"}
 _INFLIGHT: dict = {}  # key -> {"thread", "started": mono}
 _ERRORS: dict = {}  # key -> {"mono", "wall", "error"}
 _RUNNING: dict = {}  # token -> {"key", "started", "slots", "thread"}: builds holding a cap token (incl. stuck)
-_ABANDONED: dict = {}  # token -> {"key", "started", "abandoned_wall"}: lease-expired threads still alive
+_ABANDONED: dict = {}  # token -> {"key", "started", "abandoned_wall"}: overdue builds (still in _RUNNING, still holding capacity)
 _ABANDONED_TOTAL = [0]
 _ABANDON_LIMIT_LOGGED = [0.0]
 _REFUSED: dict = {}  # key -> {"mono", "wall", "outcome", "detail", "logged_mono"}
@@ -119,10 +115,6 @@ def max_concurrent_builds() -> int:
 
 def build_lease_s() -> float:
     return _env_float("SWR_BUILD_LEASE_S", DEFAULT_BUILD_LEASE_S)
-
-
-def max_abandoned() -> int:
-    return max(0, int(_env_float("SWR_MAX_ABANDONED", DEFAULT_MAX_ABANDONED)))
 
 
 def _iso(wall: float) -> str:
@@ -416,11 +408,8 @@ def _run(key: str, build, started: float, token: int, wall0: float, rss0) -> Non
             cur = _INFLIGHT.get(key)
             if cur is not None and cur.get("token") == token:
                 _INFLIGHT.pop(key, None)
-            run = _RUNNING.pop(token, None)  # None when the lease reaper (or clear) already took ownership
-            ab = _ABANDONED.pop(token, None)
-            abandoned = ab is not None
-            if ab is not None:
-                release_slots(ab.get("key_slots"))  # the key lock was kept while the abandoned thread ran (NB1)
+            run = _RUNNING.pop(token, None)  # None only when clear() (tests) already took ownership
+            abandoned = _ABANDONED.pop(token, None) is not None
             if run is not None:
                 release_slots(run.get("slots"))  # the only owner left: released exactly once
             counters = _count(route, "built" if outcome == "BUILT" else "failed")
@@ -454,48 +443,33 @@ def _refuse(key: str, outcome: str, detail: str, now: float):
 
 
 def _reap_leases() -> list:
-    """Abandon every started build older than the lease (review B3). Caller holds _LOCK; ownership of the slots moves
-    here under the lock, so _run's finally finds nothing to release (no fd is ever closed twice). Returns log docs."""
+    """Mark every started build older than the lease OVERDUE, once. Caller holds _LOCK. Nothing is released: the
+    build keeps its cap token, host slot and key lock until its thread ends (_run's finally). Returns log docs."""
     lease = build_lease_s()
     if lease <= 0:
         return []
     now = time.monotonic()
     docs = []
-    limit = max_abandoned()
     for token, run in list(_RUNNING.items()):
-        if run.get("thread") is None or now - run["started"] < lease:
+        if run.get("thread") is None or now - run["started"] < lease or token in _ABANDONED:
             continue
-        if len(_ABANDONED) >= limit:
-            # Review v2 NB1: abandoned threads are bounded. Past the limit the expired build keeps its cap token and
-            # slots (the bounded v1 behaviour: new builds are refused) and one rate-limited line says so.
-            if now - _ABANDON_LIMIT_LOGGED[0] >= _env_float("SWR_REFUSE_LOG_INTERVAL_S", DEFAULT_REFUSE_LOG_INTERVAL_S):
-                _ABANDON_LIMIT_LOGGED[0] = now
-                route = _ROUTES.get(run["key"], run["key"])
-                docs.append({"event": "swr_build", "key": run["key"], "route": route,
-                             "outcome": "ABANDONED_LEASE_LIMIT", "start": None, "end": None,
-                             "running_s": round(now - run["started"], 1), "lease_s": lease, "rss_kb": None,
-                             "abandoned_builds": len(_ABANDONED), "max_abandoned": limit,
-                             "running_builds_after": len(_RUNNING)})
-            break
-        _RUNNING.pop(token, None)
-        slots, run["slots"] = list(run.get("slots") or []), None
-        # Review v2 NB1: release the build SLOT but KEEP the per-key host lock until the thread really ends, so the same
-        # key can never be built twice at once (here or in another process). _run's finally releases it.
-        key_slots, slot_fds = slots[:1], slots[1:]
-        release_slots(slot_fds)
         key = run["key"]
-        cur = _INFLIGHT.get(key)
-        if cur is not None and cur.get("token") == token:
-            _INFLIGHT.pop(key, None)
-        _ABANDONED[token] = {"key": key, "started": run["started"], "abandoned_wall": time.time(),
-                             "key_slots": key_slots}
+        _ABANDONED[token] = {"key": key, "started": run["started"], "abandoned_wall": time.time()}
         _ABANDONED_TOTAL[0] += 1
         route = _ROUTES.get(key, key)
         docs.append({"event": "swr_build", "key": key, "route": route, "outcome": "ABANDONED_LEASE",
                      "start": _iso(time.time() - (now - run["started"])), "end": None,
                      "running_s": round(now - run["started"], 1), "lease_s": lease, "rss_kb": None,
-                     "running_builds_after": len(_RUNNING), "abandoned_builds": len(_ABANDONED),
-                     "counters": _count(route, "abandoned_lease")})
+                     "holds_capacity": True, "running_builds_after": len(_RUNNING),
+                     "abandoned_builds": len(_ABANDONED), "counters": _count(route, "abandoned_lease")})
+    cap = max_concurrent_builds()
+    if _RUNNING and len(_ABANDONED) >= cap and now - _ABANDON_LIMIT_LOGGED[0] >= _env_float(
+            "SWR_REFUSE_LOG_INTERVAL_S", DEFAULT_REFUSE_LOG_INTERVAL_S):
+        _ABANDON_LIMIT_LOGGED[0] = now
+        docs.append({"event": "swr_build", "key": None, "route": None, "outcome": "ALL_SLOTS_OVERDUE",
+                     "start": None, "end": None, "lease_s": lease, "rss_kb": None,
+                     "abandoned_builds": len(_ABANDONED), "cap": cap, "running_builds_after": len(_RUNNING),
+                     "overdue_keys": sorted({a["key"] for a in _ABANDONED.values()})})
     return docs
 
 
@@ -511,8 +485,8 @@ def _reserve(key: str, ttl_s: float):
     err = _ERRORS.get(key)
     if err is not None and now - err["mono"] < max(ttl_s, MIN_BACKOFF_S):
         return None, docs
-    if any(a["key"] == key for a in _ABANDONED.values()):
-        docs.append(_refuse(key, "REFUSED_DUPLICATE", "an abandoned (lease-expired) build of this key is still running", now))
+    if any(r["key"] == key for r in _RUNNING.values()):  # a stuck/overdue build of this key still holds its slot
+        docs.append(_refuse(key, "REFUSED_DUPLICATE", "this process already runs a build of this key (stuck or overdue; held until it ends)", now))
         return None, docs
     cap = max_concurrent_builds()
     if len(_RUNNING) >= cap:
@@ -551,8 +525,8 @@ def _launch(key: str, build, token: int):
         if refused == "REFUSED_DUPLICATE":
             with _LOCK:
                 mine = any(r["key"] == key for t, r in _RUNNING.items() if t != token)
-            detail = ("this process already runs a build of this key (stuck; held until it ends or its lease of "
-                      f"{build_lease_s():g}s expires)" if mine else "another process on this host is building this key")
+            detail = ("this process already runs a build of this key (stuck or overdue; held until it ends)"
+                      if mine else "another process on this host is building this key")
         else:
             detail = f"all {cap} host-wide build slots held ({slot_dir()})"
         return False, _rollback(key, token, refused, detail)
@@ -686,9 +660,6 @@ def clear() -> None:  # tests
         _ERRORS.clear()
         _INFLIGHT.clear()
         _RUNNING.clear()
-        for ab in _ABANDONED.values():
-            release_slots(ab.get("key_slots"))
-            ab["key_slots"] = None
         _ABANDONED.clear()
         _ABANDONED_TOTAL[0] = 0
         _ABANDON_LIMIT_LOGGED[0] = 0.0

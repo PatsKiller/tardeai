@@ -193,7 +193,8 @@ def test_r1_retry_after_backoff_then_recovers(monkeypatch):
     assert out["v"] == 1 and state["n"] == 2 and "last_build_error" not in out
 
 
-def test_r2_running_build_is_visible_and_stuck_build_is_replaced(monkeypatch):
+def test_r2_running_build_is_visible_and_stuck_build_is_not_replaced(monkeypatch):
+    # Operator 13 Nov 2026 (containment point 3): a stuck build keeps its duplicate exclusion until it truly ends.
     monkeypatch.setattr(swr, "STUCK_FACTOR", 1.0)  # stuck after max(ttl, 1) s = 1 s here
     hang, calls = threading.Event(), []
 
@@ -208,14 +209,12 @@ def test_r2_running_build_is_visible_and_stuck_build_is_replaced(monkeypatch):
     assert first["reason"] in ("building", "build_stuck") and "build_running_s" in first
     time.sleep(1.1)
     out = swr.get("k", 0.01, lambda: calls.append("new") or {"v": "new"})
-    assert out["reason"] == "build_stuck"
-    _wait_idle()
-    time.sleep(0.2)
-    done = swr.get("k", 60, lambda: {"v": "x"})
-    assert done["v"] == "new" and calls.count("hung") == 1 and "new" in calls
+    assert out["reason"] == "build_stuck" and out.get("build_refused") == "REFUSED_DUPLICATE"
+    assert calls == ["hung"] and swr.running_builds() == 1  # no second build of the key was started
     hang.set()
-    time.sleep(0.3)
-    assert swr.get("k", 60, lambda: {"v": "x"})["v"] == "new"  # the replaced build must not overwrite
+    _wait_idle()
+    assert swr.get("k", 60, lambda: {"v": "x"})["v"] == "old"  # the stuck build's own result lands when it ends
+    assert "new" not in calls
 
 
 def test_r2_stale_payload_shows_build_running_and_stuck(monkeypatch):
