@@ -364,6 +364,15 @@ def _apply_filters(items: list[dict], q: dict[str, Any]) -> list[dict]:
     starred_only = str(q.get("starred") or "").lower() in ("1", "true", "yes")
     held_only = str(q.get("held") or "").lower() in ("1", "true", "yes")
 
+    # LQ-20261107-2633: the saved-list membership is read ONCE; a failed read is UNKNOWN for every card (kept, marked
+    # with the cause), never an empty set that silently drops each card as "not a member".
+    list_id = str(q.get("saved_list") or q.get("list_id") or "").strip()
+    members: set[str] = set()
+    members_cause = None
+    if list_id:
+        from lib.data_broker.watch_domains import saved_list_membership_status
+        members, members_cause = saved_list_membership_status(list_id)
+
     out = []
     for it in items:
         c = it.get("card") or {}
@@ -420,10 +429,11 @@ def _apply_filters(items: list[dict], q: dict[str, Any]) -> list[dict]:
             continue
 
         # Extended filters
-        list_id = str(q.get("saved_list") or q.get("list_id") or "").strip()
         if list_id:
-            from lib.data_broker.watch_domains import saved_list_membership
-            if (c.get("symbol") or "").upper() not in saved_list_membership(list_id):
+            if members_cause:
+                it["saved_list_membership"] = c["saved_list_membership"] = {
+                    "state": "UNKNOWN", "list_id": list_id, "cause": members_cause}
+            elif (c.get("symbol") or "").upper() not in members:
                 continue
         industry = (q.get("industry") or "").strip().lower()
         if industry and (c.get("industry") or "").lower() != industry:
