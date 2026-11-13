@@ -1560,7 +1560,14 @@ def _build_reentry_decision_desk_api(query=None):
     try:
         from lib.data_broker.reentry_decision_desk import build_decision_desk
 
-        return build_decision_desk(_db_query)
+        # LQ-20261107-2485: the desk reads through this callable; with the tolerant _db_query a
+        # failed read became rows:[] ("no re-entry candidates"). _db_required carries the cause
+        # out, so an unreadable store is an explicit UNKNOWN, not an empty market. The probe
+        # covers the desk's own `except: pass` blocks: with no connection the desk cannot be built.
+        _db_required("SELECT 1 AS ok", fetch="one")
+        return build_decision_desk(_db_required)
+    except _DbReadError as exc:
+        return _db_error_status("/api/v2/reentry/decision-desk", exc)
     except Exception as e:
         return {"ok": False, "error": str(e)[:300], "advisory_only": True}
 
@@ -1630,7 +1637,7 @@ def _stops_reentry_watch_api(query=None):
         if stop_syms:
             # Primary: entry plans from watchlist_entry_plans (LLM-generated with price context)
             plan_rows = (
-                _db_query(
+                _db_required(
                     """SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS sym, plan->>'entry_thesis' AS thesis
                    FROM watchlist_entry_plans
                    WHERE upper(symbol) = ANY(%s) AND plan->>'entry_thesis' IS NOT NULL
@@ -1654,6 +1661,8 @@ def _stops_reentry_watch_api(query=None):
             "total_watch": len(watch),
             "thesis_populated": len(thesis_map),
         }
+    except _DbReadError as exc:  # LQ-20261107-2485: an unreadable thesis store is not "no rows"
+        return _db_error_status("/api/v2/stops/reentry-watch", exc)
     except Exception as e:
         return {
             "reviews": [],
@@ -3224,7 +3233,12 @@ def _hermes_governance_mod():
 
 
 def _db_query(sql, params=None, fetch="all"):
-    """Run a read-only DB query. Returns list or dict or None."""
+    """Run a read-only DB query. Returns list or dict or None.
+
+    None is ambiguous on purpose: it is both "the read failed" and "USE_DB is off". A route
+    that cannot answer without the read must use ``_db_required`` instead of treating None
+    as an empty result (LQ-20261107-2485).
+    """
     try:
         import sys
 
@@ -3236,6 +3250,204 @@ def _db_query(sql, params=None, fetch="all"):
         return _execute(sql, params, fetch=fetch)
     except Exception:
         return None
+
+
+class _DbReadError(RuntimeError):
+    """A required DB read did not run. ``cause`` is the driver's own message.
+
+    ``unavailable`` separates a connection-class failure (retryable; the route answers 503
+    and the SPA soft-retries) from a query/schema failure (not retryable; 500 with the same
+    cause). Either way the route answers with an explicit error, never ``ok: true`` + empties.
+    """
+
+    def __init__(self, cause: str, *, unavailable: bool = True):
+        super().__init__(cause)
+        self.cause = cause
+        self.unavailable = unavailable
+
+    @property
+    def http_status(self) -> int:
+        return 503 if self.unavailable else 500
+
+
+def _db_cause(exc) -> tuple[str, bool]:
+    """(cause, unavailable) for a driver exception, from SQLSTATE then from the driver's class.
+
+    Never from message text (LQ-20261107-2517 F2): a schema error whose message happens to name a
+    connection -- ``relation "agent_connections" does not exist`` -- is a permanent break and must be
+    a 500, not a soft 503 the SPA retries forever.
+
+    Unavailable means "the store may come back without a code change": SQLSTATE class 08 (connection
+    exception), 53 (insufficient resources, incl. too many clients) or 57P (operator shutdown / crash /
+    cannot connect now). Everything else is a real 500 -- including 57014 (statement timeout) and 55P03
+    (lock not available): the database is up, the same request would fail again, so the page should show
+    the error rather than retry it (F4, chosen deliberately). Exceptions the driver cannot tag (built by
+    hand in tests) fall back to the driver's class: psycopg2 OperationalError/InterfaceError and the
+    builtin connection/timeout classes are unavailable; programming/data errors are not.
+    """
+    text = str(exc).strip()
+    cause = f"{type(exc).__name__}: {text.splitlines()[0][:200]}" if text else type(exc).__name__
+    code = str(getattr(exc, "pgcode", "") or getattr(exc, "sqlstate", "") or "")
+    if code:
+        return cause, code.startswith(("08", "53", "57P"))
+    return cause, _db_exc_unavailable(exc)
+
+
+def _db_exc_unavailable(exc) -> bool:
+    """Is ``exc`` a connection-class failure, judged by its class and not by its text?"""
+    if isinstance(exc, (ConnectionError, TimeoutError)):
+        return True
+    try:
+        import psycopg2
+    except Exception:  # noqa: BLE001 -- no driver to classify with
+        return False
+    return isinstance(exc, (psycopg2.OperationalError, psycopg2.InterfaceError))
+
+
+#: A required read must be a read: the helper's transaction is rolled back, so a write would silently
+#: fail to persist. Checked on the statement's leading keyword (comments allowed) and, inside the
+#: statement, on data-modifying keywords -- ``WITH x AS (SELECT 1) DELETE ...`` starts with a read
+#: keyword and is still a write. String literals and comments are stripped first (F5 of REVIEW-2511).
+_DB_READ_ONLY_SQL = re.compile(
+    r"^\s*(?:select|with|show|values|explain|table)\b",
+    re.IGNORECASE,
+)
+_DB_WRITE_WORD = re.compile(r"\b(?:insert|update|delete|merge|truncate|into)\b", re.IGNORECASE)
+
+
+def _db_is_read_only(sql) -> bool:
+    """Is this statement a read? Conservative: anything it cannot prove is a read is refused."""
+    text = re.sub(r"/\*.*?\*/", " ", sql or "", flags=re.DOTALL)
+    text = re.sub(r"--[^\n]*", " ", text)
+    text = re.sub(r"'(?:[^']|'')*'", "''", text)
+    if not _DB_READ_ONLY_SQL.match(text):
+        return False
+    return _DB_WRITE_WORD.search(text) is None
+
+
+def _db_query_direct(sql, params=None, fetch="all"):
+    """Run one read straight on the thread-local connection, letting the driver's error out.
+
+    ``db_adapter._execute()`` logs and returns None for every SQL error and ``_db_query`` turns even
+    that into None, so no caller can tell "no rows" from "the store could not be read". This path runs
+    ONLY when ``_db_query`` executed nothing at all (USE_DB off, no connection, or a stubbed read); a
+    read that ran and failed is answered from db_adapter's per-thread note instead, so one required
+    read never executes its statement twice (LQ-20261107-2517 F1). One attempt, no internal retry: the
+    idle-reap reconnect lives in db_adapter._execute, on the ordinary path. Read-only by construction:
+    the transaction is rolled back, never committed.
+    """
+    _ensure_scripts_path()
+    from db_adapter import USE_DB, ensure_conn
+
+    if not USE_DB:
+        raise _DbReadError("database disabled (USE_DB is off)")
+    try:
+        import psycopg2.extras
+    except Exception as exc:  # noqa: BLE001 -- no driver means no read
+        raise _DbReadError(f"psycopg2 unavailable: {type(exc).__name__}") from exc
+
+    conn = ensure_conn()
+    if conn is None:
+        raise _DbReadError("no database connection")
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            if fetch == "one":
+                out = cur.fetchone()
+            elif fetch == "all":
+                out = cur.fetchall()
+            else:
+                out = True
+        conn.rollback()  # never leave a transaction open on a request thread
+        return out
+    except Exception as exc:  # noqa: BLE001 -- classified, then raised with its cause
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        cause, unavailable = _db_cause(exc)
+        raise _DbReadError(cause, unavailable=unavailable) from exc
+
+
+def _db_required(sql, params=None, fetch="all"):
+    """Rows from a read the route cannot answer without; raises ``_DbReadError`` otherwise.
+
+    The ordinary path is ``_db_query`` (so tests that stub it keep working). db_adapter records per
+    thread whether its last ``_execute`` ran and why it failed; when ``_db_query`` answers None this
+    reads that note instead of re-running the statement:
+
+    * ran, no error -- the read ran and found no row: return None ("not found" stays distinct);
+    * ran, error    -- raise ``_DbReadError`` carrying the driver's cause, with **no second execution**;
+    * did not run   -- fall through to the one-shot direct read (USE_DB off / no connection).
+
+    Callers that can tolerate a missing source keep using ``_db_query`` and record the gap themselves.
+    """
+    if not _db_is_read_only(sql):
+        raise ValueError("_db_required executes reads only; a write would be rolled back by the read path")
+    try:
+        _ensure_scripts_path()
+        from db_adapter import begin_exec_note, last_exec_note
+    except Exception:  # noqa: BLE001 -- the direct path answers its own "adapter unavailable"
+        begin_exec_note, last_exec_note = None, None
+    if begin_exec_note is not None:
+        begin_exec_note()
+    out = _db_query(sql, params, fetch=fetch)
+    if out is not None:
+        return out
+    ran, err = last_exec_note() if last_exec_note is not None else (False, None)
+    if ran:
+        if err is None:
+            return None
+        cause, unavailable = _db_cause(err)
+        raise _DbReadError(cause, unavailable=unavailable) from err
+    return _db_query_direct(sql, params, fetch=fetch)
+
+
+def _db_error_status(route, exc):
+    """The explicit answer for a route that could not read its store: error + UNKNOWN + cause.
+
+    Returned as a ``(status, body)`` tuple, which the GET dispatcher honours verbatim (it
+    would otherwise wrap a handler's plain dict as ``200, {"ok": true, "data": ...}``).
+    """
+    cause = getattr(exc, "cause", None) or (str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__)
+    status = getattr(exc, "http_status", None) or 503
+    body = {
+        "ok": False,
+        "state": "UNKNOWN",
+        "error": "db_unavailable" if status == 503 else "db_read_failed",
+        "route": route,
+        "cause": str(cause)[:300],
+    }
+    if status == 503:
+        body["retry_after_sec"] = 5
+    logging.getLogger(__name__).warning("%s: %s (%s)", route, body["error"], body["cause"])
+    return status, body
+
+
+def _newest_ts(rows, keys):
+    """Newest ISO timestamp among ``keys`` on ``rows`` (data time), or None. Never the request time."""
+    best = None
+    for r in rows or []:
+        for k in keys:
+            v = _json_clean(r.get(k))
+            if isinstance(v, str) and v and (best is None or v > best):
+                best = v
+    return best
+
+
+def _db_explicit(fn):
+    """GET handler decorator: a required read that failed becomes an explicit status body."""
+
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except _DbReadError as exc:
+            return _db_error_status(fn.__name__, exc)
+
+    wrapper.__name__ = fn.__name__
+    wrapper.__doc__ = fn.__doc__
+    wrapper.__wrapped__ = fn
+    return wrapper
 
 
 #: Operator price rule (operator 2026-11-07): a live price is a Finviz quote fetched within 30 minutes
@@ -5849,11 +6061,19 @@ def watchlist_combined():
     # in: a symbol already listed gets its directive fields; an unlisted one is appended as
     # source="directive". Newest active directive wins per symbol; read via the watch_intelligence
     # projection (data_source_authority: hub handlers must not add direct watch_directives reads).
+    # A source that could not be read is UNKNOWN, never "nothing there" (LQ-20261107-2137/2485).
+    enrichment_unknown: dict = {}
     try:
         from lib.data_broker.watch_intelligence import active_ticker_directives
 
         directive_rows = active_ticker_directives()
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        # LQ-20261107-2485: a failed directive projection is not "no active directives".
+        enrichment_unknown["directives"] = (
+            f"{type(exc).__name__}: {str(exc).strip().splitlines()[0][:160]}"
+            if str(exc).strip()
+            else type(exc).__name__
+        )
         directive_rows = []
     by_symbol = {}
     for it in items:
@@ -5907,17 +6127,30 @@ def watchlist_combined():
     # and indistinguishable from "no rows". news_articles.quality_score never existed (the column is relevance_score);
     # the query failed ~every poll for weeks and every item silently lost the "active_news" conviction signal.
     # A failed read is now recorded per source and surfaced as UNKNOWN with its reason.
-    enrichment_unknown: dict = {}
-
     def _enrich_rows(source, sql, params):
+        # LQ-20261107-2485: db_adapter._execute() swallows every SQL error, so this except never
+        # ran for a real failure and `enrichment_unknown` stayed empty — the gap looked like
+        # "no news". Keep the direct call (a test may replace _execute), but a None answer is
+        # re-read on the connection so the driver's cause reaches the caller.
         try:
             from db_adapter import _execute, USE_DB
+
             if not USE_DB:
                 enrichment_unknown[source] = "database disabled (USE_DB off)"
                 return []
-            return _execute(sql, params, fetch="all") or []
+            rows = _execute(sql, params, fetch="all")
+            if rows is None:
+                rows = _db_query_direct(sql, params, fetch="all")
+            return rows or []
+        except _DbReadError as exc:
+            enrichment_unknown[source] = exc.cause[:200]
+            return []
         except Exception as exc:  # noqa: BLE001
-            enrichment_unknown[source] = f"{type(exc).__name__}: {str(exc).strip().splitlines()[0][:160]}" if str(exc).strip() else type(exc).__name__
+            enrichment_unknown[source] = (
+                f"{type(exc).__name__}: {str(exc).strip().splitlines()[0][:160]}"
+                if str(exc).strip()
+                else type(exc).__name__
+            )
             return []
 
     if all_syms:
@@ -9580,18 +9813,13 @@ def _sync_all_screener_find_pins_batch(symbols) -> bool:
 
 
 def _screener_finds_candidates(query=None):
-    """GET /api/v2/screener-finds/candidates — auto-research screener finds with buy-side CIO cards."""
-    _sync_all_screener_find_pins()
-    pins = (
-        _db_query("""
-        SELECT symbol, pinned_at, auto_research_at, discovery_reason, strategy_type,
-               brief_snippet, cio_recommendation, active
-        FROM screener_find_pins
-        WHERE active = true
-        ORDER BY auto_research_at DESC NULLS LAST, pinned_at DESC
-    """)
-        or []
-    )
+    """GET /api/v2/screener-finds/candidates — auto-research screener finds with buy-side CIO cards.
+
+    READ-ONLY (LQ-20261107-2487): ``active`` is derived from the live CIO verdict on read; this handler no longer
+    upserts every pin (it used to stamp auto_research_at on all rows per GET). The stored flag is refreshed by a lane."""
+    from lib import screener_find_pins_read as _sfp_read
+
+    pins = _sfp_read.active_pins(_db_query)
     syms = [p["symbol"] for p in pins]
     items_out = []
     if syms:
@@ -9727,7 +9955,6 @@ def _finds_track_record():
 def _wl_items(query: dict = None):
     """GET /api/v2/watchlist/items — DB-backed watchlist items with filters."""
     q = query or {}
-    _ensure_screener_find_pins_table()
     # NOTE: this SELECT joins several tables that also have source/status/asset_type columns
     # (watchlist_symbol_master, strategy cards, …) — filter columns MUST be qualified with wi.,
     # else Postgres raises "column reference ... is ambiguous" and the whole list silently returns 0.
@@ -9737,17 +9964,11 @@ def _wl_items(query: dict = None):
     _sym_list = None
     _lane = str((q.get("lane") or [""])[0] if isinstance(q.get("lane"), list) else (q.get("lane") or "")).strip()
     if _lane == "screener_finds":
-        _ensure_screener_find_pins_table()
-        _sync_all_screener_find_pins()
-        _sym_list = [
-            r["symbol"]
-            for r in (
-                _db_query(
-                    "SELECT symbol FROM screener_find_pins WHERE active = true ORDER BY auto_research_at DESC NULLS LAST"
-                )
-                or []
-            )
-        ]
+        # READ-ONLY (LQ-20261107-2487): derived from the live CIO verdict, no upsert, no DDL on a GET.
+        # A failed read raises (LQ-2485 _db_required) instead of an empty lane.
+        from lib import screener_find_pins_read as _sfp_read
+
+        _sym_list = [p["symbol"] for p in _sfp_read.active_pins(_db_required)]
     elif q.get("symbols"):
         raw = q["symbols"][0] if isinstance(q["symbols"], list) else q["symbols"]
         _sym_list = [s.strip().upper() for s in str(raw or "").split(",") if s.strip()]
@@ -9837,7 +10058,9 @@ def _wl_items(query: dict = None):
     # symbol can have several rows). Keep the best row: directive-linked first, then operator-seeded, then the
     # oldest. Filter columns MUST stay qualified with wi. (see note above).
     rows = (
-        _db_query(
+        # LQ-20261107-2485: a failed read here used to become `or []` -> count 0 / items [],
+        # i.e. a healthy-looking empty watchlist. _db_required carries the cause out instead.
+        _db_required(
             f"""
         WITH picked AS MATERIALIZED (
             SELECT * FROM (
@@ -10320,19 +10543,20 @@ def _wl_items(query: dict = None):
     }
 
 
+@_db_explicit
 def _wl_summary():
     """GET /api/v2/watchlist/summary — counts by source and status."""
     by_source = (
-        _db_query(
+        _db_required(
             "SELECT source, COUNT(DISTINCT symbol) as cnt FROM watchlist_items WHERE status <> 'removed' GROUP BY source"
         )
         or []
     )
-    by_status = _db_query("SELECT status, COUNT(*) as cnt FROM watchlist_items GROUP BY status") or []
-    jobs = _db_query("SELECT status, COUNT(*) as cnt FROM watchlist_agent_jobs GROUP BY status") or []
-    cards = _db_query("SELECT COUNT(*) as cnt FROM watchlist_research_cards", fetch="one") or {}
+    by_status = _db_required("SELECT status, COUNT(*) as cnt FROM watchlist_items GROUP BY status") or []
+    jobs = _db_required("SELECT status, COUNT(*) as cnt FROM watchlist_agent_jobs GROUP BY status") or []
+    cards = _db_required("SELECT COUNT(*) as cnt FROM watchlist_research_cards", fetch="one") or {}
     needs_iter = (
-        _db_query("SELECT COUNT(*) as cnt FROM watchlist_research_cards WHERE needs_iteration = true", fetch="one")
+        _db_required("SELECT COUNT(*) as cnt FROM watchlist_research_cards WHERE needs_iteration = true", fetch="one")
         or {}
     )
     return {
@@ -10902,15 +11126,17 @@ def _wl_build_plan(sym: str) -> tuple[int, dict]:
     }
 
 
+@_db_explicit
 def _wl_jobs():
     """GET /api/v2/watchlist/jobs — current agent jobs."""
-    rows = _db_query("SELECT * FROM watchlist_agent_jobs ORDER BY created_at DESC LIMIT 50") or []
+    rows = _db_required("SELECT * FROM watchlist_agent_jobs ORDER BY created_at DESC LIMIT 50") or []
     return {"count": len(rows), "jobs": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
 
 
+@_db_explicit
 def _wl_results():
     """GET /api/v2/watchlist/results — latest research results."""
-    rows = _db_query("SELECT * FROM watchlist_agent_results ORDER BY created_at DESC LIMIT 30") or []
+    rows = _db_required("SELECT * FROM watchlist_agent_results ORDER BY created_at DESC LIMIT 30") or []
     return {"count": len(rows), "results": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
 
 
@@ -11109,6 +11335,7 @@ def _wl_research_card(symbol: str):
     }
 
 
+@_db_explicit
 def _wl_debug():
     """GET /api/v2/watchlist/debug — DB row counts and last events."""
     tables = {}
@@ -11122,10 +11349,10 @@ def _wl_debug():
         "watchlist_strategy_cards",
         "watchlist_final_synthesis",
     ]:
-        row = _db_query(f"SELECT COUNT(*) as cnt FROM {t}", fetch="one") or {}
+        row = _db_required(f"SELECT COUNT(*) as cnt FROM {t}", fetch="one") or {}
         tables[t] = row.get("cnt", 0)
     last_events = (
-        _db_query(
+        _db_required(
             "SELECT event_type, symbol, status, message, created_at FROM watchlist_events ORDER BY created_at DESC LIMIT 20"
         )
         or []
@@ -18527,10 +18754,13 @@ def _ticket_review_run(body):
     }
 
 
+@_db_explicit
 def _ticket_review_status(query=None):
     """GET /api/v2/watch/ticket-review/status?symbol=X"""
     sym = (_q1(query, "symbol") or "").upper()
-    rows = _db_query(
+    # LQ-20261107-2485: a failed read used to answer "no live packet" — a cause this route
+    # cannot know. Only a read that actually ran and found nothing says that now.
+    rows = _db_required(
         """SELECT packet_id, packet->'ticket_review' AS tr
                         FROM decision_packets
                         WHERE upper(symbol)=%s AND superseded_by IS NULL""",
@@ -18582,6 +18812,7 @@ def _watch_decision_technicals(query=None):
     return {"ok": True, **snap}
 
 
+@_db_explicit
 def _watch_decision_summary(query=None):
     """GET /api/v2/watch/decision/summary — desk counts from VERIFICATION truth
     (V6 universal gate), not wall-clock TTL optimism. A packet is never
@@ -18590,7 +18821,7 @@ def _watch_decision_summary(query=None):
     import packet_invalidation as pi
 
     rows = (
-        _db_query("""SELECT symbol, generated_at,
+        _db_required("""SELECT symbol, generated_at,
                                packet->'ticket_review'->'reconciled'->>'state' AS rec,
                                packet->'ticket_review'->'tickets_validated'->0->>'state' AS tv0,
                                jsonb_typeof(packet->'current_actionable_plan') = 'object' AS has_cap,
@@ -18603,7 +18834,7 @@ def _watch_decision_summary(query=None):
     live_jobs = {
         r["symbol"]
         for r in (
-            _db_query(
+            _db_required(
                 """SELECT DISTINCT symbol FROM watch_decision_refresh_jobs
            WHERE state IN ('QUEUED','RUNNING')"""
             )
@@ -18645,7 +18876,7 @@ def _watch_decision_summary(query=None):
             c["no_actionable_ticket"] += 1
         else:
             c["verified"] += 1
-    lastr = _db_query("""SELECT run_id, state, completed_at, created_at, requested_by
+    lastr = _db_required("""SELECT run_id, state, completed_at, created_at, requested_by
                          FROM watch_decision_refresh_runs ORDER BY run_id DESC LIMIT 1""")
     paused = (PROJECT_ROOT / "data" / "runtime" / "WATCH_SCHEDULER_PAUSED").exists()
     return {
@@ -19283,10 +19514,11 @@ def _db_write(sql, params=None):
 # ── Stopped-Out Recovery Watch ────────────────────────────────────────────
 
 
+@_db_explicit
 def stopped_out_watch_list():
     """GET /api/v2/stopped-out-watch — list all active watched names."""
     rows = (
-        _db_query(
+        _db_required(
             """SELECT id, symbol, account, stopped_out_at, exit_price, stop_price, reason,
                   setup_name, thesis_at_exit, realized_pnl, status, analyst_verdict,
                   analyst_confidence, analyst_summary, reentry_trigger, invalidated_if,
@@ -29038,7 +29270,12 @@ def _reentry_status_projection():
     The served desk carries gates, `held` and `wash_blocked` but no status, so
     every consumer re-derived its own. This is the single projection.
     """
-    return _residual_surface("reentry_projection", lambda: _build_reentry_decision_desk_api(_current_query))
+    out = _build_reentry_decision_desk_api(_current_query)
+    if isinstance(out, tuple):
+        # LQ-20261107-2485: an unreadable store is an explicit UNKNOWN, not a projection over
+        # rows that were never read. The tuple is the dispatcher's status-body form.
+        return out
+    return _residual_surface("reentry_projection", lambda: out)
 
 
 def _governance_pipeline_status():
@@ -36978,8 +37215,11 @@ def _pro_analyst_pills(query=None):
     _broker_rollup = get_analyst_rollup()  # validates broker path; used for per-symbol consensus below
     try:
         d = _jp.loads((PROJECT_ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json").read_text())
-    except Exception:
-        return {"note": "run scripts/build_pro_analyst_read_model.py", "pills": []}
+    except Exception as _exc:
+        # LQ-20261107-2622 WV-01: an unreadable read model is UNKNOWN with a cause, not an empty pills list
+        return 503, {"ok": False, "state": "UNKNOWN", "error": "read_model_unavailable", "route": "_pro_analyst_pills",
+                     "cause": f"pro_analyst_pills_latest.json: {type(_exc).__name__}",
+                     "note": "run scripts/build_pro_analyst_read_model.py", "pills": [], "retry_after_sec": 60}
     # Enrich pills with broker-normalized consensus data where available
     for _p in d.get("pills", []):
         _b = _broker_rollup.get(str(_p.get("symbol") or "").upper())
@@ -37175,10 +37415,11 @@ def _hermes_catalyst_calibration(query=None):
     }
 
 
+@_db_explicit
 def _watch_alerts_list(query=None):
     """GET /api/v2/watch/alerts/list — armed operator alerts (Watch Desk v3 B3)."""
     rows = (
-        _db_query("""SELECT id, symbol, directive_id, condition_type, threshold, recurring,
+        _db_required("""SELECT id, symbol, directive_id, condition_type, threshold, recurring,
                                cooldown_days, active, created_at, last_fired_at, note
                         FROM watch_alerts ORDER BY active DESC, created_at DESC LIMIT 100""")
         or []
@@ -37187,6 +37428,8 @@ def _watch_alerts_list(query=None):
         "ok": True,
         "alerts": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
         "active_count": sum(1 for r in rows if r.get("active")),
+        # LQ-20261107-2622 WV-02: the store's own newest write time (data time), None when empty -- never "now"
+        "as_of": _newest_ts(rows, ("last_fired_at", "created_at")),
     }
 
 
@@ -37346,6 +37589,7 @@ def _ui_prefs_set(body=None):
     return {"ok": True, "key": key}
 
 
+@_db_explicit
 def _watch_directive_detail(query=None):
     """GET /api/v2/watch/directives/detail?id=N — Watch Desk v4 (C1): the directive
     drawer. Full thesis/spec + aliases, 90d hit timeline, α outcome events
@@ -37358,7 +37602,9 @@ def _watch_directive_detail(query=None):
         did = 0
     if not did:
         return {"ok": False, "error": "id required"}
-    d = _db_query("SELECT * FROM watch_directives WHERE id=%s", (did,), fetch="one")
+    # fetch="one": None is a real "no such row" only when the read ran; _db_required
+    # re-runs a None answer on the connection so a failed read raises instead (LQ-2485).
+    d = _db_required("SELECT * FROM watch_directives WHERE id=%s", (did,), fetch="one")
     if not d:
         return {"ok": False, "error": f"directive {did} not found"}
     spec = d.get("spec") if isinstance(d.get("spec"), dict) else {}
@@ -37370,7 +37616,7 @@ def _watch_directive_detail(query=None):
     except Exception:
         spec = {}
     timeline = (
-        _db_query(
+        _db_required(
             """SELECT surfaced_at::date AS day, count(*) AS hits
                             FROM watch_directive_hits
                             WHERE directive_id=%s AND surfaced_at > now() - interval '90 days'
@@ -37381,9 +37627,9 @@ def _watch_directive_detail(query=None):
     )
     from lib.data_broker.watch_discovery import directive_alpha_events as _brk_wd_alpha
 
-    alpha_events = _brk_wd_alpha(_db_query, did)  # Phase 4: dead feed read via projection
+    alpha_events = _brk_wd_alpha(_db_required, did)  # Phase 4: dead feed read via projection
     children = (
-        _db_query(
+        _db_required(
             """SELECT symbol, strategy_id, bucket, current_status, origin_system
                             FROM strategy_watchpool WHERE directive_id=%s
                             ORDER BY symbol LIMIT 60""",
@@ -37970,6 +38216,8 @@ def _two_way_curation_health(query=None):
     token = _REQUEST_MEMO.set({})
     try:
         return _two_way_curation_health_body(query)
+    except _DbReadError as exc:  # LQ-20261107-2485: a failed KPI read is not a zero
+        return _db_error_status("/api/v2/watch/two-way-curation", exc)
     finally:
         _REQUEST_MEMO.reset(token)
 
@@ -37977,14 +38225,14 @@ def _two_way_curation_health(query=None):
 def _two_way_curation_health_body(query=None):
 
     def q1(sql):
-        rows = _db_query(sql) or []
+        rows = _db_required(sql) or []
         if not rows:
             return 0
         r = rows[0]
         return list(r.values())[0] if isinstance(r, dict) else r[0]
 
     def qkv(sql):
-        rows = _db_query(sql) or []
+        rows = _db_required(sql) or []
         out = {}
         for r in rows:
             if isinstance(r, dict):
@@ -38040,7 +38288,7 @@ def _two_way_curation_health_body(query=None):
                     "SELECT count(*) AS n FROM watchlist_items WHERE status IN ('active','researched')"
                 ),
             },
-            "recent_audit": _db_query(
+            "recent_audit": _db_required(
                 "SELECT id, source, event, payload, created_at FROM curation_loop_audit "
                 "ORDER BY created_at DESC LIMIT 15"
             )
@@ -38055,7 +38303,7 @@ def _two_way_curation_health_body(query=None):
             # Institutional Report v2 (Part A + Part B + coverage matrix + manifest).
             "report_v2": _report_v2_compact(),
             # Operator interactive inbox: desk staged suggestions ready for one-tap promote
-            "suggestions": _db_query(
+            "suggestions": _db_required(
                 """SELECT h.id AS hit_id, h.directive_id, d.label AS directive_label,
                           d.created_by AS directive_created_by, h.symbol, h.surfaced_by,
                           h.divergence, h.promotion_status, h.hit_reason, h.surfaced_at
@@ -38069,27 +38317,27 @@ def _two_way_curation_health_body(query=None):
             )
             or [],
             "undrained_staging_rows": {
-                "cio": _db_query(
+                "cio": _db_required(
                     """SELECT id, symbol, thesis, proposed_at FROM cio_directive_hits_staging
                        WHERE NOT drained ORDER BY proposed_at DESC LIMIT 10"""
                 )
                 or [],
-                "advisory": _db_query(
+                "advisory": _db_required(
                     """SELECT id, symbol, thesis, proposed_at FROM advisory_directive_hits_staging
                        WHERE NOT drained ORDER BY proposed_at DESC LIMIT 10"""
                 )
                 or [],
-                "defense": _db_query(
+                "defense": _db_required(
                     """SELECT id, symbol, thesis, proposed_at FROM defense_directive_hits_staging
                        WHERE NOT drained ORDER BY proposed_at DESC LIMIT 10"""
                 )
                 or [],
-                "rotation": _db_query(
+                "rotation": _db_required(
                     """SELECT id, symbol, thesis, proposed_at FROM rotation_directive_hits_staging
                        WHERE NOT drained ORDER BY proposed_at DESC LIMIT 10"""
                 )
                 or [],
-                "reentry": _db_query(
+                "reentry": _db_required(
                     """SELECT id, symbol, thesis, proposed_at FROM reentry_directive_hits_staging
                        WHERE NOT drained ORDER BY proposed_at DESC LIMIT 10"""
                 )
@@ -38117,6 +38365,8 @@ def _two_way_curation_health_body(query=None):
         )
         body["suggestions_count"] = len(body.get("suggestions") or [])
         return body
+    except _DbReadError:
+        raise  # LQ-20261107-2485: the caller turns an unreadable KPI store into an explicit UNKNOWN
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:200], "authority": "READ_ONLY_ADVISORY"}
 
@@ -38161,10 +38411,11 @@ def _watch_directives(query=None):
     }
 
 
+@_db_explicit
 def _watch_directives_all(query=None):
     """All directives (the unpaged body of ``_watch_directives``)."""
     directives = (
-        _db_query("""SELECT id, kind, label, status, priority, trade_ai_enabled, hermes_enabled,
+        _db_required("""SELECT id, kind, label, status, priority, trade_ai_enabled, hermes_enabled,
                               last_serviced_at, created_at, spec, created_by, rationale, ttl_days,
                               CASE WHEN ttl_days IS NOT NULL
                                    THEN ttl_days - extract(days FROM now() - created_at)::int
@@ -38173,14 +38424,14 @@ def _watch_directives_all(query=None):
         or []
     )
     hits = (
-        _db_query("""SELECT h.directive_id, d.label, h.symbol, h.surfaced_by, h.divergence, h.promotion_status,
+        _db_required("""SELECT h.directive_id, d.label, h.symbol, h.surfaced_by, h.divergence, h.promotion_status,
                         h.surfaced_at FROM watch_directive_hits h JOIN watch_directives d ON d.id=h.directive_id
                         ORDER BY h.surfaced_at DESC LIMIT 40""")
         or []
     )
     # Dedicated desk-suggestions inbox (not drowned by Hermes volume in recent_hits)
     desk_suggestions = (
-        _db_query("""
+        _db_required("""
         SELECT h.id AS hit_id, h.directive_id, d.label, d.created_by, h.symbol, h.surfaced_by,
                h.divergence, h.promotion_status, h.hit_reason, h.surfaced_at
         FROM watch_directive_hits h
@@ -38196,7 +38447,7 @@ def _watch_directives_all(query=None):
     # Per-directive surfaced symbols (fix 2026-06-19): trend/sector directives link items via hits, NOT
     # by setting directive_id on the item — so the Watchlist directive filter must match on these symbols.
     _hs = (
-        _db_query("""SELECT directive_id, array_agg(DISTINCT upper(symbol)) syms,
+        _db_required("""SELECT directive_id, array_agg(DISTINCT upper(symbol)) syms,
                               count(*) hit_count,
                               count(*) FILTER (WHERE promotion_status='STAGED_FOR_REVIEW') staged_count,
                               max(surfaced_at) AS last_hit_at,
@@ -38207,7 +38458,7 @@ def _watch_directives_all(query=None):
     )
     # Watch Desk v2 (B3): 8-week hit sparkline per directive (one grouped query)
     _spark_rows = (
-        _db_query("""SELECT directive_id, (extract(days from now() - surfaced_at)::int / 7) AS wk, count(*) AS n
+        _db_required("""SELECT directive_id, (extract(days from now() - surfaced_at)::int / 7) AS wk, count(*) AS n
                                FROM watch_directive_hits
                                WHERE surfaced_at > now() - interval '56 days'
                                GROUP BY 1, 2""")
@@ -38226,7 +38477,7 @@ def _watch_directives_all(query=None):
     try:
         from lib.data_broker.watch_discovery import directive_score_meta as _brk_wd_score
 
-        _score_meta = _brk_wd_score(_db_query)  # Phase 4: dead feed read via projection
+        _score_meta = _brk_wd_score(_db_query)  # optional: failure leaves the core payload intact  # Phase 4: dead feed read via projection
     except Exception:
         _score_meta = {}
     _hit_sym_map = {r["directive_id"]: (r["syms"] or []) for r in _hs}
@@ -38235,13 +38486,13 @@ def _watch_directives_all(query=None):
     # out of the window and the chip wrongly shows "0 hits" for a directive that did surface symbols.
     _hit_cnt = {r["directive_id"]: (r["hit_count"], r["staged_count"]) for r in _hs}
     staging = (
-        _db_query(
+        _db_required(
             "SELECT count(*) c, count(*) FILTER (WHERE NOT drained) undrained FROM hermes_directive_hits_staging",
             fetch="one",
         )
         or {}
     )
-    promoted = _db_query("SELECT count(*) c FROM watchlist_items WHERE source='operator_directive'", fetch="one") or {}
+    promoted = _db_required("SELECT count(*) c FROM watchlist_items WHERE source='operator_directive'", fetch="one") or {}
     health = {}
     try:
         import json as _jw
@@ -38978,13 +39229,14 @@ def _finviz_strip_map_compute(query=None):
     }
 
 
+@_db_explicit
 def _sector_performance(query=None):
     """GET /api/v2/sector-performance — latest Finviz sector + industry performance snapshot
     (leaders/laggards) for macro/rotation research. Read-only."""
     q = query or {}
     gtype = (q.get("type", ["sector"])[0] if isinstance(q.get("type"), list) else q.get("type")) or "sector"
     rows = (
-        _db_query(
+        _db_required(
             """SELECT name, change_pct, pe, dividend_yield, market_cap, stocks, snapshot_date
                         FROM finviz_group_performance
                         WHERE group_type=%s AND snapshot_date=(SELECT max(snapshot_date)
@@ -39014,6 +39266,7 @@ def _sector_performance(query=None):
         "laggards": items[-5:][::-1],
         "items": items,
         "as_of": items[0]["as_of"] if items else None,
+        "empty_reason": None if items else "finviz_group_performance has no snapshot for this group type",
         "note": "Finviz group performance (advisory · macro/rotation lens).",
     }
 
@@ -39416,13 +39669,14 @@ def _watch_directive_promote(body):
         return 500, {"ok": False, "error": str(e)[:200]}
 
 
+@_db_explicit
 def _watchpool_list(query=None):
     """GET /api/v2/watchpool — unified watchpool: strategy_watchpool rows with origin + directive link.
     Read-only. Powers the /v3/watchpool page (screener candidates + directive-sourced, same pill row)."""
     # Watch Desk v2 (A3): DISTINCT ON kills the duplicated-row rendering (same
     # symbol+strategy+origin re-entered → keep the latest entry only)
     rows = (
-        _db_query("""SELECT * FROM (
+        _db_required("""SELECT * FROM (
                           SELECT DISTINCT ON (sp.symbol, sp.strategy_id, sp.origin_system)
                                  sp.id, sp.strategy_id, sp.symbol, sp.screener_id, sp.bucket, sp.current_status,
                                  sp.entered_at, sp.expires_at, sp.origin_system, sp.directive_id, d.label AS directive_label
@@ -39442,14 +39696,16 @@ def _watchpool_list(query=None):
         "by_status": by_status,
         "by_origin": by_origin,
         "rows": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+        "as_of": _newest_ts(rows, ("entered_at",)),  # LQ-20261107-2622 WV-02: store time, None when empty
     }
 
 
+@_db_explicit
 def _watch_sectors(query=None):
     """GET /api/v2/watch/sectors — Finviz sector list with DISTINCT constituent counts + sample
     symbols, for the Add-Watch sector dropdown + constituent preview. Read-only."""
     rows = (
-        _db_query("""SELECT sector, count(DISTINCT symbol) AS n,
+        _db_required("""SELECT sector, count(DISTINCT symbol) AS n,
                           (array_agg(DISTINCT symbol ORDER BY symbol))[1:10] AS sample
                         FROM incubator_universe WHERE sector IS NOT NULL AND sector <> ''
                         GROUP BY sector ORDER BY count(DISTINCT symbol) DESC""")
@@ -39942,6 +40198,7 @@ def _refusal_counts(declined_by_key):
     }
 
 
+@_db_explicit
 def _hermes_subject_intel_map(query=None):
     """GET /api/v2/hermes/subject-intel-map?type= — per-key {lane, recommendation, at} for a subject type
     (last 14d). Powers the per-surface ✦ Grok / ✦ ChatGPT badges.
@@ -39954,7 +40211,7 @@ def _hermes_subject_intel_map(query=None):
     if not ttype:
         return {"map": {}, "keys": 0, "declined": {}, **{f"declined_{k}": v for k, v in _refusal_counts({}).items()}}
     rows = (
-        _db_query(
+        _db_required(
             """SELECT DISTINCT ON (symbol, lane) symbol, lane, model, recommendation, created_at
                         FROM hermes_external_research WHERE trigger_reason=%s
                           AND status IN ('sent','ok','complete','success') AND created_at > now()-interval '14 days'
@@ -39990,6 +40247,7 @@ def _hermes_subject_intel_map(query=None):
         "type": ttype,
         "map": out,
         "keys": len(out),
+        "as_of": _newest_ts(rows, ("created_at",)),  # LQ-20261107-2622 WV-02: newest answer time, None when none
         "declined": declined_by_key,
         **{f"declined_{k}": v for k, v in _refusal_counts(declined_by_key).items()},
     }
@@ -40746,17 +41004,18 @@ def _journal_csv_import(body):
         return {"ok": False, "error": str(e)}
 
 
+@_db_explicit
 def _tos_watchlists_list(query=None):
     """GET /api/v2/tos-watchlists — ToS-imported watchlists with members (active + removed dates) + events."""
     wls = (
-        _db_query("""SELECT id, name, display_name, strategy_match, notes, symbol_count, last_imported_at,
+        _db_required("""SELECT id, name, display_name, strategy_match, notes, symbol_count, last_imported_at,
                          created_at FROM tos_watchlists ORDER BY COALESCE(display_name, name)""")
         or []
     )
     out = []
     for w in wls:
         mems = (
-            _db_query(
+            _db_required(
                 """SELECT symbol, added_at, removed_at, notes FROM tos_watchlist_members
                             WHERE watchlist_id=%s ORDER BY (removed_at IS NOT NULL), symbol""",
                 (w["id"],),
@@ -56806,21 +57065,30 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import api_v3_watch_commands as _wcmd
 
+            def _wcmd_reply(_out):
+                # LQ-20261107-2486: a command that did not succeed is never 200. The handler names the cause
+                # (error/detail) and its class in http_status (400 rejected input, 503 store/write failed);
+                # an absent or unusable class is the 400 fallback, never a 2xx.
+                if _out.get("ok"):
+                    return 200, _out
+                _status = _out.get("http_status")
+                if not isinstance(_status, int) or isinstance(_status, bool) or not 400 <= _status <= 599:
+                    _status = 400
+                return _status, _out
+
             cmd = base_path[len("/api/v3/watch/commands/") :].strip("/").lower()
             if cmd == "star":
-                return 200, _wcmd.post_star(body or {})
+                return _wcmd_reply(_wcmd.post_star(body or {}))
             if cmd in ("list-membership", "list_membership"):
-                return 200, _wcmd.post_list_membership(body or {})
+                return _wcmd_reply(_wcmd.post_list_membership(body or {}))
             if cmd == "alert":
-                return 200, _wcmd.post_alert(body or {})
+                return _wcmd_reply(_wcmd.post_alert(body or {}))
             if cmd in ("refresh-data", "refresh_data"):
-                return 200, _wcmd.post_refresh_data(body or {})
+                return _wcmd_reply(_wcmd.post_refresh_data(body or {}))
             if cmd == "mine":
-                _out = _wcmd.post_mine_decision(body or {})
-                return (200 if _out.get("ok") else 400), _out
+                return _wcmd_reply(_wcmd.post_mine_decision(body or {}))
             if cmd in ("suggest-dismiss", "suggest-restore"):
-                _out = _wcmd.post_suggest_decision(cmd.split("-", 1)[1], body or {})
-                return (200 if _out.get("ok") else 400), _out
+                return _wcmd_reply(_wcmd.post_suggest_decision(cmd.split("-", 1)[1], body or {}))
             return 404, {"ok": False, "error": "unknown_command"}
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
@@ -57683,6 +57951,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if base_path == "/api/v2/watchlist/items":
         try:
             return 200, {"ok": True, "data": _wl_items(query or {})}
+        except _DbReadError as e:
+            return _db_error_status("/api/v2/watchlist/items", e)
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
