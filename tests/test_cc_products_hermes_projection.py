@@ -26,7 +26,8 @@ if str(ROOT / "tests") not in sys.path:
 
 from scripts.lib.cc_products import hermes_projection as hp  # noqa: E402
 
-MIGRATION = ROOT / "sql" / "migrations" / "20261112_cc_hermes_projection_tables.sql"
+# LQ-2646 (REVIEW-2606 F3): one migration for the whole precompute store; the hermes tables are its part 2.
+MIGRATION = ROOT / "migrations" / "2026_11_12_cc_data_products.sql"
 
 
 # ── streaming reader: property-style equality with json.loads ────────────────
@@ -211,7 +212,9 @@ def pg():
         with conn.cursor() as cur:
             cur.execute("CREATE ROLE trade_ai NOLOGIN")
             cur.execute("GRANT CREATE, USAGE ON SCHEMA public TO trade_ai")
+            cur.execute("SET ROLE trade_ai")  # the operator command: psql -c 'SET ROLE trade_ai' -f <file>
             cur.execute(MIGRATION.read_text())  # the migration, verbatim, as the operator would run it
+            cur.execute("RESET ROLE")
         conn.close()
         yield cluster
     finally:

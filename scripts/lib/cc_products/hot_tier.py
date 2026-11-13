@@ -18,8 +18,13 @@ class HotTierDown(Exception):
     """The hot tier could not answer: connect, I/O, timeout or protocol error."""
 
 
-def product_key(product_id: str, scope_key: str = "global") -> str:
-    return f"cc:product:{product_id}:{scope_key}"
+def product_key(product_id: str, scope_key: str = "global", schema_version: int = 1) -> str:
+    """Hot key carries the body schema version, so a reader of version N never sees a version M body from the cache.
+
+    A writer of v2 and a reader of v1 therefore use different keys during a rollout or rollback; the reader then goes
+    to Postgres, where ``read_product`` checks ``schema_version`` and rejects an incompatible row as UNKNOWN.
+    """
+    return f"cc:product:{product_id}:{scope_key}:v{int(schema_version)}"
 
 
 def _encode_command(*parts: bytes) -> bytes:
