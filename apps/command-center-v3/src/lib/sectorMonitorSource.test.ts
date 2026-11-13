@@ -19,7 +19,7 @@ check('hub still loading (null) -> no fetch', shouldFetchSectorMonitor(null) ===
 check('empty-but-present payload -> no fetch', shouldFetchSectorMonitor({}) === false)
 
 // Rendering picks the supplied payload and ignores a stale own fetch.
-check('supplied payload wins over the own fetch', sectorMonitorPayload(payload, { sectors: [] }) === payload)
+check('supplied payload wins over the own fetch', sectorMonitorPayload(payload, { sectors: [], as_of: '2026-11-06' }) === payload)
 check('null supplied is rendered as null, not replaced by the own fetch',
   sectorMonitorPayload(null, payload) === null)
 check('no supplied payload -> own fetch is used', sectorMonitorPayload(undefined, payload) === payload)

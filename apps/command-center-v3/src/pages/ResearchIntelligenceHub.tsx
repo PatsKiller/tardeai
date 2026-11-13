@@ -9,6 +9,7 @@ import IntelligenceNewsTab from '../components/intelligence/IntelligenceNewsTab'
 import IntelligenceSourcesTab from '../components/intelligence/IntelligenceSourcesTab'
 import AegisThesisWatch from '../components/intel/AegisThesisWatch'
 import ClosedLoopPanel from './ClosedLoopPanel'
+import { RADIUS } from '../lib/designTokens'
 import { RESEARCH_INTEL_TABS, resolveResearchIntelTab } from '../lib/intelConsolidation'
 import TickerLinks from '../components/TickerLinks'
 import { useApi } from '../hooks/useApi'
@@ -2615,7 +2616,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
           <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => select(t.id)}
             data-testid={`ri-tab-${t.id}`}
             style={{
-              minHeight: 44, padding: '7px 14px', borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer',
+              minHeight: 44, padding: '7px 14px', borderRadius: RADIUS.md, border: '1px solid var(--border)', cursor: 'pointer',
               background: tab === t.id ? 'var(--accent-dim)' : 'var(--bg2)', color: tab === t.id ? 'var(--accent)' : 'var(--text2)',
               fontSize: 12, fontWeight: tab === t.id ? 700 : 500,
             }}>{t.label}</button>

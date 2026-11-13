@@ -12,6 +12,7 @@ import StrategyHub from './pages/StrategyHub'
 import RiskHub from './pages/RiskHub'
 import HomeHub from './pages/HomeHub'
 import HomeV010 from './pages/HomeV010'
+import HomeCombined from './pages/HomeCombined'
 import PortfolioHub from './pages/PortfolioHub'
 import PortfolioV002 from './pages/PortfolioV002'
 import ReEntryPage from './pages/ReEntryPage'
@@ -257,8 +258,10 @@ function Shell() {
           {/* Menu level 2 (nav/v001): the current section's pages; level 3 stays each page's own tabs. */}
           <SectionStrip />
           <Routes>
-            {/* Home v010 (operator-approved 2026-11-11) owns Today; the old Home stays reachable at /home-classic. */}
-            <Route index element={<RouteErrorBoundary route="/v3/"><HomeV010 /></RouteErrorBoundary>} />
+            {/* Combined Home (operator controlling decision 2026-11-13): the complete classic Home, then the operational (v010)
+                section appended below, one shell. /home-classic and /home-v010 stay reachable until the combined page is validated. */}
+            <Route index element={<RouteErrorBoundary route="/v3/"><HomeCombined onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="home-v010" element={<RouteErrorBoundary route="/v3/home-v010"><HomeV010 /></RouteErrorBoundary>} />
             <Route path="home-classic" element={<RouteErrorBoundary route="/v3/home-classic"><HomeHub onDrill={setDrill} /></RouteErrorBoundary>} />
             {/* Portfolio v002 (operator-approved 2026-11-11) owns the route; the old page stays at /portfolio-classic (UI removal rule). */}
             <Route path="portfolio" element={<RouteErrorBoundary route="/v3/portfolio"><PortfolioV002 /></RouteErrorBoundary>} />

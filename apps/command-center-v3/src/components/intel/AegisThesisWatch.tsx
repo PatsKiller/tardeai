@@ -6,10 +6,11 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
+import { RADIUS } from '../../lib/designTokens'
 import { heldSymbolSet, splitAegisByHeld, type AegisRow } from '../../lib/intelConsolidation'
 import W7DetailSheet, { useW7Detail } from '../W7DetailSheet'
 
-const card = { border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg2)', padding: 12 } as const
+const card = { border: '1px solid var(--border)', borderRadius: RADIUS.md, background: 'var(--bg2)', padding: 12 } as const
 
 export default function AegisThesisWatch({ held }: { held: boolean }) {
   const latest = useApi<any>('/api/v2/inference/latest', 300_000)
@@ -49,7 +50,7 @@ export default function AegisThesisWatch({ held }: { held: boolean }) {
       <div style={{ display: 'grid', gap: 6 }}>
         {bySymbol.map(([sym, list]) => (
           <button key={sym} type="button" data-testid={`aegis-${sym}`} onClick={() => detail.open(`${detailKey}:${sym}`)}
-            style={{ textAlign: 'left', minHeight: 44, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text)', padding: '8px 10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
+            style={{ textAlign: 'left', minHeight: 44, border: '1px solid var(--border)', borderRadius: RADIUS.md, background: 'var(--bg)', color: 'var(--text)', padding: '8px 10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
             <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}><b>{sym}</b> <span style={{ color: 'var(--text2)', fontSize: 12 }}>{list[0]?.title || 'Aegis thesis check failed'}</span></span>
             <span style={{ fontSize: 11, color: 'var(--red)', whiteSpace: 'nowrap' }}>{list.length} failed check{list.length === 1 ? '' : 's'}</span>
           </button>

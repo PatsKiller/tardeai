@@ -59,6 +59,9 @@ export const SPACE = { 1: 'var(--space-1)', 2: 'var(--space-2)', 3: 'var(--space
   5: 'var(--space-5)', 6: 'var(--space-6)', 7: 'var(--space-7)', 8: 'var(--space-8)' } as const
 export const RADIUS = { sm: 'var(--radius-sm)', md: 'var(--radius-md)', lg: 'var(--radius-lg)', pill: 'var(--radius-pill)' } as const
 export const SHADOW = { 1: 'var(--shadow-1)', 2: 'var(--shadow-2)', 3: 'var(--shadow-3)' } as const
+/** A tone halo (1 px ring + soft glow) for a card that carries a state colour. `tone` is a TOKENS colour (a var()),
+ *  never a raw hex: color-mix keeps the glow a token. One recipe, so every glowing card glows the same way. */
+export const shadowGlow = (tone: string): string => `0 0 0 1px ${tone}, 0 0 18px 2px color-mix(in srgb, ${tone} 45%, transparent)`
 
 /** Locked type scale (numbers, because inline styles need numbers). xs is for chips only. */
 export const TYPE = { xs: 10, sm: 11, base: 12, md: 14, lg: 18, xl: 24 } as const

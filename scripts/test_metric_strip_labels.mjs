@@ -58,8 +58,10 @@ check('no tile labels a clock "data_as_of" any more',
   !/asOfLabel: 'data_as_of'/.test(code))
 check('the portfolio tile names the position-observation clock',
   code.includes("asOfLabel: 'positions observed'"))
+// LIVEFIX-H (b400f97dc): while economic day P&L is unproven the tile shows the reported market-day move,
+// and its clock is that move's session; otherwise the P&L's own session. Both names are pinned exactly.
 check("the today tile names the P&L's own session",
-  code.includes("asOfLabel: 'P&L session'"))
+  code.includes("asOfLabel: todayState.reportedMove ? 'market-day session' : 'P&L session'"))
 check('no two tiles share a static clock label', (() => {
   // The trailing `|| size > 1` this once carried made it pass for any header
   // with two distinct labels anywhere -- including the defect. A duplicate is
@@ -242,8 +244,16 @@ check('the TODAY value and census wiring are unchanged',
   /value: todayChange != null \? `\$\{todayChange >= 0/.test(todayBlock) &&
   /todayPct != null/.test(todayBlock) &&
   /todayUnknownRows/.test(todayBlock) && /todayMissing/.test(todayBlock) && /todayPartial/.test(todayBlock))
+// LIVEFIX-H made lib/todayPnlState the one rule for WHICH figure TODAY shows (HomeHub, HomeDoNow and
+// portfolioDayFigure read it too): it may pass the server's own values through, never add, sum or format money.
+// Only these exact pass-throughs are allowed; anything else naming the money fields, a sum, or fmt$ fails.
+const todayPassThrough = todayStateLib
+  .replace('finite(overview?.today_change)', '')
+  .replace('finite(overview?.today_pct)', '')
+  .replace('Math.round((move.change_pct as number) * 100) / 100', '')   // display rounding of the server's pct
 check('the TODAY state helper computes no money or coverage counts',
-  !/today_change|today_pct|fmt\$/.test(todayStateLib))
+  !/today_change|today_pct|fmt\$|\.reduce\(|\+=/.test(todayPassThrough) &&
+  !/\w*change\w*(?:\s+as\s+\w+)?\)?\s*[-+*\/]\s*[\w(]|[\w)]\s*[-+*\/]\s*\(?[\w.?]*change\w*\b/i.test(todayPassThrough))
 
 console.log(`\nmetric_strip_labels: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
@@ -268,7 +278,8 @@ check('the TODAY tile no longer attributes an all-accounts figure to one account
   !/label: 'TODAY'[\s\S]{0,400}asOfNote: overviewAcct\b/.test(code))
 check('the TODAY tile keeps account census on hover, not face asOfNote',
   /todayHoverAccounts/.test(code) &&
-  /asOfNote: null/.test(code) &&
+  // LIVEFIX-H: the face note is null, or (reported market-day move only) a fixed provenance phrase -- never a census.
+  code.includes("asOfNote: todayState.reportedMove ? 'holdings move · economic P&L unproven' : null") &&
   /ACCOUNTS \(hover\)/.test(code))
 check('economic census stays source-owned and never falls back to current row membership',
   !/todayAccountCount/.test(code) && code.includes('todayPnl?.represented_account_count ?? null') && code.includes('coverage UNKNOWN'))

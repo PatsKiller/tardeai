@@ -4,6 +4,7 @@ import DeskPage from '../../components/DeskPage'
 import W7DetailSheet, { useW7Detail } from '../../components/W7DetailSheet'
 import type { DrillContext } from '../../components/DetailDrawer'
 import { useApi } from '../../hooks/useApi'
+import { RADIUS } from '../../lib/designTokens'
 import { earningsQuality, groupTrades, realTrades, summarizeTrades, type ClosedTrade, type TradeGroup } from '../../lib/intelConsolidation'
 
 /**
@@ -32,7 +33,7 @@ const WINDOWS = [
   { id: '30', label: '30 d', days: 30 },
 ] as const
 
-const card: CSSProperties = { border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg2)', padding: 12, minWidth: 0 }
+const card: CSSProperties = { border: '1px solid var(--border)', borderRadius: RADIUS.md, background: 'var(--bg2)', padding: 12, minWidth: 0 }
 const usd = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? '—' : `${n < 0 ? '−' : n > 0 ? '+' : ''}$${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 })}`)
 const pct = (n: number | null | undefined, signed = false) => (n == null || !Number.isFinite(n) ? '—' : `${signed && n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toFixed(1)}%`)
 const tone = (n: number | null | undefined) => (n == null ? 'var(--text2)' : n > 0 ? 'var(--green)' : n < 0 ? 'var(--red)' : 'var(--text2)')
@@ -41,7 +42,7 @@ const pf = (n: number | null) => (n == null ? '—' : n.toFixed(2))
 function GroupRow({ g, onOpen, testId }: { g: TradeGroup; onOpen: () => void; testId: string }) {
   return (
     <button type="button" data-testid={testId} onClick={onOpen}
-      style={{ textAlign: 'left', minHeight: 48, width: '100%', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text)', padding: '8px 10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', minWidth: 0 }}>
+      style={{ textAlign: 'left', minHeight: 48, width: '100%', border: '1px solid var(--border)', borderRadius: RADIUS.md, background: 'var(--bg)', color: 'var(--text)', padding: '8px 10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', minWidth: 0 }}>
       <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
         <b style={{ textTransform: 'capitalize' }}>{g.key.replace(/_/g, ' ')}</b>
         <span style={{ display: 'block', fontSize: 11, color: 'var(--text2)' }}>{g.trades} trade{g.trades === 1 ? '' : 's'} · {pct(g.winRatePct)} won · PF {pf(g.profitFactor)}</span>
@@ -75,7 +76,7 @@ function SetupsTab({ positions }: { positions: ClosedTrade[] }) {
       <div role="group" aria-label="Window" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {WINDOWS.map(w => (
           <button key={w.id} type="button" aria-pressed={win === w.id} onClick={() => setWin(w.id)}
-            style={{ minHeight: 44, minWidth: 56, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer', background: win === w.id ? 'var(--accent-dim)' : 'var(--bg2)', color: win === w.id ? 'var(--accent)' : 'var(--text2)' }}>{w.label}</button>
+            style={{ minHeight: 44, minWidth: 56, padding: '6px 12px', borderRadius: RADIUS.md, border: '1px solid var(--border)', cursor: 'pointer', background: win === w.id ? 'var(--accent-dim)' : 'var(--bg2)', color: win === w.id ? 'var(--accent)' : 'var(--text2)' }}>{w.label}</button>
         ))}
       </div>
       <section style={card} aria-label="Realized book">
@@ -152,7 +153,7 @@ function EarningsTab({ holdings }: { holdings: any[] }) {
         <div style={{ display: 'grid', gap: 6 }}>
           {rows.map(r => (
             <button key={r.symbol} type="button" data-testid={`eq-${r.symbol}`} onClick={() => detail.open(`eq:${r.symbol}`)}
-              style={{ textAlign: 'left', minHeight: 48, width: '100%', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text)', padding: '8px 10px', cursor: 'pointer', display: 'grid', gap: 2, minWidth: 0 }}>
+              style={{ textAlign: 'left', minHeight: 48, width: '100%', border: '1px solid var(--border)', borderRadius: RADIUS.md, background: 'var(--bg)', color: 'var(--text)', padding: '8px 10px', cursor: 'pointer', display: 'grid', gap: 2, minWidth: 0 }}>
               <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
                 <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}><b>{r.symbol}</b> <span style={{ fontSize: 11, color: 'var(--text3)' }}>{r.sector}</span></span>
                 <span style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{r.pe != null ? r.pe.toFixed(1) : '—'} → {r.forwardPe != null ? r.forwardPe.toFixed(1) : '—'}</span>

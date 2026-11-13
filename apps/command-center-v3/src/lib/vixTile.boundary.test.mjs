@@ -173,7 +173,9 @@ for (const fault of faults) {
 
 // ── Static checks that are genuinely static: model import and tile registration/placement. ───────────────────
 const src = readFileSync(join(app, 'src/components/MetricStrip.tsx'), 'utf8')
-check('the model is imported, not re-implemented', /import \{ vixFreshness \} from '\.\.\/lib\/vixFreshness'/.test(src))
+// LQ-1690 (1aa0b313f): every VIX consumer reads the one accessor vixFromState (server vix_state wins over the
+// client 36 h threshold); it lives in the same model module, so the tile still imports, never re-implements, it.
+check('the model is imported, not re-implemented', /import \{ vixFromState \} from '\.\.\/lib\/vixFreshness'/.test(src) && !/function vixFromState|function vixFreshness/.test(src))
 const i = src.indexOf("label: 'VIX'")
 const j = src.indexOf("label: 'SETUPS", i)
 check('the VIX tile is registered between REGIME and SETUPS', i > 0 && j > i)

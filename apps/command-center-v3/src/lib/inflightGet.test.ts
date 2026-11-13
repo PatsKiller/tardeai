@@ -89,7 +89,8 @@ resetInFlight()
 {
   // nosemgrep: tq-ts-test-reads-source-text -- the coalescing itself is proven behaviourally above; this only proves the ONE consumer that must use it does.
   const hook = readFileSync(join(app, 'src/hooks/useApi.ts'), 'utf8')
-  assert.ok(hook.includes("from '../lib/inflightGet'"), 'useApi must import the shared in-flight read')
+  // '.ts' suffix allowed: useApi is now imported by node-run tests (combined Home shared polling), which need the extension.
+  assert.ok(hook.includes("from '../lib/inflightGet'") || hook.includes("from '../lib/inflightGet.ts'"), 'useApi must import the shared in-flight read')
   assert.ok(hook.includes('coalesceInFlight(path'), 'useApi must key the joined read by path')
   assert.ok(!hook.includes('await r.json()'), 'the body is read once into text; a shared Response cannot be json()-ed twice')
   // The shared value must carry `ok`. It did not on the first cut: `!r.ok` read `undefined`, so every
