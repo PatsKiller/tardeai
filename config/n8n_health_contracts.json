@@ -42858,6 +42858,168 @@
     },
     {
       "schema": "N8nHealthContract@v1",
+      "id": "validation-gates-sync",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "lq2141_home_v010_backend",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Own validation_gates / validation_events every 5 minutes (ingest declarations, evaluate checks, apply transitions, write events) so the Home 'Pending validations' card reads a database table, never a coordinator file.",
+        "business_function": "platform",
+        "source": "LQ-20261107-2141 (HOME-BACKEND-SPEC-20261111)"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/validation_gates_sync.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command + live_arg"
+        },
+        {
+          "name": "/tmp/validation_gates_sync.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock"
+        },
+        {
+          "name": "<state root>/data/coordination/validation_gates/inbox/*.json",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/validation_gates_sync.py run()"
+        },
+        {
+          "name": "Postgres validation_gates, validation_events",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/validation_gates.sync (one transaction, upsert only)"
+        },
+        {
+          "name": "data/runtime/validation-gates-sync_last.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "lane_receipt_main.run_main, real runs only"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "run_done",
+          "text": "every dispatcher fire ends RUN_DONE; a live fire's stdout names wrote:true and the ingested/evaluated/transitions/errors counts"
+        },
+        {
+          "check": "mirror_fresh",
+          "text": "max(validation_gates.last_evaluated_at) is under 15 minutes old and GET /api/v2/home/gates reports state OK"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "no ledger run row for 15 minutes"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 60 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED; exit 2 means the source of record is missing or malformed and the mirror is now ageing"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 15 minutes while the lane is live: the Home card is serving last-known-good with state STALE"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        }
+      ],
+      "baseline": {
+        "timeout_s": 120,
+        "class": "report",
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 1.0,
+        "freshness_rule": "three missed 5-minute fires degrades, six fails; the endpoint's own stale bound is 15 minutes",
+        "computed_on": "2026-11-12",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED",
+        "runs_considered": null,
+        "duration_degraded_above_s": 60.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "a stale mirror makes the Home card show last-known-good gates with an age; it never shows 0 open",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity, else the fan-in priority (RUN_* = P2)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: regenerate with scripts/build_remediation_catalogue.py --write after this allowlist entry merges (step 7 of the onboarding checklist)"
+      },
+      "evidence": {
+        "receipt": "data/governance/n8n_coordination_ledger.sqlite runs (one row per fire) plus validation_gates.last_evaluated_at",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='validation-gates-sync' ORDER BY requested_at DESC LIMIT 20\"",
+          "psql read-only: SELECT MAX(last_evaluated_at), COUNT(*) FROM validation_gates"
+        ]
+      },
+      "review_by": "2026-11-26",
+      "review": {
+        "prepared_by": "agent draft (cc-sonnet-1, LQ-20261107-2141, 2026-11-12)",
+        "status": "REVIEWED",
+        "reviewed_by": "lead assignment LQ-20261107-2141 (claude-lead 22:49 ET); registration only",
+        "reviewed_on": "2026-11-12",
+        "note": "registration only: baseline.source is NOT_MEASURED; no live fire has happened"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "validation gate rows mirrored",
+        "rule": "empty_allowed",
+        "produced_field": "gates",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "ledger_row",
+            "ref": "data/governance/n8n_coordination_ledger.sqlite runs + run_outcomes for lane_id=validation-gates-sync"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
       "id": "cio-overnight-brief",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",

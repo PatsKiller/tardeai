@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "validation_gates_20261112",
+  "files": [
+    "tests/test_validation_gates_sync_20261112.py",
+    "tests/test_home_gates_api_20261112.py",
+    "tests/test_validation_gates_lane_registration_20261112.py"
+  ],
+  "anchor": "VALIDATION_GATES_20261112",
+  "comment": [
+    "ANCHOR: VALIDATION_GATES_20261112 — LQ-20261107-2141/2143 (HOME-BACKEND-SPEC-20261111): validation_gates + validation_events",
+    "migrations, the declaration/evaluation/transition library, the validation-gates-sync writer lane and GET /api/v2/home/gates.",
+    "A declaration cannot carry SQL, a gate cannot be self-certified, WAIVED is operator-only (code and DB CHECK), the same",
+    "declaration twice upserts once, events are idempotent, unknown never reads as zero, and the lane is registered SHADOW (dry_run)."
+  ]
+}

@@ -6,9 +6,11 @@ writes, and a snapshot older than the registry's ``max_snapshot_age_s`` grades e
 from __future__ import annotations
 
 import json
+import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from lib import home_diagnostics as hd
 
@@ -62,3 +64,39 @@ def diagnostics(state_dir: Path | str, now: Optional[datetime] = None, registry:
         return {"schema": hd.SCHEMA, "state": "UNKNOWN", "detail": "registry_invalid", "reason": reason,
                 "served_at": now.isoformat(), "rows": rows}
     return hd.serve(snap, reg, now)
+
+
+CACHE_TTL_S = 30
+_CACHE: dict = {}
+
+
+def _state_root() -> Path:
+    return Path(os.environ.get("TRADEAI_STATE_ROOT") or (Path.home() / "trade-ai-releases" / "persistent-state"))
+
+
+def read_receipt_ok_at(lane_id: str, root: Optional[Path] = None) -> Optional[datetime]:
+    from lib.validation_gates import parse_ts
+
+    try:
+        doc = json.loads(((root or _state_root()) / "data" / "runtime" / f"{lane_id}_last.json").read_text("utf-8"))
+        return parse_ts(doc.get("ok_at"))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def home_gates(db_query: Callable[..., Any], *, now: Optional[datetime] = None,
+               receipt_ok_at: Optional[Callable[[str], Optional[datetime]]] = None, use_cache: bool = True) -> dict:
+    """GET /api/v2/home/gates -> HomeGates@v1. ``db_query`` is api_v2._db_query (None on any failure)."""
+    from lib import validation_gates as vg
+
+    now = now or datetime.now(timezone.utc)
+    hit = _CACHE.get("gates")
+    if use_cache and hit and time.monotonic() - hit[0] < CACHE_TTL_S:
+        return hit[1]
+    rows = db_query(vg.READ_GATES_SQL)
+    fresh = db_query(vg.READ_FRESH_SQL, fetch="one")
+    ok_at = (receipt_ok_at or read_receipt_ok_at)(vg.WRITER_LANE)
+    payload = vg.read_model(rows, fresh, now=now, receipt_ok_at=ok_at)
+    if use_cache and payload["state"] in ("OK", "STALE"):  # never cache an UNKNOWN: the next read should retry
+        _CACHE["gates"] = (time.monotonic(), payload)
+    return payload

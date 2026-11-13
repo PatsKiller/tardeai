@@ -82,8 +82,7 @@
       "refresh_rate": "on change",
       "refresh_s": 0,
       "failure_mode": "\"no source\", never \"0 open\"",
-      "needs_backend": true,
-      "needs_backend_note": "validation_gates store (LQ-20261107-2141)",
+      "needs_backend": false,
       "rules": [
         {
           "sessions": [
@@ -91,7 +90,7 @@
             "extended",
             "closed"
           ],
-          "threshold_s": 86400
+          "threshold_s": 900
         }
       ]
     },

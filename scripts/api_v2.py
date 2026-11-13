@@ -31820,6 +31820,13 @@ def _home_since_close():
     return {"status": "ok", **snap, "window_now": win, "freshness": _sc.freshness(snap, now=now), "as_of_now": now.isoformat()}
 
 
+def _home_gates():
+    """GET /api/v2/home/gates (LQ-20261107-2141): thin delegation; the handler lives in lib/home_v010_api.py."""
+    from lib import home_v010_api as _h
+
+    return _h.home_gates(_db_query)
+
+
 _HOME_INCIDENTS_CACHE: dict = {}
 
 
@@ -50891,6 +50898,7 @@ ROUTES = {
     "/api/v2/needs-action": lambda: _needs_action(),
     "/api/v2/home/do-now": lambda: _home_do_now(),
     "/api/v2/home/since-close": lambda: _home_since_close(),
+    "/api/v2/home/gates": lambda: _home_gates(),
     "/api/v2/home/cio-card": lambda: _home_cio_card(),
     "/api/v2/home/incidents": lambda: _home_incidents(),
     "/api/v2/home/status": lambda: _home_status(),

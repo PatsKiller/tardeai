@@ -69,12 +69,13 @@
     {
       "source_id": "gate_store",
       "label": "gate store",
-      "owner": "os",
-      "owner_lane": null,
+      "owner": "platform",
+      "owner_lane": "validation-gates-sync",
       "cause_category": "NO_SOURCE",
       "probe": {
-        "kind": "none",
-        "reason": "no validation_gates store exists (LQ-20261107-2141)"
+        "kind": "db_max",
+        "table": "validation_gates",
+        "column": "last_evaluated_at"
       }
     },
     {

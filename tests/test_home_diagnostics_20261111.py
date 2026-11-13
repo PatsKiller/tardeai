@@ -134,7 +134,17 @@ def test_unknown_is_never_ok(reg):
 
 def test_missing_source_is_no_source_unknown_not_zero(reg):
     r = _row(reg, "validation_gates", {"read": "none", "error": "no validation_gates store"}, RTH)
-    assert r["state"] == "UNKNOWN" and r["cause_category"] == "NO_SOURCE" and r["needs_backend"] is True
+    # LQ-20261107-2141: the gate store now exists, so the row no longer says NEEDS BACKEND; an unreadable read is still UNKNOWN
+    assert r["state"] == "UNKNOWN" and r["cause_category"] == "NO_SOURCE" and r["needs_backend"] is False
+
+
+def test_validation_gates_row_is_computed_from_the_newest_evaluation(reg):
+    """LQ-2141: fresh evaluation -> OK; older than 900 s -> STALE; never the NEEDS BACKEND placeholder."""
+    fresh = _row(reg, "validation_gates", {"read": "ok", "as_of": _ago(RTH, 60)}, RTH)
+    assert fresh["state"] == "OK" and fresh["needs_backend"] is False
+    stale = _row(reg, "validation_gates", {"read": "ok", "as_of": _ago(RTH, 3600)}, RTH)
+    assert stale["state"] == "STALE"
+    assert _row(reg, "validation_gates", {"read": "ok", "as_of": None}, RTH)["state"] == "UNKNOWN"
 
 
 def test_timeout_is_timed_out(reg):

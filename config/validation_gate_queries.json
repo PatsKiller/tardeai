@@ -1,0 +1,14 @@
+{
+  "schema": "ValidationGateQueries@v1",
+  "_doc": "Named read-only queries a gate declaration may reference by query_id (check_kind db_max / incident_absent / sql_threshold). A declaration can never carry SQL. Each query returns ONE row with ONE column named value (a timestamp for db_max, a number otherwise). Run under a 2 s statement_timeout in a read-only transaction.",
+  "queries": {
+    "open_alert_incidents": {
+      "sql": "SELECT count(*) AS value FROM alert_incidents WHERE resolved_at IS NULL",
+      "returns": "number"
+    },
+    "alert_incidents_newest_seen": {
+      "sql": "SELECT max(first_seen_at) AS value FROM alert_incidents",
+      "returns": "timestamp"
+    }
+  }
+}

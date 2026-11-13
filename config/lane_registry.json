@@ -27949,6 +27949,56 @@
       }
     },
     {
+      "lane_id": "validation-gates-sync",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/validation_gates_sync.py",
+        "cadence": "*/5 * * * *",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 0.1,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-12",
+      "state_reason": "LQ-20261107-2141/2143 (Home v010 backend, HOME-BACKEND-SPEC-20261111): the writer for validation_gates / validation_events. Ingests ValidationGateDecl@v1 files from the intake dir, evaluates each open gate's check (named read-only queries, 2 s statement_timeout), applies OPEN->OVERDUE/FAILED/PASSED transitions and writes a validation_events row for each, every 5 minutes, all days. GET /api/v2/home/gates only reads. Registered SHADOW with dispatch mode dry_run: a dry fire evaluates and rolls back. Going live (mode live, stage canary) needs both migrations applied and the lead's word.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/validation-gates-sync_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "LaneRunReceipt@v1 written by scripts/lib/lane_receipt_main.run_main on a real (--apply) run only; ok_at advances only on success. The row-level freshness signal is validation_gates.last_evaluated_at, aged by the endpoint (15 min)."
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_validation_gates_sync_20261112.py and tests/test_home_gates_api_20261112.py pin declaration/evaluation/transition/read-model/endpoint behaviour; tests/test_validation_gates_lane_registration_20261112.py pins this row to the allowlist, health contract and script.",
+      "review_by": "2026-11-26",
+      "value_class": "Operationally Important",
+      "severity": "Medium",
+      "note": "*/5 * * * * = every five minutes, all week (gates have due times at night and on weekends). A declaration that fails validation or a DB CHECK is refused and counted, never applied; the lane never deletes. No open gates is not zero evidence: the receipt ok_at plus LANE_OUTPUT evaluated prove the lane looked.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/5 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "report",
+        "priority": 6,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
       "lane_id": "cio-overnight-brief",
       "owner": "cio",
       "scheduler": {
@@ -28975,6 +29025,23 @@
         "pipeline-freshness-monitor"
       ],
       "note": "Nothing is moved and nothing is retuned: the lane was born with the card on 2026-11-08 and no prior monitor check covered it, so the pipeline freshness monitor is named only as the owner of the check, not as a source that lost one. The operator's two bounds are one number here because the contract carries one max_age_hours: basis lane_due allows max(0.75 h, hours since the last DUE fire + min(0.75 h, 1 h)), so in market hours the lane fires every 15 min and the operative bound is about 45 min, and on a weekend the 2 h cadence plus the 45 min grace gives about 2 h 45 min against the operator's 2 h 30 min — the one place a single-number contract cannot carry both bounds exactly, written down here rather than approximated twice."
+    },
+    {
+      "key": "home.validation_gates",
+      "lane_id": "validation-gates-sync",
+      "signal": {
+        "kind": "db_max",
+        "table": "validation_gates",
+        "column": "last_evaluated_at"
+      },
+      "max_age_hours": 0.25,
+      "basis": "lane_due",
+      "severity": "P1",
+      "source": "LQ-20261107-2141 (HOME-BACKEND-SPEC-20261111 sec 2141)",
+      "replaces": [
+        "pipeline-freshness-monitor"
+      ],
+      "note": "Nothing is moved: the lane is new and no prior monitor covered it; the pipeline freshness monitor is named only as the owner of the check. Three missed 5-minute fires is stale; GET /api/v2/home/gates applies the same 15-minute bound (scripts/lib/validation_gates.THRESHOLD_S) and serves last-known-good rows with their age. An empty table has no last_evaluated_at, so the receipt ok_at is the proof the lane looked."
     },
     {
       "key": "ops.alert_delivery_queue_hygiene",

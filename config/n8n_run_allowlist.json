@@ -6031,6 +6031,34 @@
       "source": "LQ-20261107-1279 (operator GO 2026-11-08 19:01 ET): 'between those, a cheap --if-changed check every 15 min that writes ONLY when something significant changed'. One fire carries one argv, so the conditional half is its own lane rather than a flag the forced rebuild cannot carry. --if-changed (LQ-20261107-1260, folded) exits 0 without writing when nothing changed and writes no LaneRunReceipt of its own: the fire's proof is its RunReceipt@v2 in the coordination ledger, and a write lands in the snapshot the rebuild row owns. Separate lock (not the rebuild's) because the slots are disjoint by construction: a fire is killed at timeout_s 300, the rebuild starts at :00 and this lane at :15/:30/:45."
     },
     {
+      "lane_id": "validation-gates-sync",
+      "command": [
+        "$PY",
+        "scripts/validation_gates_sync.py"
+      ],
+      "dry_run_arg": [],
+      "live_arg": [
+        "--apply"
+      ],
+      "lock": "/tmp/validation_gates_sync.lock",
+      "lock_kind": "flock",
+      "timeout_s": 120,
+      "market_gate": false,
+      "output_signal": "data/runtime/validation-gates-sync_last.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Report until the import closure is re-inventoried for enforce: scripts/validation_gates_sync.py reads declaration files and lane receipts under the state root and reads/writes Postgres through db_adapter (DB_*). No model, provider or broker credential.",
+      "env_evidence": "scripts/validation_gates_sync.py state_root() reads TRADEAI_STATE_ROOT; db_adapter._get_conn reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD. TRADEAI_RUN_ID / TRADEAI_RUN_ATTEMPT / TRADEAI_RUN_MODE / TRADEAI_CODE_SHA are executor base names.",
+      "source": "LQ-20261107-2141 (HOME-BACKEND-SPEC-20261111): the live fire is --apply; the dry fire (no args) ingests and evaluates inside a transaction it rolls back and moves no file. Its own lock."
+    },
+    {
       "lane_id": "cio-overnight-brief",
       "command": [
         "$PY",
