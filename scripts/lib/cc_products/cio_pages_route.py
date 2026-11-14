@@ -153,8 +153,21 @@ def oldest_section(env: dict, now: datetime) -> dict:
     return out
 
 
+#: The body schema this reader asks the store for (``read_path.read_product`` default). Served when no row was read.
+READER_SCHEMA_VERSION = 1
+
+
 def _meta(env: dict, *, status: str, reason: Any, greyed: bool, now: datetime) -> dict:
     meta = {k: env.get(k) for k in _PRODUCT_FIELDS}
+    # REVIEW-3102 R1 / LQ-3103: every shape (store down, BUILDING, greyed UNKNOWN) names the product and the schema the
+    # reader expects; a synthetic envelope with no row carries neither, so they are filled from the route's own identity.
+    meta["product"] = env.get("product") or PRODUCT_ID
+    if meta.get("schema_version") is None:
+        meta["schema_version"] = READER_SCHEMA_VERSION
+    # REVIEW-3102 R3: a null as_of says why, instead of leaving the reader to guess.
+    if meta.get("as_of") is None:
+        meta["as_of_reason"] = ("never built" if status == "BUILDING"
+                                else "store unavailable" if env.get("seq") is None else "stored row has no as_of")
     meta["status"] = status
     meta["reason"] = reason
     meta["greyed"] = greyed

@@ -93,3 +93,43 @@ def test_verifier_passes_a_served_meta_and_names_each_defect():
     assert verifier_checks(no_schema, catalogue_schema=3, db_seq=7, now=NOW, body={"a": 1}) == ["schema_version missing"]
     future = dict(meta, as_of=(parse_ts(meta["built_at"]) + timedelta(seconds=45)).isoformat())
     assert "as_of after built_at" in verifier_checks(future, catalogue_schema=3, db_seq=7, now=NOW, body={"a": 1})
+
+
+
+
+# ------------------------------------------- REVIEW-3102 R1/R3: every cio.pages shape names its product and schema
+def _serve(read_product):
+    return cpr.serve_cio_pages(read_product=read_product, fetch_row=lambda *a, **k: None, now=NOW)
+
+
+def _shapes():
+    ok = _env(product="cio.pages")
+    return {
+        "OK": lambda *a, **k: dict(ok, data={"pages": [1]}),
+        "STALE": lambda *a, **k: dict(ok, status="STALE", data={"pages": [1]}),
+        "greyed UNKNOWN": lambda *a, **k: dict(ok, status="UNKNOWN", reason="hard expiry", data=None, last_good={"pages": [1]}),
+        "BUILDING": lambda *a, **k: {"status": "BUILDING", "reason": "not built yet", "data": None},
+        "store down": lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")),
+    }
+
+
+@pytest.mark.parametrize("shape", ["OK", "STALE", "greyed UNKNOWN", "BUILDING", "store down"])
+def test_every_cio_pages_shape_carries_product_and_an_int_schema_version(shape):
+    meta = _serve(_shapes()[shape])["_product"]
+    assert meta["product"] == "cio.pages"
+    assert isinstance(meta["schema_version"], int) and not isinstance(meta["schema_version"], bool)
+
+
+def test_the_no_row_shapes_carry_the_reader_expected_schema():
+    assert _serve(_shapes()["BUILDING"])["_product"]["schema_version"] == cpr.READER_SCHEMA_VERSION == 1
+    assert _serve(_shapes()["store down"])["_product"]["schema_version"] == 1
+
+
+def test_a_stored_row_keeps_its_own_schema_version():
+    assert _serve(_shapes()["OK"])["_product"]["schema_version"] == 3
+
+
+def test_null_as_of_says_why():
+    assert _serve(_shapes()["BUILDING"])["_product"]["as_of_reason"] == "never built"
+    assert _serve(_shapes()["store down"])["_product"]["as_of_reason"] == "store unavailable"
+    assert "as_of_reason" not in _serve(_shapes()["OK"])["_product"]
