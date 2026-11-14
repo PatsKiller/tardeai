@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom'
 import { ageSecondsFrom, ageText, etTime, type HomeV010Model, type RowState } from '../../../lib/homeV010'
 import { PRIORITIES_VISIBLE, type PrioritiesView } from '../../../lib/homePriorities'
 import { DEPLOY_SOURCE, type HomeDeployView } from '../../../lib/homeDeploy'
-import { DETAILS, blocksText, gateOverflow, priorityDestination } from '../../../lib/homeDestinations'
+import { DETAILS, LINKS, ROW_LINKS, accountLink, blocksText, gateOverflow, priorityDestination } from '../../../lib/homeDestinations'
 import './HomeV010.css'
 
 export const P0_VISIBLE = 3
@@ -98,7 +98,15 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
           )}
           {m.p1Accounts && m.p1Accounts.length > 0 ? (
             <div className="v010-meta" data-testid="p1-by-account">
-              P1 by account: {m.p1Accounts.map(a => `${a.account} ${a.count}${a.stale ? ` (${a.stale} not re-observed)` : ''}`).join(' · ')}
+              P1 by account: {m.p1Accounts.map((a, i) => {
+                const d = accountLink(a.account)
+                return (
+                  <span key={`${a.account}-${i}`}>{i ? ' · ' : ''}
+                    {d ? <Link className="v010-link" to={d.to} data-testid="account-link">{a.account}</Link> : a.account}
+                    {` ${a.count}${a.stale ? ` (${a.stale} not re-observed)` : ''}`}
+                  </span>
+                )
+              })}
             </div>
           ) : null}
           {pop.stopUnverified > 0 ? (
@@ -117,6 +125,8 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
       <div className="v010-card-hd">
         <h2 className="v010-h2" id="h-gates">Trading gates {m.gates ? null : <NB />}</h2>
         <span className="v010-meta">{m.gates ? 'from /api/v2/home/status' : ''}</span>
+        {/* Item 7: a gate is computed from health inputs; the page that owns those inputs is one click away. */}
+        <Link className="v010-link" to={LINKS.health.to} data-testid="gates-health-link">Gate sources: Health</Link>
       </div>
       {m.gates && m.gates.length > 0 ? go.shown.map(g => (
         <div className="v010-srow" id={`gate-${g.id}`} key={g.id} data-state={g.state} data-testid="gate-row">
@@ -163,7 +173,9 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
     <section className="v010-card" id="card-status" aria-labelledby="h-status">
       <div className="v010-card-hd">
         <h2 className="v010-h2" id="h-status">System status</h2>
-        <button type="button" className="v010-link" onClick={onOpenDiag}>Diagnostics ›</button>
+        {/* Item 7: the page that owns a non-OK status row is one click away, and Diagnostics stays a sheet. */}
+        <Link className="v010-link" to={LINKS.health.to} data-testid="open-health">Open Health</Link>
+        <button type="button" className="v010-link" onClick={onOpenDiag} data-testid="open-diag">Diagnostics ›</button>
       </div>
       {m.status.map(r => (
         <div className="v010-srow" id={r.id} key={r.id} data-state={r.state}>
@@ -173,6 +185,13 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
           {r.state !== 'OK' && r.state !== 'LOADING' && (
             <span className="v010-srow-c">Cause: <b>{r.cause || 'unknown'}</b> · Source: <b>{r.source || 'unknown'}</b> · Owner: <b>{r.owner || 'NEEDS BACKEND'}</b></span>
           )}
+          {ROW_LINKS[r.id] ? (
+            <span className="v010-srow-c" data-testid="row-links">
+              {ROW_LINKS[r.id].map((d, i) => (
+                <span key={d.to}>{i ? ' · ' : ''}<Link className="v010-link" to={d.to}>{d.label}</Link></span>
+              ))}
+            </span>
+          ) : null}
         </div>
       ))}
     </section>
@@ -255,6 +274,8 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
       <div className="v010-card-hd"><h2 className="v010-h2" id="h-prio">Today's priorities {!pv || pv.needsBackend ? <NB /> : null}</h2>
         {pv && (pv.state === 'OK' || pv.state === 'PARTIAL') ? <span className={pv.state === 'OK' ? 'v010-pill ok' : 'v010-pill warn'} data-testid="prio-state">{pv.state === 'OK' ? 'ranked by the server' : 'PARTIAL'}</span> : null}
         {prioAsOf ? <span className="v010-meta" data-testid="prio-asof">{prioAsOf}</span> : null}
+        {/* Item 7: the ranking above is the server's; the Do-now queue that draws the same items lives on the classic Home. */}
+        <Link className="v010-link" to={LINKS.doNow.to} data-testid="prio-donow-link">{LINKS.doNow.label}</Link>
       </div>
       {!pv ? <div className="v010-muted">No server ranking in this build; see Action required above.</div>
         : pv.rows.length === 0 ? (
@@ -290,6 +311,9 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
       <div className="v010-card-hd"><h2 className="v010-h2" id="h-watch">{m.watch.title}</h2></div>
       <div className="v010-unk" data-testid="watch-unknown">{m.watch.state} — {m.watch.reason}</div>
       <Link className="v010-link" to="/watch" data-testid="watch-link">Open Watch</Link>
+      {/* Item 7: the news and opportunity surfaces the Watch facts come from, one click away. */}
+      {' · '}<Link className="v010-link" to={LINKS.news.to} data-testid="watch-news-link">{LINKS.news.label}</Link>
+      {' · '}<Link className="v010-link" to={LINKS.opportunities.to} data-testid="watch-opps-link">{LINKS.opportunities.label}</Link>
     </section>
   )
 
@@ -309,7 +333,7 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
   )
 
   return (
-    <div className="v010" data-page="home-v010">
+    <div className="v010" data-page="home-v010" id="home-v010-top">
       <header className="v010-head">
         <h1 className="v010-title">Command Center</h1>
         <span className="v010-time">{etTime(nowIso, true)}</span>
@@ -326,6 +350,10 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
         <div className="v010-col">{status}{deploy}{prioCard}{watch}{details}{diagEntry}</div>
       </div>
       <footer className="v010-foot">
+        {/* Item 7 "Back": the operational section is appended beneath the complete classic Home, so the way back to
+            the top of Home must be a link, not a scroll the reader has to discover. */}
+        <a className="v010-link" href="#home-v010-top" data-testid="back-to-top">Back to Home ↑</a>
+        {' · '}
         <Link className="v010-link" to="/home-classic" data-testid="classic-home-link">Classic Home</Link>
       </footer>
     </div>
