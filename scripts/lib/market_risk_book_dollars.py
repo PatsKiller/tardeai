@@ -134,6 +134,14 @@ def build(
         })
     rows.sort(key=lambda r: (-r["usd_exposed"], -r["value_usd"]))
     stressed_usd = round(sum(r["usd_exposed"] for r in rows), 2)
+    # DR-D01 (sprint 8H-2 b1): what the exposure figure rests on. A position with no look-through adds $0 to the
+    # numerator while its dollars stay in the denominator, so an unmeasured book printed the same
+    # "$0 · 0 % of invested" as an unexposed one. These fields let every surface say which of the two it is.
+    mapped_rows = [r for r in rows if r.get("groups")]
+    unmapped_usd = round(sum(_f(u.get("usd")) for u in unmapped), 2)
+    mapped_usd = round(sum(_f(r.get("value_usd")) for r in mapped_rows), 2)
+    look_through_basis = sorted({str(r.get("look_through_basis")) for r in mapped_rows if r.get("look_through_basis")})
+    coverage_status = "unknown" if not rows else ("measured" if not unmapped else "partial")
     exposed = [r for r in rows if r["usd_exposed"] > 0]
     top = exposed[0] if exposed else None
     largest = None
@@ -158,6 +166,9 @@ def build(
         "rows": [{k: v for k, v in r.items() if k != "groups"} for r in exposed[:max_rows]],
         "more": {"count": max(0, len(exposed) - max_rows), "usd": round(sum(r["usd_exposed"] for r in exposed[max_rows:]), 2)},
         "zero_exposure_symbols": zero,
+        "coverage_status": coverage_status,
+        "positions_count": len(rows), "mapped_count": len(rows) - len(unmapped), "unmapped_count": len(unmapped),
+        "mapped_usd": mapped_usd, "unmapped_usd": unmapped_usd, "look_through_basis": look_through_basis,
         "as_of": store.get("data_as_of"),
         "stops_known": stops_known,
     }

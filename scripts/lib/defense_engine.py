@@ -351,7 +351,10 @@ def _exposure_section(mr: dict, max_rows: int, why: Optional[str]) -> dict:
     be = mr.get("book_exposure") if isinstance(mr.get("book_exposure"), dict) else None
     if not be:
         return _section(None, why or mr.get("book_exposure_error") or "book exposure is not joined (holdings store unreadable)",
-                        rows=[], budgets=[], rotate=[], unmapped=[])
+                        rows=[], budgets=[], rotate=[], unmapped=[],
+                        # DR-D01: nothing was measured, so nothing may print as a measured zero.
+                        coverage_status="unknown", positions_count=None, mapped_count=None, unmapped_count=None,
+                        mapped_usd=None, unmapped_usd=None, look_through_basis=[])
     stances = mr.get("positions") if isinstance(mr.get("positions"), dict) else {}
     rows = []
     for r in sorted((r for r in be.get("rows") or [] if isinstance(r, dict)),
@@ -384,7 +387,13 @@ def _exposure_section(mr: dict, max_rows: int, why: Optional[str]) -> dict:
                     rotate=[{"key": g.get("key"), "label": g.get("label"), "state": g.get("state"),
                              "rs5": _num(g.get("rs5")), "usd": _num(g.get("usd"))}
                             for g in rotate.get("groups") or [] if isinstance(g, dict)],
-                    rotate_as_of=rotate.get("as_of"), stops_known=be.get("stops_known"))
+                    rotate_as_of=rotate.get("as_of"), stops_known=be.get("stops_known"),
+                    # DR-D01: the coverage the figure rests on, published by market_risk_book_dollars.build.
+                    coverage_status=be.get("coverage_status") or "unknown",
+                    positions_count=_num(be.get("positions_count")), mapped_count=_num(be.get("mapped_count")),
+                    unmapped_count=_num(be.get("unmapped_count")), mapped_usd=_num(be.get("mapped_usd")),
+                    unmapped_usd=_num(be.get("unmapped_usd")),
+                    look_through_basis=be.get("look_through_basis") or [])
 
 
 def _stops_section(truth: dict, near_pct: float, max_rows: int, why: Optional[str]) -> dict:

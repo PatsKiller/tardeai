@@ -4,7 +4,7 @@ import { BB, T, TYPE } from '../../../lib/watchTokens'
 import { RADIUS } from '../../../lib/designTokens'
 import { scoreText } from '../../../lib/metricAuthority'
 import {
-  clockET, defenseLines, GAP, GLOSSARY, ladder, money, pct, readinessTone, scorePosition, signed, sourceSummaryText,
+  clockET, defenseLines, exposureCoverage, GAP, GLOSSARY, ladder, money, pct, readinessTone, scorePosition, signed, sourceSummaryText,
   sourceTone, tierPair, tierTone, unprotectedPair, type DefenseProjection, type LiveAuthority, type Tone,
 } from '../../../lib/defenseEngine'
 
@@ -63,9 +63,12 @@ function Hero({ p, onOpen }: { p: DefenseProjection; onOpen: (k: string) => void
   const scoreDiffers = auth?.score != null && t.score != null && Math.abs(auth.score - Number(t.score)) >= 0.05
   return <section aria-label="Defense headline" data-testid="defense-engine-hero" style={{ ...card, borderLeft: `3px solid ${TONE[tone]}` }}>
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-      <button type="button" onClick={() => onOpen('tier')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', minHeight: 44 }} aria-label="Open the tier ladder">
-        <Chip tone={tone}><Term k="tier">{tp.tier ?? 'TIER ' + GAP}</Term> · {tp.score != null ? scoreText(tp.score) : GAP}</Chip>
-      </button>
+      {/* DR-D10 (sprint 8H-2 b1): the chip used to BE the ladder opener, so the chip's definition (`Term`, which
+          renders a <button>) sat inside a <button> — a nested interactive control. The chip is plain now; the
+          opener is its own sibling control, same accessible name, 44 px target. */}
+      <Chip tone={tone}><Term k="tier">{tp.tier ?? 'TIER ' + GAP}</Term> · {tp.score != null ? scoreText(tp.score) : GAP}</Chip>
+      <button type="button" onClick={() => onOpen('tier')} aria-label="Open the tier ladder"
+        style={{ background: 'none', border: `1px solid ${BB.border}`, borderRadius: RADIUS.md, padding: '2px 10px', minHeight: 44, cursor: 'pointer', color: T.link, font: 'inherit', fontSize: TYPE.base }}>Tier ladder ›</button>
       {t.shock?.label && <span style={small}>{t.shock.label}</span>}
       {t.confirming?.n != null && <span style={small}>{t.confirming.n} of {t.confirming.of} categories confirming</span>}
     </div>
@@ -217,8 +220,19 @@ function sheetBody(p: DefenseProjection, sheet: string, stamp: (s: { as_of?: str
     }
     case 'exposure': {
       const e = p.exposure ?? {}
+      // DR-D01: a figure only where the projection says it measured the book; otherwise Unknown + the evidence.
+      const cov = exposureCoverage(e)
+      const basis = (e.look_through_basis ?? []).join(', ')
       return <List>
-        <Field label={<Term k="stressed groups">In stressed groups</Term>}>{money(e.stressed_usd)} · {pct(e.stressed_pct_invested, 1)} of invested</Field>
+        <Field label={<Term k="stressed groups">In stressed groups</Term>}>
+          {cov.state === 'measured' ? <>{cov.headline} · {pct(e.stressed_pct_invested, 1)} of invested</> : <span style={{ color: TONE[cov.tone] }}>{cov.headline}</span>}
+        </Field>
+        <Field label="Coverage">
+          {cov.state === 'measured'
+            ? <>{cov.detail}{basis ? ` · ${basis}` : ''}</>
+            : <span style={{ color: TONE[cov.tone] }}>Unknown — {cov.detail}</span>}
+        </Field>
+        {cov.state === 'unknown' && <Note><Link to="?detail=engine:sources" style={{ color: T.link }}>Verify exposure — sources ›</Link></Note>}
         <Field label="Invested">{money(e.invested_usd)}</Field>
         <Field label="Cash">{money(e.cash_usd)} · {pct(e.cash_pct_book)} of book</Field>
         <Field label="Groups">{(e.stressed_groups ?? []).join(', ') || 'none'}</Field>
@@ -305,6 +319,9 @@ function sheetBody(p: DefenseProjection, sheet: string, stamp: (s: { as_of?: str
       return <List>{(p.sources ?? []).map(s => <Field key={s.id} label={<><span aria-hidden style={{ display: 'inline-block', width: 8, height: 8, borderRadius: RADIUS.pill, background: TONE[sourceTone(s.state)], marginRight: 6 }} />{s.label}</>}>
         {s.state.replace('_', ' ')} · {clockET(s.as_of)}{s.stale_reason ? ` · ${s.stale_reason}` : ''}{s.lane_ids?.length ? ` · ${s.lane_ids.join(', ')}` : ''}
       </Field>)}
+        {/* DR-D01's Verify exposure control lands here, so this sheet may not be a blank screen: when the
+            projection publishes no source row, say that rather than nothing. */}
+        {!(p.sources ?? []).length && <Note>This projection publishes no source row, so no producer can be named here. The exposure sheet&rsquo;s rows and not-mapped list are the evidence on file.</Note>}
         {p.served && <Note>Served from {p.served.served_from ?? GAP}{p.served.stale ? ` · stale: ${p.served.fallback_reason ?? GAP}` : ''}.</Note>}
       </List>
     default:

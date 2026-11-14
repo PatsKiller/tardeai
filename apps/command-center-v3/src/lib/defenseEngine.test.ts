@@ -61,6 +61,10 @@ const P: DefenseProjection = {
   narrative: { headline: 'Synthetic headline.', where_we_stand: [], what_to_do: [] },
   tier: { tier: 'ORANGE', score: 62 },
   exposure: { stressed_usd: 12000, stressed_pct_invested: 24, cash_pct_book: 40, cash_usd: 50000,
+    // DR-D01 (sprint 8H-2 b1): the figure prints only when the projection says the look-through measured the whole
+    // book; the builder publishes that coverage, so the fixture carries it. An unmeasured book reads Unknown.
+    coverage_status: 'measured', positions_count: 3, mapped_count: 3, unmapped_count: 0, unmapped_usd: 0,
+    look_through_basis: ['fund_holdings'],
     rows: [{ symbol: 'ZZAA', usd_exposed: 8000 }, { symbol: 'ZZBB', usd_exposed: 4000 }, { symbol: 'ZZAA', usd_exposed: 100 }] },
   stops: { no_stop: { count: 2, value_usd: 3000 }, pending: { count: 1 } },
   hedge_readiness: { readiness: 'NOT NOW', met_count: 1, of: 2, shock_class: 'SECTOR' },
@@ -168,7 +172,9 @@ test('a bare projection still renders every line with gaps, never a crash', () =
     hedge_readiness: {}, playbook: {}, base_rates: {}, cash_alternatives: {}, sector_posture: {}, recommendations: {}, watch_next: {}, sources: [] } as unknown as DefenseProjection
   const lines = defenseLines(bare)
   assert.equal(lines.length, 8, 'eight lines')
-  assert.equal(lines[0].value, GAP, 'book gap')
+  // DR-D01 (sprint 8H-2 b1): a projection with no exposure section has not measured the book either — "not on
+  // file" and "a measured zero" are different facts, and neither may read as the other.
+  assert.equal(lines[0].value, 'Unknown', 'book unknown, never a bare gap')
   assert.equal(lines[2].value, 'UNKNOWN', 'hedge unknown')
 })
 

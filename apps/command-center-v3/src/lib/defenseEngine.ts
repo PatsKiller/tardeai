@@ -41,6 +41,14 @@ export type ExposureSection = Section & {
   invested_usd?: number | null; cash_usd?: number | null; cash_pct_book?: number | null
   stressed_usd?: number | null; stressed_pct_invested?: number | null; stressed_pct_book?: number | null
   stressed_groups?: string[]; rows?: ExposureRow[]
+  /** DR-D01 (sprint 8H-2 b1): what the dollars above rest on. `coverage_status` is the server's verdict —
+   *  `measured` (every non-cash position carried a look-through), `partial` (some did not: `stressed_usd` is a
+   *  floor, not the book's exposure) or `unknown` (nothing to measure). A projection built before this field
+   *  existed publishes none of them, and the view must then say Unknown: a missing look-through and a genuine
+   *  zero printed the same "$0 · 0 % of invested" (audit DR-D01). */
+  coverage_status?: 'measured' | 'partial' | 'unknown' | string | null
+  positions_count?: number | null; mapped_count?: number | null; unmapped_count?: number | null
+  mapped_usd?: number | null; unmapped_usd?: number | null; look_through_basis?: string[]
   residuals?: { count?: number | null; usd_exposed?: number | null; symbols?: string[] }
   unmapped?: { symbol: string; account_label?: string | null; usd?: number | null; reason?: string | null }[]
   budgets?: Budget[]
@@ -236,6 +244,33 @@ export function tierPair(p: DefenseProjection, live?: LiveAuthority | null): Tie
   return { tier: t.tier ?? null, score: num(t.score), asOf: t.as_of ?? null, source: 'projection' }
 }
 
+/** DR-D01: how much of the book the exposure figure rests on, and whether the figure may be printed at all.
+ *  Only `coverage_status: 'measured'` yields a number; everything else — `partial`, `unknown`, or a projection
+ *  built before the field existed — yields `headline: 'Unknown'` with the coverage that IS known. A Book whose
+ *  look-through failed must never read as a calm zero. */
+export type ExposureCoverage = { state: 'measured' | 'unknown'; headline: string; detail: string; tone: Tone }
+
+export function exposureCoverage(e: ExposureSection | null | undefined): ExposureCoverage {
+  const x = e ?? {}
+  const status = String(x.coverage_status ?? '').toLowerCase()
+  const positions = num(x.positions_count), mapped = num(x.mapped_count), unmappedUsd = num(x.unmapped_usd)
+  const positionsText = positions != null && mapped != null ? `${mapped} of ${positions} positions mapped` : null
+  // Dollars only from the projection's own total: the `unmapped[]` list is capped server-side (`max_rows`), so
+  // summing it would understate how much of the book is not counted. Its length is a "listed" floor, said so.
+  const unmappedN = num(x.unmapped_count) ?? (x.unmapped?.length || null)
+  const unmappedText = unmappedUsd ? `${money(unmappedUsd)} not mapped`
+    : unmappedN ? `${unmappedN} position${unmappedN === 1 ? '' : 's'} not mapped` : null
+  if (status === 'measured') {
+    const detail = [positionsText, unmappedText].filter(Boolean).join(' · ')
+    return { state: 'measured', headline: money(x.stressed_usd),
+      detail: detail || 'coverage not published', tone: (num(x.stressed_pct_invested) ?? 0) >= 10 ? 'warn' : 'muted' }
+  }
+  const detail = [status === 'partial' ? 'partial coverage' : 'exposure coverage not published',
+    positionsText, unmappedText]
+    .filter(Boolean).join(' · ')
+  return { state: 'unknown', headline: 'Unknown', detail, tone: 'warn' }
+}
+
 /** "The defense, line by line": one row per sheet, every value from one projection field. `live`, when given,
  *  carries the two figures LQ-20261107-1837 mapped to an authority OUTSIDE the projection: the market-risk
  *  score (MarketRiskSnapshot@v1) and the unprotected-position count (cio_truth). The projection's copies are
@@ -246,10 +281,14 @@ export function defenseLines(p: DefenseProjection, now: Date = new Date(), live?
   const unprot = unprotectedPair(p, live)
   const topNames = [...new Set((e.rows ?? []).map(r => r.symbol))].slice(0, 2).join(' · ')
   const brSpy = (b.rows ?? [])[0]
+  const cov = exposureCoverage(e)
   return [
-    { id: 'book', sheet: 'exposure', label: 'Book in stressed groups', sub: topNames || (e.stale_reason ?? GAP),
-      value: money(e.stressed_usd), valueSub: e.stressed_pct_invested != null ? `${pct(e.stressed_pct_invested)} of invested` : undefined,
-      tone: (num(e.stressed_pct_invested) ?? 0) >= 10 ? 'warn' : 'muted', asOf: e.as_of, staleReason: e.stale_reason },
+    // DR-D01: the figure prints only when the projection says the look-through measured the whole book; a partial
+    // or unpublished coverage prints Unknown with what it does cover (see `exposureCoverage`).
+    { id: 'book', sheet: 'exposure', label: 'Book in stressed groups',
+      sub: topNames || (cov.state === 'unknown' ? (e.stale_reason ?? 'the projection publishes no exposure coverage') : (e.stale_reason ?? GAP)),
+      value: cov.headline, valueSub: cov.state === 'measured' ? [e.stressed_pct_invested != null ? `${pct(e.stressed_pct_invested)} of invested` : null, cov.detail !== 'coverage not published' ? cov.detail : null].filter(Boolean).join(' · ') : cov.detail,
+      tone: cov.tone, asOf: e.as_of, staleReason: e.stale_reason },
     { id: 'stops', sheet: 'stops', label: 'Stop coverage',
       sub: `${unprot.count ?? GAP} without a broker stop · ${s.pending?.count ?? GAP} pending`,
       // REWORK 3 (N1): an unknown count is not zero. `?? 0` painted a real cio_truth dollar figure green when the
