@@ -8,7 +8,8 @@
 // pending decision (G7).
 import { Link } from 'react-router-dom'
 import {
-  fmtAge, fmtET, fmtPct, fmtShares, fmtUsd, filterPositions, coverageCounts, gateEvidence, STOP_OWNER, stopDeskHref,
+  fmtAge, fmtET, fmtPct, fmtShares, fmtUsd, filterPositions, coverageCounts, exclusiveCoverage, gateEvidence, reviewPositions,
+  STOP_OWNER, stopDeskHref,
   type CoverageCounts, type HoldingsFilter, type MeasuresModel, type P0Item, type PositionModel,
   type ProtectionModel, type Read, type HoldingsWire, type SinceVisitModel, type StatusRow, type VisitRecord, type MeasureKey,
 } from '../../../lib/portfolioV002'
@@ -36,8 +37,8 @@ const MEASURE_SHORT: Record<MeasureKey, string> = {
   account_value: 'Value', price_move_estimate: 'Price move', account_value_change_1d: 'Change 1D', verified_daily_pnl: 'Verified P&L',
 }
 const FILTERS: [HoldingsFilter, string][] = [
-  ['all', 'All'], ['unprotected', 'Unprotected'], ['partial', 'Partial'], ['planned', 'Planned'], ['unknown', 'Unknown'],
-  ['exempt', 'Exempt'], ['under100', 'Under $100'],
+  ['all', 'All'], ['covered', 'Covered'], ['unprotected', 'No broker stop'], ['partial', 'Partial'], ['planned', 'Planned'],
+  ['unknown', 'Unknown'], ['exempt', 'Exempt'], ['under100', 'Under $100'],
 ]
 
 export interface ViewProps {
@@ -95,12 +96,19 @@ export default function PortfolioV002View(props: ViewProps) {
   const shown = visible.slice(0, props.shownCount)
   const action = props.showAllAction ? prot.action : prot.action.slice(0, ACTION_LIMIT)
   const cov: CoverageCounts = coverageCounts(positions)
+  const excl = exclusiveCoverage(positions)
+  const review = reviewPositions(positions)
   const gates = gateEvidence(prot, measures, positions, w)
   const counts = {
-    unprotected: positions.filter(p => p.counted && (p.protection === 'GAP' || p.protection === 'WARN')).length,
-    unknown: positions.filter(p => p.counted && p.protection === 'UNKNOWN').length,
+    covered: excl.covered,
+    unprotected: excl.noStop,
+    partial: excl.partial,
+    unknown: excl.unknown,
     under100: positions.filter(p => p.underFloor).length,
-    partial: cov.partial, planned: cov.planned, exempt: cov.exempt,
+    planned: positions.filter(p => p.planned != null || p.coverage.category === 'PLANNED_ONLY').length,
+    exempt: cov.exempt,
+    // The review set overlaps the four exclusive tiles (it is the P0 list); the header chip draws it, not a filter chip.
+    review: review.length,
   }
   const verdictCls = prot.verdict === 'OK' ? 'ok' : prot.verdict === 'GAP' ? 'bad' : prot.verdict === 'WARN' ? 'warn' : 'neutral'
 
@@ -120,9 +128,21 @@ export default function PortfolioV002View(props: ViewProps) {
               onClick={props.onOpenWhy} aria-label={`Protection: ${verdictLabel(prot.verdict)}. Open why`}>
               Protection: {verdictLabel(prot.verdict)} ›
             </button>
-            <span className={`pv2-chip ${p0 == null ? 'neutral' : p0.length ? 'bad' : 'neutral'}`} data-testid="chip-p0">
-              {p0 == null ? 'P0 ?' : `${p0.length} P0`}
-            </span>
+            {/* PR-006: the badge names its population — counted positions that need stop review — and opens
+                exactly those rows. Incidents and health counts are different populations and say so elsewhere. */}
+            <button type="button" className={`pv2-chip ${p0 == null ? 'neutral' : review.length ? 'bad' : 'neutral'}`} data-testid="chip-p0"
+              onClick={p0 == null ? undefined : () => props.onFilter('review')} disabled={p0 == null}
+              title={p0 == null
+                ? 'The holdings read failed; the review population cannot be counted (never 0)'
+                : 'Counted positions with no resting stop in a good read, or the last-known gap kept while its read is stale. Opens those rows.'}>
+              {p0 == null ? 'review count ?' : `${review.length} position${review.length === 1 ? '' : 's'} ${review.length === 1 ? 'needs' : 'need'} stop review`}
+            </button>
+            {/* PR-006: a published count-mismatch finding is NOT a position. It keeps its own labelled chip and
+                opens the gate evidence; it never inflates the position review population. */}
+            {p0 != null && p0.some(i => i.category === 'Position Count Mismatch') && (
+              <button type="button" className="pv2-chip warn" data-testid="chip-count-mismatch" onClick={props.onOpenGates}
+                title="A published position-count finding. It is a store reconciliation issue, not a position: open the gate evidence.">count mismatch · evidence ›</button>
+            )}
             <span className="pv2-chip neutral" data-testid="chip-gates">Gates — <NB short /></span>
             {measures.state === 'PRESENT' && measures.dayUnverified && (
               <span className="pv2-chip warn" data-testid="chip-unverified" title="Verified daily P&L has no stored reconciliation">UNVERIFIED</span>
@@ -155,11 +175,21 @@ export default function PortfolioV002View(props: ViewProps) {
                 </div>
               ) : (
                 <>
-                  <div className="pv2-tiles" id="prot-tiles">
-                    <button type="button" className="pv2-tile ok" onClick={props.onOpenWhy}><span className="k">Protected</span><span className="n">{prot.protectedN}</span></button>
-                    <button type="button" className="pv2-tile bad" onClick={() => props.onFilter('unprotected')}><span className="k">Unprotected</span><span className="n">{(prot.gap ?? 0) + (prot.warn ?? 0)}</span></button>
-                    <button type="button" className="pv2-tile unk" onClick={() => props.onFilter('unknown')}><span className="k">Unknown</span><span className="n">{prot.unknown}</span></button>
+                  {/* PR-001: four MUTUALLY EXCLUSIVE counted-position states (exclusiveCoverage), each opening
+                      exactly the rows it counts. "Partial" is its own state, so a partially covered position is
+                      never read as fully covered; the sum is the counted population. The broker verdict above is
+                      unchanged — this splits the wording, never the evidence. */}
+                  <div className="pv2-tiles" id="prot-tiles" data-counted={excl.counted}>
+                    <button type="button" className="pv2-tile ok" onClick={() => props.onFilter('covered')}
+                      aria-label={`${excl.covered} fully covered positions. Show them`}><span className="k">Fully covered</span><span className="n">{excl.covered}</span></button>
+                    <button type="button" className="pv2-tile warn" onClick={() => props.onFilter('partial')}
+                      aria-label={`${excl.partial} partially covered positions. Show them`}><span className="k">Partial</span><span className="n">{excl.partial}</span></button>
+                    <button type="button" className="pv2-tile bad" onClick={() => props.onFilter('unprotected')}
+                      aria-label={`${excl.noStop} counted positions with no broker stop. Show them`}><span className="k">No broker stop</span><span className="n">{excl.noStop}</span></button>
+                    <button type="button" className="pv2-tile unk" onClick={() => props.onFilter('unknown')}
+                      aria-label={`${excl.unknown} positions with unverifiable protection. Show them`}><span className="k">Unknown</span><span className="n">{excl.unknown}</span></button>
                   </div>
+                  <p className="pv2-muted" data-testid="prot-tiles-sum">{excl.covered + excl.partial + excl.noStop + excl.unknown} of {excl.counted} counted positions{excl.complete ? '' : ' · the four states do not add to the counted total'}</p>
                   {/* Coverage categories (campaign 2026-11-14): counted by the display classifier; the verdict above
                       stays the backend's. Partial is called out because a tile cannot show "200 of 300". */}
                   <button type="button" className="pv2-covline" data-testid="prot-coverage" onClick={props.onOpenWhy}
@@ -177,7 +207,12 @@ export default function PortfolioV002View(props: ViewProps) {
                             <button type="button" className="pv2-prow-main" onClick={() => props.onOpenPosition(p.key)} aria-label={`${p.symbol} ${rowChip(p)}. Open detail`}>
                               <span className="sym">{p.symbol}</span>
                               <span><span className={`pv2-chip ${rowChipClass(p)}`}>{rowChip(p)}</span></span>
-                              <span className="ver">{p.verifiedAt ? fmtET(p.verifiedAt, true) : 'never'} · {p.account}</span>
+                              {/* PR-003: an impossible future time is unverified evidence, never a verification
+                                label; a row with no published read time says so instead of "never" (which read
+                                as "a read happened and found nothing"). */}
+                            <span className="ver">{p.verifiedAtInvalid ? 'read time invalid · not verified'
+                              : p.verifiedAt ? fmtET(p.verifiedAt, true) : 'no read time published'} · {p.account}
+                              {p.planned && <span className="pv2-plan" data-testid="prot-plan">{` · plan ${p.planned.price != null ? `$${p.planned.price.toFixed(2)}` : 'price not recorded'} (not rested)`}</span>}</span>
                             </button>
                             {p.protection === 'GAP' || p.protection === 'WARN' || p.coverage.category === 'PARTIAL'
                               ? <Link className="pv2-act" to={stopDeskHref(p)} title={`Stop desk · ${p.symbol} · ${p.accountKey} · ${p.broker}`}>Place stop ›</Link>

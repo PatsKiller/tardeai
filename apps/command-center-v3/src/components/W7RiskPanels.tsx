@@ -30,6 +30,18 @@ const heatWhy = (v: unknown, why: string) => typeof v === 'number' && Number.isF
  *  scripts/portfolio_correlation.py's; the text names it so a blank cell is explained, not hidden. */
 const CORR_NO_VALUE = { label: 'Why no correlation value?', text: 'A pair gets a value only when both symbols have at least 20 shared daily returns and neither price series is flat. A newer holding or a pair with gaps in its price history has no value yet.' }
 const price = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? `$${v.toLocaleString('en-US', { maximumFractionDigits: 4 })}` : 'Not available'
+/** PR-015: the execution-read watermark that turns a count into an observation. Without one a zero is UNKNOWN. */
+const awaitingThrough = (stops: any): string | null =>
+  typeof stops?.last_broker_read_label === 'string' && stops.last_broker_read_label.trim() ? stops.last_broker_read_label.trim() : null
+function awaitingDetail(stops: any, filledRows: any[], crossed: any[]): string {
+  const through = awaitingThrough(stops)
+  const filled = filledRows.length, crossedN = crossed.length
+  const queues = `${filled} recorded fill${filled === 1 ? '' : 's'} awaiting holdings sync · ${crossedN} quote crossing${crossedN === 1 ? '' : 's'}`
+  if (!through) return `${queues} — no execution read is published, so a zero here is UNKNOWN, not proof that nothing filled`
+  if (!filled && !crossedN) return `No fill recorded and no stop crossed through the last broker read ${through}. A quote crossing without a broker fill is not a fill.`
+  const names = [...filledRows, ...crossed].map((p: any) => p.symbol).filter(Boolean)
+  return `${queues}${names.length ? ` (${names.join(', ')})` : ''} · through the last broker read ${through}. A crossing is not a fill, and a fill is not yet a holdings change.`
+}
 
 /** Board 15: KPI row + one positions table with the stop source per position (CIO record only). */
 export function W7RiskExposure({ data, onDrill: _onDrill }: { data: any, onDrill: (ctx: DrillContext) => void }) {
@@ -65,7 +77,9 @@ export function W7RiskExposure({ data, onDrill: _onDrill }: { data: any, onDrill
         : <W7Metric label="Loss if every active stop fills" value={usd(summary.loss_at_stop_usd)} detail={`${heatWhy(summary.portfolio_heat_pct, 'share of portfolio not sent')} of portfolio · price gaps can increase losses`} />}
       <W7Metric label="Value with no broker stop" value={money(unprotected.valueUsd)} detail={<span data-testid="risk-kpi-nostop">{unprotected.count == null ? 'Position count unavailable' : `${unprotected.count} counted ${unprotected.count === 1 ? 'position' : 'positions'}`}{n('planned') ? ` · ${n('planned')} with a planned level only` : ''}</span>} />
       <W7Metric label="Largest position" value={summary.largest_name ? `${summary.largest_name.symbol} ${pctWhy(summary.largest_name.pct, '(weight not sent)')}` : 'Not available'} detail={summary.largest_name?.classification_label && summary.largest_name?.limit_pct != null ? `${summary.largest_name.classification_label} · limit ${pct(summary.largest_name.limit_pct)}` : 'Classification and limit not published'} />
-      <W7Metric label="Awaiting fill" value={<span data-testid="risk-kpi-awaiting">{awaiting.length}</span>} detail={awaiting.length ? `${symbolList(awaiting)} · ${filledRows.length ? (filledRows.find((p: any) => p.reason)?.reason || 'stop filled · awaiting holdings sync') : 'mark at or below the stop · fill not confirmed'}` : 'No stop has filled or been crossed.'} />
+      {/* PR-015: two different measured queues, each named with its own through-time. A quote at or below the stop
+          is a CROSSING, never a broker fill; with no execution read published the zero is UNKNOWN, not proof. */}
+      <W7Metric label="Stops filled / crossed" value={<span data-testid="risk-kpi-awaiting">{awaitingThrough(stops) ? awaiting.length : 'UNKNOWN'}</span>} detail={awaitingDetail(stops, filledRows, crossed)} />
     </div>
     {bd && <p data-testid="risk-stop-breakdown" style={{ margin: 0, color: TOKENS.text[2], fontSize: TYPE.base }}>
       {(['active', 'pending_activation', 'filled', 'unknown', 'planned', 'none'] as StopCategory[]).filter(c => n(c)).map(c => `${n(c)} ${STOP_CATEGORY_LABEL[c].toLowerCase()}`).join(' · ')}

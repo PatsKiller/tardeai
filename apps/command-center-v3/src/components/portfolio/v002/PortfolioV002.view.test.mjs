@@ -1,5 +1,5 @@
 // Portfolio v002 (design/pages/portfolio/v002, operator-approved 2026-11-11) — what the page draws.
-// Pins: UNKNOWN rows never read NO STOP; a failed/timed-out read shows TIMED OUT / UNKNOWN and "P0 ?", never "0 P0";
+// Pins: UNKNOWN rows never read NO STOP; a failed/timed-out read shows TIMED OUT / UNKNOWN and "review count ?", never "0 positions";
 // gates are NEEDS BACKEND, never "0 open"; a fully protected book collapses Action·Protection to CLEAR.
 // 2026-11-14 campaign: the four measures come only from PortfolioMeasures@v1 (measure 4 UNKNOWN with its cause, the
 // Finviz mark a separate estimate beside the anchor), stop coverage is drawn in its six categories with resting vs
@@ -51,7 +51,7 @@ function compile(path) {
 const lib = await import(compile(join(app, 'src/lib/portfolioV002.ts')))
 const { default: View } = await import(compile(join(app, 'src/components/portfolio/v002/PortfolioV002View.tsx')))
 const sheets = await import(compile(join(app, 'src/components/portfolio/v002/PortfolioSheets.tsx')))
-const { positionsFrom, protectionModel, p0Items, statusRows, measuresModel, sinceVisitModel, STOP_READ_MAX_AGE_MS, API } = lib
+const { positionsFrom, protectionModel, p0Items, statusRows, measuresModel, sinceVisitModel, STOP_READ_MAX_AGE_MS, API, filterPositions } = lib
 
 const NOW = Date.parse('2031-03-07T15:00:00Z')
 const AT = '2031-03-07T14:59:00Z'
@@ -84,7 +84,8 @@ const MEASURES = {
 }
 
 function render(holdings, incidents = ok(API.incidents, { counts: { P0: 0, P1: 0 }, served_at: AT }), lastSeen = LAST_SEEN_UNKNOWN, shownCount = 25) {
-  const positions = holdings.state === 'OK' ? positionsFrom(holdings.data) : []
+  // The harness pins one clock (NOW); the page itself passes the wall clock, which is correct in production.
+  const positions = holdings.state === 'OK' ? positionsFrom(holdings.data, NOW) : []
   const prot = protectionModel(holdings, positions)
   const props = { holdings, positions, prot, p0: p0Items(holdings, prot), status: statusRows(holdings, incidents, positions, NOW),
     measures: measuresModel(holdings), sinceVisit: sinceVisitModel(lastSeen), visitRecord: 'PENDING',
@@ -95,7 +96,10 @@ function render(holdings, incidents = ok(API.incidents, { counts: { P0: 0, P1: 0
   return renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(View, props)))
 }
 const sheet = (Comp, props) => renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(Comp, { open: true, onClose: noop, ...props })))
-const chipP0 = html => (html.match(/data-testid="chip-p0">([^<]*)</) || [])[1]
+const chipP0 = html => {
+  const m = html.match(/<button[^>]*data-testid="chip-p0"[^>]*>([^<]*)</) || html.match(/data-testid="chip-p0">([^<]*)</)
+  return m ? m[1] : undefined
+}
 const section = (html, id) => { const i = html.indexOf(`data-testid="${id}"`); assert.ok(i >= 0, `missing ${id}`); return html.slice(i, html.indexOf('</section>', i)) }
 const measureRows = html => section(html, 'card-status').split('data-testid="measure-row"').slice(1)
 
@@ -112,13 +116,13 @@ const gapRow = rowsHtml.find(r => r.includes('GAPX'))
 assert.ok(unkRow && gapRow, 'both non-protected rows listed')
 assert.doesNotMatch(unkRow, /NO STOP/); assert.match(unkRow, /UNKNOWN/); assert.match(unkRow, /No Stop Read/)
 assert.match(gapRow, /NO STOP/)
-assert.equal(chipP0(gapHtml), '1 P0')
+assert.equal(chipP0(gapHtml), '1 position needs stop review')
 assert.match(section(gapHtml, 'card-gates'), /NEEDS BACKEND/); assert.doesNotMatch(section(gapHtml, 'card-gates'), /\b0 open\b/)
 assert.match(gapHtml, /Retired/)
 
 // 2. A timed-out holdings read: TIMED OUT, P0 unknown, no value, no CLEAR.
 const toHtml = render(fail(API.holdings, 'TIMED OUT'))
-assert.match(toHtml, /TIMED OUT/); assert.equal(chipP0(toHtml), 'P0 ?')
+assert.match(toHtml, /TIMED OUT/); assert.equal(chipP0(toHtml), 'review count ?')
 assert.match(toHtml, /value UNKNOWN/); assert.doesNotMatch(toHtml, />CLEAR</)
 
 // 3. A failed (non-timeout) read is UNKNOWN, never CLEAR.
@@ -133,7 +137,7 @@ assert.doesNotMatch(failHdr[0], /store total/)
 
 // 4. Every counted row protected: Action·Protection collapses to CLEAR, 0 P0.
 const okHtml = render(ok(API.holdings, wire([row({ symbol: 'ONE' }), row({ symbol: 'TWO', stop_state: 'pending_activation' })])))
-assert.match(okHtml, />CLEAR</); assert.equal(chipP0(okHtml), '0 P0'); assert.doesNotMatch(okHtml, /NO STOP/)
+assert.match(okHtml, />CLEAR</); assert.equal(chipP0(okHtml), '0 positions need stop review'); assert.doesNotMatch(okHtml, /NO STOP/)
 
 // F5: the CLEAR line names the brokers it covered, not "N of N brokers".
 assert.doesNotMatch(okHtml, /(\d+) of \1 brokers/); assert.match(okHtml, /1 broker with counted positions/)
@@ -141,7 +145,7 @@ assert.doesNotMatch(okHtml, /(\d+) of \1 brokers/); assert.match(okHtml, /1 brok
 // 5. LQ-2460 F1 (REVIEW-2448): an unpriced GAP (counted:false, no value) is a GAP row and a P0, never CLEAR.
 const unpricedHtml = render(ok(API.holdings, wire([row({ symbol: 'SAFE' }),
   row({ symbol: 'NOPX', market_value: null, price: null, protection_state: 'GAP', protection: { state: 'GAP', counted: false }, stop_price: null, stop_qty: null })])))
-assert.doesNotMatch(unpricedHtml, />CLEAR</); assert.equal(chipP0(unpricedHtml), '1 P0')
+assert.doesNotMatch(unpricedHtml, />CLEAR</); assert.equal(chipP0(unpricedHtml), '1 position needs stop review')
 assert.match(section(unpricedHtml, 'card-protect').split('data-testid="prot-row"').find(r => r.includes('NOPX')) || '', /NO STOP/)
 
 // 6. LQ-2460 F2: a cash-only book (zero counted positions, count not confirmed) is UNKNOWN, never CLEAR.
@@ -384,11 +388,12 @@ assert.match(section(cashHtml, 'card-protect'), /Protection UNKNOWN: No counted 
   assert.match(g, /its own summary: 1 position at or above \$100/)
   assert.doesNotMatch(g, /disagree/i)
   assert.doesNotMatch(g, /summary 11 vs/)
-  assert.equal(chipP0(html), '0 P0', 'a healthy book with no published finding draws no P0')
+  assert.equal(chipP0(html), '0 positions need stop review', 'a healthy book draws no review population')
   // ...and a published finding still raises exactly one P0, with its detail on the page.
   const withFinding = render(ok(API.holdings, wire([row({ symbol: 'SAFE' })], { position_counts: { ...SERVED_COUNTS, findings: [{ code: 'LIVE_MARK_COUNT_DIFFERS', detail: 'the live re-mark counts 12 instruments at or above $100 where the positions store counts 11' }] } })))
-  assert.equal(chipP0(withFinding), '1 P0')
-  // The finding's detail is carried by the P0 model (asserted in the model suite); the page draws the count.
+  assert.equal(chipP0(withFinding), '0 positions need stop review', 'a count-mismatch finding is not a position: the badge counts positions')
+  assert.match(withFinding, /data-testid="chip-count-mismatch"/, 'the finding keeps its own labelled chip')
+  assert.doesNotMatch(html, /chip-count-mismatch/, 'no mismatch chip on a book without one')
 }
 
 // 17. A status row opens the measures sheet at its own measure (drawn first, marked); the other three stay.
@@ -416,6 +421,81 @@ assert.match(section(cashHtml, 'card-protect'), /Protection UNKNOWN: No counted 
   const unknown = section(okHtml, 'card-since')
   assert.match(unknown, /data-testid="since-detail"/)
   assert.doesNotMatch(unknown, /Last visit \d/, 'no visit time is drawn when the record is missing')
+}
+
+// 19. PR-001 (S8H-2 S3): the headline tiles are MUTUALLY EXCLUSIVE counted-position states that add to the counted
+// population, and each one opens exactly the rows it counts. A partially covered position is Partial only — it is
+// never counted in Fully covered, which is what the old "Protected 8" tile did.
+{
+  const html = render(ok(API.holdings, wire([
+    row({ symbol: 'FULL', market_value: 5000 }),
+    row({ symbol: 'PART', market_value: 4000, shares: 300, stop_qty: 200 }),
+    row({ symbol: 'GONE', market_value: 3000, protection_state: 'GAP', protection: { state: 'GAP', counted: true }, stop_price: null, stop_qty: null }),
+    row({ symbol: 'UNK', market_value: 2000, protection_state: 'UNKNOWN', protection: { state: 'UNKNOWN', cause: 'No Stop Read', counted: true }, stop_price: null, stop_qty: null }),
+    row({ symbol: 'CASH', is_cash: true, market_value: 900, protection_state: 'EXEMPT', protection: { state: 'EXEMPT', counted: false } }),
+  ])))
+  const protectSec = section(html, 'card-protect')
+  const tile = label => {
+    const m = protectSec.match(new RegExp(`<button[^>]*><span class="k">${label}</span><span class="n">(\\d+)</span></button>`))
+    assert.ok(m, `missing tile ${label}`)
+    return Number(m[1])
+  }
+  const got = { covered: tile('Fully covered'), partial: tile('Partial'), noStop: tile('No broker stop'), unknown: tile('Unknown') }
+  assert.deepEqual(got, { covered: 1, partial: 1, noStop: 1, unknown: 1 }, 'tiles are exclusive')
+  assert.equal(got.covered + got.partial + got.noStop + got.unknown, 4, 'tiles add to the counted population')
+  assert.match(protectSec, /4 of 4 counted positions/)
+  assert.doesNotMatch(protectSec, />Protected</, 'no tile calls a partial position fully protected')
+  // The tile filters are exclusive too: every counted row lands in exactly one of the four.
+  const ps = positionsFrom(ok(API.holdings, wire([
+    row({ symbol: 'FULL' }), row({ symbol: 'PART', shares: 300, stop_qty: 200 }),
+    row({ symbol: 'GONE', protection_state: 'GAP', protection: { state: 'GAP', counted: true }, stop_price: null, stop_qty: null }),
+    row({ symbol: 'UNK', protection_state: 'UNKNOWN', protection: { state: 'UNKNOWN', cause: 'No Stop Read', counted: true }, stop_price: null, stop_qty: null }),
+  ])).data, NOW)
+  const counted = ps.filter(p => p.counted).length
+  const union = ['covered', 'partial', 'unprotected', 'unknown'].map(f => filterPositions(ps, f, 'all'))
+  assert.equal(union.reduce((n, rows) => n + rows.length, 0), counted, 'filter populations partition the counted rows')
+  const keys = union.flat().map(p => p.key)
+  assert.equal(new Set(keys).size, keys.length, 'no row matches two of the four filters')
+}
+
+// 20. PR-003: a verification time later than the capture clock is unverified evidence, not a successful read; and a
+// row with no published read time says so rather than "never" (which read as "a read happened and found nothing").
+{
+  const future = new Date(Date.parse(AT) + 12 * 3600_000).toISOString()
+  const hold = ok(API.holdings, wire([
+    row({ symbol: 'AMNX', protection_state: 'PROTECTED', protection: { state: 'PROTECTED', as_of: future, counted: true } }),
+    row({ symbol: 'NOC', market_value: 800, protection_state: 'GAP', protection: { state: 'GAP', counted: true }, stop_price: null, stop_qty: null, stop_captured_at: null }),
+  ]))
+  const html = render(hold)
+  const rows = section(html, 'card-protect').split('data-testid="prot-row"').slice(1)
+  const amnx = rows.find(r => r.includes('AMNX'))
+  const noc = rows.find(r => r.includes('NOC'))
+  assert.ok(amnx && noc, 'both rows drawn')
+  assert.match(amnx, /UNKNOWN/, 'a future verification is not evidence of protection')
+  // The row line carries the state; the sentence is drawn in the position sheet, so assert it on the model both draw from.
+  assert.match(positionsFrom(hold.data, NOW).find(p => p.symbol === 'AMNX').reason, /later than the capture clock/)
+  assert.match(amnx, /read time invalid · not verified/)
+  assert.doesNotMatch(amnx, /STOP \$/, 'no stop chip is drawn from an impossible time')
+  assert.match(noc, /NO STOP/)
+  assert.match(noc, /no read time published/)
+  assert.doesNotMatch(noc, /· never/, '"never" is not drawn as read evidence')
+}
+
+// 21. PR-017: a planned level is its own fact beside the broker-evidence state. AMANX reads UNKNOWN *and* shows its
+// plan; it is not counted as "No broker stop" (a plan is not coverage) and the Planned filter counts the facet.
+{
+  const html = render(ok(API.holdings, wire([
+    row({ symbol: 'AMNX', market_value: 4000, protection_state: 'UNKNOWN', protection: { state: 'UNKNOWN', cause: 'No Stop Read', counted: true },
+      stop_price: 63.66, stop_qty: 100, stop_source: 'planned', stop_state: 'planned' }),
+  ])))
+  const protectSec = section(html, 'card-protect')
+  const amnx = protectSec.split('data-testid="prot-row"').slice(1).find(r => r.includes('AMNX'))
+  assert.match(amnx, /UNKNOWN/, 'broker evidence stays UNKNOWN')
+  assert.match(amnx, /plan \$63\.66 \(not rested\)/, 'the plan is visible as a separate fact')
+  // The filter chips live in the holdings list, not in the protection card; they read the same counts.
+  assert.match(html, /Planned 1</, 'the Planned filter counts the facet')
+  assert.match(html, /No broker stop 0</, 'a plan is not counted as no-broker-stop coverage')
+  assert.match(protectSec, /1 positions with unverifiable protection/, 'the row is counted UNKNOWN, not unprotected')
 }
 
 console.log('PortfolioV002.view.test.mjs: ok')

@@ -42,7 +42,8 @@ const bare = rowProtection(row({ protection_state: null, protection: null, stop_
 assert.equal(bare.protection, 'UNKNOWN'); assert.equal(bare.cause, 'No Protection Verdict')
 
 // 2. A pending-activation GTC stop the backend calls PROTECTED gives OK (fail-before: storedStops dropped it).
-const pend = positionsFrom(wire([row({ symbol: 'BBB', stop_state: 'pending_activation' }), row({ symbol: 'CCC', market_value: 2000 })]))
+// The clock is always passed: a fixture dated in the future of the wall clock is an impossible read (PR-003).
+const pend = positionsFrom(wire([row({ symbol: 'BBB', stop_state: 'pending_activation' }), row({ symbol: 'CCC', market_value: 2000 })]), NOW)
 const pm = protectionModel(ok(wire([])), pend)
 assert.equal(pm.verdict, 'OK'); assert.equal(pm.counted, 2); assert.equal(pm.protectedN, 2); assert.equal(pm.action.length, 0)
 

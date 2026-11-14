@@ -177,6 +177,13 @@ function ageMs(iso: string | null | undefined, nowMs: number): number | null {
   const t = Date.parse(iso)
   return Number.isFinite(t) ? Math.max(0, nowMs - t) : null
 }
+/** Signed age, for the one question ageMs's clamp hides: is this observation LATER than the capture clock?
+ *  (PR-003: an impossible future observation is unverified evidence, never an ordinary successful read.) */
+function skewMs(iso: string | null | undefined, nowMs: number): number | null {
+  if (!iso) return null
+  const t = Date.parse(iso)
+  return Number.isFinite(t) ? nowMs - t : null
+}
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 
 // ── per-row protection (display only; the verdict is the backend's) ──────────────────────────────────
@@ -196,8 +203,16 @@ export interface PositionModel {
   /** Display-only coverage classification (covered/partial/uncovered/planned-only/exempt/unverifiable). It never
    *  changes the backend's protection verdict or the rollup. */
   coverage: CoverageView
+  /** PR-017: a planned level is its own fact, drawn beside the broker-evidence state. A plan never promotes UNKNOWN
+   *  to NO STOP and never counts as coverage; the wire publishes it as stop_source 'planned' (or stop_state). */
+  planned: PlannedFacet | null
+  /** PR-003: the row's verification time is later than the capture clock. An impossible future observation cannot
+   *  label a successful read; a PROTECTED row with such a time reads UNKNOWN with its cause. */
+  verifiedAtInvalid: boolean
   raw: HoldingWire
 }
+
+export interface PlannedFacet { price: number | null; source: string; at: string | null }
 
 /** Display-only stop coverage (campaign vocabulary, 2026-11-14). The backend's protection_state stays the verdict;
  *  this class answers "how much of the holding does a resting stop actually cover", which the verdict does not say.
@@ -293,8 +308,17 @@ function rowView(h: HoldingWire, ctx: RowContext): Omit<RowView, 'lastKnownGap'>
   const st = String(h.protection_state || p.state || '').toUpperCase()
   const stopPrice = num(h.stop_price)
   const verifiedAt = p.as_of ?? h.stop_captured_at ?? null
+  // PR-003: an observation later than the page's own clock is impossible. It is never an ordinary successful
+  // verification: a PROTECTED row reads UNKNOWN, and no age-based rule (R2) treats a negative age as fresh.
+  const skew = skewMs(verifiedAt, ctx.nowMs)
+  const invalidAt = skew != null && skew < 0
   const source = p.source || h.stop_source || 'none'
   if (st === 'PROTECTED') {
+    if (invalidAt) {
+      return { protection: 'UNKNOWN', chip: 'UNKNOWN', cause: 'Invalid Stop Read Time',
+        reason: `The stop read time (${fmtET(verifiedAt, true)}) is later than the capture clock; the verification cannot be trusted`,
+        source, verifiedAt, stopPrice }
+    }
     return { protection: 'PROTECTED', chip: stopPrice != null && stopPrice > 0 ? `STOP $${stopPrice.toFixed(2)}` : 'STOP · price not recorded',
       reason: p.reason || 'Resting stop', cause: null, source, verifiedAt, stopPrice }
   }
@@ -313,9 +337,11 @@ function rowView(h: HoldingWire, ctx: RowContext): Omit<RowView, 'lastKnownGap'>
     // as_of carries no age to judge (the book-level read age is the served rollup's, G2) and stays GAP.
     const age = ageMs(verifiedAt, ctx.nowMs)
     const limit = open ? STOP_READ_MAX_AGE_MS.session : STOP_READ_MAX_AGE_MS.offHours
-    if (age != null && age > limit) {
+    if (age != null && (age > limit || age < 0)) {
       return { protection: 'UNKNOWN', chip: 'UNKNOWN', lastKnownGap: true,
-        reason: `Last known: no resting stop, but the stop read is ${fmtAge(age)} old (limit ${fmtAge(limit)}); R2: UNKNOWN`,
+        reason: age < 0
+          ? `Last known: no resting stop, but the read time is later than the capture clock; R2: UNKNOWN`
+          : `Last known: no resting stop, but the stop read is ${fmtAge(age)} old (limit ${fmtAge(limit)}); R2: UNKNOWN`,
         cause: 'Stale Stop Read', source, verifiedAt, stopPrice }
     }
     return { protection: 'GAP', chip: 'NO STOP', reason: p.reason || 'Stop read succeeded and shows no resting stop',
@@ -348,11 +374,17 @@ export function positionsFrom(w: HoldingsWire | null, nowMs: number = Date.now()
     const account = String(h.account_label || h.account || h.account_id || '—')
     const accountKey = String(h.account || h.account_id || h.account_label || '—')
     const heldShares = num(h.shares) ?? num(h.quantity)
+    // PR-017: the planned level is published beside the broker evidence, never folded into it.
+    const plannedOnly = String(h.stop_source || '').toLowerCase() === 'planned' || String(h.stop_state || '').toLowerCase() === 'planned'
+    const planned: PlannedFacet | null = plannedOnly
+      ? { price: num(h.stop_price), source: String(h.stop_source || 'planned'), at: h.stop_captured_at ?? null } : null
+    const atAge = skewMs(pr.verifiedAt, ctx.nowMs)
     return {
       key: `${h.account_id || h.account || i}:${symbol}`, symbol, account, accountKey, broker: String(h.broker || '—'),
       shares: heldShares, value, price: num(h.price), dayPct: num(h.day_change_pct), dayUsd: num(h.day_change),
       isCash, counted, unpriced: unpriced && !isCash, underFloor: pr.protection !== 'EXEMPT' && !isCash && !counted,
-      ...pr, priceStale: h.price_stale ?? null, restingShares: num(h.stop_qty), coverage: coverageFor(pr, h, heldShares), raw: h,
+      ...pr, priceStale: h.price_stale ?? null, restingShares: num(h.stop_qty), coverage: coverageFor(pr, h, heldShares),
+      planned, verifiedAtInvalid: atAge != null && atAge < 0, raw: h,
     }
   }).sort((a, b) => (b.value ?? -1) - (a.value ?? -1))
 }
@@ -700,16 +732,45 @@ export function statusRows(hr: Read<HoldingsWire>, ir: Read<IncidentsWire>, posi
 }
 
 // ── filters ───────────────────────────────────────────────────────────────────────────────────────────
-export type HoldingsFilter = 'all' | 'unprotected' | 'partial' | 'planned' | 'unknown' | 'exempt' | 'under100'
+/** `covered`, `partial`, `unprotected` (no broker stop: uncovered or planned-only, never a plan counted as a stop)
+ *  and `unknown` are MUTUALLY EXCLUSIVE over the counted population (PR-001): a row appears in exactly one of the
+ *  four, so the tiles on the page sum to the counted total. `planned` is the independent facet filter (PR-017):
+ *  any row carrying a planned level, whatever its broker-evidence state. */
+export type HoldingsFilter = 'all' | 'covered' | 'unprotected' | 'partial' | 'planned' | 'unknown' | 'exempt' | 'under100' | 'review'
 export function filterPositions(ps: PositionModel[], f: HoldingsFilter, account: string): PositionModel[] {
   return ps.filter(p => (account === 'all' || p.account === account) && (
     f === 'all' ? true
-      : f === 'unprotected' ? p.counted && (p.protection === 'GAP' || p.protection === 'WARN')
-        : f === 'partial' ? p.coverage.category === 'PARTIAL'
-          : f === 'planned' ? p.coverage.category === 'PLANNED_ONLY'
-            : f === 'unknown' ? p.counted && p.protection === 'UNKNOWN'
-              : f === 'exempt' ? p.coverage.category === 'EXEMPT'
-                : p.underFloor))
+      : f === 'covered' ? p.counted && p.coverage.category === 'COVERED'
+        : f === 'unprotected' ? p.counted && (p.coverage.category === 'UNCOVERED' || p.coverage.category === 'PLANNED_ONLY')
+          : f === 'partial' ? p.counted && p.coverage.category === 'PARTIAL'
+            : f === 'planned' ? p.planned != null || p.coverage.category === 'PLANNED_ONLY'
+              : f === 'unknown' ? p.counted && p.coverage.category === 'UNVERIFIABLE'
+                : f === 'exempt' ? p.coverage.category === 'EXEMPT'
+                  : f === 'review' ? p.counted && (p.protection === 'GAP' || p.lastKnownGap)
+                    : p.underFloor))
+}
+
+/** PR-006: the positions a stop-review badge counts — unprotected in a good read, or the last-known GAP kept while
+ *  its read is stale. Never a category count, never an incident count: this is one entry per position. */
+export function reviewPositions(ps: PositionModel[]): PositionModel[] {
+  return ps.filter(p => p.counted && (p.protection === 'GAP' || p.lastKnownGap))
+}
+
+/** PR-001: the four mutually exclusive counted-position states, so the headline tiles add to the counted total and
+ *  a partial position is never counted as fully covered. Exempt and under-floor rows are outside `counted`. */
+export interface ExclusiveCoverage { covered: number; partial: number; noStop: number; unknown: number; counted: number; complete: boolean }
+export function exclusiveCoverage(ps: PositionModel[]): ExclusiveCoverage {
+  const counted = ps.filter(p => p.counted)
+  const n = { covered: 0, partial: 0, noStop: 0, unknown: 0 }
+  for (const p of counted) {
+    const c = p.coverage.category
+    if (c === 'COVERED') n.covered++
+    else if (c === 'PARTIAL') n.partial++
+    else if (c === 'UNCOVERED' || c === 'PLANNED_ONLY') n.noStop++
+    else n.unknown++
+  }
+  const total = n.covered + n.partial + n.noStop + n.unknown
+  return { ...n, counted: counted.length, complete: total === counted.length }
 }
 
 /** The classic stop desk link carries the full position identity (2026-11-14 campaign): symbol, the account key
