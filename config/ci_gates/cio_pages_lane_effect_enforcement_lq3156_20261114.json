@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_pages_lane_effect_enforcement_lq3156_20261114",
+  "files": [
+    "tests/test_cio_pages_lane_effect_enforcement_lq3156_20261114.py"
+  ],
+  "anchor": "LQ3156_LANE_EFFECT_ENFORCEMENT",
+  "comment": [
+    "ANCHOR: LQ3156_LANE_EFFECT_ENFORCEMENT — CAMPAIGN-8H §5.3 for the cio-pages-product lane. Against the REAL",
+    "store_pg upsert and the REAL per-product pg_try_advisory_xact_lock on a disposable initdb cluster: (1) a",
+    "duplicate fire is SKIPPED_BUSY and builds/writes nothing; (2) a later legitimate refresh publishes (seq+1);",
+    "(3) an older admission against a VALID stored row is REFUSED_OLDER, the CLI exits 3, the build log gets the",
+    "FAILED row with detail.receipt_outcome=REFUSED_OLDER, and the stored row is untouched. IsolatedPostgres only:",
+    "no live store, no Valkey, no lane, no cron, no unit."
+  ]
+}
