@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { BB } from '../lib/holdingsTerminalTokens'
 import { fmt$ } from '../lib/format'
+import { readinessFromPlan, nextReadinessAction, readinessEvidenceLine } from '../lib/redeployReadiness'
 
 // ── workstation typography (Part F floor) ───────────────────────────────────
 const DENSITY_KEY = 'cc-v3-redeploy-density'
@@ -293,42 +294,22 @@ export default function RedeployDesk() {
     return missing
   }
 
-  // Server readiness first (defect 1/23) — the UI never upgrades a plan the
-  // server holds back. Fallback for old rows keeps the legacy checks PLUS an
-  // oversight-pending gate on major events (> $25k proceeds).
-  const readinessOf = (p: any): { state: string; reasons: string[]; operator_ready: boolean; display: string } => {
-    if (p?.readiness?.state) {
-      return {
-        state: p.readiness.state,
-        reasons: p.readiness.reasons || [],
-        operator_ready: !!p.readiness.operator_ready,
-        display: p.readiness.display || String(p.readiness.state).replace(/_/g, ' '),
-      }
-    }
+  // Server readiness is authoritative (defect 1/23). A plan WITHOUT a readiness state fails closed
+  // to READINESS UNAVAILABLE — the legacy checks below are shown as evidence and never select a
+  // state, because an empty client missing-list is not a server verdict (RR-014).
+  const readinessEvidence = (p: any): string[] => {
     const missing = planReadiness(p)
     const majorEvent = (eventRow?.proceeds_usd ?? 0) > 25_000
     const oversightPassed = p?.oversight_status === 'pass' || p?.oversight_status === 'passed'
     if (majorEvent && !oversightPassed && !missing.includes('oversight (failed)')) missing.push('oversight pending')
-    return missing.length
-      ? { state: missing.includes('oversight pending') ? 'OVERSIGHT_PENDING' : 'DATA_INCOMPLETE',
-          reasons: missing, operator_ready: false,
-          display: missing.includes('oversight pending') && missing.length === 1
-            ? 'ANALYTICS READY — OVERSIGHT PENDING'
-            : `NOT OPERATOR-READY: needs ${missing.join(', ')}` }
-      : { state: 'OPERATOR_READY', reasons: [], operator_ready: true, display: 'OPERATOR-READY' }
+    return missing
   }
+  const readinessOf = (p: any) => readinessFromPlan(p, readinessEvidence(p))
   const readinessTone = (state: string) =>
     ['OPERATOR_READY', 'OPERATOR_SELECTED', 'OPERATOR_LOCKED'].includes(state) ? BB.green
       : ['ANALYTICS_READY', 'OVERSIGHT_PENDING'].includes(state) ? BB.amberAlt
-        : BB.red // OVERSIGHT_FAILED / QUOTES_STALE / DATA_INCOMPLETE / unknown
-  const nextActionFor = (p: any): string => {
-    const r = readinessOf(p)
-    if (r.state === 'QUOTES_STALE' || r.reasons.some(x => /stale|fresh quotes/i.test(x))) return 'Refresh quotes'
-    if (r.state === 'OVERSIGHT_PENDING' || r.reasons.some(x => /oversight pending/i.test(x))) return 'Run oversight'
-    if (r.state === 'OVERSIGHT_FAILED') return 'Review oversight findings'
-    if (r.operator_ready) return 'Review comparison, approve plan for operator implementation review'
-    return r.reasons.length ? `Resolve: ${r.reasons.join(', ')}` : 'Review plan readiness'
-  }
+        : BB.red // READINESS_UNAVAILABLE / OVERSIGHT_FAILED / QUOTES_STALE / DATA_INCOMPLETE / unknown
+  const nextActionFor = (p: any): string => nextReadinessAction(readinessOf(p))
   // Four capital fields (OVR-P0-TARGET-VS-CURRENT-ACTION). NEVER sum
   // executable_at_current_quote_usd with staged_limit_order_usd — they are two
   // valuations of the SAME legs (the old addition double-counted proceeds).
@@ -480,6 +461,9 @@ export default function RedeployDesk() {
             {kv('SYSTEM LEAN', rec?.primary?.archetype ? `Plan ${rec.primary.archetype}` : '—', BB.amber)}
             {kv('OPERATOR', selectedPlan ? `Plan ${selectedPlan.plan_archetype}` : 'none')}
             <Pill text={fr.display} color={readinessTone(fr.state)} title={(fr.reasons || []).join('; ') || undefined} />
+            {readinessEvidenceLine(fr) && <div role="status" style={{ flexBasis: '100%', fontSize: t.label, color: BB.text3 }}>
+              {readinessEvidenceLine(fr)} {nextActionFor(focus)}
+            </div>}
             {kv('ULTIMATE TARGET', fmt$(ultimate), BB.text0, meaningOf(focus, 'executable_at_current_quote_usd'))}
             {kv('IMPLEMENT NOW', fmt$(implementNow), BB.green, meaningOf(focus, 'implement_now_usd'))}
             {kv('PENDING STAGES', fmt$(pendingStages), BB.amberAlt, meaningOf(focus, 'pending_future_stages_usd'))}

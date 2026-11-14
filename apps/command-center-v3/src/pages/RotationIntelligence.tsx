@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import AdvisorChangesPanel from '../components/AdvisorChangesPanel'
 import RotationPublicationNotice from '../components/RotationPublicationNotice'
+import { SummaryFilterCard, type SummaryFilterCardProps } from '../components/rotation/SummaryFilterCard'
+import { CandidateScoreLine } from '../components/rotation/CandidateScoreLine'
 import { rotationDescriptive, type RotationDescriptive } from '../lib/rotationDescriptive'
 import { fmtAsOf } from '../lib/asOfDisplay'
 import { useRotationAvailability } from '../hooks/useRotationAvailability'
@@ -229,18 +231,10 @@ export function RotationDescriptivePanel({ data }: { data: unknown }) {
   </section>
 }
 
-function SummaryCard({ label, value, color, onClick, active }: { label: string; value: React.ReactNode; color?: string; onClick?: () => void; active?: boolean }) {  const clickable = !!onClick
-  return (
-    <div onClick={onClick} title={clickable ? `Show ${label}` : undefined}
-      style={{ ...card, textAlign: 'center', padding: '14px 10px',
-        cursor: clickable ? 'pointer' : 'default',
-        borderColor: active ? (color ?? '#60a5fa') : 'var(--border)',
-        boxShadow: active ? `0 0 0 1px ${color ?? '#60a5fa'}` : undefined,
-        transition: 'border-color .15s' }}>
-      <div style={{ fontSize: 24, fontWeight: 800, color: color ?? 'var(--text0)' }}>{value}</div>
-      <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 2 }}>{label}{clickable && <span style={{ color: color ?? '#60a5fa' }}> ▾</span>}</div>
-    </div>
-  )
+// A counter that filters a queue is a real button (aria-pressed, keyboard, visible focus) — see
+// components/rotation/SummaryFilterCard.tsx. The card style stays page-local.
+function SummaryCard(props: Omit<SummaryFilterCardProps, 'style'>) {
+  return <SummaryFilterCard {...props} style={card} />
 }
 
 // ── Page ────────────────────────────────────────────────────────────────────
@@ -578,7 +572,7 @@ export default function RotationIntelligence() {
       <header style={{ marginBottom: 18 }}>
         <div className="hub-title-row" style={{ marginBottom: 8 }}>
           <div>
-            <div style={hubTitle()}>Rotation Intelligence</div>
+            <h1 style={{ ...hubTitle(), margin: 0 }}>Rotation Intelligence</h1>
             <div style={hubSubtitle(terminalUi)}>
               Grounded local review + free/OAuth Grok second opinion · strategy engine — monitoring
               lens lives at <a href="/v3/watch?tab=sectors" style={{ color: 'inherit', textDecoration: 'underline dotted' }}>Watch → Sectors</a>
@@ -586,7 +580,7 @@ export default function RotationIntelligence() {
           </div>
           <div className="hub-tabs" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             {PAGE_TABS.map(t => (
-              <button key={t} onClick={() => selectPageTab(t)} style={hubTab(pageTab === t, terminalUi)}>{t}</button>
+              <button key={t} type="button" aria-pressed={pageTab === t} onClick={() => selectPageTab(t)} style={hubTab(pageTab === t, terminalUi)}>{t}</button>
             ))}
           </div>
         </div>
@@ -594,7 +588,7 @@ export default function RotationIntelligence() {
           Advisory only · human review required · no broker action
         </div>
         {pageTab === 'Review' && publication.ready && data?.cache_age_sec != null && (
-          <div style={{ fontSize: 10, color: data?.stale ? '#f59e0b' : 'var(--text3)', marginTop: 4 }}>
+          <div role="status" style={{ fontSize: 10, color: data?.stale ? '#f59e0b' : 'var(--text3)', marginTop: 4 }}>
             ⟳ refreshed {data.cache_age_sec < 60 ? `${data.cache_age_sec}s` : `${Math.round(data.cache_age_sec / 60)}m`} ago{data?.stale ? ' · stale, refreshing in background' : ''} · heavy engine pre-warmed every 8 min (no page wait)
           </div>
         )}
@@ -1105,10 +1099,7 @@ export default function RotationIntelligence() {
                   )}
                   <div style={{ display: 'flex', gap: 10, fontSize: 10, color: 'var(--text2)', flexWrap: 'wrap' }}>
                     {c.current_value != null && <span>value {money(c.current_value)}</span>}
-                    {c.trim_score ? <span>trim {c.trim_score}</span> : null}
-                    {c.add_score ? <span style={{ color: '#22c55e' }}>add {c.add_score}</span> : null}
-                    {!c.trim_score && c.degradation && <span style={{ color: '#ef4444' }} title="Valuation trim score is 0; the rotate-out signal is the stop/thesis status">stop-driven</span>}
-                    {c.confidence != null && <span>conf {c.confidence}</span>}
+                    <CandidateScoreLine candidate={c} />
                   </div>
                   {(ev.positive_upside_pct != null || ev.concentration_pct != null) && (
                     <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>
