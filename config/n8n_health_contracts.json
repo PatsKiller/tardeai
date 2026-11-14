@@ -45453,7 +45453,7 @@
       "id": "cc-product-market-risk",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "lq_3008_cc_product_builder_lanes_20261113",
       "stage": "shadow",
       "purpose": {
@@ -45562,12 +45562,10 @@
       "review_by": "2026-11-26",
       "review": {
         "prepared_by": "agent draft (cc-sonnet-5, LQ-3008, 2026-11-13)",
-        "status": "DRAFT",
-        "reviewed_by": null,
-        "reviewed_on": null,
-        "requested_of": "non-author reviewer",
-        "requested_on": "2026-11-13",
-        "note": "Needs a non-author review against scripts/cc_products_build.py, the registry row and the allowlist row. Shadow-stage only."
+        "status": "REVIEWED",
+        "reviewed_by": "cc-sonnet-6/LQ-3094 (non-author; author cc-sonnet-5); registration only",
+        "reviewed_on": "2026-11-13",
+        "note": "registration only: shadow lane, --dry-run argv, baseline.source NOT_MEASURED for the dispatcher; no live fire. Checked against scripts/cc_products_build.py --product, the registry row and the allowlist row (REVIEW-LQ-20261113-3094)."
       }
     },
     {
@@ -45575,7 +45573,7 @@
       "id": "cc-product-risk",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "lq_3008_cc_product_builder_lanes_20261113",
       "stage": "shadow",
       "purpose": {
@@ -45684,12 +45682,10 @@
       "review_by": "2026-11-26",
       "review": {
         "prepared_by": "agent draft (cc-sonnet-5, LQ-3008, 2026-11-13)",
-        "status": "DRAFT",
-        "reviewed_by": null,
-        "reviewed_on": null,
-        "requested_of": "non-author reviewer",
-        "requested_on": "2026-11-13",
-        "note": "Needs a non-author review against scripts/cc_products_build.py, the registry row and the allowlist row. Shadow-stage only."
+        "status": "REVIEWED",
+        "reviewed_by": "cc-sonnet-6/LQ-3094 (non-author; author cc-sonnet-5); registration only",
+        "reviewed_on": "2026-11-13",
+        "note": "registration only: shadow lane, --dry-run argv, baseline.source NOT_MEASURED for the dispatcher; no live fire. Checked against scripts/cc_products_build.py --product, the registry row and the allowlist row (REVIEW-LQ-20261113-3094)."
       }
     },
     {
@@ -45697,7 +45693,7 @@
       "id": "cc-product-analyst-links",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "lq_3008_cc_product_builder_lanes_20261113",
       "stage": "shadow",
       "purpose": {
@@ -45806,12 +45802,10 @@
       "review_by": "2026-11-26",
       "review": {
         "prepared_by": "agent draft (cc-sonnet-5, LQ-3008, 2026-11-13)",
-        "status": "DRAFT",
-        "reviewed_by": null,
-        "reviewed_on": null,
-        "requested_of": "non-author reviewer",
-        "requested_on": "2026-11-13",
-        "note": "Needs a non-author review against scripts/cc_products_build.py, the registry row and the allowlist row. Shadow-stage only."
+        "status": "REVIEWED",
+        "reviewed_by": "cc-sonnet-6/LQ-3094 (non-author; author cc-sonnet-5); registration only",
+        "reviewed_on": "2026-11-13",
+        "note": "registration only: shadow lane, --dry-run argv, baseline.source NOT_MEASURED for the dispatcher; no live fire. Checked against scripts/cc_products_build.py --product, the registry row and the allowlist row (REVIEW-LQ-20261113-3094)."
       }
     },
     {
@@ -45819,7 +45813,7 @@
       "id": "cc-product-home",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "lq_3008_cc_product_builder_lanes_20261113",
       "stage": "shadow",
       "purpose": {
@@ -45928,12 +45922,10 @@
       "review_by": "2026-11-26",
       "review": {
         "prepared_by": "agent draft (cc-sonnet-5, LQ-3008, 2026-11-13)",
-        "status": "DRAFT",
-        "reviewed_by": null,
-        "reviewed_on": null,
-        "requested_of": "non-author reviewer",
-        "requested_on": "2026-11-13",
-        "note": "Needs a non-author review against scripts/cc_products_build.py, the registry row and the allowlist row. Shadow-stage only."
+        "status": "REVIEWED",
+        "reviewed_by": "cc-sonnet-6/LQ-3094 (non-author; author cc-sonnet-5); registration only",
+        "reviewed_on": "2026-11-13",
+        "note": "registration only: shadow lane, --dry-run argv, baseline.source NOT_MEASURED for the dispatcher; no live fire. Checked against scripts/cc_products_build.py --product, the registry row and the allowlist row (REVIEW-LQ-20261113-3094)."
       }
     }
   ],

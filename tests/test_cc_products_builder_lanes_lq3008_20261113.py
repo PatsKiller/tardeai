@@ -5,7 +5,7 @@ market_risk.latest, risk, reports.analyst_links and home:
   * a dispatcher row at stage shadow / dispatch.mode dry_run, matched on ``scripts/cc_products_build.py --product <id>``,
     with a db_max signal on the build log filtered to that product;
   * an allowlist entry that runs the entrypoint with ``--dry-run`` and has no live argv (live_arg null);
-  * a DRAFT contract (the author is not a reviewer);
+  * a REVIEWED (registration-only) contract, reviewed by a non-author (LQ-3094);
   * compute_due on the real rows emits only dry_run, one per slot, against a throwaway ledger;
   * the entrypoint accepts exactly the products the catalogue builds, and imports neither api_v2 nor a broker module.
 Synthetic: tmp_path ledger, no DB, no build, no provider, no broker, no systemd call.
@@ -164,9 +164,18 @@ def test_compute_due_emits_only_dry_run_and_never_twice_in_a_slot(pid, tmp_path,
 
 
 @pytest.mark.parametrize("pid", PRODUCTS)
-def test_the_contract_is_a_draft_until_a_non_author_reviews_it(pid):
+def test_the_contract_is_reviewed_by_a_non_author_for_registration_only(pid):
+    """LQ-20261113-3094 (F-C Option A): the four contracts were reviewed, not grandfathered. The author is cc-sonnet-5."""
     c = contract(pid)
-    assert c["status"] == "DRAFT" and c["review"]["status"] == "DRAFT" and c["review"]["reviewed_by"] is None
+    assert c["status"] == c["review"]["status"] == "REVIEWED"
+    by = c["review"]["reviewed_by"]
+    assert by and "cc-sonnet-5" not in by.split(";")[0] and "cc-sonnet-6/LQ-3094" in by
+    assert c["review"]["reviewed_on"] and "registration only" in c["review"]["note"]
+    assert "NOT_MEASURED" in c["review"]["note"] and "no live fire" in c["review"]["note"]
+    # freshness thresholds are 3x / 6x the shadow cadence of the lane's own cron (hours)
+    b = c["baseline"]
+    assert b["freshness_degraded_after_h"] == SHADOW_CADENCE_S[pid] * 3 / 3600
+    assert b["freshness_failed_after_h"] == SHADOW_CADENCE_S[pid] * 6 / 3600
     assert c["stage"] == row(pid)["scheduler"]["stage"] == "shadow"
     assert c["baseline"]["timeout_s"] == entry(pid)["timeout_s"]
     assert c["baseline"]["duration_degraded_above_s"] == round(0.8 * entry(pid)["timeout_s"], 1)
