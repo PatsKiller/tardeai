@@ -57381,6 +57381,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             rest = base_path[len("/api/v3/data-broker/trade-journeys") :].strip("/")
             return 200, (_tj.get_detail(rest, query or {}) if rest else _tj.get_list(query or {}))
         except Exception as e:
+            if getattr(e, "served_response", None) is not None:  # stale_serve.Deferred: the 503 as is (LQ-3051 C1a)
+                return e.served_response
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
     # Canonical Data Broker — catalog + Watch Intelligence (read-only)
@@ -57422,6 +57424,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "hint": "GET /api/v3/data-broker for the projection catalog",
             }
         except Exception as e:
+            if getattr(e, "served_response", None) is not None:  # stale_serve.Deferred: the 503 as is (LQ-3051 C1b)
+                return e.served_response
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
     # Governed Watch commands (writes) — not broker projection mutations
