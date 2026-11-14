@@ -48899,8 +48899,20 @@ def _asks_tracked_unknown(key: str, meta: dict):
 def _asks_tracked_cached(base_path, method, body, query):
     from scripts.lib import cio_ask_api as _caa
 
+    # LQ-20261114-3156: the tracked list is an operator read (cio_ask_api._operator: tailnet principal AND
+    # serve_proxy listener). The SWR build runs on a background thread where cc_auth's request context is empty, so
+    # without a snapshot the handler judged the BUILD THREAD (anonymous) and refused it 403 — every build failed
+    # (462 logged failures, tracked: null forever) and the route's 403 contract was swallowed into a 200 UNKNOWN by
+    # the SWR wrapper. Take the identity HERE, on the request thread: a non-operator is answered by the handler itself
+    # (its real 403) and starts NO build; an operator's build is judged by the identity that asked for it.
+    try:
+        ctx = _caa.snapshot_ctx()
+    except Exception:  # noqa: BLE001 -- a config read failure is the handler's own 503 contract, never a build fail
+        return _caa.handle(base_path, method, body, query)
+    if _caa._operator(ctx) is None:
+        return _caa.handle(base_path, method, body, query, ctx=ctx)
     return _shared_get_cached(
-        "cio_asks_tracked", 30.0, lambda: _caa.handle(base_path, method, body, query),
+        "cio_asks_tracked", 30.0, lambda: _caa.handle(base_path, method, body, query, ctx=ctx),
         stale_ok=True, annotate=_asks_tracked_annotate, unknown=_asks_tracked_unknown,
     )
 

@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_asks_tracked_build_admission_lq3156_20261114",
+  "files": [
+    "tests/test_cio_asks_tracked_build_admission_lq3156_20261114.py"
+  ],
+  "anchor": "LQ3156_TRACKED_BUILD_ADMISSION",
+  "comment": [
+    "ANCHOR: LQ3156_TRACKED_BUILD_ADMISSION \u2014 GET /api/v2/cio/asks/tracked answered 200 UNKNOWN forever because the",
+    "serve-last-good SWR build ran cio_ask_api.handle on a background thread with no request identity: the operator gate",
+    "refused it 403 on every build (371 failures, tracked:null) and the route's 403 contract was swallowed into a 200.",
+    "The fix snapshots the request identity on the request thread (cio_ask_api.snapshot_ctx), passes it into the build,",
+    "and answers a non-operator with the handler's real 403 BEFORE any build starts. Hermetic: no DB/Valkey/server."
+  ]
+}

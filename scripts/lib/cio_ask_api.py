@@ -57,6 +57,28 @@ def _default_ctx() -> Ctx:
     )
 
 
+def snapshot_ctx() -> Ctx:
+    """The request identity read ONCE, bound to its VALUES (LQ-20261114-3156).
+
+    ``_default_ctx`` hands out closures over ``cc_auth``'s thread-locals: ``principal()`` called on another thread
+    returns "" and ``listener()`` returns None. A background build (the serve-last-good SWR cache) must be judged by
+    the identity of the request that asked for it, not by the thread that later runs the build, so this snapshot reads
+    both values now and returns a Ctx that keeps answering them from any thread. Reading it on the request thread is
+    the caller's contract: off a request thread it correctly snapshots the anonymous identity.
+    """
+    base = _default_ctx()
+    principal = base.principal() or ""
+    listener = base.listener()
+    return Ctx(
+        principal=lambda: principal,
+        listener=lambda: listener,
+        csrf=base.csrf,
+        allowed_logins=base.allowed_logins,
+        deps=base.deps,
+        converse=base.converse,
+    )
+
+
 def _err(status: int, code: str, detail: str = "") -> tuple[int, dict]:
     return status, {"ok": False, "error": code, "detail": detail}
 

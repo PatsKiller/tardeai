@@ -1,10 +1,28 @@
 """LQ-20261107-2572: a waiter never blocks on an in-flight build; last-good served with age; one build."""
 import threading
 import time
+import types
 
 import pytest
 
 from scripts.lib import shared_get_swr as swr
+
+
+@pytest.fixture
+def operator_identity(monkeypatch):
+    """LQ-20261114-3156: /cio/asks/tracked is an operator read and now refuses a non-operator BEFORE starting a build.
+    These SWR tests are about the cache mechanism, so they ask as the operator the route is for."""
+    try:
+        from lib import cc_auth as auth  # the module ``_default_ctx`` resolves when scripts/ is on sys.path
+    except ImportError:  # pragma: no cover
+        import scripts.lib.cc_auth as auth
+    monkeypatch.setattr(auth, "load_config",
+                        lambda path=None: types.SimpleNamespace(allowed_logins=frozenset({"john@example.com"})))
+    auth.set_request_principal("tailnet:john@example.com")
+    auth.set_request_context("serve_proxy", {})
+    yield
+    auth.set_request_principal(None)
+    auth.set_request_context(None, None)
 
 
 @pytest.fixture(autouse=True)
@@ -134,12 +152,12 @@ def test_api_v2_opt_in_and_old_path_unchanged(monkeypatch):
     assert api.warm_swr_caches() == [] and not swr.inflight()
 
 
-def test_asks_tracked_route_serves_last_good_tuple(monkeypatch):
+def test_asks_tracked_route_serves_last_good_tuple(monkeypatch, operator_identity):
     import scripts.api_v2 as api
     from scripts.lib import cio_ask_api as caa
 
     gate = threading.Event()
-    monkeypatch.setattr(caa, "handle", lambda *a: (gate.wait(10), (200, {"ok": True, "data": {"tracked": [1]}}))[1])
+    monkeypatch.setattr(caa, "handle", lambda *a, **k: (gate.wait(10), (200, {"ok": True, "data": {"tracked": [1]}}))[1])
     t0 = time.monotonic()
     st, body = api._asks_tracked_cached("/api/v2/cio/asks/tracked", "GET", None, {})
     assert time.monotonic() - t0 < 1.0 and body["data"]["reason"] == "building"
@@ -244,13 +262,13 @@ def test_n1_http_error_tuple_is_a_failure_not_last_good():
     assert swr._ERRORS["k"]["error"].endswith("HTTP 500")
 
 
-def test_r3_asks_tracked_through_the_route_handler(monkeypatch):
+def test_r3_asks_tracked_through_the_route_handler(monkeypatch, operator_identity):
     import scripts.api_v2 as api
     from scripts.lib import cio_ask_api as caa
 
     swr.clear()
     gate = threading.Event()
-    monkeypatch.setattr(caa, "handle", lambda *a: (gate.wait(10), (200, {"ok": True, "data": {"tracked": [7]}}))[1])
+    monkeypatch.setattr(caa, "handle", lambda *a, **k: (gate.wait(10), (200, {"ok": True, "data": {"tracked": [7]}}))[1])
     t0 = time.monotonic()
     st, body = api.handle("/api/v2/cio/asks/tracked", "GET")
     assert time.monotonic() - t0 < 1.0 and st == 200
@@ -262,12 +280,12 @@ def test_r3_asks_tracked_through_the_route_handler(monkeypatch):
     assert st == 200 and d["tracked"] == [7] and d["stale"] is False and "age_s" in d and d["cache_as_of"]
 
 
-def test_r3_asks_tracked_cold_failure_through_the_route_handler(monkeypatch):
+def test_r3_asks_tracked_cold_failure_through_the_route_handler(monkeypatch, operator_identity):
     import scripts.api_v2 as api
     from scripts.lib import cio_ask_api as caa
 
     swr.clear()
-    def boom(*a):
+    def boom(*a, **k):
         raise RuntimeError("store down")
 
     monkeypatch.setattr(caa, "handle", boom)
