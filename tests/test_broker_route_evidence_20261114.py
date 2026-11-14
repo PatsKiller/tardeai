@@ -64,7 +64,8 @@ def test_attach_adds_one_key_and_leaves_the_payload_untouched():
     p = _payload()
     before = {k: v for k, v in p.items()}
     out = re.attach(p, window=26, now=NOW)
-    assert set(out) - set(p) == {"evidence"}
+    # b5 added the two HQ-07 / PR-002 keys; the rule this test pins is that the set is CLOSED and small.
+    assert set(out) - set(p) == {"evidence", "metrics", "scope_coverage"}
     assert "evidence" not in p  # the caller's dict is untouched (a shared payload is not rewritten)
     assert {k: out[k] for k in before} == before
     assert set(out["evidence"]) == {"portfolio", "positions"}
@@ -197,3 +198,65 @@ def test_a_payload_with_no_position_counts_is_unknown():
     out = re.attach(p, window=26, now=NOW)
     assert out["evidence"]["positions"]["verdict"] == "UNKNOWN"
     assert out["evidence"]["positions"]["cause"]["code"] == "NO_VALUE"
+
+
+# --- b5: HQ-07 metric ids and PR-002 scope coverage, attached under the one snapshot ----------------
+
+
+def test_the_route_publishes_one_metric_row_per_measure_under_the_envelope_snapshot():
+    """Every figure the page shows is citable by metric_id + the SAME snapshot_id the envelope carries."""
+    out = re.attach(_payload(), window=26, now=NOW)
+    snapshot = out["evidence"]["portfolio"]["snapshot_id"]
+    assert [r["metric_id"] for r in out["metrics"]] == [
+        "portfolio.account_value", "portfolio.price_move_estimate",
+        "portfolio.account_value_change_1d", "portfolio.verified_daily_pnl"]
+    assert {r["snapshot_id"] for r in out["metrics"]} == {snapshot}
+    assert out["scope_coverage"]["snapshot_id"] == snapshot
+    by_id = {r["metric_id"]: r for r in out["metrics"]}
+    assert by_id["portfolio.account_value"]["value_cents"] == 122500
+    assert by_id["portfolio.account_value_change_1d"]["value_cents"] == -1400
+    assert by_id["portfolio.verified_daily_pnl"]["verified"] is False  # no stored receipt in this payload
+    assert out["scope_coverage"]["counted"] == 3 and out["scope_coverage"]["rendered_rows"] == 3
+
+
+def test_the_metric_rows_never_carry_the_pages_dollars_unconverted_or_a_second_label():
+    """The metric row is a citation: cents from the payload's dollars, and no new figure of its own."""
+    out = re.attach(_payload(), window=26, now=NOW)
+    rows = {r["measure"]: r for r in out["metrics"]}
+    assert rows["price_move_estimate"]["value_cents"] == -1200
+    assert rows["price_move_estimate"]["complete"] is True
+    assert rows["account_value"]["complete"] is None  # the payload publishes no coverage for it
+    # this fixture's count contract publishes no named scopes: the census says so with {} rather than inventing
+    assert out["scope_coverage"]["scopes"] == {}
+    assert out["scope_coverage"]["counted"] == 3
+    assert "agree" not in out["scope_coverage"]
+
+
+def test_a_failed_portfolio_envelope_publishes_no_metrics_and_names_why(monkeypatch):
+    """No snapshot id ⇒ no citation. The absence is named, never an empty list that reads as 'no figures'."""
+    def boom(*a, **k):
+        raise RuntimeError("producer shape changed")
+
+    monkeypatch.setattr(re, "portfolio_evidence", boom)
+    out = re.attach(_payload(), window=26, now=NOW)
+    assert out["metrics"] == []
+    assert out["metrics_failure"]["verdict"] == "UNKNOWN"
+    assert out["metrics_failure"]["cause"]["code"] == "NO_SNAPSHOT"
+    assert out["metrics_failure"]["cause"]["next_action"]
+    assert "scope_coverage" not in out
+    assert out["total_value"] == 1225.0
+
+
+def test_a_metrics_build_failure_keeps_the_payload_and_names_the_failure(monkeypatch):
+    """The outer guard: a raising census/publisher cannot take the page down."""
+    def boom(*a, **k):
+        raise ValueError("census shape changed")
+
+    monkeypatch.setattr(re, "scope_coverage", boom)
+    out = re.attach(_payload(), window=26, now=NOW)
+    assert out["metrics"] == []
+    assert out["metrics_failure"]["verdict"] == "FAILED"
+    assert out["metrics_failure"]["cause"]["code"] == "EVIDENCE_BUILD_FAILED"
+    assert "census shape changed" in out["metrics_failure"]["cause"]["detail"]
+    assert out["evidence"]["portfolio"]["verdict"] == "OK"
+    assert out["total_value"] == 1225.0

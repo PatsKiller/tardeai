@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from lib.broker_contract_adapters import portfolio_evidence, positions_evidence, stale_window
+from lib.broker_metrics import metrics, scope_coverage
 
 
 def version_vector(payload: dict[str, Any]) -> dict[str, Any]:
@@ -101,4 +102,23 @@ def _attach(payload: dict[str, Any], *, now: datetime, domain: str, window: Any)
             evidence[name] = _failed(exc)
     out = dict(payload)
     out["evidence"] = evidence
+    # HQ-07 / PR-002: every figure the page publishes is citable by a metric id under this snapshot, and
+    # the row census behind it is stated. Both are lifted from the payload; neither adds a number. A payload
+    # whose portfolio envelope did not build has no snapshot id, so it publishes no metrics and says why.
+    snapshot = (evidence.get("portfolio") or {}).get("snapshot_id")
+    if not snapshot:
+        out["metrics"] = []
+        out["metrics_failure"] = {
+            "verdict": "UNKNOWN",
+            "cause": {"code": "NO_SNAPSHOT",
+                      "detail": "the portfolio envelope did not build, so there is no snapshot to cite",
+                      "owner": "broker-contract",
+                      "next_action": "read evidence.portfolio.cause"}}
+        return out
+    try:
+        out["metrics"] = metrics(payload, snapshot_id=snapshot, scope=scope)
+        out["scope_coverage"] = scope_coverage(payload, snapshot_id=snapshot, scope=scope)
+    except Exception as exc:  # noqa: BLE001 -- the page keeps its payload; the failure names itself
+        out["metrics"] = []
+        out["metrics_failure"] = _failed(exc)
     return out
