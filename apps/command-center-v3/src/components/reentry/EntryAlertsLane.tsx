@@ -1,4 +1,4 @@
-import { emptyText, LANE_TITLE, readinessSummary, readinessWords } from '../../lib/reentryReadiness'
+import { clockUtc, emptyText, LANE_TITLE, packetPopulations, readinessSummary, readinessWords } from '../../lib/reentryReadiness'
 /** Entry alerts lane (2026-09-28) — the entry-state packets behind the Telegram BUY_READY /
  *  ENTRY_NEAR pages, on the Re-Entry page where the operator looks for them. Reads
  *  GET /api/v2/buy-ready/packets (BuyReadyPacketIndex@v1); every number and tone comes from
@@ -13,6 +13,9 @@ type Row = {
   // FQ-096: the packet index serves one row per (symbol, account); two accounts can hold the same symbol.
   account?: string | null
   symbol: string; state: string | null; plan_source?: string | null; saved_at?: string | null; packet_age_h?: number | null
+  packet_trading_age_h?: number | null
+  /** Served by buy_ready_packets_index: written on the session calendar's most recent trading day (F2). */
+  from_last_session?: boolean | null
   price?: number | null; quote_age_h?: number | null; entry_low?: number | null; entry_high?: number | null; stop?: number | null; target?: number | null
   zone: { position: string; distance_pct: number | null }
   rr_plan?: number | null; rr_plan_entry?: number | null; rr_at_quote?: number | null; rr_at_quote_entry?: number | null
@@ -24,7 +27,7 @@ type Row = {
   options_alt: OptionsAltVerdict & { chain_as_of?: string | null }
   desk: { status: string; proposal_id?: string | null; strategy?: string | null; approvable?: boolean | null; severity?: string | null; reason?: string | null; entry_state?: string | null }
 }
-type Index = { schema: string; as_of: string; count: number; counts: Record<string, number>; rows: Row[]; stale: Array<{ symbol: string; state: string | null; packet_age_h: number | null }>; max_age_h: number; errors: string[]; note: string }
+type Index = { schema: string; as_of: string; count: number; counts: Record<string, number>; rows: Row[]; stale: Array<{ symbol: string; state: string | null; packet_age_h: number | null }>; max_age_h: number; max_age_basis?: string | null; errors: string[]; note: string }
 
 const STATE_TONE: Record<string, Tone> = { BUY_READY: 'success', ENTRY_NEAR: 'warning', WATCH: 'neutral' }
 const ZONE_TONE: Record<string, Tone> = { in_zone: 'success', above: 'warning', below: 'danger', unknown: 'neutral' }
@@ -49,8 +52,15 @@ function DeskChip({ d, symbol }: { d: Row['desk']; symbol: string }) {
 }
 
 function AlertCard({ r }: { r: Row }) {
-  const tone = STATE_TONE[r.state || ''] || 'neutral'
+  // OBS-B2-4d F2 (lead 21:35Z, CLASS=correctness): green is a truth claim. A BUY_READY packet written before the
+  // last session is not current, so it is drawn in the neutral token (the same left-border colour, no new hue).
+  // A payload that does not carry the served flag is UNKNOWN, drawn neutral — a missing boolean is never true.
+  const tone: Tone = r.state === 'BUY_READY' && r.from_last_session !== true
+    ? 'neutral'
+    : STATE_TONE[r.state || ''] || 'neutral'
   const t = toneVars(tone)
+  const packetAge = r.packet_age_h == null ? ''
+    : r.packet_age_h < 1 ? `${Math.round(r.packet_age_h * 60)}m ago` : `${r.packet_age_h.toFixed(1)}h ago`
   const zoneLabel = r.zone.position === 'in_zone' ? 'in zone' : r.zone.position === 'above' ? `${r.zone.distance_pct}% above zone` : r.zone.position === 'below' ? `${r.zone.distance_pct}% below zone` : 'zone unknown'
   const alt = r.options_alt
   // repair 2026-09-28: the chip state comes from the server verdict only (STALE_PRE_FIX / PACKET_UNVERIFIED
@@ -66,14 +76,14 @@ function AlertCard({ r }: { r: Row }) {
         ? 'wait for preferred entry zone'
         : 'new-position review'
   return (
-    <article data-testid="entry-alert-card" style={{ background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderLeft: `3px solid ${t.color}`, borderRadius: RADIUS.md, boxShadow: SHADOW[1], padding: '10px 14px', minWidth: 0 }}>
+    <article data-testid="entry-alert-card" data-state-tone={tone} style={{ background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderLeft: `3px solid ${t.color}`, borderRadius: RADIUS.md, boxShadow: SHADOW[1], padding: '10px 14px', minWidth: 0 }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
         <span style={{ fontSize: TYPE.lg, fontWeight: 900, color: TOKENS.text[0] }}><SymbolLink symbol={r.symbol}>{owned ? `${r.symbol} already owned` : r.symbol}</SymbolLink></span>
         <ChipRow>
           {/* Chip drops `title` whenever `guideKey` is supplied, so the state value must live OUTSIDE the chip:
               an unrecognised state rendered only "Unrecognised state" and the raw value appeared nowhere on the
               page (cc-deepseek-9's block at 19e46db96). */}
-          <Chip tone={tone} guideKey="entry.state">{readinessWords(r.state)}</Chip>
+          <Chip tone={tone} guideKey="entry.state">{readinessWords(r.state)}{packetAge ? ` · ${packetAge}` : ''}</Chip>
           <span data-testid="entry-packet-state" title={r.state ? `Packet state: ${r.state}` : undefined}
             style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>{r.state ?? 'state not recorded'}</span>
           <Chip tone={ZONE_TONE[r.zone.position] || 'neutral'} guideKey="entry.zone">{zoneLabel}</Chip>
@@ -111,12 +121,16 @@ export default function EntryAlertsLane() {
   const data: Index | null = (idx.data?.data ?? idx.data) as Index | null
   const rows = data?.rows || []
   const counts = data?.counts || {}
-  const summary = data ? `${readinessSummary(counts, rows.length)}${data.stale?.length ? ` · ${data.stale.length} older than ${data.max_age_h}h hidden` : ''}` : idx.error ? 'unavailable' : 'loading…'
+  // OBS-B2-4d: the collapsed header counted packets as if they were symbols and dropped the older population into a
+  // bare number. Both populations are named here, in packets AND distinct symbols, with the window and its basis.
+  const summary = data
+    ? `${readinessSummary(counts, rows.length)} · ${packetPopulations({ count: data.count, rows, stale: data.stale, max_age_h: data.max_age_h, max_age_basis: data.max_age_basis })}`
+    : idx.error ? 'unavailable' : 'loading…'
   return (
     <section data-testid="entry-alerts-lane" style={{ marginBottom: 14 }}>
       <Collapsible title={LANE_TITLE} summary={summary} count={rows.length} defaultOpen persistKey="reentry.entry-alerts">
         <div style={{ fontSize: TYPE.xs, color: TOKENS.text[3], marginBottom: 8 }}>
-          {data?.note || 'Entry-state packets saved by the runner; advisory only.'}{data?.as_of ? ` · as of ${String(data.as_of).slice(0, 16).replace('T', ' ')}Z` : ''}
+          {data?.note || 'Entry-state packets saved by the runner; advisory only.'}{data?.as_of ? ` · as of ${clockUtc(data.as_of) ?? 'time not published'}` : ''}
         </div>
         {idx.error && <div role="alert" style={{ fontSize: TYPE.sm, color: TOKENS.danger }}>Could not load entry alerts: {String(idx.error)}</div>}
         {data && rows.length === 0 && !idx.error && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{emptyText(data.max_age_h)}</div>}

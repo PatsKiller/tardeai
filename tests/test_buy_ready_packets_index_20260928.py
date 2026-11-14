@@ -10,7 +10,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 
-from scripts.lib.buy_ready_packets_index import desk_disposition, index_packets, reward_risk, zone_position  # noqa: E402
+from scripts.lib.buy_ready_packets_index import (  # noqa: E402
+    desk_disposition, from_last_session, index_packets, last_trading_day, reward_risk, zone_position)
 
 NOW = datetime(2026, 9, 28, 17, 30, tzinfo=timezone.utc)
 
@@ -88,3 +89,26 @@ def test_index_preserves_portfolio_aware_action_context(tmp_path):
     assert row["ownership_context"]["shares"] == 100.0
     assert row["decision_action"] == "WAIT_FOR_ENTRY_ZONE"
     assert row["cio_review"]["status"] == "UNREVIEWED"
+
+def test_from_last_session_uses_the_session_calendar_not_the_wall_clock():
+    """OBS-B2-4d F2: a Friday packet read on Sunday is from the last session; a Thursday one is not."""
+    sunday = datetime(2026, 11, 15, 21, 30, tzinfo=timezone.utc)   # Sun 16:30 ET
+    assert last_trading_day(sunday).isoformat() == "2026-11-13"    # Friday
+    assert from_last_session("2026-11-13T19:00:00+00:00", sunday) is True
+    assert from_last_session("2026-11-12T19:00:00+00:00", sunday) is False
+    assert from_last_session("not a time", sunday) is None
+    assert from_last_session(None, sunday) is None
+
+
+def test_the_served_rows_carry_the_last_session_flag(tmp_path):
+    d = tmp_path / "pk"; d.mkdir()
+    (d / "DEMO.json").write_text(json.dumps(_packet("DEMO", "BUY_READY", 10.5, 10.0, 11.0, 9.0, 14.0, 2.0,
+                                                   saved=(NOW - timedelta(hours=1)).isoformat())))
+    out = index_packets(d, now=NOW)
+    assert out["rows"][0]["from_last_session"] is True
+    old = NOW - timedelta(days=1, hours=2)
+    (d / "OLD.json").write_text(json.dumps(_packet("OLD", "BUY_READY", 10.5, 10.0, 11.0, 9.0, 14.0, 2.0,
+                                                  saved=old.isoformat())))
+    out = index_packets(d, now=NOW)
+    flags = {r["symbol"]: r["from_last_session"] for r in out["rows"]}
+    assert flags["DEMO"] is True and flags["OLD"] is False

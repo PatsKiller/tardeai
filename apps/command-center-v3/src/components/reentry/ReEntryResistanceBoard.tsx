@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BB } from '../../lib/holdingsTerminalTokens'
 import { fmt$ } from '../../lib/format'
+import { resistancePopulation } from '../../lib/reentryReadiness'
 
 const KEY = 'portfolio.reentry.resistance.v1'
 
@@ -56,7 +57,14 @@ export default function ReEntryResistanceBoard() {
           <div style={{ fontSize: 13, fontWeight: 900 }}>RESISTANCE / RECLAIM BOARD</div>
           <div style={{ fontSize: 10, color: BB.text3 }}>Closed sessions only · nearest resistance first · intraday crosses never count as a hold</div>
         </div>
-        <div style={{ marginLeft: 'auto', fontSize: 10, color: BB.text3 }}>generated {payload?.generated_at ? String(payload.generated_at).slice(0, 19).replace('T', ' ') : 'not available'} · {payload?.symbol_count ?? rows.length} symbols</div>
+        {/* OBS-B2-4d: this count is the resistance universe's rule (mandate + rotation + symbols sold in the last
+            365 days), not "symbols tracked" and not the packet count. A filter is stated beside it, never instead
+            of it; an unfetched cache says so rather than printing a zero. */}
+        <div style={{ marginLeft: 'auto', fontSize: 10, color: BB.text3 }}>
+          {payload
+            ? resistancePopulation({ symbol_count: payload.symbol_count, symbols, generated_at: payload.generated_at, matching: query.trim() ? rows.length : null })
+            : error ? 'resistance universe not available' : 'waiting for the resistance cache'}
+        </div>
       </div>
       <div style={{ display: 'flex', gap: 7, marginTop: 8 }}>
         <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Filter resistance symbols…" style={{ minWidth: 220, fontSize: 11, padding: '5px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }} />

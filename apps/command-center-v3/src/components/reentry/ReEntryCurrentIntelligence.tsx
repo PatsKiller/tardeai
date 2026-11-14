@@ -35,6 +35,7 @@ import {
   type ScorecardResult,
 } from '../../lib/reentryDecisionScorecard'
 import { catalystLabel, macdLabel, macdReadFromDeskRow } from '../../lib/reentryFieldReads'
+import { populationLegend } from '../../lib/reentryReadiness'
 import { HelpTip } from './ReEntryHelpGuide'
 import ReEntryCommandHeader, { type ReEntryLaneCounts } from './ReEntryCommandHeader'
 import ReEntryMiniChart from './ReEntryMiniChart'
@@ -599,6 +600,21 @@ export default function ReEntryCurrentIntelligence({
             <b style={{ fontSize: 20 }}>{String(value)}</b>
           </button>
         ))}
+      </div>
+
+      {/* OBS-B2-4d (DR-R02): the counts on this page are different populations — the re-entry ledger here, the
+          resistance universe on its board, and the entry packets in the Entry alerts lane. Each is named with its
+          unit, rule and clock; none is added to another, and a count the server did not send is never a 0. */}
+      <div data-testid="reentry-population-legend" style={{ marginTop: 7, fontSize: 10, color: BB.text3 }}>
+        {populationLegend({
+          // F1: the rows are the exit evidence's, so the clock is the evidence's. The desk stamps `computed_at` per
+          // request, so using it dated a 23.9 h-old population with the moment of the read.
+          ledger: { symbol_count: rows.length, generated_at: evidence.generatedAt ?? null },
+          resistance: {
+            symbol_count: prefValue(resistancePref.data)?.symbol_count ?? null,
+            generated_at: prefValue(resistancePref.data)?.generated_at ?? null,
+          },
+        })}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,1fr) 190px 170px 150px auto auto auto', gap: 7, marginTop: 8 }}>

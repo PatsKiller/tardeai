@@ -21,11 +21,11 @@ NO_CONSUMER_REASON = (
 )
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from .session_freshness import trading_age_hours
+from .session_freshness import get_session_service, trading_age_hours
 
 SCHEMA = "BuyReadyPacketIndex@v2"
 STATE_ORDER = {"BUY_READY": 0, "ENTRY_NEAR": 1, "WATCH": 2}
@@ -36,6 +36,38 @@ def _f(v: Any) -> Optional[float]:
         return None if v is None else float(v)
     except (TypeError, ValueError):
         return None
+
+
+def last_trading_day(now: datetime, service: Any = None) -> Optional[date]:
+    """The most recent trading day at or before ``now`` (the session calendar, ET) — "the last session"."""
+    svc = service or get_session_service()
+    d = now.astimezone(svc.tz).date()
+    for _ in range(15):
+        if svc.is_trading_day(d):
+            return d
+        d -= timedelta(days=1)
+    return None
+
+
+def from_last_session(saved_at: Any, now: datetime, service: Any = None) -> Optional[bool]:
+    """True when the packet was written on the last trading day; None when either date cannot be read.
+
+    OBS-B2-4d F2 (lead 2026-11-14, CLASS=correctness): the lane drew every BUY_READY green, which asserted
+    "current" for a packet written days earlier. The boundary is the session calendar this index already uses for
+    ``packet_trading_age_h`` — a packet whose ET date is not the most recent trading day is not from the last
+    session. None (unreadable) is served as unknown, and the lane draws it neutral, never green.
+    """
+    try:
+        t = datetime.fromisoformat(str(saved_at).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=timezone.utc)
+    svc = service or get_session_service()
+    last = last_trading_day(now, svc)
+    if last is None:
+        return None
+    return t.astimezone(svc.tz).date() == last
 
 
 def _hours_since(iso: Any, now: datetime) -> Optional[float]:
@@ -235,6 +267,7 @@ def index_packets(packet_dir: Path, *, proposals: Optional[list[dict[str, Any]]]
         # The expiry window counts trading days only: a Friday packet must not fall out of
         # Ready now on Sunday because 48 wall-clock hours passed while the exchange was shut.
         row["packet_trading_age_h"] = trading_age_hours(row["saved_at"], now) if row["packet_age_h"] is not None else None
+        row["from_last_session"] = from_last_session(row["saved_at"], now)
         expiry_age = row["packet_trading_age_h"] if row["packet_trading_age_h"] is not None else row["packet_age_h"]
         if expiry_age is not None and expiry_age > max_age_h:
             stale.append({"symbol": row["symbol"], "state": row["state"], "saved_at": row["saved_at"], "packet_age_h": row["packet_age_h"],

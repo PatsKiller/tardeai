@@ -53,13 +53,19 @@ function load(path, extra = {}) {
   return module.exports
 }
 
-const ROW = (state, account = 'AcctA') => ({
-  symbol: 'SYN', account, state, zone: { position: 'above', distance_pct: 1.2 },
+const ROW = (state, account = 'AcctA', extra = {}) => ({
+  symbol: 'SYN', account, state, zone: { position: 'above', distance_pct: 1.2 }, ...extra,
   cio_verdict: {}, cio_review: {}, options_alt: {}, desk: { status: 'ok' },
   entry_low: 10, entry_high: 11, stop: 9, target: 14, price: 10.5,
 })
 
-const packets = { data: { rows: [ROW('SOMETHING_NEW'), ROW('SOMETHING_NEW', 'AcctB')] }, loading: false, error: null, refetch() {} }
+const packets = { data: { rows: [
+  ROW('SOMETHING_NEW'), ROW('SOMETHING_NEW', 'AcctB'),
+  // OBS-B2-4d F2: a packet from an earlier session, one from the last session, and one whose payload carries no flag.
+  ROW('BUY_READY', 'AcctA', { symbol: 'OLDPKT', packet_age_h: 55.2, from_last_session: false }),
+  ROW('BUY_READY', 'AcctA', { symbol: 'NEWPKT', packet_age_h: 2.0, from_last_session: true }),
+  ROW('BUY_READY', 'AcctA', { symbol: 'NOKEY', packet_age_h: 13.0, from_last_session: null }),
+] }, loading: false, error: null, refetch() {} }
 // The real Collapsible keeps its body behind a useState toggle; in SSR that would hide every card and the checks
 // would pass vacuously. Render its children directly — this is a presentation shell, not the behaviour under test.
 const primitives = load(resolve(app, 'src/components/primitives/index.ts'), {})
@@ -76,7 +82,7 @@ check('the lane renders at all', markup.length > 0, 'nothing rendered')
 check('an unrecognised state still says it is unrecognised', markup.includes('Unrecognised state'), markup.slice(0, 200))
 check('and the RAW state value is rendered, not only implied by a title attribute',
   markup.includes('SOMETHING_NEW'), 'the raw packet state appears nowhere in the output')
-check('one card per packet row', (markup.match(/entry-alert-card/g) || []).length === 2,
+check('one card per packet row', (markup.match(/entry-alert-card/g) || []).length === 5,
   `cards: ${(markup.match(/entry-alert-card/g) || []).length}`)
 
 // The React KEY cannot be pinned by markup: `react-dom/server` renders duplicate-key children without warning (measured
@@ -84,6 +90,14 @@ check('one card per packet row', (markup.match(/entry-alert-card/g) || []).lengt
 // account. Pinning it at the source, and saying so, beats an assertion that cannot fail (the exact habit this PR's
 // subject keeps producing). FQ-096: two accounts may hold one symbol, and a symbol-only key makes React reuse the
 // first account's card for the second.
+// OBS-B2-4d F2: the tone and the age are the two things the eye reads before the words. Both come from the served
+// row, and an absent flag is never drawn green.
+const card = (sym) => markup.split('data-testid="entry-alert-card"').find(c => c.includes(`>${sym}<`)) ?? ''
+const body = (sym) => card(sym).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+check('a BUY_READY packet from an earlier session is not drawn green', card('OLDPKT').includes('data-state-tone="neutral"'), card('OLDPKT').slice(0, 160))
+check('and its chip states the packet age beside the words', /Recorded ready to buy · 55\.2h ago/.test(body('OLDPKT')), body('OLDPKT').slice(0, 200))
+check('a BUY_READY packet from the last session keeps the green tone', card('NEWPKT').includes('data-state-tone="success"'), card('NEWPKT').slice(0, 160))
+check('a payload that does not carry the flag is never drawn green', card('NOKEY').includes('data-state-tone="neutral"'), card('NOKEY').slice(0, 160))
 const laneSource = readFileSync(resolve(app, 'src/components/reentry/EntryAlertsLane.tsx'), 'utf8')
 const keyLine = laneSource.split('\n').find((ln) => ln.includes('<AlertCard') && ln.includes('key=')) || ''
 check('the card key carries the account (source; markup cannot prove a key)',
