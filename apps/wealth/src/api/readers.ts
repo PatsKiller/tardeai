@@ -88,13 +88,14 @@ export const READERS: ReaderSpec[] = [
   {
     path: '/api/v2/market-risk/latest', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'producer',
     unavailableWhen: [{ at: 'data.state', notEquals: 'evaluated' }, { at: 'data.stale', staleFlag: true }],
-    asOfAt: 'data.as_of', maxAgeHours: 26,
-    note: `${M}: 243,946 B; score is not a probability. Health: data.state "evaluated" + data.stale (cc-deepseek-5 DELTA-G13 e7fd59f8).`,
+    asOfAt: 'data.as_of', maxAgeHours: 1,
+    note: `${M}: 243,946 B; score is not a probability. maxAgeHours 1: the producer's own stale_after_hours 1.0 (cc-deepseek-7 ADDENDUM v2a 0ab2c54a); hourly producer, so expect UNKNOWN near the hour boundary. Health: data.state "evaluated" + data.stale (cc-deepseek-5 DELTA-G13 e7fd59f8).`,
   },
   {
-    path: '/api/v2/market-event/active', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'none',
+    path: '/api/v2/market-event/active', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'producer',
     unavailableWhen: [{ at: 'data.stale', staleFlag: true }],
-    note: `${M}: 263,626 B MarketEvent@v1; episode.as_of null, opened_at is episode age; the gate-window as_of is per array element with no declared latest index, so no freshness path is declared.`,
+    asOfAt: 'data.inputs_as_of.market_risk', maxAgeHours: 1,
+    note: `${M}: 263,626 B MarketEvent@v1. Clock: inputs_as_of.market_risk (cc-deepseek-7 ADDENDUM v2a 0ab2c54a); computed_at follows the request and is not a clock. maxAgeHours 1 mirrors the market-risk input's own limit (cc-opus-3 inference; v2a names no limit).`,
   },
   // ---- reposition ----
   {
@@ -121,8 +122,8 @@ export const READERS: ReaderSpec[] = [
   {
     path: '/api/v2/reentry/decision-desk', timeoutMs: 6000, heavy: true, clock: 'producer',
     unavailableWhen: [],
-    asOfAt: 'data.computed_at',
-    note: `${M}: 629,823 B; up to 2.411 s; computed_at is a projection clock. Actionable count is its own population.`,
+    asOfAt: 'data.freshness.resistance_generated_at', maxAgeHours: 96,
+    note: `${M}: 629,823 B; up to 2.411 s. computed_at follows the request (with a cache lag), so it is not a clock; resistance_generated_at with the desk's own 96 h rule (cc-deepseek-7 ADDENDUM v2a 0ab2c54a). Page shows freshness.price_age_h_median beside it. Actionable count is its own population.`,
   },
   {
     path: '/api/v2/stops/reentry-watch', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: false, clock: 'none',
@@ -135,9 +136,9 @@ export const READERS: ReaderSpec[] = [
     note: `${M}: 11,845 B; no clock; paper/unknown_sync rows are labelled or excluded, never blended into live totals.`,
   },
   {
-    path: '/api/v2/time-exit/proposals', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: false, clock: 'none',
+    path: '/api/v2/time-exit-proposals', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: false, clock: 'none',
     unavailableWhen: [],
-    note: `${M}: 212 B; empty and clockless → UNKNOWN, never EMPTY; no approval control (paper-only interlock).`,
+    note: `${M}: 212 B; empty and clockless → UNKNOWN, never EMPTY; no approval control (paper-only interlock); POST /api/v2/time-exit-proposals/decide is never offered. Path per route table (cc-deepseek-7 ADDENDUM v2a 0ab2c54a: /time-exit/proposals is 404).`,
   },
   {
     path: '/api/v2/cio/capital-plan', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'request-time',

@@ -77,10 +77,15 @@ test('defense posture: engine_gaps [] last checked 100 days ago is not all-clear
   assert.match(st.reason, /^stale/)
 })
 
-test('decision desk: freshness comes from data.computed_at (a projection clock)', () => {
-  const st = deriveRenderState({ envelope: env('/api/v2/reentry/decision-desk', wrap({ ok: true, computed_at: '2026-11-14T23:01:04Z', rows: [{}] })), now: NOW })
-  assert.equal(st.status, 'OK', st.reason)
-  assert.equal(st.asOf, '2026-11-14T23:01:04Z')
+test('decision desk: freshness is data.freshness.resistance_generated_at (96 h), never computed_at (follows the request)', () => {
+  const p = '/api/v2/reentry/decision-desk'
+  const ok = deriveRenderState({ envelope: env(p, wrap({ ok: true, computed_at: '2026-11-14T23:29:59Z', freshness: { resistance_generated_at: '2026-11-13T21:40:02.768644+00:00' }, rows: [{}] })), now: NOW })
+  assert.equal(ok.status, 'OK', ok.reason)
+  assert.equal(ok.asOf, '2026-11-13T21:40:02.768644+00:00')
+  const onlyRequestClock = deriveRenderState({ envelope: env(p, wrap({ ok: true, computed_at: '2026-11-14T23:29:59Z', rows: [{}] })), now: NOW })
+  assert.equal(onlyRequestClock.status, 'UNKNOWN', 'computed_at alone proves nothing')
+  const old = deriveRenderState({ envelope: env(p, wrap({ ok: true, freshness: { resistance_generated_at: '2026-11-10T21:40:02Z' } })), now: NOW })
+  assert.equal(old.status, 'UNKNOWN', 'older than 96 h')
 })
 
 test('defense recommendations: clock is recommendations.generated_at, never the date-only as_of; mode SHADOW noted', () => {
@@ -99,7 +104,7 @@ test('request-time clocks are never declared as freshness', () => {
     assert.equal(s.asOfAt, undefined, p)
     assert.equal(s.clock, 'request-time', p)
   }
-  for (const p of ['/api/v2/stops/reentry-watch', '/api/v2/journal/exit-intelligence', '/api/v2/time-exit/proposals', '/api/v2/market-event/active']) {
+  for (const p of ['/api/v2/stops/reentry-watch', '/api/v2/journal/exit-intelligence', '/api/v2/time-exit-proposals']) {
     const s = specFor(p)
     assert.notEqual(s.note, 'default', `${p} has a row`)
     assert.equal(s.asOfAt, undefined, p)
@@ -108,7 +113,7 @@ test('request-time clocks are never declared as freshness', () => {
 })
 
 test('clockless empty (time-exit proposals []) is UNKNOWN, never EMPTY', () => {
-  const st = deriveRenderState({ envelope: env('/api/v2/time-exit/proposals', wrap({ proposals: [], count: 0, note: 'paper-only' })), now: NOW, isEmpty: b => b.data.count === 0 })
+  const st = deriveRenderState({ envelope: env('/api/v2/time-exit-proposals', wrap({ proposals: [], count: 0, note: 'paper-only' })), now: NOW, isEmpty: b => b.data.count === 0 })
   assert.equal(st.status, 'UNKNOWN')
 })
 
@@ -262,12 +267,12 @@ test('rotation and market-event: stale true → UNKNOWN', () => {
   const rot = wrap({ ok: true, stale: true, generated_at: '2026-11-14T23:00:00Z', publication: { status: 'PUBLISHED' } })
   assert.equal(deriveRenderState({ envelope: env('/api/v2/rotation/summary', rot), now: NOW }).status, 'UNKNOWN')
   assert.equal(deriveRenderState({ envelope: env('/api/v2/market-event/active', wrap({ stale: true, events: [] })), now: NOW }).status, 'UNKNOWN')
-  assert.equal(deriveRenderState({ envelope: env('/api/v2/market-event/active', wrap({ stale: false, events: [{ id: 1 }] })), now: NOW }).status, 'OK')
+  assert.equal(deriveRenderState({ envelope: env('/api/v2/market-event/active', wrap({ stale: false, inputs_as_of: { market_risk: '2026-11-14T23:00:02.55Z' }, events: [{ id: 1 }] })), now: NOW }).status, 'OK')
 })
 
 test('no-signal rows (no health rule, no producer clock) read OK only with health UNKNOWN attached, never calm', async () => {
   const { healthCue } = await import('../../src/components/renderState.ts')
-  for (const p of ['/api/v2/stops/reentry-watch', '/api/v2/time-exit/proposals']) {
+  for (const p of ['/api/v2/stops/reentry-watch', '/api/v2/time-exit-proposals']) {
     const st = deriveRenderState({ envelope: env(p, wrap({ rows: [{ id: 1 }] })), now: NOW })
     assert.equal(st.status, 'OK', p)
     assert.match(st.healthUnproven ?? '', /no health flag and no producer clock/, p)
@@ -277,4 +282,26 @@ test('no-signal rows (no health rule, no producer clock) read OK only with healt
   const ok = deriveRenderState({ envelope: env('/api/v2/risk/protection-truth', wrap({ status: 'OK' })), now: NOW })
   assert.equal(ok.healthUnproven, null, 'a row with a health rule is not flagged')
   assert.equal(healthCue(ok), null)
+})
+
+// ---- r4: cc-deepseek-7 ADDENDUM v2a (0ab2c54a) supersedes P5/P6/R3/R6 ----
+test('time-exit: the served route is /api/v2/time-exit-proposals; the 404 spelling has no row', () => {
+  assert.equal(specFor('/api/v2/time-exit-proposals').path, '/api/v2/time-exit-proposals')
+  assert.notEqual(specFor('/api/v2/time-exit-proposals').note, 'default')
+  assert.ok(!READERS.some(r => r.path === '/api/v2/time-exit/proposals'), 'the 404 path must not be registered')
+  assert.ok(!READERS.some(r => r.path.includes('/decide')), 'the decide route is never a reader')
+})
+
+test('market-risk: producer calls 1.0 h stale; older than 1 h → UNKNOWN', () => {
+  const p = '/api/v2/market-risk/latest'
+  assert.equal(specFor(p).maxAgeHours, 1)
+  const st = deriveRenderState({ envelope: env(p, wrap({ state: 'evaluated', stale: false, as_of: '2026-11-14T22:00:02Z' })), now: NOW })
+  assert.equal(st.status, 'UNKNOWN'); assert.match(st.reason, /^stale/)
+})
+
+test('market-event: freshness is data.inputs_as_of.market_risk (producer), stale after 1 h', () => {
+  const p = '/api/v2/market-event/active', s = specFor(p)
+  assert.equal(s.asOfAt, 'data.inputs_as_of.market_risk'); assert.equal(s.clock, 'producer')
+  assert.equal(deriveRenderState({ envelope: env(p, wrap({ stale: false, inputs_as_of: { market_risk: '2026-11-14T21:00:00Z' } })), now: NOW }).status, 'UNKNOWN')
+  assert.equal(deriveRenderState({ envelope: env(p, wrap({ stale: false, computed_at: '2026-11-14T23:29:59Z' })), now: NOW }).status, 'UNKNOWN', 'computed_at follows the request; not a clock')
 })
