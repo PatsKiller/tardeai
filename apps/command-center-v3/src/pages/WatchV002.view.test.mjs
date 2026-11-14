@@ -261,3 +261,125 @@ console.log('deep-link redirect checks passed')
   assert.ok(!all.includes('optional input not in the verdict'))
 }
 console.log('WL-01/WL-06 scope checks passed')
+
+// WL-05 (sprint 8H-2 b4): "Recheck status" is presented as a READ, reports pending / success / failure, and reports the
+// SOURCE clock rather than the read time. On failure it keeps the last good verdict with its own growing age.
+{
+  const S = model
+  const srcOf = f => readFileSync(join(app, 'src', f), 'utf8')
+  const rec = o => ({ state: 'IDLE', at: null, sourceBefore: null, sourceAfter: null, sourceMoved: null, lastGoodAt: null, error: null, ...o })
+  assert.equal(S.RECHECK_IDLE.state, 'IDLE')
+  assert.equal(S.recheckText(S.RECHECK_IDLE, NOW), '', 'nothing is said before the first press')
+
+  // the data clock is the OLDEST input, never the moment the page read the verdict
+  const m2 = buildWatchStatus(ok(body([inp('a', { as_of: iso(60) }), inp('b', { as_of: iso(3600) })], { required_inputs: ['a', 'b'] })), NOW)
+  assert.equal(S.sourceClockOf(m2), iso(3600), 'oldest input as_of is the source clock')
+  assert.equal(S.sourceClockOf(buildWatchStatus(ok(body([])), NOW)), null, 'a model with no inputs claims no source clock')
+
+  const m = buildWatchStatus(ok(body()), NOW)
+  const view = o => renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(WatchV002View,
+    { m, checkedLabel: 'checked', ov: ov(), onOpenWhy: noop, onOpenDiag: noop, onRecheck: noop, nowMs: NOW, ...o })))
+  const bare = view({})
+  assert.match(bare, /<button[^>]*data-testid="watch-recheck"[^>]*data-state="IDLE"[^>]*>Recheck status</)
+  assert.ok(!bare.includes('recheck-readback'), 'no readback before the first press')
+  assert.match(bare, /title="Re-reads the stored Watch verdict/, 'the button says it re-reads, not that it refreshes')
+  assert.ok(!/<button[^>]*>Re-check</.test(bare), 'the ambiguous "Re-check" label is gone')
+
+  const pending = view({ recheck: rec({ state: 'PENDING', at: iso(0), sourceBefore: iso(3600) }) })
+  assert.match(pending, /<button[^>]*data-testid="watch-recheck"[^>]*disabled/, 'an in-flight recheck cannot be stacked')
+  assert.match(pending, /data-testid="recheck-readback"[^>]*data-state="PENDING"/)
+  assert.ok(pending.includes('starts no source writer'), 'pending says what the control does and does not do')
+
+  const same = view({ recheck: rec({ state: 'OK', at: iso(0), sourceBefore: iso(3600), sourceAfter: iso(3600), sourceMoved: false }) })
+  assert.match(same, /data-source-moved="false"/)
+  assert.ok(same.includes('the oldest source clock did not move') && same.includes('a new read time is not new data'), 'an unchanged source clock is stated')
+  const moved = view({ recheck: rec({ state: 'OK', at: iso(0), sourceBefore: iso(7200), sourceAfter: iso(60), sourceMoved: true }) })
+  assert.match(moved, /data-source-moved="true"/)
+  assert.ok(moved.includes('that change came from the source, not from this page'), 'a moved source clock is attributed to the source')
+  const unknown = view({ recheck: rec({ state: 'OK', at: iso(0), sourceMoved: null }) })
+  assert.ok(unknown.includes('could not be compared'), 'an incomparable clock is said, not guessed')
+
+  const failed = view({ recheck: rec({ state: 'FAILED', at: iso(0), error: 'no answer after 8 s', lastGoodAt: iso(600) }) })
+  assert.match(failed, /data-testid="recheck-readback"[^>]*role="alert"/)
+  assert.ok(failed.includes('no answer after 8 s') && failed.includes('Showing the last good verdict read 10 m ago'), 'failure keeps last good WITH its age')
+  const none = view({ recheck: rec({ state: 'FAILED' }) })
+  assert.ok(none.includes('No last good verdict is held'), 'a failure with nothing held says exactly that')
+
+  // wiring: the recheck no longer blanks the status to LOADING, the failing path restores the kept body, and the page's
+  // only write is still the visit stamp
+  const watchSrc = srcOf('pages/WatchV002.tsx')
+  assert.ok(!/onRecheck=\{\(\) => \{ setR\(\{ \.\.\.r, status: loadingRead/.test(watchSrc), 'a recheck does not wipe the verdict to LOADING')
+  assert.ok(/if \(status\.state === 'OK'\) lastGoodRef\.current = status/.test(watchSrc), 'a good read is kept')
+  assert.ok(/if \(kept\) setR\(prev => \(\{ \.\.\.prev, status: kept \}\)\)/.test(watchSrc), 'a failed recheck puts the last good verdict back')
+  assert.equal((watchSrc.match(/method: 'POST'/g) || []).length, 1, 'the page has exactly one write, the visit stamp')
+  assert.ok(/fetch\(LAST_SEEN_POST, \{ method: 'POST'/.test(watchSrc), 'and that write is the visit stamp')
+  assert.equal((watchSrc.match(/readOnce</g) || []).length, 4, 'the read path is the same four GETs')
+}
+console.log('WL-05 recheck checks passed')
+
+// WL-05/WL-06 (sprint 8H-2 b6): two labels that could overclaim. The chip's age is over the REQUIRED inputs, and says
+// so when optional inputs exist; the diagnostics refresh string names the clock it caches, not the input's cadence.
+{
+  const opt = inp('x_optional', { required: false, as_of: iso(5 * 3600) })
+  const withOpt = buildWatchStatus(ok(body([...IDS.map(i => inp(i)), opt])), NOW)
+  assert.match(withOpt.chip.text, /oldest required input 1 m$/, 'the chip age is over the required inputs and says so')
+  assert.ok(!withOpt.chip.text.includes('oldest required input 5 h'), 'an optional input never sets the verdict age')
+  assert.match(buildWatchStatus(ok(body()), NOW).chip.text, /oldest input 1 m$/, 'no optional inputs => the plain label is still true')
+  const d = model.watchDiagnostics(withOpt)
+  assert.equal(d.length, withOpt.inputs.length, 'a body that lists every required input gets one diagnostics row per input — no more, no fewer')
+  for (const r of d) {
+    assert.ok(/no per-input cadence/.test(r.refreshRate), 'the refresh cell says outright that the read carries no per-input cadence')
+    assert.ok(/answered from a cache of up to 30 s/.test(r.refreshRate), 'and names the one clock it does cache — the status read')
+    assert.ok(/Age and Threshold columns/.test(r.refreshRate), 'and points the input\'s own age and limit at the columns that carry them')
+  }
+  const slow = d.find(r => r.widget.startsWith('x_optional'))
+  assert.ok(slow.age.includes('5 h') && slow.age.includes('observed'), 'an old input is still shown as old, with its observation time')
+}
+console.log('WL-05/WL-06 label-scope checks passed')
+
+// WL-05 (sprint 8H-2 b10): the diagnostics table must carry the rows the verdict is made of, and must not dress a
+// body-wide schedule up as per-input. Two failures this closes: a required input the body OMITTED had no row here at
+// all — the Why sheet and the gates knew about it, the diagnostics table did not — and the served `cache_age_s` was
+// thrown away while the cell asserted a 30 s cache, so the page claimed a cache hit it could have measured.
+{
+  // (1) a required input the body never listed is a diagnostics row, UNKNOWN, with the reason it is UNKNOWN
+  const short = body(IDS.slice(0, 3).map(i => inp(i)))   // required_inputs still names all four
+  const mMissing = buildWatchStatus(ok(short), NOW)
+  assert.equal(mMissing.inputs.length, 3, 'the body carried three inputs')
+  assert.equal(mMissing.gates.length, 4, 'and the verdict still has four gates — the fourth is the omitted one')
+  const dMissing = model.watchDiagnostics(mMissing)
+  assert.equal(dMissing.length, 4, 'diagnostics shows four rows: three inputs plus the required input the body omitted')
+  const gone = dMissing.find(r => r.widget.startsWith('regime'))
+  assert.ok(gone, 'the omitted required input has a row instead of vanishing from the table')
+  assert.equal(gone.status, 'UNKNOWN', 'and it is UNKNOWN, not absent — nobody could read it')
+  assert.match(gone.failureMode, /required input missing from the status body/, 'the row says why it is UNKNOWN')
+  // one row per id, no duplicates: the required rows come from the gates and the optional ones from the inputs
+  assert.equal(new Set(dMissing.map(r => r.widget.split(' ·')[0])).size, 4, 'no id is listed twice')
+
+  // (2) the refresh cell quotes the cache age the body actually reported, and says so when it reported none
+  const fresh = model.watchDiagnostics(buildWatchStatus(ok(body(undefined, { cache_age_s: 7 })), NOW))
+  for (const r of fresh) {
+    assert.match(r.refreshRate, /This body was 7 s into that cache when read\./, 'a reported cache age is quoted, not replaced by the 30 s window')
+    assert.ok(!/did not report/.test(r.refreshRate), 'and is not also called unknown')
+  }
+  const miss = model.watchDiagnostics(buildWatchStatus(ok(body()), NOW))
+  for (const r of miss) {
+    assert.match(r.refreshRate, /did not report its cache age, so how long it had been held is unknown\./, 'an absent cache_age_s is unknown, never "0 s, fresh"')
+    assert.ok(!/This body was 0 s/.test(r.refreshRate), 'a cache miss is not silently reported as a fresh hit')
+  }
+
+  // (3) a cache age past the window the route documents is named as inconsistent, not quoted as fact
+  const odd = model.watchDiagnostics(buildWatchStatus(ok(body(undefined, { cache_age_s: 90 })), NOW))
+  for (const r of odd) {
+    assert.match(r.refreshRate, /outside the 30 s window it documents/, 'an impossible cache age is called out')
+    assert.ok(!/This body was 90 s into that cache/.test(r.refreshRate), 'and never presented as the body’s age')
+  }
+  // a junk value is treated as unreported, not coerced
+  for (const bad of [-3, Number.NaN, '12', null]) {
+    const rows = model.watchDiagnostics(buildWatchStatus(ok(body(undefined, { cache_age_s: bad })), NOW))
+    assert.match(rows[0].refreshRate, /did not report its cache age/, `cache_age_s ${JSON.stringify(bad)} is unreported, not coerced`)
+  }
+  // (4) and none of this invents rows for a read that failed
+  assert.equal(model.watchDiagnostics(buildWatchStatus({ state: 'UNKNOWN', data: null, error: 'x', at: iso(10), source: 's' }, NOW)).length, 0, 'a failed read still paints no diagnostics rows')
+}
+console.log('WL-05 diagnostics coverage checks passed')

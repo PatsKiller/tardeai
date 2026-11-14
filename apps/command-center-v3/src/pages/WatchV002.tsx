@@ -15,7 +15,10 @@ import { Link, Navigate, useLocation } from 'react-router-dom'
 import { DiagnosticsDrawer, useSheetA11y } from '../components/home/v010'
 import WatchSubnav from '../components/watch/WatchSubnav'
 import { loadingRead, readOnce, type Read } from '../lib/homeV010'
-import { WATCH_STATUS_API, buildWatchStatus, watchDiagnostics, type WatchInputRow, type WatchStatusModel, type WatchStatusWire } from '../lib/watchV002'
+import {
+  RECHECK_IDLE, WATCH_STATUS_API, buildWatchStatus, recheckText, sourceClockOf, watchDiagnostics,
+  type Recheck, type WatchInputRow, type WatchStatusModel, type WatchStatusWire,
+} from '../lib/watchV002'
 import {
   ALERTS_LIST_API, LAST_SEEN_API, LAST_SEEN_KEY, LAST_SEEN_POST, PULLBACK_TRIGGERS_API, actionMeta, actionRows, lastVisit,
   sinceRows, stampResult,
@@ -87,8 +90,10 @@ const Section = ({ id, title, meta, children }: { id: string; title: string; met
 )
 
 /** Presentational: takes the models, draws them. Exported so the render states can be tested without a network. */
-export function WatchV002View({ m, checkedLabel, ov, onOpenWhy, onOpenDiag, onRecheck }: {
+export function WatchV002View({ m, checkedLabel, ov, onOpenWhy, onOpenDiag, onRecheck, recheck, nowMs = 0 }: {
   m: WatchStatusModel; checkedLabel: string; ov: OverviewView; onOpenWhy: () => void; onOpenDiag: () => void; onRecheck: () => void
+  /** WL-05: what the last "Recheck status" did, and its readback. Optional so render tests can omit it. */
+  recheck?: Recheck; nowMs?: number
 }) {
   const unreadOf = (...names: string[]) => ov.unread.filter(u => names.includes(u))
   const actionUnread = unreadOf('alert list', 'pullback candidates')
@@ -107,11 +112,25 @@ export function WatchV002View({ m, checkedLabel, ov, onOpenWhy, onOpenDiag, onRe
           <span className={pill(m.chip.tone)}>{m.chip.state}</span>{m.chip.text}
         </button>
         <button type="button" className="v010-btn" onClick={onOpenDiag}>Diagnostics</button>
-        <button type="button" className="v010-btn" onClick={onRecheck}>Re-check</button>
+        {/* WL-05: this reads the stored verdict and the overview lists again; it does not run a source writer. The label
+            says "status", the title says what it does, and the readback below reports pending / success / failure. */}
+        <button type="button" className="v010-btn" data-testid="watch-recheck" data-state={recheck?.state ?? 'IDLE'}
+          disabled={recheck?.state === 'PENDING'} onClick={onRecheck}
+          title="Re-reads the stored Watch verdict and the overview lists (reads only, and it records your visit). It does not start a source writer or refresh source data.">
+          Recheck status
+        </button>
         {/* The one remaining door to the classic hub, and it is not a tab: it is the surface's escape hatch, deep links
             keep working through it (reviews 2993r R1). No sub-nav item points here (lib/watchNav). */}
         <Link className="v010-link" to="/watch-classic" data-testid="watch-classic-link">Classic Watch</Link>
       </div>
+      {recheck && recheck.state !== 'IDLE' && (
+        <div className={`wv2-recheck ${recheck.state === 'FAILED' ? 'bad' : recheck.state === 'PENDING' ? '' : 'ok'}`}
+          data-testid="recheck-readback" data-state={recheck.state} data-source-before={recheck.sourceBefore ?? 'none'}
+          data-source-after={recheck.sourceAfter ?? 'none'} data-source-moved={recheck.sourceMoved === null ? 'unknown' : String(recheck.sourceMoved)}
+          role={recheck.state === 'FAILED' ? 'alert' : 'status'}>
+          {recheckText(recheck, nowMs)}
+        </div>
+      )}
       <WatchSubnav />
 
       <Section id="ov-actions" title="Action / Triggers" meta={actionMeta(ov.actions.length, actionUnread.length, ov.loading)}>
@@ -272,15 +291,20 @@ function WatchV002Page() {
   const [visitErr, setVisitErr] = useState<string | null>(null)
   const [whyOpen, setWhyOpen] = useState(false)
   const [diagOpen, setDiagOpen] = useState(false)
+  // WL-05: the last good verdict, kept so a failed recheck never replaces good data with nothing.
+  const lastGoodRef = useRef<Read<WatchStatusWire> | null>(null)
+  const [recheck, setRecheck] = useState<Recheck>(RECHECK_IDLE)
 
-  const load = useCallback(() => {
+  const load = useCallback((onDone?: (reads: Reads) => void) => {
     let alive = true
     void Promise.all([
       readOnce<WatchStatusWire>(WATCH_STATUS_API), readOnce<Body>(ALERTS_LIST_API),
       readOnce<Body>(PULLBACK_TRIGGERS_API), readOnce<Body>(LAST_SEEN_API),
     ]).then(([status, alerts, candidates, prefs]) => {
       if (!alive) return
+      if (status.state === 'OK') lastGoodRef.current = status
       setR({ status, alerts, candidates, prefs }); setNowMs(Date.now())
+      onDone?.({ status, alerts, candidates, prefs })
       // AFTER the window is drawn from the stored anchor; a failed stamp does not advance the anchor and is shown.
       recordVisit(msg => { if (alive) setVisitErr(msg) })
     })
@@ -295,6 +319,28 @@ function WatchV002Page() {
 
   const m = useMemo(() => buildWatchStatus(r.status, nowMs), [r.status, nowMs])
   const records = useMemo(() => watchDiagnostics(m), [m])
+  /** WL-05: "Recheck status" re-reads the stored verdict; it never starts a source writer. So its readback reports the
+   *  one data fact it can prove — whether the oldest source clock moved — and on failure it puts the last good verdict
+   *  back on screen with its own, growing age instead of leaving the operator with nothing. */
+  const doRecheck = useCallback(() => {
+    if (recheck.state === 'PENDING') return
+    const at = new Date().toISOString()
+    const before = sourceClockOf(m)
+    setRecheck({ state: 'PENDING', at, sourceBefore: before, sourceAfter: null, sourceMoved: null, lastGoodAt: null, error: null })
+    load(({ status }) => {
+      const kept = status.state === 'OK' ? null : lastGoodRef.current
+      if (kept) setR(prev => ({ ...prev, status: kept }))
+      const afterM = buildWatchStatus(kept ?? status, Date.now())
+      setRecheck({
+        state: status.state === 'OK' ? 'OK' : 'FAILED', at,
+        sourceBefore: before, sourceAfter: sourceClockOf(afterM),
+        // A kept body is the SAME body: comparing it with itself would "prove" an unchanged clock that was never re-read.
+        sourceMoved: kept ? null : before !== null && sourceClockOf(afterM) !== null ? before !== sourceClockOf(afterM) : null,
+        lastGoodAt: kept ? kept.at : null,
+        error: status.state === 'OK' ? null : status.error || `the status read did not complete (${status.state})`,
+      })
+    })
+  }, [recheck.state, m, load])
   const ov = useMemo<OverviewView>(() => {
     const lv = lastVisit(r.prefs, nowMs)
     return {
@@ -316,7 +362,7 @@ function WatchV002Page() {
   return (
     <>
       <WatchV002View m={m} checkedLabel={checkedText(m)} ov={ov} onOpenWhy={() => setWhyOpen(true)} onOpenDiag={() => setDiagOpen(true)}
-        onRecheck={() => { setR({ ...r, status: loadingRead<WatchStatusWire>(WATCH_STATUS_API) }); load() }} />
+        onRecheck={doRecheck} recheck={recheck} nowMs={nowMs} />
       <WatchWhySheet open={whyOpen} onClose={() => setWhyOpen(false)} state={m.chip.state} cause={m.cause} blockers={m.blockers} />
       <DiagnosticsDrawer open={diagOpen} onClose={() => setDiagOpen(false)} records={records} fetchedAt={r.status.at || undefined}
         error={m.chip.state === 'OK' ? undefined : m.cause} />

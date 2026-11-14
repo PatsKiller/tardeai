@@ -40,3 +40,9 @@
 
 /* WL-13: the payload's own definition of the ranked number, stated once above the rows. */
 .wl2-legend { margin: 0.25rem 0 0.5rem; font-size: 0.86rem; opacity: 0.9; }
+
+/* WL-12: the Add-symbol box on My List. The hits reuse the row grid, so 412 px wraps the same way the list does. */
+.wl2-add { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--border-color); }
+.wl2-add-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.wl2-add-form .wl2-search input { width: 18rem; }
+.wl2-add-q { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }

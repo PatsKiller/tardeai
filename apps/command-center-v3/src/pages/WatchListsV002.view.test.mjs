@@ -174,12 +174,14 @@ assert.ok(/<Navigate replace to=|<Navigate to=\{[^}]*\} replace|<Navigate[^>]*\b
   assert.match(html(base({ tab: 'prospects' })), /<h1 class="v010-h1">Prospects<\/h1>/)
 }
 // 18. WL-18: prospects lanes are the SERVER's (id/label/count, server order), the URL lane is the active tab, and the
-// active lane's cap overflow is named — a lane the payload does not carry is never invented on the page
+// active lane's cap overflow is named — a lane the payload does not carry is never invented on the page.
+// The lane shape is the REAL one (`{id,label,count,overflow,items}`): review F2 found an earlier fixture carrying a
+// per-lane `as_of` the server never sends, which made the page look like it read a source clock it cannot have.
 {
   const body = { generated_at: iso(20), lanes: [
-    { id: 'actionable', label: 'Actionable', count: 3, as_of: iso(60), items: [] },
-    { id: 'forming', label: 'Forming', count: 12, as_of: iso(60), overflow: ['CCC', 'DDD'], items: [] },
-    { id: 'reentry', label: 'Re-entry', count: null, as_of: iso(60), items: [] },
+    { id: 'actionable', label: 'Actionable', count: 3, items: [] },
+    { id: 'forming', label: 'Forming', count: 12, overflow: ['CCC', 'DDD'], items: [] },
+    { id: 'reentry', label: 'Re-entry', count: null, items: [] },
   ] }
   const lanes = model.laneTabs(body, 'forming')
   assert.deepEqual(lanes.map(l => l.id), ['actionable', 'forming', 'reentry'], 'server lanes, in server order')
@@ -303,15 +305,292 @@ assert.ok(/<Navigate replace to=|<Navigate to=\{[^}]*\} replace|<Navigate[^>]*\b
 {
   const mine = clocksOf({ generated_at: iso(20), my_watchlist: { as_of: iso(900), as_of_basis: 'composed_at' } }, 'mine', null, NOW)
   assert.deepEqual(mine.map(c => [c.id, c.label, c.ageS]), [['composed_at', 'Page composed', 20], ['source_as_of', 'List source', 900]])
-  const sug = clocksOf({ generated_at: iso(20), suggests: { as_of: iso(3600), as_of_basis: 'ranking_projection' }, ranking: { as_of: iso(3600) } }, 'suggests', null, NOW)
-  assert.deepEqual(sug.map(c => c.id), ['composed_at', 'source_as_of', 'ranking_as_of'])
-  assert.equal(sug[1].label, 'Ranking projection', 'the basis string names the producer side')
-  const pro = clocksOf({ generated_at: iso(20), lanes: [{ id: 'forming', as_of: iso(600) }, { id: 'actionable', as_of: iso(30) }] }, 'prospects', 'forming', NOW)
-  assert.deepEqual(pro.map(c => [c.id, c.ageS]), [['composed_at', 20], ['source_as_of', 600]], 'the SELECTED lane is the source clock')
+  // The LIVE suggests shape: the section clock and the ranking clock are the SAME projection stamp, and the section's
+  // basis says so — so the ranking clock is printed ONCE (review r5c F1 saw the same stamp twice under one label).
+  const stamp = iso(3600)
+  const sug = clocksOf({ generated_at: iso(20), suggests: { as_of: stamp, as_of_basis: 'ranking_projection' }, ranking: { as_of: stamp } }, 'suggests', null, NOW)
+  assert.deepEqual(sug.map(c => [c.id, c.label, c.ageS]), [['composed_at', 'Page composed', 20], ['source_as_of', 'Ranking projection', 3600]])
+  // Without a section clock the ranking clock still stands alone; a non-ranking section clock is its own clock.
+  const rankOnly = clocksOf({ generated_at: iso(20), suggests: {}, ranking: { as_of: iso(3600) } }, 'suggests', null, NOW)
+  assert.deepEqual(rankOnly.map(c => [c.id, c.ageS]), [['composed_at', 20], ['ranking_as_of', 3600]])
+  const listSrc = clocksOf({ generated_at: iso(20), suggests: { as_of: iso(900), as_of_basis: 'composed_at' }, ranking: { as_of: iso(3600) } }, 'suggests', null, NOW)
+  assert.deepEqual(listSrc.map(c => [c.id, c.label]), [['composed_at', 'Page composed'], ['source_as_of', 'List source'], ['ranking_as_of', 'Ranking projection']],
+    'a list clock that is not the ranking projection keeps both clocks, distinctly labelled')
+  // Prospects, REAL lane shape (no `as_of`): the payload carries no per-lane source clock, so the block claims only
+  // the composition clock and invents nothing. This is the shape the server actually sends — review F2's requested
+  // fixture, replacing one that carried a field the server has never sent.
+  const real = clocksOf({ generated_at: iso(20), lanes: [{ id: 'forming', count: 2, items: [] }, { id: 'actionable', count: 1, items: [] }] }, 'prospects', 'forming', NOW)
+  assert.deepEqual(real.map(c => [c.id, c.ageS]), [['composed_at', 20]], 'the real lane shape yields the composition clock and NO lane clock')
+  // Forward contract only (NEEDS BACKEND): IF a lane ever carries its own `as_of`, it is used and labelled as the
+  // source clock. Kept as a contract test, explicitly not as evidence of today's payload.
+  const fwd = clocksOf({ generated_at: iso(20), lanes: [{ id: 'forming', as_of: iso(600) }, { id: 'actionable', as_of: iso(30) }] }, 'prospects', 'forming', NOW)
+  assert.deepEqual(fwd.map(c => [c.id, c.ageS]), [['composed_at', 20], ['source_as_of', 600]], 'a lane `as_of`, when the server sends one, is the SELECTED lane\'s source clock')
   assert.deepEqual(clocksOf({}, 'mine', null, NOW), [], 'a body with no timestamps claims no clock')
   const h = html(base({ clocks: mine }))
   assert.ok(h.includes('data-testid="watch-list-clocks"'))
   assert.match(h, /data-clock="source_as_of"/); assert.ok(h.includes('15 min old'), 'the source age is shown next to its stamp')
   assert.ok(!html(base({ clocks: [] })).includes('watch-list-clocks'), 'no clocks, no block')
 }
-console.log('27 scenarios passed')
+// 28. WL-20: Add to My List is offered on Prospects only for a name the SERVER says is not yours and whose lane the CIO
+// currently calls actionable; an `expired`/`manage` row gets no button, and a page without the command renders none
+{
+  const add = s => rowView({ symbol: s.symbol, ...s })
+  assert.equal(model.canAddToMine(add({ symbol: 'AAA', mine: false, stage: 'actionable' })), true)
+  assert.equal(model.canAddToMine(add({ symbol: 'AAA', mine: true, stage: 'actionable' })), false, 'already yours => nothing to add')
+  assert.equal(model.canAddToMine(add({ symbol: 'AAA', mine: false, stage: 'Expired' })), false, 'an expired lane is not a new idea')
+  assert.equal(model.canAddToMine(add({ symbol: 'AAA', mine: false, stage: 'manage' })), false)
+  const onAdd = noop
+  const h = html(base({ tab: 'prospects', rows: [add({ symbol: 'AAA', mine: false, stage: 'forming' }), add({ symbol: 'BBB', mine: true, stage: 'forming' }), add({ symbol: 'CCC', mine: false, stage: 'manage' })], onAdd }))
+  const btn = s => (h.match(new RegExp(`<button[^>]*data-testid="watch-add-${s}"[^>]*>[^<]*<`)) || [''])[0]
+  assert.match(btn('AAA'), />Add to My List</, 'an actionable non-yours prospect can be adopted')
+  assert.equal(btn('BBB'), '', 'a name the server says is yours gets no Add')
+  assert.equal(btn('CCC'), '', 'a lane that is not actionable gets no Add')
+  assert.ok(!html(base({ tab: 'prospects', rows: [add({ symbol: 'AAA', mine: false, stage: 'forming' })] })).includes('watch-add-AAA'), 'no command wired => no button (never a dead control)')
+  assert.ok(!html(base({ tab: 'suggests', rows: [add({ symbol: 'AAA', mine: false, stage: 'actionable' })], onAdd })).includes('watch-add-AAA'), 'Prospects only')
+  assert.ok(/onAdd=\{r => void act\(`\$\{r\.symbol\}:add`, async \(\) => \{ const res = await mineAction\(r\.symbol, 'add', undefined, 'watch\.v002'\)/.test(listsSrc), 'the Add control uses the existing membership command')
+}
+// 29. WL-21: the Yours pill is the server's `mine`, not the star — a starred name the server does not report as yours
+// gets no pill, and a name yours through another source does
+{
+  const h = html(base({ rows: [rowView({ symbol: 'AAA', mine: true, starred: false }), rowView({ symbol: 'BBB', mine: false, starred: true }), rowView({ symbol: 'CCC', mine: false })] }))
+  assert.ok(h.includes('data-testid="watch-yours-AAA"'), 'server says yours => pill, even without the star')
+  assert.match((h.match(/data-testid="watch-yours-AAA"[^>]*>([^<]*)</) || [null, ''])[1], /Yours/)
+  assert.ok(!h.includes('watch-yours-BBB'), 'the star is not the membership answer')
+  assert.ok(!h.includes('watch-yours-CCC'))
+  assert.equal(rowView({ symbol: 'AAA', mine: 'yes' }).mine, false, 'only a real boolean true counts as yours')
+}
+// 30. WL-17/WL-20: an Add in flight disables only that row's Add and says it is working; a later click cannot race it
+{
+  const rows = [rowView({ symbol: 'AAA', stage: 'actionable' }), rowView({ symbol: 'BBB', stage: 'actionable' })]
+  const h = html(base({ tab: 'prospects', rows, onAdd: noop, busy: 'AAA:add' }))
+  const btn = s => (h.match(new RegExp(`<button[^>]*data-testid="watch-add-${s}"[^>]*>[^<]*<`)) || [''])[0]
+  assert.match(btn('AAA'), /disabled/); assert.match(btn('AAA'), /Adding…/)
+  assert.ok(!/disabled/.test(btn('BBB')), 'the other row stays live')
+  assert.ok(/if \(busy\) return/.test(listsSrc), 'one command at a time')
+}
+// 31. J2-failure: a command that fails is stated as a failure on the list and the list is NOT refetched as if it worked
+{
+  const h = html(base({ message: 'Failed: HTTP 503 — the command was refused' }))
+  assert.match(h, /data-testid="watch-list-message"[^>]*role="status"/)
+  assert.ok(h.includes('Failed: HTTP 503'), 'the server reason reaches the operator')
+  assert.ok(/try \{ setMessage\(await fn\(\)\); refetch\(\) \} catch \(e\) \{ setMessage\(`Failed: /.test(listsSrc), 'refetch runs on success only; a failure is reported, not read back as success')
+}
+// 32. WL-11: the monitoring fields the read does NOT carry are named once — a blank column may not read as a clean row.
+// The list is derived from the body, so a field the server starts sending disappears from the disclosure on its own.
+{
+  const mine = { my_watchlist: { rows: [{ symbol: 'AAA' }] } }
+  assert.deepEqual(model.absentRowFields(mine, 'mine').map(f => f.id), ['quote', 'entry', 'alert'], 'all three are named when the body carries none')
+  assert.deepEqual(model.absentRowFields({ my_watchlist: { rows: [{ symbol: 'AAA', last_price: 12.5 }] } }, 'mine').map(f => f.id), ['entry', 'alert'], 'a field that IS sent is not called absent')
+  assert.deepEqual(model.absentRowFields({ my_watchlist: { rows: [] } }, 'mine'), [], 'nothing read => no column claim')
+  const pro = { lanes: [{ id: 'forming', items: [{ symbol: 'AAA', last_price: 1, entry_level: 2, alert_state: 'armed' }] }] }
+  assert.deepEqual(model.absentRowFields(pro, 'prospects'), [], 'prospects rows are checked too')
+  assert.equal(model.joinLabels(['a', 'b', 'c']), 'a, b and c')
+  assert.equal(model.joinLabels(['a']), 'a')
+
+  const h = html(base({ absent: model.absentRowFields(mine, 'mine') }))
+  assert.match(h, /data-testid="watch-row-absent" data-absent="quote,entry,alert"/)
+  assert.ok(h.includes('last price and quote age') && h.includes('alert condition and armed/fired/paused state'), 'the disclosure names the fields')
+  assert.ok(h.includes('treat') && h.includes('not as a monitoring verdict'), 'and says what the row is not')
+  assert.ok(!html(base({ absent: [] })).includes('watch-row-absent'), 'no disclosure when the read carries the fields')
+}
+// 33. WL-22: a prospects row that states no condition says the condition is unavailable — never "setup confirmed"
+{
+  const h = html(base({ tab: 'prospects', rows: [rowView({ symbol: 'AAA', stage: 'forming' }), rowView({ symbol: 'BBB', stage: 'forming', why: 'needs a close above 42' })] }))
+  assert.match(h, /data-testid="watch-condition-AAA"[^>]*data-unavailable="1"/)
+  assert.ok(h.includes('does not prove the setup is confirmed'))
+  assert.ok(!h.includes('watch-condition-BBB'), 'a stated condition is shown, not replaced')
+  assert.ok(h.includes('needs a close above 42'))
+  assert.ok(!html(base({ rows: [rowView({ symbol: 'AAA' })] })).includes('watch-condition-AAA'), 'My List rows are not setup rows')
+}
+// 34. WL-12: a search that could not be read says exactly that — never "no match", and never a guessed ticker
+{
+  const err = html(base({ search: { q: 'AAPL', submitted: 'AAPL', loading: false, error: 'HTTP 503', hits: [], gap: null } }))
+  assert.match(err, /data-testid="watch-add-error"[^>]*role="alert"/)
+  assert.ok(err.includes('Symbol search could not be read: HTTP 503'), 'the read failure is stated with its own reason')
+  assert.ok(err.includes('No ticker is guessed from what you typed'))
+  assert.ok(!err.includes('watch-add-none'), 'a failed read is not "nothing matched"')
+  assert.ok(!err.includes('watch-hit-'), 'a failed read offers no rows to add')
+  assert.ok(!html(base({ search: { q: 'AA', submitted: '', loading: false, error: null, hits: [], gap: null } })).includes('watch-add-error'), 'no failure claimed before any read')
+}
+// 35. WL-12: the hits are the SERVER's rows; a name already on My List gets no Add (duplicate-safe); a body we cannot read is
+// a gap, not an empty result
+{
+  const hits = model.searchHits({ schema: 'WatchSymbolSearch@v1', results: [
+    { symbol: 'aapl', name: ' Apple Inc ', identity_status: 'RESOLVED', in_registry: true, on_my_list: false, match: 'ticker' },
+    { symbol: 'APLE', in_registry: false, on_my_list: true, match: 'name' },
+    { symbol: '   ' },
+    { name: 'no ticker' },
+  ] })
+  assert.deepEqual(hits.map(h => h.symbol), ['AAPL', 'APLE'], 'rows with no ticker are dropped, symbols are normalised')
+  assert.equal(hits[0].name, 'Apple Inc'); assert.equal(hits[0].identityStatus, 'RESOLVED'); assert.equal(hits[0].inRegistry, true)
+  assert.equal(hits[1].name, null); assert.equal(hits[1].inRegistry, false); assert.equal(hits[1].onMyList, true)
+  assert.equal(model.searchHits({ results: 'nope' }).length, 0)
+
+  const h = html(base({ search: { q: 'appl', submitted: 'appl', loading: false, error: null, hits, gap: null } }))
+  assert.match(h, /data-testid="watch-add-for">Results for “appl”/, 'the shown rows are labelled with the query they answer')
+  assert.ok(h.includes('data-testid="watch-hit-add-AAPL"'), 'a name not on My List can be added')
+  assert.ok(!h.includes('watch-hit-onlist-AAPL'))
+  assert.ok(h.includes('data-testid="watch-hit-onlist-APLE"'), 'the server says yours => said so')
+  assert.ok(!h.includes('watch-hit-add-APLE'), 'and no Add is offered for it — no duplicate path')
+  assert.ok(h.includes('not in the registry'), 'a row outside the registry is labelled, not hidden')
+
+  const none = html(base({ search: { q: 'zzz', submitted: 'zzz', loading: false, error: null, hits: [], gap: null } }))
+  assert.ok(none.includes('watch-add-none') && none.includes('No ticker or company matches “zzz”'), 'a real empty result says no match')
+
+  assert.equal(model.searchGap({ ok: false, reason: 'provider budget' }), 'provider budget')
+  assert.equal(model.searchGap({ schema: 'WatchSymbolSearch@v2', results: [] }), 'unexpected schema WatchSymbolSearch@v2')
+  assert.equal(model.searchGap({ schema: 'WatchSymbolSearch@v1' }), 'the search body carries no results list')
+  assert.equal(model.searchGap({ schema: 'WatchSymbolSearch@v1', results: [] }), null, 'an empty list on a valid body is not a gap')
+  assert.equal(model.searchGap(null), null, 'not read yet is not a gap')
+  const gap = html(base({ search: { q: 'qq', submitted: 'qq', loading: false, error: null, hits: [], gap: 'unexpected schema WatchSymbolSearch@v2' } }))
+  assert.match(gap, /data-testid="watch-add-gap"[^>]*role="alert"/)
+  assert.ok(!gap.includes('watch-add-none'), 'an unreadable body is not "nothing matched"')
+}
+// 36. WL-12: nothing is read below the minimum query, the box is My List only, and the write is proven by a readback
+{
+  const btn = h => (h.match(/<button[^>]*data-testid="watch-add-search"[^>]*>[^<]*</) || [''])[0]
+  assert.match(btn(html(base({ search: { q: 'A', submitted: '', loading: false, error: null, hits: [], gap: null } }))), /disabled/,
+    'one character is not a search')
+  const two = btn(html(base({ search: { q: 'AP', submitted: '', loading: false, error: null, hits: [], gap: null } })))
+  assert.ok(!/disabled/.test(two), 'two characters is')
+  assert.match(btn(html(base({ search: { q: 'AAPL', submitted: 'AAPL', loading: true, error: null, hits: [], gap: null } }))), /Searching…/)
+  assert.ok(!html(base({ search: { q: 'AAPL', submitted: 'AAPL', loading: true, error: null, hits: [], gap: null } })).includes('watch-add-hits'),
+    'no stale rows while a new search is in flight')
+  const box = { q: 'AAPL', submitted: 'AAPL', loading: false, error: null, hits: [], gap: null }
+  assert.ok(html(base({ search: box })).includes('data-testid="watch-add-symbol"'), 'the box exists on My List')
+  assert.ok(!html(base({ tab: 'suggests', search: box })).includes('watch-add-symbol'), 'and only on My List')
+  assert.ok(!html(base()).includes('watch-add-symbol'), 'no search state wired => no dead box')
+
+  assert.ok(/const read = await readOnce<unknown>\(symbolSearchUrl\(q\)\)/.test(listsSrc), 'one bounded read per submitted query')
+  assert.ok(/if \(token !== searchToken\.current\) return/.test(listsSrc), 'a slow earlier answer cannot overwrite a newer query')
+  assert.ok(/if \(q\.length < SEARCH_MIN_CHARS\)/.test(listsSrc), 'a query below the minimum issues no read')
+  assert.ok(/await runSearch\(hit\.symbol\)/.test(listsSrc), 'the add is followed by a readback of the same search')
+  assert.ok(/mineAction\(hit\.symbol, 'add', undefined, 'watch\.v002'\)/.test(listsSrc), 'and uses the existing membership command')
+}
+// 37. WL-14: a Suggestions row states the reason it was selected, or says the read does not carry one — a rank and a
+// stage are not a rationale, and a bare row reads as "obviously useful"
+{
+  const h = html(base({ tab: 'suggests', rows: [
+    rowView({ symbol: 'AAA', stage: 'forming', conviction: 86 }),
+    rowView({ symbol: 'BBB', stage: 'forming', why: 'rank 2 of the full universe, not on My List' }),
+  ] }))
+  assert.match(h, /data-testid="watch-rationale-AAA" data-unavailable="1"/)
+  assert.ok(h.includes('Selection reason not stated in this read'))
+  assert.ok(h.includes('says why the name is useful now'))
+  assert.match(h, /data-testid="watch-rationale-BBB" data-unavailable="0"/)
+  assert.ok(h.includes('rank 2 of the full universe, not on My List'), 'a stated reason is shown, not replaced')
+  assert.equal((h.match(/Selection reason not stated in this read/g) || []).length, 1,
+    'the unavailable sentence belongs to the one row without a reason')
+  const mine = html(base({ rows: [rowView({ symbol: 'AAA' })] }))
+  assert.ok(!mine.includes('watch-rationale-AAA'), 'My List rows make no rationale claim')
+  assert.ok(!mine.includes('Selection reason not stated in this read'))
+  assert.ok(/data-testid=\{p\.tab === 'suggests' \? `watch-rationale-\$\{r\.symbol\}` : undefined\}/.test(listsSrc),
+    'the label is attached only where the rule applies')
+}
+// 38. WL-15: a dismissal says what it does and how to undo it, and the undo is offered next to its own result (never a
+// dead control), issuing the same restore command
+{
+  const dis = [{ symbol: 'ZZZ', reason: 'overlaps a held name', until: '2031-04-06T00:00:00Z' }]
+  const h = html(base({ tab: 'suggests', dismissedItems: dis }))
+  assert.ok(h.includes('data-testid="watch-dismissed-policy"'), 'the history explains itself')
+  assert.ok(h.includes('Restoring makes it eligible again') && h.includes('does not guarantee'), 'restore is not a promise of ranking')
+  assert.ok(h.includes('until 2031-04-06'), 'the expiry is the stored date')
+  assert.ok(!h.includes('watch-undo'), 'no undo offer before anything was dismissed here')
+
+  const u = html(base({ tab: 'suggests', undo: { symbol: 'AAPL' }, onUndo: noop }))
+  assert.match(u, /data-testid="watch-undo"/)
+  assert.ok(u.includes('watch-undo-btn') && u.includes('Undo — restore AAPL'), 'the undo names the name it restores')
+  assert.ok(!html(base({ tab: 'suggests', undo: { symbol: 'AAPL' } })).includes('watch-undo'), 'no handler => no dead control')
+  const busyBtn = (html(base({ tab: 'suggests', undo: { symbol: 'AAPL' }, onUndo: noop, busy: 'AAPL:restore' })).match(/<button[^>]*watch-undo-btn[^>]*>/) || [''])[0]
+  assert.match(busyBtn, /disabled/, 'the undo cannot race its own command')
+
+  assert.ok(/setUndo\(r\.symbol\); return `\$\{r\.symbol\} dismissed for 30 days\.`/.test(listsSrc), 'a dismiss offers the undo')
+  assert.ok(/setUndo\(u => \(u === r\.symbol \? null : u\)\)/.test(listsSrc), 'a restore clears the offer for that name')
+  assert.ok(/const sym = undo; if \(!sym\) return; void act\(`\$\{sym\}:restore`, async \(\) => \{ await post\('\/api\/v3\/watch\/commands\/suggest-restore', \{ symbol: sym \}\); setUndo\(null\)/.test(listsSrc),
+    'the undo is the same restore command, and the offer clears only after it succeeds')
+}
+// 39. WL-19 — review condition C1 (cc-deepseek-9, finding F2): the prospects grade is proven on the payload the server
+// actually sends. A real lane carries no `as_of`, so the grade is the composition clock and says so; a sixteen-hour-old
+// composition is STALE, because a fresh wrapper must not certify it. The `source_as_of` branch is asserted as a
+// forward contract, not as today's behaviour — and the threshold it inherits is named so it is not inherited silently.
+{
+  const lane = [{ id: 'forming', label: 'Forming', count: 2, items: [] }]   // the real shape: no as_of
+  const fresh = model.gradeProspects({ generated_at: iso(20), lanes: lane }, NOW, 'forming')
+  assert.equal(fresh.basis, 'composed_at', 'the real lane shape grades the composition clock and names it')
+  assert.equal(fresh.state, 'OK')
+  const old = model.gradeProspects({ generated_at: iso(16 * 3600), lanes: lane }, NOW, 'forming')
+  assert.equal(old.state, 'STALE', 'a sixteen-hour-old composition is STALE: the wrapper cannot certify it')
+  assert.equal(old.basis, 'composed_at')
+  const none = model.gradeProspects({ lanes: lane }, NOW, 'forming')
+  assert.equal(none.state, 'UNKNOWN', 'no generated_at is UNKNOWN, never fresh')
+  // forward contract ONLY (NEEDS BACKEND): the server sends no lane `as_of` today
+  const fwd = model.gradeProspects({ generated_at: iso(20), lanes: [{ id: 'forming', as_of: iso(600) }] }, NOW, 'forming')
+  assert.equal(fwd.basis, 'source_as_of', 'a lane `as_of`, if the server ever sends one, is the source clock')
+  assert.equal(fwd.ageS, 600, 'and its age is measured from that clock, not the composition')
+  // the known limitation, encoded so it cannot be inherited silently: that source clock is still graded against the
+  // 15-minute COMPOSITION timeout, so a legitimately older source reads STALE. A per-source threshold is NEEDS BACKEND.
+  const older = model.gradeProspects({ generated_at: iso(20), lanes: [{ id: 'forming', as_of: iso(2 * 3600) }] }, NOW, 'forming')
+  assert.equal(older.state, 'STALE', 'until a per-source threshold exists, an older source clock reads STALE — F2 notes this')
+}
+// 40. r5c-journeys F1 (SEV-3, cc-opus-3): a Suggestions row showed TWO different numbers under the word "conviction" —
+// the row's own "conviction 68 · universe rank #2" and the suggestion's reason "#2 · conviction 86" (live ANRO). They are
+// two sources: the row's conviction is the canonical CIO record (`conviction_source: cio_truth`), the reason quotes the
+// ranking projection's. Each number is now named by its source; when the two agree the server's wording is left alone.
+{
+  const anro = { symbol: 'ANRO', conviction: 68.14, conviction_source: 'cio_truth', universe_rank: 2, suggestion: { reason: '#2 · conviction 86' } }
+  const row = rowView(anro)
+  assert.equal(row.convictionSource, 'cio_truth')
+  assert.equal(model.convictionText(row), 'conviction 68 · CIO record · universe rank #2', 'the row number is named by its source')
+  assert.equal(row.why, '#2 · ranking-projection conviction 86', 'the reason number is named by ITS source, not left as a second "conviction"')
+  const h = html(base({ tab: 'suggests', rows: [row] }))
+  assert.ok(h.includes('conviction 68 · CIO record · universe rank #2'))
+  assert.ok(h.includes('#2 · ranking-projection conviction 86'))
+  assert.equal((h.match(/conviction \d+/g) || []).length, 2, 'both numbers are still stated — named, never silently dropped')
+  // Agreement: no second label is invented for one value.
+  const same = rowView({ symbol: 'INDV', conviction: 85.4, conviction_source: 'cio_truth', universe_rank: 3, suggestion: { reason: '#3 · conviction 85' } })
+  assert.equal(same.why, '#3 · conviction 85', 'equal numbers under two sources need no relabel')
+  // No record number to compare against: the server's wording stands (nothing to disambiguate).
+  const only = rowView({ symbol: 'EVI', conviction: null, suggestion: { reason: '#4 · conviction 85' } })
+  assert.equal(only.why, '#4 · conviction 85')
+  assert.equal(model.convictionText(only), 'no score', 'a row without a conviction never borrows the projection number')
+  // A source the page has not met is shown verbatim, not guessed.
+  assert.equal(model.convictionSourceLabel('something_new'), 'something_new')
+  assert.equal(model.convictionSourceLabel('cio_opportunity_projection'), 'curator projection')
+  assert.equal(model.convictionSourceLabel(null), null)
+  // The LIVE curation body (shape read from :7777 at 16:5xZ): as_of and ranking.as_of are one stamp under basis
+  // ranking_projection -> exactly TWO clocks, and "Ranking projection" appears once in the rendered strip.
+  const body = { generated_at: iso(20), suggests: { as_of: iso(7200), as_of_basis: 'ranking_projection' }, ranking: { as_of: iso(7200) } }
+  const clocks = clocksOf(body, 'suggests', null, NOW)
+  assert.equal(clocks.filter(c => c.label === 'Ranking projection').length, 1, 'the ranking clock is printed once')
+  const hc = html(base({ tab: 'suggests', clocks }))
+  assert.equal((hc.match(/Ranking projection/g) || []).length, 1)
+}
+// 41. WL-29 — review condition C2 (cc-deepseek-9): each list's count names its population, and a read that repeats a
+// symbol is deduped and says so. Counts come only from the body; a field the body omits is left out, never estimated.
+{
+  const mine = { my_watchlist: { count: 111, unfiltered_count: 111, filters: {} } }
+  assert.match(model.populationText('mine', mine), /every membership source.*: 111 names\. No position filters are applied\./)
+  const filtered = { my_watchlist: { count: 4, unfiltered_count: 111, filters: { held: true } } }
+  assert.match(model.populationText('mine', filtered), /Filtered by held; 111 names before filters\./)
+  assert.equal(model.populationText('mine', { my_watchlist: {} }), null, 'no count in the body => no population claim')
+  const sug = { suggests: { eligible: 1625, ranked: 1723, universe_note: 'Eligible names from the ranked research universe; Prospects shows a capped stage view.' } }
+  const sp = model.populationText('suggests', sug)
+  assert.match(sp, /Eligible names from the ranked research universe/)
+  assert.match(sp, /1625 of 1723 ranked names are eligible today/)
+  assert.match(sp, /excluded here by the server/, 'the cross-list exclusion (mine/held/dismissed) is stated, not assumed')
+  const lane = { lane: 'forming', lanes: [{ id: 'forming', label: 'Setup forming', count: 158 }, { id: 'expired', label: 'Expired', count: 59 }] }
+  assert.equal(model.populationText('prospects', lane, 'forming'), 'Counts the names the prospect collection currently holds in lane “Setup forming”: 158.')
+  assert.equal(model.populationText('prospects', { lanes: [{ id: 'forming' }] }, 'forming'), null, 'a lane with no count says nothing')
+  // Dedupe: the same symbol twice renders once and is announced.
+  const rows = [rowView({ symbol: 'AAA' }), rowView({ symbol: 'BBB' }), rowView({ symbol: 'AAA', conviction: 90 })]
+  const d = model.dedupeRows(rows)
+  assert.deepEqual(d.rows.map(r => r.symbol), ['AAA', 'BBB'], 'the first occurrence wins; the duplicate does not render')
+  assert.equal(d.repeated, 1)
+  assert.ok(html(base({ population: sp, repeated: 1 })).includes('This read carried one name more than once'))
+  assert.ok(html(base({ population: sp, repeated: 2 })).includes('2 names more than once'))
+  assert.ok(!html(base({})).includes('watch-dedupe'), 'no repeats => no note (never a standing warning)')
+  const hp = html(base({ population: sp }))
+  assert.ok(hp.includes('data-testid="watch-population"') && hp.includes('1625 of 1723 ranked'), 'the population sentence renders')
+  assert.ok(!html(base({ population: null })).includes('watch-population'), 'no population => no empty note')
+}
+console.log('41 scenarios passed')

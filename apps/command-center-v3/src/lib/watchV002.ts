@@ -26,6 +26,8 @@ export interface WatchInputWire {
 export interface WatchStatusWire {
   schema?: string; verdict?: string; cause?: string; computed_at?: string | null; session?: string
   read_from?: string | null; required_inputs?: string[]; inputs?: WatchInputWire[]
+  /** Present only when the server answered from its cache: how many seconds that cached body had been held. */
+  cache_age_s?: number | null
 }
 
 export interface WatchInputRow {
@@ -43,7 +45,14 @@ export interface WatchStatusModel {
   blockers: WatchInputRow[]
   /** The Watch gates: one per required input, same states as the chip is built from. */
   gates: WatchInputRow[]
+  /** WL-05: the served body's own cache age, when it said. null = this body did not carry `cache_age_s` (a miss, or an
+   *  error body), so how long it had been cached is unknown — never assumed to be zero. */
+  cacheAgeS: number | null
 }
+
+/** The cache window the status route documents (`CACHE_TTL_S` in scripts/lib/watch_status_live.py). The page names it as
+ *  the read's cache window; a body claiming a larger cache age is reported as an inconsistent body, not quoted as fact. */
+export const STATUS_CACHE_WINDOW_S = 30
 
 const toneOf = (s: WState): Tone => (s === 'OK' ? 'ok' : s === 'STALE' ? 'warn' : s === 'LOADING' ? 'neutral' : 'bad')
 const rank: Record<WState, number> = { OK: 0, LOADING: 1, STALE: 2, 'TIMED OUT': 3, UNKNOWN: 4 }
@@ -87,7 +96,7 @@ export function gradeInput(w: WatchInputWire, nowMs: number): WatchInputRow {
 
 export function buildWatchStatus(read: Read<WatchStatusWire> | undefined, nowMs: number): WatchStatusModel {
   const empty = (state: WState, text: string, cause: string): WatchStatusModel =>
-    ({ chip: { state, tone: toneOf(state), text }, cause, checkedAt: read?.at ?? null, session: 'unknown', inputs: [], blockers: [], gates: [] })
+    ({ chip: { state, tone: toneOf(state), text }, cause, checkedAt: read?.at ?? null, session: 'unknown', inputs: [], blockers: [], gates: [], cacheAgeS: null })
   if (!read || read.state === 'LOADING') return empty('LOADING', 'Watch data · reading…', 'reading /api/v2/watch/status')
   if (read.state === 'TIMED OUT') return empty('TIMED OUT', 'Watch data · TIMED OUT', `${WATCH_STATUS_API}: ${read.error || 'no answer'}`)
   if (read.state !== 'OK' || !read.data) {
@@ -122,23 +131,106 @@ export function buildWatchStatus(read: Read<WatchStatusWire> | undefined, nowMs:
   if (readNote) causeParts.push(readNote)
   const cause = state === 'OK' ? 'All required Watch inputs are within their thresholds'
     : (causeParts.join(' · ') || d.cause || 'the Watch data could not be verified')
-  // The age on the chip is the OLDEST required input's age (the data), not the age of this read.
+  // The age on the chip is the OLDEST required input's age (the data the verdict covers), not the age of this read —
+  // and when optional inputs exist the label says "required", because an older optional input is not in that number.
   const ages = allGates.map(g => (g.asOf ? Math.max(0, Math.round((nowMs - Date.parse(g.asOf)) / 1000)) : null)).filter((x): x is number => x !== null)
-  const age = ages.length ? ` · oldest input ${ageText(Math.max(...ages))}` : ' · no input timestamps'
+  const optional = inputs.filter(i => !required.has(i.id)).length
+  const age = ages.length
+    ? ` · oldest ${optional > 0 ? 'required ' : ''}input ${ageText(Math.max(...ages))}`
+    : ' · no input timestamps'
   return {
     chip: { state, tone: toneOf(state), text: `Watch data · ${state}${age}` }, cause,
     checkedAt: d.computed_at ?? null, session: String(d.session || 'unknown'), inputs, blockers: bad, gates: allGates,
+    cacheAgeS: cacheAgeOf(d.cache_age_s),
   }
 }
 
 const diagStatus = (s: WState): DiagRecordModel['status'] => (s === 'LOADING' ? 'UNKNOWN' : s)
 
-/** Diagnostics rows: one per input — source, observed time (as_of), refresh, threshold, failure, owner. */
+/** WL-05: `cache_age_s` as the model keeps it. A number the page can quote, or null — a body that did not report its
+ *  cache age (a miss, an error body) is unknown, never read as "0 s, fresh". */
+const cacheAgeOf = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.round(v) : null)
+
+/** WL-05: the "Refresh rate" cell. The status body carries NO per-input cadence — every row is recomputed on the same
+ *  request — so the cell says that outright instead of letting a body-wide sentence read as this input's schedule. The
+ *  one schedule fact the body does carry is how long it had been cached; that is quoted when it is present and within
+ *  the window the route documents, and said to be unknown when it is absent or outside it. Each row's own age and
+ *  threshold stay in the Age and Threshold columns. */
+export function refreshText(cacheAgeS: number | null): string {
+  const base = `no per-input cadence: the read is recomputed on request and answered from a cache of up to ${STATUS_CACHE_WINDOW_S} s; each row's own age and limit are the Age and Threshold columns`
+  if (cacheAgeS === null) return `${base}. This body did not report its cache age, so how long it had been held is unknown.`
+  if (cacheAgeS > STATUS_CACHE_WINDOW_S) {
+    return `${base}. The body reported a cache age of ${cacheAgeS} s — outside the ${STATUS_CACHE_WINDOW_S} s window it documents — so its age is not quoted as fact.`
+  }
+  return `${base}. This body was ${cacheAgeS} s into that cache when read.`
+}
+
+/** Diagnostics rows: one per input the verdict is made of — source, observed time (as_of), refresh, threshold, failure,
+ *  owner. WL-05: that includes a REQUIRED input the body never listed. Such a row exists nowhere in `inputs` (the server
+ *  simply omitted it) but it is the loudest diagnostic there is — a required input nobody can read — so mapping `inputs`
+ *  alone used to hide exactly the failure this table exists to show. */
 export function watchDiagnostics(m: WatchStatusModel): DiagRecordModel[] {
-  return m.inputs.map(i => ({
+  const gateIds = new Set(m.gates.map(g => g.id))
+  const rows = [...m.gates, ...m.inputs.filter(i => !gateIds.has(i.id))]
+  const refresh = refreshText(m.cacheAgeS)
+  return rows.map(i => ({
     widget: `${i.label} · owner: ${i.owner}`, source: i.source,
-    refreshRate: 'computed on request, cached 30 s', age: i.asOf ? `${i.age} · observed ${i.asOfText}` : '—',
+    refreshRate: refresh, age: i.asOf ? `${i.age} · observed ${i.asOfText}` : '—',
     threshold: i.threshold, status: diagStatus(i.state), failureMode: i.reason || (i.state === 'OK' ? 'none' : i.state),
     needsBackend: i.needsBackend,
   }))
+}
+
+/** The OLDEST required input's `as_of` — the data clock, i.e. what the chip's age is drawn from. Deliberately not the
+ *  moment the page read the verdict: a recheck can move that and must never be mistaken for new source data (WL-05). */
+export function sourceClockOf(m: WatchStatusModel): string | null {
+  const rows = m.gates.length ? m.gates : m.inputs
+  const times = rows.map(r => (r.asOf ? Date.parse(r.asOf) : NaN)).filter((t): t is number => Number.isFinite(t))
+  if (!times.length) return null
+  return new Date(Math.min(...times)).toISOString()
+}
+
+/** What the operator's "Recheck status" did, in their terms. The control re-reads the stored verdict and the overview
+ *  lists; it starts no source writer. So the only thing it can prove about the data is whether the source clock moved,
+ *  and on failure it keeps the last good verdict (with its own, growing age) instead of replacing good data with
+ *  nothing (WL-05: "a slow read times out with last good values and age"). */
+export type RecheckState = 'IDLE' | 'PENDING' | 'OK' | 'FAILED'
+export interface Recheck {
+  state: RecheckState
+  /** Pressed at, from this page's clock. */
+  at: string | null
+  sourceBefore: string | null
+  sourceAfter: string | null
+  /** null = not comparable (a side carried no input timestamp, or no new body arrived). */
+  sourceMoved: boolean | null
+  /** Set on failure: when the verdict now on screen was read. */
+  lastGoodAt: string | null
+  error: string | null
+}
+export const RECHECK_IDLE: Recheck = { state: 'IDLE', at: null, sourceBefore: null, sourceAfter: null, sourceMoved: null, lastGoodAt: null, error: null }
+
+const hhmmss = (iso: string): string => {
+  const t = Date.parse(iso)
+  return Number.isFinite(t) ? `${new Date(t).toISOString().slice(11, 19)}Z` : 'unknown time'
+}
+
+export function recheckText(r: Recheck, nowMs: number): string {
+  if (r.state === 'IDLE') return ''
+  if (r.state === 'PENDING') {
+    return 'Rechecking the stored verdict and the overview lists. This control issues reads and records your visit; it starts no source writer, so source clocks stay where they were.'
+  }
+  if (r.state === 'FAILED') {
+    const held = r.lastGoodAt
+      ? `Showing the last good verdict read ${ageText(Math.max(0, Math.round((nowMs - Date.parse(r.lastGoodAt)) / 1000)))} ago — its age keeps growing until a read succeeds.`
+      : 'No last good verdict is held, so the status below is not certified by anything.'
+    return `Recheck failed${r.error ? `: ${r.error}` : ''}. ${held}`
+  }
+  const at = r.at ? hhmmss(r.at) : 'an unknown time'
+  if (r.sourceMoved === true && r.sourceBefore && r.sourceAfter) {
+    return `Recheck complete ${at}. The source clock moved ${r.sourceBefore.slice(0, 16).replace('T', ' ')}Z → ${r.sourceAfter.slice(0, 16).replace('T', ' ')}Z during the recheck: that change came from the source, not from this page.`
+  }
+  if (r.sourceMoved === false) {
+    return `Recheck complete ${at}. The stored verdict was re-read; the oldest source clock did not move — a new read time is not new data.`
+  }
+  return `Recheck complete ${at}. The readback arrived, but the source clock could not be compared: one side carried no input timestamps.`
 }

@@ -4,17 +4,19 @@
  *  never turns an unread list into an empty one. Actions reuse the existing writes: star/add/remove →
  *  POST /api/v3/watch/commands/mine; dismiss/restore → /suggest-dismiss, /suggest-restore. Detail opens the symbol page.
  *  Watching only — no order, no size, no stop. */
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { readOnce } from '../lib/homeV010'
 import WatchSubnav from '../components/watch/WatchSubnav'
 import './WatchListsV002.css'
 import { mineAction } from '../components/watch/MineControls'
 import {
-  ageText, clocksOf, curationUrl, dismissedSet, filterRows, gradeCuration, gradeProspects, laneOverflow, laneTabs, membershipSources,
-  otherMembership, pagingOf, pagingText, prospectsUrl, rankingLegend, rowView,
-  type Clock, type DismissedItem, type LaneTab, type ListGrade, type ListKey, type ListPaging, type ListRowView,
-  type MemberSource,
+  absentRowFields, ageText, canAddToMine, clocksOf, convictionText, curationUrl, dedupeRows, dismissedSet, filterRows, gradeCuration, gradeProspects, joinLabels,
+  laneOverflow, laneTabs, membershipSources, otherMembership, pagingOf, pagingText, populationText, prospectsUrl, rankingLegend, rowView, SEARCH_MIN_CHARS,
+  searchGap, searchHits, symbolSearchUrl,
+  type AbsentField, type Clock, type DismissedItem, type LaneTab, type ListGrade, type ListKey, type ListPaging, type ListRowView,
+  type MemberSource, type SearchHit, type SymbolSearchState,
 } from '../lib/watchListsV002'
 
 const TAB_COPY: Record<ListKey, { title: string; purpose: string }> = {
@@ -47,11 +49,27 @@ export type ListsViewProps = {
   busy?: string | null
   /** The clocks the body itself distinguishes (composition vs source vs ranking), never a render-time age. */
   clocks?: Clock[]
+  /** WL-29: what this list's header count is a count of, read from the producer's own numbers. */
+  population?: string | null
+  /** WL-29: rows collapsed because this read carried the same symbol more than once. */
+  repeated?: number
   /** `ranking.label`: the body's own definition of what the ranked number is. */
   legend?: string | null
   /** Per-source read status of operator membership (`my_watchlist.sources`). */
   sources?: MemberSource[]
+  /** WL-11: the decision fields this read does not carry, stated once instead of left as a blank column. */
+  absent?: AbsentField[]
+  /** WL-12 (My List only): the Add-symbol box's state. Omit to render no box. */
+  search?: SymbolSearchState
+  onSearch?: (q: string) => void
+  onSearchSubmit?: (q: string) => void
+  onAddSymbol?: (hit: SearchHit) => void
+  /** WL-15: the name most recently dismissed in this view, so the undo sits next to the result that hid it. */
+  undo?: { symbol: string } | null
+  onUndo?: () => void
   onStar: (r: ListRowView) => void
+  /** Prospects only: adopt a name the server says is not yours yet (the same membership command as the star). */
+  onAdd?: (r: ListRowView) => void
   onDismiss: (r: ListRowView) => void
   onRestore: (r: ListRowView) => void
   onPage: (offset: number) => void
@@ -68,7 +86,11 @@ export function WatchListsV002View(p: ListsViewProps) {
   const overflow = p.overflow ?? []
   const busy = p.busy ?? null
   const clocks = p.clocks ?? []
+  const population = p.population ?? null
+  const repeated = p.repeated ?? 0
   const sources = p.sources ?? []
+  const absent = p.absent ?? []
+  const search = p.search
   const staleSources = sources.filter(s => s.status !== 'ok')
   const shown = filterRows(p.rows, query)
   const filtered = query.trim() ? ` · ${shown.length} of ${p.rows.length} on this page match “${query.trim()}”` : ''
@@ -110,6 +132,14 @@ export function WatchListsV002View(p: ListsViewProps) {
           ))}
         </dl>
       )}
+      {population && (
+        <div className="wl2-note" data-testid="watch-population" role="status">{population}</div>
+      )}
+      {repeated > 0 && (
+        <div className="wl2-note warn" data-testid="watch-dedupe" role="status">
+          This read carried {repeated === 1 ? 'one name' : `${repeated} names`} more than once; each is shown once and counted once.
+        </div>
+      )}
       {p.tab === 'mine' && sources.length > 0 && (
         <div className={`wl2-note${staleSources.length ? ' warn' : ''}`} data-testid="watch-membership-sources" role={staleSources.length ? 'alert' : 'status'}>
           Membership sources: {sources.map(s => `${s.kind.replace(/_/g, ' ')} ${s.status === 'ok' ? 'ok' : s.status}`).join(' · ')}.
@@ -131,11 +161,81 @@ export function WatchListsV002View(p: ListsViewProps) {
         </label>
         <span className="wl2-tools-note" data-testid="watch-list-count">Filters the rows on this page only — server text search is not available yet.{filtered}</span>
       </div>
+      {/* WL-12: the Add-symbol path, using the server's own read-only typeahead. Nothing is guessed: the page offers
+          the registry's rows, marks the ones already on My List, and says when the read failed instead of "no match". */}
+      {p.tab === 'mine' && search && (
+        <div className="wl2-add" data-testid="watch-add-symbol">
+          <form className="wl2-add-form" onSubmit={e => { e.preventDefault(); p.onSearchSubmit?.(search.q) }}>
+            <label className="wl2-search">
+              <span className="wl2-search-l">Add a symbol</span>
+              <input type="search" value={search.q} placeholder="Ticker or company name" data-testid="watch-add-input"
+                onChange={e => p.onSearch?.(e.target.value)} />
+            </label>
+            <button type="submit" className="v010-btn" data-testid="watch-add-search"
+              disabled={search.q.trim().length < SEARCH_MIN_CHARS || search.loading}>
+              {search.loading ? 'Searching…' : 'Search'}
+            </button>
+          </form>
+          <span className="wl2-why">Searches the security registry and the instrument feed. Ticker or company name, {SEARCH_MIN_CHARS}+ characters; nothing is fetched from a market provider.</span>
+          {search.error ? (
+            <div className="wl2-note bad" data-testid="watch-add-error" role="alert">
+              Symbol search could not be read: {search.error}. No ticker is guessed from what you typed.
+            </div>
+          ) : search.gap ? (
+            <div className="wl2-note bad" data-testid="watch-add-gap" role="alert">Symbol search could not be read: {search.gap}.</div>
+          ) : search.submitted && !search.loading ? (
+            search.hits.length === 0 ? (
+              <div className="wl2-note" data-testid="watch-add-none">No ticker or company matches “{search.submitted}”.</div>
+            ) : (
+              <>
+                <div className="wl2-add-q" data-testid="watch-add-for">Results for “{search.submitted}”</div>
+                <ul className="wl2-rows" data-testid="watch-add-hits" data-for={search.submitted}>
+                  {search.hits.map(hit => (
+                    <li key={hit.symbol} className="wl2-row" data-testid={`watch-hit-${hit.symbol}`}>
+                      <div className="wl2-main">
+                        <strong className="wl2-sym">{hit.symbol}</strong>
+                        {hit.name ? <span className="wl2-co">{hit.name}</span> : <span className="v010-pill">name unknown</span>}
+                        {!hit.inRegistry && <span className="v010-pill warn" title="not in the security registry">not in the registry</span>}
+                        {hit.identityStatus && <span className="v010-pill" title="identity registry status">{hit.identityStatus}</span>}
+                      </div>
+                      {/* Duplicate-safe: the SERVER says this name is already yours, so no Add is offered at all. */}
+                      {hit.onMyList
+                        ? <span className="v010-pill info" data-testid={`watch-hit-onlist-${hit.symbol}`}>already on My List</span>
+                        : <button type="button" className="v010-btn" data-testid={`watch-hit-add-${hit.symbol}`}
+                            disabled={busy === `${hit.symbol}:add`} onClick={() => p.onAddSymbol?.(hit)}>
+                            {busy === `${hit.symbol}:add` ? 'Adding…' : 'Add to My List'}
+                          </button>}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )
+          ) : null}
+        </div>
+      )}
+      {/* WL-11: the monitoring fields the rows do NOT carry are named once, so a row is not read as a clean bill of
+          health for the name. The list is derived from the body, so it disappears the day the server sends the field. */}
+      {absent.length > 0 && (
+        <p className="wl2-note" data-testid="watch-row-absent" data-absent={absent.map(a => a.id).join(',')}>
+          This read does not carry {joinLabels(absent.map(a => a.label))}. A row here cannot answer any of those, so treat
+          it as a symbol to open — not as a monitoring verdict on whether a quote is fresh, how far it is from your level,
+          or whether an alert is armed.
+        </p>
+      )}
       {p.error && <div className="wl2-note bad" data-testid="watch-list-error" role="alert">List could not be read: {p.error} <button type="button" className="v010-btn" onClick={p.onRetry}>Retry</button></div>}
       {p.tab === 'suggests' && !p.loading && p.dismissedStatus !== 'ok' && p.dismissedStatus !== 'absent' && (
         <div className="wl2-note warn" data-testid="watch-dismissed-unknown" role="alert">Dismissed set could not be read ({p.dismissedStatus}); dismissed names may show.</div>
       )}
       {p.message && <div className="wl2-note" data-testid="watch-list-message" role="status">{p.message}</div>}
+      {/* WL-15: a dismissal hides a name for a month, so the action that undoes it sits next to the result of the action
+          that caused it — not only inside the list below. It issues the same restore command as the row. */}
+      {p.undo && p.onUndo && (
+        <div className="wl2-note" data-testid="watch-undo">
+          {p.undo.symbol} is hidden from Suggestions until the date shown below.
+          <button type="button" className="v010-btn" data-testid="watch-undo-btn" disabled={busy === `${p.undo.symbol}:restore`}
+            onClick={p.onUndo}>Undo — restore {p.undo.symbol}</button>
+        </div>
+      )}
       {p.loading || (p.error && p.rows.length === 0) ? null : p.rows.length === 0 ? (
         // An unreadable list is never an empty list (REVIEW-2993r R4): UNKNOWN / a declared gap / no total => could not be read.
         p.gap || !p.grade || p.grade.state === 'UNKNOWN' || p.paging.total === null ? (
@@ -158,6 +258,8 @@ export function WatchListsV002View(p: ListsViewProps) {
                 )}
                 <Link className="v010-link wl2-sym" to={r.detailHref} data-testid={`watch-detail-${r.symbol}`}>{r.symbol}</Link>
                 {r.company && <span className="wl2-co">{r.company}</span>}
+                {/* WL-21: "yours" is the server's `mine`, not a word in a sentence and not the star. */}
+                {r.mine && <span className="v010-pill info" data-testid={`watch-yours-${r.symbol}`}>Yours</span>}
                 <span className="v010-pill">{r.stage}</span>
                 {r.held && <span className="v010-pill info">{r.held}</span>}
                 {r.membership.filter(m => m.kind !== 'starred').map(m => (
@@ -171,10 +273,10 @@ export function WatchListsV002View(p: ListsViewProps) {
                   </span>
                 )}
                 {/* WL-13: conviction and universe rank are different measurements from different producers; label both,
-                    never let one read as the other. */}
+                    never let one read as the other. r5c F1: the conviction's own source is named too, because a
+                    suggestion's reason quotes the ranking projection's number under the same word. */}
                 <span className="wl2-conv" data-testid={`watch-conviction-${r.symbol}`}>
-                  {r.conviction === null ? 'no score' : `conviction ${Math.round(r.conviction)}`}
-                  {r.rank === null ? '' : ` · universe rank #${r.rank}`}
+                  {convictionText(r)}
                 </span>
               </div>
               {/* WL-08: the star is a pin, not the only route onto My List — say so on the rows where it matters. */}
@@ -184,7 +286,32 @@ export function WatchListsV002View(p: ListsViewProps) {
                 </div>
               )}
               {r.nextAction && <div className="wl2-next" data-guidance="1">Next step (guidance — open the symbol for actions): {r.nextAction}</div>}
-              {r.why && <div className="wl2-why">{r.why}</div>}
+              {/* WL-14: on Suggestions a row must state the reason it was selected, or say the read does not carry one.
+                  A rank and a stage are measurements, not a rationale — a bare row reads as "obviously useful". */}
+              {r.why ? (
+                <div className="wl2-why" data-testid={p.tab === 'suggests' ? `watch-rationale-${r.symbol}` : undefined}
+                  data-unavailable={p.tab === 'suggests' ? '0' : undefined}>{r.why}</div>
+              ) : p.tab === 'suggests' ? (
+                <div className="wl2-why" data-testid={`watch-rationale-${r.symbol}`} data-unavailable="1">
+                  Selection reason not stated in this read — the rank and the stage are all this row proves, and neither of
+                  them says why the name is useful now.
+                </div>
+              ) : null}
+              {/* WL-22: a setup row that states no condition says so — an empty cell must not read as "setup confirmed". */}
+              {p.tab === 'prospects' && !r.why && (
+                <div className="wl2-why" data-testid={`watch-condition-${r.symbol}`} data-unavailable="1">
+                  Setup condition not stated in this read — this row does not prove the setup is confirmed.
+                </div>
+              )}
+              {/* WL-20: adopt a prospect the server itself reports as not yours (`mine: false`), through the same
+                  membership command the star uses. Offered only where the lane is one the CIO currently calls
+                  actionable — an `expired` or `manage` name was not put forward as a new idea, so it gets no button. */}
+              {p.tab === 'prospects' && p.onAdd && canAddToMine(r) && (
+                <button type="button" className="v010-btn" data-testid={`watch-add-${r.symbol}`}
+                  disabled={busy === `${r.symbol}:add`} onClick={() => p.onAdd?.(r)}>
+                  {busy === `${r.symbol}:add` ? 'Adding…' : 'Add to My List'}
+                </button>
+              )}
               {p.tab === 'suggests' && !r.dismissed && (
                 <button type="button" className="v010-btn" data-testid={`watch-dismiss-${r.symbol}`} disabled={busy === `${r.symbol}:dismiss`} onClick={() => p.onDismiss(r)}>Dismiss 30 d</button>)}
             </li>
@@ -199,6 +326,11 @@ export function WatchListsV002View(p: ListsViewProps) {
       {p.tab === 'suggests' && p.dismissedItems.length > 0 && (
         <details className="wl2-dismissed" data-testid="watch-dismissed" open>
           <summary>Dismissed ({p.dismissedItems.length})</summary>
+          <p className="wl2-why" data-testid="watch-dismissed-policy">
+            A dismissed name is left out of Suggestions until the date shown. Restoring makes it eligible again — it does
+            not guarantee the name ranks in the visible top set, because the ranking is the server&apos;s and this page
+            does not recompute it.
+          </p>
           <ul className="wl2-rows">
             {p.dismissedItems.map(d => (
               <li key={d.symbol} className="wl2-row" data-testid={`watch-dismissed-${d.symbol}`}>
@@ -234,6 +366,8 @@ export function gapOf(body: any, section: any): string | null {
 
 const listKey = (q: string | null): ListKey => (q === 'suggests' ? 'suggests' : q === 'prospects' ? 'prospects' : 'mine')
 
+const SEARCH_EMPTY: SymbolSearchState = { q: '', submitted: '', loading: false, error: null, hits: [], gap: null }
+
 /** The parent keys this by tab, so a tab switch remounts it: useApi keeps its last body across a path change, and a body from
  *  another list must not be graded or parsed by this one (review 2993ab-v2r N4; same defect as 2993cr R4). */
 export function WatchListsTab({ tab, lane = null, offset = 0, query = '', onLane, onPage, onQuery }: {
@@ -247,6 +381,9 @@ export function WatchListsTab({ tab, lane = null, offset = 0, query = '', onLane
 }) {
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
+  const [search, setSearch] = useState<SymbolSearchState>(SEARCH_EMPTY)
+  const [undo, setUndo] = useState<string | null>(null)
+  const searchToken = useRef(0)
   const url = tab === 'prospects' ? prospectsUrl(lane || 'actionable', offset) : curationUrl(tab, offset)
   const { data, loading, error, refetch } = useApi<any>(url, 120_000)
   const body = useMemo(() => (data && typeof data === 'object' ? ((data as any).data ?? data) : null), [data])
@@ -254,7 +391,29 @@ export function WatchListsTab({ tab, lane = null, offset = 0, query = '', onLane
   const grade = body ? (tab === 'prospects' ? gradeProspects(body, nowMs, lane || 'actionable') : gradeCuration(body, tab, nowMs)) : null
   const dis = dismissedSet(body)
   const section = tab === 'mine' ? body?.my_watchlist : tab === 'suggests' ? body?.suggests : { rows: (body?.lanes || []).flatMap((l: any) => l?.items || []), pagination: body?.pagination }
-  const rows = (Array.isArray(section?.rows) ? section.rows : []).map((r: unknown) => rowView(r, dis.symbols)).filter(Boolean) as ListRowView[]
+  // WL-29: a read that repeats a name renders it once and says how many repeats it collapsed.
+  const { rows, repeated } = dedupeRows((Array.isArray(section?.rows) ? section.rows : []).map((r: unknown) => rowView(r, dis.symbols)).filter(Boolean) as ListRowView[])
+  /** ONE bounded read per submitted query — not a poll, and not `useApi`: a search the operator asked for must answer (or
+   *  fail) once, and the body of a previous query must never be rendered as this query's answer. Each read carries a
+   *  token, so a slow earlier answer cannot overwrite a newer one. */
+  const runSearch = async (raw: string) => {
+    const q = raw.trim()
+    if (q.length < SEARCH_MIN_CHARS) {
+      searchToken.current += 1
+      setSearch({ q: raw, submitted: '', loading: false, error: null, hits: [], gap: null })
+      return
+    }
+    const token = ++searchToken.current
+    setSearch(s => ({ ...s, q: raw, submitted: q, loading: true, error: null, hits: [], gap: null }))
+    const read = await readOnce<unknown>(symbolSearchUrl(q))
+    if (token !== searchToken.current) return // a newer query owns the box
+    if (read.state !== 'OK') {
+      setSearch(s => ({ ...s, loading: false, error: String(read.error || (read.state === 'TIMED OUT' ? 'the search did not answer' : 'the read failed')) }))
+      return
+    }
+    const gap = searchGap(read.data)
+    setSearch(s => ({ ...s, loading: false, error: null, gap, hits: gap ? [] : searchHits(read.data) }))
+  }
   const act = async (key: string, fn: () => Promise<string>) => {
     if (busy) return // one command at a time: a second click cannot race the first
     setBusy(key)
@@ -267,12 +426,28 @@ export function WatchListsTab({ tab, lane = null, offset = 0, query = '', onLane
       lane={lane} lanes={tab === 'prospects' ? laneTabs(body, lane || 'actionable') : []}
       overflow={tab === 'prospects' ? laneOverflow(body, lane || 'actionable') : []}
       clocks={body ? clocksOf(body, tab, lane, nowMs) : []}
+      population={body ? populationText(tab, body, lane) : null}
+      repeated={repeated}
       legend={tab === 'suggests' ? rankingLegend(body) : null}
       sources={tab === 'mine' ? membershipSources(body) : []}
+      absent={body ? absentRowFields(body, tab) : []}
       query={query} busy={busy}
+      search={tab === 'mine' ? search : undefined}
+      onSearch={q => setSearch(s => ({ ...s, q }))}
+      onSearchSubmit={q => void runSearch(q)}
+      onAddSymbol={hit => void act(`${hit.symbol}:add`, async () => {
+        const res = await mineAction(hit.symbol, 'add', undefined, 'watch.v002')
+        if (!res.ok) throw new Error(res.message)
+        // Readback: the same search must now come back with this name marked as already yours — the proof the write landed.
+        await runSearch(hit.symbol)
+        return `${hit.symbol} added to My List.`
+      })}
       onStar={r => void act(`${r.symbol}:star`, async () => { const res = await mineAction(r.symbol, r.starred ? 'remove' : 'add', undefined, 'watch.v002'); if (!res.ok) throw new Error(res.message); return res.message })}
-      onDismiss={r => void act(`${r.symbol}:dismiss`, async () => { await post('/api/v3/watch/commands/suggest-dismiss', { symbol: r.symbol }); return `${r.symbol} dismissed for 30 days.` })}
-      onRestore={r => void act(`${r.symbol}:restore`, async () => { await post('/api/v3/watch/commands/suggest-restore', { symbol: r.symbol }); return `${r.symbol} restored.` })}
+      onAdd={r => void act(`${r.symbol}:add`, async () => { const res = await mineAction(r.symbol, 'add', undefined, 'watch.v002'); if (!res.ok) throw new Error(res.message); return res.message })}
+      onDismiss={r => void act(`${r.symbol}:dismiss`, async () => { await post('/api/v3/watch/commands/suggest-dismiss', { symbol: r.symbol }); setUndo(r.symbol); return `${r.symbol} dismissed for 30 days.` })}
+      onRestore={r => void act(`${r.symbol}:restore`, async () => { await post('/api/v3/watch/commands/suggest-restore', { symbol: r.symbol }); setUndo(u => (u === r.symbol ? null : u)); return `${r.symbol} restored.` })}
+      undo={undo ? { symbol: undo } : null}
+      onUndo={() => { const sym = undo; if (!sym) return; void act(`${sym}:restore`, async () => { await post('/api/v3/watch/commands/suggest-restore', { symbol: sym }); setUndo(null); return `${sym} restored.` }) }}
       onPage={o => onPage?.(o)} onRetry={() => refetch()}
       onLane={l => onLane?.(l)} onQuery={q => onQuery?.(q)}
     />
