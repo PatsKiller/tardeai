@@ -156,3 +156,9 @@ anchor · owner/reviewer · status · existing route · endpoint/reader/producer
 | `drawer/overlay system` | drawer/overlay system | cc-opus-3 → cc-deepseek-3 | UNMAPPED |  |  |  |  |
 | `security detail drawer` | security detail drawer | cc-opus-3 → cc-deepseek-3 | UNMAPPED |  |  |  |  |
 | `valuation cues (colour+bold/italic+text+icon+tooltip)` | valuation cues (colour+bold/italic+text+icon+tooltip) | cc-opus-3 → cc-deepseek-3 | UNMAPPED |  |  |  |  |
+
+
+## ADMIN (required parity, operator 2026-11-14) — slice `admin@1`
+Owner cc-deepseek-9 · reviewer cc-deepseek-2 · visual cc-opus-3 → cc-deepseek-3. Entry: Wealth header settings → Admin modal.
+Tabs (names adapt to real capabilities): Connections & expiry · Application configuration · Change history & diagnostics.
+Rows and current classification: `contracts/admin@1.md` (all EXISTS_UNVERIFIED/PARTIAL/UNRESOLVED; none VERIFIED_WORKING).

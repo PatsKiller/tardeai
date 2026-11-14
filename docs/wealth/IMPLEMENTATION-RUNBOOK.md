@@ -53,3 +53,5 @@ The app frame may be built against isolated typed fixtures (synthetic, public-re
 | C Defense/Reposition | cc-deepseek-7 | cc-deepseek-5 | RepositionDaily@1/Weekly@1 (backlog) | MEASURE-DEFENSE-REDEPLOY | -5 accepts F1–F9 with changes | none | R1 audit next |
 | D Ops/perf | cc-deepseek-9 | cc-deepseek-2 | ops@1 §8.4 HOLD | TRACE-WEALTH-BOTTLENECKS | — | none | re-measure on R13 |
 | shell frame (fixtures) | cc-opus-3 | cc-deepseek-3 | — | ADDENDUM-WEALTH-SHELL-SCOPE | — | none | RUNNING |
+| ADMIN modal (connections/config/history) — REQUIRED PARITY | cc-deepseek-9 | cc-deepseek-2 | admin@1 SCOPED | lead pass 1 in contracts/admin@1.md | WAITING(-9 audit) | none | NOT_STARTED (queued) |
+| ADMIN visual reference | cc-opus-3 | cc-deepseek-3 | v02 tokens | — | — | none | NOT_STARTED (after shell) |

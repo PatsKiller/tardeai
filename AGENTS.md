@@ -2471,6 +2471,15 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
   operator: "in an emergency … merge and push live … commenced through Telegram … use a digest if necessary … bypass
   Mergify" (LESSONS L25-07).*
 
+- **Admin modal is required parity (operator 2026-11-14 ~18:35 ET).** `/wealth/` keeps an Admin modal reachable from the
+  header/settings: connections & expiry (Schwab ~7-day manual-OAuth reauth lifecycle with reminders and the sanctioned
+  operator reauth/2FA handoff; Finviz and other cookie expiry/rejection alerts), allowlisted non-Bitwarden configuration
+  (typed, validated, atomic versioned writes, redacted audit, rollback, current admin auth + step-up), and change history &
+  diagnostics. Never an arbitrary file editor or shell executor; never a raw secret/cookie/token in a response, log, doc or
+  fixture; unknown expiry is UNKNOWN, never a date or green; no provider probe as a test; no broker/order-lock change. n8n
+  owns reminders, health evaluation and alert dedupe; existing cron/timers stay until parity is proven. Contract
+  `docs/wealth/contracts/admin@1.md`.
+
 ### 25.10.1 Operator-delegated promote
 
 - **Handing the operator the exact deploy commands is already the rule, not a new grant.** An agent presents the
