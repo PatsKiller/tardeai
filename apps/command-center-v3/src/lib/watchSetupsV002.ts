@@ -170,6 +170,13 @@ export function certifiedOf(body: unknown, nowMs: number = Date.now()): Certifie
 }
 
 export type AlertRow = { id: number; symbol: string; condition: string; threshold: string; active: boolean; lastFired: string | null
+  /** WR-09: the definition's policy, exactly as `watch_alerts_eval.py` reads it (a NULL `recurring` is evaluated as
+   *  one-shot; a NULL/0 `cooldown_days` is evaluated as 5). Derived here, never invented. */
+  recurring: boolean
+  cooldownDays: number
+  createdAt: string | null
+  directiveId: number | null
+  note: string
   /** The row's own symbol, or null when the label came from a directive id — a directive id is not a symbol route. */
   link: string | null }
 /** WR-07: a row's `active` flag is the DEFINITION's state, not evidence that anything is being evaluated. The label says
@@ -194,9 +201,17 @@ export function alertRows(body: unknown): AlertRow[] {
     const id = Number(r?.id)
     if (!Number.isFinite(id)) return []
     const th = r?.threshold
+    const cd = Number(r?.cooldown_days)
+    const did = Number(r?.directive_id)
     return [{ id, symbol: String(r?.symbol || r?.directive_id || '—'), condition: String(r?.condition_type || '—'),
       threshold: th === null || th === undefined ? '' : String(th), active: r?.active === true,
       lastFired: typeof r?.last_fired_at === 'string' ? r.last_fired_at : null,
+      recurring: r?.recurring === true,
+      // `int(alert.get("cooldown_days") or 5)` in watch_alerts_eval.py: a NULL or 0 cooldown is evaluated as 5 days.
+      cooldownDays: Number.isFinite(cd) && cd > 0 ? cd : 5,
+      createdAt: typeof r?.created_at === 'string' ? r.created_at : null,
+      directiveId: Number.isFinite(did) ? did : null,
+      note: typeof r?.note === 'string' ? r.note : '',
       link: r?.symbol ? String(r.symbol) : null }]
   })
 }
@@ -344,4 +359,120 @@ export async function disarmAlert(id: number, symbol: string, post: DisarmPost):
   } catch (e) {
     return { ok: false, message: `Failed: ${String((e as Error).message || e).slice(0, 100)}` }
   }
+}
+
+/* ── WR-09: the alert list is 100 mixed-history rows; current attention and lifecycle must be separable ───────────────
+ *  The read is `GET /api/v2/watch/alerts/list` → `watch_alerts ORDER BY active DESC, created_at DESC LIMIT 100`, and it
+ *  reports no total. So the split below counts only what was READ: the armed definitions sort first, the rest are
+ *  history. Nothing here filters on the server and nothing here writes. */
+
+export const ALERT_LIST_CAP = 100
+export const ALERT_PAGE_SIZE = 20
+export type AlertFilter = 'active' | 'history'
+export type AlertView = { filter: AlertFilter; q: string; page: number }
+export const ALERT_VIEW_DEFAULT: AlertView = { filter: 'active', q: '', page: 1 }
+
+/** The view state lives in the URL (`filter`, `q`, `alert_page`), so a filtered list survives reload and back/forward. */
+export function alertViewFrom(sp: { get(k: string): string | null }): AlertView {
+  const f = sp.get('filter')
+  const p = Number(sp.get('alert_page'))
+  return {
+    filter: f === 'history' ? 'history' : 'active',
+    q: String(sp.get('q') ?? '').slice(0, 80),
+    page: Number.isFinite(p) && p >= 1 ? Math.floor(p) : 1,
+  }
+}
+/** Only non-default params are written, so the plain alerts URL stays `?tab=alerts`. */
+export function alertViewQuery(v: AlertView): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (v.filter !== ALERT_VIEW_DEFAULT.filter) out.filter = v.filter
+  if (v.q) out.q = v.q
+  if (v.page > 1) out.alert_page = String(v.page)
+  return out
+}
+
+/** WR-09: one-shot vs repeating, from the fields the evaluator itself branches on — never from a UI assumption. */
+export type AlertPolicy = { key: 'repeats' | 'one-shot'; label: string; detail: string }
+export function alertPolicy(r: AlertRow): AlertPolicy {
+  if (!r.recurring) {
+    return { key: 'one-shot', label: 'one-shot',
+      detail: 'One-shot: the evaluator disarms it when it fires, and a definition that has fired never fires again.' }
+  }
+  return { key: 'repeats', label: `repeats · cooldown ${r.cooldownDays} d`,
+    detail: `Repeating: the evaluator leaves it armed after a fire and will not fire it again for about ${Math.round(r.cooldownDays * 1.4)} days (cooldown ${r.cooldownDays} d × 1.4 trading-day approximation), at most once per UTC day.` }
+}
+
+export type AlertLifecycle = { key: 'armed-repeating' | 'armed-one-shot' | 'spent-one-shot' | 'disarmed-after-fire' | 'disarmed-never-fired'; label: string; detail: string }
+/** WR-09: what the row's state means, derived from state + policy + fire history. A disarmed row is never left as an
+ *  unexplained badge: either the evaluator spent it (one-shot, after firing — the only automatic disarm) or the alerts
+ *  API disarmed it (the only other writer of `active=false`). */
+export function alertLifecycle(r: AlertRow): AlertLifecycle {
+  // An armed row's explanation IS its policy — that is the only reason its next fire behaves the way it will.
+  if (r.active) return { key: r.recurring ? 'armed-repeating' : 'armed-one-shot',
+    label: r.recurring ? 'armed · repeating' : 'armed · one-shot', detail: alertPolicy(r).detail }
+  if (!r.recurring && r.lastFired) return { key: 'spent-one-shot', label: 'spent · disarmed by the evaluator',
+    detail: 'One-shot that fired: the evaluator set it disarmed on the fire, and it will not fire again.' }
+  if (r.lastFired) return { key: 'disarmed-after-fire', label: 'disarmed after a fire',
+    detail: 'Repeating definition disarmed after its last fire. Only the alerts API disarms a repeating definition, so this was a disarm action, not the evaluator.' }
+  return { key: 'disarmed-never-fired', label: 'disarmed · never fired',
+    detail: 'Disarmed and never fired. Only the alerts API disarms without a fire, so this was a disarm action.' }
+}
+
+export function alertMatches(r: AlertRow, q: string): boolean {
+  const s = q.trim().toLowerCase()
+  if (!s) return true
+  return [r.symbol, r.condition, r.threshold, r.note, String(r.id), r.directiveId === null ? '' : `directive #${r.directiveId}`]
+    .some(v => v.toLowerCase().includes(s))
+}
+
+export type AlertSplit = {
+  read: number; active: number; history: number; capped: boolean
+  matching: number; page: number; pages: number; start: number; end: number; rows: AlertRow[]
+}
+/** Split the READ rows into current attention and history, then search and page within the chosen side. */
+export function alertSplit(rows: AlertRow[], v: AlertView): AlertSplit {
+  const active = rows.filter(r => r.active).length
+  const history = rows.length - active
+  const side = rows.filter(r => (v.filter === 'active' ? r.active : !r.active))
+  const matching = side.filter(r => alertMatches(r, v.q))
+  const pages = Math.max(1, Math.ceil(matching.length / ALERT_PAGE_SIZE))
+  const page = Math.min(Math.max(1, Math.floor(v.page) || 1), pages)
+  const start = (page - 1) * ALERT_PAGE_SIZE
+  return { read: rows.length, active, history, capped: rows.length >= ALERT_LIST_CAP,
+    matching: matching.length, page, pages, start: matching.length === 0 ? 0 : start + 1,
+    end: Math.min(start + ALERT_PAGE_SIZE, matching.length), rows: matching.slice(start, start + ALERT_PAGE_SIZE) }
+}
+
+/** The listed totals, and the honest limit on them: the endpoint reports no total, so a full page is a cap, not a census. */
+export function alertTotals(s: AlertSplit): string {
+  const head = `${s.active} armed · ${s.history} disarmed in the ${s.read} definition${s.read === 1 ? '' : 's'} read`
+  return s.capped
+    ? `${head}. The list endpoint returns at most ${ALERT_LIST_CAP} rows and reports no total, so how many more definitions exist beyond this read is UNKNOWN.`
+    : `${head}. The endpoint returned every definition it holds.`
+}
+
+export type AlertDuplicate = { key: string; symbol: string; condition: string; threshold: string; ids: number[]; activeCount: number }
+/** WR-09: identical symbol/direction/threshold definitions are surfaced as review context. They are never merged or
+ *  deleted — they may be intentional re-arms, and history is the operator's. */
+export function alertDuplicates(rows: AlertRow[]): AlertDuplicate[] {
+  const by = new Map<string, AlertRow[]>()
+  for (const r of rows) {
+    const key = `${r.symbol}|${r.condition}|${r.threshold}`
+    by.set(key, [...(by.get(key) ?? []), r])
+  }
+  return [...by.entries()].filter(([, g]) => g.length > 1)
+    .map(([key, g]) => ({ key, symbol: g[0].symbol, condition: g[0].condition, threshold: g[0].threshold,
+      ids: g.map(r => r.id).sort((a, b) => a - b), activeCount: g.filter(r => r.active).length }))
+    .sort((a, b) => b.ids.length - a.ids.length)
+}
+
+/** Symbol grouping for the displayed page, in first-appearance order. */
+export function alertGroups(rows: AlertRow[]): { symbol: string; rows: AlertRow[] }[] {
+  const out: { symbol: string; rows: AlertRow[] }[] = []
+  for (const r of rows) {
+    const g = out.find(x => x.symbol === r.symbol)
+    if (g) g.rows.push(r)
+    else out.push({ symbol: r.symbol, rows: [r] })
+  }
+  return out
 }

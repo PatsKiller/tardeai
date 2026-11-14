@@ -10,11 +10,12 @@ import { useApi } from '../hooks/useApi'
 import WatchSubnav from '../components/watch/WatchSubnav'
 import WatchDiscoverRecentV002 from './WatchDiscoverRecentV002'
 import {
-  ALERTS_API, ALERTS_POST, DISCOVER_API, PAGE_LIMIT, PULLBACK_API, SECTORS_API, alertDefinitionState, alertRows, certifiedOf, disarmAlert,
+  ALERTS_API, ALERTS_POST, ALERT_VIEW_DEFAULT, DISCOVER_API, PAGE_LIMIT, PULLBACK_API, SECTORS_API, alertDefinitionState, alertDuplicates,
+  alertGroups, alertLifecycle, alertPolicy, alertRows, alertSplit, alertTotals, alertViewFrom, alertViewQuery, certifiedOf, disarmAlert,
   discoverCards, discoveryGap, etText, evaluatorSource, findRows, gradeAlerts, gradeDiscover, gradePullback, gradeSectors, gradeSetups, poolRows,
   proposalState, pullbackProvenance, pullbackRows, sectorContext, sectorRows, setupsUrl, signalText, unwrap,
-  type AlertRow, type Certified, type DiscoverCard, type EvaluatorSource, type FindRow, type Grade, type PoolRow, type PullbackProvenance,
-  type PullbackRow, type SectorContext, type SectorRow, type TabKey,
+  type AlertRow, type AlertView, type Certified, type DiscoverCard, type EvaluatorSource, type FindRow, type Grade, type PoolRow,
+  type PullbackProvenance, type PullbackRow, type SectorContext, type SectorRow, type TabKey,
 } from '../lib/watchSetupsV002'
 
 const detail = (s: string) => `/watch/intelligence/${encodeURIComponent(s)}`
@@ -35,6 +36,9 @@ export type SetupsViewProps = {
   finds: FindRow[]
   cards?: DiscoverCard[]
   alerts: AlertRow[]
+  /** WR-09: Active/History + search + page, held in the URL. Optional so an older caller still renders the default. */
+  alertView?: AlertView
+  onAlertView?: (v: AlertView) => void
   evaluatorSrc?: EvaluatorSource | null
   certified: Certified | null
   pullback: PullbackRow[]
@@ -175,20 +179,7 @@ export function WatchSetupsV002View(p: SetupsViewProps) {
             ))}
           </ul>)
       ) : (
-        p.alerts.length === 0 ? empty('No alerts armed.') : (
-          <ul className="ws2-rows" data-testid="alerts-rows">
-            {p.alerts.map(a => (
-              <li key={a.id} className="ws2-row" data-testid={`alert-${a.id}`} data-active={a.active ? '1' : '0'}>
-                {a.link
-                  ? <Link className="v010-link ws2-sym" to={detail(a.link)}>{a.symbol}</Link>
-                  : <strong className="ws2-sym">{a.symbol}</strong>}
-                <span>{a.condition}</span><span>{a.threshold}</span>
-                <span className={`v010-pill ${a.active ? 'ok' : 'info'}`}>{alertDefinitionState(a.active)}</span>
-                {etText(a.lastFired) && <span className="ws2-dim">fired {etText(a.lastFired)}</span>}
-                {a.active && <button type="button" className="v010-btn" data-testid={`alert-disarm-${a.id}`} onClick={() => p.onDisarm(a)}>Disarm</button>}
-              </li>
-            ))}
-          </ul>)
+        <AlertsPanel rows={p.alerts} view={p.alertView ?? ALERT_VIEW_DEFAULT} onView={p.onAlertView} onDisarm={p.onDisarm} />
       )}
       {p.tab === 'setups' && !unread && !p.loading && (
         <div className="ws2-paging" data-testid="setups-paging">
@@ -201,12 +192,100 @@ export function WatchSetupsV002View(p: SetupsViewProps) {
   )
 }
 
+/** WR-09: 100 mixed-history rows with no way to see what needs attention now. Active is the default side, History is its
+ *  own side, and every row says what its own state means in the evaluator's terms (one-shot spent, repeating in cooldown,
+ *  disarmed through the API). The listed totals are the READ's counts; the endpoint's 100-row cap is named wherever a
+ *  total could be mistaken for a census, and nothing here merges, deletes or rewrites a definition. */
+function AlertsPanel({ rows, view, onView, onDisarm }: {
+  rows: AlertRow[]; view: AlertView; onView?: (v: AlertView) => void; onDisarm: (a: AlertRow) => void
+}) {
+  const split = alertSplit(rows, view)
+  const dups = alertDuplicates(rows)
+  const set = (v: Partial<AlertView>) => onView?.({ ...view, ...v })
+  if (rows.length === 0) {
+    return <div className="ws2-note" data-testid="watch-setups-empty">No alert definitions in this read. An empty read is not evidence that none exist.</div>
+  }
+  return (
+    <>
+      <div className="ws2-alert-toolbar" data-testid="alerts-toolbar" role="group" aria-label="Alert list filters">
+        <button type="button" className="v010-btn" aria-pressed={view.filter === 'active'} data-testid="alerts-filter-active"
+          onClick={() => set({ filter: 'active', page: 1 })}>Active ({split.active})</button>
+        <button type="button" className="v010-btn" aria-pressed={view.filter === 'history'} data-testid="alerts-filter-history"
+          onClick={() => set({ filter: 'history', page: 1 })}>History ({split.history})</button>
+        <input type="search" className="ws2-search" value={view.q} data-testid="alerts-search"
+          aria-label="Search alerts by symbol, condition, threshold or note"
+          onChange={e => set({ q: e.target.value, page: 1 })} />
+      </div>
+      <div className="ws2-note" data-testid="alerts-totals" data-capped={split.capped ? '1' : '0'}>{alertTotals(split)}</div>
+      {dups.length > 0 && (
+        <div className="ws2-note" data-testid="alerts-duplicates">
+          {dups.slice(0, 5).map(d => (
+            <span key={d.key} data-testid={`alert-dup-${d.symbol}-${d.ids[0]}`}>
+              {d.ids.length} definitions share {d.symbol} {d.condition} {d.threshold || 'no threshold'} (ids {d.ids.join(', ')}; {d.activeCount} armed) — review context; nothing is merged or deleted.
+            </span>
+          ))}
+          {dups.length > 5 ? <span>{dups.length - 5} more duplicate group{dups.length - 5 === 1 ? '' : 's'} in this read.</span> : null}
+        </div>
+      )}
+      {split.matching === 0 ? (
+        <div className="ws2-note" data-testid="alerts-empty-filter">
+          {view.q
+            ? `No ${view.filter === 'active' ? 'armed' : 'history'} definition matches "${view.q}".`
+            : `No ${view.filter === 'active' ? 'armed' : 'disarmed'} definitions in this read.`}
+          {view.filter === 'active' && split.history > 0
+            ? ` ${split.history} disarmed definition${split.history === 1 ? '' : 's'} ${split.history === 1 ? 'is' : 'are'} in History.`
+            : ''}
+        </div>
+      ) : (
+        <ul className="ws2-rows" data-testid="alerts-rows">
+          {alertGroups(split.rows).flatMap(g => [
+            <li key={`group-${g.symbol}`} className="ws2-grouphead" data-testid={`alert-group-${g.symbol}`}>
+              {g.symbol} · {g.rows.length} definition{g.rows.length === 1 ? '' : 's'} in this view
+            </li>,
+            ...g.rows.map(a => {
+              const pol = alertPolicy(a), life = alertLifecycle(a)
+              return (
+                <li key={a.id} className="ws2-row" data-testid={`alert-${a.id}`} data-active={a.active ? '1' : '0'}
+                  data-policy={pol.key} data-lifecycle={life.key}>
+                  {a.link
+                    ? <Link className="v010-link ws2-sym" to={detail(a.link)}>{a.symbol}</Link>
+                    : <strong className="ws2-sym">{a.symbol}</strong>}
+                  <span className="ws2-dim" data-testid={`alert-id-${a.id}`}>#{a.id}</span>
+                  <span>{a.condition}</span><span>{a.threshold}</span>
+                  <span className={`v010-pill ${a.active ? 'ok' : 'info'}`}>{alertDefinitionState(a.active)}</span>
+                  <span className="v010-pill info" data-testid={`alert-policy-${a.id}`}>{pol.label}</span>
+                  {etText(a.lastFired)
+                    ? <span className="ws2-dim">last fired {etText(a.lastFired)}</span>
+                    : <span className="ws2-dim">never fired</span>}
+                  <span className="ws2-dim" data-testid={`alert-lifecycle-${a.id}`}>{life.label} — {life.detail}</span>
+                  {etText(a.createdAt) && <span className="ws2-dim">created {etText(a.createdAt)}</span>}
+                  {a.note && <span className="ws2-dim">{a.note}</span>}
+                  {a.active && <button type="button" className="v010-btn" data-testid={`alert-disarm-${a.id}`} onClick={() => onDisarm(a)}>Disarm</button>}
+                </li>
+              )
+            }),
+          ])}
+        </ul>
+      )}
+      {split.matching > 0 && (
+        <div className="ws2-paging" data-testid="alerts-paging">
+          <span>{split.start}–{split.end} of {split.matching}</span>
+          <button type="button" className="v010-btn" disabled={split.page <= 1} onClick={() => set({ page: split.page - 1 })}>Previous</button>
+          <button type="button" className="v010-btn" disabled={split.page >= split.pages} onClick={() => set({ page: split.page + 1 })}>Next</button>
+        </div>
+      )}
+    </>
+  )
+}
+
 const URLS = (tab: TabKey, offset: number) => tab === 'setups' ? setupsUrl(offset) : tab === 'sectors' ? SECTORS_API
   : tab === 'discover' ? DISCOVER_API : tab === 'pullback' ? PULLBACK_API : ALERTS_API
 
 /** One mounted tab. The parent keys this by tab, so a tab switch remounts it: useApi keeps its last body across a path
  *  change, and a body from another tab must never be graded or parsed by this tab (review 2993cr R4). */
-export function WatchSetupsTab({ tab }: { tab: TabKey }) {
+export function WatchSetupsTab({ tab, alertView, onAlertView }: {
+  tab: TabKey; alertView?: AlertView; onAlertView?: (v: AlertView) => void
+}) {
   const [offset, setOffset] = useState(0)
   const [message, setMessage] = useState('')
   const { data, loading, error, refetch } = useApi<any>(URLS(tab, offset), tab === 'alerts' ? 60_000 : 120_000)
@@ -236,6 +315,7 @@ export function WatchSetupsTab({ tab }: { tab: TabKey }) {
         sectorCtx={tab === 'sectors' && body ? sectorContext(body, nowMs) : null}
         finds={finds} cards={tab === 'discover' && body ? discoverCards(body, nowMs, finds.length) : []}
         alerts={tab === 'alerts' ? alertRows(body) : []}
+        alertView={alertView} onAlertView={onAlertView}
         evaluatorSrc={tab === 'alerts' && body ? evaluatorSource(body, nowMs) : null}
         pullback={tab === 'pullback' ? pullbackRows(body) : []} pullbackInfo={tab === 'pullback' && body ? pullbackProvenance(body) : null}
         certified={tab === 'alerts' && body ? certifiedOf(body, nowMs) : null}
@@ -248,8 +328,16 @@ export function WatchSetupsTab({ tab }: { tab: TabKey }) {
 }
 
 export default function WatchSetupsV002() {
-  const [sp] = useSearchParams()
+  const [sp, setSp] = useSearchParams()
   const q = sp.get('tab')
   const tab: TabKey = q === 'sectors' || q === 'discover' || q === 'alerts' || q === 'pullback' ? q : 'setups'
-  return <WatchSetupsTab key={tab} tab={tab} />
+  const alertView = alertViewFrom(sp)
+  // WR-09: the alert filter, search and page are URL state — reload, Back and a shared link land on the same view.
+  const onAlertView = (v: AlertView) => {
+    const next = new URLSearchParams(sp)
+    for (const k of ['filter', 'q', 'alert_page']) next.delete(k)
+    for (const [k, val] of Object.entries(alertViewQuery(v))) next.set(k, val)
+    setSp(next, { replace: true })
+  }
+  return <WatchSetupsTab key={tab} tab={tab} alertView={alertView} onAlertView={onAlertView} />
 }

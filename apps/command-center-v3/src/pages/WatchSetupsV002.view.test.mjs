@@ -212,9 +212,14 @@ assert.match(html(base({ hasMore: false })), /<button[^>]*disabled[^>]*>Next/)
 // 18. S7/WR-07: a row's pill is the DEFINITION's state, and the evaluator is its own source card. An armed definition
 //     under an unknown evaluator can never read as monitoring assurance.
 {
-  const h = html(base({ tab: 'alerts', evaluatorSrc: model.evaluatorSource({ evaluator: { readable: true, last_run_at: null, last_ok_at: null, last_rc: null } }, NOW) }))
-  assert.match(h, /definition armed/); assert.match(h, /definition disarmed/)
-  assert.ok(!/>armed</.test(h), 'no bare "armed" pill')
+  const evSrc = model.evaluatorSource({ evaluator: { readable: true, last_run_at: null, last_ok_at: null, last_rc: null } }, NOW)
+  const h = html(base({ tab: 'alerts', evaluatorSrc: evSrc }))
+  assert.match(h, /definition armed/)
+  // WR-09 made Active the default side, so the disarmed definition's pill is checked on History — the same row and the
+  // same label string; the assertion's intent (the pill is the definition's state, both ways) is unchanged.
+  const hist = html(base({ tab: 'alerts', evaluatorSrc: evSrc, alertView: { filter: 'history', q: '', page: 1 } }))
+  assert.match(hist, /definition disarmed/)
+  assert.ok(!/>armed</.test(h + hist), 'no bare "armed" pill')
   assert.match(h, /data-testid="alerts-evaluator" data-state="UNKNOWN">Evaluator UNKNOWN: watch_alerts_eval\.py · every 20 min, 09:00–16:00 ET, Mon–Fri · no successful run on record\. Row state below is the alert definition/)
   const ok = model.evaluatorSource({ evaluator: { readable: true, last_ok_at: iso(300), last_rc: 0 } }, NOW)
   assert.equal(ok.state, 'OK'); assert.match(ok.record, /last successful run /)
@@ -373,5 +378,90 @@ assert.match(html(base({ hasMore: false })), /<button[^>]*disabled[^>]*>Next/)
   assert.ok(postAt > panelSrc.indexOf('const add = async') && postAt < panelSrc.indexOf('return <WatchDiscoverRecentV002View'),
     'the only POST is inside add(); the read path is GET')
   assert.match(panelSrc, /fetch\(MEMBERSHIP_API, \{ cache: 'no-store' \}\)/, 'the membership read is a GET')
+  // Review b2r2 R1: the readback URL is pinned BY VALUE. Reverting it to the source-filtered form (?source=ai_watchlist)
+  // would leave every other assertion green, so the value itself is the test.
+  assert.equal(disc.MEMBERSHIP_API, '/api/v2/watchlist/symbols?sort=updated', 'the readback must be the unfiltered list')
+  assert.ok(!panelSrc.includes('source=ai_watchlist'), 'the readback must not be filtered to the armed subset')
 }
-console.log('25 scenarios passed')
+// 26. S7/WR-09: the 100-row mixed list splits into current attention and history, the listed totals are the READ's
+// counts (and the endpoint's 100-row cap is named, never a census), search narrows, and paging is per side.
+{
+  const rows = model.alertRows({ alerts: [
+    ...Array.from({ length: 18 }, (_, i) => ({ id: 100 + i, symbol: 'AAA', condition_type: 'price_cross_below', threshold: 100 + i, active: true, recurring: true, cooldown_days: 5 })),
+    ...Array.from({ length: 82 }, (_, i) => ({ id: 200 + i, symbol: 'BBB', condition_type: i % 2 ? 'rsi_below' : 'price_cross_above', threshold: 200 + i, active: false })),
+  ] })
+  const act = html(base({ tab: 'alerts', alerts: rows }))
+  // Acceptance: listed totals reconcile to 18 active and 82 inactive for this fixture; certified totals stay elsewhere.
+  assert.match(act, /data-testid="alerts-totals" data-capped="1">18 armed · 82 disarmed in the 100 definitions read\. The list endpoint returns at most 100 rows and reports no total, so how many more definitions exist beyond this read is UNKNOWN\./)
+  assert.match(act, /aria-pressed="true"[^>]*data-testid="alerts-filter-active"/, 'Active is the default side')
+  assert.match(act, /aria-pressed="false"[^>]*data-testid="alerts-filter-history"/)
+  assert.match(act, /Active \(18\)/); assert.match(act, /History \(82\)/)
+  assert.ok(act.includes('data-testid="alert-100"') && !act.includes('data-testid="alert-200"'), 'history is not mixed into Active')
+  assert.match(act, /data-testid="alerts-paging">.*?1–18 of 18/)
+  const hist = html(base({ tab: 'alerts', alerts: rows, alertView: { filter: 'history', q: '', page: 1 } }))
+  assert.match(hist, /aria-pressed="true"[^>]*data-testid="alerts-filter-history"/)
+  assert.ok(hist.includes('data-testid="alert-200"') && !hist.includes('data-testid="alert-100"'))
+  assert.match(hist, /1–20 of 82/)
+  assert.match(html(base({ tab: 'alerts', alerts: rows, alertView: { filter: 'history', q: '', page: 2 } })), /21–40 of 82/)
+  assert.match(html(base({ tab: 'alerts', alerts: rows, alertView: { filter: 'history', q: '', page: 99 } })), /81–82 of 82/,
+    'an out-of-range page clamps to the last page instead of showing an empty page')
+  // search is per side
+  // search narrows within the side: 41 of the 82 history rows are rsi_below, paged at 20
+  assert.match(html(base({ tab: 'alerts', alerts: rows, alertView: { filter: 'history', q: 'rsi', page: 1 } })), /1–20 of 41/)
+  const miss = html(base({ tab: 'alerts', alerts: rows, alertView: { filter: 'active', q: 'rsi', page: 1 } }))
+  assert.match(miss, /data-testid="alerts-empty-filter">No armed definition matches &quot;rsi&quot;\. 82 disarmed definitions are in History\./)
+  assert.ok(!miss.includes('data-testid="alert-100"'))
+  // a read that is NOT capped says so instead of implying a census
+  const short = html(base({ tab: 'alerts', alerts: model.alertRows({ alerts: [{ id: 1, symbol: 'A', condition_type: 'rsi_below', active: true }] }) }))
+  assert.match(short, /data-capped="0">1 armed · 0 disarmed in the 1 definition read\. The endpoint returned every definition it holds\./)
+}
+// 27. S7/WR-09: a row explains its own lifecycle from the fields the evaluator branches on (one-shot is spent by the
+// evaluator; a repeating disarm is an API action), last fire is separate from enabled state, ids make identical
+// thresholds distinguishable, and duplicates are review context that nothing merges.
+{
+  const rows = model.alertRows({ alerts: [
+    { id: 1, symbol: 'AXTI', condition_type: 'price_cross_below', threshold: 7.47, active: true, recurring: false, created_at: '2026-11-01T15:00:00Z' },
+    { id: 2, symbol: 'QQQ', condition_type: 'price_cross_above', threshold: 500, active: true, recurring: true, cooldown_days: 5, last_fired_at: '2026-11-12T15:00:00Z' },
+    { id: 3, symbol: 'AXTI', condition_type: 'price_cross_below', threshold: 7.47, active: false, recurring: false, last_fired_at: '2026-10-27T16:00:00Z' },
+    { id: 4, symbol: 'SPY', condition_type: 'rsi_above', threshold: 70, active: false, recurring: true, last_fired_at: '2026-11-01T15:00:00Z' },
+    { id: 5, symbol: 'V', condition_type: 'price_cross_below', threshold: 300, active: false },
+  ] })
+  const act = html(base({ tab: 'alerts', alerts: rows }))
+  assert.match(act, /data-testid="alert-policy-1">one-shot/)
+  assert.match(act, /data-testid="alert-1"[^>]*data-lifecycle="armed-one-shot"/)
+  assert.match(act, /data-testid="alert-lifecycle-1">armed · one-shot — One-shot: the evaluator disarms it when it fires, and a definition that has fired never fires again\./)
+  assert.match(act, /data-testid="alert-policy-2">repeats · cooldown 5 d/)
+  assert.match(act, /data-testid="alert-2"[^>]*data-lifecycle="armed-repeating"/)
+  assert.match(act, /data-testid="alert-lifecycle-2">armed · repeating — Repeating: the evaluator leaves it armed after a fire and will not fire it again for about 7 days \(cooldown 5 d × 1\.4 trading-day approximation\), at most once per UTC day\./)
+  assert.match(act, /last fired Nov 12, 10:00 AM ET/, 'last fire is its own fact, not the enabled state')
+  assert.match(act, /never fired/)
+  assert.match(act, /data-testid="alert-id-1">#1</, 'the id is rendered, so identical thresholds differ')
+  const his = html(base({ tab: 'alerts', alerts: rows, alertView: { filter: 'history', q: '', page: 1 } }))
+  assert.match(his, /data-testid="alert-3"[^>]*data-lifecycle="spent-one-shot"/)
+  assert.match(his, /data-testid="alert-lifecycle-3">spent · disarmed by the evaluator — One-shot that fired: the evaluator set it disarmed on the fire, and it will not fire again\./)
+  assert.match(his, /data-testid="alert-4"[^>]*data-lifecycle="disarmed-after-fire"/)
+  assert.match(his, /Only the alerts API disarms a repeating definition, so this was a disarm action, not the evaluator\./)
+  assert.match(his, /data-testid="alert-5"[^>]*data-lifecycle="disarmed-never-fired"/)
+  // duplicate context names ids and stays read-only, on both sides
+  assert.match(act, /data-testid="alert-dup-AXTI-1">2 definitions share AXTI price_cross_below 7\.47 \(ids 1, 3; 1 armed\) — review context; nothing is merged or deleted\./)
+  assert.match(his, /data-testid="alert-dup-AXTI-1"/)
+  assert.ok(!/delete|merge\(/i.test(readFileSync(join(app, 'src/pages/WatchSetupsV002.tsx'), 'utf8').split('function AlertsPanel')[1].split('const URLS')[0].replace(/nothing is merged or deleted/g, '')), 'the alerts panel has no merge/delete path')
+  // grouping: rows are grouped by symbol with a count
+  assert.match(his, /data-testid="alert-group-AXTI">AXTI · 1 definition in this view/)
+}
+// 28. S7/WR-09: filter, search and page are URL state — a reload, Back or a shared link lands on the same view, and the
+// default view adds no params. (Pure round-trip + the host's wiring.)
+{
+  const from = q => model.alertViewFrom(new URLSearchParams(q))
+  assert.deepEqual(from('tab=alerts&filter=history&q=ax&alert_page=3'), { filter: 'history', q: 'ax', page: 3 })
+  assert.deepEqual(from('tab=alerts'), { filter: 'active', q: '', page: 1 })
+  assert.deepEqual(from('filter=ALL&alert_page=-4'), { filter: 'active', q: '', page: 1 }, 'an unknown filter is not History')
+  assert.deepEqual(model.alertViewQuery({ filter: 'active', q: '', page: 1 }), {}, 'the default view adds no params')
+  assert.deepEqual(model.alertViewQuery({ filter: 'history', q: 'ax', page: 3 }), { filter: 'history', q: 'ax', alert_page: '3' })
+  const src = readFileSync(join(app, 'src/pages/WatchSetupsV002.tsx'), 'utf8')
+  assert.match(src, /const alertView = alertViewFrom\(sp\)/)
+  assert.match(src, /for \(const k of \['filter', 'q', 'alert_page'\]\) next\.delete\(k\)/, 'stale params are cleared, not merely overwritten')
+  assert.match(src, /setSp\(next, \{ replace: true \}\)/)
+  assert.match(src, /alertView=\{alertView\} onAlertView=\{onAlertView\}/, 'the URL view reaches the tab host')
+}
+console.log('28 scenarios passed')

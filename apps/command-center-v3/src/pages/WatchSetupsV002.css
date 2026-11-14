@@ -14,3 +14,12 @@
 .ws2-sym { font-weight: 700; }
 .ws2-dim { color: var(--text-2); font-size: 13px; }
 .ws2-paging { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--text-2); }
+/* WR-09: alert filters are controls, so they carry the same hit target and focus ring as any other button; the group
+   heading is a separator inside the rows list, not a row. */
+.ws2-alert-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ws2-alert-toolbar .v010-btn[aria-pressed="true"] { border-color: var(--accent, var(--text-1)); font-weight: 700; }
+.ws2-search { min-height: 44px; padding: 6px 10px; font-size: 14px; color: var(--text-1); background: transparent;
+  border: 1px solid var(--border-color); border-radius: var(--radius-md); min-width: 0; flex: 1 1 220px; }
+.ws2-search:focus-visible { outline: 2px solid var(--accent, var(--text-1)); outline-offset: 1px; }
+.ws2-grouphead { list-style: none; padding: 10px 0 2px; font-size: 13px; font-weight: 700; color: var(--text-2);
+  border-bottom: 1px solid var(--border-color); }
