@@ -2,8 +2,10 @@
 // time are separate fields; BUILDING / UNKNOWN / 503 / no envelope read UNKNOWN with a reason, never OK; a route that
 // is not a stored product says so; two different versions of one path are a DEFECT. Synthetic values only.
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { clockCells, productClock, versionMismatch } from './productEnvelope.ts'
+
+declare const process: { exit(code?: number): never; getBuiltinModule(id: 'node:fs'): { readFileSync(p: URL, enc: 'utf8'): string } }
+const readFileSync = process.getBuiltinModule('node:fs').readFileSync
 
 function env(status: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
   return {
