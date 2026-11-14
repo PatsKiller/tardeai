@@ -41,6 +41,48 @@ STALE_AFTER_S = 360
 HARD_EXPIRY_S = 1800
 PURGE_AFTER_S = 604800  # DSN 3.3 + operator Q8 (7 days for every tier)
 
+
+def limits_for(now: datetime) -> dict:
+    """cadence/stale/hard for this moment (LQ-20261113-3082): the same off-hours tier as ``product_builder.limits_for``.
+
+    Outside 09:30-16:15 ET weekdays cio.pages refreshes hourly like every other fast product (DSN §3); a fixed
+    120/360/1800 greyed the stored-only reader 30 min after the last build. ``product_builder`` imports this module,
+    so it is imported lazily here (one definition of the tier, no copy to drift).
+    """
+    from scripts.lib.cc_products import product_builder as pb
+    lim = {"cadence_s": CADENCE_S, "stale_after_s": STALE_AFTER_S, "hard_expiry_s": HARD_EXPIRY_S}
+    if not pb.is_market_hours(now):
+        lim = dict(pb.OFF_HOURS)
+        # N1 (LQ-20261113-3095): limits are frozen at build time, so an evening/09:29 row must not stay OK/STALE
+        # past the next 09:30 ET weekday open, where a dead builder would otherwise read fresh for hours.
+        # REVIEW-3102 R2: a zero grace flipped the page OK -> UNKNOWN at 09:30:00 every weekday, before the first
+        # market build lands (cron lag <= 1 min + build). stale/hard run past the open by a grace; stale < hard.
+        until_open = max(1, int(seconds_to_next_open(now)))
+        lim["cadence_s"] = min(lim["cadence_s"], until_open)
+        lim["stale_after_s"] = min(lim["stale_after_s"], until_open + OPEN_STALE_S)
+        lim["hard_expiry_s"] = min(lim["hard_expiry_s"], until_open + OPEN_GRACE_S)
+    lim["purge_after_s"] = PURGE_AFTER_S
+    return lim
+
+
+#: Seconds past the 09:30 ET open before an off-hours row goes STALE / expires UNKNOWN (REVIEW-3102 R2): one cadence
+#: (120 s) + cron lag + build time fit inside the hard grace, and stale < hard keeps a STALE band at the open.
+OPEN_STALE_S = 60
+OPEN_GRACE_S = 150
+
+
+def seconds_to_next_open(now: datetime) -> float:
+    """Real seconds from ``now`` to the next 09:30 ET weekday open (DST-safe: compared in UTC)."""
+    from scripts.lib.cc_products import product_builder as pb
+    et = now.astimezone(pb.ET)
+    day = et.date()
+    for _ in range(8):
+        cand = datetime(day.year, day.month, day.day, 9, 30, tzinfo=pb.ET)
+        if day.weekday() < 5 and cand > et:
+            return (cand.astimezone(timezone.utc) - now.astimezone(timezone.utc)).total_seconds()
+        day = day + timedelta(days=1)
+    raise RuntimeError("no weekday open within 8 days")
+
 MAX_BODY_BYTES = 2 * 1024 * 1024  # DSN 4.4: one stored body is capped at 2 MB; a bigger build is REFUSED
 _HEADER_SLACK = 256 * 1024  # the frame header (watermarks) is small; anything past body cap + slack is refused
 DEFAULT_RLIMIT_AS = 512 * 1024 * 1024  # DSN 4.4: one builder run, 512 MB
@@ -446,11 +488,12 @@ def run_once(*, connect, root, hot=None, dry_run: bool, now=None, builder_sha=""
             conn.commit()
             receipt.update(outcome="FAILED", error=err, finished_at=_iso(built_at))
             return receipt
+        lim = limits_for(built_at)
         try:
             written = store.write_current(
                 cur, PRODUCT_ID, scope_key, result["body"], as_of=as_of_dt, built_at=built_at,
-                next_refresh_at=built_at + timedelta(seconds=CADENCE_S), stale_after_s=STALE_AFTER_S,
-                hard_expiry_s=HARD_EXPIRY_S, purge_after_s=PURGE_AFTER_S,
+                next_refresh_at=built_at + timedelta(seconds=lim["cadence_s"]), stale_after_s=lim["stale_after_s"],
+                hard_expiry_s=lim["hard_expiry_s"], purge_after_s=lim["purge_after_s"],
                 source_watermarks=result["source_watermarks"], builder_sha=builder_sha,
                 build_ms=result["build_ms"])
         except Exception as exc:
@@ -490,7 +533,7 @@ def run_once(*, connect, root, hot=None, dry_run: bool, now=None, builder_sha=""
         return receipt
     clock_from = as_of_dt or built_at
     # age never below 0 (clock skew, or a test that pins built_at): the key may not outlive the hard expiry
-    ex_s = int(HARD_EXPIRY_S - max(0.0, (built_at - clock_from).total_seconds()))
+    ex_s = int(lim["hard_expiry_s"] - max(0.0, (built_at - clock_from).total_seconds()))
     if ex_s < 1:
         receipt["hot"] = "skipped: past hard expiry"
         return receipt

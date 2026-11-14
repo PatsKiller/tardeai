@@ -361,7 +361,7 @@ _SUBPROC = textwrap.dedent('''
     for n in ("_market_risk_latest_projection", "_home_cio_card", "_risk_payload_cached", "_reports_analyst_links",
               "_market_risk_latest_swr", "_reports_analyst_links_swr",
               "_home_since_close", "_home_incidents", "_home_priorities_live", "_home_status", "_home_gates",
-              "_w7_cio_pages_legacy", "_cio_pages_build", "_shared_get_cached"):
+              "_w7_cio_pages_legacy", "_cio_pages_build", "_shared_get_cached"):  # _cio_pages_build is gone (3095); the trip is a no-op name guard
         setattr(api, n, trip(n))
     # cio_pages_route imports w7_pages for its pure unavailable() gap shape (by design, LQ-2595); the page compute
     # functions in it are tripwired instead of import-checked.
