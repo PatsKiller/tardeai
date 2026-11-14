@@ -6,7 +6,7 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import '../../styles/cioCard.css'
 import { toneVars } from '../../lib/designTokens'
-import { actionVerb, accountText, calDay, daysUntil, etDay, etTime, fv, meterParts, TIER_CUTOFFS, usd, usdShort, tierToneOf, type CioCard } from '../../lib/cioCard'
+import { actionVerb, accountText, bookAccountsText, calDay, daysUntil, etDay, etTime, fv, meterParts, TIER_CUTOFFS, usd, usdShort, tierToneOf, type CioCard } from '../../lib/cioCard'
 import { renderedTier } from '../../lib/marketRisk'
 
 /** "DEFENSIVE — HOLD CASH" → "Hold cash." (the part after the dash, sentence case). */
@@ -188,7 +188,7 @@ export default function CioCardV5({ card, adviceOk, adviceReason, nowMs, actions
         {card.book && (
           <div className="r" data-testid="cio5-row-book" title={card.book.source_id}><span className="bar amb" /><span className="lab">Book</span>
             <div className="txt">
-              <div className="main">{card.book.positions != null && <><span className="num">{card.book.positions}</span> positions</>}{card.book.accounts != null && <> · <span className="num" data-testid="cio5-book-accounts" title="Accounts that hold a non-cash position. The Accounts card on Home lists every account, including cash-only ones.">{card.book.accounts}</span> accounts holding positions</>}{card.book.cash != null && <> · <span className="num">{usd(card.book.cash)}</span> cash</>}</div>
+              <div className="main">{card.book.positions != null && <><span className="num">{card.book.positions}</span> positions</>}{(() => { const a = bookAccountsText(card.book); return a.text ? <> · <span data-testid="cio5-book-accounts" title={a.title ?? undefined}>{a.text}</span></> : null })()}{card.book.cash != null && <> · <span className="num">{usd(card.book.cash)}</span> cash</>}</div>
               {lu && <div className="sub">Largest unprotected: <span className="taga">{lu.symbol}{lu.shares != null ? ` ${Math.round(lu.shares)} sh` : ''}{lu.value != null ? ` (~${usd(lu.value)})` : ''}</span>{lu.account ? `, ${accountText(lu.account)}` : ''}.</div>}
             </div></div>
         )}

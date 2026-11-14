@@ -93,7 +93,8 @@ await test('A07: accountsCaption counts listed accounts, names unknown-value one
   const c = dn.accountsCaption([{ key: 'all', value: 502.45, oneRead: true }, v('a'), v('b'), v('c'), v('d'), v('e')])
   assert.match(c, /^5 accounts listed\. /)
   assert.doesNotMatch(c, /cash-only/)
-  assert.match(c, /only accounts holding positions/)
+  assert.match(c, /every account in the book and, separately, those holding positions/)  // LQ-3076: one account definition
+  assert.doesNotMatch(c, /only accounts holding positions/)
   assert.match(c, /up to \$3\./)   // 0.5 x (5 + 1): five rows of 100.49 show 500 against 502.45 shown as 502 (gap 2 <= 3)
   assert.match(dn.accountsCaption([{ key: 'all', oneRead: true }, v('a')]), /up to \$1\./)
   assert.match(dn.accountsCaption([v('a'), v('b')]), /up to \$1\.5\./)
@@ -129,8 +130,9 @@ await test('A07: the Accounts caption component renders the text, and nothing wh
   assert.match(html, /2 accounts listed, 1 with no value/)
   assert.equal(renderToStaticMarkup(React.createElement(AccountsCaption, { rows: [{ key: 'all', value: 9 }] })), '')
 })
-await test('A07: HomeDoNow renders the caption component ungated, and the Book line says "accounts holding positions"', () => {
-  assert.match(read('src/components/home/CioCardV5.tsx'), /accounts holding positions/)
+await test('A07: HomeDoNow renders the caption component ungated, and the Book line names both account counts (LQ-3076)', () => {
+  assert.match(read('src/components/home/CioCardV5.tsx'), /bookAccountsText\(card\.book\)/)
+  assert.doesNotMatch(read('src/components/home/CioCardV5.tsx'), /accounts holding positions/)
   const page = read('src/pages/HomeDoNow.tsx')
   assert.match(page, /import \{ AccountsCaption \} from '\.\.\/components\/home\/AccountsCaption'/)
   assert.match(page, /^\s*<AccountsCaption rows=\{accounts\} \/>\s*$/m)  // a bare line: `{false && <AccountsCaption…/>}` does not match

@@ -530,7 +530,7 @@ export function accountsCaption(rows: { key: string; value?: number | null; oneR
   const sameRead = rows.every(r => r.oneRead === true)
   const head = `${n} account${n === 1 ? '' : 's'} listed`
     + (unknown ? `, ${unknown} with no value${sameRead ? ' in the holdings store' : ''} (not in the sum)` : '')
-    + '. The book line counts only accounts holding positions. '
+    + '. The CIO book line counts every account in the book and, separately, those holding positions. '
   if (!sameRead) return head + 'Rows and the total come from different reads, so they may not add up.'
   const bound = 0.5 * (n - unknown + 1)
   const b = Number.isInteger(bound) ? String(bound) : bound.toFixed(1)
