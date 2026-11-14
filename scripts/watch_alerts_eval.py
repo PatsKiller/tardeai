@@ -118,9 +118,19 @@ def _log(msg: str) -> None:
         pass
 
 
-def _evaluate_single_condition_alerts(ex, alerts, today: str) -> tuple[list[str], list[int]]:
+def _evaluate_single_condition_alerts(ex, alerts, today: str, counts: dict | None = None) -> tuple[list[str], list[int]]:
+    """Evaluate every armed single-condition alert; return the fired lines and ids.
+
+    ``counts`` (S2 producers-perf, WR-07) is filled in place with what this pass could and could not evaluate:
+    ``attempted`` (armed rows read), ``eligible`` (not deduped/cooldown-skipped), ``evaluated`` (an input was read
+    and compared), ``failed`` (eligible but the input was missing, stale or an unsupported condition) and quote
+    coverage. A failed evaluation is never an empty success: it is counted and logged, and the run record carries
+    both numbers beside the fired count.
+    """
     lines: list[str] = []
     fired_ids: list[int] = []
+    c = counts if counts is not None else {}
+    c.update(attempted=len(alerts), eligible=0, evaluated=0, failed=0, quotes_requested=0, quotes_covered=0)
     # One batch for every price-cross alert, through the shared Finviz-first helper (see _price_quotes).
     price_symbols = sorted({
         (a.get("symbol") or "").upper() for a in alerts
@@ -128,6 +138,8 @@ def _evaluate_single_condition_alerts(ex, alerts, today: str) -> tuple[list[str]
         and (a.get("symbol") or "").strip()
     })
     quotes = _price_quotes(ex, price_symbols)
+    c["quotes_requested"] = len(price_symbols)
+    c["quotes_covered"] = sum(1 for s in price_symbols if (quotes.get(s) or {}).get("price") is not None)
     for alert in alerts:
         uid = f"watch_alert:{alert['id']}:{today}"
         if ex("SELECT 1 FROM alert_events WHERE alert_uid=%s LIMIT 1", (uid,), fetch="one"):
@@ -139,6 +151,7 @@ def _evaluate_single_condition_alerts(ex, alerts, today: str) -> tuple[list[str]
             days = (dt.datetime.now(dt.timezone.utc) - alert["last_fired_at"]).days
             if days < cooldown * 1.4:  # trading-day approximation
                 continue
+        c["eligible"] += 1
         symbol = (alert.get("symbol") or "").upper()
         condition = alert["condition_type"]
         threshold = alert.get("threshold")
@@ -149,11 +162,14 @@ def _evaluate_single_condition_alerts(ex, alerts, today: str) -> tuple[list[str]
             # A price alert must not fire (or stay silent) on a stale print; a quote with no current
             # price, or one stale for its session, is skipped this pass and named in the log.
             if current is None:
+                c["failed"] += 1
                 _log(f"skip alert {alert['id']} {symbol}: no current quote ({quote.get('source') or 'helper returned none'})")
                 continue
             if not _quote_is_current(quote.get("as_of")):
+                c["failed"] += 1
                 _log(f"skip alert {alert['id']} {symbol}: quote {quote.get('as_of')} from {quote.get('source')} is stale for its session")
                 continue
+            c["evaluated"] += 1
             hit = current is not None and (
                 current >= float(threshold) if condition.endswith("above") else current <= float(threshold)
             )
@@ -165,6 +181,12 @@ def _evaluate_single_condition_alerts(ex, alerts, today: str) -> tuple[list[str]
                 (symbol,), fetch="one",
             )
             current = float(row["rsi"]) if row and row.get("rsi") is not None else None
+            if current is None:
+                # Same rule as a price alert: an unread input is a named failure, not a quiet no-fire.
+                c["failed"] += 1
+                _log(f"skip alert {alert['id']} {symbol}: no RSI on the watchlist row")
+                continue
+            c["evaluated"] += 1
             hit = current is not None and (
                 current >= float(threshold) if condition.endswith("above") else current <= float(threshold)
             )
@@ -176,7 +198,15 @@ def _evaluate_single_condition_alerts(ex, alerts, today: str) -> tuple[list[str]
                 (alert["directive_id"], alert.get("last_fired_at")), fetch="one",
             )
             current = (row or {}).get("n") or 0
+            c["evaluated"] += 1
             hit = current > 0
+        else:
+            # An armed row whose condition this pass cannot evaluate (unknown type, or a directive alert with
+            # no directive_id) used to fall through silently as "did not fire". Count and name it instead.
+            c["failed"] += 1
+            _log(f"skip alert {alert['id']} {symbol or alert.get('directive_id')}: condition {condition!r} is not evaluable"
+                 f" ({'no directive_id' if condition == 'directive_hit' else 'unsupported'})")
+            continue
         if not hit:
             continue
         message = (
@@ -270,7 +300,8 @@ def _run_pass(stats: dict) -> int:
     ).get("n") or 0
 
     alerts = ex("SELECT * FROM watch_alerts WHERE active", fetch="all") or []
-    lines, fired_ids = _evaluate_single_condition_alerts(ex, alerts, today)
+    counts: dict = {}
+    lines, fired_ids = _evaluate_single_condition_alerts(ex, alerts, today, counts)
 
     exit_count = 0
     exit_payload = None
@@ -332,7 +363,7 @@ def _run_pass(stats: dict) -> int:
         print(f"[watch-alerts] recovery state machine error: {recovery['error']}")
 
     stats.update(armed=len(alerts), fired=len(fired_ids), composites=len(composite.get("fired") or []),
-                 recovery_store=recovery.get("store"))
+                 recovery_store=recovery.get("store"), **counts)
     print(
         f"[watch-alerts] {len(alerts)} single-condition armed · "
         f"{len(fired_ids)} fired: {fired_ids} · "
@@ -361,7 +392,19 @@ def main() -> int:
     return rc
 
 
+def _run_id(started) -> str:
+    """A per-pass id the page can correlate with the receipt and the runs record (WR-07).
+
+    ``watch-alerts-eval-<UTC start compact>-<6 hex>``; generated once per pass so the receipt, the runs line and
+    the log all name the same run.
+    """
+    import uuid
+    return f"watch-alerts-eval-{started.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:6]}"
+
+
 def _write_run_record(started, rc: int, stats: dict) -> None:
+    run_id = stats.get("run_id") or _run_id(started)
+    stats["run_id"] = run_id
     try:
         from lib.lane_last_receipt import write_lane_receipt
         write_lane_receipt(
@@ -409,6 +452,15 @@ def _append_runs_record(rc: int, stats: dict) -> None:
             composites=stats.get("composites") or 0,
             rc=rc,
             error=stats.get("error"),
+            # WR-07: what this pass could and could not evaluate, and which quote coverage it had, ride the same
+            # line as the fired count so an empty success is distinguishable from a failed evaluation.
+            evaluated=stats.get("evaluated"),
+            eligible=stats.get("eligible"),
+            failed=stats.get("failed"),
+            quotes_covered=stats.get("quotes_covered"),
+            quotes_missing=(None if stats.get("quotes_requested") is None
+                            else int(stats["quotes_requested"]) - int(stats.get("quotes_covered") or 0)),
+            run_id=stats.get("run_id"),
         )
     except Exception as error:  # noqa: BLE001 - a record failure never stops an alert pass
         print(f"[watch-alerts] runs record not written: {str(error)[:200]}")

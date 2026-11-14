@@ -295,6 +295,35 @@ def _persist_candidates(cands: list[dict], scan_d: date) -> None:
             (seen,))
 
 
+# The one statement the producer issues for history. A module constant so the tests can execute the EXACT text
+# against an in-memory database: a test that only fake-records the SQL proves the call shape, not the idempotency.
+_TRIGGER_HISTORY_INSERT = """INSERT INTO pullback_trigger_history (symbol, trigger_date, score, entry, stop, target1)
+                    SELECT symbol, COALESCE(scan_date, CURRENT_DATE), score, entry, stop, target1
+                    FROM pullback_macd_candidates WHERE tier='trigger' AND status='active'
+                    ON CONFLICT (symbol, trigger_date) DO NOTHING"""
+
+
+def _record_trigger_history() -> int:
+    """Record one history row per active trigger per day — THE WRITER (S2 producers-perf, WR-05/WR-11).
+
+    This used to run inside ``GET /api/v2/pullback-macd/candidates`` (api_v2.py `_pullback_macd_candidates`): every
+    page load, every tab poll, INSERTed into ``pullback_trigger_history``. A GET may read; a producer writes. The
+    statement is the same one, byte for byte, so the rows the hit-rate widget reads are unchanged — it simply runs
+    once per producer pass (daily 16:40 + intraday monitor) instead of once per browser read.
+
+    Called after ``_persist_candidates`` so the rows it selects from are this run's. Idempotent by
+    ``ON CONFLICT (symbol, trigger_date) DO NOTHING``: a repeat pass on the same scan day adds nothing, while a later
+    day's pass records its own row. Never raises: a recording failure must not fail a scan whose candidates are
+    already persisted.
+    """
+    try:
+        _db(_TRIGGER_HISTORY_INSERT)
+        return 1
+    except Exception as error:  # noqa: BLE001 -- named, never silent; the scan itself already succeeded
+        print(f"  [trigger-history] not recorded this run: {str(error)[:200]}")
+        return 0
+
+
 def _write_trade_plan(c: dict, strat: str, shares: int, dollar_size: float, dollar_risk: float) -> int | None:
     """Write an authoritative trade_plans row (technical entry/stop/target). broker_trade_plan_gate
     resolves this by symbol and treats the levels as authoritative — clearing the 'no authoritative
@@ -698,9 +727,13 @@ def run(dry: bool = False, limit: int = 0, as_json: bool = False, monitor: bool 
     scan_d = date.today()
 
     emitted = retired = 0
+    recorded = 0
     adjust = {"open": 0, "actionable": 0}
     if not dry:
         _persist_candidates(cands, scan_d)
+        # S2 producers-perf (WR-05/WR-11): the trigger-history write lives HERE, in the producer, not in the page's
+        # GET. Same statement as before; it runs per producer pass, not per browser read.
+        recorded = _record_trigger_history()
         if cfg.get("emit_proposals", True):
             emitted = _emit_proposals(cands, cfg)
         # Keep standing pullback proposals in sync with the live setup: refresh those that still fit
@@ -730,6 +763,7 @@ def run(dry: bool = False, limit: int = 0, as_json: bool = False, monitor: bool 
         "triggers": len(triggers), "watch": len(watch),
         "proposals_emitted": emitted, "proposals_retired": retired,
         "open_trades": adjust["open"], "trade_adjustments": adjust["actionable"], "data_errors": errors,
+        "trigger_history_recorded": bool(recorded),
         "duration_s": round(time.time() - t0, 1),
         "top_triggers": sorted(triggers, key=lambda x: -x["score"])[:15],
         "top_watch": sorted(watch, key=lambda x: x["macd_prox_pct"])[:15],
