@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overview_projection_20261114",
+  "files": [
+    "tests/test_overview_projection_20261114.py"
+  ],
+  "anchor": "OVERVIEW_PROJECTION_20261114",
+  "comment": [
+    "ANCHOR: OVERVIEW_PROJECTION_20261114 — the overview-projection lane, its builder, and the identity / path / invalidation plumbing the route depends on.",
+    "Successor to config/ci_gates/overview_projection_20261109.json, which retired together with its test file into archive/s2_overview_20261109_retired_20261114/ (R7 blocker, LEAD 2026-11-14T18:46Z). That gate pinned the pre-S2 reader contract — a route that reads the projection while fresh and computes INLINE on every miss, naming the reason in _projection — which ACC-CACHE r4 replaced by design: the reader is now LAST-KNOWN-GOOD-or-named-UNKNOWN and serve() never computes (S2 item 2, operator 2026-11-14).",
+    "The reader matrix half of the retired file is now registered under S2_READ_MODEL_20261114 (tests/test_s2_overview_never_inline_20261114.py). This gate keeps the half whose behaviour did not change (builder atomics/failure/overlap, parity, code identity, path override, invalidation registration, serve-never-computes, ETag byte-identity) plus five restated behaviours: the route binding, per-read dict isolation, the no-body cases for a missing file and a future stamp, the write-tracking-off sentinel, and a write older than the build.",
+    "archive/s2_overview_20261109_retired_20261114/COVERAGE-MAP.md maps all 26 retired tests to the test that carries each behaviour; nothing was deleted without a row and no assertion was weakened.",
+    "Synthetic documents and a scratch state directory only; no production DB, no Valkey, no scheduled job."
+  ]
+}
