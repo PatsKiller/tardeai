@@ -335,6 +335,12 @@ def test_flag_flips_both_ways(api, monkeypatch, path):
 
 
 def test_inline_market_risk_get_follows_the_flag(api, monkeypatch):
+    # Hermetic (LQ-20261113-3085f): _product_io() takes the process-wide hot tier from cio_pages_route.production_hot(),
+    # which is the LIVE Valkey on this host. Without this stub the stored read served the live hot row (served_from=hot)
+    # instead of the stubbed empty Postgres, so the UNKNOWN assertion below depended on host state.
+    from scripts.lib.cc_products import cio_pages_route as cpr
+
+    monkeypatch.setattr(cpr, "production_hot", lambda: None)
     monkeypatch.setattr(api, "_market_risk_latest_projection", lambda: {"state": "evaluated", "tier": "LEGACY"})
     if hasattr(api, "_market_risk_latest_swr"):  # mem-contain fold: legacy = the bounded SWR path
         monkeypatch.setattr(api, "_market_risk_latest_swr", lambda: {"state": "evaluated", "tier": "LEGACY"})
@@ -347,6 +353,30 @@ def test_inline_market_risk_get_follows_the_flag(api, monkeypatch):
         monkeypatch.setattr(api, "_market_risk_latest_swr", _trip("_market_risk_latest_swr"))
     assert api.handle("/api/v2/market-risk/latest", "GET", None, {})[1]["data"]["tier"] == "UNKNOWN"
 
+
+
+def test_inline_market_risk_get_serves_a_hot_row_under_stored(api, monkeypatch):
+    """The stored reader serves a row the hot tier holds (served_from=hot); legacy compute and Postgres stay tripwired."""
+    from scripts.lib.cc_products import cio_pages_route as cpr
+
+    now = datetime.now(timezone.utc)
+    row = {"product_id": "market_risk.latest", "scope_key": "global", "etag": "e7", "seq": 7,
+           "body": json.dumps({"projection": {"state": "evaluated", "tier": "RED"}, "home_cio_card": {}}).encode(),
+           "as_of": now - timedelta(seconds=5), "built_at": now - timedelta(seconds=5), "next_refresh_at": None,
+           "stale_after_s": 180, "hard_expiry_s": 300, "purge_after_s": 604800, "status": "OK", "reason": None,
+           "schema_version": 1, "source_watermarks": {}}
+    hot = Hot()
+    hot.store[product_key("market_risk.latest")] = pack(row)
+    monkeypatch.setattr(cpr, "production_hot", lambda: hot)
+    monkeypatch.setattr(api, "_db_query_raising", _trip("_db_query_raising (Postgres read on a hot hit)"))
+    monkeypatch.setattr(api, "_market_risk_latest_projection", _trip("_market_risk_latest_projection"))
+    if hasattr(api, "_market_risk_latest_swr"):
+        monkeypatch.setattr(api, "_market_risk_latest_swr", _trip("_market_risk_latest_swr"))
+    reader_flag.reload("market_risk.latest=stored")
+    data = api.handle("/api/v2/market-risk/latest", "GET", None, {})[1]["data"]
+    assert data["tier"] == "RED" and data["state"] == "evaluated"
+    assert data["_product"]["served_from"] == "hot" and data["_product"]["seq"] == 7
+    assert hot.sets == [], "the reader never writes the hot tier"
 
 _SUBPROC = textwrap.dedent('''
     import json, sys
