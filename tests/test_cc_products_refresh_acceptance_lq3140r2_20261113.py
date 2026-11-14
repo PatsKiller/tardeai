@@ -9,7 +9,10 @@ THE ORDERING RULE (store_pg._UPSERT_SQL), stated once so the tests can pin it:
   and one of  (a) new.as_of >= stored.as_of                    (valid rows: strict ordering, never relaxed)
               (b) stored.as_of > stored.checked_at + 120 s     (stored clock INVALID: a future source time)
                   AND new.as_of <= new.checked_at + 120 s      (and the replacement's own clock is valid)
-              (c) stored.status = DEGRADED AND new.status = OK (a degraded row's clock is held, not genuine)
+              (c) stored.status = DEGRADED AND new.status = OK AND the stored row was left by a FAILED SLICE (r4:
+                  reason starts 'slices failed:' - what a real failed build writes, first build or not, aborted
+                  slice or held clock; r3 also accepted a clock_carried mark or the 'product clock held at the
+                  stored' reason, both kept). A DEGRADED row with a genuine clock keeps strict ordering.
 
 WHAT EACH BUILDER PASSES AS ``as_of`` (pinned below):
   home          min over the live slices' own clocks (since_close excluded)   - a source clock
@@ -40,7 +43,7 @@ from scripts.lib.cc_products import product_builder as pb  # noqa: E402
 from scripts.lib.cc_products import read_path as rp  # noqa: E402
 from scripts.lib.cc_products import store_pg  # noqa: E402
 from test_cc_products_refresh_suppression_lq3140_20261113 import (  # noqa: E402,F401
-    NOW, STATUS_CLOCK, _fake_slices, _home_ctx)
+    NOW, STATUS_CLOCK, _fake_slices, _home_ctx, _home_run)
 from test_home_products_builder_20261113 import (  # noqa: E402,F401
     T0, _ctx, _log, _row, cluster, connect, fake_build, needs_pg, spec)
 
@@ -49,14 +52,19 @@ _REAL_CIO_RUN_ONCE = cp.run_once
 LIM = dict(stale_after_s=180, hard_expiry_s=900, purge_after_s=3600)
 
 
-def _seed(connect, *, as_of, checked_at, status="OK", payload=None, pid="syn.product", scope="global"):
+CARRIED = {"status": {"as_of": None, "error": "RuntimeError", "clock_carried": True}}   # what build_home writes (r1)
+HELD = "slices failed: status; product clock held at the stored 2026-11-13T19:59:00+00:00"
+
+
+def _seed(connect, *, as_of, checked_at, status="OK", payload=None, pid="syn.product", scope="global",
+          watermarks=None, reason=None):
     """Write a stored row through the real upsert, as an EARLIER build (today's code included) would have."""
     c = connect()
     try:
         out = store_pg.write_current(
             c.cursor(), pid, scope, json.dumps(payload or {"v": "seed"}).encode(), as_of=as_of, built_at=checked_at,
-            next_refresh_at=checked_at + timedelta(seconds=60), source_watermarks={}, builder_sha="seed", build_ms=1,
-            status=status, **LIM)
+            next_refresh_at=checked_at + timedelta(seconds=60), source_watermarks=watermarks or {}, builder_sha="seed",
+            build_ms=1, status=status, **({"reason": reason} if reason else {}), **LIM)
         c.commit()
         return out
     finally:
@@ -115,6 +123,7 @@ def test_A1_home_recovers_and_publishes_with_a_source_clock_older_than_the_store
     ahead to). The slice recovers; its GENUINE clock is 19:50 - older than the stored 19:59. It must publish."""
     _fake_slices(monkeypatch, {"status_fails": False})
     _seed(connect, as_of=NOW - timedelta(minutes=1), checked_at=NOW, status="DEGRADED", pid="home",
+          watermarks=CARRIED,
           payload={"seeded": "while status was down"})
     assert _row(connect, "home")["as_of"] == NOW - timedelta(minutes=1) > STATUS_CLOCK
     rc, rec = _cli(connect, tmp_path, monkeypatch, capsys, product="home", now=NOW + timedelta(seconds=30),
@@ -123,6 +132,103 @@ def test_A1_home_recovers_and_publishes_with_a_source_clock_older_than_the_store
     row = _row(connect, "home")
     assert row["status"] == "OK" and row["as_of"] == STATUS_CLOCK       # the genuine, older source clock, published
     assert _log_rows(connect, "home")[-1] == ("BUILT", "OK")
+
+
+@needs_pg
+def test_A1_r3_a_degraded_row_with_a_GENUINE_clock_is_not_overwritten_by_an_older_ok_build(
+        connect, tmp_path, monkeypatch, capsys):
+    """r3: a real DEGRADED row (no carried/held marker) keeps strict as_of ordering: as_of must not go backwards."""
+    _seed(connect, as_of=T0, checked_at=T0, status="DEGRADED", watermarks={"status": {"as_of": "x", "state": "stale"}})
+    rc, rec = _cli(connect, tmp_path, monkeypatch, capsys, as_of=T0 - timedelta(minutes=5),
+                   now=T0 + timedelta(seconds=30), payload={"v": "older-source"})
+    assert rc == 3 and rec["outcome"] == "REFUSED_OLDER"
+    assert _row(connect)["as_of"] == T0
+
+
+@needs_pg
+def test_A1_r3_a_row_held_by_reason_only_still_recovers(connect, tmp_path, monkeypatch, capsys):
+    """The held marker is the reason text too (build_home with no prior slice clock writes no clock_carried mark)."""
+    _seed(connect, as_of=T0, checked_at=T0, status="DEGRADED", reason=HELD)
+    rc, rec = _cli(connect, tmp_path, monkeypatch, capsys, as_of=T0 - timedelta(minutes=5),
+                   now=T0 + timedelta(seconds=30))
+    assert rc == 0 and rec["outcome"] == "OK" and _row(connect)["as_of"] == T0 - timedelta(minutes=5)
+
+
+@needs_pg
+def test_A1_r4_C1_the_slices_failed_marker_is_a_prefix_not_a_substring(connect, tmp_path, monkeypatch, capsys):
+    """REVIEW-3140-r4 C1: builders.py writes the reason as 'slices failed: ...' first. Text that only CONTAINS it is
+    not that marker, so a genuine-clock DEGRADED row with such a reason keeps strict as_of ordering."""
+    _seed(connect, as_of=T0, checked_at=T0, status="DEGRADED", reason="no source clock; slices failed: status")
+    rc, rec = _cli(connect, tmp_path, monkeypatch, capsys, as_of=T0 - timedelta(minutes=5),
+                   now=T0 + timedelta(seconds=30), payload={"v": "older-source"})
+    assert rc == 3 and rec["outcome"] == "REFUSED_OLDER"
+    assert _row(connect)["as_of"] == T0
+
+
+@needs_pg
+def test_A1_r3_non_object_watermarks_do_not_error_and_do_not_count_as_carried(connect, tmp_path, monkeypatch, capsys):
+    _seed(connect, as_of=T0, checked_at=T0, status="DEGRADED", watermarks={"a": "clock_carried", "b": [1],
+                                                                       "c": {"clock_carried": False}})
+    rc, rec = _cli(connect, tmp_path, monkeypatch, capsys, as_of=T0 - timedelta(minutes=5),
+                   now=T0 + timedelta(seconds=30))
+    assert rc == 3 and rec["outcome"] == "REFUSED_OLDER"
+
+
+# ---------------- r4 (REVIEW-3144c): what a REAL failed build leaves, first build included, must recover --------
+@needs_pg
+def test_A1_r4_P2_a_first_ever_build_with_a_failed_slice_recovers_and_publishes(connect, tmp_path, monkeypatch):
+    """P2 (REVIEW-3144c). Nothing was stored before the failed build, so no slice clock existed to carry: the row a
+    FIRST build leaves is DEGRADED, reason 'slices failed: ...', as_of AHEAD of the genuine status clock. The
+    recovery's genuine clock (STATUS_CLOCK) is older; it must publish. r3 refused it, r2 and r4 publish."""
+    state = {"status_fails": True}
+    _fake_slices(monkeypatch, state)
+    first = _home_run(connect, tmp_path, state, 0)
+    row = _row(connect, "home")
+    assert row["status"] == "DEGRADED" and row["reason"].startswith("slices failed:"), (first, row["reason"])
+    assert row["as_of"] > STATUS_CLOCK                     # stamped with the read time: nothing genuine to carry
+    assert not any((w or {}).get("clock_carried") is True                       # and nothing marked as carried
+                   for w in row["source_watermarks"].values() if isinstance(w, dict))
+    state["status_fails"] = False
+    rec = _home_run(connect, tmp_path, state, 1)
+    assert rec["outcome"] in ("OK", "UNCHANGED"), rec       # r3: REFUSED_OLDER
+    row = _row(connect, "home")
+    assert row["status"] == "OK" and row["as_of"] == STATUS_CLOCK
+
+
+@needs_pg
+def test_A1_r4_P3_a_degraded_row_left_by_the_deployed_code_recovers(connect, tmp_path, monkeypatch):
+    """P3 (REVIEW-3144c). The currently served, pre-r1 code writes a failed slice as DEGRADED with as_of = the read
+    time, reason 'slices failed: status', and NO clock_carried mark. That already-affected row is exactly what
+    recovery must publish over; r3 refused it, r2 and r4 publish."""
+    state = {"status_fails": False}
+    _fake_slices(monkeypatch, state)
+    assert _home_run(connect, tmp_path, state, 0)["outcome"] == "OK"
+    c = connect()
+    try:
+        c.cursor().execute(                                # the row shape the deployed code leaves
+            "UPDATE cc_product_current SET status='DEGRADED', as_of=%s, reason='slices failed: status', "
+            "source_watermarks='{}'::jsonb WHERE product_id='home'", (STATUS_CLOCK + timedelta(minutes=9),))
+        c.commit()
+    finally:
+        c.close()
+    rec = _home_run(connect, tmp_path, state, 1)
+    assert rec["outcome"] in ("OK", "UNCHANGED"), rec       # r3: REFUSED_OLDER
+    assert _row(connect, "home")["status"] == "OK"
+
+
+@needs_pg
+@pytest.mark.parametrize("shape", ["carried_marker", "held_reason", "slices_failed_reason"])
+def test_A1_r4_clause_c_is_a_recovery_exemption_an_older_DEGRADED_build_is_still_refused(
+        connect, tmp_path, monkeypatch, capsys, shape):
+    """REVIEW-3144c's surviving mutant: clause (c) must require the NEW build to be OK. A DEGRADED build with an
+    older clock is not a recovery, whatever marker the stored row has — including the r4 'slices failed:' reason."""
+    kw = {"carried_marker": dict(watermarks=CARRIED), "held_reason": dict(reason=HELD),
+          "slices_failed_reason": dict(reason="slices failed: status")}[shape]
+    _seed(connect, as_of=T0, checked_at=T0, status="DEGRADED", **kw)
+    rc, rec = _cli(connect, tmp_path, monkeypatch, capsys, as_of=T0 - timedelta(minutes=5), status="DEGRADED",
+                   now=T0 + timedelta(seconds=30))
+    assert rc == 3 and rec["outcome"] == "REFUSED_OLDER", (shape, rec)
+    assert _row(connect)["as_of"] == T0
 
 
 @needs_pg
@@ -147,7 +253,7 @@ def test_A1_an_ok_build_does_not_replace_an_ok_row_with_an_older_clock(connect, 
 @needs_pg
 def test_A1_an_older_in_flight_ok_build_cannot_use_the_degraded_exemption(connect, tmp_path, monkeypatch, capsys):
     """Even over a DEGRADED row, a build that is older by BUILD TIME is an in-flight loser."""
-    _seed(connect, as_of=T0, checked_at=T0 + timedelta(seconds=60), status="DEGRADED")
+    _seed(connect, as_of=T0, checked_at=T0 + timedelta(seconds=60), status="DEGRADED", watermarks=CARRIED)
     rc, rec = _cli(connect, tmp_path, monkeypatch, capsys, as_of=T0 - timedelta(minutes=5),
                    now=T0 + timedelta(seconds=30))
     assert rc == 3 and rec["outcome"] == "REFUSED_OLDER"

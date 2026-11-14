@@ -102,9 +102,11 @@ def read_current(cur, product_id: str, scope_key: str = "global") -> dict | None
 #               (b) the STORED clock is invalid: stored.as_of is more than FUTURE_CLOCK_SKEW_S ahead of the build
 #                   that wrote it (stored.checked_at), i.e. a future source time written by a bug or a bad clock;
 #                   it may be replaced by a build whose own clock is valid (as_of <= its build time + skew);
-#               (c) the STORED row is DEGRADED and the new build is OK: a degraded row's clock is held/carried while a
-#                   source was down, not a genuine source time, so the recovered build's genuine (possibly older)
-#                   clock publishes. A DEGRADED row never blocks an OK recovery.
+#               (c) the STORED row is DEGRADED because A SLICE FAILED, and the new build is OK: such a row has no
+#                   genuine clock for the failed slice (r4: the reason starts 'slices failed:', whether the slice mark
+#                   (clock_carried=true, r1) or the 'product clock held at the stored ...' reason exists or not), so
+#                   the recovered build's genuine (possibly older) clock publishes. A DEGRADED row with a GENUINE
+#                   clock (no failed-slice reason) keeps strict ordering: a stale-source OK build cannot overwrite it.
 FUTURE_CLOCK_SKEW_S = 120  # same constant as product_builder / read_path (a test pins that they agree)
 
 _UPSERT_SQL = """
@@ -149,7 +151,12 @@ WHERE EXCLUDED.checked_at >= cc_product_current.checked_at
         EXCLUDED.as_of >= cc_product_current.as_of
      OR (cc_product_current.as_of > cc_product_current.checked_at + make_interval(secs => %(skew_s)s)
          AND EXCLUDED.as_of <= EXCLUDED.checked_at + make_interval(secs => %(skew_s)s))
-     OR (cc_product_current.status = 'DEGRADED' AND EXCLUDED.status = 'OK')
+     OR (cc_product_current.status = 'DEGRADED' AND EXCLUDED.status = 'OK'
+         AND (cc_product_current.reason LIKE 'slices failed:%%'
+              OR cc_product_current.reason LIKE '%%product clock held at the stored%%'
+              OR EXISTS (SELECT 1 FROM jsonb_each(CASE WHEN jsonb_typeof(cc_product_current.source_watermarks) = 'object'
+                                                       THEN cc_product_current.source_watermarks ELSE '{}'::jsonb END) AS m
+                         WHERE jsonb_typeof(m.value) = 'object' AND m.value ->> 'clock_carried' = 'true')))
   )
 RETURNING seq, etag, (SELECT etag FROM prev) AS prev_etag
 """
@@ -180,8 +187,9 @@ def write_current(
 
     Conditional (operator 13 Nov 2026; LQ-3140-r2 rule in the comment above ``_UPSERT_SQL``): never when the new build
     is older by build time (``checked_at``); and only when the new ``as_of`` is not older than the stored one, except
-    that a stored FUTURE clock (more than 120 s past its own build) and a stored DEGRADED row under a new OK build
-    do not pin the ordering. A refused build leaves the stored row untouched; the return is then
+    that a stored FUTURE clock (more than 120 s past its own build) and a stored DEGRADED row left by a failed slice
+    (reason ``slices failed:``; see the comment above ``_UPSERT_SQL``) under a new OK build do not pin the ordering.
+    A refused build leaves the stored row untouched; the return is then
     ``{"changed": False, "refused": True, "seq": None, "etag": None}``. A successful write sets ``reason`` (None
     clears a failure reason left by ``mark_failed``).
 
