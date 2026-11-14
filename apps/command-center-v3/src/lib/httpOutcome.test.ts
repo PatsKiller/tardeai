@@ -6,7 +6,7 @@
 // loop against an endpoint that would never say yes, and told the operator it was
 // "reconnecting". These assertions pin the separation.
 import {
-  classifyStatus, classifyError, parseRetryAfter, countsAsConnectionFailure,
+  classifyStatus, classifyError, parseRetryAfter, countsAsConnectionFailure, parseErrorBody,
 } from './httpOutcome.ts'
 
 declare const process: { exit(code?: number): never }
@@ -108,6 +108,25 @@ const H = (h: Record<string, string>) => ({ get: (k: string) => h[k] ?? h[k.toLo
   check('authorization and busy are not the same class', auth.kind !== busy.kind)
   check('only one of them is retryable', auth.retryable !== busy.retryable)
   check('only one of them is terminal', auth.terminal !== busy.terminal)
+}
+
+// ── the server's typed refusal survives classification ──────────────────────
+{
+  const refused = parseErrorBody(JSON.stringify({ ok: false, error: 'AGENT_CALLER_REFUSED', detail: 'Ask the CIO answers only the operator’s tailnet identity' }))
+  check('the typed code is read from the body', refused.code === 'AGENT_CALLER_REFUSED')
+  check('the server detail is kept', refused.detail === 'Ask the CIO answers only the operator’s tailnet identity')
+  const noDetail = parseErrorBody(JSON.stringify({ ok: false, error: 'CSRF_REFUSED' }))
+  check('a missing detail is null, never an invented sentence', noDetail.detail === null)
+  check('a code survives without a detail', noDetail.code === 'CSRF_REFUSED')
+  check('empty text is no code', parseErrorBody('').code === null && parseErrorBody('').detail === null)
+  check('null text is no code', parseErrorBody(null).code === null)
+  check('non-JSON is no code', parseErrorBody('<html>502 Bad Gateway</html>').code === null)
+  check('a JSON array is no code', parseErrorBody('[1,2]').code === null)
+  check('a lowercase word is not echoed as a code', parseErrorBody(JSON.stringify({ error: 'refused' })).code === null)
+  check('an object error is not echoed as a code', parseErrorBody(JSON.stringify({ error: { code: 'X' } })).code === null)
+  check('a whitespace code is trimmed', parseErrorBody(JSON.stringify({ error: '  NOT_FOUND  ' })).code === 'NOT_FOUND')
+  check('a long detail is clipped', (parseErrorBody(JSON.stringify({ detail: 'x'.repeat(900) })).detail ?? '').length === 400)
+  check('an HTTP_403 fallback code is accepted as a code', parseErrorBody(JSON.stringify({ error: 'HTTP_403' })).code === 'HTTP_403')
 }
 
 console.log(`\nhttpOutcome: ${pass} passed, ${fail} failed`)

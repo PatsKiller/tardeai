@@ -9,6 +9,8 @@ import {
 } from '../lib/homeV010'
 import type { SinceCloseWire } from '../lib/sinceClose'
 import { PRIORITIES_API, prioritiesView, recordVisit, type PrioritiesWire } from '../lib/homePriorities'
+import { DEPLOY_SOURCE, homeDeployView } from '../lib/homeDeploy'
+import type { DeploysStatusWire } from '../lib/deploys'
 import type { Read } from '../lib/homeV010'
 
 const LAST_GOOD_KEY = 'cc.home.v010.lastGood'
@@ -28,6 +30,7 @@ export default function HomeV010() {
     status: loadingRead<HomeStatusWire>(API.status),
   })
   const [prio, setPrio] = useState<Read<PrioritiesWire>>(() => loadingRead<PrioritiesWire>(PRIORITIES_API))
+  const [deploy, setDeploy] = useState<Read<DeploysStatusWire>>(() => loadingRead<DeploysStatusWire>(DEPLOY_SOURCE))
   const [lastGood] = useState(loadLastGood)
   const [nowIso, setNowIso] = useState(() => new Date().toISOString())
   const [whyOpen, setWhyOpen] = useState(false)
@@ -49,6 +52,7 @@ export default function HomeV010() {
       })
     }
     void readOnce<PrioritiesWire>(PRIORITIES_API).then(r => { if (alive) setPrio(r) })
+    void readOnce<DeploysStatusWire>(DEPLOY_SOURCE).then(r => { if (alive) setDeploy(r) })
     return () => { alive = false }
   }, [])
 
@@ -60,6 +64,7 @@ export default function HomeV010() {
 
   const model = useMemo(() => buildModel(inp, Date.parse(nowIso), lastGood), [inp, nowIso, lastGood])
   const priorities = useMemo(() => prioritiesView(prio), [prio])
+  const deployView = useMemo(() => homeDeployView(deploy, Date.parse(nowIso)), [deploy, nowIso])
 
   // Scroll lock, focus trap and Escape live in the sheets themselves (useSheetA11y in WhySheet).
 
@@ -82,7 +87,7 @@ export default function HomeV010() {
 
   return (
     <>
-      <HomeV010View model={model} priorities={priorities} nowIso={nowIso} onOpenWhy={() => setWhyOpen(true)} onOpenDiag={openDiag} />
+      <HomeV010View model={model} priorities={priorities} deploys={deployView} nowIso={nowIso} onOpenWhy={() => setWhyOpen(true)} onOpenDiag={openDiag} />
       <WhySheet open={whyOpen} onClose={() => setWhyOpen(false)} verdict={model.tradeReady}
         blockers={model.why.blockers} inputs={model.why.inputs} onGoTo={goTo} />
       <DiagnosticsDrawer open={diagOpen} onClose={() => setDiagOpen(false)} records={records}

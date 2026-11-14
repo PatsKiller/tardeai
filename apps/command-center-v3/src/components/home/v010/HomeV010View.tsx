@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ageSecondsFrom, ageText, etTime, type HomeV010Model, type RowState } from '../../../lib/homeV010'
 import { PRIORITIES_VISIBLE, type PrioritiesView } from '../../../lib/homePriorities'
+import { DEPLOY_SOURCE, type HomeDeployView } from '../../../lib/homeDeploy'
 import { DETAILS, blocksText, gateOverflow, priorityDestination } from '../../../lib/homeDestinations'
 import './HomeV010.css'
 
@@ -25,15 +26,30 @@ export interface HomeV010ViewProps {
   onOpenDiag: () => void
   /** The server ranking (lib/homePriorities); absent -> the card says it is not available in this build. */
   priorities?: PrioritiesView
+  /** The deploy state (lib/homeDeploy: the SERVED release, poller kept separate); absent -> the card says it was not read. */
+  deploys?: HomeDeployView
 }
 
-export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, priorities }: HomeV010ViewProps) {
+export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, priorities, deploys }: HomeV010ViewProps) {
   const [showAllP0, setShowAllP0] = useState(false)
   const [showAllPrio, setShowAllPrio] = useState(false)
   const [showAllGates, setShowAllGates] = useState(false)
   const go = m.gates ? gateOverflow(m.gates, showAllGates) : { shown: [], hidden: 0 }
   const p0Shown = showAllP0 ? m.p0 : m.p0.slice(0, P0_VISIBLE)
   const p0More = m.p0.length - p0Shown.length
+  // Campaign item 4: the population the empty state ("nothing needs action") is claimed over, in plain words. Only
+  // the inputs that were READ are counted; a null is never printed as a zero.
+  const pop = m.population
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+  // Account-aware: when the incidents read spans more than one account label, the population says which, so a
+  // per-account projection is never implied by a global count.
+  const popAcct = pop.incidentAccounts && pop.incidentAccounts.length > 1
+    ? ` (${pop.incidentAccounts.map(a => `${a.account} ${a.count}`).join(' · ')})` : ''
+  const popText = [
+    pop.incidents !== null ? plural(pop.incidents, 'incident', 'incidents') + popAcct : null,
+    pop.approvals !== null ? plural(pop.approvals, 'approval', 'approvals') : null,
+    pop.stopAdvice !== null ? plural(pop.stopAdvice, 'stop advice', 'stop advices') : null,
+  ].filter(Boolean).join(' · ')
   // The check time is absolute; its age is recomputed from the client clock on every 30 s tick, never stored.
   const checkedAge = ageText(ageSecondsFrom(m.checkedAt, Date.parse(nowIso)))
   const checkedText = m.checkedAt ? `checked ${etTime(m.checkedAt)}${checkedAge ? ` · ${checkedAge} old` : ''}` : ''
@@ -47,7 +63,7 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
       {m.loading && m.p0.length === 0 && m.unread.length === 0 ? (
         <div className="v010-line" data-testid="action-loading">Reading action sources…</div>
       ) : m.actionEmpty ? (
-        <div className="v010-line" data-testid="action-clear">Nothing needs action · {checkedText}</div>
+        <div className="v010-line" data-testid="action-clear">Nothing needs action · {checkedText}{popText ? ` · read: ${popText}` : ''}</div>
       ) : (
         <>
           {m.unread.map(u => (
@@ -57,7 +73,7 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
           ))}
           {p0Shown.map(p => (
             <div className="v010-p0" key={p.id}>
-              <div className="v010-p0-k">P0 · {p.title.split(' · ')[0].toUpperCase()}</div>
+              <div className="v010-p0-k">P0 · {p.title.split(' · ')[0].toUpperCase()}{p.stale ? ' · STALE' : ''}</div>
               <div className="v010-p0-t">{p.title}</div>
               {p.detail.map((d, i) => <div className="v010-p0-d" key={i}>{d}</div>)}
             </div>
@@ -76,10 +92,21 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
             <div className="v010-line">
               <span className="v010-pill warn">P1</span>
               <span>{[m.approvalsCount ? `${m.approvalsCount} approval${m.approvalsCount === 1 ? '' : 's'}` : null,
-                m.p1Count ? `${m.p1Count} P1 incident${m.p1Count === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ')}</span>
+                m.p1Count ? `${m.p1Count} P1 incident${m.p1Count === 1 ? '' : 's'}${m.p1Stale ? ` · ${m.p1Stale} not re-observed` : ''}` : null].filter(Boolean).join(' · ')}</span>
               {m.approvalsCount ? <Link className="v010-link" to="/approvals" style={{ marginLeft: 'auto' }}>Review</Link> : null}
             </div>
           )}
+          {m.p1Accounts && m.p1Accounts.length > 0 ? (
+            <div className="v010-meta" data-testid="p1-by-account">
+              P1 by account: {m.p1Accounts.map(a => `${a.account} ${a.count}${a.stale ? ` (${a.stale} not re-observed)` : ''}`).join(' · ')}
+            </div>
+          ) : null}
+          {pop.stopUnverified > 0 ? (
+            <div className="v010-unk" data-testid="action-stop-unverified">
+              UNKNOWN — {plural(pop.stopUnverified, 'stop advice', 'stop advices')} in the CIO brief were not reconciled: the brief carried no stop read, so they are not drawn as actions and this is not an all-clear.
+            </div>
+          ) : null}
+          {popText ? <div className="v010-meta" data-testid="action-population">read: {popText}</div> : null}
         </>
       )}
     </section>
@@ -95,7 +122,8 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
         <div className="v010-srow" id={`gate-${g.id}`} key={g.id} data-state={g.state} data-testid="gate-row">
           <span className="v010-srow-n">{g.label}</span>
           <span className={pillClass(g.state)}>{g.state}</span>
-          <span className="v010-srow-v">{g.asOf ? `as of ${etTime(g.asOf, true)}${g.age ? ` · ${g.age} old` : ''}` : 'no as-of'} {g.needsBackend ? <NB /> : null}</span>
+          {/* The producer's own freshness bar travels with the gate, so "fresh" is falsifiable here: age vs bar. */}
+          <span className="v010-srow-v">{g.asOf ? `as of ${etTime(g.asOf, true)}${g.age ? ` · ${g.age} old` : ''}${g.thresholdS != null ? ` · bar ${ageText(g.thresholdS)}` : ''}` : 'no as-of'} {g.needsBackend ? <NB /> : null}</span>
           {g.state !== 'OK' && (
             <span className="v010-srow-c">{g.reason ? <>Why: <b>{g.reason}</b> · </> : null}Source: <b>{g.source}</b> · <span data-testid="gate-blocks" data-blocks={String(g.blocks)}>{blocksText(g.blocks)}</span></span>
           )}
@@ -150,16 +178,91 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
     </section>
   )
 
+  // CAMPAIGN-8H item 5: the deploy card is the SERVED release (3077's `served` block), never the poller's last
+  // decision dressed as the running version. The activation instant is absolute; its age is computed here on every
+  // tick (items 1's rule) and is never carried in the model.
+  const dp = deploys
+  const dpAge = dp?.served.activatedAt ? ageText(ageSecondsFrom(dp.served.activatedAt, Date.parse(nowIso))) : ''
+  const dpServedText = !dp
+    ? '— deploy status was not read by this page'
+    : dp.served.sha
+      ? <><b data-testid="deploy-sha">{dp.served.sha}</b>
+        {dp.served.current === false ? ' · NOT the CURRENT release'
+          : dp.served.current === null ? ` · CURRENT unresolved${dp.served.error ? ` (${dp.served.error})` : ''}` : ''}
+        {dp.served.activatedAt
+          ? <> · activated {etTime(dp.served.activatedAt, true)}{dpAge ? ` · ${dpAge} old` : ''}</>
+          : ' · activation time not published'}</>
+      : `UNKNOWN — the server did not report the served release${dp.served.error ? ` (${dp.served.error})` : ''}`
+  // C3 (review item 5): the pill names this card's verdict, not the transport. `current === null` (the server could
+  // not say whether this release is CURRENT) is a WARN like `current === false`, so the header can never read
+  // "Deploy OK" above a body that reads "CURRENT unresolved" (Constitution: the UI may not contradict itself). The
+  // transport state is still named — beside the source, where its reason already lives.
+  const dpState: RowState = !dp ? 'UNKNOWN'
+    : dp.state === 'LOADING' ? 'LOADING'
+      : dp.state === 'UNAVAILABLE' || !dp.served.sha ? 'UNKNOWN'
+        : dp.state === 'STALE' || dp.served.current !== true ? 'WARN' : 'OK'
+  const deploy = (
+    <section className="v010-card" id="card-deploy" aria-labelledby="h-deploy">
+      <div className="v010-card-hd">
+        <h2 className="v010-h2" id="h-deploy">Deploy</h2>
+        {dp ? <span className={pillClass(dpState)} data-testid="deploy-state">{dpState}</span> : null}
+      </div>
+      <div className="v010-srow" data-testid="deploy-served">
+        <span className="v010-srow-n">Serving</span>
+        <span className="v010-srow-v">{dpState === 'LOADING' ? 'reading…' : dpServedText}</span>
+      </div>
+      {dp && dp.state !== 'LOADING' ? (
+        <>
+          {!dp.served.sha ? (
+            <div className="v010-unk" data-testid="deploy-unknown">
+              The poller&apos;s last decision says nothing about what is running; this card will not print it as a served version.
+            </div>
+          ) : null}
+          <div className="v010-srow" data-testid="deploy-stop">
+            <span className="v010-srow-n">Deploy STOP</span>
+            <span className={pillClass(dp.stop.effective ? 'WARN' : 'OK')}>{dp.stop.text}</span>
+          </div>
+          <div className="v010-srow" data-testid="deploy-poller">
+            <span className="v010-srow-n">Poller last decision</span>
+            <span className="v010-srow-v">{dp.poller.text}
+              {dp.poller.at ? ` · ${etTime(dp.poller.at, true)}` : ''}
+              {dp.poller.vsServed === 'differs' ? ' · not the served release' : ''}
+              {dp.poller.vsServed === 'same' ? ' · same commit as the served release' : ''}
+              {dp.poller.vsServed === 'unknown' ? ' · cannot be compared with the served release' : ''}
+              {dp.poller.beforeServed ? ' · before it was activated' : ''}</span>
+          </div>
+          <div className="v010-meta" data-testid="deploy-source">
+            source: {DEPLOY_SOURCE}{dp.state !== 'OK' ? ` · transport ${dp.state}` : ''}{dp.reason ? ` · ${dp.reason}` : ''}{dp.readAt ? ` · read ${etTime(dp.readAt, true)}` : ''}
+          </div>
+          <div className="v010-meta">
+            <Link className="v010-link" to="/system/ops-controls?tab=jobs" data-testid="deploy-ops-link">Ops controls</Link>
+            {' · '}
+            <Link className="v010-link" to="/system/releases" data-testid="deploy-releases-link">Releases</Link>
+          </div>
+        </>
+      ) : null}
+    </section>
+  )
+
   const pv = priorities
   const prioRows = pv ? (showAllPrio ? pv.rows : pv.rows.slice(0, PRIORITIES_VISIBLE)) : []
+  // Campaign item 4 (with item 1's rule): a ranking is aged at render from its own source time, and its empty state
+  // is claimed over the population the producer says it read — never over an unstated "nothing to do".
+  const prioAgeText = pv?.servedAt ? ageText(ageSecondsFrom(pv.servedAt, Date.parse(nowIso))) : ''
+  const prioAsOf = pv?.servedAt ? `as of ${etTime(pv.servedAt, true)}${prioAgeText ? ` · ${prioAgeText} old` : ''}` : ''
   const prioCard = (
     <section className="v010-card" id="card-priorities" aria-labelledby="h-prio">
       <div className="v010-card-hd"><h2 className="v010-h2" id="h-prio">Today's priorities {!pv || pv.needsBackend ? <NB /> : null}</h2>
         {pv && (pv.state === 'OK' || pv.state === 'PARTIAL') ? <span className={pv.state === 'OK' ? 'v010-pill ok' : 'v010-pill warn'} data-testid="prio-state">{pv.state === 'OK' ? 'ranked by the server' : 'PARTIAL'}</span> : null}
+        {prioAsOf ? <span className="v010-meta" data-testid="prio-asof">{prioAsOf}</span> : null}
       </div>
       {!pv ? <div className="v010-muted">No server ranking in this build; see Action required above.</div>
         : pv.rows.length === 0 ? (
-          <div className="v010-muted" data-testid="prio-empty">{pv.state === 'OK' ? 'Nothing needs you today: every input was read and none has an open item.' : pv.note}</div>
+          <div className="v010-muted" data-testid="prio-empty">
+            {pv.state === 'OK'
+              ? `Nothing needs you today: every input was read and none has an open item.${pv.evidence ? ` · ${pv.evidence}` : ''}${prioAsOf ? ` · ${prioAsOf}` : ' · source time not published'}`
+              : pv.note}
+          </div>
         ) : (
           <>
             <ol className="v010-prio" data-testid="prio-list">
@@ -175,6 +278,7 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
             {pv.rows.length > PRIORITIES_VISIBLE ? (
               <button type="button" className="v010-btn" onClick={() => setShowAllPrio(v => !v)}>{showAllPrio ? 'Show fewer' : `Show all ${pv.rows.length}`}</button>
             ) : null}
+            {pv.evidence ? <div className="v010-meta" data-testid="prio-population">read: {pv.evidence}</div> : null}
             {pv.note ? <div className="v010-muted" data-testid="prio-note">{pv.note}</div> : null}
           </>
         )}
@@ -219,7 +323,7 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
       </header>
       <div className="v010-grid">
         <div className="v010-col">{action}{gates}{since}</div>
-        <div className="v010-col">{status}{prioCard}{watch}{details}{diagEntry}</div>
+        <div className="v010-col">{status}{deploy}{prioCard}{watch}{details}{diagEntry}</div>
       </div>
       <footer className="v010-foot">
         <Link className="v010-link" to="/home-classic" data-testid="classic-home-link">Classic Home</Link>

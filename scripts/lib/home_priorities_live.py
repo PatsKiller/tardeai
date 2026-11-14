@@ -14,6 +14,10 @@ Inside a tier the oldest first (an item that has waited longest). A stale incide
 kept and labelled ``stale: true``; it does not move tier. An input that could not be read is named in ``unread`` and
 the state is ``PARTIAL`` (or ``UNKNOWN`` when none could be read): a ranking over fewer inputs is never presented as a
 complete one, and an empty list is only ever returned with ``state: OK`` (every input read, nothing to do).
+
+``inputs`` (CAMPAIGN-8H Home item 4) is the population that claim stands on: one entry per input with ``read`` (bool),
+``rows`` (how many rows that read returned, or null when it was not read) and ``reason``. It is what lets the page say
+"0 ranked over incidents 12 rows / stop advice 3 rows / approvals 0 rows" instead of an unbacked "nothing needs you".
 Writes nothing, never reaches a broker.
 """
 from __future__ import annotations
@@ -112,20 +116,23 @@ def rank(incidents: Any, stops: Any, approvals: Any, *, now: Optional[datetime] 
     now = now or datetime.now(timezone.utc)
     items: list[dict] = []
     unread: list[dict] = []
+    inputs: list[dict] = []
     for name, fn, body in (("incidents", _incident_items, incidents), ("stop advice", _stop_items, stops),
                            ("approvals", _approvals_items, approvals)):
         got, why = fn(body)
         if got is None:
             unread.append({"input": name, "reason": why})
+            inputs.append({"input": name, "read": False, "rows": None, "reason": why})
         else:
             items.extend(got)
+            inputs.append({"input": name, "read": True, "rows": len(got), "reason": None})
     items.sort(key=lambda x: (x["tier"], x.get("sub", 0), x.get("since") or "9", x["id"]))
     truncated = len(items) > MAX_ITEMS
     ranked = [{"rank": n + 1, **{k: v for k, v in it.items() if k not in ("sub",)}, "tier_label": ORDER[it["tier"]]}
               for n, it in enumerate(items[:MAX_ITEMS])]
     state = UNKNOWN if len(unread) == 3 else PARTIAL if unread else OK
     return {"schema": SCHEMA, "served_at": now.isoformat(), "state": state, "order": list(ORDER), "items": ranked,
-            "count": len(items), "truncated": truncated, "unread": unread,
+            "count": len(items), "truncated": truncated, "unread": unread, "inputs": inputs,
             "reason": None if state == OK else "; ".join(f"{u['input']}: {u['reason']}" for u in unread)}
 
 

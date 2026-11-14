@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { TransportState } from '../lib/observationEnvelope.ts'
-import { classifyStatus, classifyError, countsAsConnectionFailure } from '../lib/httpOutcome.ts'
+import { classifyStatus, classifyError, countsAsConnectionFailure, parseErrorBody } from '../lib/httpOutcome.ts'
 import { coalesceInFlight } from '../lib/inflightGet.ts'
 
 // ── Global connection health ─────────────────────────────────────────────────────────────────────────
@@ -238,6 +238,11 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
   // explicit operator action — refetch() — clears it.
   const terminalRef = useRef<string | null>(null)
   const [authState, setAuthState] = useState<'OK' | 'UNAUTHORIZED' | 'FORBIDDEN' | null>(null)
+  // The server's typed refusal (its own `error` code + detail sentence), read from a failed response body. Before
+  // this a 403 arrived as a generic sentence with the body dropped, so a surface could not name AGENT_CALLER_REFUSED
+  // versus CSRF_REFUSED. Null when the body carried no usable code — never invented. `parseErrorBody` validates shape.
+  const [errorCode, setErrorCode] = useState<string | null>(null)
+  const [errorDetail, setErrorDetail] = useState<string | null>(null)
 
   const refetch = useCallback(() => {
     // The explicit credential-refresh contract: an operator asking again is the
@@ -285,6 +290,8 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
       setData(next)
       setEnvelope(json && typeof json === 'object' ? json : null)
       setError(null)
+      setErrorCode(null)
+      setErrorDetail(null)
       setStale(false)
       setReceivedAt(new Date(at).toISOString())
       setTransport('OK')
@@ -372,6 +379,8 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           // the complete prior payload and recompute age from the current clock,
           // so a repeatedly-revalidated observation still ages toward stale.
           setError(null)
+          setErrorCode(null)
+          setErrorDetail(null)
           setStale(false)
           setReceivedAt(new Date().toISOString())
           setTransport('RETAINED')
@@ -388,6 +397,9 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
             const j = JSON.parse(r.text)
             if (j?.retry_after_sec) retryAfter = Number(j.retry_after_sec) || 2
           } catch { /* ignore */ }
+          const busy = parseErrorBody(r.text)
+          setErrorCode(busy.code)
+          setErrorDetail(busy.detail)
           if (dataRef.current != null) {
             setStale(true)
             setError(null) // last-good is valid; no hard error chip
@@ -412,6 +424,9 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           const outcome = classifyStatus(r.status, r.headers)
           if (cancelled) return
           setError(outcome.message)
+          const refusal = parseErrorBody(r.text)
+          setErrorCode(refusal.code)
+          setErrorDetail(refusal.detail)
           if (outcome.kind === 'UNAUTHORIZED' || outcome.kind === 'FORBIDDEN') {
             setAuthState(outcome.kind)
           }
@@ -457,6 +472,9 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         if (cancelled) return
         const outcome = classifyError(e)
         setError(outcome.message)
+        // A thrown request has no response body: the previous refusal code is not this failure's answer.
+        setErrorCode(null)
+        setErrorDetail(null)
         // Keep last-good data; flag it stale so the UI can show a 'reconnecting' hint instead of
         // collapsing to zeros. Only mark stale when we actually have prior data to keep showing.
         if (dataRef.current != null) {
@@ -508,5 +526,5 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
     }
   }, [path, intervalMs, tick, enabled, background])
 
-  return { data, envelope, loading, refreshing, error, stale, receivedAt, transport, authState, refetch }
+  return { data, envelope, loading, refreshing, error, errorCode, errorDetail, stale, receivedAt, transport, authState, refetch }
 }

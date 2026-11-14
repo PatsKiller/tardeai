@@ -70,6 +70,8 @@ export interface IncidentItem {
   incident_id?: string | number; alert_type?: string; category?: string; priority?: string; blocks_trading?: boolean
   symbol?: string | null; account_label?: string | null; first_seen_at?: string | null; last_seen_at?: string | null
   failed_checks?: number | null; owner?: string | null; cause?: string | null; stale_condition?: boolean | null
+  /** The producer's own condition age and TTL (HomeIncidents@v1 shape); null = the producer could not say. */
+  last_seen_age_s?: number | null; ttl_h?: number | null; cause_source?: string | null
   /** Only if a later backend adds them (validation_events, LQ-2143); never derived here. */
   validation_label?: string | null
 }
@@ -118,9 +120,43 @@ function incidentsState(r: Read<IncidentsWire>): ReadState {
 
 // ── model ──────────────────────────────────────────────────────────────────────────────────────────────
 export type RowState = 'OK' | 'STALE' | 'UNKNOWN' | 'TIMED OUT' | 'WARN' | 'GAP' | 'LOADING'
-export interface GateRow { id: string; label: string; required: boolean; state: RowState; age: string; asOf: string | null; source: string; reason: string | null; needsBackend: boolean; count: number | null; blocks: boolean | null }
+/** `thresholdS` is the producer's own freshness bar: the age beyond which its value is STALE. It is carried, never
+ *  re-invented here; a gate that ships no bar has null (unknown beats a made-up limit). */
+export interface GateRow { id: string; label: string; required: boolean; state: RowState; age: string; asOf: string | null; source: string; reason: string | null; needsBackend: boolean; count: number | null; blocks: boolean | null; thresholdS: number | null }
 export interface StatusRow { id: string; name: string; state: RowState; value: string; cause?: string; source?: string; owner?: string; needsBackend?: boolean }
-export interface ActionRow { id: string; kind: 'P0' | 'STOP'; title: string; detail: string[] }
+export interface ActionRow { id: string; kind: 'P0' | 'STOP'; title: string; detail: string[]; stale?: boolean }
+
+/** The alert classes whose subject is a POSITION. A row of one of these that names no symbol cannot say which
+ *  position it is about: the page says so rather than implying a named holding (campaign item 2). */
+export const POSITION_CLASSES: ReadonlySet<string> = new Set(['position_unprotected', 'orphaned_stop', 'stop_warning'])
+const accountOf = (i: IncidentItem): string => {
+  const a = i.account_label == null ? '' : String(i.account_label).trim()
+  return a || 'account unknown'
+}
+/** Symbol as the wire carries it, upper-cased, dots KEPT (`brk.b` -> `BRK.B`): a dotted ticker is one symbol. */
+const symbolOf = (v: string | null | undefined): string | null => {
+  const s = v == null ? '' : String(v).trim()
+  return s ? s.toUpperCase() : null
+}
+/** `category · subject · account` — the identity every incident row is drawn with; the subject is never invented. */
+export function incidentTitle(i: IncidentItem): string {
+  const type = String(i.alert_type || '')
+  const subject = symbolOf(i.symbol) ?? (POSITION_CLASSES.has(type) ? 'position not named' : null)
+  return [i.category || i.alert_type || 'Incident', subject, accountOf(i)].filter(Boolean).join(' · ')
+}
+/** Why/detected/condition lines. A condition the source has not re-observed is labelled with its age — it is still
+ *  shown (unknown beats wrong) but never drawn as a fresh observation; with no TTL the age is "not verified". */
+export function incidentDetail(i: IncidentItem, nowMs: number): string[] {
+  const out = [i.cause && i.cause !== 'UNKNOWN' ? `Why: ${i.cause}` : 'Why: cause not recorded']
+  out.push(i.first_seen_at ? `Detected: ${etTime(i.first_seen_at, true)}${i.failed_checks != null ? ` · ${i.failed_checks} checks` : ''}` : 'Detected: not recorded')
+  const age = ageSecondsFrom(i.last_seen_at, nowMs) ?? (typeof i.last_seen_age_s === 'number' ? i.last_seen_age_s : null)
+  if (i.stale_condition === true) {
+    out.push(`Condition: STALE — not re-observed${age != null ? ` for ${ageText(age)}` : ''}${i.ttl_h != null ? ` (ttl ${i.ttl_h} h)` : ''}; the source has not re-observed it`)
+  } else if (i.stale_condition == null && POSITION_CLASSES.has(String(i.alert_type || ''))) {
+    out.push('Condition: age not verified (the producer carries no ttl for this class)')
+  }
+  return out
+}
 export interface UnreadSource { source: string; label: string; state: ReadState; lastGood: string | null }
 export interface SinceRow { id: string; label: string | null; text: string; time: string }
 
@@ -146,9 +182,18 @@ export interface HomeV010Model {
   p0: ActionRow[]
   stops: ActionRow[]
   p1Count: number | null
+  /** P1 rows whose condition the source has not re-observed (never counted as fresh). */
+  p1Stale: number | null
+  /** The account-aware P1 tally: one entry per account label, rows with none under 'account unknown'. */
+  p1Accounts: Array<{ account: string; count: number; stale: number }> | null
   approvalsCount: number | null
   unread: UnreadSource[]
   actionEmpty: boolean
+  /** CAMPAIGN-8H item 4 — the population "Nothing needs action" stands on: how many rows each Action-required input
+   *  was READ over (null = that input was not read), and how many advice rows the brief carried that the stops read
+   *  could not vouch for (`stopUnverified`; those are shown as UNKNOWN, never as an all-clear). An empty card is
+   *  only ever claimed over a known population — see `actionEmpty`. */
+  population: { incidents: number | null; approvals: number | null; stopAdvice: number | null; stopUnverified: number; incidentAccounts: Array<{ account: string; count: number }> | null }
   since: { header: string; rows: SinceRow[]; state: ReadState; note: string | null }
   /** The Watch card: Home reads no watch-item source, so it says UNKNOWN and why (never an empty list, never "No source yet"). */
   watch: { state: 'UNKNOWN'; title: string; reason: string }
@@ -208,7 +253,8 @@ export function statusFrom(r: Read<HomeStatusWire> | undefined, nowMs: number): 
     return { id: g.id || `gate-${i}`, label: g.label || g.id || 'input', required: !!g.required, state: GATE_STATES.has(s) ? s : 'UNKNOWN',
       age: ageText(age), asOf, source: g.source_id || 'unknown', reason: g.reason || null, needsBackend: !!g.needs_backend,
       count: typeof g.value === 'number' ? g.value : null,
-      blocks: typeof g.blocks_trading === 'boolean' ? g.blocks_trading : null }
+      blocks: typeof g.blocks_trading === 'boolean' ? g.blocks_trading : null,
+      thresholdS: typeof g.threshold_s === 'number' && Number.isFinite(g.threshold_s) && g.threshold_s > 0 ? g.threshold_s : null }
   }) : null
   const blockers: HomeV010Model['why']['blockers'] = [
     ...(d.blockers || []).map(b => ({ category: b.category || 'Blocker', detail: `${b.cause || 'cause not recorded'}${b.count ? ` · ${b.count} open` : ''}`,
@@ -257,11 +303,7 @@ export function buildModel(inp: HomeV010Inputs, nowMs: number = Date.now(), last
   // Action Required ------------------------------------------------------------------------------------
   const p0: ActionRow[] = items.filter(i => i.priority === 'P0').map((i, n) => ({
     id: `p0-${i.incident_id ?? n}`, kind: 'P0',
-    title: [i.category || i.alert_type || 'Incident', i.symbol, i.account_label].filter(Boolean).join(' · '),
-    detail: [
-      i.cause && i.cause !== 'UNKNOWN' ? `Why: ${i.cause}` : 'Why: cause not recorded',
-      i.first_seen_at ? `Detected: ${etTime(i.first_seen_at, true)}${i.failed_checks != null ? ` · ${i.failed_checks} checks` : ''}` : 'Detected: not recorded',
-    ],
+    title: incidentTitle(i), detail: incidentDetail(i, nowMs), stale: i.stale_condition === true,
   }))
   const scOk = inp.sinceClose.state === 'OK' && inp.sinceClose.data?.status === 'ok'
   const sc = scOk ? sinceCloseModel(inp.sinceClose.data, nowMs) : null
@@ -274,7 +316,22 @@ export function buildModel(inp: HomeV010Inputs, nowMs: number = Date.now(), last
   const apprRaw = inp.approvals.state === 'OK' ? (inp.approvals.data?.count ?? inp.approvals.data?.data?.count) : undefined
   const apprOk = typeof apprRaw === 'number' && Number.isFinite(apprRaw)
   const approvalsCount = apprOk ? (apprRaw as number) : null
-  const p1Count = incState === 'OK' ? items.filter(i => i.priority === 'P1').length : null
+  // P1s are counted from the typed priority field only — never from text — and split by whether the source has
+  // re-observed the condition. A per-account tally is the account-aware projection: rows that name no account are
+  // their own bucket, never folded into a real one (campaign item 2).
+  const p1Rows = incState === 'OK' ? items.filter(i => i.priority === 'P1') : []
+  const p1Count = incState === 'OK' ? p1Rows.length : null
+  const p1Stale = incState === 'OK' ? p1Rows.filter(i => i.stale_condition === true).length : null
+  const p1Accounts = incState === 'OK'
+    ? [...p1Rows.reduce((m, i) => {
+        const a = accountOf(i)
+        const cur = m.get(a) || { account: a, count: 0, stale: 0 }
+        cur.count += 1
+        if (i.stale_condition === true) cur.stale += 1
+        m.set(a, cur)
+        return m
+      }, new Map<string, { account: string; count: number; stale: number }>()).values()]
+    : null
 
   const unread: UnreadSource[] = []
   const pushUnread = (r: Read<unknown>, label: string, ok: boolean, state: ReadState) => {
@@ -285,7 +342,25 @@ export function buildModel(inp: HomeV010Inputs, nowMs: number = Date.now(), last
   const stopsReadable = scOk && (stopRead == null || stopRead.status !== 'unread')
   pushUnread(inp.sinceClose, 'stop advice', stopsReadable, inp.sinceClose.state)
   const loading = loadingAll
-  const actionEmpty = !loading && unread.length === 0 && p0.length === 0 && stops.length === 0 && (approvalsCount ?? 0) === 0 && (p1Count ?? 0) === 0
+  // Campaign item 4: "nothing needs action" is a claim about a population, so the model carries that population.
+  // incidents/approvals/stopAdvice are rows each input was read over (null = not read). `stopUnverified` is advice
+  // the brief carried that the stops read did not confirm: with a missing/unread stop read those rows are NOT drawn
+  // as actions, so they must block the empty state explicitly instead of vanishing from it.
+  const population = {
+    incidents: incState === 'OK' ? items.length : null,
+    approvals: apprOk ? approvalsCount : null,
+    stopAdvice: sc?.stops ? sc.stops.actions.length : null,
+    stopUnverified: sc?.stops && !(stopRead && stopRead.status === 'read') ? sc.stops.actions.length : 0,
+    // Account-aware population: the incidents read tallied by the account each row names ('account unknown' is its
+    // own bucket, never folded into a real one). null when the incidents read failed.
+    incidentAccounts: incState === 'OK'
+      ? [...items.reduce((mp, i) => { const a = accountOf(i); mp.set(a, (mp.get(a) || 0) + 1); return mp }, new Map<string, number>())]
+        .map(([account, count]) => ({ account, count }))
+      : null,
+  }
+  const populationKnown = population.incidents !== null && population.approvals !== null && population.stopAdvice !== null
+  const actionEmpty = !loading && unread.length === 0 && populationKnown && population.stopUnverified === 0
+    && p0.length === 0 && stops.length === 0 && (approvalsCount ?? 0) === 0 && (p1Count ?? 0) === 0
   // F-1: the page never shows a YES its own reads contradict (NO stays NO; UNKNOWN stays UNKNOWN).
   const guarded = loading ? null : guardServedYes(st, unread, p0, nowMs)
   const tradeReady = guarded?.verdict ?? st.verdict
@@ -319,17 +394,23 @@ export function buildModel(inp: HomeV010Inputs, nowMs: number = Date.now(), last
     : pg ? { ...unknownRow('row-portfolio', 'Portfolio', pg.source, pg.state, pg.needsBackend, pg.reason || 'unknown') }
     : unknownRow('row-portfolio', 'Portfolio', 'no light Home source (positions store)')
   let orders: StatusRow
-  if (inp.sinceClose.state === 'LOADING') orders = unknownRow('row-orders', 'Stop read', API.sinceClose, 'LOADING', false)
+  // CAMPAIGN-8H item 3: this row is the RAW stop read (the since-close stop snapshot). It is named as such because a
+  // readable stop snapshot is not a coverage verdict: coverage is the `orders` gate ("Stop coverage (protection)"),
+  // produced by scripts/stop_coverage_incidents.py, which is graded on its own clock and its own freshness bar. A raw
+  // read being current never makes a stale coverage product current, and a missing coverage product is unproven, not
+  // a confirmed gap. The combined page draws that gate as its own status row (lib/homeCombined A03); no coverage
+  // verdict is derived here from the raw read.
+  if (inp.sinceClose.state === 'LOADING') orders = unknownRow('row-orders', 'Stop read (raw)', API.sinceClose, 'LOADING', false)
   else if (!scOk || !stopRead || stopRead.status !== 'read') {
     const st: RowState = inp.sinceClose.state === 'TIMED OUT' ? 'TIMED OUT' : 'UNKNOWN'
-    orders = unknownRow('row-orders', 'Stop read', API.sinceClose + ' (stop read)', st, false,
+    orders = unknownRow('row-orders', 'Stop read (raw)', API.sinceClose + ' (stop read)', st, false,
       !scOk ? 'read failed' : stopRead?.status === 'missing' ? 'no stop read on record' : 'stop read failed')
   } else {
     const age = ageFrom(stopRead.asOf, nowMs)
     const stale = !!sc?.stale
-    orders = { id: 'row-orders', name: 'Stop read', state: stale ? 'STALE' : 'OK',
+    orders = { id: 'row-orders', name: 'Stop read (raw)', state: stale ? 'STALE' : 'OK',
       value: `stops read ${etTime(stopRead.asOf, true) || stopRead.asOfText || 'time not recorded'}${age != null ? ` · ${ageText(age)} old` : ''}`,
-      ...(stale ? { cause: 'Since-close snapshot stale', source: API.sinceClose, owner: NB_OWNER } : {}) }
+      ...(stale ? { cause: 'Since-close snapshot stale (raw read; coverage is the orders gate)', source: API.sinceClose, owner: NB_OWNER } : {}) }
   }
   let data: StatusRow
   const di = incState === 'OK' ? inp.incidents.data?.data_integrity_24h : null
@@ -388,7 +469,7 @@ export function buildModel(inp: HomeV010Inputs, nowMs: number = Date.now(), last
 
   const ats = [inp.sinceClose, inp.approvals, inp.incidents, inp.lastSeen, ...(inp.status ? [inp.status] : [])].map(r => r.at).filter(Boolean) as string[]
   return {
-    loading, checkedAt: ats.length ? ats.sort().slice(-1)[0] : null, tradeReady, tradeReadyCause, tradeReadyServed: st.served, gates: st.gates, p0, stops, p1Count, approvalsCount, unread, actionEmpty,
+    loading, checkedAt: ats.length ? ats.sort().slice(-1)[0] : null, tradeReady, tradeReadyCause, tradeReadyServed: st.served, gates: st.gates, p0, stops, p1Count, p1Stale, p1Accounts, approvalsCount, unread, actionEmpty, population,
     since: { header, rows: sinceRows, state: incState, note: lifecycleNote(sinceRows, incState) },
     watch: WATCH_UNKNOWN,
     status, why: { blockers, inputs },

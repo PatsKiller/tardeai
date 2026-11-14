@@ -7,8 +7,9 @@
  *  - The operational part draws the v010 view (HomeV010View, WhySheet, DiagnosticsDrawer) from the v010 model, with
  *    the A01–A04 reconciliation in lib/homeCombined.ts applied before drawing.
  *  - No duplicate load: the operational reads go through lib/sharedRead (readShared). A path a classic or shell hook
- *    already polls (since-close, approvals/summary) is answered from that hook's body or joins its in-flight GET; the
- *    other reads (incidents, last-seen, status, priorities) are one GET per load, no polling, as on /v3 v010 before.
+ *    already polls (since-close, approvals/summary, /api/v2/ops/deploys) is answered from that hook's body or joins its
+ *    in-flight GET; the other reads (incidents, last-seen, status, priorities) are one GET per load, no polling, as on
+ *    /v3 v010 before.
  *  - One published version: after its first read the section stays subscribed (passively, no timer) to every path it
  *    drew, so whenever a classic or shell hook polls one of those paths the section redraws from the same body. A
  *    version the section drew that differs from the one the page holds is shown as a DEFECT (ProductClocks).
@@ -23,6 +24,8 @@ import {
 } from '../lib/homeV010'
 import type { SinceCloseWire } from '../lib/sinceClose'
 import { PRIORITIES_API, prioritiesView, recordVisit, type PrioritiesWire } from '../lib/homePriorities'
+import { DEPLOY_SOURCE, homeDeployView } from '../lib/homeDeploy'
+import type { DeploysStatusWire } from '../lib/deploys'
 import { readFromBody, readShared } from '../lib/sharedRead'
 import { COMBINED_SECTION_ID, COMBINED_SECTION_TITLE, reconcileModel } from '../lib/homeCombined'
 import { listLastGood, subscribeAnyBody, subscribeBody } from '../hooks/useApi'
@@ -51,6 +54,8 @@ export function HomeOperationalSection() {
     status: loadingRead<HomeStatusWire>(API.status),
   })
   const [prio, setPrio] = useState<Read<PrioritiesWire>>(() => loadingRead<PrioritiesWire>(PRIORITIES_API))
+  // The deploy card (item 5) reads the same route the classic Deploys panel polls: one GET per load, then passive.
+  const [deploy, setDeploy] = useState<Read<DeploysStatusWire>>(() => loadingRead<DeploysStatusWire>(DEPLOY_SOURCE))
   const [products, setProducts] = useState<Read<unknown>>(() => loadingRead<unknown>(PRODUCTS_HOME_API))
   const [lastGood] = useState(loadLastGood)
   const [nowIso, setNowIso] = useState(() => new Date().toISOString())
@@ -71,6 +76,7 @@ export function HomeOperationalSection() {
       })
     }
     void readShared<PrioritiesWire>(PRIORITIES_API).then(r => { if (alive) setPrio(r) })
+    void readShared<DeploysStatusWire>(DEPLOY_SOURCE).then(r => { if (alive) { setDeploy(r); setNowIso(new Date().toISOString()) } })
     // Stored products (DSN-20261112 §6.1). Until wt/home-products-lead serves the route this is UNKNOWN with its HTTP reason.
     void readShared<unknown>(PRODUCTS_HOME_API).then(r => { if (alive) setProducts(r) })
     // Version lock: any later body for these paths (a classic/shell poll, the visible-again read) redraws this section.
@@ -81,6 +87,7 @@ export function HomeOperationalSection() {
     }))
     offs.push(subscribeBody(PRODUCTS_HOME_API, (json, at) => { if (alive) setProducts(readFromBody<unknown>(PRODUCTS_HOME_API, json, new Date(at).toISOString())) }))
     offs.push(subscribeBody(PRIORITIES_API, (json, at) => { if (alive) setPrio(readFromBody<PrioritiesWire>(PRIORITIES_API, json, new Date(at).toISOString())) }))
+    offs.push(subscribeBody(DEPLOY_SOURCE, (json, at) => { if (alive) { setDeploy(readFromBody<DeploysStatusWire>(DEPLOY_SOURCE, json, new Date(at).toISOString())); setNowIso(new Date().toISOString()) } }))
     return () => { alive = false; offs.forEach(off => off()) }
   }, [])
 
@@ -93,6 +100,8 @@ export function HomeOperationalSection() {
   const base = useMemo(() => buildModel(inp, Date.parse(nowIso), lastGood), [inp, nowIso, lastGood])
   const model = useMemo(() => reconcileModel(base, inp, Date.parse(nowIso)).model, [base, inp, nowIso])
   const priorities = useMemo(() => prioritiesView(prio), [prio])
+  // Instants in, ages at render: the deploy card is rebuilt on every tick so a kept body demotes honestly.
+  const deployView = useMemo(() => homeDeployView(deploy, Date.parse(nowIso)), [deploy, nowIso])
 
   const openDiag = useCallback(() => {
     setDiagOpen(true)
@@ -112,18 +121,18 @@ export function HomeOperationalSection() {
   const records = diag?.records ?? diagFallback(model, inp)
   return (
     <>
-      <HomeV010View model={model} priorities={priorities} nowIso={nowIso} onOpenWhy={() => setWhyOpen(true)} onOpenDiag={openDiag} />
+      <HomeV010View model={model} priorities={priorities} deploys={deployView} nowIso={nowIso} onOpenWhy={() => setWhyOpen(true)} onOpenDiag={openDiag} />
       <WhySheet open={whyOpen} onClose={() => setWhyOpen(false)} verdict={model.tradeReady}
         blockers={model.why.blockers} inputs={model.why.inputs} onGoTo={goTo} />
       <DiagnosticsDrawer open={diagOpen} onClose={() => setDiagOpen(false)} records={records}
         fetchedAt={diag?.fetchedAt} error={diag ? diag.error : 'reading /api/v2/home/diagnostics…'} />
-      <ProductClocks consumed={consumedClocks(inp, prio, products)} nowMs={Date.parse(nowIso)} />
+      <ProductClocks consumed={consumedClocks(inp, prio, products, deploy)} nowMs={Date.parse(nowIso)} />
     </>
   )
 }
 
 /** The product clock of every body the operational section drew (or why it has none). */
-export function consumedClocks(inp: HomeV010Inputs, prio: Read<PrioritiesWire>, products?: Read<unknown>): Record<string, { clock: ProductClock; read: string }> {
+export function consumedClocks(inp: HomeV010Inputs, prio: Read<PrioritiesWire>, products?: Read<unknown>, deploy?: Read<DeploysStatusWire>): Record<string, { clock: ProductClock; read: string }> {
   const out: Record<string, { clock: ProductClock; read: string }> = {}
   const add = (src: string, r: Read<unknown>) => {
     if (r.state === 'LOADING') return
@@ -134,6 +143,7 @@ export function consumedClocks(inp: HomeV010Inputs, prio: Read<PrioritiesWire>, 
   }
   for (const [k, src] of OPERATIONAL_READS) add(src, inp[k] as Read<unknown>)
   add(PRIORITIES_API, prio as Read<unknown>)
+  if (deploy && deploy.state !== 'LOADING') add(DEPLOY_SOURCE, deploy as Read<unknown>)
   if (products && products.state !== 'LOADING') {
     if (products.state !== 'OK') add(PRODUCTS_HOME_API, products)
     else for (const p of productsFromBundle(products.data)) out[`${PRODUCTS_HOME_API}#${p.id}`] = { clock: p.clock, read: products.at || '' }
@@ -141,7 +151,7 @@ export function consumedClocks(inp: HomeV010Inputs, prio: Read<PrioritiesWire>, 
   return out
 }
 
-const OPERATIONAL_PATHS: ReadonlySet<string> = new Set([...OPERATIONAL_READS.map(([, s]) => s), PRIORITIES_API, PRODUCTS_HOME_API])
+const OPERATIONAL_PATHS: ReadonlySet<string> = new Set([...OPERATIONAL_READS.map(([, s]) => s), PRIORITIES_API, PRODUCTS_HOME_API, DEPLOY_SOURCE])
 
 /** Source time, build time and freshness of every endpoint this page drew, both sections. A route that is not a stored
  *  product says so; a product that is missing / building / unreadable is UNKNOWN with its reason; a version the

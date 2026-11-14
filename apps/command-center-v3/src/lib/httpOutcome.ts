@@ -124,6 +124,28 @@ export function classifyStatus(
     message: `unexpected HTTP ${status}`, keepLastGood: true }
 }
 
+/**
+ * The server's own typed refusal, read from the body of a failed response.
+ *
+ * A refusal already carries a code (`AGENT_CALLER_REFUSED`, `CSRF_REFUSED`, `AUTH_CONFIG_UNAVAILABLE` …). Before this,
+ * `useApi` classified the status and dropped the body, so every 403 reached the operator as the same generic
+ * "forbidden" sentence and a page could not say WHO refused or WHY. A code is returned only when it looks like one
+ * (uppercase snake case, bounded length); anything else is `null` rather than echoed as if it were a code. The detail
+ * is the server's own sentence, clipped, and is `null` when absent.
+ *
+ * Pure: no network, no React.
+ */
+export function parseErrorBody(text: string | null | undefined): { code: string | null; detail: string | null } {
+  if (!text) return { code: null, detail: null }
+  let body: unknown
+  try { body = JSON.parse(text) } catch { return { code: null, detail: null } }
+  const o = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>
+  const raw = typeof o.error === 'string' ? o.error.trim() : ''
+  const code = /^[A-Z][A-Z0-9_]{2,63}$/.test(raw) ? raw : null
+  const d = typeof o.detail === 'string' ? o.detail.trim() : ''
+  return { code, detail: d ? d.slice(0, 400) : null }
+}
+
 /** Classify a thrown fetch error (abort, DNS, connection reset). */
 export function classifyError(err: unknown): Outcome {
   const name = (err as { name?: string } | null)?.name

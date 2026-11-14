@@ -102,7 +102,7 @@ await test('no status read / 404 -> chip UNKNOWN "not served" with NEEDS BACKEND
 await test('failed fetch -> UNKNOWN / TIMED OUT, never OK, never clear', () => {
   const m = buildModel(FAILED, NOW)
   for (const r of m.status) assert.notEqual(r.state, 'OK', `${r.name} must not be OK on a failed read`)
-  assert.equal(m.status.find(r => r.name === 'Stop read').state, 'TIMED OUT')
+  assert.equal(m.status.find(r => r.name === 'Stop read (raw)').state, 'TIMED OUT')
   assert.equal(m.status.find(r => r.name === 'Alerts').state, 'UNKNOWN')
   assert.equal(m.actionEmpty, false)
   const t = text(render(m))
@@ -139,6 +139,9 @@ await test('served YES -> chip YES, gates listed with state + age, no NEEDS BACK
   assert.equal((html.match(/data-testid="gate-row"/g) || []).length, 5)
   assert.match(gates, /\+1 more gates/)
   assert.match(gates, /portfolio OK as of .* · 10 m old/)
+  // Campaign item 3: the producer's own freshness bar travels with the gate, so "fresh" is falsifiable at render.
+  assert.match(gates, /portfolio OK as of .* · 10 m old · bar 15 m/)
+  assert.match(gates, /orders OK as of .* · 10 m old · bar 15 m/)
   assert.equal(m.status.find(r => r.name === 'Portfolio').state, 'OK')
 })
 
@@ -166,6 +169,38 @@ await test('served NO -> chip NO with the blocker as cause; an unread gate stays
   const gates = text(html.match(/<section[^>]*id="card-gates"[\s\S]*?<\/section>/)[0])
   assert.match(gates, /orders UNKNOWN no as-of NEEDS BACKEND/)
   assert.match(gates, /Why: NEEDS BACKEND: no heartbeat · Source: src_orders/)
+})
+
+// Campaign item 3: the raw stop read and the coverage product are two readings with two clocks. A current raw read
+// never makes a stale coverage product look current; a confirmed gap is drawn, and an absent producer is UNPROVEN.
+await test('coverage: the raw read is labelled raw; a stale coverage gate keeps its own clock and bar', () => {
+  const since = ok(API.sinceClose, { status: 'ok', freshness: { age_seconds: 30, stale: false, window_current: true },
+    cio_brief: { status: 'available', stop_advice: [], stop_read: { status: 'read', as_of: AT } } })
+  const status = ok(API.status, { schema: 'HomeStatus@v1', verdict: 'UNKNOWN', trade_ready: { verdict: 'UNKNOWN', cause: 'orders stale', computed_at: AT },
+    gates: [gate('p0', 'OK'), gate('portfolio', 'OK'), gate('orders', 'STALE', { as_of: '2031-03-07T11:00:00Z', reason: 'age 14400 s > 900 s' })],
+    blockers: [], unknown_inputs: [{ input: 'orders', state: 'STALE', reason: 'age 14400 s > 900 s' }] })
+  const m = buildModel({ ...CLEAR, sinceClose: since, status }, NOW)
+  const raw = m.status.find(r => r.id === 'row-orders')
+  assert.equal(raw.name, 'Stop read (raw)')
+  assert.equal(raw.state, 'OK', 'the raw snapshot itself is current')
+  const html = render(m)
+  const gates = text(html.match(/<section[^>]*id="card-gates"[\s\S]*?<\/section>/)[0])
+  assert.match(gates, /orders STALE as of .* · 4 h 0 m old · bar 15 m/, 'coverage ages from its own clock, with the producer bar')
+  assert.match(gates, /Why: age 14400 s (?:>|&gt;) 900 s/)
+  const body = text(html)
+  assert.match(body, /Stop read \(raw\)/, 'the snapshot row names itself as the raw read')
+  assert.doesNotMatch(body, /all (stops )?covered|coverage ok/i, 'the page never claims coverage from the raw read')
+})
+
+await test('coverage: an absent producer is UNPROVEN, never a gap and never a clearance', () => {
+  const status = ok(API.status, { schema: 'HomeStatus@v1', verdict: 'UNKNOWN', trade_ready: { verdict: 'UNKNOWN', cause: 'orders: no heartbeat' },
+    gates: [gate('p0', 'OK'), gate('orders', 'UNKNOWN', { as_of: null, age_s: null, needs_backend: true, reason: 'no stop-coverage-incidents heartbeat' })],
+    blockers: [], unknown_inputs: [{ input: 'orders', state: 'UNKNOWN', reason: 'no stop-coverage-incidents heartbeat', needs_backend: true }] })
+  const html = render(buildModel({ ...CLEAR, status }, NOW))
+  const gates = text(html.match(/<section[^>]*id="card-gates"[\s\S]*?<\/section>/)[0])
+  assert.match(gates, /orders UNKNOWN no as-of NEEDS BACKEND/, 'no bar is printed without a clock, and the backend gap is flagged')
+  assert.match(gates, /no stop-coverage-incidents heartbeat/)
+  assert.doesNotMatch(text(html), /0 (positions? )?(without|unprotected)|not a confirmed gap/i)
 })
 
 await test('served UNKNOWN -> chip UNKNOWN with the unread input named, never YES', () => {
@@ -196,7 +231,50 @@ await test('empty action area collapses to one "Nothing needs action" line', () 
   const html = render(m)
   assert.equal((html.match(/data-testid="action-clear"/g) || []).length, 1)
   assert.match(text(html), /Nothing needs action · checked/)
+  // Campaign item 4: the empty state carries the population it is claimed over (rows read per input).
+  assert.match(text(html), /read: 0 incidents · 0 approvals · 0 stop advices/)
   assert.match(text(html), /last 24 h — last visit not recorded/)
+})
+
+// Campaign item 4: "nothing needs action" stands on a population, and advice the brief carried without a stop read
+// is named as UNKNOWN rather than dropped from the card (dropping it would read as an all-clear).
+await test('population: the empty line counts the rows read, per account when more than one', () => {
+  const items = [
+    { incident_id: 1, priority: 'INFO', alert_type: 'note', account_label: 'acct_alpha' },
+    { incident_id: 2, priority: 'INFO', alert_type: 'note' },
+  ]
+  const m = buildModel({ ...CLEAR, incidents: ok(API.incidents, { state: 'OK', items, counts: { P0: 0, P1: 0 }, data_integrity_24h: { state: 'OK', value: { events: 0 }, age_s: 0 } }) }, NOW)
+  assert.equal(m.actionEmpty, true)
+  const t = text(render(m))
+  assert.match(t, /read: 2 incidents \(acct_alpha 1 · account unknown 1\) · 0 approvals · 0 stop advices/)
+})
+
+await test('population: advice without a stop read is UNKNOWN on the card, never silence and never an all-clear', () => {
+  const sinceClose = ok(API.sinceClose, {
+    status: 'ok', freshness: { age_seconds: 30, stale: false, window_current: true },
+    cio_brief: { status: 'available', stop_read: { status: 'missing' }, stop_advice: [{ symbol: 'aaa', answer: 'ADD_STOP', reason: 'synthetic' }] },
+  })
+  const m = buildModel({ ...CLEAR, sinceClose }, NOW)
+  assert.equal(m.actionEmpty, false)
+  const t = text(render(m))
+  assert.doesNotMatch(t, /Nothing needs action/)
+  assert.match(t, /UNKNOWN — 1 stop advice in the CIO brief/)
+  assert.match(t, /this is not an all-clear/)
+})
+
+// Review item-4 C1: the population sentence omits an input it could not read — it never prints a zero for it, which
+// would contradict the card's own UNKNOWN line three lines above (the probe in REVIEW-CAMPAIGN8H-Home-item4).
+await test('population: an unread input is absent from the sentence, never rendered as a zero', () => {
+  const popOf = html => text((html.match(/data-testid="action-population"[^>]*>([\s\S]*?)<\/div>/) || [''])[0])
+  const unreadOf = html => text([...html.matchAll(/data-testid="action-unknown"[^>]*>([\s\S]*?)<\/div>/g)].map(x => x[1]).join(' | '))
+  const noInc = render(buildModel({ ...CLEAR, incidents: fail(API.incidents) }, NOW))
+  assert.doesNotMatch(popOf(noInc), /0 incidents/)
+  assert.match(popOf(noInc), /0 approvals · 0 stop advices/)
+  assert.match(unreadOf(noInc), /could not read incidents/)
+  const noSc = render(buildModel({ ...CLEAR, sinceClose: fail(API.sinceClose) }, NOW))
+  assert.doesNotMatch(popOf(noSc), /0 stop advices/)
+  assert.match(popOf(noSc), /0 incidents · 0 approvals/)
+  assert.match(unreadOf(noSc), /could not read stop advice/)
 })
 
 await test('P0 overflow: first 3 shown, then "+N more P0 items"', () => {
@@ -207,6 +285,24 @@ await test('P0 overflow: first 3 shown, then "+N more P0 items"', () => {
   assert.match(t, /\+2 more P0 items/)
   assert.equal(m.status.find(r => r.name === 'Alerts').state, 'WARN')
   assert.equal(m.tradeReady, 'UNKNOWN')
+})
+
+// Campaign item 2: one typed, account-aware projection drawn on the page — identity from typed fields, a condition
+// the source has not re-observed labelled STALE (still shown), and a per-account tally that has its own bucket for
+// rows naming no account. Synthetic fixtures only.
+await test('an incident keeps its typed identity, its account and its condition age on the page', () => {
+  const items = [
+    { incident_id: 7, priority: 'P1', alert_type: 'orphaned_stop', category: 'Orphaned Stop', stale_condition: true, ttl_h: 24, last_seen_at: '2031-03-05T15:00:00Z', cause: 'synthetic' },
+    { incident_id: 8, priority: 'P0', alert_type: 'position_unprotected', category: 'Unprotected Position', stale_condition: true, ttl_h: 24, symbol: 'brk.b', account_label: 'acct_alpha', last_seen_at: '2031-03-05T15:00:00Z', cause: 'synthetic' },
+  ]
+  const m = buildModel({ ...CLEAR, incidents: ok(API.incidents, { state: 'OK', items, counts: { P0: 1, P1: 1 }, data_integrity_24h: { state: 'OK', value: { events: 0 }, age_s: 0 } }) }, NOW)
+  const t = text(render(m))
+  assert.match(t, /P0 · UNPROTECTED POSITION · STALE/)
+  assert.match(t, /Unprotected Position · BRK\.B · acct_alpha/)
+  assert.match(t, /not re-observed for 2 d \(ttl 24 h\)/)
+  assert.match(t, /1 P1 incident · 1 not re-observed/)
+  assert.match(t, /P1 by account: account unknown 1/)
+  assert.doesNotMatch(t, /Nothing needs action/)
 })
 
 // Every /api/v2 route wraps its payload as { ok, data }; readOnce unwraps it (live P0 2026-11-12: the page read the

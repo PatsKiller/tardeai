@@ -17,6 +17,8 @@ import {
 import { askCio, askErrorText, regroupQuestion, requestDeep, untrackEntity } from '../lib/askCioApi'
 import { CHANNEL_OPTIONS, GROUP_BYS, GROUP_LABEL, countsText, groupBy as groupByOf, groupedPath, groupedPayload, memoryText, relatedFor, type GroupBy, type GroupedQuestions } from '../lib/askCioGroups'
 import AskCioAnswer from '../components/AskCioAnswer'
+import AskCioDenied from '../components/AskCioDenied'
+import { askDenialView } from '../lib/askCioDenied'
 import { ASK_UPDATED_EVENT, answerPresentation, askUpdate, keepNewestThread, matchingThread, publishAskUpdate, readableVersion, threadVersionKey } from '../lib/askCioPresentation'
 import { useAskPhoneSheet } from '../hooks/useAskPhoneSheet'
 import '../components/AskCio.css'
@@ -58,6 +60,20 @@ export default function MyQuestions() {
   const shown = filterSummaries(rows, filter).filter(r => !channel || r.channels.includes(channel as never))
   const options = grouped?.group_bys ?? GROUP_BYS.map(id => ({ id, available: true, reason: null }))
   const themeGap = options.find(o => o.id === 'theme' && !o.available)
+  // A 401/403 is a refusal, not an empty queue: the list and the grouped read share one auth answer, so the first
+  // denial names the whole page. The code is the server's own (null when the body carried none — never invented).
+  const denial = askDenialView({ authState: list.authState, errorCode: list.errorCode, errorDetail: list.errorDetail, error: list.error })
+  const groupedDenial = askDenialView({ authState: groupedApi.authState, errorCode: groupedApi.errorCode, errorDetail: groupedApi.errorDetail, error: groupedApi.error })
+  const denied = denial.denied || groupedDenial.denied
+  // Recovery is an operator action, never a poll: while refused, returning to the tab re-arms the terminal outcome
+  // (useApi stops the interval on 401/403 and only an explicit refetch clears it — this makes that explicit).
+  useEffect(() => {
+    if (!denied) return
+    const onVisible = () => { if (document.visibilityState !== 'hidden') { list.refetch(); groupedApi.refetch() } }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [denied, list.refetch, groupedApi.refetch])
+  const retry = () => { list.refetch(); groupedApi.refetch() }
   const refreshResearch: RefreshResearch = async (id, checkedAt) => {
     if (refreshing.current.has(id)) return
     refreshing.current.add(id)
@@ -94,6 +110,7 @@ export default function MyQuestions() {
           </label>
         </div>
         {themeGap && <div data-testid="mq-theme-gap" style={{ fontSize: TYPE.xs, color: TOKENS.text[2], marginBottom: 6 }}>Theme grouping unavailable — {themeGap.reason}</div>}
+        {denied ? <AskCioDenied view={denial.denied ? denial : groupedDenial} heldAt={list.receivedAt} onRetry={retry} /> : <>
         {list.loading && !rows.length && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>Loading…</div>}
         {list.error && <div style={{ fontSize: TYPE.sm, color: TOKENS.danger }}>Could not load questions: {list.error}</div>}
         {list.stale && <div role="status" style={{ fontSize: TYPE.sm, color: TOKENS.warning }}>Questions refresh unavailable — showing saved questions.</div>}
@@ -123,6 +140,7 @@ export default function MyQuestions() {
             </li>
           ))}
         </ul></>}
+        </>}
       </section>
       <section style={{ flex: '3 1 520px', minWidth: 0 }}>
         {threadId ? <ThreadView key={threadId} threadId={threadId} groupBy={gb} grouped={grouped} refreshes={refreshes} onRefresh={refreshResearch} onChanged={() => { list.refetch(); groupedApi.refetch() }} /> : (
