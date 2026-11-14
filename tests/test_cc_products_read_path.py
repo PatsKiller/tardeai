@@ -21,6 +21,7 @@ ENVELOPE_KEYS = {
     "age_s", "seq", "etag", "reason", "data", "last_good", "served_from",
     "source_watermarks",  # LQ-2600 (REVIEW-2606 F2): the stored per-section clocks travel with the envelope
     "build_status", "build_failure", "schema_version",  # home-products 13 Nov 2026: row status + last-build failure
+    "read_ms", "tier",  # F1 (REL2 unknown-reads): elapsed ms and the tier that answered, on every envelope
 }
 
 
@@ -162,16 +163,120 @@ def test_fetch_row_raises_is_store_unavailable():
     assert set(env) == ENVELOPE_KEYS
     assert env["status"] == "UNKNOWN" and env["reason"] == "product store unavailable"
     assert env["data"] is None and env["last_good"] is None
+    assert env["tier"] == "none" and isinstance(env["read_ms"], float)
 
 
 def test_slow_fetch_beyond_budget_is_unknown():
     hot = FakeHot()
     env = read_product("cio.pages", fetch_row=PG(make_row(5), delay_s=0.15), hot=hot, now=NOW, budget_ms=50)
-    assert env["status"] == "UNKNOWN" and env["reason"] == "product store unavailable"
+    assert env["status"] == "UNKNOWN"
+    # F1 (REL2 unknown-reads): the budget arm has its OWN reason; it used to pass STORE_UNAVAILABLE and could not
+    # be told apart from a store failure in the log.
+    assert env["reason"].startswith("read budget exceeded (") and env["reason"].endswith(" ms > 50 ms)")
+    assert env["read_ms"] > 50
     assert env["data"] is None
     # the same slow fetch inside a generous budget answers OK, so the budget is what flipped it
     assert read_product("cio.pages", fetch_row=PG(make_row(5), delay_s=0.15), now=NOW,
                         budget_ms=2000)["status"] == "OK"
+
+
+def test_the_two_boundary_arms_name_themselves_differently():
+    """F1 (REL2 unknown-reads): the store arm and the budget arm must not collapse into one reason. This test is the
+    collapse-mutant killer: restoring ``reason=STORE_UNAVAILABLE`` on the budget arm fails it. Status and the
+    per-arm counters are unchanged."""
+    before = dict(READ_COUNTERS)
+    store = read_product("cio.pages", fetch_row=PG(exc=RuntimeError("pg down")), hot=FakeHot(), now=NOW)
+    budget = read_product("cio.pages", fetch_row=PG(make_row(5), delay_s=0.15), hot=FakeHot(), now=NOW, budget_ms=50)
+    assert store["status"] == budget["status"] == "UNKNOWN"
+    assert store["served_from"] is None and budget["served_from"] is None
+    assert store["reason"] == read_path.STORE_UNAVAILABLE
+    assert budget["reason"].startswith(read_path.READ_BUDGET_EXCEEDED)
+    assert store["reason"] != budget["reason"]
+    assert READ_COUNTERS["store_unavailable"] == before["store_unavailable"] + 1
+    assert READ_COUNTERS["budget_exceeded"] == before["budget_exceeded"] + 1
+    assert READ_COUNTERS["UNKNOWN"] == before["UNKNOWN"] + 2
+
+
+def test_budget_reason_never_prints_equal_numbers(monkeypatch):
+    """F1 r2 (N3): elapsed prints to 0.1 ms, so the reason can never read "50 ms > 50 ms". The window is real — it is
+    where a read that hits the store's own ``statement_timeout = 250ms`` lands — and ``:.0f`` (the mutant) fails
+    exactly here: it would print "read budget exceeded (50 ms > 50 ms)"."""
+    t0 = 1000.0
+    ticks = iter([t0, t0 + 0.0503])  # 50.3 ms: over budget, and only distinguishable at 0.1 ms
+    monkeypatch.setattr(read_path, "_now_s", lambda: next(ticks, t0 + 0.0503))
+    env = read_product("cio.pages", fetch_row=PG(make_row(5)), hot=FakeHot(), now=NOW, budget_ms=50)
+    assert env["status"] == "UNKNOWN"
+    assert env["reason"] == "read budget exceeded (50.3 ms > 50 ms)"
+    assert env["read_ms"] == 50.3
+
+
+def test_tier_names_the_tier_that_answered():
+    corrupt = b"\x00\x00\x00\x09not json!garbage"
+    assert read_product("cio.pages", fetch_row=PG(exc=AssertionError("pg must not be read on a hot hit")),
+                        hot=FakeHot({KEY: pack(make_row(10))}), now=NOW)["tier"] == "hot"
+    assert read_product("cio.pages", fetch_row=PG(make_row(5)), hot=FakeHot(), now=NOW)["tier"] == "pg"
+    assert read_product("cio.pages", fetch_row=PG(make_row(5)), hot=None, now=NOW)["tier"] == "pg"
+    # a hot-tier failure is named on the tier, so "pg" after a Valkey outage is not read as a cold miss
+    assert read_product("cio.pages", fetch_row=PG(make_row(5)), hot=FakeHot(down=True), now=NOW)["tier"] == \
+        "pg(hot-down)"
+    assert read_product("cio.pages", fetch_row=PG(make_row(5)), hot=FakeHot({KEY: corrupt}), now=NOW)["tier"] == \
+        "pg(hot-bad)"
+    assert read_product("cio.pages", fetch_row=PG(None), hot=FakeHot(), now=NOW)["tier"] == "none"
+
+
+def test_over_budget_tier_names_the_postgres_row_it_discarded():
+    """F1 r2 (N2): Postgres answered on the budget arm — the row was discarded for being slow, not missing — so the
+    tier says pg, tagged over-budget. "none" stays reserved for no stored body. A mutant that puts "none" back on the
+    budget arm fails here."""
+    budget = read_product("cio.pages", fetch_row=PG(make_row(5), delay_s=0.15), hot=FakeHot(), now=NOW, budget_ms=50)
+    assert budget["tier"] == "pg(over-budget)"
+    # both truths compose: Valkey was down AND the Postgres answer was discarded
+    budget_down = read_product("cio.pages", fetch_row=PG(make_row(5), delay_s=0.15), hot=FakeHot(down=True), now=NOW,
+                               budget_ms=50)
+    assert budget_down["tier"] == "pg(hot-down,over-budget)"
+    # no stored body at all keeps "none" (store arm, BUILDING) — the reserved meaning
+    assert read_product("cio.pages", fetch_row=PG(exc=RuntimeError("pg down")), hot=FakeHot(), now=NOW)["tier"] == "none"
+
+
+def test_read_ms_is_measured_on_every_arm():
+    for env in (
+        read_product("cio.pages", fetch_row=PG(exc=AssertionError("no pg")),
+                     hot=FakeHot({KEY: pack(make_row(5))}), now=NOW),
+        read_product("cio.pages", fetch_row=PG(make_row(5)), hot=FakeHot(), now=NOW),
+        read_product("cio.pages", fetch_row=PG(None), hot=FakeHot(), now=NOW),
+        read_product("cio.pages", fetch_row=PG(exc=RuntimeError("pg down")), hot=FakeHot(), now=NOW),
+        read_product("cio.pages", fetch_row=PG(make_row(5), delay_s=0.15), hot=FakeHot(), now=NOW, budget_ms=50),
+    ):
+        assert isinstance(env["read_ms"], float) and env["read_ms"] >= 0.0, env["status"]
+
+
+def test_one_shared_helper_logs_reason_read_ms_and_tier(caplog):
+    """F1: ``read_envelope`` logs through ``product_route.log_read`` — one line, and each arm's own reason."""
+    from scripts.lib.cc_products import product_route as pr
+
+    def slow_read_product(pid, scope, **kw):
+        return read_product(pid, scope, budget_ms=50, **kw)
+
+    with caplog.at_level("INFO", logger="cc_products.read"):
+        pr.read_envelope("cio.pages", fetch_row=PG(exc=RuntimeError("pg down")), hot=FakeHot(), now=NOW)
+    lines = [r.getMessage() for r in caplog.records if "cc_product_read product=cio.pages" in r.getMessage()]
+    assert len(lines) == 1 and " hit=0 " in lines[0]
+    assert "reason=product store unavailable" in lines[0]
+    assert "read_ms=" in lines[0] and "tier=none" in lines[0]
+    caplog.clear()
+    with caplog.at_level("INFO", logger="cc_products.read"):
+        pr.read_envelope("cio.pages", read_product=slow_read_product, fetch_row=PG(make_row(5), delay_s=0.15),
+                         hot=FakeHot(), now=NOW)
+    lines = [r.getMessage() for r in caplog.records if "cc_product_read product=cio.pages" in r.getMessage()]
+    assert len(lines) == 1 and "reason=read budget exceeded (" in lines[0] and "tier=pg(over-budget)" in lines[0]
+
+
+def test_cio_pages_meta_carries_read_ms_and_tier():
+    """F1: the cio.pages ``_product`` meta is what ``api_v2._w7_cio_pages_stored`` hands to the same shared helper."""
+    from scripts.lib.cc_products import cio_pages_route as cpr
+
+    out = cpr.serve_cio_pages(fetch_row=PG(make_row(5)), hot=FakeHot(), now=NOW)
+    assert out["_product"]["tier"] == "pg" and isinstance(out["_product"]["read_ms"], float)
 
 
 def test_age_is_measured_from_as_of_not_built_at():

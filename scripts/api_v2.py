@@ -48834,8 +48834,7 @@ def _w7_cio_pages_stored():
     out = _cpr.serve_cio_pages(fetch_row=io["fetch_row"], hot=io["hot"])
     meta = out.get("_product") if isinstance(out, dict) else None
     _pr._count("cio.pages", str((meta or {}).get("status")), "hit" if (meta or {}).get("status") in ("OK", "STALE") else "miss")
-    _pr.log.info("cc_product_read product=cio.pages scope=global status=%s served_from=%s greyed=%s",
-                 (meta or {}).get("status"), (meta or {}).get("served_from"), (meta or {}).get("greyed"))
+    _pr.log_read("cio.pages", "global", meta)
     return out
 
 

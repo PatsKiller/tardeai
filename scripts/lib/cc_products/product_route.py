@@ -9,8 +9,10 @@ the builders call, and nothing computes on a miss. The four cases the operator n
 * Valkey down                        -> the Postgres row (read_path falls through)
 * store unreadable                   -> UNKNOWN-shaped legacy body
 
-Each read logs one line ``cc_product_read product=... hit=...`` and counts into ``PRODUCT_READS`` (per product:
-OK/STALE/UNKNOWN/BUILDING plus hit/miss), so hit/miss is measurable per product.
+Each read logs one line via ``log_read`` (``cc_product_read product=... hit=... reason=... read_ms=... tier=...``)
+and counts into ``PRODUCT_READS`` (per product: OK/STALE/UNKNOWN/BUILDING plus hit/miss), so hit/miss is measurable
+per product. ``log_read`` is the ONE place that line is built: ``read_envelope`` and ``api_v2._w7_cio_pages_stored``
+both call it, so cio.pages no longer logs a different line from a different call site (F1, REL2 unknown-reads).
 """
 from __future__ import annotations
 
@@ -35,6 +37,24 @@ def _count(product: str, *keys: str) -> None:
             c[k] = c.get(k, 0) + 1
 
 
+def log_read(product_id: str, scope_key: str, env: dict | None) -> None:
+    """Log one stored read. The single formatter for ``cc_product_read`` (F1, REL2 unknown-reads).
+
+    ``read_envelope`` here and ``api_v2._w7_cio_pages_stored`` both call this, so every product logs the same fields
+    from one place. ``reason`` names the arm on an UNKNOWN ("product store unavailable" vs "read budget exceeded
+    (...)"), and ``read_ms`` / ``tier`` say how long it took and which tier answered. ``hit`` keeps its historical
+    meaning — status OK or STALE — and is NOT a hot-tier hit; ``tier`` is. The fields are read defensively because a
+    caller may pass a ``_product`` meta dict (cio.pages) rather than a raw envelope.
+    """
+    env = env if isinstance(env, dict) else {}
+    status = str(env.get("status") or "UNKNOWN")
+    hit = status in ("OK", "STALE")
+    log.info("cc_product_read product=%s scope=%s status=%s served_from=%s hit=%s age_s=%s seq=%s reason=%s "
+             "read_ms=%s tier=%s greyed=%s",
+             product_id, scope_key, status, env.get("served_from"), int(hit), env.get("age_s"), env.get("seq"),
+             env.get("reason"), env.get("read_ms"), env.get("tier"), env.get("greyed"))
+
+
 def read_envelope(product_id: str, scope_key: str = "global", *, read_product: Callable | None = None,
                   fetch_row: Callable | None = None, hot=None, now: datetime | None = None) -> dict:
     """The §6.1 envelope for one stored product. Never raises, never computes."""
@@ -52,8 +72,7 @@ def read_envelope(product_id: str, scope_key: str = "global", *, read_product: C
     status = str(env.get("status") or "UNKNOWN")
     hit = status in ("OK", "STALE")
     _count(product_id, status, "hit" if hit else "miss")
-    log.info("cc_product_read product=%s scope=%s status=%s served_from=%s hit=%s age_s=%s seq=%s",
-             product_id, scope_key, status, env.get("served_from"), int(hit), env.get("age_s"), env.get("seq"))
+    log_read(product_id, scope_key, env)
     return env
 
 
