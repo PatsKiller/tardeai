@@ -88,7 +88,47 @@ def _stop_status(stop_root: Optional[Path]) -> tuple[Optional[dict], Optional[st
         return None, f"{type(exc).__name__}: {str(exc)[:160]}"
 
 
-def build(*, rdir: Optional[Path] = None, stop_root: Optional[Path] = None, now: Optional[datetime] = None) -> dict:
+def _read_text(path: Path) -> Optional[str]:
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return text or None
+
+
+def served_release(release_root: Optional[Path] = None) -> dict:
+    """What is actually running: the release directory this code was loaded from (LQ-20261113-3077, A09).
+
+    The poller receipt says what ``deploy_on_main`` last decided; it does not say what is served (a release can be
+    activated another way, and a failed poller run leaves the served release untouched). The served identity is the
+    release's own ``BUILD_SHA`` plus the moment its ``CURRENT`` symlink was flipped to it. Each field is ``None`` with
+    an ``error`` when it cannot be read; nothing here is inferred from the poller.
+    """
+    root = (release_root or Path(__file__).resolve().parents[2])
+    sha = _read_text(root / "BUILD_SHA")
+    current = root.parent / "CURRENT"
+    errors: list[str] = []
+    if sha is None:
+        errors.append(f"no BUILD_SHA in {root.name}")
+    activated_at: Optional[str] = None
+    is_current: Optional[bool] = None
+    try:
+        activated_at = _iso(datetime.fromtimestamp(current.lstat().st_mtime, timezone.utc))
+        is_current = current.resolve() == root.resolve()
+    except OSError:
+        errors.append("CURRENT symlink not readable next to this release")
+    return {
+        "sha": sha,
+        "release": root.name,
+        "stamped_at": _read_text(root / "BUILD_STAMPED_AT"),
+        "activated_at": activated_at,
+        "is_current": is_current,
+        "error": "; ".join(errors) or None,
+    }
+
+
+def build(*, rdir: Optional[Path] = None, stop_root: Optional[Path] = None, now: Optional[datetime] = None,
+          release_root: Optional[Path] = None) -> dict:
     now = now or datetime.now(timezone.utc)
     latest, latest_err = latest_receipt(rdir)
     stop, stop_err = _stop_status(stop_root)
@@ -96,6 +136,7 @@ def build(*, rdir: Optional[Path] = None, stop_root: Optional[Path] = None, now:
     return {
         "schema": SCHEMA,
         "generated_at": _iso(now),
+        "served": served_release(release_root),
         "latest": latest,
         "latest_error": latest_err,
         "recent": recent_receipts(rdir),

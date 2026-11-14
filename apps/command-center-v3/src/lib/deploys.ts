@@ -36,9 +36,19 @@ export interface DeployReceiptWire {
   reason?: string
   detail?: Record<string, unknown>
 }
+/** The release the server is running (BUILD_SHA of its own release dir + when CURRENT was flipped to it). LQ-20261113-3077. */
+export interface ServedReleaseWire {
+  sha?: string | null
+  release?: string | null
+  stamped_at?: string | null
+  activated_at?: string | null
+  is_current?: boolean | null
+  error?: string | null
+}
 export interface DeploysStatusWire {
   schema?: string
   generated_at?: string | null
+  served?: ServedReleaseWire | null
   latest?: DeployReceiptWire | null
   latest_error?: string | null
   recent?: DeployReceiptWire[] | null
@@ -231,7 +241,24 @@ export interface DeploysSummary {
   lastText: string
   lastTone: Tone
   lastAt: string | null
+  /** The SERVED release (not the poller): short sha, or null when the server did not report it. */
+  servedSha: string | null
+  servedAt: string | null
+  servedText: string
+  /** How the poller's last main compares with the served release: same / differs / unknown. Never "ok". */
+  pollerVsServed: 'same' | 'differs' | 'unknown'
+  /** The poller result is older than the activation of the served release. */
+  pollerBeforeServed: boolean
+  /** The Home Deploys card's tone. Driven by the STOP latch and the SERVED release; a poller failure is warning, never the card's state. */
+  cardTone: Tone
+  /** Why the card has that tone, naming the served release. */
+  cardTip: string
   line: string
+}
+
+function sameSha(a: string, b: string): boolean {
+  const n = Math.min(a.length, b.length)
+  return n >= 7 && a.slice(0, n).toLowerCase() === b.slice(0, n).toLowerCase()
 }
 
 export function deploysSummary(wire: DeploysStatusWire | null | undefined, f: Freshness): DeploysSummary {
@@ -248,7 +275,25 @@ export function deploysSummary(wire: DeploysStatusWire | null | undefined, f: Fr
       : r ? `${r.outcome || 'unknown'} · main ${shortSha(r.main_sha)}${r.path === 'manual_emergency' ? ' · emergency' : ''}`
         : `no receipt${wire!.latest_error ? ` (${wire!.latest_error})` : ''}`
   const lastTone: Tone = !usable ? 'warning' : r ? outcomeTone(r.outcome) : 'warning'
-  const line = `${stopText} · last ${lastText}${f.state === 'STALE' ? ' · STALE' : ''}`
+  // A09 (LQ-20261113-3077): the deploy state is the SERVED release; the poller's last decision is a separate, labelled fact.
+  const sv = usable ? wire!.served : null
+  const servedFull = typeof sv?.sha === 'string' && sv.sha.trim() ? sv.sha.trim() : null
+  const servedSha = servedFull ? shortSha(servedFull) : null
+  const servedAt = typeof sv?.activated_at === 'string' && sv.activated_at ? sv.activated_at : null
+  const servedText = f.state === 'LOADING' ? 'reading…'
+    : !usable ? 'UNAVAILABLE'
+      : servedSha ? `${servedSha}${sv?.is_current === false ? ' (not the CURRENT release)' : ''}`
+        : `UNKNOWN${sv?.error ? ` (${sv.error})` : ' (server did not report it)'}`
+  const pollerVsServed: DeploysSummary['pollerVsServed'] = !servedFull || !r?.main_sha ? 'unknown'
+    : sameSha(servedFull, r.main_sha) ? 'same' : 'differs'
+  const rMs = r?.as_of ? Date.parse(r.as_of) : NaN
+  const aMs = servedAt ? Date.parse(servedAt) : NaN
+  const pollerBeforeServed = Number.isFinite(rMs) && Number.isFinite(aMs) && rMs < aMs
+  const servedTrouble = usable && (!servedFull || sv?.is_current === false)
+  const cardTone: Tone = stopEffective ? 'danger' : f.state !== 'OK' ? 'warning' : servedTrouble ? 'warning'
+    : lastTone === 'danger' ? 'warning' : 'neutral'
+  const cardTip = `/api/v2/ops/deploys · served release ${servedFull ?? 'UNKNOWN'}${servedAt ? ` since ${servedAt}` : ''} + deploy STOP latch; the poller's last receipt is shown separately${lastTone === 'danger' ? ' (it failed, which does not change what is served)' : ''} · ${f.state}${f.reason ? ` · ${f.reason}` : ''}`
+  const line = `${stopText} · serving ${servedText} · poller last ${lastText}${f.state === 'STALE' ? ' · STALE' : ''}`
   return { state: f.state, stopEffective, stopText, stopTone: stopEffective ? 'danger' : 'neutral', lastText, lastTone,
-    lastAt: r?.as_of ?? null, line }
+    lastAt: r?.as_of ?? null, servedSha, servedAt, servedText, pollerVsServed, pollerBeforeServed, cardTone, cardTip, line }
 }

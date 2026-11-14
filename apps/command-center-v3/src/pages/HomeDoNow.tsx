@@ -234,9 +234,7 @@ export default function HomeDoNow() {
       tone: overview?.pipeline_status === 'fresh' && !notFresh.length ? 'success' : 'warning', tip: `/api/v2/overview observation.surface_status${notFresh.length ? ` · not fresh: ${notFresh.join(', ')}` : ''}` },
     { k: 'Do-now sources', v: dn.state === 'LOADING' ? '…' : `${dn.sources.length - dn.unavailableSources.length}/${dn.sources.length} answered${dn.staleSources.length ? ` · ${dn.staleSources.length} stale` : ''}`, to: '/health',
       tone: dn.unavailableSources.length || dn.staleSources.length || dn.state === 'STALE' ? 'warning' : 'success', tip: dn.sources.map(s => `${s.name}: ${s.status}`).join(' · ') || 'not loaded' },
-    { k: 'Deploys', v: dp.line, to: '/system/releases',
-      tone: dp.stopEffective ? 'danger' : dpF.state !== 'OK' ? 'warning' : dp.lastTone === 'danger' ? 'danger' : 'neutral',
-      tip: `/api/v2/ops/deploys · latest DeployOnMainReceipt + deploy STOP latch · ${dpF.state}${dpF.reason ? ` · ${dpF.reason}` : ''}` },
+    { k: 'Deploys', v: dp.line, to: '/system/releases', tone: dp.cardTone, tip: dp.cardTip },
   ]
 
   const llm = cmd.llm_intelligence

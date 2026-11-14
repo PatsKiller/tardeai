@@ -8,6 +8,7 @@ import { RADIUS, TOKENS, TYPE } from '../../lib/designTokens'
 import { DEPLOYS_PATHS, deploysSummary, freshness, outcomeTone, shortSha, type DeploysStatusWire } from '../../lib/deploys'
 import { readableTime } from '../../lib/readableTime'
 import DeployStopControl from '../DeployStopControl'
+import { DeploysSummaryRows } from './DeploysSummaryRows'
 
 const panel = {
   background: TOKENS.bg[1],
@@ -40,9 +41,7 @@ export default function DeploysPanel() {
           <Chip tone={s.stopTone}>{s.stopText}</Chip>
         </ChipRow>
       </div>
-      <div data-testid="deploys-last" style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>
-        Last: <Chip tone={s.lastTone}>{s.lastText}</Chip>{s.lastAt ? ` · ${readableTime(s.lastAt)}` : ''}
-      </div>
+      <DeploysSummaryRows s={s} />
       {recent.length > 0 && (
         <ul data-testid="deploys-recent" style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 4 }}>
           {recent.map((r, i) => (
