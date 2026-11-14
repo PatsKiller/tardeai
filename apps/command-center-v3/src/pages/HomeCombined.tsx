@@ -26,7 +26,7 @@ import { PRIORITIES_API, prioritiesView, recordVisit, type PrioritiesWire } from
 import { readFromBody, readShared } from '../lib/sharedRead'
 import { COMBINED_SECTION_ID, COMBINED_SECTION_TITLE, reconcileModel } from '../lib/homeCombined'
 import { listLastGood, subscribeAnyBody, subscribeBody } from '../hooks/useApi'
-import { PRODUCTS_HOME_API, clockAt, productClock, productsFromBundle, versionMismatch, type ProductClock } from '../lib/productEnvelope'
+import { PRODUCTS_HOME_API, clockAt, clockCells, productClock, productsFromBundle, versionMismatch, type ProductClock } from '../lib/productEnvelope'
 import { etTime } from '../lib/homeV010'
 
 const LAST_GOOD_KEY = 'cc.home.v010.lastGood'
@@ -164,6 +164,7 @@ export function ProductClocks({ consumed, held, nowMs }: { consumed: Record<stri
   const list = [...rows.entries()].sort(([a], [b]) => a.localeCompare(b))
   const defects = list.filter(([, r]) => r.defect).length
   const t = (iso: string | null) => (iso ? etTime(iso, true) : '—')
+  const cells = (c: ProductClock) => clockCells(c, iso => etTime(iso, true))
   return (
     <details data-testid="home-product-clocks" style={{ marginTop: 16, fontSize: 12, color: 'var(--text1)' }}>
       <summary style={{ cursor: 'pointer', color: 'var(--text0)', fontWeight: 600 }}>
@@ -186,8 +187,8 @@ export function ProductClocks({ consumed, held, nowMs }: { consumed: Record<stri
                   {r.clock.status === 'NOT A PRODUCT' ? 'NOT A PRODUCT · UNKNOWN' : r.clock.status}{r.clock.reason ? ` — ${r.clock.reason}` : ''}
                   {r.defect ? <div role="alert" style={{ color: 'var(--red)' }}>{r.defect}</div> : null}
                 </td>
-                <td>{t(r.clock.asOf)}</td>
-                <td>{t(r.clock.builtAt)}</td>
+                <td data-testid="clock-source" title={r.clock.sourceTimeReason ?? undefined}>{cells(r.clock).source}</td>
+                <td data-testid="clock-built">{cells(r.clock).built}</td>
                 <td>{r.clock.staleAfterS != null ? `stale after ${r.clock.staleAfterS}s` : '—'}{r.clock.hardExpiryS != null ? ` · expires ${r.clock.hardExpiryS}s` : ''}{r.clock.nextRefreshAt ? ` · next ${t(r.clock.nextRefreshAt)}` : ''}</td>
                 <td>{r.clock.version ?? '—'}</td>
               </tr>

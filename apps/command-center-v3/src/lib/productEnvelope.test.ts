@@ -2,7 +2,8 @@
 // time are separate fields; BUILDING / UNKNOWN / 503 / no envelope read UNKNOWN with a reason, never OK; a route that
 // is not a stored product says so; two different versions of one path are a DEFECT. Synthetic values only.
 import assert from 'node:assert/strict'
-import { productClock, versionMismatch } from './productEnvelope.ts'
+import { readFileSync } from 'node:fs'
+import { clockCells, productClock, versionMismatch } from './productEnvelope.ts'
 
 function env(status: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -50,4 +51,34 @@ for (const s of ['BUILDING', 'UNKNOWN', 'weird']) {
 assert.equal(versionMismatch('/p', productClock(env('OK')), productClock(env('OK'))), null)
 assert.match(versionMismatch('/p', productClock(env('OK')), productClock(env('OK', { seq: 42 })))!, /DEFECT: \/p drawn from two product versions \(seq 41 vs seq 42\)/)
 assert.equal(versionMismatch('/p', productClock({}), productClock(env('OK'))), null, 'no version on one side: nothing to compare')
+// LQ-3136 (operator data contract): a build-time as_of is labelled "Built", never "as of"; no source time says so.
+{
+  const fmt = (iso: string) => `T(${iso})`
+  const bt = productClock(env('OK', { as_of_basis: 'build_time', source_as_of: null, source_time_reason: 'source time unavailable: x' }))
+  assert.equal(bt.asOfBasis, 'build_time'); assert.equal(bt.sourceAsOf, null)
+  assert.equal(bt.sourceTimeReason, 'source time unavailable: x')
+  const cb = clockCells(bt, fmt)
+  assert.equal(cb.source, 'Source time unavailable', 'no source clock: said explicitly')
+  assert.equal(cb.built, 'Built T(2026-11-13T14:00:00Z)', 'a build-time as_of is drawn as Built <time>')
+  assert.doesNotMatch(`${cb.source} ${cb.built}`, /as of|updated/i, 'a build time is never worded as of / updated')
+  // the basis may also sit in the bundle entry's source_watermarks._product
+  const wm = productClock(env('OK', { source_watermarks: { _product: { as_of_basis: 'build_time', source_as_of: null } } }))
+  assert.equal(wm.asOfBasis, 'build_time'); assert.equal(clockCells(wm, fmt).source, 'Source time unavailable')
+  assert.match(wm.sourceTimeReason!, /source time unavailable/)
+  // a real source time next to a build-time as_of is shown as the source
+  const both = clockCells(productClock(env('OK', { as_of_basis: 'build_time', source_as_of: '2026-11-13T13:00:00Z' })), fmt)
+  assert.equal(both.source, 'T(2026-11-13T13:00:00Z)'); assert.match(both.built, /^Built /)
+  // source_clock basis and an envelope with no basis keep the old cells (source = as_of, built = built_at)
+  for (const e of [env('OK', { as_of_basis: 'source_clock', source_as_of: '2026-11-13T14:00:00Z' }), env('OK')]) {
+    const c = clockCells(productClock(e), fmt)
+    assert.equal(c.source, 'T(2026-11-13T14:00:00Z)'); assert.equal(c.built, 'T(2026-11-13T14:05:00Z)')
+  }
+  assert.equal(productClock(env('OK')).asOfBasis, null); assert.equal(productClock(env('OK')).sourceTimeReason, null)
+  // a basis-less envelope never invents a source time or reason from a stray field
+  assert.equal(productClock(env('OK', { source_as_of: '2026-11-13T09:00:00Z' })).sourceAsOf, null)
+  // the Home table draws its two clock cells through clockCells, not by formatting as_of directly
+  const page = readFileSync(new URL('../pages/HomeCombined.tsx', import.meta.url), 'utf8')
+  assert.match(page, /clockCells\(c, iso => etTime\(iso, true\)\)/)
+  assert.doesNotMatch(page, /\{t\(r\.clock\.asOf\)\}/, 'the source cell must not format a build-time as_of as a source time')
+}
 console.log('productEnvelope: ok')

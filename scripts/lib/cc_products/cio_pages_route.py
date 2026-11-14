@@ -168,6 +168,16 @@ def _meta(env: dict, *, status: str, reason: Any, greyed: bool, now: datetime) -
     if meta.get("as_of") is None:
         meta["as_of_reason"] = ("never built" if status == "BUILDING"
                                 else "store unavailable" if env.get("seq") is None else "stored row has no as_of")
+    # LQ-3136 data contract: a product whose ``as_of`` is a BUILD time says so, and ``source_as_of`` is the real source
+    # time or null with the reason. ``as_of`` is never copied into ``source_as_of``.
+    wm = env.get("source_watermarks")
+    prod = wm.get("_product") if isinstance(wm, dict) else None
+    if isinstance(prod, dict) and "as_of_basis" in prod:
+        meta["as_of_basis"] = prod.get("as_of_basis")
+        meta["source_as_of"] = prod.get("source_as_of")
+        meta["source_time_available"] = bool(prod.get("source_as_of"))
+        if not prod.get("source_as_of"):
+            meta["source_time_reason"] = prod.get("source_time_reason") or "source time unavailable"
     meta["status"] = status
     meta["reason"] = reason
     meta["greyed"] = greyed

@@ -29,6 +29,12 @@ export interface ProductClock {
   version: string | null
   servedFrom: string | null
   reason: string | null
+  /** What `as_of` is: 'build_time' (the instant the product was built; NOT a source observation) or 'source_clock'.
+   *  null = the producer did not say (older products), which is drawn exactly as before. LQ-3136. */
+  asOfBasis: string | null
+  /** The oldest real source observation time, or null; with `sourceTimeReason` saying why when it is null. */
+  sourceAsOf: string | null
+  sourceTimeReason: string | null
 }
 
 type Obj = Record<string, unknown>
@@ -57,6 +63,11 @@ export function productClock(body: unknown, httpStatus = 200): ProductClock {
   }
   const raw = String(m.status || '').toUpperCase()
   const status: ProductStatus = STATUSES.has(raw) ? raw as ProductStatus : 'UNKNOWN'
+  // The basis rides on the served envelope/_product, or (bundle entry shape) inside source_watermarks._product.
+  const wm = isObj(m.source_watermarks) && isObj(m.source_watermarks._product) ? m.source_watermarks._product : null
+  const basis = str(m.as_of_basis) ?? (wm ? str(wm.as_of_basis) : null)
+  const sourceAsOf = basis ? (str(m.source_as_of) ?? (wm ? str(wm.source_as_of) : null)) : null
+  const sourceReason = basis && !sourceAsOf ? (str(m.source_time_reason) ?? (wm ? str(wm.source_time_reason) : null) ?? 'source time unavailable') : null
   const seq = m.seq
   const version = seq != null && seq !== '' ? `seq ${String(seq)}` : (str(m.etag) ? `etag ${str(m.etag)}` : (str(m.as_of) ? `as_of ${str(m.as_of)}` : null))
   let reason = str(m.reason)
@@ -67,12 +78,13 @@ export function productClock(body: unknown, httpStatus = 200): ProductClock {
     product: str(m.product), asOf: str(m.as_of), builtAt: str(m.built_at), nextRefreshAt: str(m.next_refresh_at),
     staleAfterS: num(m.stale_after_s), hardExpiryS: num(m.hard_expiry_s), ageS: num(m.age_s),
     version, servedFrom: str(m.served_from), reason,
+    asOfBasis: basis, sourceAsOf, sourceTimeReason: sourceReason,
   }
 }
 
 function blank(status: ProductStatus, reason: string): ProductClock {
   return { status, verdict: 'UNKNOWN', product: null, asOf: null, builtAt: null, nextRefreshAt: null, staleAfterS: null,
-    hardExpiryS: null, ageS: null, version: null, servedFrom: null, reason }
+    hardExpiryS: null, ageS: null, version: null, servedFrom: null, reason, asOfBasis: null, sourceAsOf: null, sourceTimeReason: null }
 }
 
 /** Both sections must draw the same published version of a product. Returns the defect text, or null. */
@@ -116,4 +128,14 @@ export function productsFromBundle(body: unknown): Array<{ id: string; clock: Pr
   if (isObj(b) && isObj(b.products)) return Object.entries(b.products).map(([id, e]) => one(id, e))
   if (meta(b)) return [one('home', b)]
   return [{ id: PRODUCTS_HOME_API, clock: blank('UNKNOWN', 'unrecognised products/home body: no envelope') }]
+}
+
+/** The two clock cells of a product row. A product whose `as_of` is a BUILD time says "Built <time>" and, when no source
+ *  time exists, "Source time unavailable": a build time is never worded "as of" or "updated". `fmt` formats an ISO time
+ *  (ET), `none` is the cell for a missing time. LQ-3136 (operator data contract). */
+export function clockCells(c: ProductClock, fmt: (iso: string) => string, none = '—'): { source: string; built: string } {
+  if (c.asOfBasis === 'build_time') {
+    return { source: c.sourceAsOf ? fmt(c.sourceAsOf) : 'Source time unavailable', built: c.asOf ? `Built ${fmt(c.asOf)}` : none }
+  }
+  return { source: c.asOf ? fmt(c.asOf) : none, built: c.builtAt ? fmt(c.builtAt) : none }
 }

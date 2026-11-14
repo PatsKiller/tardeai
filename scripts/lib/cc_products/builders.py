@@ -294,15 +294,19 @@ def build_home(ctx) -> dict:
     failed: list[str] = []
 
     def _slice(name, fn, clock_fn):
+        """``clock_fn(body)`` returns ``(as_of_iso, basis)``; basis is ``source`` (the producer's own observation time)
+        or ``build_time`` (the build instant: the read_at fallback, or a clock the producer stamps with its own now).
+        LQ-3136: the clock itself is unchanged; only its basis is named."""
         try:
             body = fn()
         except Exception as e:  # noqa: BLE001
             failed.append(name)
             slices[name] = {"error": f"{type(e).__name__}: {str(e)[:300]}"}
-            marks[name] = {"as_of": None, "error": type(e).__name__}
+            marks[name] = {"as_of": None, "clock_basis": None, "error": type(e).__name__}
             return None
         slices[name] = body
-        marks[name] = {"as_of": clock_fn(body)}
+        iso, basis = clock_fn(body)
+        marks[name] = {"as_of": iso, "clock_basis": basis if iso else None}
         return body
 
     from lib import since_close_card as _sc
@@ -317,12 +321,14 @@ def build_home(ctx) -> dict:
         return {"status": "ok", **snap, "window_now": win, "freshness": _sc.freshness(snap, now=now),
                 "as_of_now": now.isoformat()}
 
-    sc = _slice("since_close", _since_close, lambda b: _iso(b.get("generated_at")))
+    sc = _slice("since_close", _since_close, lambda b: (_iso(b.get("generated_at")), "source"))
 
     from lib import home_incidents as _hi
 
+    # ``home_incidents.build`` stamps ``snapshot.computed_at`` with its own now (there is no stored incident snapshot),
+    # so that clock is the build instant even when present: named build_time, value unchanged.
     inc = _slice("incidents", lambda: _hi.build(ctx.db_query_raising),
-                 lambda b: _iso(((b.get("snapshot") or {}).get("computed_at"))) or read_at.isoformat())
+                 lambda b: (_iso(((b.get("snapshot") or {}).get("computed_at"))) or read_at.isoformat(), "build_time"))
 
     # Approvals are an AUTH-SCOPED read (home_approvals_api refuses a caller that is not the signed-in operator or
     # the service token). A builder has no principal, and a global product must not carry one principal's data to
@@ -337,23 +343,42 @@ def build_home(ctx) -> dict:
 
     _slice("priorities_live",
            lambda: _hp.build(lambda: inc, lambda: sc, lambda: appr),
-           lambda b: read_at.isoformat())
+           lambda b: (read_at.isoformat(), "build_time"))
 
     from lib import home_status_live as _hsl
 
-    _slice("status", lambda: _hsl.serve(ctx.get_conn, snapshot_query=ctx.db_query, use_cache=False),
-           lambda b: _iso(((b.get("trade_ready") or {}).get("computed_at"))) or read_at.isoformat())
+    def _status_clock(b):
+        # ``computed_at`` is a source clock only on the stored lane snapshot; computed on the request (or an UNKNOWN
+        # verdict) it is the request's own now. The value is unchanged (release-2 rule); only its basis is named.
+        tr = (b or {}).get("trade_ready") or {}
+        iso = _iso(tr.get("computed_at"))
+        src = tr.get("read_from") == "snapshot" and str(tr.get("verdict") or "").upper() != "UNKNOWN"
+        return (iso, "source") if (iso and src) else (iso or read_at.isoformat(), "build_time")
+
+    _slice("status", lambda: _hsl.serve(ctx.get_conn, snapshot_query=ctx.db_query, use_cache=False), _status_clock)
 
     from lib import home_v010_api as _h
 
-    _slice("gates", lambda: _h.home_gates(ctx.db_query, use_cache=False), lambda b: read_at.isoformat())
+    _slice("gates", lambda: _h.home_gates(ctx.db_query, use_cache=False), lambda b: (read_at.isoformat(), "build_time"))
 
     live = [parse_ts(m.get("as_of")) for k, m in marks.items() if k != "since_close" and isinstance(m, dict)]
     live = [t for t in live if t is not None]
     as_of = min(live).astimezone(timezone.utc).isoformat() if live else None
     oldest, oldest_name = _oldest(marks)
+    # LQ-3136 data contract: ``as_of`` is the oldest live slice clock and is a BUILD time whenever the oldest slice's
+    # basis is build_time; ``source_as_of`` is the oldest REAL source clock among the live slices, or null with a reason.
+    src = [parse_ts(m.get("as_of")) for k, m in marks.items()
+           if k != "since_close" and isinstance(m, dict) and m.get("clock_basis") == "source"]
+    src = [t for t in src if t is not None]
+    source_as_of = min(src).astimezone(timezone.utc).isoformat() if src else None
+    as_of_basis = "source_clock" if (source_as_of is not None and source_as_of == as_of) else "build_time"
     marks["_product"] = {"oldest_section_as_of": oldest, "oldest_section": oldest_name,
-                         "sources_read_at": read_at.isoformat(), "clock_rule": "oldest live slice"}
+                         "sources_read_at": read_at.isoformat(), "clock_rule": "oldest live slice",
+                         "as_of_basis": as_of_basis, "source_as_of": source_as_of,
+                         "source_time_available": source_as_of is not None,
+                         "source_time_reason": None if source_as_of is not None else (
+                             "source time unavailable: no live slice carries a source observation clock "
+                             "(as_of is the build time)")}
     status = "DEGRADED" if failed else "OK"
     reason = ("slices failed: " + ", ".join(failed)) if failed else None
     return {"data": {"slices": slices, "slice_clocks": {k: v for k, v in marks.items() if k != "_product"},
