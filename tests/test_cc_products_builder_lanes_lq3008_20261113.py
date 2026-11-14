@@ -43,15 +43,18 @@ LANES = {
 CIO_PAGES = "cio.pages"
 LANES[CIO_PAGES] = "cio-pages-product"
 MARKET = ["30-59 9 * * 1-5", "* 10-15 * * 1-5", "0-14 16 * * 1-5", "15 16 * * 1-5", "0 0-9,17-23 * * 1-5", "0 * * * 0,6"]
+# cio.pages since 2026-11-14 (lead TIERED ruling): */2 in market hours, */30 off-hours, converging before the open.
+CIO_TIERED = ["30-58/2 9 * * 1-5", "*/2 10-15 * * 1-5", "0-14/2 16 * * 1-5", "*/30 0-7,17-23 * * 1-5", "0,20,38,51 8 * * 1-5",
+              "1,8,14,18,21,23,25,26,28 9 * * 1-5", "16,30 16 * * 1-5", "*/30 * * * 0,6"]
 RISK = ["30-58/2 9 * * 1-5", "*/2 10-15 * * 1-5", "0-14/2 16 * * 1-5", "15 16 * * 1-5", "0 0-9,17-23 * * 1-5", "0 * * * 0,6"]
 PROMOTED_CRON = {
     "market_risk.latest": MARKET, "home": MARKET, "risk": RISK,
-    "reports.analyst_links": ["0 */6 * * *"], CIO_PAGES: ["*/2 * * * *"],
+    "reports.analyst_links": ["0 */6 * * *"], CIO_PAGES: CIO_TIERED,
 }
 # pid -> (baseline freshness_degraded_after_h, freshness_failed_after_h, expected_cadence_hours)
 PROMOTED_BASELINE = {
     "market_risk.latest": (2.5, 4.0, 1.0), "home": (2.5, 4.0, 1.0), "risk": (2.5, 4.0, 1.0),
-    "reports.analyst_links": (36.0, 168.0, 6.0), CIO_PAGES: (0.1, 0.5, 0.034),
+    "reports.analyst_links": (36.0, 168.0, 6.0), CIO_PAGES: (0.1, 0.6, 0.5),
 }
 POLICIES = RP.load_policies(ROOT / "config" / "n8n_retry_policies.json")
 BROKER_TOKENS = ("schwab", "broker", "fidelity", "order", "execution", "trade_exec", "etrade", "ibkr", "alpaca")
@@ -265,11 +268,12 @@ def test_a_dst_transition_never_lets_the_gap_pass_the_stale_window(pid, window):
 
 def test_cio_pages_still_loses_the_repeated_fall_back_hour_but_off_hours_limits_now_cover_it():
     """cron_schedule dedupes by local slot, so the second 01:00-01:59 pass of fall-back night (Sun 1 Nov 2026) has no fire:
-    a */2 lane goes 62 minutes between builds once a year. With the flat 360 s window that was a violation (REVIEW-3105 F-1);
+    the lane goes 62 minutes between builds once a year under */2, 90 minutes (01:30 EDT -> 02:00 EST) under the tiered
+    weekend */30 (2026-11-14). With the flat 360 s window that was a violation (REVIEW-3105 F-1);
     the off-hours tier (3082, stale 9000 s on Sunday 01:58 ET) covers it. Pinned both ways: the gap is still there, and it is inside."""
     fires = _fires(CIO_PAGES, *DST_FALL)
     gaps = [((b.astimezone(timezone.utc) - a.astimezone(timezone.utc)).total_seconds(), a) for a, b in zip(fires, fires[1:])]
-    assert max(g for g, _ in gaps) == 3720 and sum(1 for g, _ in gaps if g > 360) == 1
+    assert max(g for g, _ in gaps) == 5400 and sum(1 for g, _ in gaps if g > 1800) == 1
     g, a = max(gaps, key=lambda x: x[0])
     assert g < _limits(CIO_PAGES, a)["stale_after_s"] == 9000
 
@@ -311,4 +315,4 @@ def test_cio_pages_cadence_matches_the_builder_constant():
     from scripts.lib.cc_products import cio_pages
     assert cio_pages.CADENCE_S == 120 and cio_pages.STALE_AFTER_S == CIO_LIMITS["stale_after_s"]
     assert cio_pages.HARD_EXPIRY_S == CIO_LIMITS["hard_expiry_s"]
-    assert tuple(row(CIO_PAGES)["dispatch"]["cron"]) == ("*/2 * * * *",)
+    assert tuple(row(CIO_PAGES)["dispatch"]["cron"]) == tuple(CIO_TIERED)

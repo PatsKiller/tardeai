@@ -1632,7 +1632,16 @@
       "process": "cio-pages-product",
       "input_version": "v1",
       "slot": "scheduled_minute",
-      "schedule": "*/2 * * * *",
+      "schedule": [
+        "30-58/2 9 * * 1-5",
+        "*/2 10-15 * * 1-5",
+        "0-14/2 16 * * 1-5",
+        "*/30 0-7,17-23 * * 1-5",
+        "0,20,38,51 8 * * 1-5",
+        "1,8,14,18,21,23,25,26,28 9 * * 1-5",
+        "16,30 16 * * 1-5",
+        "*/30 * * * 0,6"
+      ],
       "slot_tz": "America/New_York",
       "effects": [
         "append"

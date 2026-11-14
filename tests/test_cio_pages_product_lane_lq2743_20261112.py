@@ -58,7 +58,8 @@ def test_the_row_is_a_canary_live_dispatcher_lane_on_the_entrypoint():
     assert (s["kind"], s["expression"], s["stage"]) == ("n8n", "dispatcher", "canary")
     assert s["match"] == SCRIPT and (ROOT / SCRIPT).is_file()
     assert r["dispatch"]["mode"] == "live" and r["state"] == "ACTIVE"
-    assert tuple(parse_dispatch_block(r).cron) == (s["cadence"],) == ("*/2 * * * *",)
+    cron = tuple(parse_dispatch_block(r).cron)
+    assert cron[0] == s["cadence"] == "30-58/2 9 * * 1-5" and "*/2 10-15 * * 1-5" in cron   # tiered since 2026-11-14
     assert r["active_days"] == [0, 1, 2, 3, 4, 5, 6]
     sig = r["output_signal"]
     assert (sig["kind"], sig["table"], sig["column"]) == ("db_max", "cc_product_build_log", "finished_at")

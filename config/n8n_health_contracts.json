@@ -45331,7 +45331,7 @@
       "target_reason": "lq_2743_cio_pages_product_builder_20261112",
       "stage": "canary",
       "purpose": {
-        "text": "Schedule the cio.pages product builder so GET /api/v2/cio/pages has a stored copy. A shadow fire runs --dry-run: it builds the CIO page record in a forked child under RLIMIT_AS 512 MB with read-only PG sessions, measures it and prints one JSON receipt, writing nothing. A live fire (not enabled) would write cc_product_current + cc_product_build_log in one transaction and refresh the hot tier.",
+        "text": "Schedule the cio.pages product builder so GET /api/v2/cio/pages has a stored copy. Each fire is live (stage canary, LQ-3096): it builds the CIO page record in a forked child under RLIMIT_AS 512 MB with read-only PG sessions, then writes cc_product_current + cc_product_build_log in one transaction and refreshes the hot tier. --dry-run builds and measures without writing. The dispatcher fires on a tiered cron (LQ-20261114): */2 in market hours, */30 off-hours and weekends, converging fires before the open.",
         "business_function": "CIO page served from a stored product",
         "source": "scripts/cc_products_cio_pages.py -> scripts/lib/cc_products/cio_pages.py (LQ-2595); LQ-20261107-2743"
       },
@@ -45395,25 +45395,25 @@
         },
         {
           "check": "stale",
-          "text": "the stored product passes hard_expiry_s 1800 and the route falls back to the in-server compute"
+          "text": "the stored product passes its own hard_expiry_s (market 1800 s; off-hours 14400 s, cut to the next open + 150 s near the open, cio_pages.limits_for) and the route reports the product as unknown; it never computes in the server (LQ-3095 removed the compute fallback)"
         }
       ],
       "baseline": {
         "timeout_s": 150,
         "class": "monitor",
         "freshness_degraded_after_h": 0.1,
-        "freshness_failed_after_h": 0.5,
-        "freshness_rule": "LQ-3096 live cadence */2 * * * *: degraded beyond stale_after_s 360 s (0.1 h), failed beyond hard_expiry_s 1800 s (0.5 h); flat, no off-hours tier in cio_pages.py.",
+        "freshness_failed_after_h": 0.6,
+        "freshness_rule": "LQ-20261114 tiered dispatch cron: */2 in market hours, */30 off-hours and weekends, so the slowest designed gap between builds is 1800 s and a build lands about 22 s after its fire (72 live runs: p50 22.6 s, p95 30.6 s, max 35.4 s). failed beyond 0.6 h (2160 s) = that 1800 s gap plus a build-lag margin, so an on-time */30 build never reads failed and one missed */30 fire (age 3600 s) does. degraded beyond 0.1 h (360 s) is a market-session threshold, the market-hours stale_after_s; off-hours the row's own limits come from the cio_pages.limits_for off-hours tier (stale 9000 s, hard 14400 s, open-clamped), which this lane-level dispatch threshold is deliberately tighter than. Except the DST fall-back repeated hour, where the two weekend 01:30 fires merge and the gap is 5400 s (next 2027-11-07); the row stays inside the off-hours hard expiry 14400 s, and a self-heal plan built in that hour would see it late by design of local wall-clock crons. (failed threshold revised 2026-11-14, r2)",
         "computed_on": "2026-11-12",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
-        "source": "NOT_MEASURED for the dispatcher (never dispatched). One sandboxed read-only dry run 2026-11-13T02:52Z: outcome OK, build_ms 17,044, peak_rss_kb 311,884, 649,401 bytes, wrote false.",
-        "runs_considered": 0,
+        "source": "READ_ONLY ledger sample 2026-11-14T08:34Z: 72/72 live RUN_DONE (exit 0, verdict ok) 06:12:03Z→08:34:02Z, duration p50 22.6 s / max 35.4 s — the build-lag margin behind the 0.6 h threshold; 30 dry_run RUN_DONE + 1 dry_run RUN_REFUSED (11-13T15:02:50Z). The 11-13T02:52Z sandboxed dry run (build_ms 17,044, peak_rss_kb 311,884, 649,401 bytes, wrote false) remains the pre-promotion measurement.",
+        "runs_considered": 72,
         "duration_degraded_above_s": 120.0,
         "duration_rule": "0.8x timeout_s (0.8 x 150 = 120 s)"
       },
       "alerting": {
         "lane_severity": "High",
-        "severity_basis": "registry row severity High: without a stored product the CIO page is computed in the server process (memory) or shows BUILDING gaps",
+        "severity_basis": "registry row severity High: without a stored product the CIO page reports the product as unknown (last good greyed) or unavailable; it is never computed in the server (LQ-3095 removed the compute fallback).",
         "failed": {
           "siem_severity": "WARN",
           "notifier_priority": "P2"
