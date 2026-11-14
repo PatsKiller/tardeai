@@ -140,7 +140,11 @@ def handle(path: str, method: str, body: Any = None, query: Any = None, *, ctx: 
         if sub == "tracked":
             d = core._deps(deps)
             rows = d.store.tracked_entities() if d else []
-            return 200, {"ok": True, "data": {"tracked": rows, "as_of": _now()}}
+            # OBS-H1 F1: name the rows the projection filtered out, so `tracked: []` cannot be read as "nothing is
+            # tracked" when something is tracked but cannot be a header chip. Additive; the chips do not change.
+            untyped = d.store.untyped_tracked_entities() if d else []
+            return 200, {"ok": True, "data": {"tracked": rows, "untyped": untyped,
+                                              "untyped_count": len(untyped), "as_of": _now()}}
         if ID_RE.match(sub):
             t = _thread(core, deps, sub)
             if not t:

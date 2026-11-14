@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -138,6 +139,29 @@ def test_untyped_tracked_entities_are_named_in_a_census(tmp_path):
     assert census[0]["key"], "each census row is addressable by the key its thread already holds"
 
 
+def test_the_tracked_read_publishes_the_untyped_census(tmp_path):
+    """The route payload carries both populations and a count — a caller can tell the two empty states apart."""
+    import importlib
+
+    store = _store(tmp_path, _ledger_like_the_bhvn_thread())
+    api = importlib.import_module("scripts.lib.cio_ask_api")
+    ctx = api.Ctx(
+        principal=lambda: "tailnet:operator@example.com",
+        listener=lambda: "serve_proxy",
+        csrf=lambda m, p: (True, ""),
+        allowed_logins=frozenset({"operator@example.com"}),
+        deps=SimpleNamespace(store=store),
+    )
+    status, body = api.handle("/api/v2/cio/asks/tracked", "GET", ctx=ctx)
+    assert status == 200, body
+    data = body["data"]
+    assert [r.get("symbol") for r in data["tracked"]] == ["BHVN"]
+    assert data["untyped_count"] == 4, data.get("untyped_count")
+    assert {r["name"] for r in data["untyped"]} == {"Review BHVN", "WATCH Card", "Risk", "SpaceX"}
+    assert not {r["name"] for r in data["untyped"]} & {r["name"] for r in data["tracked"]}
+    assert data["as_of"], "the read still carries its own clock"
+
+
 if __name__ == "__main__":
     import tempfile
 
@@ -147,7 +171,8 @@ if __name__ == "__main__":
                    test_tracked_entities_never_publish_a_name_only_private_entity,
                    test_tracked_entities_keeps_account_and_thread_entities,
                    test_untracked_typed_entity_is_not_published,
-                   test_untyped_tracked_entities_are_named_in_a_census):
+                   test_untyped_tracked_entities_are_named_in_a_census,
+                   test_the_tracked_read_publishes_the_untyped_census):
             try:
                 if fn.__code__.co_argcount:
                     fn(Path(d))
@@ -157,5 +182,5 @@ if __name__ == "__main__":
             except AssertionError as exc:  # noqa: BLE001
                 fails += 1
                 print(f"  [FAIL] {fn.__name__}: {exc}")
-    print(f"obs_h1_tracked_typed: {5 - fails} passed, {fails} failed")
+    print(f"obs_h1_tracked_typed: {6 - fails} passed, {fails} failed")
     sys.exit(1 if fails else 0)
