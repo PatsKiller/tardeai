@@ -150,15 +150,6 @@ def load_rules(path: Optional[Path] = None, *, home: Optional[Path] = None) -> d
     doc["_never_globs"] = list(nt.get("name_globs") or [])
     doc["_report_only"] = [{**r, "_path": x(r["path"])} for r in nt.get("report_only") or []]
     doc["_git_roots"] = [{**r, "_path": x(r["path"])} for r in doc["git"].get("roots") or []]
-    # LQ-20261113-3152: a migrated storage root lives on another disk and keeps a home COMPATIBILITY ALIAS (a
-    # symlink) so every tool that still names the home path keeps working. The item is judged at its real target;
-    # the alias is evidence, and its presence HOLDS the item so a rule can never leave a dangling alias behind.
-    compat: list[dict] = []
-    for r in doc["git"].get("compat_roots") or []:
-        if not isinstance(r, dict) or not r.get("path") or not r.get("alias_parent"):
-            raise RulesError("compat_roots_entry_shape")
-        compat.append({**r, "_path": x(r["path"]), "_alias_parent": x(r["alias_parent"])})
-    doc["_compat_roots"] = compat
     doc["_owned_res"] = [re.compile(s) for s in doc["git"].get("owned_remote_patterns") or []]
     rel = doc["releases"]
     doc["_release_roots"] = [{**r, "_path": x(r["path"])} for r in rel.get("roots") or []]
@@ -641,17 +632,8 @@ def reference_texts(rules: Mapping[str, Any]) -> list[tuple[str, str]]:
     return out
 
 
-def referenced_by(path: Path, refs: Iterable[tuple[str, str]], extra: Iterable[Path] = (),
-                  home: Optional[Path] = None) -> Optional[str]:
-    """The coordination source naming ``path``. ``extra`` holds the home compatibility alias: every tool still
-    writes the alias path, so a reference to it must hold the migrated target (LQ-20261113-3152)."""
+def referenced_by(path: Path, refs: Iterable[tuple[str, str]]) -> Optional[str]:
     variants = {os.path.abspath(path), os.path.realpath(path)}
-    variants |= {os.path.abspath(str(e)) for e in extra}
-    # Agents write `~/tradeai-wt-X` as often as the absolute form; both name the same tree.
-    home_s = str(home if home is not None else Path.home())
-    for v in list(variants):
-        if v.startswith(home_s + os.sep):
-            variants.add("~/" + os.path.relpath(v, home_s))
     pats = [re.compile(re.escape(v.rstrip("/")) + r"(?=$|[/\s'\";:,)=])", re.M) for v in variants]
     for source, text in refs:
         if text and any(p.search(text) for p in pats):
@@ -768,29 +750,6 @@ def git_layout(path: Path) -> Optional[dict[str, Any]]:
     return None
 
 
-def compat_alias(path: Path, rules: Mapping[str, Any]) -> Optional[Path]:
-    """The configured home alias for a migrated-root item, or None (LQ-20261113-3152).
-
-    The alias is the path every tool still uses; the item is the real target. The pair is judged at the target, and
-    the link itself is never a hold: an IN-FLIGHT copy is held by the same facts that hold an unlinked one (live
-    claim/worklog reference, process cwd, recent activity, the approved age floors), while a COMPLETED copy past the
-    approved retention age is selectable and the pair closes together — the executor unlinks the alias in the same
-    step (``close_compat_alias``). Operator order 2026-11-14 00:25 ET: a compatibility link must not protect a
-    completed disposable working copy forever, and must not be left dangling."""
-    for r in rules.get("_compat_roots") or []:
-        root: Path = r["_path"]
-        try:
-            rel = path.relative_to(root)
-        except ValueError:
-            continue
-        if len(rel.parts) != 1:
-            continue
-        if r.get("alias_glob") and not fnmatch.fnmatch(rel.name, str(r["alias_glob"])):
-            continue
-        return Path(r["_alias_parent"]) / rel.name
-    return None
-
-
 def evaluate_git(path: Path, rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> dict[str, Any]:
     """One clone / worktree against rule G. Returns {path, kind, candidate, reasons[], evidence{}, fingerprint{}}."""
     g = rules["git"]
@@ -809,33 +768,6 @@ def evaluate_git(path: Path, rules: Mapping[str, Any], ctx: Mapping[str, Any]) -
         return out
     out["kind"] = lay["kind"]
     out["main_repo"] = str(lay["main_repo"])
-    alias = compat_alias(path, rules)
-    if alias is not None:
-        out["evidence"]["compat_alias"] = str(alias)
-        if not os.path.lexists(alias):
-            # No alias at all: nothing can reach the item by the old path and no link can dangle.
-            out["evidence"]["compat_alias_state"] = "missing"
-        elif not alias.is_symlink():
-            # A real directory where the alias belongs: two copies of one name. Report both, pick neither (rule 5).
-            reasons.append("compat_link_shadowed")
-            out["evidence"]["compat_alias_state"] = "shadowed"
-        else:
-            try:
-                same = os.path.realpath(alias) == os.path.realpath(path)
-            except OSError:
-                same = False
-            out["evidence"]["compat_alias_state"] = "symlink" if same else "mismatch"
-            if same:
-                # LQ-20261113-3152-r2 (operator order 2026-11-14 00:25 ET): the link is NOT a hold — a completed
-                # disposable copy past the approved age is selectable, and the pair must close together so no
-                # dangling link is left behind. Active copies are held by their claim/cwd/activity, exactly like an
-                # unlinked tree. The instruction travels on the row so the executor closes the link in the same step.
-                out["compat_alias_close"] = {"path": str(alias), "target": str(path),
-                                             "action": "unlink_symlink_after_target_removed"}
-                ev["compat_alias_close"] = "unlink_with_target"
-            else:
-                # The link names somewhere else: two live names, report both, pick neither.
-                reasons.append("compat_link_mismatch")
     hard = never_touch_reason(path, rules) or protected_reason(path, rules, own_work_tree=True)
     if hard:
         reasons.append(hard)
@@ -854,7 +786,7 @@ def evaluate_git(path: Path, rules: Mapping[str, Any], ctx: Mapping[str, Any]) -
     if use:
         reasons.append("in_use_cwd")
         ev["in_use_cwd"] = use
-    ref = referenced_by(path, ctx["refs"], extra=(alias,) if alias is not None else (), home=rules["_home"])
+    ref = referenced_by(path, ctx["refs"])
     if ref:
         reasons.append("referenced")
         ev["referenced_by"] = ref
@@ -2160,8 +2092,6 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: 
         item = row(path, "W", "git_worktree")
         item["main_repo"] = original.get("main_repo")
         item["evidence"].update(original.get("evidence") or {})
-        if original.get("compat_alias_close"):
-            item["compat_alias_close"] = original["compat_alias_close"]
         item["reasons"] += [r for r in original["reasons"] if r not in ("unpushed_commits", "not_merged", "recent_activity")]
         rc, branch = _git(path, "symbolic-ref", "-q", "HEAD")
         branch = branch.strip() if rc == 0 else None
@@ -2212,11 +2142,7 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: 
 
 
 #: rule G/W outcomes that also hold rule C (C replaces only the merged/clean/unpushed/idle-48h tests).
-_C_HOLDS_FROM_G = ("not_owned_repo", "worktree_locked", "in_use_cwd", "referenced", "no_head", "status_failed", "symlink", "not_git",
-                   # LQ-20261113-3152: a link that names ANOTHER target (or a real entry where the alias belongs) is
-                   # a two-name conflict and holds through the W->C handoff. A matching link is not a hold (r2,
-                   # operator order); the pair is closed together by the executor instead.
-                   "compat_link_mismatch", "compat_link_shadowed")
+_C_HOLDS_FROM_G = ("not_owned_repo", "worktree_locked", "in_use_cwd", "referenced", "no_head", "status_failed", "symlink", "not_git")
 
 
 def integration_basis(repo: Path, head: Optional[str], ref_glob: Optional[str], timeout: float = 60) -> Optional[str]:
@@ -2261,10 +2187,6 @@ def _abandoned_row(path: Path, lay: Mapping, original: Mapping, w_item: Mapping,
     item.update(main_repo=str(lay["main_repo"]), gitdir=str(gitdir), archive_ns=c_cfg["archive_ns"])
     item["evidence"].update(original.get("evidence") or {})
     item["evidence"]["w_reasons"] = [r for r in w_item["reasons"] if not r.startswith("rule_plan_only_not_authorized:")]
-    if original.get("compat_alias_close"):
-        # LQ-20261113-3152-r2: C's archive-then-remove also closes the matching home alias, so the pair never
-        # leaves a dangling link behind.
-        item["compat_alias_close"] = original["compat_alias_close"]
     reasons += [r for r in original.get("reasons") or [] if r in _C_HOLDS_FROM_G or r.startswith(("never_touch", "contains_never_touch", "protected"))]
     if is_within(path, rules["_home"] / "trade-ai-releases") or is_within(_real(path), rules["_home"] / "trade-ai-releases"):
         reasons.append("release_tree")
@@ -2774,9 +2696,6 @@ def standing_plan(rules: Mapping[str, Any], now: datetime, evidence: Mapping, *,
     except ValueError as exc:
         raise RulesError(str(exc)) from exc
     rows = standing_results(rules, ctx)
-    # LQ-20261113-3152: a compatibility alias whose target is gone is visible to no rule (discovery skips
-    # symlinks); report it here, never as a candidate.
-    rows += orphan_alias_rows(rules, ctx)
     # LQ-20261107-1638: the caches section (evaluate_caches) is NOT one of the standing rules, so its roots had no
     # rows in this manifest and an absolute cap on pip/npm/playwright would measure nothing. Measure them here, for
     # the budget only: ``budget_measure_only`` rows are never added to items/excluded, because the standing lane
@@ -2839,41 +2758,6 @@ def _item_id(path: str) -> str:
     return "dh-" + hashlib.sha256(path.encode("utf-8")).hexdigest()[:16]
 
 
-def orphan_alias_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """Report-only rows for a compatibility alias whose target is gone (LQ-20261113-3152).
-
-    Discovery skips symlinks, so this is the only place a broken migration alias can surface. It is NEVER a
-    candidate: unlinking a link is an operator decision, not a rule outcome."""
-    out: list[dict[str, Any]] = []
-    for r in rules.get("_compat_roots") or []:
-        parent: Path = r["_alias_parent"]
-        root = os.path.normpath(os.path.realpath(str(r["_path"])))
-        try:
-            entries = sorted(parent.iterdir())
-        except OSError:
-            continue
-        for e in entries:
-            if not e.is_symlink():
-                continue
-            if r.get("alias_glob") and not fnmatch.fnmatch(e.name, str(r["alias_glob"])):
-                continue
-            try:
-                target = os.path.normpath(os.path.realpath(e))
-            except OSError:
-                continue
-            if target != root and not target.startswith(root + os.sep):
-                continue  # a link that belongs to another root is not this root's orphan
-            if os.path.exists(e):
-                continue  # resolves: the paired target is judged by its own row
-            out.append({
-                "path": str(e), "kind": "compat_alias", "category": "compat", "rule": "W",
-                "reasons": ["orphan_link"], "candidate": False,
-                "evidence": {"target": target, "target_exists": False},
-                "fingerprint": {"kind": "compat_alias"},
-            })
-    return out
-
-
 def plan(rules: Mapping[str, Any], now: datetime, *, measure: bool = True) -> dict[str, Any]:
     """Evaluate every rule; returns the manifest document (nothing written, nothing deleted)."""
     home: Path = rules["_home"]
@@ -2881,7 +2765,6 @@ def plan(rules: Mapping[str, Any], now: datetime, *, measure: bool = True) -> di
         raise RulesError("home_unreadable")
     ctx = build_context(rules, now)
     results = [evaluate_git(p, rules, ctx) for p in discover_git_dirs(rules)]
-    results += orphan_alias_rows(rules, ctx)
     results += evaluate_releases(rules, ctx)
     results += evaluate_caches(rules, ctx)
     results = [r for r in results if r.get("kind") not in ("not_git",)]
@@ -3131,9 +3014,7 @@ def executed_row(manifest_item: Mapping[str, Any], fresh: Optional[Mapping[str, 
     if not fresh:
         return dict(manifest_item)
     out = dict(manifest_item)
-    # `compat_alias_close` is an action too (LQ-20261113-3152-r2): a link that appeared, vanished or was re-pointed
-    # between the manifest and the revalidation must be taken from the fresh row, never replayed from the old one.
-    for key in ("restart_units", "evidence", "reasons", "compat_alias_close"):
+    for key in ("restart_units", "evidence", "reasons"):
         if key in fresh:
             out[key] = fresh[key]
         else:
@@ -3181,38 +3062,6 @@ def refuse_release_removals(rows: list[dict], why: str = RELEASE_REFUSAL) -> lis
     return rows
 
 
-def close_compat_alias(item: Mapping[str, Any]) -> str:
-    """Unlink the home compatibility alias that named a target this call just removed (LQ-20261113-3152-r2).
-
-    Operator order 2026-11-14 00:25 ET: a completed disposable working copy past the approved retention age
-    (``config/disk_hygiene_rules.json`` → ``standing_apply.worktree.untouched_hours``, and ``.abandoned_worktree`` for
-    rule C) is selectable even while its alias exists, and the link must not be left dangling. Only a SYMLINK that
-    still resolves to the removed target is unlinked; a real entry (two names, rule 5), a link re-pointed elsewhere,
-    a target that is still present, or a failed unlink is REFUSED and named — never forced. Returns the receipt word.
-    """
-    ac = item.get("compat_alias_close")
-    if not isinstance(ac, Mapping) or not ac.get("path"):
-        return "no_alias"
-    alias = Path(str(ac["path"]))
-    target = Path(str(ac.get("target") or item["path"]))
-    if not os.path.lexists(alias):
-        return "alias_absent"
-    if not alias.is_symlink():
-        return "alias_close_refused:not_a_symlink"
-    try:
-        if os.path.realpath(alias) != os.path.realpath(target):
-            return "alias_close_refused:repointed"
-    except OSError:
-        return "alias_close_refused:unreadable"
-    if os.path.lexists(target):
-        return "alias_close_refused:target_present"
-    try:
-        alias.unlink()
-    except OSError as exc:
-        return f"alias_close_refused:unlink_{type(exc).__name__}"
-    return "alias_unlinked"
-
-
 def remove_item(item: Mapping[str, Any]) -> tuple:
     """(ok, how) or, for rule C, (ok, how, {archive_ref, archive_sha}) so the receipt names the restore point."""
     p = Path(item["path"])
@@ -3233,19 +3082,13 @@ def remove_item(item: Mapping[str, Any]) -> tuple:
         if err:
             return False, "archive_failed:" + err
         ok, how = WC.remove_worktree(p, item["main_repo"])
-        if ok and item.get("compat_alias_close"):
-            # The pair closes together: a completed copy's link is unlinked in the same step (LQ-20261113-3152-r2).
-            how += "; " + close_compat_alias(item)
         return ok, f"archived {arc['ref']}; " + how, {"archive_ref": arc["ref"], "archive_sha": arc["sha"]}
     if kind == "git_worktree":
         rc, _ = _git(Path(item["main_repo"]), "worktree", "remove", str(p), timeout=600)
         if rc != 0 or os.path.lexists(p):
             return False, f"git_worktree_remove_rc:{rc}"
         prune_rc, _ = _git(Path(item["main_repo"]), "worktree", "prune", timeout=60)
-        how = "git worktree remove" + ("; prune_failed" if prune_rc else "; prune")
-        if item.get("compat_alias_close"):
-            how += "; " + close_compat_alias(item)
-        return True, how
+        return True, "git worktree remove" + ("; prune_failed" if prune_rc else "; prune")
     if kind in ("git_clone", "release_dir", "cache_entry", "rtc_scratch", "agent_scratch"):
         if p.is_symlink() or not p.is_dir():
             return False, "not_a_dir"

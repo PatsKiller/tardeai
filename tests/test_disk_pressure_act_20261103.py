@@ -81,9 +81,7 @@ class Calls:
 
 def _guard(monkeypatch, tmp_path, calls: Calls, *, used=91.0, sent=None, notify=True):
     sent = sent if sent is not None else []
-    # LQ-20261113-3152: the fixture copies the real rules file, whose disk_caps names TWO mounts ("/" and
-    # "/data"), so main measures both and then re-measures the worst one after the plan call -> three reads.
-    reads = iter([(used, 40 * GB, 468 * GB)] * 3)
+    reads = iter([(used, 40 * GB, 468 * GB), (used, 40 * GB, 468 * GB)])
     monkeypatch.setattr(g, "RECEIPT", tmp_path / "receipts.jsonl")
     monkeypatch.setattr(g, "disk_used_pct", lambda path="/": next(reads))
     monkeypatch.setattr(g.subprocess, "run", calls.run)

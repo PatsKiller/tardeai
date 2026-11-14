@@ -26,11 +26,9 @@
       "~/.aws",
       "~/m8m-bakeoff-lab",
       "~/n8n-agent-hardening",
-      "/var/lib/docker",
-      "/data/worktrees/.migration-records"
+      "/var/lib/docker"
     ],
     "names": [
-      ".migration-records",
       "db_backups",
       "persistent-state",
       "llama-cpp-vulkan",
@@ -102,18 +100,6 @@
       {
         "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees",
         "depth": 1
-      },
-      {
-        "path": "/data/worktrees",
-        "depth": 1
-      }
-    ],
-    "compat_roots": [
-      {
-        "path": "/data/worktrees",
-        "alias_parent": "~",
-        "alias_glob": "tradeai-wt-*",
-        "_why": "LQ-20261113-3152, amended r2 by operator order 2026-11-14 00:25 ET: ~/tradeai-wt-* are now SYMLINKS into /data/worktrees (the migration keeps the home path as a compatibility alias). Discovery skips symlinks, so without this root the 182+ migrated trees were invisible to G/W/C. The item is judged at its real target. The link is NOT a hold: an ACTIVE copy is held by the same facts that hold an unlinked one (a live claim/worklog reference to either name, a process cwd, recent activity, the approved age floors in standing_apply.worktree.untouched_hours / standing_apply.abandoned_worktree.idle_days), while a COMPLETED disposable copy past those floors is selectable and the pair closes together — the executor unlinks the alias in the same removal step (close_compat_alias), so nothing is left dangling: 'a compatibility link must not protect a completed disposable working copy forever.' A link naming another target, or a real entry where the alias belongs, is a two-name conflict and holds (report both, pick neither). An alias whose target is already gone (a past hand removal) is reported as orphan_link and never touched: unlinking it is an operator decision, not a rule outcome."
       }
     ],
     "owned_remote_patterns": [

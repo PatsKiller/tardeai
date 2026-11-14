@@ -88,18 +88,12 @@ def live_claim_hold(path: Path, home: Path, live: Iterable[dict]) -> Optional[st
         ids = owner_claims(rel.parts[0], live)
         if ids:
             return "owner_holds_live_claim:" + ids[0]
-    # Compare RESOLVED paths on both sides: a claim names the home compatibility path while the item may be the
-    # migrated target on another disk. abspath alone left a live claim invisible (LQ-20261113-3152).
     p = os.path.abspath(path)
-    variants = {p, os.path.realpath(p)}
     for c in live:
         for raw in c.get("paths") or []:
             q = os.path.abspath(os.path.expanduser(raw)) if raw.startswith(("/", "~")) else None
-            if not q:
-                continue
-            for qv in {q, os.path.realpath(q)}:
-                if any(v == qv or v.startswith(qv + os.sep) or qv.startswith(v + os.sep) for v in variants):
-                    return "path_in_live_claim:" + str(c.get("claim_id"))
+            if q and (p == q or p.startswith(q + os.sep) or q.startswith(p + os.sep)):
+                return "path_in_live_claim:" + str(c.get("claim_id"))
     return None
 
 
