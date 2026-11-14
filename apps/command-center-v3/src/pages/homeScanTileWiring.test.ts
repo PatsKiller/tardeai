@@ -1,12 +1,13 @@
 // LQ-20261113-3100 (A06): the Home "Latest scan" tile and the header Setups tile pass the payload's top-level run health
 // into renderSetupCounts and do not draw unknown run health as success. Source pins; the logic is in homeSetupsCatalyst.test.ts.
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 
-declare const process: { exit(code?: number): never }
+// Same pattern as intelConsolidation.test.ts: node's fs through process.getBuiltinModule, so the file type-checks
+// without @types/node and needs no tsconfig exclude. readFileSync takes the URL directly (no node:url import).
+declare const process: { exit(code?: number): never; getBuiltinModule(id: 'node:fs'): { readFileSync(p: URL, enc: 'utf8'): string } }
+const readFileSync = process.getBuiltinModule('node:fs').readFileSync
 let fail = 0
 function check(name: string, cond: boolean) { console.log(`  [${cond ? 'PASS' : 'FAIL'}] ${name}`); if (!cond) fail++ }
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
+const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8')
 
 const home = read('./HomeDoNow.tsx')
 check('HomeDoNow passes run_health_status as the fallback', /renderSetupCounts\(tradeAi\?\.setup_run_summary,[^)]*fallbackStatus:\s*tradeAi\?\.run_health_status/.test(home))
