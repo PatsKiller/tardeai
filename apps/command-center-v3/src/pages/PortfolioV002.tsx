@@ -173,7 +173,7 @@ export default function PortfolioV002() {
     // OBS-P1: the CSV carries the SAME snapshot identity the header line and the rows were drawn from — one read, one
     // id, so an exported file cannot describe a different book than the page it came from.
     const snap = snapshotFacts(holdings.state === 'OK' ? holdings.data : null, positions.map(p => ({ account_id: p.accountKey })), account)
-    const blob = new Blob([holdingsCsv(rows, snap)], { type: 'text/csv;charset=utf-8' })
+    const blob = new Blob([holdingsCsv(rows, snap, Date.parse(nowIso))], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -182,7 +182,7 @@ export default function PortfolioV002() {
     a.click()
     a.remove()
     window.setTimeout(() => URL.revokeObjectURL(url), 0)
-  }, [positions, filter, account, holdings])
+  }, [positions, filter, account, holdings, nowIso])
 
   if (legacyTo) return <Navigate to={legacyTo} replace />
 
@@ -211,7 +211,7 @@ export default function PortfolioV002() {
         changesRead={changes} />
       <SyncToolsSheet open={syncOpen} onClose={() => setSyncOpen(false)} holdings={holdings.data} nowIso={nowIso}
         onExportCsv={exportCsv} canExport={filterPositions(positions, filter, account).length > 0} />
-      <RiskSheet open={riskOpen} onClose={() => setRiskOpen(false)} />
+      <RiskSheet open={riskOpen} onClose={() => setRiskOpen(false)} rows={positions} nowMs={Date.parse(nowIso)} />
       <AuditSheet open={auditOpen} onClose={() => setAuditOpen(false)} categories={audit} readOk={holdings.state === 'OK'} />
       <DiagnosticsDrawer open={diagOpen} onClose={() => setDiagOpen(false)}
         records={diagRecords(holdings, prot, status, measures, sinceVisit, visitRecord, Date.parse(nowIso), gates, changes)}

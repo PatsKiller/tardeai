@@ -429,14 +429,15 @@ assert.match(section(cashHtml, 'card-protect'), /Protection UNKNOWN: No counted 
   }
 }
 
-// 14. Risk: the row and the Details entry say pending decision; no score band or number is drawn.
+// 14. Risk: the composite score is undecided; the column is a measured hypothetical, never a score.
 {
   const statusHtml = section(okHtml, 'card-status')
   assert.match(statusHtml, /PENDING DECISION|PENDING/)
   assert.match(statusHtml, /RISK-SCORE-SPEC-20261111 is PROPOSED/)
   assert.match(statusHtml, /data-testid="risk-why"/)
   assert.doesNotMatch(okHtml, /data-testid="row-risk"[\s\S]{0,300}score \d/)
-  assert.match(section(okHtml, 'card-details'), /Risk score · pending decision/)
+  assert.match(section(okHtml, 'card-details'), /Risk · measured downside to stop/)
+  assert.match(section(okHtml, 'card-holdings'), /Composite risk score: no approved methodology/)
 }
 
 // 15. Export: a CSV control in the holdings block, disabled state is not the default; the file name carries no symbol.

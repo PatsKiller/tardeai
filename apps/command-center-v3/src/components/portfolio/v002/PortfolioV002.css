@@ -70,14 +70,20 @@
 .pv2-fchips { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0; }
 .pv2-fchip { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; justify-content: center; padding: 0 10px; border-radius: var(--radius-pill); border: 1px solid var(--border-color); background: var(--bg-2); color: var(--text-1); font: inherit; font-size: 12px; cursor: pointer; }
 .pv2-fchip.on { border-color: var(--info-border); color: var(--info-color); background: var(--info-bg); }
-.pv2-hl-h, .pv2-hrow { display: grid; grid-template-columns: minmax(0, 1fr) 50px 76px 92px 28px; gap: 6px; align-items: center; }
+.pv2-hl-h, .pv2-hrow { display: grid; grid-template-columns: minmax(0, 1fr) 46px 72px 88px 64px; gap: 6px; align-items: center; }
 .pv2-hl-h { font-size: 11px; color: var(--text-2); font-weight: 600; min-height: 20px; }
 .pv2-hl-h .r { text-align: right; }
+.pv2-hl-h .risk-h { text-align: right; }
 .pv2-hrow { width: 100%; min-height: 52px; border: none; border-top: 1px solid var(--border-color); background: none; padding: 0; color: var(--text-0); font: inherit; text-align: left; cursor: pointer; }
 .pv2-hrow .c1 { display: flex; flex-direction: column; overflow: hidden; }
 .pv2-hrow .s2 { font-size: 11px; color: var(--text-2); line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pv2-hrow .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pv2-hrow .risk { font-size: 12px; font-weight: 700; text-align: center; color: var(--text-2); }
+/* OP-023: the Risk column is a measured fact or a state in words, never a blank dash and never a false 0. The figure
+   is a distance to a resting order price (a hypothetical), so it is drawn in text colour, not as a loss. */
+.pv2-hrow .risk { font-size: 12px; font-weight: 700; text-align: right; color: var(--text-0); font-variant-numeric: tabular-nums; line-height: 14px; overflow: hidden; }
+.pv2-hrow .risk small { display: block; font-size: 10px; font-weight: 600; color: var(--text-2); line-height: 12px; }
+.pv2-hrow .risk.stated { font-size: 10px; font-weight: 600; color: var(--text-2); white-space: normal; overflow-wrap: anywhere; }
+.pv2-hrow .pv2-downside { font-variant-numeric: tabular-nums; }
 .pv2-hrow .pv2-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 /* OBS-P1: the row's labelled financial facts — mark + source + clock, weight, price move, unrealized P&L. Drawn at
    every width, including 390/412 px: none of these is drawer-only. */
@@ -109,7 +115,7 @@
 .pv2-va .p { grid-column: 1 / -1; font-size: 11px; line-height: 14px; color: var(--text-2); overflow-wrap: anywhere; }
 @media (min-width: 1024px) {
   .pv2-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); column-gap: 24px; }
-  .pv2-hl-h, .pv2-hrow { grid-template-columns: minmax(0, 1fr) 80px 110px 140px 50px; }
+  .pv2-hl-h, .pv2-hrow { grid-template-columns: minmax(0, 1fr) 72px 104px 132px 84px; }
   .pv2-pt-h { grid-template-columns: 90px 110px minmax(0, 1fr) 100px; }
   .pv2-prow-main { grid-template-columns: 90px 110px minmax(0, 1fr); }
   .pv2-prow { grid-template-columns: minmax(0, 1fr) 100px; }

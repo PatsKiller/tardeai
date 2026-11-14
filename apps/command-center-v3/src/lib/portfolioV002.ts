@@ -451,6 +451,120 @@ export function stopReadFreshness(h: StopReadWire, nowMs: number, sessionOpen?: 
   return { kind, asOf, ageMs, limitMs, sessionOpen: open, servedStale, agreesWithServed, line }
 }
 
+// ── measured downside to the resting stop (OP-023, operator 2026-11-14 13:11:57 ET) ─────────────────
+/** The operator's Risk column: one measured fact per position, never a score.
+ *
+ *  "Hypothetical downside to stop (verified stop price)" = (mark − resting stop) × the quantity the resting stop
+ *  covers. It is a DISTANCE to a resting order price. It is not an execution price, not a loss, not P&L and not a
+ *  floor: a stop can gap through, and the held quantity with no order behind it has no figure at all (the amendment
+ *  of 13:16 ET requires the covered and uncovered quantities to be separate values, and `uncovered: no stop` to be
+ *  its own state). The composite score stays undecided (`RISK_SCORE`) and nothing here feeds one.
+ *
+ *  Every input is a served field, drawn with its own source and clock. Eligibility and staleness are the page's
+ *  EXISTING rules — the row's `protection` verdict and coverage class, and `stopReadFreshness` (STOP_READ_MAX_AGE_MS
+ *  from `config/data_source_authority.json` domain broker_stops). This function adds no threshold, TTL or tolerance,
+ *  and an unknown cost basis never gates it: basis is an unrealized-P&L input only. */
+export type DownsideState =
+  | 'MEASURED' | 'PARTIAL' | 'EXEMPT' | 'UNCOVERED' | 'PLANNED_ONLY' | 'EXPIRED'
+  | 'STOP_STALE' | 'STOP_UNDATED' | 'STOP_PRICE_MISSING' | 'STOP_QTY_MISSING' | 'MARK_MISSING'
+  | 'MARK_STALE' | 'AT_OR_BELOW_STOP' | 'UNVERIFIABLE'
+
+export interface DownsideMeasure {
+  state: DownsideState
+  /** Dollars below the mark to the verified resting stop, over the COVERED quantity only. Null unless measured. */
+  usd: number | null
+  /** (mark − stop) / mark, in percent (a positive distance below the mark). Null whenever `usd` is null. */
+  pct: number | null
+  coveredQty: number | null
+  /** Held quantity with no resting order behind it. It never carries a downside figure — only a state. */
+  uncoveredQty: number | null
+  uncoveredState: 'uncovered: no stop' | null
+  mark: { value: number | null; source: string | null; asOf: string | null; stale: boolean | null }
+  stop: { value: number | null; source: string; asOf: string | null; freshness: StopReadFreshness['kind'] | null }
+  /** Short cell text: a dollars figure, or the state in words. Never blank and never a false 0. */
+  cell: string
+  /** What the figure is, or why there is none. */
+  reason: string
+  /** The arithmetic as drawn (or the statement that none is drawn). */
+  formula: string
+  /** Cost basis, carried for the reader: it gates unrealized P&L only, never this measure (amendment 3). */
+  basis: { status: BasisView['status']; reason: string | null }
+}
+
+/** A compact cell figure. The EXACT value is drawn in the row's facts line, the sheet and the CSV; a 56 px column
+ *  abbreviates to three significant digits and the title carries the full arithmetic. */
+export function downsideCellText(usd: number): string {
+  if (usd >= 1_000_000) return `$${(usd / 1_000_000).toFixed(1)}M`
+  if (usd >= 10_000) return `$${(usd / 1000).toFixed(1)}k`
+  return fmtUsd(usd)
+}
+
+export function downsideToStop(p: PositionModel, ctx: { nowMs: number; sessionOpen?: boolean }): DownsideMeasure {
+  const f = stopReadFreshness(p.raw, ctx.nowMs, ctx.sessionOpen)
+  const mark = { value: p.price, source: p.priceSource, asOf: p.priceAt, stale: p.priceStale }
+  const stop = { value: p.stopPrice, source: p.source, asOf: p.verifiedAt, freshness: f.kind }
+  const basis = { status: p.basis.status, reason: p.basis.reason }
+  const held = p.shares != null && p.shares > 0 ? p.shares : null
+  const coveredQty = held != null && p.restingShares != null && p.restingShares > 0 ? Math.min(held, p.restingShares) : null
+  const uncoveredQty = held != null && coveredQty != null ? Math.round((held - coveredQty) * 1e6) / 1e6 : null
+  const mk = (state: DownsideState, cell: string, reason: string, extra: Partial<DownsideMeasure> = {}): DownsideMeasure => ({
+    state, usd: null, pct: null, coveredQty: null, uncoveredQty: null, uncoveredState: null,
+    mark, stop, cell, reason, formula: 'no figure is drawn', basis, ...extra,
+  })
+  const noStop = (state: DownsideState, cell: string, reason: string) =>
+    mk(state, cell, reason, { uncoveredQty: held, uncoveredState: held != null ? 'uncovered: no stop' : null })
+
+  if (p.isCash || p.coverage.category === 'EXEMPT')
+    return mk('EXEMPT', 'cash', 'Cash / money-market / sweep rows are exempt from stop coverage by policy; there is no stop to measure to.')
+  if (p.coverage.category === 'UNVERIFIABLE' || p.protection === 'UNKNOWN')
+    return noStop('UNVERIFIABLE', 'unknown', `${p.reason}. A level in an unread book is last known, not a verified stop price, so no distance is drawn.`)
+  if (p.coverage.category === 'PLANNED_ONLY')
+    return noStop('PLANNED_ONLY', 'planned', 'The level exists only as a plan at the broker; a plan is not a resting order and protects nothing, so there is no verified stop price to measure to.')
+  if (p.protection === 'WARN')
+    return noStop('EXPIRED', 'expired', 'Protection existed but the stop expired; nothing rests at the broker now, so there is no verified stop price to measure to.')
+  if (p.coverage.category === 'UNCOVERED')
+    return noStop('UNCOVERED', 'no stop', 'The broker read succeeded and shows no resting stop. Unprotected exposure is not a known loss and is never drawn as one.')
+
+  // PROTECTED: a resting stop exists. Every input is gated by an existing rule, in the order a reader checks them.
+  if (stop.value == null || stop.value <= 0)
+    return mk('STOP_PRICE_MISSING', 'no stop px', 'The resting stop was read without a verified stop price (a value ≤ 0 is missing, owner rule); the distance cannot be computed.', { coveredQty })
+  if (mark.value == null || mark.value <= 0)
+    return mk('MARK_MISSING', 'no mark', 'This read published no mark for the row, so the distance to the stop cannot be computed.', { coveredQty })
+  if (mark.stale === true)
+    return mk('MARK_STALE', 'stale mark', `The served quote is marked stale (${mark.source || 'source not named'}, ${fmtET(mark.asOf, true)} ET); a distance measured from a stale mark is not drawn.`, { coveredQty })
+  if (f.kind === 'stale' || f.kind === 'invalid')
+    return mk('STOP_STALE', 'stale stop', `${f.line}. The stop price is last known, not a current read, so no distance is drawn.`, { coveredQty })
+  if (f.kind === 'unpublished')
+    return mk('STOP_UNDATED', 'undated', `${f.line}. Without a stop-read clock the stop price is not verified for this measure.`, { coveredQty })
+  if (coveredQty == null) {
+    if (p.restingShares == null || p.restingShares <= 0)
+      return mk('STOP_QTY_MISSING', 'no qty', 'The read did not publish the resting stop quantity, so the covered quantity is not proven and no figure is drawn over the whole holding.', { coveredQty })
+    return mk('STOP_QTY_MISSING', 'no held qty', 'The read did not publish a held quantity, so neither the covered nor the uncovered quantity can be named.', { coveredQty })
+  }
+  const partial = uncoveredQty != null && uncoveredQty > 0
+  if (mark.value <= stop.value)
+    return mk('AT_OR_BELOW_STOP', 'at/below', `The mark ${fmtUsd(mark.value)} is at or below the resting stop ${fmtUsd(stop.value)}; there is no distance below the mark to measure, and a fill is not confirmed.`,
+      { coveredQty, uncoveredQty, uncoveredState: partial ? 'uncovered: no stop' : null })
+  const usd = Math.round((mark.value - stop.value) * coveredQty * 100) / 100
+  const pct = ((mark.value - stop.value) / mark.value) * 100
+  const formula = `(mark ${fmtUsd(mark.value)} − stop ${fmtUsd(stop.value)}) × ${fmtShares(coveredQty)} covered shares = ${fmtUsd(usd)}`
+  return mk(partial ? 'PARTIAL' : 'MEASURED', downsideCellText(usd),
+    partial
+      ? `Hypothetical downside to stop (verified stop price) over the ${fmtShares(coveredQty)} covered shares. ${fmtShares(uncoveredQty!)} held shares have no resting order: uncovered: no stop.`
+      : `Hypothetical downside to stop (verified stop price) over the ${fmtShares(coveredQty)} held shares. A stop is a resting order price, not an executed price.`,
+    { usd, pct, coveredQty, uncoveredQty, uncoveredState: partial ? 'uncovered: no stop' : null, formula })
+}
+
+/** The row's facts-line sentence: the exact figure (never the compact cell form), its percent, the covered quantity
+ *  and, when partial, the uncovered quantity as its own state. Same strings the sheet and the CSV draw. */
+export function downsideLine(m: DownsideMeasure): string {
+  if (m.state === 'MEASURED' || m.state === 'PARTIAL') {
+    const head = `hypothetical downside to stop ${fmtUsd(m.usd)} (${m.pct!.toFixed(1)}% below the mark) · covered ${fmtShares(m.coveredQty)}`
+    return m.uncoveredState ? `${head} · ${fmtShares(m.uncoveredQty!)} uncovered: no stop` : head
+  }
+  return `hypothetical downside to stop: ${m.state === 'EXEMPT' ? 'cash row · no stop expected' : m.cell}`
+}
+
 export function positionsFrom(w: HoldingsWire | null, nowMs: number = Date.now()): PositionModel[] {
   const rows = Array.isArray(w?.holdings) ? w!.holdings! : []
   const ctx: RowContext = { nowMs, sessionOpen: sessionOpenET(nowMs) }
@@ -953,15 +1067,20 @@ export const CSV_COLUMNS = ['symbol', 'account', 'broker', 'held_shares', 'resti
   'price_usd', 'price_source', 'price_as_of', 'price_stale', 'value_usd', 'weight_pct', 'weight_basis',
   'move_today_usd', 'move_today_pct', 'basis_status', 'cost_basis_usd', 'unrealized_pnl_usd', 'unrealized_pnl_pct',
   'basis_reason', 'basis_source', 'stop_price', 'stop_source', 'stop_order_id', 'verified_at', 'reason',
+  'hypothetical_downside_to_stop_usd', 'hypothetical_downside_to_stop_pct', 'downside_state',
+  'downside_covered_qty', 'downside_uncovered_qty', 'downside_uncovered_state', 'downside_reason', 'downside_formula',
   'snapshot_id', 'positions_as_of'] as const
 function csvCell(v: unknown): string {
   const s = v == null ? '' : String(v)
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
-export function holdingsCsv(ps: PositionModel[], snap?: Pick<SnapshotFacts, 'snapshotId' | 'observedAt'> | null): string {
+export function holdingsCsv(ps: PositionModel[], snap?: Pick<SnapshotFacts, 'snapshotId' | 'observedAt'> | null, nowMs: number = Date.now()): string {
   const lines = [CSV_COLUMNS.join(',')]
   for (const p of ps) {
     const b = p.basis
+    // OP-023: the downside columns come from the SAME derivation the row and the sheet draw, at the same clock, so an
+    // exported value cannot disagree with the row it came from. A state is exported where no figure exists.
+    const d = downsideToStop(p, { nowMs })
     lines.push([
       p.symbol, p.account, p.broker, p.shares, p.restingShares, p.coverage.category, p.protection,
       p.price, p.priceSource, p.priceAt, p.priceStale, p.value, p.weightPct, p.weightBasis,
@@ -969,6 +1088,8 @@ export function holdingsCsv(ps: PositionModel[], snap?: Pick<SnapshotFacts, 'sna
       b.status, b.usd, b.pnlUsd, b.pnlPct, b.status === 'UNKNOWN' ? b.reason : null, b.source,
       p.stopPrice, p.raw.stop_source ?? p.source, p.raw.stop_order_id ?? p.raw.order_id ?? null,
       p.verifiedAt, p.reason,
+      d.usd, d.pct == null ? null : Number(d.pct.toFixed(2)), d.state,
+      d.coveredQty, d.uncoveredQty, d.uncoveredState, d.reason, d.formula,
       snap?.snapshotId ?? null, snap?.observedAt ?? null,
     ].map(csvCell).join(','))
   }
@@ -1577,6 +1698,7 @@ export const RISK_SCORE = {
   status: 'PENDING DECISION' as const,
   spec: 'RISK-SCORE-SPEC-20261111 (design/pages/portfolio/v002)',
   text: 'The risk score is proposed, not approved: no definition has been signed off and no backend computes one. '
-    + 'The page draws no number and no band, and the holdings column stays empty until an approved definition exists.',
+    + 'The page draws no number and no band for a composite score. The Risk column is a separate, measured '
+    + 'per-position fact — the hypothetical downside to the verified resting stop — never a score.',
 }
 

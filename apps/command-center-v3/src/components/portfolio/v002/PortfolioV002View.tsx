@@ -4,12 +4,14 @@
 // blocks with no production source in this build.
 // 2026-11-14 (campaign CAMPAIGN-8H item 1): the four financial measures are drawn from cc-deepseek-7's
 // PortfolioMeasures@v1 projection only (never computed here), stop coverage is drawn as covered / partial /
-// uncovered / planned-only / exempt / unverifiable with resting vs held shares, and the risk score is an isolated
-// pending decision (G7).
+// uncovered / planned-only / exempt / unverifiable with resting vs held shares, and the composite risk score stays
+// an undecided decision (G7). OP-023 (13:11 ET): the Risk COLUMN is the measured hypothetical downside to the
+// verified resting stop — a distance to a resting order price, never a loss — and every row that cannot carry a
+// figure says which input is missing instead of drawing a blank dash.
 import { Link } from 'react-router-dom'
 import {
   fmtAge, fmtET, fmtPct, fmtShares, fmtUsd, filterPositions, coverageCounts, coverageScopeRelation, exclusiveCoverage, snapshotFacts, gateEvidence, reviewPositions, scopeCoverage,
-  basisCoverage, moveToday, unrealizedLine, weightLine, priceClock,
+  basisCoverage, moveToday, unrealizedLine, weightLine, priceClock, downsideToStop, downsideLine,
   STOP_OWNER, stopDeskHref,
   type CoverageCounts, type HoldingsFilter, type MeasuresModel, type P0Item, type PositionModel,
   type ProtectionModel, type Read, type HoldingsWire, type SinceVisitModel, type StatusRow, type VisitRecord, type MeasureKey,
@@ -91,6 +93,9 @@ function headerValue(measures: MeasuresModel, w: HoldingsWire | null): { text: s
 export default function PortfolioV002View(props: ViewProps) {
   const { holdings, positions, prot, p0, status, measures, sinceVisit, nowIso, filter, account } = props
   const w = holdings.data
+  // OP-023: the page clock the rows, the sheet and the CSV all measure a stop read against. One clock, pinned to the
+  // same `nowIso` the row's own protected verdict was computed from.
+  const nowMs = Date.parse(nowIso)
   const hv = headerValue(measures, w)
   const accounts = [...new Set(positions.map(p => p.account))].sort()
   const visible = filterPositions(positions, filter, account)
@@ -368,24 +373,30 @@ export default function PortfolioV002View(props: ViewProps) {
                     )
                   })}
                 </div>
-                <div className="pv2-hl-h" aria-hidden="true"><span>Symbol</span><span className="r">Shares</span><span className="r">Value</span><span>Protection</span><span>Risk</span></div>
+                <div className="pv2-hl-h" aria-hidden="true"><span>Symbol</span><span className="r">Shares</span><span className="r">Value</span><span>Protection</span><span className="risk-h" title="Hypothetical downside to stop (verified stop price)">Risk</span></div>
                 {shown.map(p => {
                   // OBS-P1: every financial fact is drawn from the read and labelled — the mark with its source and
                   // clock, the session PRICE MOVE (never "P&L"), the weight only if published, and unrealized P&L only
                   // on a recorded basis. A fact the read does not publish is named; nothing is blank and nothing is 0.
-                  const mv = moveToday(p), pnl = p.isCash ? { text: 'cash row · no unrealized P&L', known: true, cls: null } : unrealizedLine(p.basis), wl = weightLine(p), pc = priceClock(p.raw, w)
+                  // OP-023: the Risk cell is a MEASURED distance to the verified resting stop — a hypothetical, never a
+                  // loss or an exit price — and a state in words whenever no figure is licensed. Same clock as the row.
+                  const mv = moveToday(p), pnl = p.isCash ? { text: 'cash row · no unrealized P&L', known: true, cls: null } : unrealizedLine(p.basis), wl = weightLine(p), pc = priceClock(p.raw, w), dn = downsideToStop(p, { nowMs })
                   return (
                     <button type="button" className="pv2-hrow" key={p.key} onClick={() => props.onOpenPosition(p.key)} data-testid="holding-row" data-symbol={p.symbol}>
                       <span className="c1"><b>{p.symbol}</b><span className="s2">{p.account}{p.underFloor ? ' · under $100' : ''}{p.coverage.category === 'PARTIAL' ? ` · stop ${fmtShares(p.coverage.restingShares)}/${fmtShares(p.coverage.heldShares)}` : ''}</span></span>
                       <span className="num">{fmtShares(p.shares)}</span>
                       <span className="num">{fmtUsd(p.value)}</span>
                       <span><span className={`pv2-chip ${rowChipClass(p)}`}>{p.isCash && p.protection === 'EXEMPT' ? 'CASH' : rowChip(p)}</span></span>
-                      <span className="risk" title="Risk score: pending decision (G7)">—</span>
+                      <span className={`risk ${dn.usd != null ? 'measured' : 'stated'}`} title={dn.usd != null ? `Hypothetical downside to stop (verified stop price): ${dn.formula}` : `Hypothetical downside to stop (verified stop price): ${dn.reason}`}
+                        data-testid="row-risk" data-state={dn.state} data-partial={dn.uncoveredState != null && dn.usd != null ? 'true' : undefined}>
+                        {dn.cell}{dn.pct != null && <small>{dn.pct.toFixed(1)}%</small>}
+                      </span>
                       <span className="facts">
                         <span data-testid="row-quote">{p.isCash ? 'cash balance · no mark' : p.price == null ? 'mark not published in this read' : `mark $${p.price.toFixed(2)} · ${p.priceSource || 'source not named'} · ${pc.line}`}{p.priceStale ? <span className="pv2-stale-mark"> · STALE</span> : null}</span>
                         <span className={wl.known ? '' : 'pv2-unk-fact'} data-testid="row-weight">{wl.text}</span>
                         <span className={mv.cls ? `pv2-move ${mv.cls}` : 'pv2-move'} data-testid="row-move">{mv.text}</span>
                         <span className={pnl.cls ? `pv2-pnl ${pnl.cls}` : 'pv2-pnl'} data-testid="row-pnl">{pnl.text}</span>
+                        <span className={dn.usd != null ? 'pv2-downside' : 'pv2-downside pv2-unk-fact'} data-testid="row-downside" data-state={dn.state}>{downsideLine(dn)}</span>
                       </span>
                     </button>
                   )
@@ -397,7 +408,8 @@ export default function PortfolioV002View(props: ViewProps) {
                   </button>
                 )}
                 <div className="pv2-blk-h">
-                  <p className="pv2-muted">Risk column: pending decision <NB short /> · tap a row for its full-screen detail</p>
+                  <p className="pv2-muted" data-testid="risk-method">Composite risk score: no approved methodology · the Risk column is the measured
+                    <em> hypothetical downside to stop (verified stop price)</em> only — a distance to a resting order price, not a loss.</p>
                   <button type="button" className="pv2-lnk" onClick={props.onExportCsv} data-testid="export-csv"
                     disabled={visible.length === 0} aria-label="Export the filtered holdings as CSV">Export CSV</button>
                 </div>
@@ -411,7 +423,7 @@ export default function PortfolioV002View(props: ViewProps) {
             <button type="button" className="pv2-det" onClick={props.onOpenAudit} data-testid="open-audit"><span>Audit state</span><span>›</span></button>
             <button type="button" className="pv2-det" onClick={props.onOpenMeasures} data-testid="open-measures"><span>The numbers · reconciliation</span><span>›</span></button>
             <button type="button" className="pv2-det" onClick={props.onOpenSync} data-testid="open-sync"><span>Sync &amp; export</span><span>›</span></button>
-            <button type="button" className="pv2-det" onClick={props.onOpenRisk} data-testid="open-risk"><span>Risk score · pending decision</span><span>›</span></button>
+            <button type="button" className="pv2-det" onClick={props.onOpenRisk} data-testid="open-risk"><span>Risk · measured downside to stop</span><span>›</span></button>
             <Link className="pv2-det" to="/retirement" data-testid="lnk-retirement"><span>Retirement</span><span>›</span></Link>
             <Link className="pv2-det" to="/risk" data-testid="lnk-risk"><span>Risk desk</span><span>›</span></Link>
             <Link className="pv2-det" to="/defense" data-testid="lnk-defense"><span>Defense</span><span>›</span></Link>

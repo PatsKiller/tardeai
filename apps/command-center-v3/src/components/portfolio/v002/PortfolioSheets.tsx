@@ -1,13 +1,14 @@
 // Portfolio v002 full-screen sheets: why-protection (GAP / WARN / UNKNOWN / OK, with the six coverage categories),
 // position detail with per-field source/writer/age and resting-vs-held shares, the four-measure reconciliation,
-// gate evidence, last visit & window, sync & export, the pending risk decision, and audit state.
+// gate evidence, last visit & window, sync & export, the undecided composite risk score beside the MEASURED
+// per-position downside to stop (OP-023, 2026-11-14), and audit state.
 // Same shell and classes as Home v010's WhySheet (reused, not edited).
 import { useEffect, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import '../../home/v010' // loads the Home v010 WhySheet styles this shell reuses
 import {
   fmtET, fmtUsd, fmtShares, positionFields, coverageCounts, coverageScopeRelation, gateEvidence, gateStore, changesModel, loadingRead, API,
-  stopDeskHref, RISK_SCORE, STOP_OWNER, UNVERIFIED_NOTE,
+  stopDeskHref, RISK_SCORE, STOP_OWNER, UNVERIFIED_NOTE, downsideToStop, downsideLine,
   type AuditCategory, type ChangesModel, type GateEvidence, type GateStoreModel, type HoldingsWire, type MeasureKey,
   type MeasuresModel, type PortfolioChangesWire, type PortfolioGatesWire, type PositionModel, type ProtectionModel,
   type Read, type SinceVisitModel, type VisitRecord,
@@ -424,21 +425,59 @@ export function SyncToolsSheet({ open, onClose, holdings, nowIso, onExportCsv, c
         Export the filtered holdings as CSV ›
       </button>
       <p className="v010-why-age">The CSV carries the served columns (shares, resting stop shares, coverage, value, protection,
-        identity, reason). It contains no computed P&amp;L: the page has no such figure to export.</p>
+        identity, reason) plus the Risk column's measured block: the hypothetical downside to stop (verified stop
+        price) over the covered quantity, its state, the covered and uncovered quantities, and the arithmetic. It
+        contains no computed P&amp;L: the page has no such figure to export.</p>
     </Sheet>
   )
 }
 
-export function RiskSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function RiskSheet({ open, onClose, rows, nowMs }: {
+  open: boolean; onClose: () => void
+  /** OP-023: the same rows the table draws, the same clock the rows were measured at. Absent (a bare sheet) still
+   *  states the composite decision and draws no score. */
+  rows?: PositionModel[]; nowMs?: number
+}) {
+  const at = nowMs ?? Date.now()
+  const measured = (rows || []).map(p => ({ p, d: downsideToStop(p, { nowMs: at }) }))
+  const withFigure = measured.filter(x => x.d.usd != null)
+  const cash = measured.filter(x => x.d.state === 'EXEMPT').length
   return (
-    <Sheet open={open} onClose={onClose} title="Risk score · pending decision" id="sheet-risk">
+    <Sheet open={open} onClose={onClose} title="Risk · measured downside to stop" id="sheet-risk">
       <p className="v010-why-note" data-testid="risk-state">
-        <Chip s="UNKNOWN" label={RISK_SCORE.status} /> <b>{RISK_SCORE.spec}</b>
+        <Chip s="UNKNOWN" label={RISK_SCORE.status} /> <b data-testid="risk-composite">Composite risk score: no approved methodology</b>
+        <br />{RISK_SCORE.spec}
         <br />{RISK_SCORE.text}
       </p>
-      <p className="v010-why-note">Until an approved definition exists, every risk surface on this page (the holdings column,
-        the status row, the position sheet) stays empty or says PENDING DECISION. No score, band, letter or colour is
-        invented here. <NB /></p>
+      <p className="v010-why-note" data-testid="risk-formula">
+        <b>Hypothetical downside to stop (verified stop price)</b> = (mark − resting stop) × the quantity that stop
+        covers. It is a distance to a <em>resting order price</em>: not an execution price, not a loss, not P&amp;L and
+        not a floor. A stop can gap through, and held shares with no order behind them get no figure at all
+        (<em>uncovered: no stop</em>). No score, band, letter or colour is derived from it.
+        {rows ? ` This book: ${withFigure.length} of ${rows.length} rows carry a measured figure; ${cash} are cash/exempt.` : ''}
+      </p>
+      {rows && rows.length > 0 && (
+        <ul className="v010-why-list">
+          {measured.map(({ p, d }) => (
+            <li className="v010-why-item" key={p.key} data-testid="risk-row" data-symbol={p.symbol} data-state={d.state}>
+              <div className="v010-why-txt">
+                <span className="v010-why-cat">{p.symbol} · {p.account} · <span data-testid="risk-line">{downsideLine(d)}</span></span>
+                <span className="v010-why-detail" data-testid="risk-value">
+                  {d.usd != null ? fmtUsd(d.usd) : d.cell}{d.pct != null ? ` · ${d.pct.toFixed(1)}% below the mark` : ''}
+                  {' · '}covered {fmtShares(d.coveredQty)} of {fmtShares(p.shares)} held
+                  {d.uncoveredState ? ` · ${fmtShares(d.uncoveredQty)} shares ${d.uncoveredState}` : ''}
+                </span>
+                <span className="v010-why-age" data-testid="risk-mark">mark {fmtUsd(d.mark.value)} · {d.mark.source || 'source not named'} · as of {fmtET(d.mark.asOf, true)}{d.mark.stale === true ? ' · STALE' : d.mark.stale == null ? ' · stale flag not published' : ''}</span>
+                <span className="v010-why-age" data-testid="risk-stop">stop {d.stop.value == null ? 'not published' : fmtUsd(d.stop.value)} · {d.stop.source} · as of {fmtET(d.stop.asOf, true)} · stop read {d.stop.freshness ?? 'not judged'}</span>
+                <span className="v010-why-age" data-testid="risk-why">state {d.state} · {d.reason}</span>
+                {d.usd != null && <span className="v010-why-age" data-testid="risk-arithmetic">{d.formula}</span>}
+                <span className="v010-why-age" data-testid="risk-basis">cost basis {d.basis.status === 'RECORDED' ? 'recorded' : `unknown${d.basis.reason ? ` (${d.basis.reason})` : ''}`} — a basis gates unrealized P&amp;L only, never this measure</span>
+              </div>
+              <Chip s={d.usd != null ? 'MEASURED' : d.state} label={d.state.replace(/_/g, ' ')} />
+            </li>
+          ))}
+        </ul>
+      )}
     </Sheet>
   )
 }
