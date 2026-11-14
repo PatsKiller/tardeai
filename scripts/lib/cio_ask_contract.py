@@ -36,7 +36,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Mapping, Optional, Protocol, runtime_checkable
 
 ASK_REQUEST_SCHEMA = "AskRequest@v1"
 ASK_ANSWER_SCHEMA = "AskAnswer@v1"
@@ -63,6 +63,30 @@ ANSWER_STATUSES = (
 CONFIDENCE_LEVELS = ("low", "medium", "high")
 QUANTITY_UNITS = ("shares", "usd")
 TRACKING_STATES = ("tracked", "untracked")
+
+#: The classes the shared header can name. A tracked entity rides in the header only when it has a TYPED identity:
+#: a listed security's SYMBOL, an ACCOUNT, or a THREAD. A name-only "private entity" has none of the three, and the
+#: resolver's fallback minted one for every capitalised heading of a pasted card ("Review BHVN", "WATCH Card",
+#: "Risk", "Reward", "Forming Summary", "Sources", "Source"), each of which was auto-tracked — so the header drew card
+#: chrome as ENTITIES pointing at the BHVN thread (OBS-H1, operator live Chrome 2026-11-14). Extraction cannot tell a
+#: pre-IPO company from a heading once the name is all it has; naming a typed chip can. The name keeps its tracking and
+#: stays in its thread's entity panel — it simply is not a global chip.
+TYPED_TRACKING_CLASSES = ("symbol", "account", "thread")
+
+
+def typed_tracking_class(entity: Mapping[str, Any]) -> Optional[str]:
+    """``'symbol'`` | ``'account'`` | ``'thread'`` when this entity has a typed identity a header chip can name, else
+    None. A symbol is the listed security the identity registry bound; nothing is inferred from a name."""
+    if not entity:
+        return None
+    if str(entity.get("symbol") or "").strip():
+        return "symbol"
+    kind = str(entity.get("kind") or "").strip().lower()
+    if kind in ("account", "thread"):
+        return kind
+    if str(entity.get("account") or entity.get("account_key") or "").strip():
+        return "account"
+    return None
 
 # Memory event kinds appended to CIO memory keyed by security_guid (or entity_guid for a private entity).
 MEMORY_KINDS = (
@@ -832,6 +856,8 @@ __all__ = [
     "make_ask_id",
     "make_thread_id",
     "private_entity_guid",
+    "TYPED_TRACKING_CLASSES",
+    "typed_tracking_class",
     "normalise_question",
     "utc_now_iso",
     "validate_request",

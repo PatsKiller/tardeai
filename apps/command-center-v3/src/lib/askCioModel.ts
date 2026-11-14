@@ -172,14 +172,49 @@ export function entityLabel(e: { symbol?: string | null; name?: string; kind?: s
   return e.kind === 'private_entity' ? `${e.name ?? 'Unnamed'} (private)` : (e.name ?? 'Unresolved')
 }
 
-export interface TrackedRow { thread_id: string; key: string; name?: string; symbol?: string | null; kind?: string }
+/** OBS-H1: the classes a shared-header chip may name — a listed SYMBOL, an ACCOUNT, or a THREAD. */
+export type TrackedClass = 'symbol' | 'account' | 'thread'
 
-/** Header chips: one per tracked entity (newest thread wins), capped. Flags tracked names on every page. */
+/**
+ * The typed class of a tracked row, or null when it has none. OBS-H1 (operator live Chrome 2026-11-14): the resolver's
+ * fallback minted a "private entity" for every capitalised heading of a pasted card — "Review BHVN", "WATCH Card",
+ * "Risk", "Reward", "Forming Summary", "Sources" — and auto-tracked each, so the header drew card chrome as ENTITIES
+ * pointing at the BHVN thread. A name-only private entity has no typed identity (no symbol, no account, no thread),
+ * so it never becomes a chip; it keeps its tracking on its own thread, where the name has context.
+ */
+export function trackedClass(r: { symbol?: string | null; kind?: string; account?: string | null; account_key?: string | null }): TrackedClass | null {
+  if (String(r.symbol ?? '').trim()) return 'symbol'
+  const k = String(r.kind ?? '').trim().toLowerCase()
+  if (k === 'account' || k === 'thread') return k
+  if (String(r.account ?? r.account_key ?? '').trim()) return 'account'
+  return null
+}
+
+/** A chip's label: the symbol as bound, else the name the producer published — never an invented "(private)". */
+function chipLabel(r: TrackedRow, cls: TrackedClass): string {
+  if (cls === 'symbol') return String(r.symbol).trim()
+  const name = String(r.name ?? '').trim()
+  return name || (cls === 'account' ? 'Account' : 'Thread')
+}
+
+export interface TrackedRow { thread_id: string; key: string; name?: string; symbol?: string | null; kind?: string; account?: string | null; account_key?: string | null }
+
+/**
+ * Header chips: one per TYPED tracked identity, capped. Flags tracked names on every page.
+ *
+ * Dedupe is by the typed identity (a symbol compared case-insensitively), so the same security tracked from two threads
+ * is one chip; the first row for that identity wins, and the thread it names stays the chip's destination (the BHVN
+ * thread link remains on the BHVN symbol chip). Untyped rows are skipped entirely (OBS-H1).
+ */
 export function trackedChips(rows: TrackedRow[] | null | undefined, max = 6): { key: string; label: string; thread_id: string }[] {
   const seen = new Map<string, { key: string; label: string; thread_id: string }>()
   for (const r of rows ?? []) {
-    if (!r?.key || seen.has(r.key)) continue
-    seen.set(r.key, { key: r.key, label: entityLabel(r), thread_id: r.thread_id })
+    if (!r?.key) continue
+    const cls = trackedClass(r)
+    if (!cls) continue
+    const identity = cls === 'symbol' ? `symbol:${String(r.symbol).trim().toUpperCase()}` : `${cls}:${r.key}`
+    if (seen.has(identity)) continue
+    seen.set(identity, { key: r.key, label: chipLabel(r, cls), thread_id: r.thread_id })
   }
   return [...seen.values()].slice(0, max)
 }

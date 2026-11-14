@@ -62,11 +62,34 @@ eq('ask response unwraps', unwrap<{ thread_id: string }>(ASK_RESPONSE)?.thread_i
 eq('error envelope unwraps to null', unwrap({ ok: false, error: 'CSRF_REFUSED' }), null)
 
 // header flags for tracked names
-eq('tracked chips dedupe and label', trackedChips([
+// OBS-H1 (operator, live Chrome 2026-11-14): card chrome ("Review BHVN", "WATCH Card", "Risk") was auto-tracked as a
+// name-only private entity and drawn as a header ENTITY pointing at the BHVN thread. A chip names a typed identity
+// only — the security's symbol, an account, a thread — and the name-only rows never do.
+eq('tracked chips: typed identities only', trackedChips([
   { thread_id: 'thr_a', key: 'g1', symbol: 'TSLA', name: 'Tesla', kind: 'security' },
   { thread_id: 'thr_b', key: 'g1', symbol: 'TSLA', name: 'Tesla', kind: 'security' },
+  { thread_id: 'thr_bhvn', key: 'sec_bhvn', symbol: 'BHVN', name: 'BHVN', kind: 'security' },
+  // a pasted card's headings, exactly as the ledger recorded and tracked them
+  { thread_id: 'thr_bhvn', key: 'ent_review', symbol: null, name: 'Review BHVN', kind: 'private_entity' },
+  { thread_id: 'thr_bhvn', key: 'ent_watch', symbol: null, name: 'WATCH Card', kind: 'private_entity' },
+  { thread_id: 'thr_bhvn', key: 'ent_risk', symbol: null, name: 'Risk', kind: 'private_entity' },
+  // a real name-only private company: tracked on its thread, but it names no symbol/account/thread either
   { thread_id: 'thr_c', key: 'ent_1', symbol: null, name: 'Skydance', kind: 'private_entity' },
-]), [{ key: 'g1', label: 'TSLA', thread_id: 'thr_a' }, { key: 'ent_1', label: 'Skydance (private)', thread_id: 'thr_c' }])
+  // a symbol deduped across a different id and case is one chip
+  { thread_id: 'thr_e', key: 'g2', symbol: 'tsla', name: 'Tesla', kind: 'security' },
+  // typed account and thread entities still chip
+  { thread_id: 'thr_f', key: 'acc_roth', name: 'Schwab Roth', kind: 'account' },
+  { thread_id: 'thr_g', key: 'entity_thread_1', name: 'BHVN thread', kind: 'thread' },
+]), [
+  { key: 'g1', label: 'TSLA', thread_id: 'thr_a' },
+  { key: 'sec_bhvn', label: 'BHVN', thread_id: 'thr_bhvn' },
+  { key: 'acc_roth', label: 'Schwab Roth', thread_id: 'thr_f' },
+  { key: 'entity_thread_1', label: 'BHVN thread', thread_id: 'thr_g' },
+])
+// the BHVN thread link stays on its real entity: the typed row's own thread_id, not the card row's label
+eq('tracked chip keeps the thread of its typed entity',
+  trackedChips([{ thread_id: 'thr_bhvn', key: 'sec_bhvn', symbol: 'BHVN', name: 'BHVN', kind: 'security' }]),
+  [{ key: 'sec_bhvn', label: 'BHVN', thread_id: 'thr_bhvn' }])
 eq('tracked chips tolerate a missing payload', trackedChips(undefined), [])
 
 // age

@@ -24,7 +24,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 
-from scripts.lib.cio_ask_contract import utc_now_iso
+from scripts.lib.cio_ask_contract import typed_tracking_class, utc_now_iso
 
 STORE_SCHEMA = "CioAskEvent@v1"
 EVENT_KINDS = (
@@ -324,11 +324,17 @@ class AskEventStore:
         return self.threads().get(thread_id)
 
     def tracked_entities(self) -> list[dict[str, Any]]:
-        """Entities currently tracked by any thread: [{thread_id, key, security_guid, symbol, ...}]."""
+        """Entities currently tracked by any thread: [{thread_id, key, security_guid, symbol, ...}], TYPED only.
+
+        OBS-H1 (operator live Chrome 2026-11-14): a tracked entity with no typed identity — a name-only "private
+        entity", which the resolver's fallback minted for a pasted card's headings ("Review BHVN", "WATCH Card",
+        "Risk") — is still tracked on its own thread (My questions shows it there) but is not a shared-header chip.
+        The ledger is append-only, so historical rows are not rewritten; the projection simply does not promote a
+        name to a global entity."""
         out = []
         for t in self.threads().values():
             for ent in t["entities"]:
-                if (ent.get("tracking") or {}).get("state") == "tracked":
+                if (ent.get("tracking") or {}).get("state") == "tracked" and typed_tracking_class(ent):
                     out.append({"thread_id": t["thread_id"], **ent})
         return out
 
