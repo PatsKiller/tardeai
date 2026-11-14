@@ -468,6 +468,32 @@ def test_f1_the_rows_authoritative_total_wins_over_the_per_account_sum():
     assert sum(o["current_value_usd"] for o in row["per_account"]) == 110_000.0   # both exposed
 
 
+def test_f1_the_total_is_never_credited_to_the_recorded_accounts_bucket():
+    """N-F1 (cc-deepseek-9 review 2026-11-14T2148Z): rule 1 has two halves and only "never doubled" was pinned.
+
+    Crediting the carried total into the RECORDED account's bucket leaves `current_value_usd` untouched — so the
+    doubling test stays green — but hands the primary tag to the wrong account whenever the recorded account is not
+    the largest. Fixture: an already-aggregated row whose recorded `account` DISAGREES with argmax(per_account).
+    """
+    from scripts.lib.cio_decision_semantics import sanitize_decisions_now
+
+    plan = _plan_rows()
+    assert plan[0]["account"] == "schwab_rollover_ira"        # the aggregate picked the largest account
+    plan[0]["account"] = "schwab_taxable"                     # ...and this row records the smaller one
+
+    row = sanitize_decisions_now(plan, portfolio_value=_PV, limit=8)[0]
+    # Rule 1, first half: the total is CARRIED — not credited to any bucket, so each bucket still holds its own
+    # dollars and none of them contains the $111,288 aggregate.
+    assert row["current_value_usd"] == 111_288.0
+    assert {o["account"]: o["current_value_usd"] for o in row["per_account"]} == {
+        "schwab_rollover_ira": 83_466.0, "schwab_taxable": 27_822.0}
+    # Rule 1, second half: the primary tag follows the LARGEST bucket, not the recorded `account` field — if the
+    # total had been credited to `schwab_taxable`, that account would hold $139,110 and would take the tag.
+    assert row["account"] == "schwab_rollover_ira"
+    assert row["account"] == max(
+        row["per_account"], key=lambda o: o["current_value_usd"])["account"]
+
+
 def test_f1_accounts_fall_back_to_the_per_account_keys():
     """Q1.5: `accounts` list, else the per-account keys, else the single `account` — no crash on a partial row."""
     from scripts.lib.cio_decision_semantics import sanitize_decisions_now

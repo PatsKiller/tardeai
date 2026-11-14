@@ -378,6 +378,39 @@ def test_cio_now_card_account_is_the_primary_not_the_first_seen():
         "small_acct": "TRIM", "big_acct": "HOLD"}
 
 
+def test_cio_now_fallback_card_account_is_the_recorded_primary_not_the_first_seen(monkeypatch):
+    """N-F2 (cc-deepseek-9 review 2026-11-14T2148Z): the FAIL-CLOSED path's tag was untested.
+
+    `build_cio_now` falls back to the raw plan rows when the sanitizer raises, and that is the path a broken store
+    actually renders — yet reverting its `d.get("account") or accounts[0]` to a bare `accounts[0]` survived every
+    test. The sanitized path is pinned above; this pins the fallback on its own fixture, where the recorded primary
+    and the first-seen account disagree.
+    """
+    from scripts.lib import cio_decision_semantics as ds
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("sanitizer unavailable")
+
+    monkeypatch.setattr(ds, "sanitize_decisions_now", _boom)
+    row = {
+        "symbol": "V", "account": "big_acct",
+        "accounts": ["small_acct", "big_acct"],          # first-seen is NOT the primary
+        "per_account": [{"account": "big_acct", "cio_stance": "HOLD", "current_value_usd": 40_000.0},
+                        {"account": "small_acct", "cio_stance": "TRIM", "current_value_usd": 30_000.0}],
+        "account_count": 2,
+        "current_value_usd": 70_000.0, "cio_stance": "TRIM",
+        "recommended_delta_usd": -3_000.0, "why_now": "concentration > cap",
+    }
+    dec = {d["symbol"]: d for d in c.build_cio_now(
+        position_decisions=[row], portfolio_value=500_000.0)["decisions"]}["V"]
+
+    assert dec["decision_id"] == "dec_fallback_V"        # proves the fallback path built this card
+    assert dec["account"] == "big_acct"                  # the recorded primary...
+    assert dec["accounts"] == ["small_acct", "big_acct"]  # ...while encounter order stays as provenance
+    assert dec["account_count"] == 2
+    assert [o["account"] for o in dec["per_account"]] == ["big_acct", "small_acct"]
+
+
 def test_cio_now_card_agrees_with_the_sanitizer_it_is_built_from():
     from scripts.lib.cio_decision_semantics import aggregate_position_decisions, sanitize_decisions_now
 
