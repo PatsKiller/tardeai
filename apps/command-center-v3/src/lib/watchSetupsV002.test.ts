@@ -1,9 +1,9 @@
-import { alertRows, certifiedOf, disarmBody, discoveryGap, etText, findRows, gradeAlerts, gradeDiscover, gradeSectors, gradeSetups, gradeStamp, lastRthTickMs, poolRows, sectorRows, setupsUrl } from './watchSetupsV002.ts'
+import { alertRows, certifiedOf, disarmBody, discoveryGap, etText, findRows, gradeAlerts, gradeDiscover, gradePullback, gradeSectors, gradeSetups, gradeStamp, lastRthTickMs, PULLBACK_API, PULLBACK_MAX_AGE_S, poolRows, pullbackProvenance, pullbackRows, sectorRows, setupsUrl } from './watchSetupsV002.ts'
 
 declare const process: { exit(code?: number): never }
 const fail = (m: string): never => { console.error('FAIL: ' + m); process.exit(1) }
 const assert = {
-  equal: (a: unknown, b: unknown) => { if (a !== b) fail(`${JSON.stringify(a)} !== ${JSON.stringify(b)}`) },
+  equal: (a: unknown, b: unknown, m?: string) => { if (a !== b) fail(`${m ? m + ': ' : ''}${JSON.stringify(a)} !== ${JSON.stringify(b)}`) },
   ok: (v: unknown, m?: string) => { if (!v) fail(m || 'not ok') },
   match: (s: string, re: RegExp) => { if (!re.test(s)) fail(`${JSON.stringify(s)} !~ ${re}`) },
 }
@@ -97,4 +97,56 @@ t('row mappers tolerate junk and keep envelope data', () => {
   assert.equal(findRows({ items: [{ symbol: 'Z', reason: 'r' }] })[0].note, 'r')
 })
 t('urls and bodies', () => { assert.equal(setupsUrl(25), '/api/v2/watchpool?status=all&offset=25&limit=25'); assert.equal(disarmBody(9).action, 'disarm') })
+
+t('pullback is graded on the last completed SCAN, never on request time', () => {
+  const g = (body: unknown) => gradePullback(body, RTH)
+  assert.equal(g({}).state, 'UNKNOWN')
+  assert.equal(g({ candidates: [] }).state, 'UNKNOWN')       // an empty list with no scan is not "no candidates"
+  assert.equal(g({ generated_at: iso(RTH, 3600) }).state, 'OK')
+  assert.equal(g({ generated_at: iso(RTH, 3600) }).basis, 'pullback_scan_run')
+  assert.equal(g({ generated_at: iso(RTH, 2 * 86400) }).state, 'STALE')
+  assert.equal(g({ generated_at: iso(RTH, -600) }).state, 'UNKNOWN') // future stamp
+  assert.equal(g({ data: { generated_at: iso(RTH, 60) } }).state, 'OK') // envelope unwrapped
+  assert.ok(PULLBACK_MAX_AGE_S >= 24 * 3600, 'a day without a scan must read stale')
+})
+t('pullbackRows maps the screener payload without inventing values', () => {
+  const rows = pullbackRows({ data: { candidates: [
+    { symbol: 'tgt', tier: 'trigger', price: '101.5', pullback_pct: 4.2, macd_prox_pct: 0.8, bars_to_cross_est: 2, entry: 101, stop: 97, target1: 112, rr: 2.75,
+      score: 84, proposal_live: true, proposal_status: 'PENDING', held: { near_stop: true, reason: 'held' }, held_conflict: true, first_seen_at: '2026-11-13T09:00:00Z', redisplay_reason: 'cooldown' },
+    { symbol: 'TWO', proposal_live: false, held: 'held', held_conflict: 'yes' },
+    { symbol: 'THREE', proposal_live: null },
+    { tier: 'trigger' },
+  ] } })
+  assert.equal(rows.length, 3, 'a row with no symbol is dropped')
+  const [a, b, c] = rows
+  assert.equal(a.symbol, 'tgt'); assert.equal(a.entry, 101); assert.equal(a.rr, 2.75); assert.equal(a.barsToCross, 2)
+  assert.equal(a.price, 101.5, 'a numeric string is not lost')
+  assert.equal(a.held, 'held'); assert.equal(a.heldConflict, true); assert.equal(a.proposalLive, true)
+  assert.equal(a.redisplay, 'cooldown'); assert.equal(a.firstSeenAt, '2026-11-13T09:00:00Z')
+  assert.equal(b.tier, 'watch', 'a missing tier defaults to watch, never to trigger')
+  assert.equal(b.proposalLive, false); assert.equal(b.heldConflict, false, 'only a real true is a conflict')
+  assert.equal(c.proposalLive, null, 'an unstated proposal stays null, not false')
+  assert.equal(c.whyNot, null); assert.equal(c.entry, null)
+  assert.equal(pullbackRows(null).length, 0); assert.equal(pullbackRows({ candidates: {} }).length, 0)
+})
+t('pullbackProvenance states what the scan covered, and keeps silence null', () => {
+  const p = pullbackProvenance({ candidates: [], trigger_count: 2, trigger_live_count: 1, trigger_stale_count: 1, watch_count: 4, held_count: 1,
+    dismissed_in_cooldown: 3, scan_provenance: { universe: 'S&P 500 uptrend pullbacks', screened: 498 }, generated_at: '2026-11-13T14:30:00Z',
+    hit_stats: { window_days: 90, triggers: 12, target1_first: 5, evaluated: 9, median_days: 6 } })
+  assert.equal(p.triggers, 2); assert.equal(p.triggersLive, 1); assert.equal(p.triggersStale, 1); assert.equal(p.watch, 4)
+  assert.equal(p.held, 1); assert.equal(p.dismissed, 3); assert.equal(p.screened, 498); assert.equal(p.universe, 'S&P 500 uptrend pullbacks')
+  assert.equal(p.lastRun, '2026-11-13T14:30:00Z')
+  assert.ok(p.hit && p.hit.target1First === 5 && p.hit.medianDays === 6)
+  const bare = pullbackProvenance({})
+  assert.equal(bare.universe, ''); assert.equal(bare.screened, null); assert.equal(bare.hit, null)
+  // a count the body did not state stays null: it must never read as 0 on the page
+  assert.equal(bare.triggers, null); assert.equal(bare.triggersLive, null); assert.equal(bare.watch, null); assert.equal(bare.held, null)
+  const part = pullbackProvenance({ trigger_count: 0, watch_count: 2 })
+  assert.equal(part.triggers, 0, 'a stated 0 is a real 0'); assert.equal(part.held, null, 'an unstated held count is not 0')
+  const hit = pullbackProvenance({ hit_stats: { triggers: 4 } })
+  assert.ok(hit.hit && hit.hit.triggers === 4 && hit.hit.target1First === null && hit.hit.windowDays === null)
+  assert.equal(pullbackProvenance(null).screened, null)
+  assert.equal(PULLBACK_API, '/api/v2/pullback-macd/candidates')
+})
+
 console.log(`${passed} passed, 0 failed`)

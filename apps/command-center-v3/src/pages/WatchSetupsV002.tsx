@@ -7,15 +7,14 @@ import { useMemo, useState } from 'react'
 import './WatchSetupsV002.css'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import WatchSubnav from '../components/watch/WatchSubnav'
 import {
-  ALERTS_API, ALERTS_POST, DISCOVER_API, PAGE_LIMIT, SECTORS_API, alertRows, certifiedOf, disarmBody, discoveryGap, etText, findRows,
-  gradeAlerts, gradeDiscover, gradeSectors, gradeSetups, poolRows, sectorRows, setupsUrl, unwrap,
-  type AlertRow, type Certified, type FindRow, type Grade, type PoolRow, type SectorRow, type TabKey,
+  ALERTS_API, ALERTS_POST, DISCOVER_API, PAGE_LIMIT, PULLBACK_API, SECTORS_API, alertRows, certifiedOf, disarmBody, discoveryGap, etText,
+  findRows, gradeAlerts, gradeDiscover, gradePullback, gradeSectors, gradeSetups, poolRows, pullbackProvenance, pullbackRows, sectorRows,
+  setupsUrl, unwrap,
+  type AlertRow, type Certified, type FindRow, type Grade, type PoolRow, type PullbackProvenance, type PullbackRow, type SectorRow, type TabKey,
 } from '../lib/watchSetupsV002'
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'setups', label: 'Setups' }, { key: 'sectors', label: 'Sectors' }, { key: 'discover', label: 'Discover' }, { key: 'alerts', label: 'Alerts' },
-]
 const detail = (s: string) => `/watch/intelligence/${encodeURIComponent(s)}`
 
 export type SetupsViewProps = {
@@ -33,7 +32,8 @@ export type SetupsViewProps = {
   finds: FindRow[]
   alerts: AlertRow[]
   certified: Certified | null
-  onTab: (k: TabKey) => void
+  pullback: PullbackRow[]
+  pullbackInfo: PullbackProvenance | null
   onPage: (offset: number) => void
   onDisarm: (a: AlertRow) => void
   onRetry: () => void
@@ -47,12 +47,8 @@ export function WatchSetupsV002View(p: SetupsViewProps) {
   const state = p.grade?.state ?? (p.loading ? 'LOADING' : 'UNKNOWN')
   return (
     <section className="v010 ws2" data-testid="watch-setups-v002">
-      <nav className="ws2-tabs" role="tablist" aria-label="Watch setups">
-        {TABS.map(t => (
-          <button key={t.key} type="button" role="tab" className="ws2-tab" aria-selected={p.tab === t.key} data-testid={`setups-tab-${t.key}`}
-            onClick={() => p.onTab(t.key)}>{t.label}</button>
-        ))}
-      </nav>
+      {/* W-04: the shared sub-nav IS the tab bar on this page — one tab set, no duplicate row. */}
+      <WatchSubnav />
       <div className="ws2-asof" data-testid="setups-asof" data-state={state}>
         {p.loading ? <span className="v010-pill info">Loading…</span> : (
           <>
@@ -69,6 +65,22 @@ export function WatchSetupsV002View(p: SetupsViewProps) {
         </div>
       )}
       {p.tab === 'discover' && p.gap && !p.loading && <div className="ws2-note warn" data-testid="discover-feed-gap">{p.gap}</div>}
+      {p.tab === 'pullback' && p.pullbackInfo && !p.loading && (
+        <div className="ws2-note" data-testid="pullback-provenance">
+          {p.pullbackInfo.universe || 'Pullback/MACD screen'}
+          {p.pullbackInfo.screened !== null ? ` · ${p.pullbackInfo.screened} screened` : ''}
+          {p.pullbackInfo.triggers !== null
+            ? ` · ${p.pullbackInfo.triggers} trigger${p.pullbackInfo.triggers === 1 ? '' : 's'}${p.pullbackInfo.triggersLive !== null ? ` (${p.pullbackInfo.triggersLive} with a live proposal)` : ''}`
+            : ' · scan counts not reported'}
+          {p.pullbackInfo.triggersStale !== null && p.pullbackInfo.triggersStale > 0 ? `, ${p.pullbackInfo.triggersStale} pointing at a dead proposal` : ''}
+          {p.pullbackInfo.watch !== null ? ` · ${p.pullbackInfo.watch} watch` : ''}{p.pullbackInfo.held !== null ? ` · ${p.pullbackInfo.held} held` : ''}
+          {p.pullbackInfo.dismissed !== null && p.pullbackInfo.dismissed > 0 ? ` · ${p.pullbackInfo.dismissed} in dismissal cooldown` : ''}
+          {` · last scan ${etText(p.pullbackInfo.lastRun) ?? 'unknown'}`}
+          {p.pullbackInfo.hit && p.pullbackInfo.hit.target1First !== null && p.pullbackInfo.hit.triggers !== null
+            ? ` · ${p.pullbackInfo.hit.windowDays !== null ? `${p.pullbackInfo.hit.windowDays}-day` : 'record since ' + (etText(p.pullbackInfo.lastRun) ?? 'an unknown time')} record: ${p.pullbackInfo.hit.target1First}/${p.pullbackInfo.hit.triggers} reached target 1 first${p.pullbackInfo.hit.medianDays !== null ? `, median ${p.pullbackInfo.hit.medianDays} d` : ''}`
+            : ' · no trigger record yet'}
+        </div>
+      )}
       {p.error && !p.loading && (
         <div className="ws2-note bad" data-testid="setups-error" role="alert">List could not be read: {p.error} <button type="button" className="v010-btn" onClick={p.onRetry}>Retry</button></div>
       )}
@@ -88,6 +100,32 @@ export function WatchSetupsV002View(p: SetupsViewProps) {
           <ul className="ws2-rows" data-testid="sectors-rows">
             {p.sectors.map(r => (
               <li key={r.sector} className="ws2-row" data-testid={`sector-${r.sector}`}><strong>{r.sector}</strong><span>{r.count} names</span><span className="ws2-dim">{r.sample.slice(0, 5).join(', ')}</span></li>
+            ))}
+          </ul>)
+      ) : p.tab === 'pullback' ? (
+        p.pullback.length === 0 ? (
+          p.grade?.state === 'UNKNOWN'
+            ? <div className="ws2-note bad" data-testid="pullback-no-scan">No scan on record. The last completed Pullback/MACD scan is unknown, so an empty list here is not evidence of no candidates.</div>
+            : empty('No pullback candidates from the last scan.')
+        ) : (
+          <ul className="ws2-rows" data-testid="pullback-rows">
+            {p.pullback.map(r => (
+              <li key={r.symbol} className="ws2-row" data-testid={`pullback-${r.symbol}`} data-tier={r.tier} data-held-conflict={r.heldConflict ? '1' : '0'}>
+                <Link className="v010-link ws2-sym" to={detail(r.symbol)}>{r.symbol}</Link>
+                <span className={`v010-pill ${r.tier === 'trigger' ? 'ok' : ''}`}>{r.tier}</span>
+                {r.price !== null && <span>{r.price}</span>}
+                {r.pullbackPct !== null && <span className="ws2-dim">pullback {r.pullbackPct}%</span>}
+                {r.macdProxPct !== null && <span className="ws2-dim">MACD {r.macdProxPct}% away</span>}
+                {r.entry !== null && <span className="ws2-dim">entry {r.entry} · stop {r.stop ?? '—'} · target {r.target1 ?? '—'}</span>}
+                {r.rr !== null && <span className="ws2-dim">R:R {r.rr}</span>}
+                {r.score !== null && <span className="ws2-dim">score {Math.round(r.score)}</span>}
+                {r.proposalLive === true ? <span className="v010-pill info">in queue</span>
+                  : r.proposalLive === false ? <span className="v010-pill warn">stale proposal{r.proposalStatus ? ` (${r.proposalStatus})` : ''}</span> : null}
+                {r.held && <span className={`v010-pill ${r.heldConflict ? 'bad' : 'info'}`}>{r.heldConflict ? 'HELD · near stop' : `held: ${r.held}`}</span>}
+                {r.redisplay && <span className="ws2-dim">{r.redisplay}</span>}
+                {r.whyNot && <span className="ws2-dim">why not a trigger: {r.whyNot}</span>}
+                {etText(r.firstSeenAt) && <span className="ws2-dim">first seen {etText(r.firstSeenAt)}</span>}
+              </li>
             ))}
           </ul>)
       ) : p.tab === 'discover' ? (
@@ -121,17 +159,19 @@ export function WatchSetupsV002View(p: SetupsViewProps) {
   )
 }
 
-const URLS = (tab: TabKey, offset: number) => tab === 'setups' ? setupsUrl(offset) : tab === 'sectors' ? SECTORS_API : tab === 'discover' ? DISCOVER_API : ALERTS_API
+const URLS = (tab: TabKey, offset: number) => tab === 'setups' ? setupsUrl(offset) : tab === 'sectors' ? SECTORS_API
+  : tab === 'discover' ? DISCOVER_API : tab === 'pullback' ? PULLBACK_API : ALERTS_API
 
 /** One mounted tab. The parent keys this by tab, so a tab switch remounts it: useApi keeps its last body across a path
  *  change, and a body from another tab must never be graded or parsed by this tab (review 2993cr R4). */
-export function WatchSetupsTab({ tab, onTab }: { tab: TabKey; onTab: (k: TabKey) => void }) {
+export function WatchSetupsTab({ tab }: { tab: TabKey }) {
   const [offset, setOffset] = useState(0)
   const [message, setMessage] = useState('')
   const { data, loading, error, refetch } = useApi<any>(URLS(tab, offset), tab === 'alerts' ? 60_000 : 120_000)
   const body = useMemo(() => unwrap(data), [data])
   const nowMs = Date.now()
-  const grade = body ? (tab === 'setups' ? gradeSetups(body, nowMs) : tab === 'sectors' ? gradeSectors(body, nowMs) : tab === 'discover' ? gradeDiscover(body, nowMs) : gradeAlerts(body, nowMs)) : null
+  const grade = body ? (tab === 'setups' ? gradeSetups(body, nowMs) : tab === 'sectors' ? gradeSectors(body, nowMs)
+    : tab === 'discover' ? gradeDiscover(body, nowMs) : tab === 'pullback' ? gradePullback(body, nowMs) : gradeAlerts(body, nowMs)) : null
   const pg = body?.pagination
   const disarm = async (a: AlertRow) => {
     try {
@@ -149,15 +189,16 @@ export function WatchSetupsTab({ tab, onTab }: { tab: TabKey; onTab: (k: TabKey)
       gap={tab === 'discover' && body ? discoveryGap(body) : null}
       pool={tab === 'setups' ? poolRows(body) : []} sectors={tab === 'sectors' ? sectorRows(body) : []}
       finds={tab === 'discover' ? findRows(body) : []} alerts={tab === 'alerts' ? alertRows(body) : []}
+      pullback={tab === 'pullback' ? pullbackRows(body) : []} pullbackInfo={tab === 'pullback' && body ? pullbackProvenance(body) : null}
       certified={tab === 'alerts' && body ? certifiedOf(body, nowMs) : null}
-      onTab={onTab} onPage={setOffset} onDisarm={a => void disarm(a)} onRetry={() => refetch()}
+      onPage={setOffset} onDisarm={a => void disarm(a)} onRetry={() => refetch()}
     />
   )
 }
 
 export default function WatchSetupsV002() {
-  const [sp, setSp] = useSearchParams()
+  const [sp] = useSearchParams()
   const q = sp.get('tab')
-  const tab: TabKey = q === 'sectors' || q === 'discover' || q === 'alerts' ? q : 'setups'
-  return <WatchSetupsTab key={tab} tab={tab} onTab={k => setSp({ tab: k })} />
+  const tab: TabKey = q === 'sectors' || q === 'discover' || q === 'alerts' || q === 'pullback' ? q : 'setups'
+  return <WatchSetupsTab key={tab} tab={tab} />
 }

@@ -1,8 +1,4 @@
 /* Watch v002 Overview (LQ-20261107-2993a). Tokens only; shares the v010 page/pill/button primitives. */
-.wv2-tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--border-color); }
-.wv2-tab { min-height: 44px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-1); color: var(--text-1); font-weight: 700; font-size: 14px; text-decoration: none; }
-.wv2-tab[aria-current="page"] { background: var(--bg-2); color: var(--text-0); border-color: var(--info-border); }
-.wv2-tab.later { color: var(--text-2); border-style: dashed; }
 .wv2-gate { display: grid; grid-template-columns: minmax(84px, auto) auto 1fr; gap: 4px 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border-color); }
 .wv2-gate:last-child { border-bottom: none; }
 .wv2-gate-n { font-weight: 700; }
@@ -10,3 +6,13 @@
 .wv2-gate-r { grid-column: 1 / -1; font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
 .wv2-cause { font-size: 14px; color: var(--text-1); overflow-wrap: anywhere; padding: 4px 0 8px; }
 .wv2-why-scope { font-size: 13px; color: var(--text-2); }
+/* Action/Triggers and Since Last Visit rows: pill · symbol · what · detail. */
+.wv2-list { list-style: none; margin: 0; padding: 0; }
+.wv2-row { display: grid; grid-template-columns: auto minmax(64px, auto) 1fr; gap: 4px 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border-color); }
+.wv2-row:last-child { border-bottom: none; }
+.wv2-row-t { font-weight: 700; }
+.wv2-row-d { grid-column: 1 / -1; font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
+/* Details: the full input table. */
+.wv2-detail { display: grid; grid-template-columns: minmax(84px, auto) auto 1fr; gap: 2px 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border-color); font-size: 13px; }
+.wv2-detail:last-child { border-bottom: none; }
+.wv2-detail-s { color: var(--text-2); font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }

@@ -150,4 +150,17 @@ assert.ok(/showWatch = [^\n]*'\/watch-classic'/.test(bridge) && !/pathname === '
 assert.ok(/to="\/watch-classic">See flagged names on Watch/.test(src('pages/ConflictRules.tsx')), 'flagged-names link goes to /watch-classic')
 // 15. A3: the /watch -> /watch-classic redirect replaces history, so Back does not bounce
 assert.ok(/<Navigate replace to=|<Navigate to=\{[^}]*\} replace|<Navigate[^>]*\breplace\b/.test(src('pages/WatchV002.tsx')), 'redirect uses replace')
-console.log('15 scenarios passed')
+// 16. W-04: the shared sub-nav renders on the Lists page too and marks the list the URL asks for, not a fixed tab
+{
+  const at = (path, p) => renderToStaticMarkup(React.createElement(MemoryRouter, { initialEntries: [path] }, React.createElement(WatchListsV002View, p)))
+  const h = at('/watch-lists?list=prospects', base({ tab: 'prospects' }))
+  const full = k => (h.match(new RegExp(`<(?:a|span)[^>]*data-testid="watch-subnav-${k}"[^>]*>`)) || [''])[0]
+  assert.match(full('prospects'), /^<span/); assert.match(full('prospects'), /aria-current="page"/)
+  assert.match(full('mine'), /^<a/); assert.match(full('mine'), /href="\/watch-lists\?list=mine"/)
+  assert.match(full('setups'), /^<a/); assert.match(full('setups'), /href="\/watch-setups"/)
+  assert.match(full('sectors'), /^<a/); assert.match(full('sectors'), /href="\/watch-setups\?tab=sectors"/)
+  assert.match(full('pullback'), /^<a/); assert.match(full('pullback'), /href="\/watch-setups\?tab=pullback"/)
+  const nav = (h.match(/<nav[^>]*data-testid="watch-subnav"[^>]*>[\s\S]*?<\/nav>/) || [''])[0]
+  assert.ok(nav && !nav.includes('/watch-classic'), 'no tab points at the classic hub')
+}
+console.log('16 scenarios passed')

@@ -53,7 +53,11 @@ const IDS = ['my_list', 'prospects', 'alerts', 'regime']
 const body = (inputs = IDS.map(i => inp(i)), o = {}) => ({ schema: 'WatchStatus@v1', verdict: 'OK', computed_at: iso(10), session: 'RTH', required_inputs: IDS, inputs, ...o })
 const ok = d => ({ state: 'OK', data: d, error: null, at: iso(10), source: '/api/v2/watch/status' })
 const noop = () => {}
-const html = m => renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(WatchV002View, { m, checkedLabel: 'checked', onOpenWhy: noop, onOpenDiag: noop, onRecheck: noop })))
+const LV = { recorded: false, status: 'NOT_RECORDED', startMs: NOW - 24 * 3600_000, label: 'last 24 h — your last visit is not recorded', seenAt: null }
+const ov = (o = {}) => ({ actions: [], since: [], lastVisit: LV, unread: [], loading: false, statusState: 'OK', statusAt: iso(10), readFrom: 'computed_on_request', session: 'rth', ...o })
+const html = (m, o = {}) => renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(WatchV002View, { m, checkedLabel: 'checked', ov: ov(o), onOpenWhy: noop, onOpenDiag: noop, onRecheck: noop })))
+/** The Action/Triggers card's meta span (the one next to its heading). */
+const metaOf = h => (h.match(/data-testid="ov-actions"[\s\S]*?<span class="v010-meta">([^<]*)<\/span>/) || [null, ''])[1]
 const chip = h => (h.match(/data-testid="watch-data-chip"[^>]*>/) || [''])[0]
 
 // 1. all fresh = OK, four gates, classic link present
@@ -91,6 +95,113 @@ for (const [read, st] of [[undefined, 'LOADING'], [{ state: 'TIMED OUT', data: n
   const s = renderToStaticMarkup(React.createElement(WatchWhySheet, { open: true, onClose: noop, state: m.chip.state, cause: m.cause, blockers: m.blockers }))
   assert.match(s, /Watch data: STALE/); assert.match(s, /alerts/); assert.match(s, /limit 30 m/); assert.match(s, /owner own_alerts/)
   assert.equal(renderToStaticMarkup(React.createElement(WatchWhySheet, { open: false, onClose: noop, state: 'OK', cause: '', blockers: [] })), '')
+}
+// LQ-2993 / completion-matrix W-04 (lead 00:47 ET): the sub-nav makes Watch one surface. On /watch the current tab is a
+// span with aria-current (never a link to itself); every tab links to its OWN v002 view; NO tab points at the classic hub.
+{
+  const at = path => renderToStaticMarkup(React.createElement(MemoryRouter, { initialEntries: [path] },
+    React.createElement(WatchV002View, { m: buildWatchStatus(ok(body()), NOW), checkedLabel: 'checked', ov: ov(), onOpenWhy: noop, onOpenDiag: noop, onRecheck: noop })))
+  const h = at('/watch')
+  assert.ok(h.includes('data-testid="watch-subnav"'), 'the sub-nav renders on Overview')
+  const full = k => (h.match(new RegExp(`<(?:a|span)[^>]*data-testid="watch-subnav-${k}"[^>]*>`)) || [''])[0]
+  const hrefOf = k => (full(k).match(/href="([^"]+)"/) || [])[1]
+  assert.match(full('overview'), /^<span/, 'Overview is the current page, not a link to itself')
+  assert.match(full('overview'), /aria-current="page"/)
+  const owns = { mine: '/watch-lists?list=mine', suggests: '/watch-lists?list=suggests', prospects: '/watch-lists?list=prospects', setups: '/watch-setups', sectors: '/watch-setups?tab=sectors', discover: '/watch-setups?tab=discover', alerts: '/watch-setups?tab=alerts', pullback: '/watch-setups?tab=pullback' }
+  for (const [k, to] of Object.entries(owns)) {
+    assert.match(full(k), /^<a/, `${k} is a link`)
+    assert.equal(hrefOf(k), to, `${k} goes to its own v002 view`)
+  }
+  const nav = (h.match(/<nav[^>]*data-testid="watch-subnav"[^>]*>[\s\S]*?<\/nav>/) || [''])[0]
+  assert.ok(nav && !nav.includes('/watch-classic'), 'no sub-nav tab points at the classic hub')
+  assert.ok(!h.includes('data-classic') && !h.includes('· classic'), 'no classic-only item or suffix is left')
+  assert.equal((nav.match(/<a /g) || []).length, 8, 'eight links plus the current span = nine tabs')
+  // The current tab follows the route it renders on: on the Lists route Suggestions is current and Overview is a link.
+  const hs = at('/watch-lists?list=suggests')
+  const fs = k => (hs.match(new RegExp(`<(?:a|span)[^>]*data-testid="watch-subnav-${k}"[^>]*>`)) || [''])[0]
+  assert.match(fs('suggests'), /^<span/); assert.match(fs('suggests'), /aria-current="page"/)
+  assert.match(fs('overview'), /^<a/); assert.equal((fs('overview').match(/href="([^"]+)"/) || [])[1], '/watch')
+}
+
+// W-04 (lead 00:47 ET): the Overview is ordered Action/Triggers -> Validation Gates -> Since Last Visit -> Watch Status
+// -> Details, and each section draws only what it could read.
+{
+  const acts = [
+    { id: 'trigger-AAA', kind: 'trigger', symbol: 'AAA', href: '/watch/intelligence/AAA', text: 'Pullback/MACD trigger · score 82', detail: 'entry 10 · stop 9 · target 12 · proposal in queue', tone: 'ok' },
+    { id: 'alert-BBB', kind: 'alert', symbol: 'BBB', href: '/watch/intelligence/BBB', text: 'Alert: BBB rsi above 70', detail: 'fired Nov 12, 1:00 PM ET', tone: 'warn' },
+  ]
+  const since = [{ id: 'since-alert-BBB', kind: 'alert', symbol: 'BBB', text: 'BBB alert fired: rsi above 70', at: iso(600), atText: 'Nov 12, 1:00 PM ET' }]
+  const h = html(buildWatchStatus(ok(body()), NOW), { actions: acts, since })
+  const order = ['ov-actions', 'ov-gates', 'ov-since', 'ov-status', 'ov-details'].map(id => h.indexOf(`data-testid="${id}"`))
+  assert.ok(order.every((v, i) => v > 0 && (i === 0 || v > order[i - 1])), `section order ${order}`)
+  assert.match(h, /Action \/ Triggers/); assert.match(h, /Validation Gates/); assert.match(h, /Since Last Visit/)
+  assert.match(h, /Watch Status/); assert.match(h, /<h2[^>]*>Details<\/h2>/)
+  assert.match(h, /data-testid="action-trigger-AAA"/); assert.match(h, /data-testid="action-alert-BBB"/)
+  assert.match(h, /data-testid="since-alert-BBB"/); assert.match(h, /href="\/watch\/intelligence\/AAA"/)
+  for (const id of IDS) assert.ok(h.includes(`data-testid="detail-${id}"`), `details lists ${id}`)
+  assert.match((h.match(/data-testid="ov-status-row"[^>]*>/) || [''])[0], /data-state="OK"/)
+}
+// A source that could not be read is never "nothing needs action", and no empty-success line is drawn.
+{
+  const h = html(buildWatchStatus(ok(body()), NOW), { unread: ['alert list', 'pullback candidates'] })
+  assert.match(h, /data-testid="ov-actions-unread"/); assert.ok(!h.includes('ov-actions-none'))
+  assert.match(h, /Could not be read: alert list, pullback candidates/)
+  assert.match(h, /data-testid="ov-since-unread"/); assert.ok(!h.includes('ov-since-none'))
+  // W-04 review C2: the headline must not state a total while a source is unread.
+  assert.match(metaOf(h), /incomplete — a source could not be read/)
+  assert.doesNotMatch(metaOf(h), /\d+ to look at/, 'no count over an unread source')
+  assert.match(metaOf(html(buildWatchStatus(ok(body()), NOW))), /0 to look at/, 'complete reads still state the count')
+  assert.match(metaOf(html(buildWatchStatus(ok(body()), NOW), { loading: true })), /reading…/)
+}
+// The fallback window says it is a fallback; a recorded visit says since when and draws no fallback line.
+{
+  const h = html(buildWatchStatus(ok(body()), NOW))
+  assert.match(h, /data-testid="ov-since-window" data-recorded="0"/)
+  assert.match(h, /your last visit is not recorded/)
+  const h2 = html(buildWatchStatus(ok(body()), NOW), { lastVisit: { recorded: true, status: 'RECORDED', startMs: NOW - 3600_000, label: 'since Nov 12, 1:00 PM ET', seenAt: iso(3600) } })
+  assert.ok(!h2.includes('data-testid="ov-since-window"'), 'a recorded visit draws no fallback line')
+  assert.match(h2, /since Nov 12, 1:00 PM ET/)
+}
+// An empty, fully-read section says so plainly.
+{
+  const h = html(buildWatchStatus(ok(body()), NOW))
+  assert.match(h, /data-testid="ov-actions-none"/); assert.match(h, /data-testid="ov-since-none"/)
+}
+// A visit that could not be stamped is said out loud (the anchor does not advance), never swallowed.
+{
+  const h = html(buildWatchStatus(ok(body()), NOW), { visitError: 'HTTP 403' })
+  assert.match(h, /data-testid="ov-visit-unrecorded"/)
+  assert.match(h, /could not be recorded \(HTTP 403\)/)
+  assert.ok(!html(buildWatchStatus(ok(body()), NOW)).includes('ov-visit-unrecorded'), 'a stamped visit draws no such line')
+}
+// W-04 review C1: the stamp is classified from the response BODY. HTTP 200 with no server `seen_at` is NOT a stamp
+// (today's unregistered-key branch), so the line is drawn; a stamped body draws nothing. recordVisit is exercised with a
+// stubbed fetch/window, so this is the same code path the page runs.
+{
+  const calls = []
+  const realWin = globalThis.window, realFetch = globalThis.fetch
+  globalThis.window = { innerWidth: 390 }
+  const run = async (impl) => {
+    calls.length = 0
+    globalThis.fetch = impl
+    await page.recordVisit(m => calls.push(m))
+    return calls.slice()
+  }
+  try {
+    const res = (ok, status, payload) => async () => ({ ok, status, json: async () => payload })
+    assert.deepEqual(await run(res(true, 200, { ok: true, key: 'watch.last_seen' })),
+      ['the server did not stamp a visit'], '200 {ok,key} draws the line')
+    assert.deepEqual(await run(res(true, 200, { ok: true, key: 'watch.last_seen', value: { device: 'phone' } })),
+      ['the server did not stamp a visit'], '200 with a value but no seen_at draws the line')
+    assert.deepEqual(await run(res(true, 200, { ok: true, key: 'watch.last_seen', value: { device: 'phone', seen_at: iso(0) } })),
+      [], 'a stamped body draws no line')
+    assert.deepEqual(await run(res(false, 403, {})), ['HTTP 403'], 'a refused POST still names the status')
+    assert.deepEqual(await run(async () => ({ ok: true, status: 200, json: async () => { throw new Error('bad json') } })),
+      ['the server did not confirm the visit'], 'an unreadable body is not a stamp')
+  } finally {
+    globalThis.window = realWin
+    globalThis.fetch = realFetch
+  }
 }
 console.log('WatchV002.view: ok')
 

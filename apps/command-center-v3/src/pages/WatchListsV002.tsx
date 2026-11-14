@@ -7,16 +7,13 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import WatchSubnav from '../components/watch/WatchSubnav'
 import './WatchListsV002.css'
 import { mineAction } from '../components/watch/MineControls'
 import {
   curationUrl, dismissedSet, gradeCuration, gradeProspects, pagingOf, pagingText, prospectsUrl, rowView,
   type DismissedItem, type ListGrade, type ListKey, type ListPaging, type ListRowView,
 } from '../lib/watchListsV002'
-
-const TABS: { key: ListKey; label: string }[] = [
-  { key: 'mine', label: 'My List' }, { key: 'suggests', label: 'Suggestions' }, { key: 'prospects', label: 'Prospects' },
-]
 
 export type ListsViewProps = {
   tab: ListKey
@@ -31,7 +28,6 @@ export type ListsViewProps = {
   message: string
   dismissedStatus: string
   dismissedItems: DismissedItem[]
-  onTab: (k: ListKey) => void
   onStar: (r: ListRowView) => void
   onDismiss: (r: ListRowView) => void
   onRestore: (r: ListRowView) => void
@@ -42,12 +38,8 @@ export type ListsViewProps = {
 export function WatchListsV002View(p: ListsViewProps) {
   return (
     <section className="v010 wl2" data-testid="watch-lists-v002">
-      <nav className="wl2-tabs" role="tablist" aria-label="Watch lists">
-        {TABS.map(t => (
-          <button key={t.key} type="button" role="tab" aria-selected={p.tab === t.key} data-testid={`watch-tab-${t.key}`}
-            className="wl2-tab" onClick={() => p.onTab(t.key)}>{t.label}</button>
-        ))}
-      </nav>
+      {/* W-04: the shared sub-nav IS the tab bar on this page — one tab set, no duplicate row. */}
+      <WatchSubnav />
       <div className="wl2-asof" data-testid="watch-list-asof" data-state={p.grade?.state ?? (p.loading ? 'LOADING' : 'UNKNOWN')}>
         <span className={`v010-pill ${p.grade?.state === 'OK' ? 'ok' : p.grade?.state === 'STALE' ? 'warn' : p.loading ? '' : 'bad'}`}>{p.loading ? 'LOADING' : p.grade?.state ?? 'UNKNOWN'}</span>
         <span>{p.loading ? 'Loading…' : p.grade ? `${p.grade.label.replace(/^[A-Z]+ · /, '')} · ${p.grade.basis.replace(/_/g, ' ')}` : 'list could not be read'}</span>
@@ -130,7 +122,7 @@ const listKey = (q: string | null): ListKey => (q === 'suggests' ? 'suggests' : 
 
 /** The parent keys this by tab, so a tab switch remounts it: useApi keeps its last body across a path change, and a body from
  *  another list must not be graded or parsed by this one (review 2993ab-v2r N4; same defect as 2993cr R4). */
-export function WatchListsTab({ tab, onTab }: { tab: ListKey; onTab: (k: ListKey) => void }) {
+export function WatchListsTab({ tab }: { tab: ListKey }) {
   const [offset, setOffset] = useState(0)
   const [message, setMessage] = useState('')
   const url = tab === 'prospects' ? prospectsUrl('forming', offset) : curationUrl(tab, offset)
@@ -148,7 +140,6 @@ export function WatchListsTab({ tab, onTab }: { tab: ListKey; onTab: (k: ListKey
     <WatchListsV002View
       tab={tab} grade={grade} rows={rows} paging={pagingOf(section)} offset={offset} loading={loading && !body}
       error={error ? String(error) : null} gap={gapOf(body, section)} message={message} dismissedStatus={body?.suggests ? dis.status : 'absent'} dismissedItems={dis.items}
-      onTab={onTab}
       onStar={r => void act(async () => { const res = await mineAction(r.symbol, r.starred ? 'remove' : 'add', undefined, 'watch.v002'); if (!res.ok) throw new Error(res.message); return res.message })}
       onDismiss={r => void act(async () => { await post('/api/v3/watch/commands/suggest-dismiss', { symbol: r.symbol }); return `${r.symbol} dismissed for 30 days.` })}
       onRestore={r => void act(async () => { await post('/api/v3/watch/commands/suggest-restore', { symbol: r.symbol }); return `${r.symbol} restored.` })}
@@ -158,7 +149,7 @@ export function WatchListsTab({ tab, onTab }: { tab: ListKey; onTab: (k: ListKey
 }
 
 export default function WatchListsV002() {
-  const [sp, setSp] = useSearchParams()
+  const [sp] = useSearchParams()
   const tab = listKey(sp.get('list'))
-  return <WatchListsTab key={tab} tab={tab} onTab={k => setSp({ list: k })} />
+  return <WatchListsTab key={tab} tab={tab} />
 }

@@ -9,14 +9,18 @@ export const SECTORS_API = '/api/v2/watch/sectors'
 export const DISCOVER_API = '/api/v2/screener-finds/candidates'
 export const ALERTS_API = '/api/v2/watch/alerts/list'
 export const ALERTS_POST = '/api/v2/watch/alerts'
+export const PULLBACK_API = '/api/v2/pullback-macd/candidates'
 export const PAGE_LIMIT = 25
 export const SETUPS_MAX_AGE_S = 72 * 3600
 export const SECTORS_MAX_AGE_S = 36 * 3600
 export const DISCOVER_MAX_AGE_S = 36 * 3600
 // Two evaluator periods (cron every 20 min, 09-16 ET): lead ruling until the lane moves to n8n every 5 min.
 export const ALERTS_MAX_AGE_S = 2400
+// The pullback/MACD screener is cron-scheduled (not per request); its candidates are stamped by the last completed
+// scan. A day without a scan is stale, not current.
+export const PULLBACK_MAX_AGE_S = 36 * 3600
 
-export type TabKey = 'setups' | 'sectors' | 'discover' | 'alerts'
+export type TabKey = 'setups' | 'sectors' | 'discover' | 'alerts' | 'pullback'
 export type State = 'OK' | 'STALE' | 'UNKNOWN'
 export type Grade = { state: State; ageS: number | null; label: string; basis: string; reason: string | null }
 
@@ -163,6 +167,63 @@ export type PoolRow = { symbol: string; strategy: string; status: string; origin
 export function poolRows(body: unknown): PoolRow[] {
   const list = unwrap(body)?.rows
   return Array.isArray(list) ? list.flatMap((r: any) => (r?.symbol ? [{ symbol: String(r.symbol), strategy: String(r.strategy_id || '—'), status: String(r.current_status || '?'), origin: String(r.origin_system || 'screener'), enteredAt: typeof r.entered_at === 'string' ? r.entered_at : null }] : [])) : []
+}
+
+/** Pullback/MACD (W-04 in-page nested view). Stamped by the last completed SCAN, not by request time: the screener is
+ *  cron-scheduled, so an empty list means either "no candidates" or "no scan" and the two must never look alike. The
+ *  candidates endpoint itself refreshes the idempotent trigger-history recorder on read; this model only reads. */
+export type PullbackRow = {
+  symbol: string; tier: string; price: number | null; pullbackPct: number | null; macdProxPct: number | null
+  barsToCross: number | null; entry: number | null; stop: number | null; target1: number | null; rr: number | null
+  score: number | null; whyNot: string | null; held: string | null; heldConflict: boolean
+  proposalLive: boolean | null; proposalStatus: string | null; firstSeenAt: string | null; redisplay: string | null
+}
+const num = (v: unknown): number | null => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v))
+const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
+
+export function pullbackRows(body: unknown): PullbackRow[] {
+  const list = unwrap(body)?.candidates
+  if (!Array.isArray(list)) return []
+  return list.flatMap((r: any) => {
+    const symbol = str(r?.symbol)
+    if (!symbol) return []
+    const held = r?.held && typeof r.held === 'object' ? str(r.held.reason || r.held.note || r.held.status) || 'held' : str(r?.held)
+    return [{
+      symbol, tier: str(r?.tier) || 'watch', price: num(r?.price), pullbackPct: num(r?.pullback_pct), macdProxPct: num(r?.macd_prox_pct),
+      barsToCross: num(r?.bars_to_cross_est), entry: num(r?.entry), stop: num(r?.stop), target1: num(r?.target1), rr: num(r?.rr),
+      score: num(r?.score), whyNot: str(r?.why_not), held, heldConflict: r?.held_conflict === true,
+      proposalLive: typeof r?.proposal_live === 'boolean' ? r.proposal_live : null, proposalStatus: str(r?.proposal_status),
+      firstSeenAt: str(r?.first_seen_at), redisplay: str(r?.redisplay_reason),
+    }]
+  })
+}
+
+/** Graded on the last completed scan run. No run on record is UNKNOWN with 0 candidates still 0 — the page says "no scan",
+ *  never "no candidates". */
+export function gradePullback(body: unknown, nowMs: number): Grade {
+  const b = unwrap(body)
+  return gradeStamp(b?.generated_at, 'pullback_scan_run', nowMs, PULLBACK_MAX_AGE_S)
+}
+
+export type PullbackProvenance = {
+  universe: string; screened: number | null; schedule: string | null; lastRun: string | null
+  /** Every count is null when the body did not state it: a missing count must never read as 0 on this page. */
+  triggers: number | null; triggersLive: number | null; triggersStale: number | null
+  watch: number | null; held: number | null; dismissed: number | null
+  hit: { windowDays: number | null; triggers: number | null; target1First: number | null; evaluated: number | null; medianDays: number | null } | null
+}
+/** What the scan covered and when — stated on the page instead of implied (D3 provenance). Missing pieces stay null. */
+export function pullbackProvenance(body: unknown): PullbackProvenance {
+  const b = unwrap(body)
+  const p = asRec(b?.scan_provenance)
+  const h = asRec(b?.hit_stats)
+  return {
+    universe: str(p?.universe) || '', screened: num(p?.screened), schedule: str(p?.schedule), lastRun: str(b?.generated_at),
+    triggers: num(b?.trigger_count), triggersLive: num(b?.trigger_live_count), triggersStale: num(b?.trigger_stale_count),
+    watch: num(b?.watch_count), held: num(b?.held_count), dismissed: num(b?.dismissed_in_cooldown),
+    hit: h ? { windowDays: num(h.window_days), triggers: num(h.triggers), target1First: num(h.target1_first),
+      evaluated: num(h.evaluated), medianDays: num(h.median_days) } : null,
+  }
 }
 
 export type FindRow = { symbol: string; note: string }

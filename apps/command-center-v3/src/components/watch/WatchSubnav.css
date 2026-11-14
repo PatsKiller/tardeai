@@ -1,0 +1,7 @@
+/* Watch v002 shared sub-nav (W-04). Tokens only. The tab properties are declared here with the .wv2-subnav prefix so the
+   bar looks the same on all three pages whatever else is imported; 44 px minimum target, per the UI standards check. */
+.wv2-subnav { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--border-color); margin-bottom: 8px; }
+.wv2-subnav .wv2-tab { min-height: 44px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: var(--radius-md);
+  border: 1px solid var(--border-color); background: var(--bg-1); color: var(--text-1); font-weight: 700; font-size: 14px;
+  text-decoration: none; }
+.wv2-subnav .wv2-tab[aria-current="page"] { background: var(--bg-2); color: var(--text-0); border-color: var(--info-border); }
