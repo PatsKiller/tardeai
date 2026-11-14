@@ -1303,7 +1303,9 @@ What an agent still owns is proving the effect of its change after promotion.
   diagnostics. Never an arbitrary file editor or shell executor; never a raw secret/cookie/token in a response, log, doc or
   fixture; unknown expiry is UNKNOWN, never a date or green; no provider probe as a test; no broker/order-lock change. n8n
   owns reminders, health evaluation and alert dedupe; existing cron/timers stay until parity is proven. Contract
-  `docs/wealth/contracts/admin@1.md`.
+  `docs/wealth/contracts/admin@1.md`. **Lean scope (operator 18:29 ET):** one modal, two sections (Connections ·
+  Essential settings) plus an optional recent-change/undo disclosure; diagnostics, logs, n8n internals, service/agent
+  controls and expert tuning stay in Ops/background. Simplifies the frontend only; backend safeguards unchanged.
 
 ## Incident and rollback
 

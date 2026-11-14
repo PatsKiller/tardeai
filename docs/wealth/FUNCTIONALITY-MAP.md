@@ -160,5 +160,5 @@ anchor · owner/reviewer · status · existing route · endpoint/reader/producer
 
 ## ADMIN (required parity, operator 2026-11-14) — slice `admin@1`
 Owner cc-deepseek-9 · reviewer cc-deepseek-2 · visual cc-opus-3 → cc-deepseek-3. Entry: Wealth header settings → Admin modal.
-Tabs (names adapt to real capabilities): Connections & expiry · Application configuration · Change history & diagnostics.
+LEAN (operator 18:29 ET): one modal, two sections — Connections · Essential settings — plus optional recent-change/undo disclosure. Diagnostics, logs, n8n internals, service/agent controls, expert tuning stay in Ops/background. Placement of each existing function: contracts/admin@1.md.
 Rows and current classification: `contracts/admin@1.md` (all EXISTS_UNVERIFIED/PARTIAL/UNRESOLVED; none VERIFIED_WORKING).

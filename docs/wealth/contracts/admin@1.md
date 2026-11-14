@@ -1,6 +1,30 @@
-# admin@1 — Admin modal: connections & expiry · application configuration · change history & diagnostics
+# admin@1 — LEAN Admin modal: Connections · Essential settings
 Status: SCOPED (lead audit pass 1, 2026-11-14 ~18:40 ET). Not PROPOSED until the owner's audit (below) lands. REQUIRED PARITY (operator), not a later enhancement.
+SCOPE LIMIT (operator 18:29 ET) supersedes the diagnostics tab — see §Lean scope.
 Owner cc-deepseek-9 · reviewer cc-deepseek-2 · visual reference cc-opus-3 → reviewer cc-deepseek-3.
+
+## Lean scope (binding, operator 2026-11-14 18:29 ET)
+One compact modal, at most two sections. No extra tabs.
+1. **Connections** — only connections John must maintain: Schwab (renewal/reauth), Finviz cookie, and any other cookie/provider the audit proves is actually used and operator-maintained. Per row: state OK | EXPIRING | ACTION_REQUIRED | UNKNOWN (computed, never declared); last verified time; expiry/renewal date only when supported by evidence (else UNKNOWN + last verified); one safe action (Schwab: sanctioned operator reauth/2FA handoff; cookie: authorized secure replacement path). Keeps the Schwab 7-day lifecycle and meaningful expiry/recovery alerts.
+2. **Essential settings** — allowlisted non-Bitwarden settings John actually operates today (start from existing user-operated controls, not every env var). Plain labels, validation, effective vs pending, Save/Cancel.
+Optional: a small "recent change / undo" disclosure.
+Behind the scenes, unchanged rigor: redacted full audit, versioned atomic writes, concurrency token, server validation, current auth + step-up, rollback.
+**Not in the modal** (stay in existing Ops/background): verbose logs, raw config browsing, n8n/workflow internals, service/agent controls, expert tuning, detailed diagnostics. Never: text-file editor, terminal, credential dump, duplicate Bitwarden manager.
+
+## Placement of every existing function (lead first pass; owner -9 confirms with evidence)
+| existing function | placement |
+|---|---|
+| Schwab token health + reauth handoff | MODAL · Connections |
+| Finviz cookie status + replacement path | MODAL · Connections |
+| YouTube cookie status | MODAL · Connections only if proven operator-maintained and in use; else background |
+| Other provider keys (FRED, Brave, Alpha Vantage, etc. in credential_monitor) | background alerting; MODAL row only if expiry/rotation is operator action |
+| Secrets listing/write (SecretsManager) | NOT modal (Bitwarden is the manager); presence shown only as a Connections row state |
+| Ops controls switches (ops_controls.json) | MODAL · Essential settings only for the switches John flips today (audit names them); rest Ops |
+| Accounts/brokers/broker-account api/policy | Ops (broker-lock adjacent) |
+| Risk config, strategy enablement, ATM state | Ops (expert tuning) unless audit shows John operates one routinely |
+| Audit log | background + modal's recent-change/undo disclosure (own changes only) |
+| Alert ack/resolve | Ops |
+| Cron retry, maintenance backfills | Ops/background (cron retry conflicts with n8n-only) |
 
 ## Existing surfaces found on served R13 (3ac0b4058) — classification is the lead's first pass, UNVERIFIED until the owner's evidence
 | capability | existing endpoint / controller | UI today (/v3) | class |
