@@ -16,6 +16,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .account_display import canonical_key, account_label, location_facts
+from .broker_stop_read import planned_facet, stops_read
 from .stop_session_evidence import stop_observation_freshness
 
 
@@ -647,6 +648,7 @@ def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=N
              else "filled" if raw_state == "filled" else "unknown" if row else "none")
     sp = _number(row.get("stop_price"))
     source = "broker_resting" if row else "none"
+    planned_source = None
     at = row.get("captured_at")
     if not row and planned:
         for key in (f"{symbol}:{account}", symbol):
@@ -657,6 +659,7 @@ def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=N
                     sp = _number(p.get("stop_price", p.get("stop")))
                     if sp is not None:
                         source, at = "planned", p.get("set_date") or p.get("as_of")
+                        planned_source = p.get("source")
                         break
             if source == "planned":
                 break
@@ -706,7 +709,11 @@ def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=N
             # The broker order KIND survives a page view: a trailing order has no fixed trigger price, so without it
             # an active observation with an unknown price could not be told apart from a stop whose price was lost.
             "stop_order_type": (str(row.get("order_type") or "").strip().upper() or None),
-            "stop_note": note, "stop_history": history, **meta}
+            "stop_note": note, "stop_history": history,
+            # PR-017: a planned level is its own fact, dated when it was set — never an observation,
+            # and never the reason a row reads as protected.
+            "planned": planned_facet(sp, source=planned_source, as_of=at) if source == "planned" else None,
+            **meta}
 
 
 _SOURCE_LABELS = {"cio_opportunity_projection": "CIO opportunity review", "cio_decisions": "CIO decision",
@@ -1832,6 +1839,10 @@ def holdings_payload(payload, *, root=None, now=None, db_query=None, inputs=None
                source_coverage=measures.get("source_coverage"),
                measures_materialized_at=measures.get("materialized_at"),
                measures_input_gap=measures.get("input_gap"),
+               # PR-003: a NO STOP row is a NEGATIVE observation, and it is evidence only beside the
+               # read that produced it. The receipt travels with the rows so a page can say
+               # "no resting stop (broker read 14:58 ET)" — or "no stop read is recorded".
+               stops_read=stops_read(doc["stops"]),
                truth={k: p[k] for k in ("source", "as_of", "stale", "gap")})
     return out
 
