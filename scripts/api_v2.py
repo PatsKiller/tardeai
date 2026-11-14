@@ -5836,15 +5836,23 @@ _OVERVIEW_CODE_IDENTITY: list[str] = []
 
 
 def _overview_served():
-    """GET /api/v2/overview (LQ-20261107-1612): the projection lane overview-projection built, when it is at
-    most 150 s old, from this release, and began after the last operator write that can change it; otherwise
-    _overview_with_today_move() inline, with ``_projection.reason`` naming why. Never blank."""
-    if _overview_projection is None:
+    """GET /api/v2/overview (LQ-20261107-1612; S2 item 2 2026-11-14): the projection lane overview-projection built,
+    or the NAMED UNKNOWN. This route NEVER computes (operator 2026-11-14: a GET never triggers heavy compute).
+
+    * inside MAX_AGE_S, same release, no later operator write -> current, ``_projection.stale: false``;
+    * aged, invalidated by a write, or built by another release -> LAST-KNOWN-GOOD with its age and
+      ``_projection.reason`` (measured live 2026-11-14 16:22Z: the old fallback computed inline at 1.43 s on every
+      GET, because the file on disk was from the previous release — ``code_mismatch``);
+    * absent / unreadable / expired -> ``status: UNKNOWN``, every number null, ``gap.owner`` + ``gap.next_action``.
+
+    The only way this route computes now is the module failing to import at all (``_overview_projection is None``),
+    which no release in this lineage can hit: the module ships with the route."""
+    if _overview_projection is None:  # pragma: no cover -- import of the module beside the route cannot fail alone
         return _overview_with_today_move()
     if not _OVERVIEW_CODE_IDENTITY:
         _OVERVIEW_CODE_IDENTITY.append(_overview_projection.code_identity(PROJECT_ROOT))
     return _overview_projection.serve(
-        _overview_with_today_move,
+        None,  # explicit: there is no compute fallback (scripts/lib/overview_projection.serve never calls it)
         identity=_OVERVIEW_CODE_IDENTITY[0],
         invalidated_at_fn=_overview_projection.invalidation_reader(_ovp_swr),
     )
@@ -31866,18 +31874,12 @@ def _needs_action(query=None):
     return out
 
 
-_HOME_DO_NOW_CACHE: dict = {}
-# One background Do-now rebuild at a time (S2 2026-11-14): expired reads are served as last-known-good and only the
-# holder of this lock rebuilds, so a Home poll burst cannot start a thread per reader.
-_HOME_DO_NOW_REFRESHING = threading.Lock()
-# Last refresh attempt and its outcome (review 6888bda645 F2, 2026-11-14): a stale read must be able to say WHY it is
-# stale. Without this, a two-hour-old body was published with status OK and nothing named the failed rebuild, so "quiet
-# market, nothing to do" and "Home has been serving a stale queue" looked identical on the wire (silent failure).
-# Written only by the refresher that holds _HOME_DO_NOW_REFRESHING; `_failed_mono` is the retry clock and is never served.
-_HOME_DO_NOW_REFRESH: dict = {"attempted_at": None, "failed_at": None, "error": None, "_failed_mono": None}
-# A failed rebuild is retried on a later expired read, but not sooner than this, so a broken build is attempted at most
-# once per cooldown instead of at every Home poll.
-_HOME_DO_NOW_RETRY_COOLDOWN_S = 30.0
+# S2 item 2 (operator 2026-11-14): the do-now body is built OUT OF PROCESS by the lane home-do-now-snapshot and read
+# from disk here. This holds only the projected body per principal scope for a couple of seconds, so a Home poll burst
+# costs one stat (and a parse only when the file changed), never a rebuild. There is no in-process build path left:
+# the R6 containment SWR (a background refresh thread) is superseded, not layered under.
+_HOME_DO_NOW_SERVE_CACHE: dict = {}
+_HOME_DO_NOW_SERVE_CACHE_S = 2.0
 
 
 def _market_risk_latest_projection():
@@ -32177,30 +32179,64 @@ def _home_do_now(query=None):
     and open redeploys, each source with its own as_of / age / stale. Read-only; never a broker read (the risk
     snapshot is read without the /api/v2/risk broker-stop overlay).
 
-    S2 (2026-11-14): the build is a ~5 s fan-out over eight probes and it is NOT the request's work. A body younger
-    than 60 s is served directly; a body older than 60 s is served as last-known-good (every source in it carries its
-    own as_of/age, so the older clock is visible) while exactly ONE background thread rebuilds the cache. Only the
-    first-ever call — no body at all, e.g. the first Home open after a restart — builds on the request thread: the
-    first reader after a restart pays one build, and a reader that arrives once that build is cached is served from
-    cache (concurrent first readers each build once, because there is nothing else to serve them). Refreshes are
-    deduplicated, daemon-threaded and cannot accumulate; a stale read carries a `served` block naming its age and the
-    last refresh attempt, and a failed rebuild names itself there (never silent) while the last-good body is kept."""
-    hit = _HOME_DO_NOW_CACHE.get("v")
-    if hit and time.monotonic() - hit[0] < 60:
-        return hit[1]
-    if hit:  # stale: answer now, rebuild behind the reader's back
-        _home_do_now_refresh_in_background()
-        return {**hit[1], "served": {  # a copy per read: the cached body itself is never mutated
-            "stale": True,
-            "age_s": round(time.monotonic() - hit[0], 1),
-            "refresh": {k: v for k, v in _HOME_DO_NOW_REFRESH.items() if not k.startswith("_")},
-        }}
-    return _home_do_now_build()
+    S2 item 2 (operator 2026-11-14): the build is a ~5 s fan-out over eight probes and it is NOT the request's work,
+    at all. The body is built out of process by the lane home-do-now-snapshot (scripts/build_home_do_now_snapshot.py)
+    and written as HomeDoNowSnapshot@v1 (scripts/lib/home_do_now_snapshot.py); this route READS that file and has no
+    build path to fall back to — not on cold start, not on a cache miss, not when the producer is down.
+
+    Wire contract (scripts/lib/home_do_now_snapshot.py is its single source):
+      * fresh snapshot -> the body, `served.stale: false`, `served.as_of` / `served.age_s`;
+      * older than FRESH_S but inside LAST_GOOD_MAX_S -> LAST-KNOWN-GOOD with its age, `served.stale: true` (and
+        `served.reason: "code_mismatch"` when the body was built by another release, e.g. the minute after a deploy);
+      * missing / unreadable / expired / from the future -> a NAMED UNKNOWN: `status: "UNKNOWN"`, counts null,
+        `unknown.owner` + `unknown.next_action`. Never an empty queue that reads as "nothing to do".
+    Action authorization is rechecked per request (`_home_do_now_can_read_gated`): an item from a principal-gated
+    source is dropped for a caller that is neither the operator session nor the service token."""
+    import time as _t
+
+    from lib import home_do_now_snapshot as _snap
+
+    authorized = _home_do_now_can_read_gated()
+    identity = _snap.code_identity(PROJECT_ROOT)
+    scope = _swr_scope_key("home_do_now", gated=1 if authorized else 0)
+    hit = _HOME_DO_NOW_SERVE_CACHE.get(scope)
+    if hit and hit[0] == identity and _t.monotonic() - hit[1] < _HOME_DO_NOW_SERVE_CACHE_S:
+        return hit[2]
+    body, meta = _snap.serve(identity=identity)
+    if body is None:
+        out = _snap.unknown_data(meta)
+    else:
+        out = {**_snap.reauthorize(body, authorized=authorized),
+               "served": {k: meta.get(k) for k in ("source", "as_of", "built_at", "age_s", "stale", "reason",
+                                                   "code_identity")}}
+    now = _t.monotonic()
+    for k in [k for k, v in _HOME_DO_NOW_SERVE_CACHE.items() if now - v[1] >= _HOME_DO_NOW_SERVE_CACHE_S]:
+        _HOME_DO_NOW_SERVE_CACHE.pop(k, None)
+    _HOME_DO_NOW_SERVE_CACHE[scope] = (identity, now, out)
+    return out
+
+
+def _home_do_now_can_read_gated() -> bool:
+    """May THIS request receive a principal-gated do-now item (pending paper proposals)?
+
+    The snapshot is built out of process under the service principal, so the route re-checks the caller instead of
+    trusting the body: the operator's logged-in Command Center session (the same predicate the Approve routes use) or
+    the service token. An auth state that cannot be read is NOT authorization."""
+    try:
+        from lib import home_approvals_api as _haa
+
+        ctx = _haa.default_ctx()
+        return _haa._operator(ctx) is not None or bool(ctx.can_read())
+    except Exception:  # noqa: BLE001 -- unknown auth state must never widen what a caller may see
+        return False
 
 
 def _home_do_now_build():
-    """The expensive, side-effect-free build (eight read-only probes). Runs on a request thread only when no body
-    exists yet — see _home_do_now — and otherwise on the one background refresher."""
+    """The expensive, side-effect-free build (eight read-only probes).
+
+    S2 item 2: this is PRODUCER code now — called by scripts/build_home_do_now_snapshot.py in its own process, never
+    from the route (see _home_do_now). Kept here so the producer runs the server's own probe table, line for line,
+    rather than a copy that can drift."""
     from lib import needs_action as _na
     from lib.data_broker import home_do_now as _hdn
 
@@ -32228,50 +32264,9 @@ def _home_do_now_build():
         # probe never records decisions from a GET (codex-cloud at 8802d4da9).
         "cio": _cio_capital_plan_probe,
     }
-    out = _hdn.build(probes)
-    _HOME_DO_NOW_CACHE["v"] = (time.monotonic(), out)
-    return out
-
-
-def _home_do_now_refresh_in_background():
-    """Kick at most one rebuild. The lock is held for the rebuild, not the request: a second expired read while a
-    rebuild is in flight returns the same last-good body and starts nothing.
-
-    Review 6888bda645 F1/F2 (2026-11-14): the slot is released on every path — including a thread that cannot start
-    (otherwise one `can't start new thread` held the lock forever, turned that read into a 500 and permanently stopped
-    refreshes) — and the attempt is recorded so a stale read can name it. A failed rebuild is retried only after
-    _HOME_DO_NOW_RETRY_COOLDOWN_S, so a broken build is not re-attempted at Home poll cadence.
-    """
-    if not _HOME_DO_NOW_REFRESHING.acquire(blocking=False):
-        return
-    failed_mono = _HOME_DO_NOW_REFRESH.get("_failed_mono")
-    if failed_mono is not None and (time.monotonic() - failed_mono) < _HOME_DO_NOW_RETRY_COOLDOWN_S:
-        _HOME_DO_NOW_REFRESHING.release()  # inside the cooldown after a failure: do not retry yet
-        return
-
-    def _run():
-        _HOME_DO_NOW_REFRESH.update(attempted_at=datetime.now(timezone.utc).isoformat())
-        try:
-            _home_do_now_build()
-        except Exception as error:  # noqa: BLE001 -- named on the wire and in the log; last-good keeps being served
-            message = f"{type(error).__name__}: {str(error)[:160]}"
-            _HOME_DO_NOW_REFRESH.update(failed_at=datetime.now(timezone.utc).isoformat(), error=message,
-                                        _failed_mono=time.monotonic())
-            print(f"  [home/do-now] background rebuild failed: {message}")
-        else:
-            _HOME_DO_NOW_REFRESH.update(failed_at=None, error=None, _failed_mono=None)
-        finally:
-            _HOME_DO_NOW_REFRESHING.release()
-
-    thread = threading.Thread(target=_run, name="home-do-now-refresh", daemon=True)
-    try:
-        thread.start()
-    except RuntimeError as error:  # cannot start a thread: free the slot, name it, and still answer this read
-        message = f"background refresh could not start: {type(error).__name__}: {str(error)[:140]}"
-        _HOME_DO_NOW_REFRESH.update(failed_at=datetime.now(timezone.utc).isoformat(), error=message,
-                                    _failed_mono=time.monotonic())
-        print(f"  [home/do-now] {message}")
-        _HOME_DO_NOW_REFRESHING.release()
+    # ACC-CACHE item 2: the producer owns the body. This function is the BUILD (run by the lane in its own
+    # process); it writes nothing into the server's memory, because the server process is not the one that calls it.
+    return _hdn.build(probes)
 
 
 def _queue_pending():
