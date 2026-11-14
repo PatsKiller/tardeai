@@ -58,7 +58,8 @@ function tone(state: string): string { return state === 'CLASSIFIED' ? BB.green 
 
 export default function SharedIntelligenceBridge() {
   const location = useLocation()
-  // LQ-2993ab-v3 N1: bare /watch is the v002 Overview (no context banner); the re-entry links land on /watch-classic after the redirect.
+  // RELEASE-3 ruling (lead 2026-11-14T10:18Z) reverses N1: the banner mounts on bare /watch again (removing it was an
+  // unapproved UI removal); it still follows /watch-classic[/…] and /watch/…, and the re-entry links land on /watch-classic.
   const showWatch = location.pathname === '/watch' || location.pathname === '/watch-classic' || location.pathname.startsWith('/watch-classic/') || location.pathname.startsWith('/watch/')
   const showJournal = location.pathname === '/journal' || location.pathname.startsWith('/journal/')
   const show = showWatch || showJournal
