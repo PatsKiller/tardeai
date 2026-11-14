@@ -705,3 +705,37 @@ assert.match(section(obsp1, 'card-holdings'),
 // The row's financial facts are never hidden by a breakpoint rule.
 const css = readFileSync(join(app, 'src/components/portfolio/v002/PortfolioV002.css'), 'utf8')
 assert.doesNotMatch(css, /\.pv2-hrow\s+\.facts[^{]*\{[^}]*display:\s*none/)
+
+// 26. OP-026 (2026-11-14): the primary row draws its WEIGHTED REMAINING BASIS and per-share average, from the same
+// row the drawer reads, and a missing basis says "basis not recorded" while the mark, value and price move stay on
+// the row (missing basis blocks unrealized P&L, never a current-price fact). Fail-before: no row-basis fact existed.
+const op26Wire = wire([
+  row({ symbol: 'WK1', account_id: 'acct-a', account_label: 'Broker A ··01', shares: 600, price: 139.11, market_value: 83466,
+    price_source: 'finviz', price_as_of: AT, day_change: -495.36, day_change_pct: -0.59, cost_basis: 79620,
+    basis_truth: { cost_basis_usd: 79620, unrealized_pl_usd: 3846, unrealized_pl_pct: 4.83, source: 'broker_api', status: 'recorded', gap: null, conflicts: [] } }),
+  row({ symbol: 'NOPX', account_id: 'acct-c', account_label: 'Broker C ··03', shares: 10, price: 50, market_value: 500,
+    price_source: 'finviz', price_as_of: AT, day_change: -2.5, day_change_pct: -0.5, cost_basis: null,
+    basis_truth: { cost_basis_usd: null, unrealized_pl_usd: null, unrealized_pl_pct: null, source: null, status: 'unknown',
+      gap: { reason: 'basis unknown — no recorded acquisition cost' }, conflicts: [] } }),
+])
+const op26 = render(ok(API.holdings, op26Wire))
+const op26Rows = section(op26, 'card-holdings').split('data-testid="holding-row"').slice(1)
+const wk1 = op26Rows.find(r => r.includes('>WK1<')) || ''
+const nopx = op26Rows.find(r => r.includes('>NOPX<')) || ''
+assert.ok(wk1 && nopx, 'both OP-026 rows are drawn')
+// Recorded basis: the basis total and the per-share average, in the row.
+assert.match(wk1, /data-testid="row-basis">basis \$79,620 · avg entry \$132\.70</)
+// The fact sits in the row's full-width facts line, which no breakpoint hides (the phone and desktop draw it).
+assert.ok(wk1.indexOf('class="facts"') >= 0 && wk1.indexOf('data-testid="row-basis"') > wk1.indexOf('class="facts"'))
+// Missing basis: named exactly, with the read's own reason — and the mark, value and move are still drawn.
+assert.match(nopx, /data-testid="row-basis">basis not recorded — basis unknown — no recorded acquisition cost</)
+assert.match(nopx, /data-testid="row-quote">mark \$50\.00 · finviz · /)
+assert.match(nopx, /data-testid="row-move">price move today −0\.5% · −\$3</)
+assert.match(nopx, /<span class="num">\$500<\/span>/)
+// The drawer prints the same two numbers, from the same row.
+const op26Positions = positionsFrom(op26Wire, NOW)
+const wk1Model = op26Positions.find(p => p.symbol === 'WK1')
+const drawFields = lib.positionFields(wk1Model, op26Wire, NOW)
+assert.equal(drawFields.find(f => f.field === 'Cost basis').value, '$79,620')
+assert.equal(drawFields.find(f => f.field === 'Avg entry').value, '$132.70')
+assert.match(wk1, /basis \$79,620 · avg entry \$132\.70/)

@@ -7,7 +7,7 @@ import {
   exclusiveCoverage,
   measuresModel, coverageCounts, coverageScopeRelation, coverageOf, holdingsCsv, CSV_COLUMNS, stopDeskHref, sinceVisitModel, gateEvidence, gateStore,
   changesModel, stopReadFreshness, STOP_READ_MAX_AGE_MS, snapshotFacts, sameSnapshot, pnlReceipt,
-  basisCoverage, basisView, moveToday, unrealizedLine, weightLine, priceClock, positionFields,
+  basisCoverage, basisView, basisLine, moveToday, unrealizedLine, weightLine, priceClock, positionFields,
   GATES_SCHEMA, CHANGES_SCHEMA, RISK_SCORE, MEASURES_ABSENT_REASON, MEASURE_KEYS,
   type HoldingWire, type HoldingsWire, type Read, type IncidentsWire, type LastSeenWire, type MeasuresBlockWire,
   type PortfolioChangeWire, type PortfolioChangesWire, type PortfolioGateWire, type PortfolioGatesWire,
@@ -887,5 +887,76 @@ const FRESH_OFF = '2031-03-07T02:00:00Z'     // 37 h before CLOSED, 11 h before 
   assert.match(p1Csv, /,UNKNOWN,,,/)  // basis_status UNKNOWN, no cost basis, no P&L — a reason column carries the words
   assert.match(p1Csv, /cost basis not reported by the broker read/)
 }
+
+// OP-026 D2: the primary row carries the WEIGHTED REMAINING BASIS and its per-share average from the same row the
+// drawer reads, and a row without a usable basis says "basis not recorded" WITHOUT losing its mark, value or move.
+// Synthetic fixtures only. Fail-before: the v002 row model had no avgEntry and no basis line at all, so the table
+// could only show a basis indirectly (inside the unrealized sentence, and only when a P&L figure existed).
+const op26Wire = wire([
+  row({ symbol: 'WK1', account_id: 'acct-a', shares: 600, price: 139.11, market_value: 83466,
+    day_change: -495.36, day_change_pct: -0.59, cost_basis: 79620,
+    basis_truth: { cost_basis_usd: 79620, unrealized_pl_usd: 3846, unrealized_pl_pct: 4.83, source: 'broker_api', status: 'recorded', gap: null, conflicts: [] } }),
+  row({ symbol: 'WK1', account_id: 'acct-b', shares: 200, price: 139.11, market_value: 27822,
+    day_change: -165.12, day_change_pct: -0.59, cost_basis: 35239.48,
+    basis_truth: { cost_basis_usd: 35239.48, unrealized_pl_usd: -7417.48, unrealized_pl_pct: -21.05, source: 'broker_api', status: 'recorded', gap: null, conflicts: [] } }),
+  row({ symbol: 'NOPX', account_id: 'acct-c', shares: 0.133, price: 162.85, market_value: 21.66,
+    day_change: -0.44, day_change_pct: -2.01, cost_basis: null,
+    basis_truth: { cost_basis_usd: null, unrealized_pl_usd: null, unrealized_pl_pct: null, source: null, status: 'unknown',
+      gap: { reason: 'basis unknown — no recorded acquisition cost' }, conflicts: [] } }),
+  row({ symbol: 'PARTL', account_id: 'acct-d', shares: 100, price: 50, market_value: 5000,
+    day_change: 10, day_change_pct: 0.2, cost_basis: 1000, basis_partial: true,
+    basis_truth: { cost_basis_usd: 1000, unrealized_pl_usd: null, unrealized_pl_pct: null, source: 'broker_api', status: 'partial',
+      gap: { reason: 'cost basis is partial — the broker lot history starts after some acquisitions' }, conflicts: [] } }),
+])
+const op26 = positionsFrom(op26Wire, NOW)
+const wA = op26.find(p => p.key === 'acct-a:WK1')!
+const wB = op26.find(p => p.key === 'acct-b:WK1')!
+const nop = op26.find(p => p.symbol === 'NOPX')!
+const partl = op26.find(p => p.symbol === 'PARTL')!
+
+// The per-share weighted remaining basis is basis ÷ held shares, computed, not the wire avg_cost field.
+assert.equal(Math.round(wA.avgEntry! * 100) / 100, 132.70)
+assert.match(basisLine(wA).text, /^basis \$79,620 · avg entry \$132\.70$/)
+assert.match(basisLine(wB).text, /^basis \$35,239 · avg entry \$176\.20$/)
+
+// The same ticker in two accounts stays two rows with two different bases — the key carries the account.
+assert.notEqual(wA.key, wB.key)
+assert.match(wB.key, /^acct-b:WK1$/)
+assert.notEqual(wA.avgEntry, wB.avgEntry)
+
+// Missing basis: named as "basis not recorded" with the read's reason — and the price facts survive untouched.
+assert.equal(nop.basis.status, 'UNKNOWN')
+assert.equal(nop.avgEntry, null)
+assert.match(basisLine(nop).text, /^basis not recorded — basis unknown — no recorded acquisition cost$/)
+assert.equal(nop.price, 162.85)
+assert.equal(nop.value, 21.66)
+assert.equal(nop.dayUsd, -0.44)
+assert.equal(moveToday(nop).known, true)
+assert.match(moveToday(nop).text, /−2\.0% · −\$0/)
+
+// Partial basis is not a recorded basis either: it never licenses a P&L percent, but it keeps the mark.
+assert.equal(partl.basis.status, 'UNKNOWN')
+assert.match(basisLine(partl).text, /^basis not recorded — cost basis is partial/)
+assert.equal(partl.price, 50)
+assert.equal(partl.dayUsd, 10)
+
+// Table == drawer: the drawer's Cost basis + Avg entry are the row's two numbers.
+const drawerA = positionFields(wA, op26Wire, NOW)
+assert.equal(drawerA.find(f => f.field === 'Cost basis')!.value, '$79,620')
+assert.equal(drawerA.find(f => f.field === 'Avg entry')!.value, '$132.70')
+const drawerNop = positionFields(nop, op26Wire, NOW)
+assert.equal(drawerNop.find(f => f.field === 'Cost basis')!.value, 'basis not recorded')
+assert.equal(drawerNop.find(f => f.field === 'Avg entry')!.value, 'not recorded (no usable basis)')
+
+// Table == CSV: the exported row carries the same basis and per-share average, blank (never 0) when unknown.
+const op26Csv = holdingsCsv(op26).split('\r\n')
+const hdr = op26Csv[0].split(',')
+assert.ok(hdr.includes('avg_entry_usd'), 'the CSV publishes avg_entry_usd')
+const avgI = hdr.indexOf('avg_entry_usd')
+const wRows = op26Csv.slice(1).filter(l => l.startsWith('WK1,'))
+const rowA = wRows[0].split(',')  // value-desc: acct-a (83,466) before acct-b (27,822)
+const rowN = op26Csv.slice(1).find(l => l.startsWith('NOPX,'))!.split(',')
+assert.equal(rowA[avgI], '132.7')
+assert.equal(rowN[avgI], '')
 
 console.log('portfolioV002.test.ts: ok')

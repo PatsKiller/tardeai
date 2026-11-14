@@ -230,6 +230,10 @@ export interface PositionModel {
   priceSource: string | null; priceAt: string | null
   /** Weight and basis, drawn only as the read publishes them. `basis.status` 'UNKNOWN' carries the precise reason. */
   weightPct: number | null; weightBasis: string | null; basis: BasisView
+  /** OP-026: per-share WEIGHTED REMAINING BASIS = recorded basis ÷ held shares, computed from the same row the drawer
+   *  reads. Null when the basis is not recorded or no share count is published — never 0, and never the wire
+   *  `avg_cost` (a second field that can disagree with the basis, e.g. a rebased rollover lot set). */
+  avgEntry: number | null
   /** Resting stop quantity from the wire (`stop_qty`), never a derived number; null when the read did not publish it. */
   restingShares: number | null
   /** Display-only coverage classification (covered/partial/uncovered/planned-only/exempt/unverifiable). It never
@@ -587,13 +591,18 @@ export function positionsFrom(w: HoldingsWire | null, nowMs: number = Date.now()
     const planned: PlannedFacet | null = plannedOnly
       ? { price: num(h.stop_price), source: String(h.stop_source || 'planned'), at: h.stop_captured_at ?? null } : null
     const atAge = skewMs(pr.verifiedAt, ctx.nowMs)
+    const basis = basisView(h)
+    // OP-026: the weighted remaining basis per share is the RECORDED basis over the held shares — the same two
+    // numbers the drawer prints. A cash row has no acquisition cost; an unknown basis stays null.
+    const avgEntry = basis.status === 'RECORDED' && basis.usd != null && heldShares != null && heldShares > 0
+      ? basis.usd / heldShares : null
     return {
       key: `${h.account_id || h.account || i}:${symbol}`, symbol, account, accountKey, broker: String(h.broker || '—'),
       shares: heldShares, value, price: num(h.price), dayPct: num(h.day_change_pct), dayUsd: num(h.day_change),
       isCash, counted, unpriced: unpriced && !isCash, underFloor: pr.protection !== 'EXEMPT' && !isCash && !counted,
       ...pr, priceStale: h.price_stale ?? null, restingShares: num(h.stop_qty), coverage: coverageFor(pr, h, heldShares),
       priceSource: String(h.price_source || h.quote_source || '') || null, priceAt: h.price_as_of ?? null,
-      weightPct: num(h.weight_pct), weightBasis: String(h.weight_basis || '') || null, basis: basisView(h),
+      weightPct: num(h.weight_pct), weightBasis: String(h.weight_basis || '') || null, basis, avgEntry,
       planned, verifiedAtInvalid: atAge != null && atAge < 0, raw: h,
     }
   }).sort((a, b) => (b.value ?? -1) - (a.value ?? -1))
@@ -1026,6 +1035,18 @@ export function moveToday(p: Pick<PositionModel, 'isCash' | 'dayUsd' | 'dayPct'>
   return { text: `price move today ${parts.join(' · ')}${usd == null ? ' · $ move not published' : ''}`, known: true, cls: v == null || v === 0 ? null : v > 0 ? 'up' : 'dn' }
 }
 
+/** OP-026: the weighted remaining basis, with its per-share average, from the SAME recorded basis the unrealized line
+ *  uses. A missing basis is named as such — the phrase "basis not recorded" plus the read's own reason — and it never
+ *  suppresses the mark, the market value or the price move (missing basis blocks unrealized P&L, not price facts). */
+export function basisLine(p: Pick<PositionModel, 'isCash' | 'avgEntry' | 'basis'>): MoneyLine {
+  if (p.isCash) return { text: 'cash row · no cost basis', known: true, cls: null }
+  if (p.basis.status !== 'RECORDED' || p.basis.usd == null) {
+    return { text: `basis not recorded — ${p.basis.reason || 'no recorded acquisition cost in this read'}`, known: false, cls: null }
+  }
+  const avg = p.avgEntry == null ? ' · avg entry not computable (no published share count)' : ` · avg entry $${p.avgEntry.toFixed(2)}`
+  return { text: `basis ${fmtUsd(p.basis.usd)}${avg}${p.basis.conflict ? ` · ${p.basis.conflict}` : ''}`, known: true, cls: null }
+}
+
 /** Unrealized P&L — drawn ONLY on a recorded basis, with the basis named. Otherwise the reason, never a figure. */
 export function unrealizedLine(b: BasisView, fmt: (v: number) => string = v => fmtUsd(v, true)): MoneyLine {
   if (b.status !== 'RECORDED') {
@@ -1065,7 +1086,7 @@ export function basisCoverage(ps: PositionModel[]): BasisCoverage {
  *  identity every surface of the page read (`snapshotFacts()`), so an exported row cannot disagree with its row. */
 export const CSV_COLUMNS = ['symbol', 'account', 'broker', 'held_shares', 'resting_stop_shares', 'coverage', 'protection',
   'price_usd', 'price_source', 'price_as_of', 'price_stale', 'value_usd', 'weight_pct', 'weight_basis',
-  'move_today_usd', 'move_today_pct', 'basis_status', 'cost_basis_usd', 'unrealized_pnl_usd', 'unrealized_pnl_pct',
+  'move_today_usd', 'move_today_pct', 'basis_status', 'cost_basis_usd', 'avg_entry_usd', 'unrealized_pnl_usd', 'unrealized_pnl_pct',
   'basis_reason', 'basis_source', 'stop_price', 'stop_source', 'stop_order_id', 'verified_at', 'reason',
   'hypothetical_downside_to_stop_usd', 'hypothetical_downside_to_stop_pct', 'downside_state',
   'downside_covered_qty', 'downside_uncovered_qty', 'downside_uncovered_state', 'downside_reason', 'downside_formula',
@@ -1085,7 +1106,7 @@ export function holdingsCsv(ps: PositionModel[], snap?: Pick<SnapshotFacts, 'sna
       p.symbol, p.account, p.broker, p.shares, p.restingShares, p.coverage.category, p.protection,
       p.price, p.priceSource, p.priceAt, p.priceStale, p.value, p.weightPct, p.weightBasis,
       p.isCash ? null : p.dayUsd, p.isCash ? null : p.dayPct,
-      b.status, b.usd, b.pnlUsd, b.pnlPct, b.status === 'UNKNOWN' ? b.reason : null, b.source,
+      b.status, b.usd, p.avgEntry, b.pnlUsd, b.pnlPct, b.status === 'UNKNOWN' ? b.reason : null, b.source,
       p.stopPrice, p.raw.stop_source ?? p.source, p.raw.stop_order_id ?? p.raw.order_id ?? null,
       p.verifiedAt, p.reason,
       d.usd, d.pct == null ? null : Number(d.pct.toFixed(2)), d.state,
@@ -1310,11 +1331,14 @@ export function positionFields(p: PositionModel, w: HoldingsWire | null, nowMs: 
       provenance: `Source: ${h.market_value_source || 'shares × price'} · per-field writer/refresh not served (G5)`, needsBackend: true },
     { field: 'Weight', value: weightLine(p).text, age: '—',
       provenance: 'Position weight is drawn only when the read publishes it; this page never divides two served numbers.' },
-    { field: 'Cost basis', value: p.isCash ? 'not applicable (cash row)' : p.basis.status === 'RECORDED' ? fmtUsd(p.basis.usd) : 'not recorded',
+    { field: 'Cost basis', value: p.isCash ? 'not applicable (cash row)' : p.basis.status === 'RECORDED' ? fmtUsd(p.basis.usd) : 'basis not recorded',
       age: '—', provenance: p.isCash ? 'A cash balance has no acquisition cost; no P&L is drawn from one.'
         : p.basis.status === 'RECORDED'
           ? `Source: ${p.basis.source || h.cost_basis_source || 'not named in the read'}${p.basis.conflict ? ` · ${p.basis.conflict}` : ''}`
           : p.basis.reason || 'no recorded acquisition cost' },
+    // OP-026: the weighted remaining basis per share — the same number the holdings row prints, from the same basis.
+    { field: 'Avg entry', value: p.isCash ? 'not applicable (cash row)' : p.avgEntry == null ? 'not recorded (no usable basis)' : `$${p.avgEntry.toFixed(2)}`,
+      age: '—', provenance: 'Weighted remaining basis ÷ held shares, computed from the recorded cost basis — never the wire avg_cost field.' },
     { field: 'Unrealized P&L', value: p.isCash ? 'cash row · no unrealized P&L' : unrealizedLine(p.basis).text, age: '—',
       provenance: 'Drawn only on a recorded cost basis; otherwise the read’s own reason is printed — never a zero.' },
     { field: 'Price move today', value: p.isCash ? 'cash row' : p.dayUsd == null && p.dayPct == null ? 'not published'

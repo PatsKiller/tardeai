@@ -11,7 +11,7 @@
 import { Link } from 'react-router-dom'
 import {
   fmtAge, fmtET, fmtPct, fmtShares, fmtUsd, filterPositions, coverageCounts, coverageScopeRelation, exclusiveCoverage, snapshotFacts, gateEvidence, reviewPositions, scopeCoverage,
-  basisCoverage, moveToday, unrealizedLine, weightLine, priceClock, downsideToStop, downsideLine,
+  basisCoverage, moveToday, unrealizedLine, weightLine, priceClock, downsideToStop, downsideLine, basisLine,
   STOP_OWNER, stopDeskHref,
   type CoverageCounts, type HoldingsFilter, type MeasuresModel, type P0Item, type PositionModel,
   type ProtectionModel, type Read, type HoldingsWire, type SinceVisitModel, type StatusRow, type VisitRecord, type MeasureKey,
@@ -380,7 +380,8 @@ export default function PortfolioV002View(props: ViewProps) {
                   // on a recorded basis. A fact the read does not publish is named; nothing is blank and nothing is 0.
                   // OP-023: the Risk cell is a MEASURED distance to the verified resting stop — a hypothetical, never a
                   // loss or an exit price — and a state in words whenever no figure is licensed. Same clock as the row.
-                  const mv = moveToday(p), pnl = p.isCash ? { text: 'cash row · no unrealized P&L', known: true, cls: null } : unrealizedLine(p.basis), wl = weightLine(p), pc = priceClock(p.raw, w), dn = downsideToStop(p, { nowMs })
+                  // OP-026: the weighted remaining basis (and its per-share average) is drawn from the same row's basis.
+                  const mv = moveToday(p), pnl = p.isCash ? { text: 'cash row · no unrealized P&L', known: true, cls: null } : unrealizedLine(p.basis), wl = weightLine(p), pc = priceClock(p.raw, w), dn = downsideToStop(p, { nowMs }), bl = basisLine(p)
                   return (
                     <button type="button" className="pv2-hrow" key={p.key} onClick={() => props.onOpenPosition(p.key)} data-testid="holding-row" data-symbol={p.symbol}>
                       <span className="c1"><b>{p.symbol}</b><span className="s2">{p.account}{p.underFloor ? ' · under $100' : ''}{p.coverage.category === 'PARTIAL' ? ` · stop ${fmtShares(p.coverage.restingShares)}/${fmtShares(p.coverage.heldShares)}` : ''}</span></span>
@@ -393,6 +394,9 @@ export default function PortfolioV002View(props: ViewProps) {
                       </span>
                       <span className="facts">
                         <span data-testid="row-quote">{p.isCash ? 'cash balance · no mark' : p.price == null ? 'mark not published in this read' : `mark $${p.price.toFixed(2)} · ${p.priceSource || 'source not named'} · ${pc.line}`}{p.priceStale ? <span className="pv2-stale-mark"> · STALE</span> : null}</span>
+                        {/* OP-026: the weighted remaining basis and its per-share average sit beside the mark. A missing
+                            basis names itself here and nowhere else on the row is suppressed. */}
+                        <span className={bl.known ? '' : 'pv2-unk-fact'} data-testid="row-basis">{bl.text}</span>
                         <span className={wl.known ? '' : 'pv2-unk-fact'} data-testid="row-weight">{wl.text}</span>
                         <span className={mv.cls ? `pv2-move ${mv.cls}` : 'pv2-move'} data-testid="row-move">{mv.text}</span>
                         <span className={pnl.cls ? `pv2-pnl ${pnl.cls}` : 'pv2-pnl'} data-testid="row-pnl">{pnl.text}</span>
