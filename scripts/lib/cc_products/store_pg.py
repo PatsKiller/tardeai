@@ -94,6 +94,19 @@ def read_current(cur, product_id: str, scope_key: str = "global") -> dict | None
     return _row_to_dict(cur, row)
 
 
+# LQ-3140-r2 (operator acceptance A1-A3). The conditional upsert's ordering rule, stated once:
+#   always      the new build must not be OLDER BY BUILD TIME (EXCLUDED.checked_at >= stored.checked_at): an older
+#               in-flight build never overwrites a newer result;
+#   and one of  (a) the new source clock is not older than the stored one (the normal, strict ordering for a valid
+#                   row - never relaxed);
+#               (b) the STORED clock is invalid: stored.as_of is more than FUTURE_CLOCK_SKEW_S ahead of the build
+#                   that wrote it (stored.checked_at), i.e. a future source time written by a bug or a bad clock;
+#                   it may be replaced by a build whose own clock is valid (as_of <= its build time + skew);
+#               (c) the STORED row is DEGRADED and the new build is OK: a degraded row's clock is held/carried while a
+#                   source was down, not a genuine source time, so the recovered build's genuine (possibly older)
+#                   clock publishes. A DEGRADED row never blocks an OK recovery.
+FUTURE_CLOCK_SKEW_S = 120  # same constant as product_builder / read_path (a test pins that they agree)
+
 _UPSERT_SQL = """
 WITH prev AS (
     SELECT etag FROM cc_product_current WHERE product_id = %(product_id)s AND scope_key = %(scope_key)s
@@ -131,8 +144,13 @@ ON CONFLICT (product_id, scope_key) DO UPDATE SET
     reason            = EXCLUDED.reason,
     schema_version    = EXCLUDED.schema_version,
     etag              = EXCLUDED.etag
-WHERE EXCLUDED.as_of >= cc_product_current.as_of
-  AND EXCLUDED.checked_at >= cc_product_current.checked_at
+WHERE EXCLUDED.checked_at >= cc_product_current.checked_at
+  AND (
+        EXCLUDED.as_of >= cc_product_current.as_of
+     OR (cc_product_current.as_of > cc_product_current.checked_at + make_interval(secs => %(skew_s)s)
+         AND EXCLUDED.as_of <= EXCLUDED.checked_at + make_interval(secs => %(skew_s)s))
+     OR (cc_product_current.status = 'DEGRADED' AND EXCLUDED.status = 'OK')
+  )
 RETURNING seq, etag, (SELECT etag FROM prev) AS prev_etag
 """
 
@@ -160,8 +178,10 @@ def write_current(
     next_refresh_at (phase-0 DDL: ``built_at`` = when this body was produced, ``checked_at`` = the last build that
     found it unchanged or built it). ``as_of`` is required (NOT NULL): None raises ValueError before the database.
 
-    Conditional (operator 13 Nov 2026): the update applies only when the new ``as_of`` and ``checked_at`` are not
-    older than the stored row's. An older build is refused and the newer row stays; the return is then
+    Conditional (operator 13 Nov 2026; LQ-3140-r2 rule in the comment above ``_UPSERT_SQL``): never when the new build
+    is older by build time (``checked_at``); and only when the new ``as_of`` is not older than the stored one, except
+    that a stored FUTURE clock (more than 120 s past its own build) and a stored DEGRADED row under a new OK build
+    do not pin the ordering. A refused build leaves the stored row untouched; the return is then
     ``{"changed": False, "refused": True, "seq": None, "etag": None}``. A successful write sets ``reason`` (None
     clears a failure reason left by ``mark_failed``).
 
@@ -195,6 +215,7 @@ def write_current(
         "build_ms": None if build_ms is None else int(build_ms),
         "reason": reason,
         "schema_version": int(schema_version),
+        "skew_s": FUTURE_CLOCK_SKEW_S,
     }
     cur.execute(_UPSERT_SQL, params)
     row = cur.fetchone()
