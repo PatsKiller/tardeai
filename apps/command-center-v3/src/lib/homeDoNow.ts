@@ -451,7 +451,7 @@ export function moversHeading(overview: any, nowMs: number): MoversHeading {
     tip: `Holdings observed ${observed}; no broker read yet today, so these are the last session's day changes.` }
 }
 
-export interface AccountRow { key: string; name: string; value: number | null; d1: number | null; ytd: number | null; ytdApprox: boolean; tip: string }
+export interface AccountRow { key: string; name: string; value: number | null; d1: number | null; ytd: number | null; ytdApprox: boolean; tip: string; oneRead?: boolean }
 
 /** Account NAME for the accounts table (one map: lib/accountLabels.ts — names only, never a number). */
 export function accountName(a: string): string {
@@ -517,6 +517,26 @@ function periodChange(d: any): { ch: number | null; approx: boolean; note: strin
   return { ch, approx: Boolean(d.nav_is_not_market_only || d.is_false_positive), note: [d.display_label, d.adjustment_note].filter(Boolean).join(' · ') || null }
 }
 
+/** Caption under the Accounts table: how many accounts it lists, how many have no value, and the true rounding bound.
+ *  Each valued row and the All-accounts total are rounded to whole dollars, so the rows can sit up to
+ *  0.5 x (valued rows + 1) dollars from the total (review 3054 F1). Rows with no value are not in that sum, so they are named. */
+export function accountsCaption(rows: { key: string; value?: number | null; oneRead?: boolean }[]): string | null {
+  const listed = rows.filter(r => r.key !== 'all')
+  const n = listed.length
+  if (n === 0) return null
+  const unknown = listed.filter(r => r.value == null).length
+  // Review 3056 F1: the bound assumes the rows and the All row are ONE payload. Only the portfolio_total.by_account branch of
+  // accountRows says so (oneRead); the perf / today_by_account fallbacks take the total from another read, so no bound is claimed.
+  const sameRead = rows.every(r => r.oneRead === true)
+  const head = `${n} account${n === 1 ? '' : 's'} listed`
+    + (unknown ? `, ${unknown} with no value${sameRead ? ' in the holdings store' : ''} (not in the sum)` : '')
+    + '. The book line counts only accounts holding positions. '
+  if (!sameRead) return head + 'Rows and the total come from different reads, so they may not add up.'
+  const bound = 0.5 * (n - unknown + 1)
+  const b = Number.isInteger(bound) ? String(bound) : bound.toFixed(1)
+  return head + `Rows and the total are each rounded to whole dollars, so the rows can differ from the total by up to $${b}.`
+}
+
 /** Accounts table: value, 1D, YTD from /api/v2/portfolio/performance (display_change preferred, i.e. ex-transfers
  *  when flagged, the same rule as Portfolio → Returns); the All-accounts value is the published portfolio total
  *  (portfolioTotalView), so it is the same figure the Home header and the Book print; 1D falls back to
@@ -551,6 +571,7 @@ export function accountRows(perf: any, overview: any): AccountRow[] {
           row ? '1D / YTD · /api/v2/portfolio/performance' : null,
           y.approx ? 'YTD ≈ market change ex-transfers' : null, y.note].filter(Boolean).join('\n') })
     }
+    for (const r of rows) r.oneRead = true  // the All row is this same payload's total (pt.value)
   } else if (accts) {
     for (const [k, row] of Object.entries(accts) as [string, any][]) {
       const d1 = periodChange(row?.periods?.['1D'])

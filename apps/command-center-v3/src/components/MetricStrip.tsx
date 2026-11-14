@@ -578,7 +578,7 @@ export default function MetricStrip({ onDrill }: Props) {
       wrapValue: true,
       // These four rendered a bare em-dash. They have provenance worth stating;
       // an empty line is a wasted one, and the height is fixed either way.
-      asOfNote: showQuietProvenance ? `${journalScope} · ${journalWindow}${journalLastClose ? ` · thru ${journalLastClose}` : ''}` : null,
+      asOfNote: `day + swing only${showQuietProvenance ? ` · ${journalScope} · ${journalWindow}${journalLastClose ? ` · thru ${journalLastClose}` : ''}` : ''}`,
       tone: journalStale ? 'warn' : 'ok', valueSize: VALUE_COMPACT, minWidth: 180, maxWidth: 215,
       stale: journalStale ? journalAgeMark : null,
       color: winRate != null && winRate >= 50 ? BB.green : winRate != null ? BB.amber : 'var(--text3)',
@@ -588,7 +588,7 @@ export default function MetricStrip({ onDrill }: Props) {
     },
     {
       label: 'REALIZED', value: realizedPnl != null ? fmt$(realizedPnl, 0) : '—',
-      asOfNote: [realizedScopeText, showQuietProvenance ? `all closed${realizedCount ? ` · ${realizedCount} trades` : ''}${longTermTrimPnl ? ' · incl trims' : ''}` : null].filter(Boolean).join(' · '),
+      asOfNote: [realizedScopeText, `all closed${showQuietProvenance && realizedCount ? ` · ${realizedCount} trades` : ''} · incl long-term trims`].filter(Boolean).join(' · '),
       tone: journalStale ? 'warn' : 'ok', minWidth: 140, maxWidth: 200,
       stale: journalStale ? journalAgeMark : null,
       color: realizedPnl == null ? 'var(--text3)' : realizedPnl >= 0 ? BB.green : BB.red,
