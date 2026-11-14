@@ -1501,16 +1501,32 @@ def build_snapshot(
     }
 
 
-def freshness(snapshot: Mapping[str, Any], *, now: datetime, max_age: timedelta = timedelta(hours=3)) -> dict[str, Any]:
+#: How old a stored snapshot may be before the route calls it stale, by day class. A trading day runs the forced
+#: rebuild every 2 h, so 3 h is one missed cycle plus slack. A weekend or holiday runs the REGISTERED six-hourly row
+#: (config/lane_registry.json lane since-close-snapshot: "0 */6 * * 0,6"), so the same 3 h would call a healthy
+#: weekend snapshot stale for three hours of every six (LQ-20261107 H4). One cadence + the 30 min grace the card
+#: itself uses for a missed slot.
+STALE_TRADING_DAY = timedelta(hours=3)
+STALE_NON_TRADING_DAY = timedelta(hours=6, minutes=30)
+
+
+def staleness_limit(now: datetime) -> timedelta:
+    """The max age for ``now``'s day class -- the cadence the lane is actually registered to run at."""
+    return STALE_TRADING_DAY if sessions.is_trading_day(now.astimezone(ET).date()) else STALE_NON_TRADING_DAY
+
+
+def freshness(snapshot: Mapping[str, Any], *, now: datetime, max_age: timedelta | None = None) -> dict[str, Any]:
     """The route's verdict on a stored snapshot: age, and ``stale`` when it is older than ``max_age`` or names a
-    window that is no longer the current one (a Monday snapshot read on Tuesday after the 16:00 close)."""
+    window that is no longer the current one (a Monday snapshot read on Tuesday after the 16:00 close).
+    ``max_age`` defaults to :func:`staleness_limit` -- the registered cadence for today, not one fixed number."""
+    limit = max_age if max_age is not None else staleness_limit(now)
     gen = snapshot.get("generated_at")
     age = None
     if gen:
         age = (now.astimezone(UTC) - datetime.fromisoformat(str(gen).replace("Z", "+00:00"))).total_seconds()
     cur = window(now)["session_date"]
     wrong_window = (snapshot.get("window") or {}).get("session_date") != cur
-    return {"age_seconds": age, "stale": age is None or age > max_age.total_seconds() or wrong_window, "window_current": not wrong_window}
+    return {"age_seconds": age, "stale": age is None or age > limit.total_seconds() or wrong_window, "window_current": not wrong_window}
 
 
 # ---------------------------------------------------------------------------- the DB read (read-only)

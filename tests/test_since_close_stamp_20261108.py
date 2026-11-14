@@ -86,9 +86,14 @@ def test_next_refresh_trading_day_slots():
     assert st.next_refresh(et(2026, 11, 10, 23, 30)) == et(2026, 11, 11, 0, 0)
 
 
-def test_next_refresh_weekend_is_two_hourly():
+def test_next_refresh_weekend_is_the_registered_six_hourly_row():
+    # config/lane_registry.json (lane since-close-snapshot, dispatch.cron) registers "0 */6 * * 0,6" for
+    # weekends/holidays = 00, 06, 12, 18 ET. The card used to table every 2 h, so it promised a 2:00 PM refresh
+    # that no scheduler fires (LQ-20261107 H4).
+    assert st.next_refresh(et(2026, 11, 7, 13, 0)) == et(2026, 11, 7, 18, 0)  # Saturday
     assert st.next_refresh(et(2026, 11, 8, 17, 51)) == et(2026, 11, 8, 18, 0)
-    assert st.next_refresh(et(2026, 11, 8, 18, 1)) == et(2026, 11, 8, 20, 0)
+    assert st.next_refresh(et(2026, 11, 8, 18, 1)) == et(2026, 11, 9, 0, 0)  # Monday 00:00 (trading day slots)
+    assert st.next_refresh(et(2026, 11, 7, 0, 1)) == et(2026, 11, 7, 6, 0)   # no 2 AM / 4 AM fire
 
 
 def test_schedule_lists_the_nine_fixed_slots_and_four_cio_slots():
@@ -97,7 +102,27 @@ def test_schedule_lists_the_nine_fixed_slots_and_four_cio_slots():
     assert [f["text"] for f in sch["fixed"]] == ["6:00 AM", "8:30 AM", "9:15 AM", "9:45 AM", "10:30 AM", "12:00 PM", "2:00 PM", "3:30 PM", "4:15 PM"]
     assert len(sch["cio"]) == 4 and sch["grace_min"] == 30 and sch["check_every_min"] == 15
     wk = _stamp(SUN, {})["schedule"]
-    assert wk["trading_day"] is False and len(wk["fixed"]) == 12 and wk["cio"] == []
+    # the registered weekend row, not a two-hourly guess (LQ-20261107 H4)
+    assert wk["trading_day"] is False and [f["text"] for f in wk["fixed"]] == ["12:00 AM", "6:00 AM", "12:00 PM", "6:00 PM"]
+    assert wk["cio"] == []
+
+
+def test_weekend_slots_follow_the_registered_lane_cadence():
+    """Read the registry, not a copy of it: if the lane's weekend expression changes, WEEKEND_SLOTS must change with it.
+
+    The card's slot table is the only place a reader learns when the producer runs, so a drift between this module and
+    config/lane_registry.json is a false schedule on screen (the H4 defect), not a cosmetic detail.
+    """
+    import json
+
+    reg = json.loads((Path(__file__).resolve().parents[1] / "config" / "lane_registry.json").read_text())
+    lane = next(x for x in reg["lanes"] if x["lane_id"] == "since-close-snapshot")
+    cron = lane["dispatch"]["cron"]
+    weekend = [c for c in cron if c.split()[-1] == "0,6"]
+    assert weekend == ["0 */6 * * 0,6"], cron
+    step = weekend[0].split()[1]  # "*/6" -- the expression's own hour step
+    assert [t.hour for t in st.WEEKEND_SLOTS] == [0, 6, 12, 18], weekend[0]
+    assert step == "*/6" and all(t.minute == 0 for t in st.WEEKEND_SLOTS)
 
 
 def test_missed_fixed_slot_needs_30_min_grace_market_hours_and_no_build_since():

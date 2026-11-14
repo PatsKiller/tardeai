@@ -117,6 +117,10 @@ def source_chip(
 FIXED_SLOTS = (time(6, 0), time(8, 30), time(9, 15), time(9, 45), time(10, 30), time(12, 0), time(14, 0), time(15, 30), time(16, 15))
 CIO_SLOTS = (time(6, 0), time(9, 15), time(12, 0), time(16, 15))
 MISSED_GRACE = timedelta(minutes=30)
+#: The REGISTERED weekend/holiday cadence of lane since-close-snapshot: config/lane_registry.json declares
+#: ``dispatch.cron = ["0 */2 * * 1-5", "0 */6 * * 0,6"]``, so a non-trading day fires at 00:00, 06:00, 12:00 and
+#: 18:00 ET -- not every 2 h. tests/test_since_close_stamp_20261108.py reads the registry and fails if this drifts.
+WEEKEND_SLOTS = (time(0, 0), time(6, 0), time(12, 0), time(18, 0))
 
 
 def _checks(d: date) -> list[time]:
@@ -130,9 +134,11 @@ def _checks(d: date) -> list[time]:
 
 def _day_slots(d: date) -> list[time]:
     """Run times (ET) on calendar day ``d`` (operator cadence, amendment 1260/1261): a trading day = the nine fixed full
-    rebuilds, the 15-min --if-changed checks 09:30-16:00, hourly 18:00-04:00; a weekend or holiday = every 2 h."""
+    rebuilds, the 15-min --if-changed checks 09:30-16:00, hourly 18:00-04:00; a weekend or holiday = the registered
+    six-hourly row (WEEKEND_SLOTS), never a two-hourly guess at a cadence no schedule runs (LQ-20261107 H4: the card
+    promised a 2:00 PM refresh that the registry does not fire)."""
     if not sessions.is_trading_day(d):
-        return [time(h, 0) for h in range(0, 24, 2)]
+        return list(WEEKEND_SLOTS)
     out = set(FIXED_SLOTS) | set(_checks(d)) | {time(h, 0) for h in range(0, 5)} | {time(h, 0) for h in range(18, 24)}
     return sorted(out)
 

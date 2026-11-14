@@ -48,6 +48,9 @@ export default function SinceCloseStamp({ stamp, nowMs, part = 'head' }: { stamp
         <span data-testid="stamp-next" style={{ fontSize: 12, color: TOKENS.text[3], fontFamily: FONT.mono }}>{m.nextText}</span>
       </div>
       {m.missedText && <div data-testid="stamp-missed" role="alert" style={{ fontSize: 13, fontWeight: 700, color: warn.color }}>⚠ {m.missedText}</div>}
+      {/* LQ-20261107 H4: the frozen "next refresh" is already in the past. Naming it is not a slot-miss claim (the
+          server's slot table owns that); it is the strip refusing to print a past time as "next". */}
+      {m.missedRefreshText && <div data-testid="stamp-next-missed" role="alert" style={{ fontSize: 13, fontWeight: 700, color: warn.color }}>⚠ {m.missedRefreshText}</div>}
       {/* LQ-1269: the age alarm is separate from the missed-slot alarm. A producer that runs and writes nothing missed no
           slot, yet the page is old — the snapshot's own clock says so. */}
       {m.stale && m.staleText && !m.missedText && <div data-testid="stamp-stale" role="alert" style={{ fontSize: 13, fontWeight: 700, color: warn.color }}>⚠ {m.staleText}</div>}

@@ -130,6 +130,9 @@ export function movesModel(w: SinceCloseWire | null | undefined): MovesModel {
   const watch = moves.filter(m => !m.held).map(m => chip(m, closeTag, friday))
     .sort((a, b) => Math.abs(b.ext?.pct ?? b.closePct) - Math.abs(a.ext?.pct ?? a.closePct))
   const now = w?.macro?.now
+  // LQ-20261107 H2: the producer's own list of the roots/indices it could not measure (a snapshot built before the
+  // field existed has none -- then the row still says "unmeasured", it just cannot count them).
+  const missing = now?.missing ?? []
   const rows = now ? [...(now.futures ?? []), ...(now.indices ?? [])] : []
   const levels: MarketLevel[] = rows.map(r => ({
     symbol: r.symbol,
@@ -153,6 +156,13 @@ export function movesModel(w: SinceCloseWire | null | undefined): MovesModel {
       // "opens Tue 7:00 PM ET" — the exchange's next open. A row with no open text is not drawn with a level.
       text: r.opens_text || 'no feed on this host',
     })),
-    pendingText: 'futures feed pending — no print from the extended-hours lane yet',
+    // LQ-20261107 H2: the producer names every futures root and cash index it has no print for (`macro.now.missing`).
+    // Say that instead of promising a feed: a sentence about "the extended-hours lane" was a claim about a producer
+    // this view cannot see, and it read as calm where the row is simply unmeasured.
+    pendingText: missing.length > 0
+      ? `${rows.length === 0
+        ? `none of the ${missing.length} futures roots and cash indices has a print`
+        : `${missing.length} of the ${missing.length + rows.length} futures roots and cash indices have no print`} since the ${closeTag} — this row is unmeasured, not a quiet market`
+      : `no futures or index print since the ${closeTag} — this row is unmeasured, not a quiet market`,
   }
 }

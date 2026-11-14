@@ -19,6 +19,8 @@ export interface StampWire {
 export interface SlotView { text: string; at: string; state: 'done' | 'next' | 'later' | 'missed'; cio: boolean }
 export interface StampModel {
   badge: string; ago: string; missed: boolean; missedText: string | null; nextText: string; chips: StampChip[]; slots: SlotView[]
+  /** LQ-20261107 H4: the server's frozen next refresh is already in the past — named, never shown as "next". */
+  missedRefreshText: string | null
   /** LQ-1269: the snapshot is older than the operator's limit for the current session (see STALE_MARKET_MS). */
   stale: boolean; staleText: string | null; staleLimitText: string
 }
@@ -65,17 +67,42 @@ export function stampModel(s: StampWire | null | undefined, nowMs: number = Date
     }
     return { text: f.text, at: f.at, state, cio: cio.has(f.at) }
   })
-  // LQ-1269: the snapshot's OWN clock decides staleness. 30 min while the regular session is open, 4 h otherwise
-  // (overnight, weekends and holidays run on the slower producer cadence, so the tighter limit would cry wolf).
+  // LQ-1269: the snapshot's OWN clock decides staleness. 30 min while the regular session is open. Otherwise the
+  // limit follows the cadence the schedule itself declares: on a day the producer runs a slower registered cadence
+  // (weekends/holidays = 0 */6 * * 0,6), one gap + grace instead of a fixed 4 h, which would call a healthy
+  // six-hourly snapshot stale for hours of every cycle (LQ-20261107 H4). No slot list -> the 4 h limit stands, and
+  // the derived limit never drops BELOW the operator's 4 h: a payload written by an older table can declare a
+  // two-hourly weekend that no scheduler fires, and reading that as a 2.5 h limit would flag a healthy snapshot.
   const inMarket = sch.trading_day && open != null && close != null && nowMs >= open && nowMs <= close
-  const limitMs = inMarket ? STALE_MARKET_MS : STALE_CLOSED_MS
-  const staleLimitText = inMarket ? '30 min during market hours' : '4 h while the market is closed'
+  let limitMs = inMarket ? STALE_MARKET_MS : STALE_CLOSED_MS
+  let staleLimitText = inMarket ? '30 min during market hours' : '4 h while the market is closed'
+  if (!sch.trading_day && sch.fixed.length >= 2) {
+    const ts = sch.fixed.map(f => new Date(f.at).getTime()).sort((a, b) => a - b)
+    const gaps = ts.slice(1).map((t, i) => t - ts[i]).filter(g => Number.isFinite(g) && g > 0)
+    if (gaps.length > 0) {
+      limitMs = Math.max(Math.max(...gaps) + grace, STALE_CLOSED_MS)
+      staleLimitText = `${Math.round((limitMs / 3_600_000) * 10) / 10} h while the market is closed`
+    }
+  }
   const ageMs = nowMs - upd
   const stale = Number.isFinite(ageMs) && ageMs > limitMs
+  // LQ-20261107 H4: next_refresh_at is frozen at build time. Once it is in the past, printing it as "next" promises a
+  // refresh that has already failed to happen; say so, and name the next slot the schedule actually still has ahead.
+  // The alarm is only raised when that instant is one of the schedule's OWN slots: a snapshot built by an older table
+  // can carry a time no scheduler ever fires, and calling that a missed refresh would be a claim about a fire that
+  // never existed. The schedule row is authoritative; the frozen value is only evidence when the two agree.
+  const serverNextMs = new Date(s.next_refresh_at).getTime()
+  const nextIsPast = Number.isFinite(serverNextMs) && serverNextMs <= nowMs
+  const nextWasScheduled = sch.fixed.some(f => new Date(f.at).getTime() === serverNextMs)
+  const nextSlot = slots.find(x => x.state === 'next') ?? null
   return {
     badge: badgeText(s.updated_at), ago: agoText(nowMs - upd), missed: missedAt != null,
     missedText: missedAt ? `The ${missedAt} update did not run — this page may be out of date` : null,
-    nextText: `next ${s.next_refresh_text}`, chips: s.sources, slots,
+    nextText: nextIsPast ? (nextSlot ? `next ${nextSlot.text}` : 'no further slot scheduled today') : `next ${s.next_refresh_text}`,
+    missedRefreshText: nextIsPast && nextWasScheduled
+      ? `The ${s.next_refresh_text} refresh did not run — ${nextSlot ? `the next slot is ${nextSlot.text}` : 'no later slot is scheduled today'}`
+      : null,
+    chips: s.sources, slots,
     stale, staleLimitText,
     staleText: stale ? `This snapshot is ${agoText(ageMs)} — past the ${staleLimitText} limit` : null,
   }

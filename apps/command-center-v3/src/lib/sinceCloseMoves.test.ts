@@ -31,7 +31,23 @@ assert.equal(arrowFor(Number.NaN), '–')
   assert.equal(a.ext, null)
   assert.equal(a.note, 'no print since Fri', 'the close tag names the day, the note repeats it')
   assert.equal(m.levelsStatus, 'pending')
-  assert.equal(m.pendingText, 'futures feed pending — no print from the extended-hours lane yet')
+  assert.equal(m.pendingText, 'no futures or index print since the Fri close — this row is unmeasured, not a quiet market')
+  assert.equal(m.pendingText.includes('extended-hours lane'), false, 'the old line explained a producer this view cannot see (LQ-20261107 H2)')
+}
+
+// --- LQ-20261107 H2: the producer names what it could not measure; the line repeats that count and claims nothing
+{
+  const m = movesModel(wire({
+    macro: {
+      headlines: [], futures: { status: 'pending', label: 'futures feed pending', quotes: [] },
+      now: {
+        status: 'pending', futures: [], indices: [],
+        missing: ['/ES', '/NQ', '/RTY', '/YM', '$SPX', '$COMPX', '$DJI', '$RUT', '$NDX', '$VIX'],
+      },
+    },
+  }))
+  assert.equal(m.levelsStatus, 'pending')
+  assert.equal(m.pendingText, 'none of the 10 futures roots and cash indices has a print since the Fri close — this row is unmeasured, not a quiet market')
 }
 
 // --- an overnight print dated to this close: a second value, the session named, the arrow the same as the chips
