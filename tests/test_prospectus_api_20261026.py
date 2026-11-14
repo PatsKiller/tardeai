@@ -174,3 +174,172 @@ def test_failed_and_partial_items_carry_reason_and_gaps(seeded):
     rows = {r["symbol"]: r for r in api.index_payload(root, now=NOW)["items"]}
     assert rows["ZZCC"]["status"] == "failed" and rows["ZZCC"]["failure_reason"].startswith("OUTPUT_UNGROUNDED")
     assert rows["ZZDD"]["status"] == "partial" and rows["ZZDD"]["partial_gaps"] == ["price_history: empty"]
+
+
+# --- Stored-unit normalization (OP-064): a legacy peer market cap is MILLIONS under a "$B" label --------------------
+#
+# Live shapes, measured on the host store 2026-11-14: 52 of 121 stored versions predate blocks.py e416d7c55
+# (2026-10-26T23:29:07Z) and carry raw Finviz millions. ANET stored 218731.87; the page printed "$218731.9B". The
+# small caps are why the rule cannot be a magnitude threshold: PFLT stored 696.65 (its $0.7B) and FATN 88.2.
+LEGACY_V = "20261026T181337Z"    # ANET's stored version — before the producer cutover
+CURRENT_V = "20261027T141256Z"   # NVDA's stored version — peer caps already in $B (5215.0)
+
+
+def _peer_doc(version, caps, *, median=None, facts=None, label="ZZLG Mkt cap ($B)"):
+    """A demo-tier prospectus with one peer block; caps are given in whatever unit the writer stored."""
+    rows = [{"symbol": "ZZLG" if i == 0 else f"Z{i}", "market_cap_b": c, "is_subject": i == 0}
+            for i, c in enumerate(caps)]
+    return {"schema": "Prospectus@v1", "symbol": "ZZLG", "version": version, "generated_at": version,
+            "model": "claude-opus-5-5", "verdict_line": "Synthetic verdict.", "sections": [], "charts": [],
+            "blocks": {"peer_comparison": {"fields": ["market_cap_b"], "labels": {"market_cap_b": "Mkt cap ($B)"},
+                                           "rows": rows,
+                                           "median": {"market_cap_b": median} if median is not None else {}}},
+            "facts": facts or []}
+
+
+def _stored(tmp_path, doc, version=None):
+    base = store.base_dir(tmp_path, load_config())
+    store.write_version(base, doc["symbol"], version or doc["version"], doc, {})
+    return base
+
+
+def _peer_cell(millions_or_billions):
+    """The client's own formatter (apps/command-center-v3/src/lib/prospectusModel.ts peerCell)."""
+    return f"${millions_or_billions:.1f}B"
+
+
+def test_legacy_peer_market_cap_is_millions_converted_once_at_read(tmp_path):
+    """ANET-shaped: 218731.87 is $M. The reader converts once and records the rule; the page prints $218.7B."""
+    doc = _peer_doc(LEGACY_V, [218731.87, 296783.39, 143620.43], median=143620.43,
+                    facts=[{"id": "F8", "kind": "fundamental", "label": "Market cap ($B)", "value": 218731.87},
+                           {"id": "F95", "kind": "peers", "label": "ZZLG Mkt cap ($B)", "value": 218731.87},
+                           # A dollar-valued fact that is NOT a peer cap: the subject's own market cap in dollars.
+                           {"id": "F172", "kind": "fundamental", "label": "MarketCap (latest)",
+                            "value": 217396490000.0}])
+    _stored(tmp_path, doc)
+    status, body = api.handle("/api/v2/prospectus/ZZLG", "GET", ctx=ctx(tmp_path))
+    assert status == 200
+    pc = body["blocks"]["peer_comparison"]
+    assert [r["market_cap_b"] for r in pc["rows"]] == [218.73, 296.78, 143.62]
+    assert pc["median"]["market_cap_b"] == 143.62
+    # What the operator reads (peerCell). Before the fix this string was "$218731.9B".
+    assert _peer_cell(pc["rows"][0]["market_cap_b"]) == "$218.7B"
+    # The peer-cited facts carry the same stored value under a "$B" label; the dollar-valued one is untouched.
+    values = {f["id"]: f["value"] for f in body["facts"]}
+    assert values["F8"] == 218.73 and values["F95"] == 218.73
+    assert values["F172"] == 217396490000.0
+    rec = body["unit_normalization"]
+    assert rec["rule"] == api.UNIT_RULE and rec["applied"] is True and rec["action"] == "divided_1000"
+    assert rec["cutover_version"] == "20261026T232907Z"
+    assert rec["rows"] == 3 and rec["median"] is True and rec["facts"] == 2
+
+
+def test_current_peer_market_cap_is_billions_and_left_alone(tmp_path):
+    """NVDA-shaped current doc: 5215.0 is already $B — dividing it again would print $5.2B for a $5.2T company."""
+    doc = _peer_doc(CURRENT_V, [5215.0, 2200.99, 1600.31], median=1045.73)
+    _stored(tmp_path, doc)
+    status, body = api.handle("/api/v2/prospectus/ZZLG", "GET", ctx=ctx(tmp_path))
+    assert status == 200
+    pc = body["blocks"]["peer_comparison"]
+    assert [r["market_cap_b"] for r in pc["rows"]] == [5215.0, 2200.99, 1600.31]
+    assert pc["median"]["market_cap_b"] == 1045.73
+    assert _peer_cell(pc["rows"][0]["market_cap_b"]) == "$5215.0B"
+    rec = body["unit_normalization"]
+    assert rec["applied"] is False and rec["action"] == "none" and rec["version"] == CURRENT_V
+
+
+def test_legacy_small_cap_is_converted_and_a_magnitude_rule_would_miss_it(tmp_path):
+    """A $0.7B name stored in millions is 696.65 — under any threshold that catches the large caps."""
+    doc = _peer_doc(LEGACY_V, [696.65, 88.2, 3977.25], median=696.65)
+    _stored(tmp_path, doc)
+    _, body = api.handle("/api/v2/prospectus/ZZLG", "GET", ctx=ctx(tmp_path))
+    caps = [r["market_cap_b"] for r in body["blocks"]["peer_comparison"]["rows"]]
+    assert caps == [0.7, 0.09, 3.98]  # $0.7B, $88M, $3.98B
+    assert body["unit_normalization"]["rows"] == 3
+
+
+def test_cutover_stamp_is_treated_as_current(tmp_path):
+    """The boundary belongs to the converted side: a doc stamped exactly at the cutover is already in $B."""
+    doc = _peer_doc(api.PEER_MARKET_CAP_CUTOVER_VERSION, [5215.0])
+    _stored(tmp_path, doc)
+    _, body = api.handle("/api/v2/prospectus/ZZLG", "GET", ctx=ctx(tmp_path))
+    assert body["blocks"]["peer_comparison"]["rows"][0]["market_cap_b"] == 5215.0
+    assert body["unit_normalization"]["applied"] is False
+
+
+def test_unreadable_version_stamp_withdraws_the_figure_not_a_guess(tmp_path):
+    """Unknown beats wrong: with no readable stamp the unit cannot be established, so the cell renders "—"."""
+    doc = _peer_doc(LEGACY_V, [218731.87, 296783.39], median=218731.87)
+    doc["version"] = ""
+    _stored(tmp_path, doc, version=LEGACY_V)
+    _, body = api.handle("/api/v2/prospectus/ZZLG", "GET", ctx=ctx(tmp_path))
+    pc = body["blocks"]["peer_comparison"]
+    assert [r["market_cap_b"] for r in pc["rows"]] == [None, None]
+    assert pc["median"]["market_cap_b"] is None
+    assert body["unit_normalization"]["action"] == "withdrawn" and body["unit_normalization"]["applied"] is False
+
+
+def test_unreadable_stamp_withdraws_the_cap_labelled_facts_too(tmp_path):
+    """cc-deepseek-9 F1 (VERDICT 2026-11-14T21:23Z): the withdrawn arm nulled the cells but left the facts, so a
+    footnote printed the 1000x number under a `($B)` label while the record said "market cap withdrawn".
+
+    The facts are withdrawn by the SAME exact value-identity set the legacy arm converts — never by label alone, so a
+    value this table does not hold is not guessed at.
+    """
+    doc = _peer_doc(LEGACY_V, [218731.87, 296783.39], median=183987.41,
+                    facts=[{"id": "F8", "kind": "fundamental", "label": "Market cap ($B)", "value": 218731.87},
+                           {"id": "F95", "kind": "peers", "label": "ZZLG Mkt cap ($B)", "value": 218731.87},
+                           {"id": "F133", "kind": "peers", "label": "Peer median Mkt cap ($B)", "value": 183987.41},
+                           # A cap-labelled fact whose value is NOT in this table: no row or median holds it.
+                           {"id": "F150", "kind": "peers", "label": "ZZQX Mkt cap ($B)", "value": 999.0},
+                           # A dollar-valued fact that is not a peer cap at all.
+                           {"id": "F172", "kind": "fundamental", "label": "MarketCap (latest)",
+                            "value": 217396490000.0}])
+    doc["version"] = ""
+    _stored(tmp_path, doc, version=LEGACY_V)
+    _, body = api.handle("/api/v2/prospectus/ZZLG", "GET", ctx=ctx(tmp_path))
+
+    pc = body["blocks"]["peer_comparison"]
+    assert [r["market_cap_b"] for r in pc["rows"]] == [None, None]
+    assert pc["median"]["market_cap_b"] is None
+
+    facts = {f["id"]: f for f in body["facts"]}
+    for fid in ("F8", "F95", "F133"):           # value matched a withdrawn row/median: withdrawn too
+        assert facts[fid]["value"] is None, fid
+        assert facts[fid]["text"] == "not reliable (stored unit unverified)", fid
+    assert facts["F150"]["value"] == 999.0       # unmatched cap label: not guessed at
+    assert "text" not in facts["F150"]
+    assert facts["F172"]["value"] == 217396490000.0
+
+    rec = body["unit_normalization"]
+    assert rec["action"] == "withdrawn" and rec["applied"] is False
+    assert rec["rows"] == 2 and rec["median"] is True and rec["facts"] == 3
+
+    # Idempotent in the safe direction: a second pass does not withdraw a second time or resurrect a figure.
+    again = api.normalize_stored_units(body)
+    assert again is body and again["unit_normalization"]["facts"] == 3
+
+
+def test_no_peer_block_adds_no_key_and_normalization_is_idempotent(tmp_path):
+    """A doc without a peer table is untouched (no payload growth), and a second pass never divides twice."""
+    doc = {"schema": "Prospectus@v1", "symbol": "ZZLG", "version": LEGACY_V, "generated_at": LEGACY_V,
+           "verdict_line": "Synthetic.", "sections": [], "charts": [], "blocks": {}, "facts": []}
+    assert api.normalize_stored_units(doc) is doc and "unit_normalization" not in doc
+
+    legacy = _peer_doc(LEGACY_V, [218731.87, 296783.39], median=143620.43)
+    once = api.normalize_stored_units(legacy)
+    again = api.normalize_stored_units(once)
+    assert again is once
+    assert [r["market_cap_b"] for r in again["blocks"]["peer_comparison"]["rows"]] == [218.73, 296.78]
+    assert again["unit_normalization"]["rows"] == 2
+
+
+def test_the_stored_file_is_never_rewritten(tmp_path):
+    """The read converts the payload, not the archive: the file on disk still holds the writer's millions."""
+    doc = _peer_doc(LEGACY_V, [218731.87], median=218731.87)
+    base = _stored(tmp_path, doc)
+    path = base / "ZZLG" / LEGACY_V / "prospectus.json"
+    before = path.read_bytes()
+    api.handle("/api/v2/prospectus/ZZLG", "GET", ctx=ctx(tmp_path))
+    assert path.read_bytes() == before
+    assert json.loads(before)["blocks"]["peer_comparison"]["rows"][0]["market_cap_b"] == 218731.87

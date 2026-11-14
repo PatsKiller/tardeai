@@ -39,6 +39,24 @@ CONTENT_TYPES = {"html": "text/html; charset=utf-8", "pdf": "application/pdf",
                  "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
 _PATH_RE = re.compile(r"^/api/v2/prospectus/([A-Za-z0-9.\-]{1,12})(?:/(refresh|file/(html|pdf|docx)))?$")
 
+# --- Stored-unit normalization (OP-064 legacy market cap) ---------------------------------------------------------
+# The peer block's ``market_cap_b`` is Finviz "Market Cap" in MILLIONS of dollars despite the name, and the column
+# label says "$B". Prospectus builds that predate the producer conversion wrote the raw cache value under that label;
+# every stored doc written before this cutover therefore renders "$218731.9B" for ANET's $218.7B. Source of the
+# cutover: ``scripts/lib/prospectus/blocks.py`` ``market_cap_billions`` (commit e416d7c55, 2026-10-26 19:29:07 -0400),
+# which converts at the source so nothing is normalised twice.
+#
+# The doc's own ``version`` stamp names the code version that wrote it, so the stamp — never the magnitude — decides:
+#   * before the cutover  -> divide the peer market caps by 1000 exactly once, at read;
+#   * at/after the cutover -> values are already $B, left untouched;
+#   * no readable stamp   -> the unit is unverified: the values are withdrawn (the UI renders "—"), never guessed.
+# A magnitude rule is wrong here: a $0.7B name stored in millions is 696.65, under any threshold that catches the
+# large caps, and a small cap would be shown 1000x too big.
+PEER_MARKET_CAP_CUTOVER_VERSION = "20261026T232907Z"  # blocks.py e416d7c55, 2026-10-26T19:29:07-04:00
+UNIT_RULE = "prospectus_peer_market_cap_b@v1"
+_MILLIONS_TO_BILLIONS = 1000.0
+_CAP_FACT_LABEL_RE = re.compile(r"^(?:.+ )?Mkt cap \(\$B\)$|^Market cap \(\$B\)$")
+
 
 @dataclass
 class Ctx:
@@ -102,6 +120,111 @@ def _q(query: Any, key: str) -> Optional[str]:
     if isinstance(v, list):
         v = v[0] if v else None
     return str(v) if v not in (None, "") else None
+
+
+def _num(v: Any) -> Optional[float]:
+    """A finite number, or None. Booleans are not figures."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    return float(v)
+
+
+def normalize_stored_units(doc: dict) -> dict:
+    """Convert a unit a pre-cutover prospectus build stored wrongly; returns ``doc``.
+
+    Only the peer block carries a field whose unit changed under a fixed name (``market_cap_b``: MILLIONS before the
+    producer cutover, billions after — see the block comment above). The decision and its effect are recorded on the
+    payload as ``unit_normalization``, so the conversion is auditable and cannot be applied twice by a later reader.
+    The stored file is never written: this is a read.
+    """
+    blocks = doc.get("blocks") if isinstance(doc.get("blocks"), dict) else {}
+    pc = blocks.get("peer_comparison") if isinstance(blocks.get("peer_comparison"), dict) else None
+    rows = [r for r in ((pc or {}).get("rows") or []) if isinstance(r, dict)]
+    median = (pc or {}).get("median") if isinstance((pc or {}).get("median"), dict) else None
+    has_cap = (any(_num(r.get("market_cap_b")) is not None for r in rows)
+               or (median is not None and _num(median.get("market_cap_b")) is not None))
+    if not pc or not has_cap:
+        return doc
+    prior = doc.get("unit_normalization") if isinstance(doc.get("unit_normalization"), dict) else {}
+    if prior.get("rule") == UNIT_RULE:  # already decided for this payload: never divide twice
+        return doc
+    version = str(doc.get("version") or "").strip()
+    record: dict[str, Any] = {"rule": UNIT_RULE, "cutover_version": PEER_MARKET_CAP_CUTOVER_VERSION}
+    if not store.STAMP_RE.match(version):
+        # Unknown beats wrong: withdraw a figure whose unit cannot be established rather than print a guess. The
+        # cap-labelled FACTS carry the same stored values under the same "$B" label, so they are withdrawn by the
+        # SAME exact value-identity set the legacy arm converts below (cc-deepseek-9 VERDICT 2026-11-14T21:23Z, F1:
+        # nulling the rows alone left a footnote printing the 1000x figure while the record said "withdrawn").
+        # A cap-labelled fact citing a value this table does not hold — or a dollar-valued fact such as the
+        # subject's own `MarketCap (latest)` — is not guessed at and is left exactly as stored.
+        stored_caps: set[float] = set()
+        withdrawn_rows = 0
+        for r in rows:
+            v = _num(r.get("market_cap_b"))
+            if v is not None:
+                stored_caps.add(v)
+                r["market_cap_b"] = None
+                withdrawn_rows += 1
+        median_withdrawn = False
+        if median is not None:
+            v = _num(median.get("market_cap_b"))
+            if v is not None:
+                stored_caps.add(v)
+                median["market_cap_b"] = None
+                median_withdrawn = True
+        facts_withdrawn = 0
+        for f in doc.get("facts") or []:
+            if not isinstance(f, dict) or not _CAP_FACT_LABEL_RE.match(str(f.get("label") or "")):
+                continue
+            v = _num(f.get("value"))
+            if v is not None and v in stored_caps:
+                f["value"] = None
+                # The writer's own convention for an unprintable value; the client renders `text` in place of the
+                # number (prospectusModel.ts footnotes), so the footnote reads as a muted note, not as a figure.
+                f["text"] = "not reliable (stored unit unverified)"
+                facts_withdrawn += 1
+        record.update({"applied": False, "action": "withdrawn", "version": version,
+                       "rows": withdrawn_rows, "median": median_withdrawn, "facts": facts_withdrawn,
+                       "reason": "no readable version stamp — stored unit unverified, market cap withdrawn"})
+        doc["unit_normalization"] = record
+        return doc
+    if version >= PEER_MARKET_CAP_CUTOVER_VERSION:
+        record.update({"applied": False, "action": "none", "version": version,
+                       "reason": "written after the producer conversion; peer market caps already in $B"})
+        doc["unit_normalization"] = record
+        return doc
+    # Legacy: $M -> $B, exactly once. Facts that cite a peer cap carry the same stored value under a "$B" label, so
+    # they are converted by exact value identity — the payload never disagrees with itself, and a dollar-valued fact
+    # (the subject's own market cap in dollars, e.g. 217396490000.0) matches no peer value and is left alone.
+    stored_caps: set[float] = set()
+    row_fields = 0
+    for r in rows:
+        v = _num(r.get("market_cap_b"))
+        if v is None:
+            continue
+        stored_caps.add(v)
+        r["market_cap_b"] = round(v / _MILLIONS_TO_BILLIONS, 2)
+        row_fields += 1
+    median_converted = False
+    if median is not None:
+        v = _num(median.get("market_cap_b"))
+        if v is not None:
+            stored_caps.add(v)
+            median["market_cap_b"] = round(v / _MILLIONS_TO_BILLIONS, 2)
+            median_converted = True
+    fact_fields = 0
+    for f in doc.get("facts") or []:
+        if not isinstance(f, dict) or not _CAP_FACT_LABEL_RE.match(str(f.get("label") or "")):
+            continue
+        v = _num(f.get("value"))
+        if v is not None and v in stored_caps:
+            f["value"] = round(v / _MILLIONS_TO_BILLIONS, 2)
+            fact_fields += 1
+    record.update({"applied": bool(row_fields or median_converted), "action": "divided_1000", "version": version,
+                   "rows": row_fields, "median": median_converted, "facts": fact_fields,
+                   "reason": "written before the producer conversion; peer market caps are MILLIONS, converted once"})
+    doc["unit_normalization"] = record
+    return doc
 
 
 def budget(root: Path) -> dict:
@@ -277,6 +400,10 @@ def handle(path: str, method: str, body: Any = None, query: Any = None, *, ctx: 
                      "status": (QUEUE_STATUS.get(q.get("state"), "queued") if q else "missing"),
                      "failure_reason": (q or {}).get("last_error"), "viewer": {"operator": bool(_safe_operator(ctx))}}
     doc["versions"] = [{k: r.get(k) for k in ("version", "generated_at", "model")} for r in store.versions(base, sym)]
+    # Stored-unit normalization (a legacy doc's peer market caps are MILLIONS under a "$B" label); recorded on the
+    # payload as `unit_normalization`. The stored JSON, the pre-rendered html/pdf/docx files and the delta prompt are
+    # untouched — this changes what the JSON reader is served, nothing else.
+    doc = normalize_stored_units(doc)
     doc["viewer"] = {"operator": bool(_safe_operator(ctx))}
     entry = store.read_index(base)["items"].get(sym) or {}
     doc.setdefault("failure_reason", entry.get("failure_reason") if entry.get("status") == "failed" else None)
