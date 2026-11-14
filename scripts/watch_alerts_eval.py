@@ -373,6 +373,50 @@ def _write_run_record(started, rc: int, stats: dict) -> None:
             empty_reason=None if rc != 0 or stats.get("fired") or stats.get("composites") else "no_alert_fired")
     except Exception as error:  # noqa: BLE001 - a receipt failure never stops the alert lane
         print(f"[watch-alerts] run record not written: {str(error)[:200]}")
+    _append_runs_record(rc, stats)
+
+
+def _append_runs_record(rc: int, stats: dict) -> None:
+    """Append this pass to the durable runs record (one jsonl line per pass).
+
+    The lane receipt is overwritten every pass, so it cannot answer "when did a run last succeed" or "how many runs
+    in 24 h". The Watch Alerts tab reads ``lib/watch_alerts_record.read_record`` (Watch v002, LQ-20261107-2993c-v2);
+    without this line that read is a permanent UNKNOWN, not a stale value. Guarded twice: a writer module that is
+    missing OR fails at import (the v002 lib folds after this lane) is named once per pass and never fails the run,
+    and a record write failure never stops an alert pass.
+
+    A pass that never acquired the pass lock is NOT a run (F1, REVIEW-LQ-20261107-3011-runs-record-cc-deepseek-8):
+    its rc is 0, and the reader certifies from the newest rc == 0 line, so appending it would turn the certified
+    armed count UNKNOWN and advance ``last_ok_at`` past a pass that evaluated nothing. The receipt beside it
+    already carries ``empty_reason: lock_skipped``, which is where the skip stays visible. On this tree (release-3
+    source d12fe7ec3) no pass lock exists yet, so nothing sets the key; the guard is inert until the 3011-v4 pass
+    (or an equivalent) lands, and it is pinned by test_lock_skipped_pass_is_not_a_run.
+    """
+    if stats.get("lock_skipped"):
+        return
+    try:
+        from lib.watch_alerts_record import append_run
+    except ImportError:
+        print("[watch-alerts] runs record writer absent (lib/watch_alerts_record); no liveness line this pass")
+        return
+    except Exception as error:  # noqa: BLE001 - F2: a writer that fails at import must never stop the alert lane
+        print(f"[watch-alerts] runs record writer failed to import: {str(error)[:200]}")
+        return
+    try:
+        wrote = append_run(
+            armed=stats.get("armed"),  # None = the alerts read failed: UNKNOWN, never "armed 0"
+            fired=stats.get("fired") or 0,
+            composites=stats.get("composites") or 0,
+            rc=rc,
+            error=stats.get("error"),
+        )
+    except Exception as error:  # noqa: BLE001 - a record failure never stops an alert pass
+        print(f"[watch-alerts] runs record not written: {str(error)[:200]}")
+        return
+    # N1: append_run never raises; it returns False when the write is refused. Say so instead of leaving only an
+    # unexplained UNKNOWN on the Alerts tab.
+    if wrote is False:
+        print("[watch-alerts] runs record refused: the writer returned False; the tab will read UNKNOWN")
 
 
 if __name__ == "__main__":
