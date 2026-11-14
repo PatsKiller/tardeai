@@ -217,7 +217,12 @@ def test_header_holdings_risk_have_identical_totals_count_quote_and_stop_state(t
     assert header["position_count"] == book["position_count"] == risk["position_count"] == 3
     assert header["portfolio_value"] == book["total_value"] == 3699
     assert header["today_change"] is None and header["periods"]["1D"]["change"] is None
-    assert header["today_pnl"]["stored_row_evidence"]["known_sum"] == book["today_change"] == -57
+    # LQ-20261113-3124R: the page's "today" is the shared PortfolioMeasures@v1 block, materialized by the writer
+    # and read here — never a sum re-computed on the GET. This document carries no such block, so the page
+    # publishes UNKNOWN rather than its own stored-row sum; the header keeps that sum as named evidence.
+    assert header["today_pnl"]["stored_row_evidence"]["known_sum"] == -57
+    assert book["today_change"] is None and book["today_change_status"] == "UNKNOWN"
+    assert book["measures"]["materialized"] is False
     a = next(r for r in book["holdings"] if r["symbol"] == "SPCX" and r["account_id"] == "schwab_roth_ira")
     b = next(r for r in risk["positions"] if r["symbol"] == "SPCX" and r["account_id"] == "schwab_roth_ira")
     assert a["price"] == b["price"] == 100

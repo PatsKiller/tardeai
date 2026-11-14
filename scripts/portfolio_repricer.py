@@ -1234,6 +1234,13 @@ def _recalc_totals(portfolio: Dict) -> None:
     _reconcile_totals_notes(portfolio["portfolio_totals"],
                             day_change_measured_rows=_dc_coverage["day_change_measured_rows"])
 
+    # ── PortfolioMeasures@v1 (LQ-20261113-3124R) ──
+    # Materialized HERE, by the writer, so the API's GET path only ever reads the block: the four measures
+    # must be computed against one valuation cutoff for both surfaces, and a read must never recompute them.
+    # A DB outage degrades the prior-close measures to UNKNOWN with a reason; it never fails the write and
+    # never borrows another basis or clock.
+    _materialize_measures(portfolio)
+
     for h in holdings:
         mv = h.get("market_value") or 0
         h["portfolio_pct"] = round((mv / gt * 100) if gt > 0 else 0, 4)
@@ -1244,6 +1251,202 @@ def _recalc_totals(portfolio: Dict) -> None:
     # re-reads the same receipts and row clocks with allow_shell=False (no
     # systemctl from here) and keeps the previous block if anything fails.
     _refresh_account_states(portfolio)
+
+
+#: The last book the store observed strictly before today's ET date began (LQ-20261113-3124R). One literal
+#: statement; the ten-day bound keeps a writer that runs every fifteen minutes off the whole history.
+_PRIOR_SNAPSHOT_SQL = (
+    "WITH runs AS ("
+    " SELECT sync_run_id, max(captured_at) AS captured_at FROM position_snapshots"
+    " WHERE captured_at >= %s AND captured_at < %s GROUP BY sync_run_id),"
+    " last_run AS (SELECT sync_run_id, captured_at FROM runs ORDER BY captured_at DESC LIMIT 1)"
+    " SELECT l.sync_run_id, l.captured_at, p.account_key, p.symbol, p.qty, p.broker_market_value, p.is_cash"
+    " FROM last_run l JOIN position_snapshots p ON p.sync_run_id = l.sync_run_id"
+)
+
+#: Today's trades, for the realized effect of positions closed today. ``amount`` is the gross proceeds
+#: the broker reported and ``fees`` the commission; the net the sale left in cash is the difference.
+_TRADES_TODAY_SQL = (
+    "SELECT account, upper(symbol) AS symbol, upper(action) AS action, quantity, amount, fees"
+    " FROM trade_transactions WHERE trade_date = %s"
+)
+
+#: Today's transfers (ET date). Both ends inside the book is an internal movement, which cancels in the
+#: consolidated total; an end outside the book is an external contribution and changes the account's value.
+_TRANSFERS_TODAY_SQL = (
+    "SELECT transfer_date, from_account, to_account, amount, transfer_type"
+    " FROM account_transfers WHERE transfer_date = %s"
+)
+
+
+def _db_rows(db_query, sql, params=None):
+    """Rows, or None on a failed read. None is the explicit unknown: the caller degrades the measure to
+    UNKNOWN and names the gap — it never treats a failed read as an empty book."""
+    try:  # nosemgrep: tq-py-broad-except-returns-default -- None is the explicit unknown the caller turns into UNKNOWN + a named gap
+        rows = db_query(sql, params, fetch="all")
+    except Exception:
+        return None
+    try:  # nosemgrep: tq-py-broad-except-returns-default -- an unreadable result is unknown, never an empty book
+        return [dict(r) for r in rows or []]
+    except Exception:
+        return None
+
+
+def _num(value) -> Optional[float]:
+    try:
+        if value is None or isinstance(value, bool):
+            return None
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    if out != out or out in (float("inf"), float("-inf")):
+        return None
+    return out
+
+
+def _prior_close_snapshot(db_query, now=None) -> Optional[Dict]:
+    """The store's own per-row book at its last sync before today's ET date began.
+
+    Returns ``{"as_of", "source", "rows": {(account, symbol): dollars}, "shares": {(account, symbol): qty},
+    "total", "row_count"}`` or None.
+    A cash row's dollars are its share count: the store writes cash with a null ``broker_market_value``,
+    and reading the null as "unknown" was how a prior-close equity lost its cash.
+    ``shares`` carries the **position** count of each non-cash key so the start of the change can value the book's
+    own count at the prior close (a trim or an add must not move the start's count) -- lead ruling 06:29Z,
+    option (a). Cash is excluded: its ``qty`` is dollars, not a share count.
+    """
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("America/New_York")
+    n = now if now is not None else datetime.now(tz)
+    if n.tzinfo is None:
+        n = n.replace(tzinfo=tz)
+    et = n.astimezone(tz)
+    midnight = datetime.combine(et.date(), datetime.min.time(), tzinfo=tz)
+    rows = _db_rows(db_query, _PRIOR_SNAPSHOT_SQL, (midnight - timedelta(days=10), midnight))
+    if not rows:
+        return None
+    values: Dict[tuple, float] = {}
+    shares: Dict[tuple, float] = {}
+    total = 0.0
+    captured = rows[0].get("captured_at")
+    dropped = 0
+    for row in rows:
+        value = _num(row.get("qty") if row.get("is_cash") else row.get("broker_market_value"))
+        if value is None:
+            dropped += 1
+            continue
+        key = (str(row.get("account_key") or ""), str(row.get("symbol") or "").upper())
+        if key in values:
+            dropped += 1
+            continue
+        values[key] = round(value, 2)
+        if not row.get("is_cash"):
+            qty = _num(row.get("qty"))
+            if qty is not None:
+                shares[key] = qty
+        total += value
+    return {"as_of": captured.isoformat() if isinstance(captured, datetime) else (str(captured) if captured else None),
+            "source": ("position_snapshots sync_run %s, last run before %s (ET)"
+                       % (rows[0].get("sync_run_id"), et.date().isoformat())),
+            "rows": values, "shares": shares, "total": round(total, 2), "row_count": len(rows),
+            "dropped_rows": dropped}
+
+
+def _trades_today(db_query, now=None) -> Optional[List[Dict]]:
+    """Today's trades (ET date), or None when the read failed — which is UNKNOWN, never an empty day."""
+    rows = _db_rows(db_query, _TRADES_TODAY_SQL, (str(_et_today(now)),))
+    if rows is None:
+        return None
+    out = []
+    for row in rows:
+        out.append({"account": str(row.get("account") or ""),
+                    "symbol": str(row.get("symbol") or "").upper(),
+                    "action": str(row.get("action") or ""),
+                    "quantity": _num(row.get("quantity")),
+                    "amount": _num(row.get("amount")),
+                    "fees": _num(row.get("fees"))})
+    return out
+
+
+def _transfers_today(db_query, now=None) -> Optional[List[Dict]]:
+    """Today's transfers (ET date), or None when the read failed — UNKNOWN, never an empty ledger."""
+    rows = _db_rows(db_query, _TRANSFERS_TODAY_SQL, (str(_et_today(now)),))
+    if rows is None:
+        return None
+    return [{"transfer_date": row.get("transfer_date"), "from_account": row.get("from_account"),
+             "to_account": row.get("to_account"), "amount": _num(row.get("amount")),
+             "transfer_type": row.get("transfer_type")} for row in rows]
+
+
+def _materialize_measures(portfolio: Dict, *, db_query=None, now=None) -> None:
+    """Store ``PortfolioMeasures@v1`` on the document this pass writes (LQ-20261113-3124R).
+
+    GET never computes: the API reads ``holdings.json["measures"]``. The measures are computed here so both
+    surfaces share one account scope, one session and one valuation cutoff. A DB outage degrades the
+    prior-close measures to UNKNOWN with the reason recorded; it never fails the write and never borrows
+    another basis or clock.
+    """
+    from lib.portfolio_measures import portfolio_measures  # noqa: PLC0415 -- writer-side import; keeps the reader light
+
+    gap = trade_gap = transfer_gap = None
+    prior = trades = transfers = None
+    q = db_query
+    if q is None:
+        try:
+            from db_adapter import _execute, USE_DB  # noqa: PLC0415 -- optional at import: a DB-less host still writes
+            if USE_DB:
+                q = lambda sql, params=None, fetch="all": _execute(sql, params, fetch=fetch)  # noqa: E731 -- the file's db_query shape
+            else:
+                gap = "database disabled in this process (USE_DB false): no prior-close book"
+        except Exception as exc:  # noqa: BLE001 — a measures input gap must not stop the book
+            gap = f"database unavailable: {exc}"
+    if q is not None:
+        try:
+            prior = _prior_close_snapshot(q, now)
+        except Exception as exc:  # noqa: BLE001 -- a prior-close read gap degrades one measure, never the write
+            gap = f"prior-close snapshot read failed: {type(exc).__name__}: {exc}"
+        try:
+            trades = _trades_today(q, now)
+        except Exception as exc:  # noqa: BLE001 -- a trades read gap degrades one drill-down, never the write
+            trade_gap = f"trades read failed: {type(exc).__name__}: {exc}"
+        try:
+            transfers = _transfers_today(q, now)
+        except Exception as exc:  # noqa: BLE001 -- a transfers gap leaves the ledger UNKNOWN, never zero
+            transfer_gap = f"transfers read failed: {type(exc).__name__}: {exc}"
+        if prior is None and gap is None:
+            gap = ("no position_snapshots run before today's ET midnight (bounded to ten days): the starting "
+                   "equity is not observed")
+        if trades is None and trade_gap is None:
+            trade_gap = ("the trades read returned nothing usable: the day's trades are UNKNOWN, so a sold "
+                         "position's effect is stored-gross or unknown")
+        if transfers is None and transfer_gap is None:
+            transfer_gap = ("the transfers read returned nothing usable: external flows are UNKNOWN, so the "
+                            "verified P&L cannot be signed")
+    # The closed set goes to the projection whole. Whether a row belongs to the interval being measured is
+    # decided per row there, against the prior book and the interval's own trades -- one place, one rule, so the
+    # writer cannot empty a set the measures still need (LQ-3124R F1 + review 2026-11-14).
+    doc = dict(portfolio)
+    try:
+        measures = portfolio_measures(doc, prior_snapshot=prior, trades=trades,
+                                      transfers=transfers, now=now)
+    except Exception as exc:  # noqa: BLE001 — keep the last good block rather than fail the write
+        print(f"  [repricer] measures not materialized: {type(exc).__name__}: {exc}")
+        prev = portfolio.get("measures")
+        if isinstance(prev, dict):
+            prev["compute_error"] = f"{type(exc).__name__}: {exc}"
+        return
+    gaps = {}
+    if gap:
+        gaps["prior_close_book"] = gap
+    if trade_gap:
+        gaps["trades_today"] = trade_gap
+    if transfer_gap:
+        gaps["transfers_today"] = transfer_gap
+    if gaps:
+        measures["input_gap"] = gaps
+    measures["materialized"] = True
+    measures["materialized_at"] = _utc_now_iso()
+    portfolio["measures"] = measures
 
 
 def _refresh_account_states(portfolio: Dict) -> None:

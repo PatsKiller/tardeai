@@ -185,6 +185,15 @@ def finviz_reprice(holdings_doc: dict, finviz: dict | None, *, now: datetime | N
     reconciliation. When Finviz is down or stale, ``quotes`` ({SYM: {price, as_of, source}} from the data broker)
     supplies a fresh Schwab/Alpaca/moomoo backup through the same resolve_mark rule. A symbol with neither keeps
     its stored mark, labelled as such. Never raises.
+
+    LQ-20261113-3124R: the delta is measured from THE MARK THE STORED DAY CHANGE WAS COMPUTED AT, never from
+    ``price``. ``price`` is the broker's regular-session mark (the repricer never writes it), while the stored
+    ``day_change`` is computed at the live/canonical mark — so on 2026-11-13 this function added the whole
+    broker->live re-mark into "today": the header's price move became a different page figure that was a
+    valuation correction, not a move. Precedence: the writer's own ``day_change_mark_price`` stamp, then the
+    mark alias the day change was computed from (``canonical_mark``/``current_price``), then ``price`` only when
+    the row carries no better provenance. The dollars are in FINDING-LQ-20261113-3124R (persistent-state
+    scratch), not in this public repository.
     """
     from .portfolio_positions import is_cash, resolve_mark
     finviz = _finviz_rows_only(finviz) if isinstance(finviz, dict) else {}
@@ -207,12 +216,29 @@ def finviz_reprice(holdings_doc: dict, finviz: dict | None, *, now: datetime | N
         mark = resolve_mark(r, finviz=fv, quote=q, now=now, cfg=cfg)
         if mark["source"] in ("stored_mark", "none") or not mark["price"]:
             continue
-        old_px, new_px = _number(r.get("price")), mark["price"]
+        new_px = mark["price"]
+        old_px = _day_change_mark_price(r)
         if old_px is not None and _number(r.get("day_change")) is not None:
-            r["day_change"] = round(_number(r["day_change"]) + (new_px - old_px) * shares, 2)
+            if abs(new_px - old_px) > 1e-9:
+                r["day_change"] = round(_number(r["day_change"]) + (new_px - old_px) * shares, 2)
+            r["day_change_mark_price"] = round(new_px, 6)
         r.update(price=new_px, current_price=new_px, market_value=round(shares * new_px, 2),
                  price_source=mark["source"], price_as_of=mark["as_of"], price_stale=mark["stale"])
     return doc
+
+
+def _day_change_mark_price(row: dict) -> float | None:
+    """The mark the row's stored day_change was computed at (LQ-20261113-3124R).
+
+    The export/repricer stamp it as ``day_change_mark_price``; older rows only carry the mark alias the value
+    came from. ``price`` is the broker's regular-session mark and is the LAST resort, because on a re-marked
+    row it names a different clock than the day change's own (the double-count this function used to add).
+    """
+    for field in ("day_change_mark_price", "canonical_mark", "current_price"):
+        value = _number(row.get(field))
+        if value is not None and value > 0:
+            return value
+    return _number(row.get("price"))
 
 
 def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
@@ -1426,7 +1452,8 @@ def _day_period(p: dict, census: dict) -> dict:
             "mark_session_date": census["mark_session_date"], "adjustment_note": _ECONOMIC_DAY_GAP}
 
 
-def performance_payload(payload, *, root=None, now=None, holdings_doc=None, document=None) -> dict:
+def performance_payload(payload, *, root=None, now=None, holdings_doc=None, document=None,
+                        measures=None) -> dict:
     """Retain the original performance money/membership; enrich evidence only.
 
     Legacy economic-day calculations remain available as originally reported.
@@ -1450,6 +1477,29 @@ def performance_payload(payload, *, root=None, now=None, holdings_doc=None, docu
         "period_quality_note": payload.get("period_quality_note")}
     out.update(today_pnl=census, market_session=deepcopy(census["market_session"]),
                clock_provenance=deepcopy(p["clock_provenance"]))
+    # LQ-20261113-3124R: the header's 1D row is the canonical price-move estimate, and the measure says so by
+    # name — beside it the account-value change (an observed two-clock delta, or UNKNOWN) and, separately,
+    # economic P&L (UNKNOWN). ``start_value`` stays exactly as the renderer computed it, now labelled as derived:
+    # it is ``current - change``, not an observation of yesterday.
+    measures = measures if isinstance(measures, dict) else ((document or {}).get("measures") or {})
+    block = measures.get("measures") if isinstance(measures, dict) else None
+    if isinstance(block, dict):
+        out["measures"] = measures
+        move = block.get("price_move_estimate") or {}
+        change = block.get("account_value_change_1d") or {}
+        period = (out.get("periods") or {}).get("1D")
+        if isinstance(period, dict):
+            period.update(measure=move.get("measure"), label=move.get("label"),
+                          status=move.get("status"), measure_basis=move.get("basis"),
+                          account_value_change_1d=change.get("value"),
+                          account_value_change_1d_status=change.get("status"),
+                          account_value_change_1d_basis=change.get("basis"),
+                          verified_daily_pnl_status=(block.get("verified_daily_pnl") or {}).get("status"),
+                          account_value_change_1d_start_as_of=((change.get("start") or {}).get("as_of")),
+                          baseline_observed=False,
+                          baseline_note=("start_value is derived as current_value - change; it is not an "
+                                         "observed prior-close total (LQ-20261113-3124R). The observed "
+                                         "prior-close equity is account_value_change_1d.start"))
     return out
 
 
@@ -1558,6 +1608,13 @@ def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None
                                     "today_by_account": deepcopy(payload.get("today_by_account"))}
     out["today_pnl"] = today_pnl
     out["market_session"] = deepcopy(today_pnl["market_session"])
+    # LQ-20261113-3124R: the canonical total/today block travels with this payload, and the today_move block
+    # (built by the route from the same market-day source) reads it from here so its number and label are the
+    # canonical measure's, not a second computation's.
+    measures = doc.get("measures") or {}
+    out["measures"] = measures
+    if isinstance(measures, dict) and isinstance(measures.get("measures"), dict):
+        today_pnl["portfolio_measures"] = measures
     out.setdefault("periods", {})["1D"] = _day_period(p, today_pnl)
     out["today_by_account"] = {r["account_id"]: {"value": r["total_usd"], "change": None,
                                                  "status": "UNKNOWN", "gap": deepcopy(today_pnl["gap"]),
@@ -1614,7 +1671,8 @@ def _mark_session(observed: str | None, market: dict | None,
     return observed, source
 
 
-def today_move_payload(market_day: dict | None, account_days: dict | None, today_pnl: dict) -> dict:
+def today_move_payload(market_day: dict | None, account_days: dict | None, today_pnl: dict,
+                       measures: dict | None = None) -> dict:
     """TODAY as the book's market-day move, from the Accounts-table source.
 
     LIVEFIX-H 2026-11-06: the header and Home summary read only the economic
@@ -1633,10 +1691,17 @@ def today_move_payload(market_day: dict | None, account_days: dict | None, today
     here — once, in the producer — while the observation date is kept as ``marks_observed``.
     """
     census = (today_pnl.get("stored_row_evidence") or {}).get("census") or {}
+    # LQ-20261113-3124R: when the canonical measures are available they ARE the number and the label; the
+    # market-day renderer's figure stays as a cross-check. They are computed from the same rows, so a
+    # disagreement is a defect to publish, not to paper over.
+    canonical = (((measures or today_pnl.get("portfolio_measures") or {}).get("measures") or {})
+                 .get("price_move_estimate")) or {}
     marks_observed = today_pnl.get("mark_session_date")
     session, session_source = _mark_session(marks_observed, today_pnl.get("market_session"),
                                             today_pnl.get("mark_session_source"))
     change = _number((market_day or {}).get("change"))
+    if canonical.get("value") is not None:
+        change = _number(canonical.get("value"))
     by_account = {}
     for acct, row in sorted((account_days or {}).items()):
         value = _number((row or {}).get("change")) if isinstance(row, dict) else None
@@ -1648,7 +1713,16 @@ def today_move_payload(market_day: dict | None, account_days: dict | None, today
            "source": "/api/v2/portfolio/performance periods.1D (portfolio_market_day)",
            "status": "REPORTED" if change is not None else "UNKNOWN",
            "change": change,
-           "change_pct": _number((market_day or {}).get("change_pct")) if change is not None else None,
+           "change_pct": (_number((market_day or {}).get("change_pct"))
+                          if change is not None and (canonical.get("value") is None
+                                                     or _number((market_day or {}).get("change")) == change)
+                          else None),
+           "measure": canonical.get("measure") or "price_move_estimate",
+           "label": canonical.get("label") or "Estimated price movement of current holdings",
+           "measure_status": canonical.get("status"),
+           "measure_basis": canonical.get("basis"),
+           "definition": canonical.get("definition"),
+           "market_day_cross_check": _number((market_day or {}).get("change")),
            "by_account": by_account,
            "session_date": session if change is not None else None,
            "session_source": session_source if change is not None and session else None,
@@ -1720,11 +1794,44 @@ def holdings_payload(payload, *, root=None, now=None, db_query=None, inputs=None
             row.update(protection_for(row, broker_available=doc["stops"].get("active_count") is not None))
         rows.append(row)
     p = doc["portfolio"]
-    out.update(holdings=rows, count=len(rows), position_count=p["position_count"], total_value=p["total_usd"],
-               total_cash=p["cash_usd"], today_change=p["day_pl_usd"], position_counts=p["position_counts"],
+    # LQ-20261113-3124R: the page's total and today are the SAME canonical measures the header publishes, under
+    # their own labels. Before this, the page's today was the re-marked row sum while the header's was the
+    # stored sum: one said "today", the other said "1D", and the difference was a valuation correction. The live re-mark stays visible beside each figure with its delta.
+    measures = doc.get("measures") or {}
+    block = measures.get("measures") if isinstance(measures.get("measures"), dict) else {}
+    _value_m = block.get("account_value") or {}
+    _move_m = block.get("price_move_estimate") or {}
+    _change_m = block.get("account_value_change_1d") or {}
+    _verified_m = block.get("verified_daily_pnl") or {}
+    _total_value = _value_m.get("value") if _value_m.get("value") is not None else p["total_usd"]
+    _today_change = _move_m.get("value") if _move_m.get("status") in ("MEASURED", "PARTIAL") else None
+    _finviz = _value_m.get("finviz_estimate") or {}
+    out.update(holdings=rows, count=len(rows), position_count=p["position_count"], total_value=_total_value,
+               total_cash=p["cash_usd"], today_change=_today_change, position_counts=p["position_counts"],
                positions_as_of=p["positions_as_of"], valuation_as_of=p["valuation_as_of"],
                quote_as_of=p["quote_as_of"], last_repriced=p["quote_as_of"], generated_at=p["valuation_as_of"],
                clock_provenance=p.get("clock_provenance"),
+               measures=measures,
+               total_value_measure=_value_m.get("label"), total_value_basis=_value_m.get("basis"),
+               total_value_finviz_estimate=_finviz.get("value"),
+               total_value_finviz_marks_at=_finviz.get("marks_at"),
+               total_value_finviz_delta=_finviz.get("delta"),
+               today_change_measure=_move_m.get("measure"), today_change_label=_move_m.get("label"),
+               today_change_basis=_move_m.get("basis"), today_change_status=_move_m.get("status"),
+               today_change_finviz_estimate=(_move_m.get("finviz_estimate") or {}).get("total_with_broker_nav"),
+               account_value_change_1d=_change_m.get("value"),
+               account_value_change_1d_status=_change_m.get("status"),
+               account_value_change_1d_start=(_change_m.get("start") or {}).get("equity_usd"),
+               account_value_change_1d_start_as_of=(_change_m.get("start") or {}).get("as_of"),
+               verified_daily_pnl=_verified_m.get("value"),
+               verified_daily_pnl_status=_verified_m.get("status"),
+               # 3124R: the signed per-account bridge and its source coverage are published as evidence the
+               # page can drill into. They are stored by the writer; the read path computes nothing.
+               reconciliation=measures.get("reconciliation"),
+               reconciliation_status=((measures.get("reconciliation") or {}).get("total") or {}).get("status"),
+               source_coverage=measures.get("source_coverage"),
+               measures_materialized_at=measures.get("materialized_at"),
+               measures_input_gap=measures.get("input_gap"),
                truth={k: p[k] for k in ("source", "as_of", "stale", "gap")})
     return out
 
@@ -2021,6 +2128,22 @@ def _ledger_conflicts(root, now, ledger_root=None) -> dict:
     return section
 
 
+def measures_for(holdings_doc) -> dict:
+    """The measures block the WRITER stored on this document — a read, never a computation.
+
+    LQ-20261113-3124R: the four measures are materialized by ``portfolio_repricer._materialize_measures`` at
+    the moment the book is written, so both surfaces read one block computed against one valuation cutoff.
+    A read that recomputed them would be a second calculation with its own clock — exactly the defect this
+    ticket closed. A document written before the block existed publishes UNKNOWN measures and says so.
+    """
+    from .portfolio_measures import measures_absent
+
+    block = (holdings_doc or {}).get("measures") if isinstance(holdings_doc, dict) else None
+    if isinstance(block, dict) and isinstance(block.get("measures"), dict):
+        return block
+    return measures_absent(holdings_doc if isinstance(holdings_doc, dict) else {})
+
+
 def resolve(root=None, now=None, *, db_query=None, inputs=None, ledger_root=None) -> dict:
     """Shared display document; root is a persistent state root containing data/.
 
@@ -2070,6 +2193,10 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None, ledger_root=None
             except Exception:  # noqa: BLE001 -- a missing backup leaves the row stale-flagged, never crashes
                 quotes = None
     portfolio = portfolio_for(finviz_reprice(holdings_doc if store_readable else {}, finviz, now=now, quotes=quotes, cfg=pp_cfg), now=now)
+    # LQ-20261113-3124R: the four measures are READ from the document the writer stored them on. GET never
+    # computes them: a second calculation here would carry a second clock, which is how one book published two
+    # "today" figures. A document written before the block existed publishes UNKNOWN with the reason.
+    measures = measures_for(holdings_doc if store_readable else {})
     broker = inputs.get("broker_stops") if "broker_stops" in inputs else _query_rows(
         db_query, "SELECT account,symbol,order_id,order_type,stop_price,qty,status,captured_at FROM stop_last_known")
     if "broker_stops" not in inputs:
@@ -2264,6 +2391,7 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None, ledger_root=None
     do_now = inputs.get("do_now") if "do_now" in inputs else do_now_for(positions, approvals, now=now)
     return {"read_only": True, "financial_action": False, "as_of": now.isoformat(),
             "portfolio": portfolio, "positions": position_section, "stops": stops,
+            "measures": measures,
             "regime": regime_for(db_query=db_query, projection=inputs.get("regime"), now=now),
             "approvals": approvals,
             "paper": paper_win_rate(db_query=db_query, stats=inputs.get("paper_stats"), now=now),

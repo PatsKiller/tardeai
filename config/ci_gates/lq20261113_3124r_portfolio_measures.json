@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq20261113_3124r_portfolio_measures",
+  "files": [
+    "tests/test_lq20261113_3124r_portfolio_measures.py",
+    "tests/test_lq20261113_3124r_finviz_reprice_mark_basis.py"
+  ],
+  "anchor": "PORTFOLIO_MEASURES_3124R",
+  "comment": [
+    "ANCHOR: PORTFOLIO_MEASURES_3124R — the four portfolio measures are materialized by the writer and only",
+    "read on the GET: broker values are the anchor, Finviz marks are a separate timestamped estimate, and the",
+    "broker->live re-mark never lands in 'today'. The reprice tests pin the mark a day change was computed at."
+  ]
+}
