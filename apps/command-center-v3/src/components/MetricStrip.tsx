@@ -12,7 +12,7 @@ import { overviewSurfaceFreshness, tradeAiSurfaceFreshness } from '../lib/surfac
 import { deriveTodayPnlState } from '../lib/todayPnlState'
 // One regime-clock rule for every surface that shows the regime (LQ-20261107-1392). HomeDoNow already
 // reads it; the header tile did not, and painted a "fresh" dot on a 55-hour-old snapshot.
-import { regimeState, regimeClockTitle } from '../lib/homeRegime'
+import { regimeState, regimeClockTitle, regimeLegsNote, MIN_REGIME_LEGS, REGIME_LEGS } from '../lib/homeRegime'
 // LQ-20261107-1610: both market tiles always carry their age; a stale one is grey, never a market colour.
 import { regimeAgeNote, vixStaleAfterHours, NOT_CURRENT_COLOR } from '../lib/headerMarketClock'
 import { HOME_APPROVALS, type NeedsYouSummary } from '../lib/homeApprovals'
@@ -331,6 +331,10 @@ export default function MetricStrip({ onDrill }: Props) {
   // last snapshot 2026-11-06 16:05 ET, age_hours 55.23, stale true). Same helper HomeDoNow uses, so
   // the two surfaces cannot disagree about one regime row.
   const regimeInfo = regimeState(regime, regimeEnv)
+  // LQ-20261113-3048 (A06): a label on fewer than two measured core legs is never current, and a label missing any
+  // leg never keeps the confident dot; the face says how many legs it rests on.
+  const regimeLegsText = regimeLegsNote(regimeInfo)
+  const regimeThin = regimeInfo.legsMeasured != null && regimeInfo.legsMeasured < MIN_REGIME_LEGS
   // Prefer API stale + cached_at over session-normalized run_date (heal can label "today"
   // while the cache stays empty for days — census/bisect 2026-08-28).
   const setupsFresh = tradeAiSurfaceFreshness(tradeAi)
@@ -598,20 +602,22 @@ export default function MetricStrip({ onDrill }: Props) {
       // regime keeps its label — it is the last measured state — but loses the confident dot and says how old.
       // LQ-20261107-1610: the age is on the face in EVERY state, not only once stale.
       asOfNote: regime
-        ? regimeAgeNote(regimeInfo, !regimeInfo.stale && showQuietProvenance
+        ? regimeAgeNote(regimeInfo, regimeLegsText || (!regimeInfo.stale && showQuietProvenance
           ? ([regime?.trend_state, regime?.breadth_state, regime?.volatility_state].filter(Boolean).join(' · ') || null)
-          : null)
+          : null))
         : null,
-      tone: worseTone(regimeInfo.stale ? 'warn' : 'ok', regimeStale ? 'warn' : 'ok'),
+      tone: worseTone(regimeInfo.stale || regimeInfo.incomplete ? 'warn' : 'ok', regimeStale ? 'warn' : 'ok'),
       stale: regimeInfo.stale
-        ? (regimeInfo.ageHours != null ? `${regimeInfo.ageHours.toFixed(1)} h old` : 'clock not reported')
+        ? (regimeThin ? `${regimeInfo.legsMeasured} of ${REGIME_LEGS.length} legs measured`
+          : regimeInfo.ageHours != null ? `${regimeInfo.ageHours.toFixed(1)} h old` : 'clock not reported')
         : null,
-      staleLabel: regimeInfo.ageHours != null ? `STALE · ${regimeInfo.ageHours.toFixed(1)} h` : 'STALE',
+      staleLabel: regimeThin ? `NOT CURRENT · ${regimeInfo.legsMeasured}/${REGIME_LEGS.length} LEGS`
+        : regimeInfo.ageHours != null ? `STALE · ${regimeInfo.ageHours.toFixed(1)} h` : 'STALE',
       undated: Boolean(regime) && !regimeInfo.asOf && regimeInfo.ageHours == null,
       valueSize: VALUE_COMPACT, minWidth: 150, maxWidth: 215,
       color: regimeInfo.stale ? NOT_CURRENT_COLOR
         : regimeLabel === 'risk_off' ? BB.red : regimeLabel === 'risk_on' ? BB.green : BB.amber,
-      tip: `Market regime from /api/v2/risk-regime/latest — weighs trend, breadth, and volatility signals into a risk-on/risk-off label with confidence.\n\nCLOCK: ${regimeClockTitle(regimeInfo)}${regimeInfo.stale ? ' — the label is the last measured state, not the current one.' : ''}`,
+      tip: `Market regime from /api/v2/risk-regime/latest — weighs trend, breadth, and volatility signals into a risk-on/risk-off label with confidence.\n\nCLOCK: ${regimeClockTitle(regimeInfo)}${regimeInfo.stale ? ' — the label is the last measured state, not the current one.' : ''}${regimeLegsText ? `\n\nLEGS: ${regimeLegsText}${regimeThin ? ' — one leg is not a regime verdict.' : ' — the label weighs less evidence than it claims.'}` : ''}`,
       drill: { title: 'Market Regime', subtitle: regimeInfo.stale ? `STALE · ${regimeClockTitle(regimeInfo)}` : `From /api/v2/risk-regime/latest · ${regimeClockTitle(regimeInfo)}`, endpoint: '/api/v2/risk-regime/latest',
         rows: regime ? [{ regime_label: regime.regime_label, confidence: regime.confidence, volatility_state: regime.volatility_state, trend_state: regime.trend_state, breadth_state: regime.breadth_state, summary: regime.summary, as_of: regime.as_of, age_hours: regime.age_hours, stale: regime.stale, stale_after_hours: regime.stale_after_hours }] : [] },
     },
