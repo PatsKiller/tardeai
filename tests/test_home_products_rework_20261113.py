@@ -482,10 +482,11 @@ def test_missing_risk_is_unknown(fetch):
 
 
 # ---------------------------------------------------------------- CLI exit codes (health contract alignment)
-@pytest.mark.parametrize("outcome,rc", [("OK", 0), ("UNCHANGED", 0), ("SKIPPED_BUSY", 0), ("REFUSED_OLDER", 0),
+@pytest.mark.parametrize("outcome,rc", [("OK", 0), ("UNCHANGED", 0), ("SKIPPED_BUSY", 0), ("REFUSED_OLDER", 3),
                                         ("TIMEOUT", 1), ("FAILED", 1), ("REFUSED", 1)])
 def test_cli_exit_code_matches_contract(outcome, rc, monkeypatch, capsys):
-    """Healthy outcomes and the DEGRADED REFUSED_OLDER exit 0; only run_failed outcomes exit non-zero."""
+    """Healthy outcomes exit 0; REFUSED_OLDER exits 3 (LQ-3140: it must be visible, not a silent 0); the run_failed
+    outcomes exit 1."""
     import types
     from scripts.lib.cc_products import product_builder as pb
     monkeypatch.setattr(pb, "run_once", lambda *a, **k: {"outcome": outcome})

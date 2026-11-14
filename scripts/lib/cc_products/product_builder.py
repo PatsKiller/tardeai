@@ -113,6 +113,24 @@ CATALOGUE: dict[str, ProductSpec] = {s.product_id: s for s in (
 )}
 
 
+# LQ-3140: a source clock may run ahead of the build instant by clock skew only. Anything later is a bad clock; it
+# is never stored, because the conditional publish would then refuse every honest build until the wall clock
+# caught up (REFUSED_OLDER) while the reader showed a negative age as fresh.
+FUTURE_CLOCK_SKEW_S = 120
+REFUSED_OLDER_EXIT = 3
+
+
+def future_clock_error(as_of, built_at) -> str | None:
+    """The FAILED reason when ``as_of`` is more than the skew allowance after ``built_at``, else None."""
+    if as_of is None or built_at is None:
+        return None
+    ahead = (as_of - built_at).total_seconds()
+    if ahead > FUTURE_CLOCK_SKEW_S:
+        return (f"future source clock: as_of {as_of.isoformat()} is {int(ahead)}s after the build time "
+                f"(allowed {FUTURE_CLOCK_SKEW_S}s)")
+    return None
+
+
 def is_market_hours(now: datetime) -> bool:
     et = now.astimezone(ET)
     if et.weekday() >= 5:
@@ -555,6 +573,11 @@ def _run_locked(spec, *, connect, hot, dry_run, clock, started_at, lim, builder_
             if as_of_dt is None:
                 receipt.update(outcome="FAILED", error=f"build produced no readable as_of ({result['as_of']!r})")
                 result = None
+            else:
+                future = future_clock_error(as_of_dt, built_at)
+                if future:
+                    receipt.update(outcome="FAILED", error=future)
+                    result = None
         if result is None:
             build_ms = receipt.get("build_ms") or int((time.monotonic() - t0) * 1000)
             store.log_build(cur, pid_, scope_key, receipt["outcome"], started_at=started_at, finished_at=built_at,
@@ -667,9 +690,11 @@ def run_cli(args) -> int:
         receipt = run_once(spec, connect=_rw_connect, hot=HotTier(), dry_run=False, builder_sha=args.builder_sha,
                            **kw)
     print(json.dumps(receipt, sort_keys=True, default=json_default))
-    # REFUSED_OLDER exits 0: the conditional publish kept a NEWER stored row (another builder won the race). It is
-    # DEGRADED (health contract check refused_older reads cc_product_build_log), never RUN_FAILED.
-    return 0 if receipt.get("outcome") in ("OK", "UNCHANGED", "SKIPPED_BUSY", "REFUSED_OLDER") else 1
+    # LQ-3140: REFUSED_OLDER is a non-zero exit (REFUSED_OLDER_EXIT). It used to exit 0, which hid a product that
+    # silently stopped refreshing (the stored row was newer than every honest build). The receipt names it too.
+    if receipt.get("outcome") == "REFUSED_OLDER":
+        return REFUSED_OLDER_EXIT
+    return 0 if receipt.get("outcome") in ("OK", "UNCHANGED", "SKIPPED_BUSY") else 1
 
 
 if __name__ == "__main__":

@@ -507,14 +507,17 @@ def run_once(*, connect, root, hot=None, dry_run: bool, now=None, builder_sha=""
             conn.commit()
             receipt.update(outcome="REFUSED", error=str(exc)[:500], finished_at=_iso(built_at))
             return receipt
-        outcome = "OK" if written.get("changed") else "UNCHANGED"
+        refused = bool(written.get("refused"))
+        # LQ-3140: write_current returned refused (the stored row is newer): that is REFUSED_OLDER, never OK/UNCHANGED.
+        outcome = "REFUSED_OLDER" if refused else "OK" if written.get("changed") else "UNCHANGED"
+        err = "stored row is newer (as_of/checked_at); this build was not published" if refused else None
         store.log_build(cur, PRODUCT_ID, scope_key, outcome, started_at=started_at, finished_at=built_at,
                         build_ms=result["build_ms"], lane=lane, peak_rss_kb=result["peak_rss_kb"],
-                        bytes_=len(result["body"]))
-        row = store.read_current(cur, PRODUCT_ID, scope_key) if hot is not None else None
+                        bytes_=len(result["body"]), error=err)
+        row = store.read_current(cur, PRODUCT_ID, scope_key) if hot is not None and not refused else None
         conn.commit()
-        receipt.update(outcome=outcome, wrote=True, etag=written.get("etag"), seq=written.get("seq"),
-                       finished_at=_iso(built_at))
+        receipt.update(outcome=outcome, wrote=not refused, etag=written.get("etag"), seq=written.get("seq"),
+                       finished_at=_iso(built_at), **({"error": err} if err else {}))
     except BaseException:
         try:
             conn.rollback()
@@ -583,6 +586,8 @@ def main(argv=None) -> int:
 
         receipt = run_once(connect=_rw_connect, hot=HotTier(), **common)
     print(json.dumps(receipt, sort_keys=True, default=str))
+    if receipt.get("outcome") == "REFUSED_OLDER":  # LQ-3140: visible, same code as product_builder
+        return 3
     return 0 if receipt.get("outcome") in ("OK", "UNCHANGED", "SKIPPED_BUSY") else 1
 
 

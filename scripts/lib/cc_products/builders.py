@@ -62,6 +62,26 @@ def _oldest(marks: dict, *, exclude=()) -> tuple[str | None, str | None]:
     return (best.astimezone(timezone.utc).isoformat() if best else None), name
 
 
+def _stored_clock(ctx, product_id: str, scope_key: str = "global") -> tuple[str | None, dict]:
+    """(as_of ISO, source_watermarks) of the STORED row, read-only; (None, {}) when there is no row or the read
+    fails. LQ-3140: a build that cannot read its own source clock keeps the stored clock instead of inventing a
+    newer one (a newer invented clock makes the next honest build REFUSED_OLDER)."""
+    try:
+        row = ctx.db_query("SELECT as_of, source_watermarks FROM cc_product_current "
+                           "WHERE product_id = %s AND scope_key = %s", (product_id, scope_key), "one")
+    except Exception:  # noqa: BLE001
+        row = None
+    if not isinstance(row, dict):
+        return None, {}
+    marks = row.get("source_watermarks")
+    if isinstance(marks, (str, bytes)):
+        try:
+            marks = json.loads(marks)
+        except ValueError:
+            marks = None
+    return _iso(row.get("as_of")), (marks if isinstance(marks, dict) else {})
+
+
 # ------------------------------------------------------------------------------------------ market_risk.latest
 
 
@@ -224,8 +244,13 @@ def build_market_risk(ctx) -> dict:
         marks["hedging_radar"] = {"as_of": _iso(radar.get("as_of"))}
     as_of = mr_clock
     if as_of is None:
-        as_of, status = read_at.isoformat(), "DEGRADED"
-        reason = "market risk snapshot has no clock; product clock is the read time"
+        # LQ-3140: never the read time (it would run ahead of the real clock and make the recovery REFUSED_OLDER).
+        # Keep the stored clock + DEGRADED; with nothing stored there is no source clock at all: as_of None, which
+        # run_once records as FAILED (no readable as_of) and publishes nothing.
+        as_of, _ = _stored_clock(ctx, "market_risk.latest")
+        status = "DEGRADED"
+        reason = ("market risk snapshot has no clock; product clock kept at the stored " + as_of if as_of
+                  else "market risk snapshot has no clock and nothing is stored; no source time available")
     oldest, oldest_name = _oldest(marks)
     marks["_product"] = {"oldest_section_as_of": oldest, "oldest_section": oldest_name,
                          "sources_read_at": read_at.isoformat(), "clock_rule": "market_risk_snapshot.as_of"}
@@ -248,9 +273,13 @@ def build_risk(ctx) -> dict:
     marks = {"holdings_truth": {"as_of": clock, "source": truth.get("source"), "stale": truth.get("stale"),
                                 "gap": truth.get("gap")}}
     status, reason = "OK", None
-    if clock is None:
-        clock, status, reason = read_at.isoformat(), "DEGRADED", "holdings truth has no clock; product clock is the read time"
-    marks["_product"] = {"oldest_section_as_of": clock, "oldest_section": "holdings_truth",
+    if clock is None:  # LQ-3140: stored clock kept (see build_market_risk); never the read time
+        clock, _ = _stored_clock(ctx, "risk")
+        status = "DEGRADED"
+        reason = ("holdings truth has no clock; product clock kept at the stored " + clock if clock
+                  else "holdings truth has no clock and nothing is stored; no source time available")
+    marks["_product"] = {"oldest_section_as_of": _iso(truth.get("as_of")) or _iso(payload.get("positions_as_of")),
+                         "oldest_section": "holdings_truth",
                          "sources_read_at": read_at.isoformat(), "clock_rule": "cio_truth.truth.as_of"}
     return {"data": payload, "as_of": clock, "source_watermarks": marks, "status": status, "reason": reason}
 
@@ -292,6 +321,9 @@ def build_home(ctx) -> dict:
     slices: dict[str, Any] = {}
     marks: dict[str, Any] = {}
     failed: list[str] = []
+    # LQ-3140: a failed slice keeps its LAST-KNOWN clock from the stored row, so the product clock cannot jump
+    # forward because a slice failed and then be refused (REFUSED_OLDER) when the slice recovers with its real clock.
+    prior_as_of, prior_marks = _stored_clock(ctx, "home")
 
     def _slice(name, fn, clock_fn):
         """``clock_fn(body)`` returns ``(as_of_iso, basis)``; basis is ``source`` (the producer's own observation time)
@@ -302,7 +334,12 @@ def build_home(ctx) -> dict:
         except Exception as e:  # noqa: BLE001
             failed.append(name)
             slices[name] = {"error": f"{type(e).__name__}: {str(e)[:300]}"}
-            marks[name] = {"as_of": None, "clock_basis": None, "error": type(e).__name__}
+            last = prior_marks.get(name) if isinstance(prior_marks.get(name), dict) else {}
+            carried = _iso(last.get("as_of")) if parse_ts(last.get("as_of")) is not None else None
+            marks[name] = {"as_of": carried, "clock_basis": last.get("clock_basis") if carried else None,
+                           "error": type(e).__name__}
+            if carried:
+                marks[name]["clock_carried"] = True
             return None
         slices[name] = body
         iso, basis = clock_fn(body)
@@ -364,6 +401,13 @@ def build_home(ctx) -> dict:
     live = [parse_ts(m.get("as_of")) for k, m in marks.items() if k != "since_close" and isinstance(m, dict)]
     live = [t for t in live if t is not None]
     as_of = min(live).astimezone(timezone.utc).isoformat() if live else None
+    unclocked_failed = [n for n in failed if n != "since_close" and marks[n].get("as_of") is None]
+    held = False
+    if unclocked_failed and parse_ts(prior_as_of) is not None:
+        # a failed live slice with no last-known clock: the product clock may not advance past the stored one
+        held = True
+        as_of = prior_as_of if as_of is None else min(parse_ts(as_of), parse_ts(prior_as_of)).astimezone(
+            timezone.utc).isoformat()
     oldest, oldest_name = _oldest(marks)
     # LQ-3136 data contract: ``as_of`` is the oldest live slice clock and is a BUILD time whenever the oldest slice's
     # basis is build_time; ``source_as_of`` is the oldest REAL source clock among the live slices, or null with a reason.
@@ -381,6 +425,8 @@ def build_home(ctx) -> dict:
                              "(as_of is the build time)")}
     status = "DEGRADED" if failed else "OK"
     reason = ("slices failed: " + ", ".join(failed)) if failed else None
+    if held:
+        reason += "; product clock held at the stored " + prior_as_of
     return {"data": {"slices": slices, "slice_clocks": {k: v for k, v in marks.items() if k != "_product"},
                      "slice_stale_after_s": HOME_SLICE_STALE_S},
             "as_of": as_of, "source_watermarks": marks, "status": status, "reason": reason}

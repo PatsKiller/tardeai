@@ -52,6 +52,10 @@ def _count(name: str) -> None:
         READ_COUNTERS[name] = READ_COUNTERS.get(name, 0) + 1
 
 
+# LQ-3140: keep equal to product_builder.FUTURE_CLOCK_SKEW_S (a test pins it); not imported, the reader stays light.
+FUTURE_CLOCK_SKEW_S = 120
+
+
 def _iso(v):
     return v.isoformat() if isinstance(v, datetime) else v
 
@@ -171,6 +175,15 @@ def read_product(product_id: str, scope_key: str = "global", *, fetch_row, hot: 
         return _envelope(product_id, scope_key, "UNKNOWN", row=row, age_s=age_s, reason="product body unreadable",
                          served_from=served_from)
 
+    # LQ-3140: an as_of ahead of now by more than the skew allowance is a bad clock. The age is clamped to 0 (never
+    # negative), but such a row must not read as fresh: UNKNOWN, last good kept, the reason names the clock.
+    ref_clock = _aware(row.get("as_of"))
+    if ref_clock is not None and (ref_clock - now).total_seconds() > FUTURE_CLOCK_SKEW_S:
+        _count("future_clock")
+        _count("UNKNOWN")
+        return _envelope(product_id, scope_key, "UNKNOWN", row=row, age_s=age_s,
+                         reason=f"source clock is in the future ({_iso(ref_clock)}); last good {_iso(row.get('built_at'))}",
+                         data=None, last_good=parsed, served_from=served_from)
     if hard is None or age > hard:
         _count("UNKNOWN")
         return _envelope(product_id, scope_key, "UNKNOWN", row=row, age_s=age_s,
