@@ -35,8 +35,11 @@ OUT_REL = "data/runtime/defense_engine_latest.json"
 STOPS_SLICE_SCHEMA = "DefenseStopsSlice@v1"
 STOPS_SLICE_REL = "data/runtime/defense_stops_slice_latest.json"
 #: The position-row fields the projection reads (_stops_section, _held_exit_review, held_symbols).
+#: `protection` (DR-D02) carries the per-position broker verdict — state, cause, source, as_of and the sentence
+#: that says why a position is EXEMPT or could not be read — so the reconciliation can list an unproven position
+#: with its cause instead of only counting it. Scalars only; no stop price, no order id, no size.
 STOPS_SLICE_ROW_FIELDS = ("symbol", "account_id", "account_label", "counted", "market_value", "stop_category",
-                          "stop_note", "distance_to_stop_pct", "resting_stop_distance_pct")
+                          "stop_note", "distance_to_stop_pct", "resting_stop_distance_pct", "protection")
 LADDER = ("GREEN", "BLUE", "YELLOW", "ORANGE", "RED")
 
 #: Desk-level forbidden keys on top of lib.market_risk.contract.BEHAVIOR_FIELDS (checked case-insensitively).
@@ -354,7 +357,10 @@ def _exposure_section(mr: dict, max_rows: int, why: Optional[str]) -> dict:
                         rows=[], budgets=[], rotate=[], unmapped=[],
                         # DR-D01: nothing was measured, so nothing may print as a measured zero.
                         coverage_status="unknown", positions_count=None, mapped_count=None, unmapped_count=None,
-                        mapped_usd=None, unmapped_usd=None, look_through_basis=[])
+                        mapped_usd=None, unmapped_usd=None, look_through_basis=[],
+                        # F1/F2: no book was published at all, so even the position count is absent — the view
+                        # says "not published", not "no position is on file".
+                        unpriced_count=None, unpriced_symbols=[])
     stances = mr.get("positions") if isinstance(mr.get("positions"), dict) else {}
     rows = []
     for r in sorted((r for r in be.get("rows") or [] if isinstance(r, dict)),
@@ -393,7 +399,9 @@ def _exposure_section(mr: dict, max_rows: int, why: Optional[str]) -> dict:
                     positions_count=_num(be.get("positions_count")), mapped_count=_num(be.get("mapped_count")),
                     unmapped_count=_num(be.get("unmapped_count")), mapped_usd=_num(be.get("mapped_usd")),
                     unmapped_usd=_num(be.get("unmapped_usd")),
-                    look_through_basis=be.get("look_through_basis") or [])
+                    look_through_basis=be.get("look_through_basis") or [],
+                    # F1: a non-cash position whose value is unknown is not a measured $0 — the page names it.
+                    unpriced_count=_num(be.get("unpriced_count")), unpriced_symbols=be.get("unpriced_symbols") or [])
 
 
 def _stops_section(truth: dict, near_pct: float, max_rows: int, why: Optional[str]) -> dict:
@@ -404,7 +412,8 @@ def _stops_section(truth: dict, near_pct: float, max_rows: int, why: Optional[st
     as_of = truth.get("generated_at") or truth.get("as_of")
     if bd is None:
         return _section(as_of, why or "the stop breakdown is not on file (broker stop reads unavailable)",
-                        no_stop=None, planned_only=None, pending=None, filled=None, unknown=None, gaps=[], near=[])
+                        no_stop=None, planned_only=None, pending=None, filled=None, unknown=None, gaps=[], near=[],
+                        reconciliation=None, unknown_rows=[])
 
     def _n(cat: str) -> int:
         return int((bd.get(cat) or {}).get("count") or 0)
@@ -427,12 +436,58 @@ def _stops_section(truth: dict, near_pct: float, max_rows: int, why: Optional[st
                          "distance_pct": d})
     near.sort(key=lambda r: r["distance_pct"])
     vals = [_v("none"), _v("planned")]
+    # DR-D02: the merged "no broker stop" headline asserted one truth where three sources answer different
+    # questions (Defense 3, Portfolio 2, Risk 2 + 1 planned-only). Every count and dollar the headline rests on is
+    # published as its own state, so a reader can reconcile the totals instead of choosing between them. The
+    # merged figure stays, labelled for exactly what it is: value lacking a RESTING broker order.
+    by_state = {
+        "active": {"count": _n("active"), "value_usd": _v("active")},
+        "pending_activation": {"count": _n("pending_activation"), "value_usd": _v("pending_activation")},
+        "planned_only": {"count": _n("planned"), "value_usd": _v("planned")},
+        "no_stop": {"count": _n("none"), "value_usd": _v("none")},
+        "unknown": {"count": _n("unknown"), "value_usd": _v("unknown")},
+        "filled": {"count": _n("filled"), "value_usd": _v("filled")},
+    }
+
+    def _total(states: tuple) -> dict:
+        vs = [by_state[s]["value_usd"] for s in states]
+        return {"count": sum(by_state[s]["count"] for s in states),
+                "value_usd": round(sum(vs), 2) if all(v is not None for v in vs) else None}
+
+    excluded_rows = [p for p in rows if p.get("counted") is False]
+    ex_vals = [_num(p.get("market_value")) for p in excluded_rows]
+    unknown_rows = []
+    for p in counted:
+        if p.get("stop_category") != "unknown":
+            continue
+        prot = p.get("protection") if isinstance(p.get("protection"), dict) else {}
+        unknown_rows.append({"symbol": p.get("symbol"), "account_label": p.get("account_label") or p.get("account_id"),
+                             "value_usd": _num(p.get("market_value")), "state": prot.get("state"),
+                             "cause": prot.get("cause"), "reason": prot.get("reason") or p.get("stop_note")})
+    reconciliation = {
+        "counted_positions": len(counted),
+        "by_state": by_state,
+        "no_resting_order": {**_total(("no_stop", "planned_only")),
+                             "definition": "no stop plus a planned level only: value lacking a resting broker order"},
+        "resting_or_pending": _total(("active", "pending_activation")),
+        "excluded": {"count": len(excluded_rows),
+                     "value_usd": (round(sum(ex_vals), 2)
+                                   if excluded_rows and all(v is not None for v in ex_vals) else None),
+                     "by_reason": None,
+                     "note": ("the exclusion reason is not published in the stop rows, so the $100 count floor "
+                              "and a policy exemption are not split")},
+        "partial_quantities": {"known": False,
+                               "reason": ("the stops slice carries no resting-stop quantity, so partial share "
+                                          "coverage cannot be measured here")},
+        "coverage": "measured" if counted else "unknown",
+    }
     return _section(as_of, why,
                     no_stop={"count": _n("none") + _n("planned"),
                              "value_usd": round(sum(vals), 2) if all(v is not None for v in vals) else None},
                     planned_only=_n("planned"), pending={"count": _n("pending_activation"), "value_usd": _v("pending_activation")},
                     active=_n("active"), filled={"count": _n("filled")}, unknown={"count": _n("unknown")},
                     near_threshold_pct=near_pct, gaps=gaps, near=near[:max_rows],
+                    reconciliation=reconciliation, unknown_rows=unknown_rows[:max_rows],
                     hedged_share="not measured", beta="not measured")
 
 

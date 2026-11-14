@@ -4,7 +4,7 @@ import { BB, T, TYPE } from '../../../lib/watchTokens'
 import { RADIUS } from '../../../lib/designTokens'
 import { scoreText } from '../../../lib/metricAuthority'
 import {
-  clockET, defenseLines, exposureCoverage, GAP, GLOSSARY, ladder, money, pct, readinessTone, scorePosition, signed, sourceSummaryText,
+  clockET, defenseLines, exposureCoverage, GAP, GLOSSARY, hedgeSub, ladder, money, pct, readinessTone, scorePosition, signed, sourceSummaryText,
   sourceTone, tierPair, tierTone, unprotectedPair, type DefenseProjection, type LiveAuthority, type Tone,
 } from '../../../lib/defenseEngine'
 
@@ -156,6 +156,53 @@ export function SourceStrip({ p, onOpen }: { p: DefenseProjection; onOpen: (k: s
   </button>
 }
 
+/**
+ * DR-D03 (sprint 8H-2 b2): the hedge verdict rests on two conditions, and the page named only the first in a
+ * sentence. This matrix sits beside the verdict row and draws, per condition: the rule, the observed value, the
+ * result and the clock — with **Unknown** for a condition that was not evaluated (never "not met"), because those
+ * are different facts and the readiness word treats them differently. The inverse-gate block and the options
+ * lifecycle are separate evidence with their own states, so they are drawn apart from the two conditions.
+ * Read-only: the only action opens the hedge sheet.
+ */
+export function HedgeConditions({ p, onOpen }: { p: DefenseProjection; onOpen: (k: string) => void }) {
+  const h = p.hedge_readiness ?? {}
+  const triggers = h.triggers ?? []
+  const gates = Object.entries(h.inverse_triggers ?? {})
+  const life = h.put_protection?.lifecycle
+  const observed = (t: { value?: number | null; unit?: string | null }) =>
+    t.value != null ? `${t.value}${t.unit ? ` ${t.unit}` : ''}` : 'not measured'
+  return <section aria-label="Hedge conditions" data-testid="defense-hedge-conditions" style={card}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+      <h3 style={h3}>Hedge conditions</h3>
+      <Stamp asOf={h.as_of} why={h.stale_reason} />
+    </div>
+    <p style={{ ...small, margin: 0 }}>{hedgeSub(h)} · verdict {h.readiness ?? 'UNKNOWN'}</p>
+    {triggers.map(t => <div key={t.id} data-testid={`hedge-condition-${t.id}`}
+      style={{ borderTop: `1px solid ${BB.border}`, paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+        <span style={{ color: BB.text0, fontSize: TYPE.md, minWidth: 0 }}>{t.label}</span>
+        <span style={{ ...mono, flexShrink: 0, color: t.met == null ? BB.amber : t.met ? BB.red : BB.text2 }}>
+          {t.met == null ? 'Unknown' : t.met ? 'Met' : 'Not met'}
+        </span>
+      </span>
+      <span style={small}>Observed {observed(t)}{t.detail ? ` · ${t.detail}` : ''}</span>
+      <span style={small}>Rule: {t.when ?? (t.threshold != null ? `${t.threshold}${t.unit ? ` ${t.unit}` : ''}` : 'not on file')}
+        {' · '}Market Risk hedge thresholds{h.as_of ? ` · as of ${clockET(h.as_of)}` : ' · no clock published'}</span>
+    </div>)}
+    {!triggers.length && <Note>This projection publishes no hedge condition, so nothing is evaluated here.</Note>}
+    {gates.length > 0 && <>
+      <h4 style={{ ...h3, marginTop: 6, fontWeight: 600 }}>Inverse ETF gates</h4>
+      <span style={small}>Separate evidence from the two conditions above.</span>
+      {gates.map(([bench, v]) => <span key={bench} data-testid={`hedge-gate-${bench}`} style={small}>
+        {bench} → {v.inverse ?? GAP}: {v.trigger == null ? `Unknown${v.reason ? ` — ${v.reason}` : ''}` : v.trigger ? 'thesis on' : 'thesis off'}
+      </span>)}
+    </>}
+    <span style={small}>Options lifecycle: {life?.state ?? 'not published'}{life?.stale_reason ? ` · ${life.stale_reason}` : ''}{life?.as_of ? ` · as of ${clockET(life.as_of)}` : ''}</span>
+    <button type="button" onClick={() => onOpen('hedge')} aria-label="Review hedge evidence"
+      style={{ ...rowBtn, justifyContent: 'flex-start', color: T.link, minHeight: 44 }}>Review hedge evidence ›</button>
+  </section>
+}
+
 /** The engine view: three columns from 980px, one column on a phone. `live` carries the two figures whose
  *  authority is outside the projection (market-risk score, unprotected count); see the file header. */
 export default function DefenseEngineView({ p, onOpen, live }: { p: DefenseProjection; onOpen: (k: string) => void; live?: LiveAuthority | null }) {
@@ -165,7 +212,7 @@ export default function DefenseEngineView({ p, onOpen, live }: { p: DefenseProje
     <div className="def-engine-grid">
       <div className="def-engine-col"><Hero p={p} onOpen={onOpen} /></div>
       <div className="def-engine-col"><WhatToDo p={p} onOpen={onOpen} /><Ladder p={p} /></div>
-      <div className="def-engine-col"><Lines p={p} onOpen={onOpen} /></div>
+      <div className="def-engine-col"><Lines p={p} onOpen={onOpen} /><HedgeConditions p={p} onOpen={onOpen} /></div>
     </div>
     <SourceStrip p={p} onOpen={onOpen} />
   </div>
@@ -252,14 +299,47 @@ function sheetBody(p: DefenseProjection, sheet: string, stamp: (s: { as_of?: str
       // counted stop_health when it answered — its null value prints as a gap, never the projection's figure —
       // and the projection's build-time slice only when cio_truth supplied neither.
       const unp = unprotectedPair(p, live)
+      // DR-D02: the merged headline asserted one truth where three sources answer different questions. Every
+      // state, the excluded positions and the quantities the slice cannot measure are printed from the
+      // projection's own fields; nothing here is summed from a capped list or inferred from a planned level.
+      const rec = s.reconciliation
+      const unit = (u?: { count?: number | null; value_usd?: number | null }) => `${u?.count ?? GAP} · ${money(u?.value_usd)}`
       return <List>
         <Field label="No broker stop">{unp.count ?? GAP} · {money(unp.valueUsd)}</Field>
         <Note>{unp.source === 'cio_truth'
           ? `Pair above: live cio_truth${unp.asOf ? `, as of ${clockET(unp.asOf)}` : ', no clock published'}.`
           : 'Pair above: this projection\'s build-time slice — cio_truth answered neither figure.'}</Note>
-        <Field label="Pending">{s.pending?.count ?? GAP} · {money(s.pending?.value_usd)}</Field>
+        <Field label="Pending activation">{s.pending?.count ?? GAP} · {money(s.pending?.value_usd)}</Field>
         <Field label="Planned only">{s.planned_only ?? GAP}</Field>
         <Field label="Active">{s.active ?? GAP}</Field>
+        {rec && <>
+          <h3 style={{ ...h3, marginTop: 8 }}>Protection reconciliation</h3>
+          <p style={{ ...small, margin: 0 }}>{rec.resting_or_pending?.count ?? GAP} resting or pending
+            {rec.by_state?.active?.count != null || rec.by_state?.pending_activation?.count != null
+              ? ` (${rec.by_state?.active?.count ?? GAP} active · ${rec.by_state?.pending_activation?.count ?? GAP} pending activation)` : ''}
+            {' · '}{rec.by_state?.no_stop?.count ?? GAP} no stop
+            {' · '}{rec.by_state?.planned_only?.count ?? GAP} planned level only
+            {' · '}{rec.by_state?.unknown?.count ?? GAP} unproven
+            {' — of '}{rec.counted_positions ?? GAP} counted positions.</p>
+          <Field label="Resting or pending">{unit(rec.resting_or_pending)}</Field>
+          <Field label="No resting broker order">{rec.no_resting_order?.count ?? GAP} · {money(rec.no_resting_order?.value_usd)}</Field>
+          <Note>{rec.no_resting_order?.count ?? GAP} no resting broker order — {rec.no_resting_order?.definition ?? 'no stop plus a planned level only'}.</Note>
+          {rec.by_state?.unknown?.count ? <Field label="Unproven at the broker">{unit(rec.by_state.unknown)}</Field> : null}
+          <Field label="Excluded from the count">{rec.excluded?.count ?? GAP} · {money(rec.excluded?.value_usd)}</Field>
+          <Note>{(rec.excluded?.count ?? 0)} excluded from the count (under the $100 floor or a policy exemption)
+            {rec.excluded?.value_usd != null ? `: ${money(rec.excluded.value_usd)}` : ''}. {rec.excluded?.note ?? ''}</Note>
+          <Field label="Partial quantities">{rec.partial_quantities?.known ? 'published' : 'not published'}</Field>
+          {!rec.partial_quantities?.known && <Note>{rec.partial_quantities?.reason ?? 'share coverage is not measured here'} — no position is called fully covered from this slice.</Note>}
+          {(s.unknown_rows ?? []).map((u, i) => <div key={i} data-testid={`protection-unknown-${i}`}
+            style={{ borderTop: `1px solid ${BB.border}`, paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ color: BB.text0, fontSize: TYPE.md }}>{u.symbol} <span style={small}>{u.account_label ?? ''}</span></span>
+              <span style={{ ...mono, color: BB.amber, fontSize: TYPE.md }}>{u.state ?? 'UNKNOWN'}</span>
+            </span>
+            <span style={small}>{money(u.value_usd)} · {u.cause ?? 'cause not published'}{u.reason ? ` — ${u.reason}` : ''}</span>
+            <Link to="?detail=engine:sources" style={{ color: T.link, fontSize: TYPE.md, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Verify broker evidence ›</Link>
+          </div>)}
+        </>}
         {s.hedged_share && <Field label="Hedged">{s.hedged_share}</Field>}
         {s.beta && <Field label="Beta">{s.beta}</Field>}
         <h3 style={{ ...h3, marginTop: 8 }}>Gaps</h3>

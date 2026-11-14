@@ -62,13 +62,14 @@ const { defenseLines, exposureCoverage, money } = await import(compile(join(app,
 const AT = '2031-03-07T14:59:00Z'
 
 /** A projection with nothing but the facts each assertion needs; every other section is empty on purpose. */
-function projection(exposure) {
+function projection(exposure, extra = {}) {
   return {
     schema: 'DefenseProjection@v1', generated_at: AT,
     tier: { tier: 'YELLOW', score: 41.8, as_of: AT, ladder: [], history: [] },
     exposure, stops: {}, hedge_readiness: {}, sector_posture: {}, cash_alternatives: {},
     base_rates: {}, watch_next: {}, playbook: {}, sources: [], source_summary: null,
     narrative: { headline: 'synthetic headline', where_we_stand: [], what_to_do: [] },
+    ...extra,
   }
 }
 
@@ -78,6 +79,19 @@ const renderSheet = (p, sheet) => renderToStaticMarkup(React.createElement(Memor
   React.createElement(EngineSheetBody, { p, sheet })))
 
 const text = html => html.replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, "'").replace(/\s+/g, ' ').trim()
+/** From a testid to the end of the markup — for the last card in the document, whose own rows carry testids. */
+const card = (html, testid) => {
+  const i = html.indexOf(`data-testid="${testid}"`)
+  if (i < 0) throw new Error(`no ${testid} in the rendered markup`)
+  return html.slice(i)
+}
+/** From a testid up to the next testid (a row/block slice, for structures that are not a single button). */
+const separator = (html, testid) => {
+  const i = html.indexOf(`data-testid="${testid}"`)
+  if (i < 0) throw new Error(`no ${testid} in the rendered markup`)
+  const j = html.indexOf('data-testid=', i + 12)
+  return html.slice(i, j < 0 ? undefined : j)
+}
 const segment = (html, testid) => {
   const i = html.indexOf(`data-testid="${testid}"`)
   if (i < 0) throw new Error(`no ${testid} in the rendered markup`)
@@ -180,7 +194,33 @@ await test('DR-D01 sheet: the measured book names coverage, basis and clock', ()
   assert.doesNotMatch(body, /Verify exposure/, 'a measured book should not ask to verify itself')
 })
 
-// ── Operator directive 09:30 ET (item A): journey proof, hermetic ────────────────────────────────────────────
+// ── F1/F2 (REVIEW-S2-defense-reentry-b1-cc-deepseek-3): an unpriced position is named, and the two Unknowns differ
+await test('F1: a position with no value is named, and never counted as measured coverage', () => {
+  const unpriced = { ...saved, coverage_status: 'partial', positions_count: 1, mapped_count: 1, unmapped_count: 0,
+    unpriced_count: 1, unpriced_symbols: ['ZZPP'], look_through_basis: ['fund_holdings'] }
+  const cov = exposureCoverage(unpriced)
+  assert.equal(cov.state, 'unknown', 'an unpriced position was promoted to a measured figure')
+  assert.match(cov.detail, /1 position with no value/, `the unpriced position is not named: "${cov.detail}"`)
+  assert.doesNotMatch(cov.detail, /0 positions not mapped/, `an unknown value is printed as a measured zero: "${cov.detail}"`)
+})
+
+await test('F2: an empty book and an unpublished coverage are two different sentences', () => {
+  const empty = exposureCoverage({ as_of: AT, coverage_status: 'unknown', positions_count: 0, mapped_count: 0,
+    unmapped_count: 0, unpriced_count: 0, rows: [], unmapped: [] })
+  assert.equal(empty.state, 'unknown')
+  assert.match(empty.detail, /no non-cash position is on file/, `the empty book is not distinguished: "${empty.detail}"`)
+  // the saved shape publishes no coverage field at all — that is a different fact, and says so
+  const stale = exposureCoverage(saved)
+  assert.match(stale.detail, /exposure coverage not published/, stale.detail)
+  assert.doesNotMatch(stale.detail, /no non-cash position is on file/,
+    `an unreadable book claims it has no positions: "${stale.detail}"`)
+  // no coverage field AND no position count at all: the empty-book sentence would be a claim nothing published
+  const bare = exposureCoverage({ as_of: AT })
+  assert.match(bare.detail, /exposure coverage not published/, bare.detail)
+  assert.doesNotMatch(bare.detail, /no non-cash position is on file/, `invented an empty book: "${bare.detail}"`)
+})
+
+
 // The Defense page is read-only: a journey has no persisted result, its "action" is the route-backed sheet
 // (?detail=engine:<sheet>) and its "readback" is the sheet body. These pin that every action the view offers
 // lands on a titled sheet that renders, that the failure state names its cause, and that the view prints the
@@ -214,6 +254,115 @@ await test('journey J3: the view prints the projection figure and recomputes not
   const book = text(segment(renderView(p), 'defense-line-book'))
   assert.match(book, new RegExp(money(12000).replace('$', '\\$')), `not the projection's figure: "${book}"`)
   assert.doesNotMatch(book, /\$1\.0M/, `the view recomputed from the rows: "${book}"`)
+})
+
+// ── DR-D03: both hedge conditions beside the verdict, and Unknown is not "Not met" ──────────────────────────
+// The payload has always carried both conditions (`hedge_readiness.triggers[2]`), but the page printed only the
+// first one's sentence in the line's sub, so the verdict looked like it rested on one condition. The matrix names
+// condition, observed value, rule, result, source and clock, and renders an unevaluated condition as Unknown.
+const HEDGE = {
+  as_of: AT, readiness: 'UNKNOWN', met_count: 1, of: 2,
+  triggers: [
+    { id: 'exposure', label: 'Stressed groups ≥ 10% of invested', value: 3.2, threshold: 10, unit: '% of invested', met: false, detail: 'Now 3.2% (Semis, look-through)', when: 'stressed groups reach 10% of invested' },
+    { id: 'breadth', label: '4 or more of 11 sectors lagging, or the shock is SYSTEMIC', value: null, threshold: 4, unit: 'sectors', met: null, detail: 'lagging count not on file', when: 'the shock turns systemic or 4 or more sectors lag' },
+  ],
+  inverse_triggers: { SPY: { inverse: 'SH', trigger: false, exposure_pct: 3.2 }, PSQ: { inverse: 'PSQ', trigger: null, exposure_pct: null, reason: 'trigger unknown: threshold or stressed share not on file' } },
+  thesis_light: { state: 'GREEN', label: 'no thesis', as_of: AT, stale_reason: null },
+  put_protection: { qqq_atm_iv: 18.4, as_of: AT, structures: 0, lifecycle: { state: 'paused', as_of: AT, stale_reason: null } },
+}
+
+await test('DR-D03: the matrix renders both conditions with their result, rule and clock', () => {
+  const html = renderView(projection(plain, { hedge_readiness: HEDGE }))
+  const body = text(html)
+  assert.match(body, /Hedge conditions/, 'no condition matrix beside the verdict')
+  const first = text(separator(html, 'hedge-condition-exposure'))
+  assert.match(first, /Not met/, `an evaluated false condition must say Not met: "${first}"`)
+  assert.match(first, /10% of invested/, `the rule is not named: "${first}"`)
+  assert.match(first, /3\.2/, `the observed value is not shown: "${first}"`)
+  const second = text(separator(html, 'hedge-condition-breadth'))
+  assert.match(second, /Unknown/, `an unevaluated condition must say Unknown: "${second}"`)
+  assert.doesNotMatch(second, /Not met/, `Unknown printed as Not met: "${second}"`)
+  assert.match(second, /not on file/, `the reason it is unknown is not shown: "${second}"`)
+})
+
+await test('DR-D03: the verdict counts the unknowns it has, at the verdict and in the matrix', () => {
+  const html = renderView(projection(plain, { hedge_readiness: HEDGE }))
+  assert.match(text(segment(html, 'defense-line-hedge')), /1 of 2 met · 1 unknown/, 'the verdict hides its unknown')
+  assert.match(text(card(html, 'defense-hedge-conditions')), /1 of 2 met · 1 unknown/, 'the matrix hides its unknown')
+})
+
+await test('DR-D03: inverse gates and options availability are separate evidence, each with its own state', () => {
+  const body = text(card(renderView(projection(plain, { hedge_readiness: HEDGE })), 'defense-hedge-conditions'))
+  assert.match(body, /SPY → SH: thesis off/, `the index gate result is missing: "${body}"`)
+  assert.match(body, /PSQ → PSQ: Unknown/, `an unevaluated gate must read Unknown: "${body}"`)
+  assert.match(body, /threshold or stressed share not on file/, `the gate's unknown reason is missing: "${body}"`)
+  assert.match(body, /Options lifecycle: paused/, `options availability is not reported separately: "${body}"`)
+})
+
+await test('DR-D03: a stale hedge section says so in the matrix and offers the evidence route', () => {
+  const stale = { ...HEDGE, as_of: null, stale_reason: 'the engine projection carries no hedge block', readiness: 'UNKNOWN' }
+  const html = card(renderView(projection(plain, { hedge_readiness: stale })), 'defense-hedge-conditions')
+  assert.match(text(html), /carries no hedge block/, 'a stale section renders without its reason')
+  assert.match(html, /aria-label="Review hedge evidence"/, 'no action to review the hedge evidence')
+})
+
+// ── DR-D02: the protection total is decomposed, never asserted as one merged truth ─────────────────────────
+// Defense printed "3 without a broker stop" (no stop + a planned level, merged), Portfolio called two
+// unprotected, Risk distinguished two no-stop positions from one planned-only one. Those reconcile only if the
+// total is decomposed by state; a merged label asserts one truth where the sources answer three questions. An
+// unproven position (AMANX-like) is not "unprotected" either: it is unknown, and it gets a verify action.
+const STOPS = {
+  as_of: AT, no_stop: { count: 3, value_usd: 5000 }, planned_only: 1,
+  pending: { count: 5, value_usd: 10000 }, active: 3, filled: { count: 0 }, unknown: { count: 1 },
+  gaps: [{ symbol: 'NOSTOP1', account_label: 'Acct A', value_usd: 1200, state: 'no stop' }],
+  near: [], near_threshold_pct: 5,
+  reconciliation: {
+    counted_positions: 12,
+    by_state: {
+      active: { count: 3, value_usd: 3000 }, pending_activation: { count: 5, value_usd: 10000 },
+      planned_only: { count: 1, value_usd: 3000 }, no_stop: { count: 2, value_usd: 2000 },
+      unknown: { count: 1, value_usd: 5500 }, filled: { count: 0, value_usd: 0 },
+    },
+    no_resting_order: { count: 3, value_usd: 5000, definition: 'no stop plus a planned level only' },
+    resting_or_pending: { count: 8, value_usd: 13000 },
+    excluded: { count: 2, value_usd: 942, by_reason: null, note: 'the exclusion reason is not published in the stop rows' },
+    partial_quantities: { known: false, reason: 'the stops slice carries no resting-stop quantity' },
+    coverage: 'measured',
+  },
+  unknown_rows: [{ symbol: 'FUNDX', account_label: 'Acct B', value_usd: 5500, state: 'UNKNOWN', cause: 'No Stop Read',
+    reason: 'No stop read source for this broker; protection cannot be verified' }],
+}
+
+await test('DR-D02: the stop line decomposes the total instead of merging no-stop with planned-only', () => {
+  const html = renderView(projection(plain, { stops: STOPS }))
+  const sub = text(segment(html, 'defense-line-stops'))
+  assert.match(sub, /2 no stop/, `the definite no-stop count is missing: "${sub}"`)
+  assert.match(sub, /1 planned only/, `the planned-only position is merged away: "${sub}"`)
+  assert.match(sub, /8 resting or pending/, `the resting/pending population is missing: "${sub}"`)
+  assert.match(sub, /12 counted/, `the reconciliation has no denominator: "${sub}"`)
+})
+
+await test('DR-D02 sheet: the reconciliation names every state, the exclusions and the unknown position', () => {
+  const html = renderSheet(projection(plain, { stops: STOPS }), 'stops')
+  const body = text(html)
+  assert.match(body, /Protection reconciliation/, 'no reconciliation block')
+  assert.match(body, /12 counted positions/, `no denominator: "${body}"`)
+  assert.match(body, /8 resting or pending/, 'the resting/pending population is missing')
+  assert.match(body, /3 no resting broker order/, 'the merged figure is not named for what it is')
+  assert.match(body, /1 planned level only/, 'a planned level is not kept as its own field')
+  assert.match(body, /2 excluded from the count/, 'the under-$100/policy exclusions are invisible')
+  assert.match(body, /\$942/, 'the excluded value is missing')
+  assert.match(body, /not published/, 'partial quantities are silently omitted')
+  assert.match(body, /FUNDX/, 'the unproven position is not listed')
+  assert.match(body, /No Stop Read/, 'the unproven position prints without its cause')
+  assert.match(body, /Verify broker evidence/, 'the unproven position has no way to verify it')
+  assert.match(html, /\?detail=engine:sources/, 'Verify broker evidence does not open the sources sheet')
+})
+
+await test('DR-D02 sheet: a resting pending stop is never described as active', () => {
+  const body = text(renderSheet(projection(plain, { stops: STOPS }), 'stops'))
+  assert.match(body, /Pending activation/, 'the pending population is not named')
+  assert.doesNotMatch(body, /5 active/, `a pending stop is described as active: "${body}"`)
 })
 
 console.log(`${n} passed, ${failures.length} failed`)

@@ -216,6 +216,39 @@ def _envelope(desk: str, now: datetime, sources: list[dict], tabs: dict, decisio
             "tabs": tabs, "errors": errors}
 
 
+def _candidate_evidence(r: dict, level: dict | None, max_age_h: float) -> list[tuple[str, Any]]:
+    """DR-R04: one candidate's own clocks and the limitation of each, from the field it came from.
+
+    The page published a desk-level packet clock, a holdings pricing time and a resistance-cache time; none of
+    them says whether THIS candidate has a usable quote or a level that is still current. Every value here comes
+    from the packet row (buy_ready_packets_index) or that symbol's own resistance record — nothing is derived
+    from a different source's freshness, and a field the packet does not record says so instead of looking fresh.
+    """
+    price = _num(r.get("price"))
+    quote_age = _num(r.get("quote_age_h"))
+    trade_age = _num(r.get("packet_trading_age_h"))
+    review = r.get("cio_review") if isinstance(r.get("cio_review"), dict) else {}
+    level_value = _num((level or {}).get("resistance"))
+    return [
+        ("Packet saved", _date(r.get("saved_at"))),
+        ("Packet evaluated", _date(review.get("as_of")) if review.get("as_of") else "not recorded"),
+        ("Quote price", f"${price:,.2f}" if price is not None else "not recorded in the packet"),
+        # an age is not a timestamp: the packet records how old its quote was, never when it was taken
+        ("Quote age", f"{quote_age:g} h — quote timestamp not recorded" if quote_age is not None
+                      else "not recorded in the packet"),
+        ("Quote session / source", "not published"),
+        ("Resistance level", f"${level_value:,.2f} · {level.get('state') or 'state not recorded'}"
+                             if level_value is not None else "no level on file"),
+        ("Level evidence time", _date(level.get("as_of")) if level_value is not None else GAP_NOT_ON_FILE),
+        ("Expiry", f"current — {trade_age:g} h of {max_age_h:g} h trading window used" if trade_age is not None
+                   else f"current — trading age not recorded (window {max_age_h:g} h)"),
+        # the zone and the quote are the packet's own two fields, so the distance is one packet's arithmetic;
+        # whether the two are on the same corporate-action basis is NOT published, and the row says so
+        ("Zone distance basis", "this packet's own quote and zone; price basis / corporate-action adjustment not published"),
+        ("Eligibility (this action)", "Unverified — no gate result is published"),
+    ]
+
+
 def _cio_stance_text(stance: dict | None) -> str:
     if not stance or stance.get("gap") or stance.get("stance") is None:
         return "CIO stance not on file"
@@ -252,6 +285,16 @@ def reentry_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     stale = [r for r in packets.get("stale") or [] if isinstance(r, dict)]
     newest = max((r.get("saved_at") for r in rows if _time(r.get("saved_at"))), key=lambda v: _time(v), default=None)
     packet_gap = None if packets else "The buy-ready packet index could not be read."
+    max_age_h = _num(packets.get("max_age_h")) or 48.0
+
+    # DR-R04: read the resistance cache here, not after the rows, so every candidate row can carry the
+    # level's own evidence time (a desk-level cache clock is not evidence about this candidate's level).
+    prefs = _select(db_query, "SELECT key, value, updated_at FROM ui_prefs WHERE key = ANY(%s)",
+                    (["portfolio.reentry.event-classifications.v1", "portfolio.reentry.resistance.v1"],))
+    pref = {r.get("key"): r for r in prefs or []}
+    resist_doc = (pref.get("portfolio.reentry.resistance.v1") or {}).get("value")
+    resist_doc = resist_doc if isinstance(resist_doc, dict) else {}
+    resist = resist_doc.get("symbols") if isinstance(resist_doc.get("symbols"), dict) else {}
 
     ready_rows = []
     for r in rows[:MAX_ROWS]:
@@ -264,14 +307,13 @@ def reentry_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
                                detail=_detail(f"{sym} · {r.get('state') or 'packet'}", [
                                    ("Stage (packet)", r.get("state")),
                                    ("Entry zone", zone.removeprefix("zone ")),
-                                   ("Price at quote", f"${_num(r.get('price')):,.2f}" if _num(r.get("price")) is not None else None),
+                                   *_candidate_evidence(r, resist.get(sym.upper()) if isinstance(resist.get(sym.upper()), dict) else None, max_age_h),
                                    ("Planned stop", f"${_num(r.get('stop')):,.2f}" if _num(r.get("stop")) is not None else None),
                                    ("Planned target", f"${_num(r.get('target')):,.2f}" if _num(r.get("target")) is not None else None),
                                    ("Plan R:R", r.get("rr_plan")),
                                    ("Catalyst", r.get("catalyst") if isinstance(r.get("catalyst"), str) else (r.get("catalyst") or {}).get("summary") if isinstance(r.get("catalyst"), dict) else None),
                                    ("CIO stance (cio_truth)", _cio_stance_text(st)),
-                                   ("Packet saved", _date(r.get("saved_at"))),
-                               ], "data/runtime/buy_ready_packets/<SYM>.json via buy_ready_packets_index; stance via cio_truth.stances_for_symbols",
+                               ], "data/runtime/buy_ready_packets/<SYM>.json via buy_ready_packets_index; resistance via ui_prefs portfolio.reentry.resistance.v1; stance via cio_truth.stances_for_symbols",
                                    href=f"/watch?symbol={sym}", href_label="Set an alert on Watch →")))
     if len(rows) > MAX_ROWS:
         ready_rows.append(_row("pkt-more", f"{len(rows) - MAX_ROWS} more current packets", "Classic view →", "info",
@@ -287,14 +329,8 @@ def reentry_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     if exit_gap and reason:
         # LQ-20261107-176: a bare gap told the reader nothing; the reason died inside a swallowed exception.
         exit_gap = f"{exit_gap} ({exits.get('error_type') or 'error'}: {reason})"
-    prefs = _select(db_query, "SELECT key, value, updated_at FROM ui_prefs WHERE key = ANY(%s)",
-                    (["portfolio.reentry.event-classifications.v1", "portfolio.reentry.resistance.v1"],))
-    pref = {r.get("key"): r for r in prefs or []}
     classes_doc = (pref.get("portfolio.reentry.event-classifications.v1") or {}).get("value")
     classes = classes_doc if isinstance(classes_doc, dict) else {}
-    resist_doc = (pref.get("portfolio.reentry.resistance.v1") or {}).get("value")
-    resist_doc = resist_doc if isinstance(resist_doc, dict) else {}
-    resist = resist_doc.get("symbols") if isinstance(resist_doc.get("symbols"), dict) else {}
     cutoff = (now - timedelta(days=30)).date().isoformat()
     recent = [r for r in exit_rows_raw if str(r.get("trade_date") or "") >= cutoff]
     saved = {k: v for k, v in classes.items() if isinstance(v, dict) and v.get("eventType")}
@@ -383,11 +419,85 @@ def reentry_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     if stale:
         decisions.append({"id": "packet-expiry", "title": f"{_plural(len(stale), 'buy-ready packet')} older than 48 h",
                           "detail": "They are hidden from Ready now and kept in history. Decide an expiry rule for the packet store."})
+    # DR-R02: three counts, three populations. Each states its unit, its rule, its dedupe and its clock; the
+    # market-event population is a DIFFERENT source this projection does not read, so its value says that rather
+    # than borrowing a number. Overlap between sources is "not counted" because no shared candidate ID exists.
+    index_read = bool(packets)
+    current_instruments = {str(r.get("symbol") or "").upper() for r in rows if r.get("symbol")}
+    drawn, more_current = min(len(rows), MAX_ROWS), max(0, len(rows) - MAX_ROWS)
+    newest_stale = max((r.get("saved_at") for r in stale if _time(r.get("saved_at"))),
+                       key=lambda v: _time(v), default=None)
+    populations = [
+        _row("pop-event", "Market-event candidates", "not read by this desk", "info",
+             href="/portfolio/re-entry?tab=event",
+             detail=_detail("Readiness populations · market-event candidates", [
+                 ("Population", "the open market event's ranked candidates (MarketEvent@v1)"),
+                 ("Unit", "event candidate"),
+                 ("Rule", "as the market-event producer ranks the open episode; this desk does not read that payload"),
+                 ("As of", "not read by this projection — open the event for its own clock"),
+                 ("Dedupe", "one row per candidate in the episode"),
+                 ("Overlap with packets", "not published: the event payload and the packet index share no candidate ID"),
+             ], "GET /api/v2/market-event/active (the Event tab); the re-entry desk projection does not read it")),
+        _row("pop-current", "Current source packets",
+             f"{_plural(len(rows), 'packet')} · {_plural(len(current_instruments), 'instrument')}" if index_read else GAP_NOT_ON_FILE, "info",
+             detail=_detail("Readiness populations · current packets", [
+                 ("Population", "buy-ready / entry-near packets inside the freshness window"),
+                 ("Unit", "packet (one file per symbol and account)"),
+                 ("Rule", f"{max_age_h:g} h, counted in trading days — weekends and exchange holidays do not count"),
+                 ("Dedupe", "one packet per (symbol, account): a symbol held in two accounts is two packets and one instrument"),
+                 ("As of", _date(packets.get("as_of")) if index_read else GAP_NOT_ON_FILE),
+                 ("Shown here", (f"{drawn} of {len(rows)}" + (f" — {more_current} more listed below" if more_current else ""))
+                                 if index_read else GAP_NOT_ON_FILE),
+                 ("Overlap with history", "none: a packet is current or historical by its trading age, never both"),
+             ], "data/runtime/buy_ready_packets/*.json via buy_ready_packets_index.index_packets")),
+        _row("pop-history", "Historical packets",
+             f"{len(stale)} older than {max_age_h:g} h" if index_read else GAP_NOT_ON_FILE, None,
+             href="/portfolio/re-entry/classic",
+             detail=_detail("Readiness populations · historical packets", [
+                 ("Population", "packets outside the freshness window, kept in history"),
+                 ("Unit", "packet"),
+                 ("Rule", f"older than {max_age_h:g} h by trading-day age; hidden from Ready now and kept in history"),
+                 ("Dedupe", "one entry per packet at the age it left the window"),
+                 ("As of", _date(newest_stale) if newest_stale else "not published per record"),
+                 ("Overlap with current", "none: the window split is exclusive"),
+             ], "buy_ready_packets_index.index_packets stale list; the retained packets live in the packet store")),
+        _row("pop-overlap", "Same name in more than one population", "not counted", "info",
+             detail=_detail("Readiness populations · overlap", [
+                 ("Why not", "no shared candidate or instrument ID is published across the event and packet sources"),
+                 ("What would let this desk count it", "a candidate read model keyed by canonical instrument ID (NEEDS BACKEND)"),
+             ], "the same event candidate may also have a packet; the two payloads cannot be joined here")),
+    ]
+    # DR-X01 (UI half): the header's gate state and a BUY_READY packet describe DIFFERENT scopes. No gate result
+    # is published (the served store is unavailable, LQ-2141), so every scope reads Unverified and the packet's own
+    # state is labelled as the source signal it is. Nothing here calls a candidate clear or blocked.
+    elig_scopes = [
+        ("elig-global", "All actions · global gate", "every action in the book"),
+        ("elig-instrument", "Per instrument · gate", "one instrument — no per-instrument gate result is published"),
+        ("elig-action", "Per action · packet state", "this packet's suggested action"),
+    ]
+    eligibility = [
+        _row(rid, label, "source signal only" if rid == "elig-action" else "Unverified",
+             "info" if rid == "elig-action" else "warn",
+             detail=_detail(f"Review eligibility · {label.split(' · ')[0].lower()}", [
+                 ("Scope", scope),
+                 ("Authoritative result", "not published"),
+                 ("Owner", "the shared gate store (identity / eligibility); the served store is unavailable (LQ-2141)"),
+                 ("What this desk claims", "nothing about eligibility; a packet state is a source signal, not a gate result"),
+                 ("Contract needed", "scope_kind, scope_key, status, reasons, source_as_of, snapshot_id (NEEDS BACKEND)"),
+             ], "no gate read model is served; this row publishes the absence, not a substituted count"))
+        for rid, label, scope in elig_scopes
+    ]
+
     tabs = {
         "ready-now": {"panels": [
             _panel("ready", "Ready now", ready_rows, sub="BUY_READY / ENTRY_NEAR packets — the same ones Telegram sends", span=2,
                    gap=packet_gap or stale_note, empty="No current buy-ready or entry-near packet."),
             _panel("classification", "Classification", classification, sub="why you exited", gap=class_gap or exit_gap),
+            _panel("populations", "Readiness populations", populations, sub="what each count counts"),
+            _panel("eligibility", "Review eligibility (gate)", eligibility,
+                   sub="scopes are separate; no gate result is published",
+                   gap="A header state and a BUY_READY packet can coexist: they describe different scopes. "
+                       "Until a gate result is published, eligibility here is Unverified — not a verdict about any candidate."),
             _panel("owned", "Owned elsewhere — linked, not repeated", [
                 _row("own-lt", "Look-through & sectors", "→ Portfolio › Look-through", "info", href="/portfolio?tab=Look-through"),
                 _row("own-rot", "Rotation workspace", "→ Rotation desk", "info", href="/rotation"),

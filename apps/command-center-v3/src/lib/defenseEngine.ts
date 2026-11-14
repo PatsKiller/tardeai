@@ -49,11 +49,32 @@ export type ExposureSection = Section & {
   coverage_status?: 'measured' | 'partial' | 'unknown' | string | null
   positions_count?: number | null; mapped_count?: number | null; unmapped_count?: number | null
   mapped_usd?: number | null; unmapped_usd?: number | null; look_through_basis?: string[]
+  /** F1: non-cash positions with no usable value. They never enter `positions_count` (that count is the rows the
+   *  figure summed), so a book of two positions, one unpriced, used to publish "1 of 1 positions mapped". They
+   *  make `coverage_status` partial. `unpriced_count` absent = not published. */
+  unpriced_count?: number | null; unpriced_symbols?: string[]
   residuals?: { count?: number | null; usd_exposed?: number | null; symbols?: string[] }
   unmapped?: { symbol: string; account_label?: string | null; usd?: number | null; reason?: string | null }[]
   budgets?: Budget[]
   rotate?: { key?: string; label?: string | null; state?: string | null; rs5?: number | null; usd?: number | null }[]
 }
+export type ProtectionUnit = { count?: number | null; value_usd?: number | null }
+/** DR-D02: the stop total decomposed by state, plus what it excludes and what it cannot measure.
+ *
+ *  The view used to print one merged headline ("3 without a broker stop") for a total that Risk and Portfolio
+ *  split into two no-stop positions and one planned-only level. The producer now publishes every state, the
+ *  merged figure labelled as "no resting broker order", the excluded positions and the quantities it cannot
+ *  measure, so the page prints the decomposition instead of choosing one of the three totals. */
+export type ProtectionReconciliation = {
+  counted_positions?: number | null
+  by_state?: Partial<Record<'active' | 'pending_activation' | 'planned_only' | 'no_stop' | 'unknown' | 'filled', ProtectionUnit>>
+  no_resting_order?: ProtectionUnit & { definition?: string | null }
+  resting_or_pending?: ProtectionUnit
+  excluded?: { count?: number | null; value_usd?: number | null; by_reason?: unknown; note?: string | null }
+  partial_quantities?: { known?: boolean | null; reason?: string | null }
+  coverage?: string | null
+}
+export type ProtectionUnknownRow = { symbol?: string | null; account_label?: string | null; value_usd?: number | null; state?: string | null; cause?: string | null; reason?: string | null }
 export type StopsSection = Section & {
   no_stop?: { count?: number | null; value_usd?: number | null }
   pending?: { count?: number | null; value_usd?: number | null }
@@ -61,9 +82,13 @@ export type StopsSection = Section & {
   near_threshold_pct?: number | null
   gaps?: { symbol: string; account_label?: string | null; value_usd?: number | null; state?: string | null }[]
   near?: { symbol: string; account_label?: string | null; distance_pct?: number | null }[]
+  reconciliation?: ProtectionReconciliation | null
+  unknown_rows?: ProtectionUnknownRow[] | null
   hedged_share?: string | null; beta?: string | null
 }
-export type HedgeTrigger = { id: string; label: string; value?: number | null; threshold?: number | null; unit?: string | null; met?: boolean | null; detail?: string | null }
+// `when` is the rule in words (defense_engine._hedge_section publishes it, lines 532-533); the view prints it
+// where it exists and falls back to the numeric threshold.
+export type HedgeTrigger = { id: string; label: string; value?: number | null; threshold?: number | null; unit?: string | null; met?: boolean | null; detail?: string | null; when?: string | null }
 export type HedgeSection = Section & {
   readiness?: 'NOT NOW' | 'CONDITIONS MET' | 'UNKNOWN' | string | null
   shock_class?: string | null; shock_confidence?: number | null
@@ -228,6 +253,23 @@ export function unprotectedPair(p: DefenseProjection, live?: LiveAuthority | nul
   return { count: num(s.no_stop?.count), valueUsd: num(s.no_stop?.value_usd), asOf: s.as_of ?? null, staleReason: s.stale_reason ?? null, source: 'projection' }
 }
 
+/** DR-D02: the stop line's sentence. When the projection publishes the reconciliation, the total is decomposed
+ *  by state ("2 no stop · 1 planned only · 8 resting or pending · 12 counted") so the Defense total, Portfolio's
+ *  two unprotected and Risk's two-plus-one are visibly the same book. A projection built before the field existed
+ *  falls back to the merged count, labelled for what the source actually says: no RESTING order. */
+export function stopsSub(s: StopsSection | null | undefined, unprotCount: number | null | undefined): string {
+  const x = s ?? {}
+  const r = x.reconciliation
+  if (!r) return `${unprotCount ?? GAP} no resting order · ${x.pending?.count ?? GAP} pending`
+  const n = (v: number | null | undefined) => v ?? GAP
+  return [
+    `${n(r.by_state?.no_stop?.count)} no stop`,
+    `${n(r.by_state?.planned_only?.count)} planned only`,
+    `${n(r.resting_or_pending?.count)} resting or pending`,
+    `${n(r.counted_positions)} counted`,
+  ].join(' · ')
+}
+
 export interface TierPair { tier: string | null; score: number | null; asOf: string | null; source: 'snapshot' | 'projection' }
 
 /** The market-risk tier, score and clock from ONE record (LQ-20261107-1837 REWORK 2, F4).
@@ -254,21 +296,42 @@ export function exposureCoverage(e: ExposureSection | null | undefined): Exposur
   const x = e ?? {}
   const status = String(x.coverage_status ?? '').toLowerCase()
   const positions = num(x.positions_count), mapped = num(x.mapped_count), unmappedUsd = num(x.unmapped_usd)
-  const positionsText = positions != null && mapped != null ? `${mapped} of ${positions} positions mapped` : null
+  // "0 of 0 positions mapped" is not a coverage statement — an empty book gets its own sentence below (F2)
+  const positionsText = positions != null && mapped != null && positions > 0 ? `${mapped} of ${positions} positions mapped` : null
   // Dollars only from the projection's own total: the `unmapped[]` list is capped server-side (`max_rows`), so
   // summing it would understate how much of the book is not counted. Its length is a "listed" floor, said so.
   const unmappedN = num(x.unmapped_count) ?? (x.unmapped?.length || null)
   const unmappedText = unmappedUsd ? `${money(unmappedUsd)} not mapped`
     : unmappedN ? `${unmappedN} position${unmappedN === 1 ? '' : 's'} not mapped` : null
+  const unpricedN = num(x.unpriced_count) ?? null
+  const unpricedText = unpricedN ? `${unpricedN} position${unpricedN === 1 ? '' : 's'} with no value` : null
   if (status === 'measured') {
+    // `measured` cannot carry an unpriced position (the producer makes it partial), so this branch names none.
     const detail = [positionsText, unmappedText].filter(Boolean).join(' · ')
     return { state: 'measured', headline: money(x.stressed_usd),
       detail: detail || 'coverage not published', tone: (num(x.stressed_pct_invested) ?? 0) >= 10 ? 'warn' : 'muted' }
   }
-  const detail = [status === 'partial' ? 'partial coverage' : 'exposure coverage not published',
-    positionsText, unmappedText]
+  // F2 (REVIEW-S2-defense-reentry-b1-cc-deepseek-3): two different facts shared one sentence.
+  //   positions_count published as 0, nothing unmapped, nothing unpriced -> the projection read a book and found
+  //   no non-cash position;   the coverage fields absent altogether -> the read (or this build) predates coverage,
+  //   which says nothing about how many positions exist. Never print the first as the second, or vice versa.
+  const emptyBook = status !== 'partial' && positions === 0 && !unmappedN && !unpricedN
+  const detail = [status === 'partial' ? 'partial coverage'
+    : emptyBook ? 'no non-cash position is on file'
+    : 'exposure coverage not published',
+    positionsText, unmappedText, unpricedText]
     .filter(Boolean).join(' · ')
   return { state: 'unknown', headline: 'Unknown', detail, tone: 'warn' }
+}
+
+/** DR-D03: the hedge verdict's sentence. `met_count` counts only evaluated-true conditions, so an unevaluated one
+ *  is neither met nor not met — it is Unknown, and the sentence says how many. Silent when nothing was measured. */
+export function hedgeSub(h: HedgeSection | null | undefined): string {
+  const x = h ?? {}
+  const triggers = x.triggers ?? []
+  if (x.met_count == null || x.of == null) return x.stale_reason ?? GAP
+  const unknown = triggers.filter(t => t.met == null).length
+  return `${x.met_count} of ${x.of} met${unknown ? ` · ${unknown} unknown` : ''}`
 }
 
 /** "The defense, line by line": one row per sheet, every value from one projection field. `live`, when given,
@@ -290,14 +353,16 @@ export function defenseLines(p: DefenseProjection, now: Date = new Date(), live?
       value: cov.headline, valueSub: cov.state === 'measured' ? [e.stressed_pct_invested != null ? `${pct(e.stressed_pct_invested)} of invested` : null, cov.detail !== 'coverage not published' ? cov.detail : null].filter(Boolean).join(' · ') : cov.detail,
       tone: cov.tone, asOf: e.as_of, staleReason: e.stale_reason },
     { id: 'stops', sheet: 'stops', label: 'Stop coverage',
-      sub: `${unprot.count ?? GAP} without a broker stop · ${s.pending?.count ?? GAP} pending`,
+      sub: stopsSub(s, unprot.count),
       // REWORK 3 (N1): an unknown count is not zero. `?? 0` painted a real cio_truth dollar figure green when the
       // record published the value but not the count — the pair rule makes that a legitimate answer, so the tone
       // must say "no reading", never "nothing unprotected". Unknown beats wrong.
       value: money(unprot.valueUsd), valueSub: 'unprotected', tone: unprot.count == null ? 'muted' : unprot.count > 0 ? 'warn' : 'good',
       asOf: unprot.asOf, staleReason: unprot.staleReason },
+    // DR-D03: the verdict names how many of its conditions were never evaluated. "1 of 2 met" alone reads as
+    // "the other one is false"; when a trigger's `met` is null it is Unknown, and the sentence must say so.
     { id: 'hedge', sheet: 'hedge', label: 'Hedge readiness',
-      sub: h.met_count != null && h.of != null ? `${h.met_count} of ${h.of} triggers met` : (h.stale_reason ?? GAP),
+      sub: hedgeSub(h),
       value: h.readiness ?? 'UNKNOWN', valueSub: h.shock_class ? `${h.shock_class.toLowerCase()} shock` : undefined,
       tone: readinessTone(h.readiness), asOf: h.as_of, staleReason: h.stale_reason },
     { id: 'sector', sheet: 'sector', label: 'Sector posture',

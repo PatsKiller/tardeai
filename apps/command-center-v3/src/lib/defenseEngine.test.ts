@@ -87,7 +87,7 @@ test('defense lines carry one value per projection field', () => {
   assert.equal(by.book.value, '$12.0K', 'book value')
   assert.equal(by.book.sub, 'ZZAA · ZZBB', 'book names deduped')
   assert.equal(by.book.tone, 'warn', 'book tone')
-  assert.equal(by.stops.sub, '2 without a broker stop · 1 pending', 'stops sub')
+  assert.equal(by.stops.sub, '2 no resting order · 1 pending', 'stops sub')
   assert.equal(by.hedge.value, 'NOT NOW', 'hedge')
   assert.equal(by.sector.valueSub, '10 of 11 holding', 'sector')
   assert.equal(by.cash.value, '40%', 'cash pct')
@@ -101,19 +101,19 @@ test('defense lines carry one value per projection field', () => {
 test('the live cio_truth count replaces the projection\'s frozen stops copy', () => {
   const live = { unprotected: { count: 4, valueUsd: 49_089.02, asOf: '2026-11-10T20:54:00Z' } }
   const by = Object.fromEntries(defenseLines(P, new Date('2030-01-07T21:00:00Z'), live).map(l => [l.id, l]))
-  assert.equal(by.stops.sub, '4 without a broker stop · 1 pending', 'live count, projection pending')
+  assert.equal(by.stops.sub, '4 no resting order · 1 pending', 'live count, projection pending')
   assert.equal(by.stops.value, '$49.1K', 'live counted value')
   assert.equal(by.stops.asOf, '2026-11-10T20:54:00Z', 'live as_of')
   assert.equal(by.stops.tone, 'warn', 'a non-zero count warns')
   const zero = { unprotected: { count: 0, valueUsd: 0, asOf: null } }
   const z = Object.fromEntries(defenseLines(P, new Date('2030-01-07T21:00:00Z'), zero).map(l => [l.id, l]))
-  assert.equal(z.stops.sub, '0 without a broker stop · 1 pending', 'zero is a measurement')
+  assert.equal(z.stops.sub, '0 no resting order · 1 pending', 'zero is a measurement')
   assert.equal(z.stops.tone, 'good', 'zero unprotected is good, not a gap')
 })
 
 test('a live authority that did not answer leaves the projection copy, never a zero', () => {
   const by = Object.fromEntries(defenseLines(P, new Date('2030-01-07T21:00:00Z'), { unprotected: { count: null, valueUsd: null, asOf: null } }).map(l => [l.id, l]))
-  assert.equal(by.stops.sub, '2 without a broker stop · 1 pending', 'projection fallback')
+  assert.equal(by.stops.sub, '2 no resting order · 1 pending', 'projection fallback')
   assert.equal(by.stops.value, '$3.0K', 'projection value')
 })
 
@@ -124,7 +124,7 @@ test('a live authority that did not answer leaves the projection copy, never a z
 test('a live count with no counted value is a gap, never the projection\'s value', () => {
   const live = { unprotected: { count: 4, valueUsd: null, asOf: '2026-11-10T20:54:00Z' } }
   const by = Object.fromEntries(defenseLines(P, new Date('2030-01-07T21:00:00Z'), live).map(l => [l.id, l]))
-  assert.equal(by.stops.sub, '4 without a broker stop · 1 pending', 'the live count')
+  assert.equal(by.stops.sub, '4 no resting order · 1 pending', 'the live count')
   assert.equal(by.stops.value, GAP, 'the projection\'s $3.0K must never sit beside cio_truth\'s 4')
   assert.equal(by.stops.asOf, '2026-11-10T20:54:00Z', 'the answering record\'s clock')
   assert.equal(by.stops.staleReason, null, 'the projection\'s stale reason does not date the live pair')
@@ -137,7 +137,7 @@ test('a live value with no count is never painted green', () => {
   const live = { unprotected: { count: null, valueUsd: 4_000, asOf: null } }
   const by = Object.fromEntries(defenseLines(P, new Date('2030-01-07T21:00:00Z'), live).map(l => [l.id, l]))
   assert.equal(by.stops.value, '$4.0K', 'the value it published is shown')
-  assert.equal(by.stops.sub, `${GAP} without a broker stop · 1 pending`, 'the count is a gap, not 2')
+  assert.equal(by.stops.sub, `${GAP} no resting order · 1 pending`, 'the count is a gap, not 2')
   assert.ok(by.stops.tone !== 'good', 'an unknown count must not read as "nothing unprotected"')
   assert.equal(by.stops.tone, 'muted', 'no reading, no colour claim')
 })

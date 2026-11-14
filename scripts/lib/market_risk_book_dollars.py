@@ -103,6 +103,12 @@ def build(
         stop_dist[k] = _f(s.get("stop_price"))
 
     rows, groups_usd, unmapped = [], {}, []
+    # F1 (REVIEW-S2-defense-reentry-b1-cc-deepseek-3): a non-cash position with no usable value is skipped below,
+    # so it never reached `unmapped` and never entered `positions_count` — a book of two positions, one unpriced,
+    # published "1 of 1 positions mapped · measured". An unknown value is not a measured one: count it and it makes
+    # the coverage partial, exactly like an unmapped position.
+    unpriced = [h for h in holdings if not h.get("is_cash") and _f(h.get("market_value")) <= 0]
+    unpriced_count = len(unpriced)
     for h in holdings:
         if h.get("is_cash"):
             continue
@@ -141,7 +147,7 @@ def build(
     unmapped_usd = round(sum(_f(u.get("usd")) for u in unmapped), 2)
     mapped_usd = round(sum(_f(r.get("value_usd")) for r in mapped_rows), 2)
     look_through_basis = sorted({str(r.get("look_through_basis")) for r in mapped_rows if r.get("look_through_basis")})
-    coverage_status = "unknown" if not rows else ("measured" if not unmapped else "partial")
+    coverage_status = "unknown" if not rows else ("partial" if (unmapped or unpriced_count) else "measured")
     exposed = [r for r in rows if r["usd_exposed"] > 0]
     top = exposed[0] if exposed else None
     largest = None
@@ -169,6 +175,10 @@ def build(
         "coverage_status": coverage_status,
         "positions_count": len(rows), "mapped_count": len(rows) - len(unmapped), "unmapped_count": len(unmapped),
         "mapped_usd": mapped_usd, "unmapped_usd": unmapped_usd, "look_through_basis": look_through_basis,
+        # F1: a non-cash position with no usable value, and its symbols so the page can name what it cannot
+        # measure. It is outside `positions_count` by construction — that count is the rows the figure summed.
+        "unpriced_count": unpriced_count,
+        "unpriced_symbols": sorted({str(h.get("symbol") or "").upper() for h in unpriced if h.get("symbol")})[:max_rows],
         "as_of": store.get("data_as_of"),
         "stops_known": stops_known,
     }
