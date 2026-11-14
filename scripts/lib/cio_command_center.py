@@ -321,11 +321,20 @@ def build_cio_now(
                 "kind": "position",
                 "decision_id": d.get("decision_id"),
                 "symbol": d.get("symbol"),
-                "account": (d.get("accounts") or [None])[0] if d.get("accounts") else d.get("account"),
+                # OP-064 O3/F-A — the sanitizer's PRIMARY account, not the first one encountered: `accounts[0]` was
+                # the first-seen account and coincided with the primary only because the largest row happened to come
+                # first. `accounts[0]` survives only for a row the sanitizer could not derive a primary for.
+                "account": d.get("account") or ((d.get("accounts") or [None])[0]),
                 # Every account the decision spans, by NAME (operator 2026-10-23): a symbol in two accounts
                 # is never shown as only the first one.
                 "accounts": _card_accounts(d),
                 "account_labels": [_acct_name(a) for a in _card_accounts(d)],
+                # Each account's own opinion + the span count (OP-064 O3/F-B — neither was on this card before, so a
+                # reader could see two account chips without seeing that one of them held a different stance).
+                "per_account": d.get("per_account") or [],
+                "account_count": (d.get("account_count")
+                                  if d.get("account_count") is not None
+                                  else len(_card_accounts(d))),
                 "action": d.get("action") or d.get("stance"),
                 "stance": d.get("stance"),
                 "stance_code": d.get("stance_code"),
@@ -381,9 +390,14 @@ def build_cio_now(
                 "kind": "position",
                 "decision_id": d.get("decision_id") or f"dec_fallback_{d.get('symbol')}",
                 "symbol": d.get("symbol"),
-                "account": d.get("account"),
+                "account": d.get("account") or ((d.get("accounts") or [None])[0]),
                 "accounts": _card_accounts(d),
                 "account_labels": [_acct_name(a) for a in _card_accounts(d)],
+                # Parity with the sanitized path: a plan row already carries each account's own opinion.
+                "per_account": d.get("per_account") or [],
+                "account_count": (d.get("account_count")
+                                  if d.get("account_count") is not None
+                                  else len(_card_accounts(d))),
                 "action": stance,
                 "stance": stance,
                 "stance_code": d.get("stance_code") or d.get("cio_stance"),

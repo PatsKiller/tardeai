@@ -374,3 +374,123 @@ def test_a_decisive_stance_is_never_overridden_by_prose_at_the_display_layer():
     # The contradiction the function exists for is unchanged: no formal stance, decisive prose.
     assert resolve_display_stance(None, "Advisory TRIM — SCHD") == "TRIM"
     assert resolve_display_stance("", "Advisory EXIT — SYNX") == "EXIT"
+
+
+# ── OP-064 O3/F1 — the sanitizer's second pass over an already-aggregated row ────────────────────────────────
+# `sanitize_decisions_now` runs `aggregate_position_decisions` over rows the capital plan ALREADY aggregated (the CIO
+# NOW home card at limit=24, the CIO report at limit=8). Re-aggregating such a row from its single `account` rebuilt
+# `accounts` as [primary] while `current_value_usd` stayed summed — the SPCX card showed $111,288 under the rollover
+# account's tag for two accounts' $111,288 — and `per_account` never left the sanitizer at all. The fixtures below
+# follow cc-deepseek-3's amendments (review 2026-11-14T2048Z, Q1.1-Q1.5, Q4a-Q4d).
+
+_PV = 1_255_586.37
+_SPLIT = (
+    # Deliberately DIFFERENT stances: the live SPCX row has TRIM on both accounts, which is exactly why a copy of the
+    # live row cannot catch opinion flattening.
+    {"account": "schwab_rollover_ira", "current_value_usd": 83_466.0,
+     "recommended_delta_usd": 0.0, "cio_stance": "HOLD", "why_now": "hold: tax lot"},
+    {"account": "schwab_taxable", "current_value_usd": 27_822.0,
+     "recommended_delta_usd": -2_782.2, "cio_stance": "TRIM", "why_now": "concentration > cap"},
+)
+#: The fields the home card and the report actually read. Idempotence is asserted on these (Q1.3).
+_CARD_FIELDS = ("accounts", "account_count", "per_account", "current_value_usd",
+                "current_weight_pct", "account")
+
+
+def _plan_rows(split=_SPLIT, symbol="SPCX"):
+    """The plan's output shape: ONE already-aggregated row per symbol — what the sanitizer really receives."""
+    from scripts.lib.cio_decision_semantics import aggregate_position_decisions
+
+    return aggregate_position_decisions(
+        [{"symbol": symbol, **r} for r in split], portfolio_value=_PV)
+
+
+def _by_symbol(decisions):
+    return {d["symbol"]: d for d in decisions}
+
+
+def test_f1_a_second_sanitize_pass_is_a_fixed_point():
+    from scripts.lib.cio_decision_semantics import sanitize_decisions_now
+
+    once = _by_symbol(sanitize_decisions_now(_plan_rows(), portfolio_value=_PV, limit=8))["SPCX"]
+    twice = _by_symbol(sanitize_decisions_now([once], portfolio_value=_PV, limit=8))["SPCX"]
+
+    # The defect: the split survived the plan but not the sanitizer.
+    assert once["accounts"] == ["schwab_rollover_ira", "schwab_taxable"]
+    assert once["account_count"] == 2
+    assert {o["account"] for o in once["per_account"]} == {"schwab_rollover_ira", "schwab_taxable"}
+    assert once["current_value_usd"] == 111_288.0          # carried, not recomputed from the per-account buckets
+    assert once["account"] == "schwab_rollover_ira"        # the largest account
+
+    # The property: a second pass changes nothing the card reads, and the shared identity does not move either.
+    for field in _CARD_FIELDS:
+        assert once.get(field) == twice.get(field), field
+    assert once["decision_id"] == twice["decision_id"]
+    assert once["stance_code"] == twice["stance_code"] == "TRIM"
+
+
+def test_f1_a_seeded_opinion_keeps_its_own_stance_after_a_second_pass():
+    """F-E: seeding `_acct_opinions` with `_acct_opinion(symbol_stance)` relabels the HOLD account with TRIM.
+
+    The aggregate verdict is TRIM; the rollover account decided HOLD. A per-account record that says otherwise is the
+    same lie one level down that FQ-104 removed one level up, and only this fixture catches it.
+    """
+    from scripts.lib.cio_decision_semantics import sanitize_decisions_now
+
+    once = _by_symbol(sanitize_decisions_now(_plan_rows(), portfolio_value=_PV, limit=8))["SPCX"]
+    twice = _by_symbol(sanitize_decisions_now([once], portfolio_value=_PV, limit=8))["SPCX"]
+
+    for row in (once, twice):
+        by_acct = {o["account"]: o for o in row["per_account"]}
+        assert by_acct["schwab_rollover_ira"]["cio_stance"] == "HOLD"
+        assert by_acct["schwab_rollover_ira"]["stance"] == "Hold"
+        assert by_acct["schwab_rollover_ira"]["current_value_usd"] == 83_466.0
+        assert by_acct["schwab_taxable"]["cio_stance"] == "TRIM"
+        assert by_acct["schwab_taxable"]["recommended_delta_usd"] == -2_782.2
+
+
+def test_f1_the_rows_authoritative_total_wins_over_the_per_account_sum():
+    """Q1.4: `per_account` disagreeing with the total is EXPOSED, never repaired by re-summing.
+
+    Repairing it would silently rewrite a live dollar figure — the one mutation that changes money on the page.
+    """
+    from scripts.lib.cio_decision_semantics import sanitize_decisions_now
+
+    plan = _plan_rows()
+    plan[0]["per_account"] = [
+        {**plan[0]["per_account"][0], "current_value_usd": 83_466.0},
+        {**plan[0]["per_account"][1], "current_value_usd": 26_534.0},
+    ]
+    assert sum(o["current_value_usd"] for o in plan[0]["per_account"]) == 110_000.0
+
+    row = sanitize_decisions_now(plan, portfolio_value=_PV, limit=8)[0]
+    assert row["current_value_usd"] == 111_288.0                                  # the authoritative aggregate
+    assert sum(o["current_value_usd"] for o in row["per_account"]) == 110_000.0   # both exposed
+
+
+def test_f1_accounts_fall_back_to_the_per_account_keys():
+    """Q1.5: `accounts` list, else the per-account keys, else the single `account` — no crash on a partial row."""
+    from scripts.lib.cio_decision_semantics import sanitize_decisions_now
+
+    plan = _plan_rows()
+    plan[0].pop("accounts")
+    row = sanitize_decisions_now(plan, portfolio_value=_PV, limit=8)[0]
+    assert row["accounts"] == ["schwab_rollover_ira", "schwab_taxable"]
+    assert row["account_count"] == 2
+
+
+def test_f1_the_report_and_the_home_card_see_the_same_account_split():
+    """Q2: the second caller. `cio_report_v2._decisions_now` (limit=8) carried the same defect and is fixed by the
+    same seeding — pinned here so the two surfaces cannot drift apart again."""
+    from scripts.lib.cio_decision_semantics import sanitize_decisions_now
+    from scripts.lib import cio_report_v2
+
+    plan = _plan_rows()
+    report = _by_symbol(cio_report_v2._decisions_now(
+        {"portfolio_value_usd": _PV, "position_decisions": plan}))
+    home = _by_symbol(sanitize_decisions_now(plan, portfolio_value=_PV, limit=24))
+
+    for field in ("accounts", "account_count", "per_account", "account",
+                  "current_value_usd", "current_weight_pct"):
+        assert report["SPCX"].get(field) == home["SPCX"].get(field), field
+    assert report["SPCX"]["account_count"] == 2

@@ -820,16 +820,42 @@ def aggregate_position_decisions(
             if not r.get("name"):
                 continue
         why = r.get("why_now")
-        stance = resolve_display_stance(r.get("cio_stance"), why)
+        # An already-aggregated row (the second-pass shape below) records its verdict in `stance_code`, not
+        # `cio_stance` — `sanitize_decisions_now` emits one and not the other. Reading only `cio_stance` left the
+        # recorded verdict unread and let prose re-decide the call on the next pass: the seeded fixture returned
+        # TRIM on pass 1 and HOLD on pass 2, with a different `decision_id` each time — the identity CIO NOW, the
+        # report and Telegram are supposed to share. `resolve_display_stance` already gives a recorded DECIDED
+        # stance final authority, so supplying it here restores the FQ-103 rule instead of relaxing it.
+        stance = resolve_display_stance(r.get("cio_stance") or r.get("stance_code"), why)
         value = float(r.get("current_value_usd") or 0.0)
         delta = float(r.get("recommended_delta_usd") or 0.0)
         acct = r.get("account")
         if sym not in by:
+            # OP-064 O3/F1 — this function's own output is fed back into it: `sanitize_decisions_now` (the CIO NOW home
+            # card at limit=24 and the CIO report at limit=8) runs it over rows the capital plan already aggregated.
+            # Re-aggregating such a row from its single `account` rebuilt `accounts` as [primary] while
+            # `current_value_usd` stayed summed — the SPCX card showed $111,288 under the rollover account's tag, and
+            # `per_account` was dropped on the way out. An already-aggregated row is therefore SEEDED from its own
+            # split, under two rules (cc-deepseek-3 review 20261114T2048Z, Q1.1/Q1.2):
+            #   1. the row's current_value_usd is CARRIED — never recomputed, never credited to an account bucket.
+            #      Crediting it would double the primary and could flip `account = argmax(per-account value)`.
+            #   2. each account's opinion is copied as-is. Re-deriving it through `_acct_opinion()` with the symbol
+            #      stance would relabel every account with the symbol's verdict — the per-account lie the `per_account`
+            #      contract exists to prevent.
+            # Agreement is not required (Q1.4): when the per-account figures do not sum to the row's total, both are
+            # exposed and the row's value wins, because it is the authoritative aggregate.
+            seeded_accounts = [a for a in (r.get("accounts") or []) if a]
+            seeded_opinions = [o for o in (r.get("per_account") or [])
+                               if isinstance(o, dict) and o.get("account")]
+            seeded = bool(seeded_accounts or seeded_opinions)
+            # Q1.5: the row's own account list, else the per-account keys, else the single `account` (last resort).
+            seed_names = (seeded_accounts or [o["account"] for o in seeded_opinions]
+                          or ([acct] if acct else []))
             by[sym] = {
                 "symbol": sym,
                 "name": r.get("name") or ident.get("display_name"),
-                "accounts": [acct] if acct else [],
-                "account": acct,  # primary (largest) filled later
+                "accounts": list(dict.fromkeys(seed_names)),
+                "account": r.get("account") or (seed_names[0] if seed_names else None),
                 "current_value_usd": value,
                 "recommended_delta_usd": delta,
                 "cio_stance": stance,
@@ -841,12 +867,18 @@ def aggregate_position_decisions(
                 "next_review": r.get("next_review"),
                 "target_range_pct": r.get("target_range_pct"),
                 "identity": ident,
-                "_acct_values": {acct: value} if acct else {},
+                # Seeded from the split; never from this row's total (rule 1).
+                "_acct_values": ({o["account"]: round(float(o.get("current_value_usd") or 0.0), 2)
+                                  for o in seeded_opinions}
+                                 if seeded else ({acct: value} if acct else {})),
                 # FQ-104, first increment: every account's own opinion survives the collapse. The aggregate still
                 # picks one decisive stance for the primary table (that cutover is FQ-104 proper), but the record no
                 # longer discards what each account actually said — `accounts[]` is provenance for one opinion, this
-                # is the opinion itself, per (symbol, account).
-                "_acct_opinions": ({acct: _acct_opinion(acct, stance, value, delta, why)} if acct else {}),
+                # is the opinion itself, per (symbol, account). Copies, never `_acct_opinion()` (rule 2).
+                "_acct_opinions": ({o["account"]: dict(o) for o in seeded_opinions}
+                                   if seeded else ({acct: _acct_opinion(acct, stance, value, delta, why)}
+                                                   if acct else {})),
+                "_seeded": seeded,
             }
             for k in _preserve_keys:
                 if r.get(k) is not None:
@@ -911,6 +943,7 @@ def aggregate_position_decisions(
     for sym, agg in by.items():
         # Primary account = largest value share
         acct_vals = agg.pop("_acct_values", {}) or {}
+        agg.pop("_seeded", None)  # internal marker: never on an operator row, never in a digest
         # FQ-104: keep every account's opinion on the aggregate row, largest account first. Sorted, so the primary
         # account is the first entry a reader sees as well as the `account` field below.
         opinions = agg.pop("_acct_opinions", {}) or {}
@@ -1072,6 +1105,11 @@ def sanitize_decisions_now(
             "next_review": d.get("next_review"),
             "accounts": d.get("accounts"),
             "account_count": d.get("account_count"),
+            # OP-064 O3 — the aggregator's PRIMARY account (largest value share) and each account's own opinion. A
+            # card that fell back to `accounts[0]` was tagging the decision with whichever account was seen first;
+            # `per_account` was dropped here entirely, so the second-pass caller (and its report) could not show it.
+            "account": d.get("account"),
+            "per_account": d.get("per_account") or [],
             "operator_actions": operator_action_affordances(),
             "decision_input_digest": d.get("decision_input_digest") or "",
             "decision_evidence_digest": d.get("decision_evidence_digest") or "",

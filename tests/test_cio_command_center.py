@@ -349,3 +349,43 @@ def test_build_office_home_empty_fail_soft():
     assert home["report"]["source_sha"] is None
     assert home["evidence"]["authority"] == "READ_ONLY_ADVISORY"
     assert home["operator_trust"]["holdings"]["reason_code"]
+
+
+# ── OP-064 O3/F-A/F-B — the card's account tag, and the per-account split it now carries ─────────────────────
+
+_SPLIT_DECISIONS = [
+    # The SMALLER account is encountered first, so `accounts[0]` and the primary disagree — the case the live data
+    # happens to hide (there the rollover row comes first AND is largest).
+    {"symbol": "V", "account": "small_acct", "current_value_usd": 30_000.0,
+     "recommended_delta_usd": -3_000.0, "cio_stance": "TRIM", "why_now": "concentration > cap"},
+    {"symbol": "V", "account": "big_acct", "current_value_usd": 40_000.0,
+     "recommended_delta_usd": 0.0, "cio_stance": "HOLD", "why_now": "hold: tax lot"},
+]
+
+
+def test_cio_now_card_account_is_the_primary_not_the_first_seen():
+    from scripts.lib.cio_decision_semantics import aggregate_position_decisions
+
+    decs = aggregate_position_decisions(_SPLIT_DECISIONS, portfolio_value=500_000.0)
+    card = {d["symbol"]: d for d in c.build_cio_now(
+        position_decisions=decs, portfolio_value=500_000.0)["decisions"]}["V"]
+
+    assert card["accounts"] == ["small_acct", "big_acct"]   # encounter order stays as provenance
+    assert card["account"] == "big_acct"                    # ...but the tag names the primary (largest)
+    # F-B: the split itself is on the card — neither field existed before this change.
+    assert card["account_count"] == 2
+    assert {o["account"]: o["cio_stance"] for o in card["per_account"]} == {
+        "small_acct": "TRIM", "big_acct": "HOLD"}
+
+
+def test_cio_now_card_agrees_with_the_sanitizer_it_is_built_from():
+    from scripts.lib.cio_decision_semantics import aggregate_position_decisions, sanitize_decisions_now
+
+    decs = aggregate_position_decisions(_SPLIT_DECISIONS, portfolio_value=500_000.0)
+    card = {d["symbol"]: d for d in c.build_cio_now(
+        position_decisions=decs, portfolio_value=500_000.0)["decisions"]}["V"]
+    row = {d["symbol"]: d for d in sanitize_decisions_now(
+        decs, portfolio_value=500_000.0, limit=24)}["V"]
+
+    for field in ("account", "accounts", "account_count", "per_account"):
+        assert card[field] == row[field], field
