@@ -8,7 +8,8 @@
 // pending decision (G7).
 import { Link } from 'react-router-dom'
 import {
-  fmtAge, fmtET, fmtPct, fmtShares, fmtUsd, filterPositions, coverageCounts, exclusiveCoverage, gateEvidence, reviewPositions,
+  fmtAge, fmtET, fmtPct, fmtShares, fmtUsd, filterPositions, coverageCounts, coverageScopeRelation, exclusiveCoverage, snapshotFacts, gateEvidence, reviewPositions, scopeCoverage,
+  basisCoverage, moveToday, unrealizedLine, weightLine, priceClock,
   STOP_OWNER, stopDeskHref,
   type CoverageCounts, type HoldingsFilter, type MeasuresModel, type P0Item, type PositionModel,
   type ProtectionModel, type Read, type HoldingsWire, type SinceVisitModel, type StatusRow, type VisitRecord, type MeasureKey,
@@ -99,6 +100,11 @@ export default function PortfolioV002View(props: ViewProps) {
   const excl = exclusiveCoverage(positions)
   const review = reviewPositions(positions)
   const gates = gateEvidence(prot, measures, positions, w)
+  const scope = scopeCoverage(holdings, positions, { account, filtered: visible.length, rendered: shown.length })
+  // R5c (b6): the SAME accessor Risk uses, over this read and this account filter — one computation, one sentence.
+  // REVIEW O1 (cc-deepseek-4): the account count is over the account KEY, the same identity Risk passes
+  // (`account_id ?? account`). The display label (`p.account`) never invents a second account.
+  const snap = snapshotFacts(holdings.state === 'OK' ? w : null, positions.map(p => ({ account_id: p.accountKey })), account)
   const counts = {
     covered: excl.covered,
     unprotected: excl.noStop,
@@ -154,6 +160,21 @@ export default function PortfolioV002View(props: ViewProps) {
         <Link className="pv2-ask" to="/cio" aria-label="Ask the CIO">Ask</Link>
       </header>
 
+      {/* PR-002: the denominators, in one line. Every figure is a served field or a count of the rows this read
+          drew; a fact the read does not publish is named (snapshot id), never omitted or invented. */}
+      <p className="pv2-scope" data-testid="scope-line">
+        <b>Scope</b> · {scope.accounts} · source rows {scope.sourceRows ?? 'not published'}
+        {scope.cashRows != null ? ` · cash ${scope.cashRows}` : ''}{scope.nonCashRows != null ? ` · non-cash ${scope.nonCashRows}` : ''}
+        {scope.unpricedRows != null ? ` · unpriced ${scope.unpricedRows}` : ''} · quoteable {scope.quoteable}
+        {' · '}drawn {scope.drawn} · after filter {scope.filtered} · rendered {scope.rendered}
+        {' · '}counted here {scope.countedHere} ({scope.countedScope})
+        {scope.blockHeadline != null ? ` · count block ${scope.blockHeadline}${scope.blockScope ? ` (${scope.blockScope})` : ''}` : ''}
+        {` · `}<span data-testid="snapshot-line">{snap.line}</span>
+        {scope.missing.length ? ` · not published: ${scope.missing.join(', ')}` : ''}
+        {scope.mismatches.length ? ` · differs: ${scope.mismatches.join('; ')}` : ''}
+        <button type="button" className="pv2-lnk" data-testid="scope-diag" onClick={props.onOpenDiag}>Diagnostics ›</button>
+      </p>
+
       <div className="pv2-grid">
         <div className="pv2-col">
           {/* Action · Protection */}
@@ -189,12 +210,16 @@ export default function PortfolioV002View(props: ViewProps) {
                     <button type="button" className="pv2-tile unk" onClick={() => props.onFilter('unknown')}
                       aria-label={`${excl.unknown} positions with unverifiable protection. Show them`}><span className="k">Unknown</span><span className="n">{excl.unknown}</span></button>
                   </div>
-                  <p className="pv2-muted" data-testid="prot-tiles-sum">{excl.covered + excl.partial + excl.noStop + excl.unknown} of {excl.counted} counted positions{excl.complete ? '' : ' · the four states do not add to the counted total'}</p>
+                  <p className="pv2-muted" data-testid="prot-tiles-sum">{excl.covered + excl.partial + excl.noStop + excl.unknown} of {excl.counted} counted positions (non-cash, at or above $100){excl.complete ? '' : ' · the four states do not add to the counted total'}</p>
                   {/* Coverage categories (campaign 2026-11-14): counted by the display classifier; the verdict above
-                      stays the backend's. Partial is called out because a tile cannot show "200 of 300". */}
+                      stays the backend's. Partial is called out because a tile cannot show "200 of 300".
+                      R5b #2 (2026-11-14): these six categories count EVERY row the page drew (30 live), while the
+                      tiles above count only `counted` rows (11 live). Both were right; the line did not say so and
+                      read as one sentence beside the tiles. `coverageScopeRelation` now names both populations and
+                      how they relate, from the same fields, so the two can never be drawn as one denominator. */}
                   <button type="button" className="pv2-covline" data-testid="prot-coverage" onClick={props.onOpenWhy}
                     aria-label="Stop coverage detail">
-                    Coverage: <b>{cov.covered}</b> covered · <b>{cov.partial}</b> partial · <b>{cov.uncovered}</b> uncovered · <b>{cov.planned}</b> planned-only · <b>{cov.exempt}</b> exempt · <b>{cov.unverifiable}</b> unverifiable
+                    {`Coverage · ${coverageScopeRelation(cov)}: `}<b>{cov.covered}</b> covered · <b>{cov.partial}</b> partial · <b>{cov.uncovered}</b> uncovered · <b>{cov.planned}</b> planned-only · <b>{cov.exempt}</b> exempt · <b>{cov.unverifiable}</b> unverifiable
                     {cov.restingShares != null && cov.heldShares != null && <> · resting <b>{fmtShares(cov.restingShares)}</b> of <b>{fmtShares(cov.heldShares)}</b>{cov.totalsComplete ? ' held shares' : ' published held shares (some rows publish no quantity)'}</>}
                     <span aria-hidden="true"> ›</span>
                   </button>
@@ -303,7 +328,9 @@ export default function PortfolioV002View(props: ViewProps) {
                 <div className="s1">
                   <span className="n">{r.name}</span>
                   <span><span className={`pv2-chip ${stateClass(r.state)}`}>{r.state === 'LOADING' ? '…' : r.state}</span></span>
-                  <span className="sub">{r.text} {r.needsBackend && <NB short />}</span>
+                  <span className="sub">{r.text} {r.needsBackend && <NB short />}
+                    {r.href && <Link className="pv2-lnk" to={r.href} data-testid={`${r.id}-evidence`}> Open the incidents ›</Link>}
+                  </span>
                 </div>
                 {r.cause && <div className="pv2-own">{r.cause}</div>}
               </div>
@@ -315,6 +342,11 @@ export default function PortfolioV002View(props: ViewProps) {
           {/* Holdings */}
           <section className="pv2-blk" id="card-holdings" data-testid="card-holdings">
             <div className="pv2-blk-h"><h2 className="pv2-h2">Holdings · {holdings.state === 'OK' ? positions.length : '—'}</h2><span className="pv2-age">by value</span></div>
+            {/* OBS-P1 (operator 11:15 ET): cost-basis coverage is a header fact — a reader must know how much of the
+                book's P&L is drawn before reading a single row. Cash rows are exempt and excluded from the population. */}
+            {holdings.state === 'OK' && (
+              <p className="pv2-muted" data-testid="basis-coverage">{basisCoverage(positions).line}</p>
+            )}
             {holdings.state !== 'OK' ? (
               <div className="pv2-unk">{holdings.state === 'LOADING' ? 'Reading holdings…' : `Holdings ${holdings.state}: ${holdings.error || ''}`}</div>
             ) : (
@@ -337,15 +369,27 @@ export default function PortfolioV002View(props: ViewProps) {
                   })}
                 </div>
                 <div className="pv2-hl-h" aria-hidden="true"><span>Symbol</span><span className="r">Shares</span><span className="r">Value</span><span>Protection</span><span>Risk</span></div>
-                {shown.map(p => (
-                  <button type="button" className="pv2-hrow" key={p.key} onClick={() => props.onOpenPosition(p.key)} data-testid="holding-row">
-                    <span className="c1"><b>{p.symbol}</b><span className="s2">{p.account} · <span className={p.dayPct == null ? '' : p.dayPct >= 0 ? 'up' : 'dn'}>{fmtPct(p.dayPct)}</span>{p.underFloor ? ' · under $100' : ''}{p.coverage.category === 'PARTIAL' ? ` · stop ${fmtShares(p.coverage.restingShares)}/${fmtShares(p.coverage.heldShares)}` : ''}</span></span>
-                    <span className="num">{fmtShares(p.shares)}</span>
-                    <span className="num">{fmtUsd(p.value)}</span>
-                    <span><span className={`pv2-chip ${rowChipClass(p)}`}>{p.isCash && p.protection === 'EXEMPT' ? 'CASH' : rowChip(p)}</span></span>
-                    <span className="risk" title="Risk score: pending decision (G7)">—</span>
-                  </button>
-                ))}
+                {shown.map(p => {
+                  // OBS-P1: every financial fact is drawn from the read and labelled — the mark with its source and
+                  // clock, the session PRICE MOVE (never "P&L"), the weight only if published, and unrealized P&L only
+                  // on a recorded basis. A fact the read does not publish is named; nothing is blank and nothing is 0.
+                  const mv = moveToday(p), pnl = p.isCash ? { text: 'cash row · no unrealized P&L', known: true, cls: null } : unrealizedLine(p.basis), wl = weightLine(p), pc = priceClock(p.raw, w)
+                  return (
+                    <button type="button" className="pv2-hrow" key={p.key} onClick={() => props.onOpenPosition(p.key)} data-testid="holding-row" data-symbol={p.symbol}>
+                      <span className="c1"><b>{p.symbol}</b><span className="s2">{p.account}{p.underFloor ? ' · under $100' : ''}{p.coverage.category === 'PARTIAL' ? ` · stop ${fmtShares(p.coverage.restingShares)}/${fmtShares(p.coverage.heldShares)}` : ''}</span></span>
+                      <span className="num">{fmtShares(p.shares)}</span>
+                      <span className="num">{fmtUsd(p.value)}</span>
+                      <span><span className={`pv2-chip ${rowChipClass(p)}`}>{p.isCash && p.protection === 'EXEMPT' ? 'CASH' : rowChip(p)}</span></span>
+                      <span className="risk" title="Risk score: pending decision (G7)">—</span>
+                      <span className="facts">
+                        <span data-testid="row-quote">{p.isCash ? 'cash balance · no mark' : p.price == null ? 'mark not published in this read' : `mark $${p.price.toFixed(2)} · ${p.priceSource || 'source not named'} · ${pc.line}`}{p.priceStale ? <span className="pv2-stale-mark"> · STALE</span> : null}</span>
+                        <span className={wl.known ? '' : 'pv2-unk-fact'} data-testid="row-weight">{wl.text}</span>
+                        <span className={mv.cls ? `pv2-move ${mv.cls}` : 'pv2-move'} data-testid="row-move">{mv.text}</span>
+                        <span className={pnl.cls ? `pv2-pnl ${pnl.cls}` : 'pv2-pnl'} data-testid="row-pnl">{pnl.text}</span>
+                      </span>
+                    </button>
+                  )
+                })}
                 {visible.length === 0 && <p className="pv2-muted">No holdings match this filter.</p>}
                 {visible.length > shown.length && (
                   <button type="button" className="pv2-more" onClick={props.onShowMore} data-testid="show-more">

@@ -8,6 +8,7 @@ import { useW7Pages, W7Load } from '../components/W7PagePanels'
 import { W7RiskExposure, W7RiskConcentration, W7RiskCorrelation, W7RiskMarketRisk, W7RiskRecovery, W7RiskStyles } from '../components/W7RiskPanels'
 import { TOKENS } from '../lib/designTokens'
 import { positionWriterNote } from '../lib/sourceClock'
+import { riskDecisions } from '../lib/riskDecisions'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 // Design risk/v002: the Regime tab is renamed Market risk; its panel is kept as the last block of the new tab.
@@ -30,10 +31,14 @@ export default function RiskHub({ onDrill }: Props) {
     const row = data.positions.rows.find((p: any) => p.symbol === symbol.toUpperCase())
     if (row) { focused.current = true; const next = new URLSearchParams(params); next.set('detail', `position:${row.account_id || row.account}:${row.symbol}`); setParams(next, { replace: true }) }
   }, [symbol, data, params, setParams])
-  return <DeskPage title="Risk" purpose="What could you lose if stops fill — and what has no active protection?" tabs={TABS.map(label => ({ id: label.toLowerCase(), label }))} defaultTab="exposure" tabAliases={TAB_ALIASES} sources={[
-    { id: 'positions', label: 'Positions', asOf: data?.positions?.as_of, laneIds: ['schwab-position-sync', 'snaptrade-sync'], gap: data?.positions?.gap?.reason, note: positionWriterNote(data?.positions?.as_of) ?? undefined },
-    { id: 'stops', label: 'Stops', asOf: data?.stops?.as_of, laneIds: ['unified-stop-supervisor', 'stop-health-check'], gap: data?.stops?.gap?.reason },
-  ]} decisionGap="Review pending protection and concentration below.">
+  return <DeskPage title="Risk" purpose="What could you lose if stops fill — and what has no active protection?" tabs={TABS.map(label => ({ id: label.toLowerCase(), label }))} defaultTab="exposure" tabAliases={TAB_ALIASES} decisions={riskDecisions(data)} sources={[
+    // PR-016: one clock card per writer lane, labelled with the lane id — "Enabled · 1/2" named neither lane. The
+    // source clock is the same served instant on both cards; each lane's own state is its own card's.
+    { id: 'positions-schwab', label: 'Positions · schwab-position-sync', asOf: data?.positions?.as_of, laneIds: ['schwab-position-sync'], gap: data?.positions?.gap?.reason, note: positionWriterNote(data?.positions?.as_of) ?? undefined },
+    { id: 'positions-snaptrade', label: 'Positions · snaptrade-sync', asOf: data?.positions?.as_of, laneIds: ['snaptrade-sync'], gap: data?.positions?.gap?.reason, note: positionWriterNote(data?.positions?.as_of) ?? undefined },
+    { id: 'stops-supervisor', label: 'Stops · unified-stop-supervisor', asOf: data?.stops?.as_of, laneIds: ['unified-stop-supervisor'], gap: data?.stops?.gap?.reason },
+    { id: 'stops-health', label: 'Stops · stop-health-check', asOf: data?.stops?.as_of, laneIds: ['stop-health-check'], gap: data?.stops?.gap?.reason },
+  ]} decisionGap="No served count names a review item on this view yet.">
     <div data-testid="risk-hub" data-active-tab={tab}>
     <W7RiskStyles />
     {data && <W7Conflicts section={data.conflicts} title="CIO findings" />}

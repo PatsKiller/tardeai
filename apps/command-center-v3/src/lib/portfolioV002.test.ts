@@ -4,9 +4,13 @@
 import assert from 'node:assert/strict'
 import {
   readOnce, positionsFrom, protectionModel, p0Items, statusRows, filterPositions, rowProtection, auditCategories, sessionOpenET,
-  measuresModel, coverageCounts, coverageOf, holdingsCsv, CSV_COLUMNS, stopDeskHref, sinceVisitModel, gateEvidence, RISK_SCORE,
-  MEASURES_ABSENT_REASON, MEASURE_KEYS,
+  exclusiveCoverage,
+  measuresModel, coverageCounts, coverageScopeRelation, coverageOf, holdingsCsv, CSV_COLUMNS, stopDeskHref, sinceVisitModel, gateEvidence, gateStore,
+  changesModel, stopReadFreshness, STOP_READ_MAX_AGE_MS, snapshotFacts, sameSnapshot, pnlReceipt,
+  basisCoverage, basisView, moveToday, unrealizedLine, weightLine, priceClock, positionFields,
+  GATES_SCHEMA, CHANGES_SCHEMA, RISK_SCORE, MEASURES_ABSENT_REASON, MEASURE_KEYS,
   type HoldingWire, type HoldingsWire, type Read, type IncidentsWire, type LastSeenWire, type MeasuresBlockWire,
+  type PortfolioChangeWire, type PortfolioChangesWire, type PortfolioGateWire, type PortfolioGatesWire,
 } from './portfolioV002.ts'
 
 const AT = '2031-03-07T14:59:00Z'
@@ -359,14 +363,19 @@ assert.deepEqual(filterPositions(covRows, 'exempt', 'all').map(p => p.symbol), [
 const zeroStop = positionsFrom(wire([row({ symbol: 'ZERO', shares: 100, stop_qty: 0 })]), NOW)[0]
 assert.equal(zeroStop.coverage.category, 'PARTIAL'); assert.equal(zeroStop.coverage.restingShares, 0)
 
-// 16. CSV export: served columns only; no computed P&L column; the coverage class is carried.
-const csv = holdingsCsv(covRows)
+// 16. CSV export: served columns only (the page computes no P&L), the basis verdict travels WITH its reason, and every
+// row carries the ONE snapshot identity the page read — an exported row cannot describe a different book.
+const csv = holdingsCsv(covRows, { snapshotId: null, observedAt: AT })
 const csvLines = csv.split('\r\n')
 assert.equal(csvLines[0], CSV_COLUMNS.join(','))
-assert.doesNotMatch(csvLines[0].toLowerCase(), /pnl|profit|gain/)
+assert.match(csvLines[0], /unrealized_pnl_usd/)
 assert.equal(csvLines.length, covRows.length + 1)
 const halfLine = csvLines.find(l => l.startsWith('HALF,'))!
 assert.match(halfLine, /,300,200,PARTIAL,PROTECTED,/)
+// The positions clock is repeated on every row (the header's snapshot line and the rows share it).
+assert.ok(csvLines.slice(1).every(l => l.endsWith(`,${AT}`)))
+const snapCsv = holdingsCsv(positionsFrom(wire([row({ symbol: 'S1' })]), NOW), { snapshotId: 'snap-20310307-1', observedAt: AT })
+assert.match(snapCsv.split('\r\n')[1], /,snap-20310307-1,2031-03-07T14:59:00Z$/)
 // Quoting: an account with a comma is quoted, never split into a second cell.
 const com = positionsFrom(wire([row({ symbol: 'Q', account_label: 'Broker A, ··01' })]), NOW)[0]
 assert.match(holdingsCsv([com]).split('\r\n')[1], /"Broker A, ··01"/)
@@ -390,16 +399,18 @@ const badRec = sinceVisitModel(ok({ read: { status: 'UNKNOWN', reason: 'stored l
 assert.equal(badRec.status, 'UNKNOWN'); assert.match(badRec.windowText, /unreadable/)
 assert.equal(sinceVisitModel({ state: 'UNKNOWN', data: null, error: 'HTTP 503', at: AT, source: '/api/v2/ui/prefs/get?key=portfolio.last_seen' }).status, 'UNKNOWN')
 assert.equal(sinceVisitModel(ok({}, 'x')).status, 'UNKNOWN')
-assert.equal(sv.changesNeedBackend, true)
 
-// 19. Gate evidence: the four gates the design names, each with a threshold, none reported open or closed without
-// the store — and no evidence string is ever the words a served verdict would use.
+// 19. Gate evidence: the four gates the design names, each with a threshold, none reported open or closed without a
+// served store row — and no page evidence string is ever the words a served verdict would use.
 const gates = gateEvidence(mm, mm2, covRows)
 assert.equal(gates.length, 4)
 assert.deepEqual(gates.map(g => g.gate), ['Stop read covers every broker', 'Price check · 5 sessions clean',
   'Position count agrees', 'Value reconciles to the accounting anchor'])
 for (const g of gates) {
-  assert.equal(g.servedStatus, 'NOT AVAILABLE')
+  // PR-004: with no store read on the page, the honest state is UNAVAILABLE — not the old "NOT AVAILABLE" constant.
+  assert.equal(g.served, 'UNAVAILABLE')
+  assert.match(g.servedText, /the gate store could not be read/)
+  assert.match(g.expectsGateId, /^VG-PORT-/)
   assert.ok(g.threshold.length > 0, `gate has a threshold: ${g.gate}`)
   assert.doesNotMatch(`${g.gate} ${g.pageEvidence}`, /\b(PASS|FAIL|OPEN|CLOSED|OK)\b/)
 }
@@ -422,7 +433,7 @@ assert.match(gates[2].pageEvidence, /position count block is not in this read/)
 // never turns the cross-scope `agree` flag into "they disagree".
 const evMatch = gateEvidence(mm, mm2, covRows, wire([], { position_counts: servedCounts({ all_rows: covRows.length, scopes: { 'holdings.all_rows': covRows.length } }) }))[2]
 assert.doesNotMatch(evMatch.pageEvidence, /disagree/i)
-assert.match(evMatch.pageEvidence, new RegExp(`this read drew ${covRows.length} rows`))
+assert.match(evMatch.pageEvidence, new RegExp(`this read parsed ${covRows.length} normalised rows`))
 assert.match(evMatch.pageEvidence, /they match/)
 assert.match(evMatch.pageEvidence, /headline 11 is its holdings\.non_cash_over_100 scope/)
 assert.match(evMatch.pageEvidence, /its own summary: 11 positions at or above \$100/)
@@ -430,7 +441,7 @@ assert.doesNotMatch(evMatch.threshold, /summary count = row count/)
 assert.match(evMatch.threshold, /holdings\.all_rows/)
 // A genuine like-for-like difference IS said, in row terms — and still without the invented "disagree".
 const evDiff = gateEvidence(mm, mm2, covRows, wire([], { position_counts: servedCounts() }))[2]
-assert.match(evDiff.pageEvidence, /holdings\.all_rows scope counts 33; this read drew 7 rows/)
+assert.match(evDiff.pageEvidence, /holdings\.all_rows scope counts 33; this read parsed 7 normalised rows/)
 assert.match(evDiff.pageEvidence, /they differ/)
 assert.doesNotMatch(evDiff.pageEvidence, /disagree/i)
 // A block with no named all-rows scope is not compared at all, rather than compared against the wrong population.
@@ -441,6 +452,141 @@ assert.doesNotMatch(evNoScope.pageEvidence, /disagree/i)
 const evInvented = gateEvidence(mm, mm2, covRows, wire([], { position_counts: { agree: false, summary: 'counts disagree' } }))[2]
 assert.match(evInvented.pageEvidence, /names no all-rows scope/)
 assert.doesNotMatch(evInvented.pageEvidence, /they disagree/)
+
+// 19b. PR-004 (sprint 8H-2): the served portfolio gate store. A failed read is UNAVAILABLE and says why; a payload
+// under another schema is refused; an empty scope is not a pass; a NULL blocks_trading is unknown, not "no".
+const gateRow = (o: Partial<PortfolioGateWire> = {}): PortfolioGateWire => ({ gate_id: 'VG-PORT-COUNT-AGREES',
+  title: 'Position count agrees', category: 'Order protection', status: 'PASSED', blocks_trading: null,
+  owner: 'position sync lane', label_text: 'FIXED · UNPROVEN OVER TIME',
+  last_eval: { result: 'PASS', at: '2031-03-06T15:00:00Z', detail: '7 rows = 7 rows' },
+  clock: { state: 'closed', at: '2031-03-06T15:00:00Z', age_s: 86400, threshold_s: 900, text: 'closed at its last evaluation (24.0 h ago)' },
+  window: { end: '2031-03-09T15:00:00Z', days_remaining: 2, label_text: 'FIXED · UNPROVEN OVER TIME' },
+  next_action: 'No action unless it regresses: proving over the window to 2031-03-09', decl_path: 'config/x.json', ...o })
+const gatePayload = (o: Partial<PortfolioGatesWire> = {}): PortfolioGatesWire => ({ schema: GATES_SCHEMA,
+  served_at: AT, state: 'OK', reason: null,
+  scope: { categories: ['Order protection'], gates: 1 },
+  snapshot: { computed_at: '2031-03-06T15:00:00Z', age_s: 86_400, threshold_s: 900, basis: 'closed_gates' },
+  writer: { lane_id: 'validation-gates-sync', last_ok_at: '2031-03-07T14:57:00Z', receipt: 'data/runtime/validation-gates-sync_last.json' },
+  counts: { rows: 1, failed: 0, overdue: 0, open: 0, closed: 1, blocks_trading: 0, blocks_trading_unknown: 1, never_evaluated: 0 },
+  items: [gateRow()], ...o })
+
+// F2 (REVIEW-S2-portfolio-risk-b5, cc-deepseek-4): a counts object that does not publish open/closed must not be drawn
+// as "0 open · 0 closed" — a missing count is unavailable with its reason, and only a SERVED zero is drawn as zero.
+const gateCountsPartial = gateStore(ok(gatePayload({ counts: { rows: 3 } })), NOW)
+assert.doesNotMatch(gateCountsPartial.headline, /0 open/)
+assert.doesNotMatch(gateCountsPartial.headline, /0 closed/)
+assert.match(gateCountsPartial.headline, /open not published/)
+assert.match(gateCountsPartial.headline, /closed not published/)
+// A served zero is still a fact and is drawn as one.
+assert.match(gateStore(ok(gatePayload({ counts: { rows: 0, open: 0, closed: 0 } })), NOW).headline, /0 open · 0 closed/)
+
+// A read that never answered, an HTTP 404 (route not yet wired) and a foreign contract all refuse to draw a verdict.
+const unavailable = gateStore({ state: 'UNKNOWN', data: null, error: 'HTTP 404', at: AT, source: '/api/v2/portfolio/gates' }, NOW)
+assert.equal(unavailable.state, 'UNAVAILABLE'); assert.equal(unavailable.chip, 'UNKNOWN')
+assert.equal(unavailable.headline, 'the gate store read failed (HTTP 404)')
+assert.deepEqual(unavailable.rows, [])
+assert.equal(gateStore({ state: 'LOADING', data: null, error: null, at: null, source: 'x' }, NOW).headline, 'the gate store read has not answered yet')
+assert.match(gateStore(ok({ schema: 'SomethingElse@v9' } as unknown as PortfolioGatesWire), NOW).headline, /unexpected contract/)
+assert.equal(gateStore(ok({ schema: 'SomethingElse@v9', state: 'OK' } as unknown as PortfolioGatesWire), NOW).state, 'UNAVAILABLE')
+
+// The served closed-gate scope: OK with the closure clock named, never "fresh", and the NULL tri-state counted.
+const served = gateStore(ok(gatePayload()), NOW)
+assert.equal(served.state, 'OK'); assert.equal(served.chip, 'OK')
+assert.equal(served.headline, '1 gate in scope · 0 open · 1 closed')
+assert.match(served.scopeLine, /scope: Order protection/)
+assert.equal(served.snapshotLine, 'closure clock · Thu 10:00 AM · 24 h old · limit 15 m')
+assert.match(served.writerLine, /writer validation-gates-sync · last ok .*validation-gates-sync_last\.json/)
+assert.equal(served.rows[0].blocksTrading, null)   // tri-state preserved, never coerced to false
+assert.ok(served.caveats.some(c => /do not declare whether they block trading: that is unknown, not “does not block”/.test(c)))
+
+// STALE and UNKNOWN both keep their own reason; an empty scope is not a pass.
+assert.ok(gateStore(ok(gatePayload({ state: 'STALE', reason: 'oldest open-gate evaluation 7200s old > 900s' })), NOW)
+  .caveats.some(c => /the projection is STALE: oldest open-gate evaluation/.test(c)))
+const unknownStore = gateStore(ok(gatePayload({ state: 'UNKNOWN', reason: 'no portfolio gate is declared for scope [\'Order protection\']', items: [], counts: null })), NOW)
+assert.equal(unknownStore.state, 'UNKNOWN'); assert.equal(unknownStore.chip, 'UNKNOWN')
+assert.match(unknownStore.headline, /no gate verdict: no portfolio gate is declared/)
+assert.deepEqual(unknownStore.rows, [])
+assert.ok(gateStore(ok(gatePayload({ state: 'UNKNOWN', reason: 'an open gate has no recorded evaluation' })), NOW)
+  .caveats.some(c => /no verdict is drawn from them/.test(c)))
+
+// A served timestamp and its own age that disagree are named, never trusted silently.
+assert.ok(gateStore(ok(gatePayload({ snapshot: { computed_at: '2031-03-07T14:00:00Z', age_s: 60, threshold_s: 900, basis: 'open_gates' } })), NOW)
+  .caveats.some(c => /snapshot time and its own age disagree/.test(c)))
+
+// A store row for the expectation turns it GATED, with the served facts in words; with no such row it says ungated.
+const gated = gateEvidence(mm, mm2, covRows, null, served)
+assert.equal(gated[2].served, 'GATED')
+assert.equal(gated[2].servedRow?.gateId, 'VG-PORT-COUNT-AGREES')
+assert.match(gated[2].servedText, /^PASSED · last result PASS at /)
+assert.match(gated[2].servedText, /window to /); assert.match(gated[2].servedText, /owner position sync lane/)
+assert.match(gated[2].servedText, /next: No action unless it regresses/)
+assert.equal(gated[0].served, 'NOT_GATED_BY_STORE')
+assert.match(gated[0].servedText, /declares no gate with id VG-PORT-STOP-READ-PER-BROKER; this expectation is ungated, which is not a pass/)
+assert.equal(gateEvidence(mm, mm2, covRows, null, unavailable)[2].served, 'UNAVAILABLE')
+assert.match(gateEvidence(mm, mm2, covRows, null, unknownStore)[2].servedText, /ungated, which is not a pass/)
+
+// 19c. PR-005 (sprint 8H-2): the served change list. A failed read is UNAVAILABLE (never an empty list); a measured
+// zero says so; each row keeps its own event time; another page's rows are counted, not shown.
+const changeRow = (o: Partial<PortfolioChangeWire> = {}): PortfolioChangeWire => ({ event_id: 41, source_kind: 'gate',
+  source_id: 'VG-R3-STOP-COVERAGE-HEARTBEAT', category: 'Order protection', transition: 'passed',
+  label: 'FIXED_UNPROVEN', label_text: 'FIXED · UNPROVEN OVER TIME',
+  occurred_at: '2031-03-07T13:04:54Z', detected_at: '2031-03-07T13:04:58Z',
+  summary: 'Stop-coverage producer heartbeat is fresh: passed', owner: 'platform', ...o })
+const changePayload = (o: Partial<PortfolioChangesWire> = {}): PortfolioChangesWire => ({ schema: CHANGES_SCHEMA,
+  served_at: AT, state: 'OK', reason: null,
+  window: { basis: 'last_visit', since: '2031-03-06T14:00:00Z', until: AT },
+  count: 1, latest_at: '2031-03-07T13:04:54Z', may_be_truncated: false,
+  outside_window: { before: 0, after: 0, unreadable: 0, out_of_scope: 8 },
+  items: [changeRow()], ...o })
+
+const chUnavailable = changesModel({ state: 'UNKNOWN', data: null, error: 'HTTP 404', at: AT, source: '/api/v2/portfolio/changes' })
+assert.equal(chUnavailable.state, 'UNAVAILABLE'); assert.equal(chUnavailable.chip, 'UNKNOWN')
+assert.equal(chUnavailable.headline, 'the change list read failed (HTTP 404)')
+assert.deepEqual(chUnavailable.rows, [])   // a failed read is never "no changes"
+assert.equal(changesModel({ state: 'LOADING', data: null, error: null, at: null, source: 'x' }).headline, 'the change list read has not answered yet')
+assert.match(changesModel(ok({ schema: 'SomethingElse@v9' } as unknown as PortfolioChangesWire)).headline, /unexpected contract/)
+
+const chServed = changesModel(ok(changePayload()))
+assert.equal(chServed.state, 'OK'); assert.equal(chServed.chip, 'OK')
+assert.equal(chServed.headline, '1 change since your last visit · newest Fri 8:04 AM ET')
+assert.equal(chServed.windowLine, 'since your last visit · from Thu 9:00 AM → Fri 9:59 AM ET')
+assert.equal(chServed.rows[0].occurredAt, '2031-03-07T13:04:54Z')   // the event's own time, not the read time
+assert.equal(chServed.rows[0].detectedAt, '2031-03-07T13:04:58Z')
+assert.equal(chServed.rows[0].labelText, 'FIXED · UNPROVEN OVER TIME')
+assert.ok(chServed.caveats.some(c => /8 events on this store belong to another page's scope/.test(c)))
+
+// A measured zero is not an absent store: the sentence says the window was read and held nothing.
+const chZero = changesModel(ok(changePayload({ count: 0, items: [], latest_at: null,
+  outside_window: { before: 6, after: 0, unreadable: 0, out_of_scope: 8 } })))
+assert.equal(chZero.state, 'EMPTY'); assert.equal(chZero.chip, 'OK')
+assert.match(chZero.headline, /measured zero/)
+assert.ok(chZero.caveats.some(c => /6 rows fell outside the window/.test(c)))
+
+// The 24 h fallback names itself, and a truncation or a missing event time is stated rather than hidden.
+const chFallback = changesModel(ok(changePayload({ window: { basis: 'fallback_24h', since: '2031-03-06T14:59:00Z', until: AT },
+  may_be_truncated: true, items: [changeRow({ occurred_at: null })] })))
+assert.match(chFallback.windowLine, /the last 24 h \(no visit cursor was recorded\)/)
+// F1 (REVIEW-S2-portfolio-risk-b5, cc-deepseek-4): the fallback window must name WHY there was no cursor. A FAILED
+// last-visit read is not "no visit cursor was recorded" — only a successful NOT_RECORDED read may say that.
+const cursorFailed = sinceVisitModel({ state: 'UNKNOWN', data: null, error: 'HTTP 503', at: AT, source: '/api/v2/ui/prefs/get' })
+assert.equal(cursorFailed.status, 'UNKNOWN')
+const chFallbackFailed = changesModel(ok(changePayload({ window: { basis: 'fallback_24h', since: '2031-03-06T14:59:00Z', until: AT } })), cursorFailed)
+assert.match(chFallbackFailed.windowLine, /the last-visit read gave no usable cursor: .*HTTP 503/)
+assert.doesNotMatch(chFallbackFailed.windowLine, /no visit cursor was recorded/)
+// An unreadable prefs record (the read answered, the record is not usable) is named by its own reason too.
+const cursorUnreadable = sinceVisitModel(ok({ read: { status: 'UNKNOWN', reason: 'no valid seen_at in the record' } }))
+const chFallbackUnreadable = changesModel(ok(changePayload({ window: { basis: 'fallback_24h' } })), cursorUnreadable)
+assert.match(chFallbackUnreadable.windowLine, /no valid seen_at in the record/)
+assert.doesNotMatch(chFallbackUnreadable.windowLine, /no visit cursor was recorded/)
+// A successful NOT_RECORDED read is the only state that may say no cursor was recorded.
+const cursorNone = sinceVisitModel(ok({ read: { status: 'NOT_RECORDED' } }))
+assert.match(changesModel(ok(changePayload({ window: { basis: 'fallback_24h' } })), cursorNone).windowLine,
+  /no visit cursor was recorded/)
+assert.ok(chFallback.caveats.some(c => /may hold more than the 1 shown/.test(c)))
+assert.ok(chFallback.caveats.some(c => /without a readable event time/.test(c)))
+// A future cursor / unreadable store: the projection's own reason is quoted, not replaced.
+const chUnknown = changesModel(ok(changePayload({ state: 'UNKNOWN', reason: 'the visit cursor is in the future (clock fault)', count: null, items: [] })))
+assert.equal(chUnknown.state, 'UNKNOWN'); assert.match(chUnknown.headline, /no change list: the visit cursor is in the future/)
 
 // 20. Risk (G7): an isolated pending decision, never a score.
 assert.equal(RISK_SCORE.status, 'PENDING DECISION')
@@ -465,6 +611,281 @@ for (const r of srows) {
   assert.doesNotMatch(r.name, /^(value|today)\b/i, `status row named ${r.name}`)
   assert.doesNotMatch(`${r.name} ${r.text}`, /1,234,567/, `row ${r.id} draws the store total`)
   assert.doesNotMatch(`${r.name} ${r.text}`, /today/i, `row ${r.id} draws a today figure`)
+}
+
+// 23. C1 (REVIEW-S2-portfolio-risk-b1 §5): a GAP row whose stop-read time is LATER than the capture clock is an
+// impossible observation. It reads UNKNOWN with cause Invalid Stop Read Time (never NO STOP, whose own sentence would
+// then call the read untrustworthy), keeps the last-known GAP visible, and leaves the NO STOP population. The clock is
+// carried by the wire in two places — protection.as_of and stop_captured_at — so both are exercised.
+for (const carrier of ['protection.as_of', 'stop_captured_at'] as const) {
+  const FUT = '2031-03-07T20:00:00Z'   // NOW is 15:00Z that day: a read five hours after the capture clock
+  const h = carrier === 'protection.as_of'
+    ? row({ symbol: 'FUTG', protection_state: 'GAP', protection: { state: 'GAP', as_of: FUT, counted: true }, stop_captured_at: null, stop_price: null })
+    : row({ symbol: 'FUTG', protection_state: 'GAP', protection: { state: 'GAP', counted: true }, stop_captured_at: FUT, stop_price: null })
+  const [m] = positionsFrom(wire([h]), NOW)
+  assert.equal(m.protection, 'UNKNOWN', `${carrier}: a future read is not a successful negative read`)
+  assert.equal(m.chip, 'UNKNOWN', `${carrier}: the chip is UNKNOWN`)
+  assert.equal(m.cause, 'Invalid Stop Read Time', `${carrier}: cause names the impossible read`)
+  assert.match(m.reason, /later than the capture clock/)
+  assert.equal(m.verifiedAtInvalid, true, `${carrier}: the row records the invalid read time`)
+  assert.equal(m.coverage.category, 'UNVERIFIABLE', `${carrier}: coverage is unverifiable, never uncovered`)
+  // and it is not counted as a no-stop row in the rollup the page's tiles use
+  const ex = exclusiveCoverage([m])
+  assert.equal(ex.noStop, 0, `${carrier}: the future-read GAP is not in No broker stop`)
+  assert.equal(ex.unknown, 1, `${carrier}: it is in Unknown`)
+  assert.equal(ex.complete, true)
+  // nor in the unprotected filter population
+  assert.equal(filterPositions([m], 'unprotected', 'all').length, 0, `${carrier}: it is not an unprotected row`)
+}
+// The stale direction still works, and keeps its own cause: a read older than the limit is Stale Stop Read.
+{
+  const OLD = '2031-03-05T15:00:00Z'
+  const [stale] = positionsFrom(wire([row({ protection_state: 'GAP', protection: { state: 'GAP', as_of: OLD, counted: true }, stop_price: null })]), NOW)
+  assert.equal(stale.protection, 'UNKNOWN'); assert.equal(stale.cause, 'Stale Stop Read')
+}
+// A GAP row whose success is ordinary still reads NO STOP (the fix must not swallow the honest case).
+{
+  const [gap] = positionsFrom(wire([row({ protection_state: 'GAP', protection: { state: 'GAP', as_of: AT, counted: true }, stop_price: null })]), NOW)
+  assert.equal(gap.protection, 'GAP'); assert.equal(gap.chip, 'NO STOP'); assert.equal(gap.coverage.category, 'UNCOVERED')
+  assert.equal(exclusiveCoverage([gap]).noStop, 1)
+}
+
+// 17. R5b #1 (2026-11-14, SEV-3): ONE stop-read freshness rule. Risk › Exposure's stop sheet consumes this function;
+// it must apply the same clock and the same limit Portfolio's R2 applies, and never invent a second copy.
+const OLD_READ = '2031-03-01T00:00:00Z'      // 6.6 d before NOW — stale in session (15 m) and usable off-hours
+const FRESH_OFF = '2031-03-07T02:00:00Z'     // 37 h before CLOSED, 11 h before NOW — inside the 72 h off-hours limit
+{
+  // The live shape of a /api/v2/cio/pages row (AMANX, 2026-11-14): no protection verdict, a planned level, the
+  // stop-read clock, and the projection's own stop_evidence mark.
+  const amanx = { protection: null, protection_state: null, stop_state: 'none', stop_source: 'planned',
+    stop_captured_at: OLD_READ, stop_price: 63.66, stop_evidence: { stale: true, as_of: OLD_READ } }
+  const stale = stopReadFreshness(amanx, NOW)
+  assert.equal(stale.kind, 'stale')
+  assert.equal(stale.sessionOpen, true, 'NOW is inside the ET session, so the strict 15 m limit applies')
+  assert.equal(stale.limitMs, STOP_READ_MAX_AGE_MS.session)
+  assert.equal(stale.servedStale, true); assert.equal(stale.agreesWithServed, true)
+  assert.match(stale.line, /UNKNOWN · the stop read is \d+ d old \(session limit 15 m\); the served state is last known, not a current read/)
+  assert.match(stale.line, /R2, the rule Portfolio applies/)
+  // ...and the row rule reaches the same verdict from the same clock: one implementation, no drift.
+  const gapped = rowProtection({ protection: { state: 'GAP', counted: true, as_of: OLD_READ }, protection_state: 'GAP', stop_captured_at: OLD_READ }, { nowMs: NOW })
+  assert.equal(gapped.protection, 'UNKNOWN'); assert.equal(gapped.cause, 'Stale Stop Read')
+
+  // Off-hours: a 37 h-old read is fresh under the 72 h limit, and the served mark agrees.
+  const fresh = stopReadFreshness({ ...amanx, stop_captured_at: FRESH_OFF, stop_evidence: { stale: false, as_of: FRESH_OFF } }, CLOSED)
+  assert.equal(fresh.kind, 'fresh'); assert.equal(fresh.sessionOpen, false)
+  assert.equal(fresh.limitMs, STOP_READ_MAX_AGE_MS.offHours)
+  assert.equal(fresh.line, 'fresh · read 37 h ago · off-hours limit 3 d')
+
+  // A read time later than the clock is an impossible observation, never fresh.
+  const future = stopReadFreshness({ stop_captured_at: '2031-03-07T15:10:00Z' }, NOW)
+  assert.equal(future.kind, 'invalid'); assert.match(future.line, /later than the clock; the read cannot be trusted/)
+
+  // No published read clock: freshness is not measured — and the served mark is still said out loud.
+  const none = stopReadFreshness({ stop_captured_at: null, stop_evidence: { stale: true } }, NOW)
+  assert.equal(none.kind, 'unpublished'); assert.match(none.line, /no stop-read time is published/)
+  assert.match(none.line, /served stop evidence marks it stale/)
+  assert.equal(none.agreesWithServed, null)
+
+  // The rule and the served mark disagree on a fresh off-hours read: both are shown, neither is chosen silently.
+  const drift = stopReadFreshness({ stop_captured_at: FRESH_OFF, stop_evidence: { stale: true } }, CLOSED)
+  assert.equal(drift.kind, 'fresh'); assert.equal(drift.agreesWithServed, false)
+  assert.match(drift.line, /the served stop evidence marks it stale — the two marks disagree/)
+}
+
+// 18. R5b #2 (2026-11-14): the six coverage categories count EVERY drawn row; the tiles count the `counted` rows.
+// Both numbers were right and the page printed them as one sentence. The relation is computed once, from one loop.
+{
+  const six = positionsFrom(wire([
+    row({ symbol: 'BIG1', shares: 300, stop_qty: 300 }),
+    row({ symbol: 'BIG2', protection_state: 'GAP', protection: { state: 'GAP', counted: true }, stop_price: null }),
+    row({ symbol: 'BIG3', protection_state: 'UNKNOWN', protection: { state: 'UNKNOWN', cause: 'No Stop Read', counted: true }, stop_price: null }),
+    row({ symbol: 'SML1', market_value: 50, protection_state: 'GAP', protection: { state: 'GAP', counted: false }, stop_price: null }),
+    row({ symbol: 'SML2', market_value: 40, protection_state: 'GAP', protection: { state: 'GAP', counted: false }, stop_price: null }),
+    row({ symbol: 'CASHX', is_cash: true, market_value: 900, protection_state: 'EXEMPT', protection: { state: 'EXEMPT', counted: false } }),
+  ]), NOW)
+  const c = coverageCounts(six)
+  assert.equal(c.rows, 6); assert.equal(c.counted, 3)
+  assert.equal(c.uncountedUnderFloor, 2); assert.equal(c.uncountedExempt, 1); assert.equal(c.uncountedReconciles, true)
+  assert.equal(coverageScopeRelation(c), 'all 6 rows drawn · 3 counted (the tiles) · 3 not counted: 2 under $100, listed only · 1 exempt')
+  // The categories still count all six rows (that is what the line's six figures are).
+  assert.deepEqual([c.covered, c.partial, c.uncovered, c.planned, c.exempt, c.unverifiable], [1, 0, 3, 0, 1, 1])
+  // A book where every drawn row is counted has no relation to explain.
+  assert.equal(coverageScopeRelation(coverageCounts(positionsFrom(wire([row({})]), NOW))), 'all 1 row drawn · 1 counted (the tiles)')
+  // An uncounted row that is neither under the floor nor exempt breaks the split: the page states the total and
+  // does NOT assert a decomposition it cannot prove.
+  const broken = coverageCounts([...six, { ...six[0], counted: false, underFloor: false, coverage: { ...six[0].coverage, category: 'UNCOVERED' as const } }])
+  assert.equal(broken.uncountedReconciles, false)
+  assert.equal(coverageScopeRelation(broken), 'all 7 rows drawn · 3 counted (the tiles) · 4 not counted (the under-$100 / exempt split does not reconcile)')
+}
+
+// 19. R5c one snapshot (b6, operator 11:06 ET): Portfolio reads /api/v2/portfolio/holdings and Risk reads
+// /api/v2/cio/pages — two payload shapes from ONE broker snapshot. Both pages must name the same snapshot clock
+// through the same accessor (not two equal computations), and the page must say so when the clocks differ.
+{
+  const SNAP = '2031-03-07T15:00:00Z'                       // Fri 10:00 AM ET
+  const rows = [{ account_id: 'acct_1' }, { account_id: 'acct_2' }]
+  const h = snapshotFacts(wire([], { positions_as_of: SNAP }), rows.map(r => ({ account: r.account_id })))
+  // The Risk shape: positions.as_of carries the same field on the cio/pages projection.
+  const p = snapshotFacts({ positions: { as_of: SNAP } }, rows)
+  assert.equal(h.observedAt, SNAP); assert.equal(p.observedAt, SNAP)
+  assert.equal(h.accountCount, 2); assert.equal(h.accounts, 'all accounts (2)')
+  // ONE sentence from two shapes: this equality is the pin, not two strings that happen to match.
+  assert.equal(h.line, p.line)
+  assert.equal(h.line, 'snapshot id not published · positions read Fri 10:00 AM ET · all accounts (2)')
+  assert.deepEqual(h.missing, ['snapshot id'])
+  assert.deepEqual(p.missing, ['snapshot id'])
+  // A published id leads the same sentence, whichever payload carries it.
+  assert.equal(snapshotFacts(wire([], { snapshot_id: 'snap-20310307-1' }), []).line,
+    'snapshot snap-20310307-1 · positions read Fri 9:59 AM ET · all accounts (0)')
+  assert.deepEqual(snapshotFacts(wire([], { snapshot_id: 'snap-20310307-1' }), []).missing, [])
+  // No clock is named as missing, never filled with a plausible instant.
+  const none = snapshotFacts({}, [])
+  assert.equal(none.observedAt, null)
+  assert.match(none.line, /positions read clock not published/)
+  assert.ok(none.missing.includes('positions read clock'))
+  // Same clock = same snapshot. A different clock is stated with both times, never silently compared.
+  assert.deepEqual(sameSnapshot(h, p), { same: true, line: 'the same snapshot clock on both pages: Fri 10:00 AM ET' })
+  const later = snapshotFacts({ positions_as_of: '2031-03-07T15:05:00Z' }, [])
+  assert.deepEqual(sameSnapshot(h, later),
+    { same: false, line: 'different snapshot clocks: Fri 10:00 AM ET here, Fri 10:05 AM ET there' })
+  assert.equal(sameSnapshot(h, none).same, null)
+  assert.equal(sameSnapshot(h, none).line, 'the two reads cannot be compared: one of them publishes no position clock')
+}
+
+// 19b. The verified daily P&L is drawn ONLY under a signed reconciliation receipt. Today the wire marks it
+// UNKNOWN, so this is dormant — the test pins the contract before a producer ever sends VERIFIED.
+{
+  const block = (extra: Partial<MeasuresBlockWire> = {}): MeasuresBlockWire => ({ ...measured, ...extra,
+    measures: { ...measured.measures,
+      verified_daily_pnl: { measure: 'verified_daily_pnl', value: -1841.22, status: 'VERIFIED', as_of: AT } } })
+  const pnlOf = (w: HoldingsWire) => measuresModel(ok(w))
+  const vOf = (m: ReturnType<typeof pnlOf>) => m.measures.find(x => x.key === 'verified_daily_pnl')!
+  // No receipt: the VERIFIED label is not evidence, and the figure is not drawn.
+  const unsigned = pnlOf(wire([row({})], { measures: block() }))
+  assert.equal(vOf(unsigned).value, null)
+  assert.match(vOf(unsigned).text, /no signed reconciliation receipt is on file/)
+  assert.equal(unsigned.dayUnverified, true)
+  // An explicit verified:false is the same as absent.
+  const denied = pnlOf(wire([row({})], { measures: block({ broker_contract: { pnl: { verified: false } } }) }))
+  assert.equal(vOf(denied).value, null); assert.equal(denied.dayUnverified, true)
+  // A signed receipt on the contract lets the wire's own VERIFIED figure through, unchanged.
+  const signed = pnlOf(wire([row({})], { measures: block({ broker_contract: { pnl: { verified: true } } }) }))
+  assert.equal(vOf(signed).value, -1841.22)
+  assert.equal(vOf(signed).status, 'VERIFIED')
+  assert.equal(signed.dayUnverified, false)
+  // The receipt name the page prints is the one it read.
+  assert.equal(pnlReceipt({ broker_contract: { pnl: { verified: true } } }).signed, true)
+  assert.equal(pnlReceipt({}).signed, false)
+}
+
+// 23. OBS-P1 (operator 2026-11-14 11:15 ET): the row's mark carries its source and clock, the session move is drawn
+// as a PRICE MOVE and never as P&L, weight is drawn only when published, and unrealized P&L is drawn only on a
+// recorded basis — a row without one prints the read's precise reason, never a zero and never a blank.
+{
+  const px = (o: Partial<HoldingWire> = {}) => row({ symbol: 'PX1', shares: 100, price: 186.64, market_value: 18664,
+    price_source: 'finviz', price_as_of: AT, prior_close: 188.98, day_change: -234, day_change_pct: -1.24, ...o })
+  const [p1] = positionsFrom(wire([px()]), NOW)
+  assert.equal(p1.priceSource, 'finviz'); assert.equal(p1.priceAt, AT)
+  assert.equal(priceClock(p1.raw, wire([])).line, 'quote read Fri 9:59 AM ET')
+  // A row that publishes no per-row clock inherits the BATCH clock, labelled as the batch.
+  const batch = priceClock(px({ price_as_of: null }), wire([]))
+  assert.equal(batch.perRow, false); assert.match(batch.line, /book quote clock .* · no per-row quote time published/)
+  assert.equal(priceClock(px({ price_as_of: null }), wire([], { quote_as_of: null })).line, 'no quote clock published in this read')
+
+  // The session move is a price move: both figures, one label, and the word P&L never appears on it.
+  const mv = moveToday(p1)
+  assert.equal(mv.text, 'price move today −1.2% · −$234')
+  assert.doesNotMatch(mv.text, /P&L|profit|gain/i)
+  assert.equal(mv.cls, 'dn')
+  // A row that publishes only one of the two figures names the other as missing rather than half-drawing a move.
+  const half = moveToday({ isCash: false, dayUsd: null, dayPct: -1.24 })
+  assert.match(half.text, /price move today −1.2% · \$ move not published/)
+  const noMove = moveToday({ isCash: false, dayUsd: null, dayPct: null })
+  assert.equal(noMove.known, false); assert.equal(noMove.text, 'price move today not published in this read')
+
+  // No basis in the read: the reason is printed, the P&L is null, and no zero is ever drawn.
+  assert.equal(p1.basis.status, 'UNKNOWN')
+  assert.equal(p1.basis.reason, 'cost basis not reported by the broker read')
+  assert.equal(p1.basis.pnlUsd, null)
+  const pnlNone = unrealizedLine(p1.basis)
+  assert.equal(pnlNone.known, false)
+  assert.equal(pnlNone.text, 'unrealized P&L not shown — cost basis not reported by the broker read')
+  assert.doesNotMatch(pnlNone.text, /\$0/)
+
+  // A partial lot history: the producer's own gap sentence is the reason printed, never a computed P&L.
+  const partialBasis = positionsFrom(wire([px({ symbol: 'PBL', basis_partial: true, cost_basis: 5000,
+    basis_truth: { cost_basis_usd: null, unrealized_pl_usd: null, unrealized_pl_pct: null, source: null, status: 'unknown',
+      gap: { reason: 'basis unknown — incomplete or pre-window lot history' } } })]), NOW)[0]
+  assert.equal(partialBasis.basis.status, 'UNKNOWN')
+  assert.match(unrealizedLine(partialBasis.basis).text, /incomplete or pre-window lot history/)
+
+  // A recorded basis: the figure is the READ's, with its pct and source named.
+  const recorded = positionsFrom(wire([px({ symbol: 'REC', cost_basis: 15000,
+    basis_truth: { cost_basis_usd: 15000, unrealized_pl_usd: 1234.56, unrealized_pl_pct: 8.23, source: 'broker_api', status: 'recorded', gap: null } })]), NOW)[0]
+  assert.equal(recorded.basis.status, 'RECORDED'); assert.equal(recorded.basis.usd, 15000)
+  const pnlRec = unrealizedLine(recorded.basis)
+  assert.equal(pnlRec.known, true); assert.equal(pnlRec.text, '+$1,235 (+8.2%) on recorded basis · broker_api')
+  assert.equal(pnlRec.cls, 'up')
+
+  // REVIEW F1 (cc-deepseek-4, blocking): a RECORDED basis whose P&L figure is not published must never be worded
+  // as if the basis were missing. cio_truth.basis_for keeps status 'recorded' when the row has no mark AND no
+  // market_value (value=None -> pnl=None), so the basis is present and only the FIGURE is absent — the exact
+  // contradiction the operator flagged: the page says it has no basis in the one place it has one.
+  const recNoPnlTruth = { cost_basis_usd: 1500, unrealized_pl_usd: null, unrealized_pl_pct: null, source: 'broker_api',
+    status: 'recorded', gap: null }
+  const recNoPnl = positionsFrom(wire([px({ symbol: 'RECX', price: null, market_value: null, price_as_of: null,
+    prior_close: null, day_change: null, day_change_pct: null, cost_basis: 1500, basis_truth: recNoPnlTruth })]), NOW)[0]
+  assert.equal(recNoPnl.basis.status, 'RECORDED'); assert.equal(recNoPnl.basis.usd, 1500)
+  const pnlMissing = unrealizedLine(recNoPnl.basis)
+  assert.equal(pnlMissing.known, false)
+  assert.doesNotMatch(pnlMissing.text, /no recorded cost basis/i)
+  assert.match(pnlMissing.text, /unrealized P&L not published in this read/)
+  assert.match(pnlMissing.text, /\((\$1,500)\)/)                      // names the basis the row DOES have, unsigned
+  assert.doesNotMatch(pnlMissing.text, /\+\$1,500/)                   // a stock is not a delta
+  assert.match(pnlMissing.text, /no published mark or market value/)  // and the real cause of the missing figure
+  // A recorded basis with a mark but no published figure: still never "no recorded cost basis".
+  const recMarkNoPnl = basisView({ ...px({ symbol: 'RECY' }), basis_truth: recNoPnlTruth })
+  assert.doesNotMatch(unrealizedLine(recMarkNoPnl).text, /no recorded cost basis/i)
+  assert.match(unrealizedLine(recMarkNoPnl).text, /publishes no unrealized figure/)
+
+  // REVIEW F2: a verdict is drawn from a verdict. A numeric cost_basis with NO published basis status is not a
+  // recorded basis — the read never said "recorded", so the page may not manufacture the verdict (nor a P&L).
+  const noVerdict = positionsFrom(wire([px({ symbol: 'NVX', cost_basis: 900, basis_truth: undefined })]), NOW)[0]
+  assert.equal(noVerdict.basis.status, 'UNKNOWN')
+  assert.equal(noVerdict.basis.usd, null)
+  assert.match(String(noVerdict.basis.reason), /no basis status is published/i)
+
+  // Weight is drawn only when the read publishes it; the page never divides two served numbers itself.
+  assert.equal(weightLine({ isCash: false, weightPct: null, weightBasis: null }).text, 'weight not published in this read')
+  assert.equal(weightLine({ isCash: false, weightPct: 3.24, weightBasis: 'the book total' }).text, '3.2% of the book total')
+  assert.equal(weightLine({ isCash: true, weightPct: null, weightBasis: null }).text, 'cash row · no position weight')
+
+  // Header coverage: N of M NON-CASH rows, and an empty population is named, never "0 of 0".
+  const cov1 = basisCoverage([p1, recorded])
+  assert.equal(cov1.recorded, 1); assert.equal(cov1.total, 2)
+  assert.equal(cov1.line, 'cost basis recorded for 1 of 2 non-cash positions (1 without a usable basis — their unrealized P&L is not drawn)')
+  assert.match(basisCoverage([]).line, /no non-cash rows in this read/)
+  const cashRow = positionsFrom(wire([row({ symbol: 'CASHR', is_cash: true, price: null, market_value: 1000,
+    protection_state: 'EXEMPT', protection: { state: 'EXEMPT', counted: false } })]), NOW)[0]
+  assert.equal(moveToday(cashRow).text, 'cash row · no price move')
+  assert.equal(basisCoverage([cashRow]).total, 0)
+
+  // ONE snapshot, four surfaces: the CSV carries the same id and positions clock the header line names, and the
+  // drawer names the same identity in its Book snapshot field.
+  const wWithId = wire([row({ symbol: 'AAA' })], { snapshot_id: 'snap-20310307-1' })
+  const snap = snapshotFacts(wWithId, [{ account: p1.account }])
+  assert.equal(snap.snapshotId, 'snap-20310307-1')
+  const csv2 = holdingsCsv(positionsFrom(wWithId, NOW), snap).split('\r\n')
+  assert.match(csv2[0], /snapshot_id,positions_as_of$/)
+  assert.match(csv2[1], /,snap-20310307-1,2031-03-07T14:59:00Z$/)
+  const book = positionFields(p1, wWithId, NOW).find(f => f.field === 'Book snapshot')!
+  assert.equal(book.value, 'snap-20310307-1')
+  // The unrealized-P&L cell is the served value (or empty + reason) — never a page-computed number.
+  const recCsv = holdingsCsv([recorded]).split('\r\n')[1].split(',')
+  assert.equal(recCsv[CSV_COLUMNS.indexOf('unrealized_pnl_usd')], '1234.56')
+  const p1Csv = holdingsCsv([p1]).split('\r\n')[1]
+  assert.match(p1Csv, /,UNKNOWN,,,/)  // basis_status UNKNOWN, no cost basis, no P&L — a reason column carries the words
+  assert.match(p1Csv, /cost basis not reported by the broker read/)
 }
 
 console.log('portfolioV002.test.ts: ok')

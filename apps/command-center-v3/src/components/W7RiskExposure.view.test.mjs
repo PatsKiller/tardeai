@@ -94,5 +94,47 @@ check('PR-015: an unreadable stops block is UNKNOWN, not a clean book', () => {
   assert.equal(kpi(h), 'UNKNOWN')
 })
 
+// PR-012: a price is an observation with its own clock. The book's `positions.as_of` is not each row's quote time.
+const ago = (ms) => new Date(Date.now() - ms).toISOString()
+
+check('PR-012: with no per-row quote clock the panel says so instead of letting each row inherit the book clock', () => {
+  const h = render(data({ last_broker_read_label: 'Fri 10:04 AM ET' }))
+  assert.match(h, /data-testid="risk-quote-absent"/, 'the absence is named above the table')
+  assert.match(h, /the positions clock is the book’s, not each row’s/)
+  assert.doesNotMatch(h, /data-testid="risk-quote-state"/, 'no row prints an age it does not have')
+  assert.doesNotMatch(h, /risk-quote-qualified/, 'nothing is qualified as stale without a clock to qualify it')
+})
+
+check('PR-012: an aged quote marks the row stale and qualifies the figures derived from it', () => {
+  const h = render(data({ last_broker_read_label: 'Fri 10:04 AM ET' }, [p({ symbol: 'AGED', price_as_of: ago(3 * 60 * 60_000) })]))
+  assert.match(h, /data-testid="risk-quote-state" data-quote-state="stale"[^>]*>stale 3h ago</)
+  assert.match(h, /data-testid="risk-quote-qualified">Distance to stop and loss at stop rest on a quote that is not current: AGED · quote 3h ago · stale/)
+  assert.match(h, /The figures are as observed, not refreshed/)
+  assert.doesNotMatch(h, /quote time not published/, 'a published clock is not reported as missing')
+})
+
+check('PR-012: a fresh quote is not marked, and a quote from the future is refused rather than aged', () => {
+  const fresh = render(data({ last_broker_read_label: 'Fri 10:04 AM ET' }, [p({ symbol: 'NEW', price_as_of: ago(60_000) })]))
+  assert.doesNotMatch(fresh, /data-testid="risk-quote-state"/, 'a current quote needs no chip')
+  assert.doesNotMatch(fresh, /risk-quote-qualified/)
+  const future = render(data({ last_broker_read_label: 'Fri 10:04 AM ET' }, [p({ symbol: 'FUTR', price_as_of: new Date(Date.now() + 3600_000).toISOString() })]))
+  assert.match(future, /data-quote-state="future"[^>]*>needs review</)
+  assert.match(future, /FUTR · quote time needs review/)
+})
+
+// R5c (b6, operator 11:06 ET): Risk dates its book from the SAME accessor Portfolio calls, over the cio/pages
+// shape (`positions.as_of`). The literal below is asserted verbatim over the holdings shape in
+// PortfolioV002.view.test.mjs block 22 — two payload shapes, two components, one sentence.
+check('R5c: the book is dated from the shared snapshot accessor, not a Risk-local clock', () => {
+  const h = render(data({}))
+  assert.match(h, /data-testid="snapshot-line">snapshot id not published · positions read Fri 9:59 AM ET · all accounts \(1\)</)
+  // The account scope names what the read drew: Risk has no filter, so two accounts is the whole book.
+  const two = render(data({}, [p({ symbol: 'AAA', account_id: 'acct-1' }), p({ symbol: 'BBB', account_id: 'acct-2' })]))
+  assert.match(two, /all accounts \(2\)/)
+  // No published position clock is named, never replaced with the stops clock or "now".
+  const noClock = render({ positions: { rows: [p({ symbol: 'AAA' })] }, stops: { as_of: AT } })
+  assert.match(noClock, /positions read clock not published/)
+})
+
 console.log(JSON.stringify({ results, passed: results.filter(x => x.passed).length, failed: results.filter(x => !x.passed).length }, null, 2))
 if (results.some(x => !x.passed)) process.exit(1)

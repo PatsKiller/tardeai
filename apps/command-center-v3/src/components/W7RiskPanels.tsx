@@ -5,6 +5,8 @@ import { W7Gap, W7Metric, W7Panel, W7PolicyLimits, grid, line, linkStyle, mono, 
 import { RADIUS, TOKENS, TYPE } from '../lib/designTokens'
 import W7DetailSheet, { useW7Detail } from './W7DetailSheet'
 import { STOP_CATEGORY_LABEL, STOP_CATEGORY_TONE, stopCategory, stopDistancePct, stopLossUsd, symbolList, type StopCategory } from '../lib/stopDisplay'
+import { snapshotFacts, stopReadFreshness } from '../lib/portfolioV002'
+import { stopReconciliation } from '../lib/stopReconciliation'
 import { toneVars } from '../lib/designTokens'
 import { ShadowTag } from './home/MarketRiskBanner'
 import { Explain, GlossaryProvider } from './home/MarketRiskActions'
@@ -43,6 +45,41 @@ function awaitingDetail(stops: any, filledRows: any[], crossed: any[]): string {
   return `${queues}${names.length ? ` (${names.join(', ')})` : ''} · through the last broker read ${through}. A crossing is not a fill, and a fill is not yet a holdings change.`
 }
 
+/** PR-012: a price is an observation with its own clock, and the book clock is not that clock. A row carries a quote
+ *  time only when the projection publishes one (`price_as_of`); until it does the row says so rather than inheriting
+ *  `positions.as_of`. `To stop` and `Loss at stop` rest on that quote, so a quote that is stale, in the future or
+ *  unreadable is qualified below the table instead of silently presented as current. */
+const QUOTE_FRESH_MS = 15 * 60_000
+const QUOTE_SKEW_MS = 5 * 60_000
+const QUOTE_CLOCK_KEYS = ['price_as_of', 'quote_at', 'priced_at', 'price_time'] as const
+type QuoteState = { kind: 'unpublished' } | { kind: 'invalid' } | { kind: 'future' } | { kind: 'aged'; text: string; stale: boolean }
+function rowQuoteState(row: any, nowMs: number): QuoteState {
+  for (const k of QUOTE_CLOCK_KEYS) {
+    const raw = row?.[k]
+    if (raw == null || raw === '') continue
+    if (typeof raw !== 'string' || !/T.*(?:Z|[+-]\d\d:\d\d)$/.test(raw)) return { kind: 'invalid' }
+    const at = Date.parse(raw)
+    if (!Number.isFinite(at)) return { kind: 'invalid' }
+    if (at > nowMs + QUOTE_SKEW_MS) return { kind: 'future' }
+    const minutes = Math.max(0, Math.floor((nowMs - at) / 60_000))
+    const text = minutes < 1 ? 'just now' : minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`
+    return { kind: 'aged', text, stale: nowMs - at > QUOTE_FRESH_MS }
+  }
+  return { kind: 'unpublished' }
+}
+function quoteStateLine(q: QuoteState): string {
+  if (q.kind === 'unpublished') return 'quote time not published'
+  if (q.kind === 'invalid') return 'quote time unreadable'
+  if (q.kind === 'future') return 'quote time needs review'
+  return q.stale ? `quote ${q.text} · stale` : `quote ${q.text}`
+}
+/** Rows whose stop distance and loss at stop should not be read as current (the sheet states it in words too). */
+function quoteQualified(rows: any[], nowMs: number): string[] {
+  // An unpublished clock is stated once above the table; it is not a fact about each row here.
+  return rows.filter(p => { const q = rowQuoteState(p, nowMs); return q.kind === 'future' || q.kind === 'invalid' || (q.kind === 'aged' && q.stale) })
+    .map(p => `${p.symbol ?? 'symbol unavailable'} · ${quoteStateLine(rowQuoteState(p, nowMs))}`)
+}
+
 /** Board 15: KPI row + one positions table with the stop source per position (CIO record only). */
 export function W7RiskExposure({ data, onDrill: _onDrill }: { data: any, onDrill: (ctx: DrillContext) => void }) {
   const positions = data.positions || {}, stops = data.stops || {}, summary = positions
@@ -56,6 +93,10 @@ export function W7RiskExposure({ data, onDrill: _onDrill }: { data: any, onDrill
   const notCounted = hasCounted ? allRows.filter(p => !p.counted) : []
   const [showAll, setShowAll] = useState(false)
   const rows = [...counted, ...(showAll ? notCounted : [])]
+  // PR-012: render-time clock for the per-row quote state. Nothing here refreshes a price.
+  const nowMs = Date.now()
+  const quotePublished = rows.some(p => rowQuoteState(p, nowMs).kind !== 'unpublished')
+  const qualified = quoteQualified(rows, nowMs)
   const detail = useW7Detail()
   const key = (p: any) => `position:${p.account_id || p.account}:${p.symbol}`
   const selected = allRows.find(p => key(p) === detail.selected)
@@ -70,11 +111,63 @@ export function W7RiskExposure({ data, onDrill: _onDrill }: { data: any, onDrill
   const awaiting = [...filledRows, ...crossed]
   const unknown = counted.filter(p => stopCategory(p) === 'unknown')
   const restingLoss = typeof summary.loss_at_resting_stops_usd === 'number' ? summary.loss_at_resting_stops_usd : null
+  // OBS-R1 (operator, live Chrome 2026-11-14): the card read "$14,793 · 0 active, 8 pending activation · active
+  // stops only Not available" — a HYPOTHETICAL resting-order scenario spliced to the ACTIVE-stop figure on one
+  // line, the scenario summed over held shares instead of the quantity each broker order actually covers, and
+  // "pending activation" named with no broker order state behind it. Two figures now, each labelled as what it
+  // measures; the counts and the value-with-no-stop card are unchanged. Nothing is recomputed on this page: the
+  // covered quantity arrives as `resting_loss_coverage`, the broker states as `stops.pending_broker_states`.
+  const activeCount = n('active'), pendingCount = n('pending_activation'), restingCount = activeCount + pendingCount
+  const activeLoss = typeof summary.loss_at_stop_usd === 'number' ? summary.loss_at_stop_usd : null
+  const qtyText = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? String(v) : 'quantity not published'
+  const coverageText = ((): string => {
+    const cov = summary.resting_loss_coverage
+    if (!cov || typeof cov !== 'object') return 'coverage basis not published'
+    const shortfalls: any[] = Array.isArray(cov.shortfalls) ? cov.shortfalls.filter((s: any) => s && s.symbol) : []
+    const unknownQty: any[] = Array.isArray(cov.qty_not_published) ? cov.qty_not_published : []
+    const lead = shortfalls.length
+      ? `covered quantity basis — ${shortfalls.map(s => `${s.symbol} ${qtyText(s.covered)} of ${qtyText(s.held)} held covered`).join('; ')}`
+      : unknownQty.length ? 'covered quantity basis' : 'covered quantity basis — every resting order covers its whole holding'
+    const tail = unknownQty.length
+      ? `; order quantity not published for ${unknownQty.join(', ')}, so the held quantity was used for ${unknownQty.length === 1 ? 'that row' : 'those rows'}`
+      : ''
+    return lead + tail
+  })()
+  const pendingStates = !pendingCount ? '' : (() => {
+    const states: any[] = Array.isArray(stops.pending_broker_states) ? stops.pending_broker_states.filter((s: any) => s && s.status) : []
+    if (!states.length) return ' (broker order state not published)'
+    return ` (broker ${states.length === 1 ? 'state' : 'states'} ${states.map(s => typeof s.count === 'number' && s.count !== pendingCount ? `${s.status} × ${s.count}` : String(s.status)).join(', ')})`
+  })()
+  // OBS-R2: the two clocks describe different books when the stop read predates the positions snapshot. One shared
+  // rule (lib/stopReconciliation) states which; the clocks line never prints an unexplained pair.
+  const rec = stopReconciliation({ positionsAsOf: positions.as_of, stopsAsOf: stops.as_of })
+  const stopClock = stops.last_broker_read_label ? `last broker read ${stops.last_broker_read_label}` : when(stops.as_of)
+  const recHeadline = rec.state === 'reconciled' ? 'Reconciled'
+    : rec.state === 'unreconciled' ? `Unreconciled since ${stops.last_broker_read_label || when(rec.since)}`
+      : 'Reconciliation unknown'
+  // R5c (b6): the SAME accessor Portfolio uses, over the cio/pages shape — one computation, one sentence. The
+  // account scope is named because this page has no account filter: it always covers every account the read drew.
+  const snap = snapshotFacts(data, allRows.map((p: any) => ({ account_id: p.account_id ?? p.account })))
   return <div style={{ display: 'grid', gap: 12 }}>
+    <p style={{ margin: 0, color: TOKENS.text[2], fontSize: TYPE.base }} data-testid="snapshot-line">{snap.line}</p>
     <div style={grid} data-testid="risk-kpis">
-      {restingLoss != null
-        ? <W7Metric label="Loss if every resting stop fills" value={usd(restingLoss)} detail={<span data-testid="risk-kpi-loss">{pctWhy(summary.resting_heat_pct, 'share of book not sent')} of book · {n('active')} active, {n('pending_activation')} pending activation · active stops only {usd(summary.loss_at_stop_usd)} · price gaps can increase losses</span>} />
-        : <W7Metric label="Loss if every active stop fills" value={usd(summary.loss_at_stop_usd)} detail={`${heatWhy(summary.portfolio_heat_pct, 'share of portfolio not sent')} of portfolio · price gaps can increase losses`} />}
+      <W7Metric label="Loss if every resting stop fills" value={restingLoss != null ? usd(restingLoss) : 'Not available'}
+        detail={<span data-testid="risk-kpi-loss">
+          {`hypothetical, not a measure of active protection · if all ${restingCount} resting ${restingCount === 1 ? 'stop' : 'stops'} fill at ${restingCount === 1 ? 'its' : 'their'} stop prices · `}
+          {`${pctWhy(summary.resting_heat_pct, 'share of book not sent')} of book not sent · `}
+          {coverageText}
+          {' · price gaps can increase losses'}
+        </span>} />
+      <W7Metric label="Loss at active stops" value={activeLoss != null ? usd(activeLoss) : 'Not available'}
+        detail={<span data-testid="risk-kpi-active-stops">
+          {`${activeCount} armed ${activeCount === 1 ? 'stop' : 'stops'}`}
+          {activeLoss == null
+            ? ' · Not available is not $0: no armed stop has a published loss, so this figure is unmeasured'
+            : ` · ${heatWhy(summary.portfolio_heat_pct, 'share of portfolio not sent')} of portfolio not sent`}
+          {pendingCount ? ` · ${pendingCount} resting ${pendingCount === 1 ? 'stop is' : 'stops are'} pending activation` : ''}
+          {pendingStates}
+          {pendingCount ? ` — live at the broker and not yet active, so ${pendingCount === 1 ? 'it belongs' : 'they belong'} to the hypothetical scenario above, not to an active-stop figure` : ''}
+        </span>} />
       <W7Metric label="Value with no broker stop" value={money(unprotected.valueUsd)} detail={<span data-testid="risk-kpi-nostop">{unprotected.count == null ? 'Position count unavailable' : `${unprotected.count} counted ${unprotected.count === 1 ? 'position' : 'positions'}`}{n('planned') ? ` · ${n('planned')} with a planned level only` : ''}</span>} />
       <W7Metric label="Largest position" value={summary.largest_name ? `${summary.largest_name.symbol} ${pctWhy(summary.largest_name.pct, '(weight not sent)')}` : 'Not available'} detail={summary.largest_name?.classification_label && summary.largest_name?.limit_pct != null ? `${summary.largest_name.classification_label} · limit ${pct(summary.largest_name.limit_pct)}` : 'Classification and limit not published'} />
       {/* PR-015: two different measured queues, each named with its own through-time. A quote at or below the stop
@@ -87,7 +180,11 @@ export function W7RiskExposure({ data, onDrill: _onDrill }: { data: any, onDrill
     </p>}
     {unknown.length > 0 && <W7Gap>{unknown.map(p => `${p.symbol} · ${p.account_label || 'account unavailable'}`).join(', ')}: a broker stop was read but its state was not recorded. Check it at the broker before relying on it.</W7Gap>}
     <W7Panel title="Positions and stops" testId="risk-positions">
-      <p style={{ color: TOKENS.text[2] }}>Positions · {when(positions.as_of)} · Stops · {stops.last_broker_read_label ? `last broker read ${stops.last_broker_read_label}` : when(stops.as_of)}</p>
+      <p style={{ color: TOKENS.text[2] }}>Positions · {when(positions.as_of)} · Stops · {stopClock}
+        <span data-testid="risk-stops-reconciliation" data-reconciliation={rec.state} style={rec.state === 'unreconciled' ? { color: TOKENS.warning } : undefined}>
+          {' — '}{recHeadline} — {rec.reason}
+        </span>
+        {rows.length > 0 && !quotePublished && <span data-testid="risk-quote-absent"> · no per-row quote time is published, so the positions clock is the book’s, not each row’s</span>}</p>
       {positions.gap && <W7Gap>{typeof positions.gap === 'string' ? positions.gap : positions.gap.reason}</W7Gap>}
       {stops.gap && <W7Gap>{typeof stops.gap === 'string' ? stops.gap : stops.gap.reason}</W7Gap>}
       <div className="w7-position-head" style={{ gridTemplateColumns: '80px minmax(130px,1.4fr) repeat(6,minmax(65px,1fr)) 128px', gap: 10, color: TOKENS.text[2], fontSize: 11, padding: '8px 0' }}><span>Symbol</span><span>Account</span><span>Shares</span><span>Price</span><span>Stop</span><span>To stop</span><span>Loss at stop</span><span>Stop source</span><span /></div>
@@ -96,35 +193,63 @@ export function W7RiskExposure({ data, onDrill: _onDrill }: { data: any, onDrill
         <b style={mono}>{p.symbol}</b>
         <span>{p.account_label || 'Account name unavailable'}</span>
         <span style={mono}><small className="w7-field-label">Shares </small>{text(p.shares ?? p.quantity)}</span>
-        <span style={mono}><small className="w7-field-label">Price </small>{price(p.price)}</span>
+        <span style={mono}><small className="w7-field-label">Price </small>{price(p.price)}
+          {/* A chip only when the quote is not current: an aged-fresh row needs no mark, and the absence of a per-row
+              clock is stated once above the table, not repeated on every row. */}
+          {(() => { const q = rowQuoteState(p, nowMs); if (q.kind === 'unpublished' || (q.kind === 'aged' && !q.stale)) return null
+            const state = q.kind === 'aged' ? 'stale' : q.kind
+            return <small data-testid="risk-quote-state" data-quote-state={state} title={quoteStateLine(q)} style={{ display: 'block', fontWeight: 'normal', color: TOKENS.warning }}>{q.kind === 'aged' ? `stale ${q.text}` : 'needs review'}</small> })()}</span>
         <span style={mono}><small className="w7-field-label">Stop </small>{p.stop_price == null ? 'None' : price(p.stop_price)}</span>
         <span style={mono}><small className="w7-field-label">To stop </small>{dist != null ? pct(dist) : cat === 'filled' ? 'Filled' : '—'}</span>
         <span style={mono}><small className="w7-field-label">Loss at stop </small>{loss != null ? usd(loss) : '—'}</span>
         <span style={{ color: toneColor[STOP_CATEGORY_TONE[cat]] }}><small className="w7-field-label">Stop source </small>{STOP_CATEGORY_LABEL[cat]}</span>
         <button className="w7-position-action" onClick={() => detail.open(key(p))} style={{ minHeight: 44, color: TOKENS.info, background: TOKENS.bg[2], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm, cursor: 'pointer' }}>Review {p.symbol} →</button>
       </article> })}
+      {qualified.length > 0 && <W7Gap><span data-testid="risk-quote-qualified">Distance to stop and loss at stop rest on a quote that is not current: {qualified.join('; ')}. The figures are as observed, not refreshed.</span></W7Gap>}
       {notCounted.length > 0 && <button type="button" data-testid="risk-toggle-small" onClick={() => setShowAll(v => !v)} style={{ minHeight: 44, width: '100%', marginTop: 8, color: TOKENS.info, background: TOKENS.bg[2], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm, cursor: 'pointer' }}>
         {showAll ? `Hide ${plural(notCounted.length)} not counted` : `Show ${plural(notCounted.length)} not counted`} (small or unpriced holdings)
       </button>}
       {!allRows.length && !positions.gap && <W7Gap>No positions have been published.</W7Gap>}
     </W7Panel>
     {selected && <W7DetailSheet title={`${selected.symbol} · stop details`} onClose={detail.close}>
-      <p>{selected.account_label || 'Account name unavailable'}</p>
-      <div style={line}><span>Stop</span><b>{STOP_CATEGORY_LABEL[stopCategory(selected)]}</b></div>
-      <div style={line}><span>Stop price</span><b style={mono}>{selected.stop_price == null ? 'None' : price(selected.stop_price)}</b></div>
-      <div style={line}><span>Price</span><b style={mono}>{price(selected.price)}</b></div>
-      <div style={line}><span>To stop</span><b style={mono}>{stopDistancePct(selected) != null ? pct(stopDistancePct(selected)) : '—'}</b></div>
-      <div style={line}><span>Loss at stop</span><b style={mono}>{stopLossUsd(selected) != null ? usd(stopLossUsd(selected)) : '—'}</b></div>
-      <div style={line}><span>Source</span><b>{selected.stop_source === 'broker_resting' && !['active', 'pending_activation'].includes(stopCategory(selected)) ? 'Broker stop order' : sourceLabel[selected.stop_source] || 'Source unavailable'}</b></div>
-      <div style={line}><span>State</span><b>{stateLabel[selected.stop_state] || 'State not recorded'}</b></div>
-      <p>Observed {when(selected.stop_captured_at || selected.stop_evidence?.as_of)}</p>
-      {stopCategory(selected) === 'pending_activation' && <W7Gap>This stop is resting at the broker but awaiting activation. It does not provide active protection yet.</W7Gap>}
-      {stopCategory(selected) === 'filled' && <W7Gap>The broker stop filled. The sale is not in the holdings sync yet, so the position still shows here.</W7Gap>}
-      {stopCategory(selected) === 'planned' && <W7Gap>This is a planned level only. No order is resting at the broker.</W7Gap>}
-      <Link to="/portfolio?tab=Stop%20Management" style={{ ...linkStyle, width: '100%', justifyContent: 'center', background: TOKENS.bg[2], marginTop: 20 }}>Stop review and advice →</Link>
-      <Link to={`/trading?tab=Open+Trades&symbol=${encodeURIComponent(selected.symbol)}`} style={{ ...linkStyle, width: '100%', justifyContent: 'center', background: TOKENS.bg[2], marginTop: 8 }}>Review position in Trading →</Link>
+      <W7StopDetail selected={selected} nowMs={nowMs} />
     </W7DetailSheet>}
   </div>
+}
+
+/** Risk › Exposure stop-detail body. Exported so the sheet's content is rendered by a test without a browser
+ *  (the sheet itself is a portal; the body is not).
+ *  R5b #1 (2026-11-14, SEV-3 cross-page): AMANX read UNKNOWN on Portfolio ("stop read 210 d old, limit 3 d") while
+ *  this sheet read "Planned level · no resting order · State None · Observed Apr 18" with no freshness verdict. The
+ *  row here comes from /api/v2/cio/pages and carries no protection verdict, so the freshness is drawn by the SAME
+ *  rule Portfolio uses — `stopReadFreshness` in lib/portfolioV002 reads the same clock (`stop_captured_at`) and the
+ *  same limit (STOP_READ_MAX_AGE_MS, 15 m in session / 72 h off-hours). Nothing is recomputed on this page. */
+export function W7StopDetail({ selected, nowMs = Date.now() }: { selected: any, nowMs?: number }) {
+  const f = stopReadFreshness(selected, nowMs)
+  return <>
+    <p>{selected.account_label || 'Account name unavailable'}</p>
+    <div style={line}><span>Stop</span><b>{STOP_CATEGORY_LABEL[stopCategory(selected)]}</b></div>
+    <div style={line}><span>Stop price</span><b style={mono}>{selected.stop_price == null ? 'None' : price(selected.stop_price)}</b></div>
+    <div style={line}><span>Price</span><b style={mono}>{price(selected.price)}</b></div>
+    <div style={line}><span>Quote time</span><b data-testid="risk-sheet-quote-state">{quoteStateLine(rowQuoteState(selected, nowMs))}</b></div>
+    <div style={line}><span>To stop</span><b style={mono}>{stopDistancePct(selected) != null ? pct(stopDistancePct(selected)) : '—'}</b></div>
+    <div style={line}><span>Loss at stop</span><b style={mono}>{stopLossUsd(selected) != null ? usd(stopLossUsd(selected)) : '—'}</b></div>
+    <div style={line}><span>Source</span><b>{selected.stop_source === 'broker_resting' && !['active', 'pending_activation'].includes(stopCategory(selected)) ? 'Broker stop order' : sourceLabel[selected.stop_source] || 'Source unavailable'}</b></div>
+    <div style={line}><span>State</span><b>{stateLabel[selected.stop_state] || 'State not recorded'}</b></div>
+    <p>Observed {when(selected.stop_captured_at || selected.stop_evidence?.as_of)}</p>
+    {stopCategory(selected) === 'pending_activation' && <W7Gap>This stop is resting at the broker but awaiting activation. It does not provide active protection yet.</W7Gap>}
+    {stopCategory(selected) === 'filled' && <W7Gap>The broker stop filled. The sale is not in the holdings sync yet, so the position still shows here.</W7Gap>}
+    {stopCategory(selected) === 'planned' && <W7Gap>This is a planned level only. No order is resting at the broker.</W7Gap>}
+    {/* The freshness verdict the Portfolio page applies, drawn here instead of leaving "Observed Apr 18" to read as
+        current. It is the same rule over the same read clock; a stale read makes the served state last-known. */}
+    <div style={line}><span>Stop read</span><b data-testid="risk-sheet-freshness" data-freshness={f.kind}
+      data-served-stale={f.servedStale == null ? undefined : String(f.servedStale)}
+      data-agrees={f.agreesWithServed == null ? undefined : String(f.agreesWithServed)}
+      style={f.kind === 'fresh' ? undefined : { color: TOKENS.warning }}>{f.line}</b></div>
+    {f.kind === 'fresh' && <p style={{ color: TOKENS.text[2] }}>Freshness is the same limit Portfolio applies to this row's stop read, not a separate Risk calculation.</p>}
+    <Link to="/portfolio?tab=Stop%20Management" style={{ ...linkStyle, width: '100%', justifyContent: 'center', background: TOKENS.bg[2], marginTop: 20 }}>Stop review and advice →</Link>
+    <Link to={`/trading?tab=Open+Trades&symbol=${encodeURIComponent(selected.symbol)}`} style={{ ...linkStyle, width: '100%', justifyContent: 'center', background: TOKENS.bg[2], marginTop: 8 }}>Review position in Trading →</Link>
+  </>
 }
 
 export function W7RiskConcentration({ data }: { data: any }) {

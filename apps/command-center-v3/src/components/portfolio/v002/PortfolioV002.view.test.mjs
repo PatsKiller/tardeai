@@ -51,7 +51,7 @@ function compile(path) {
 const lib = await import(compile(join(app, 'src/lib/portfolioV002.ts')))
 const { default: View } = await import(compile(join(app, 'src/components/portfolio/v002/PortfolioV002View.tsx')))
 const sheets = await import(compile(join(app, 'src/components/portfolio/v002/PortfolioSheets.tsx')))
-const { positionsFrom, protectionModel, p0Items, statusRows, measuresModel, sinceVisitModel, STOP_READ_MAX_AGE_MS, API, filterPositions } = lib
+const { positionsFrom, protectionModel, p0Items, statusRows, measuresModel, sinceVisitModel, STOP_READ_MAX_AGE_MS, API, filterPositions, exclusiveCoverage } = lib
 
 const NOW = Date.parse('2031-03-07T15:00:00Z')
 const AT = '2031-03-07T14:59:00Z'
@@ -272,7 +272,11 @@ assert.match(section(cashHtml, 'card-protect'), /Protection UNKNOWN: No counted 
   assert.match(plan, /PLANNED ONLY/)
   const none = holdings.split('data-testid="holding-row"').find(r => r.includes('NONE')) || ''
   assert.match(none, /NO STOP/)
-  assert.match(section(html, 'card-protect'), /Coverage: <b>1<\/b> covered · <b>1<\/b> partial · <b>1<\/b> uncovered · <b>1<\/b> planned-only/)
+  // R5b #2 (2026-11-14): the coverage categories count every drawn row and the tiles count the counted rows. The
+  // line names both populations and how they relate; the tiles-sum names its own scope. Here all four rows count.
+  const protect = section(html, 'card-protect')
+  assert.match(protect, /Coverage · all 4 rows drawn · 4 counted \(the tiles\): <b>1<\/b> covered · <b>1<\/b> partial · <b>1<\/b> uncovered · <b>1<\/b> planned-only/)
+  assert.match(protect, /4 of 4 counted positions \(non-cash, at or above \$100\)/)
   // F4 (REVIEW advisory): PLAN/NONE publish no resting quantity, so the totals are a partial sum and the line says
   // "published" instead of presenting 500/620 as the book's totals.
   assert.match(section(html, 'card-protect'), /resting <b>500<\/b> of <b>620<\/b> published held shares/)
@@ -289,6 +293,31 @@ assert.match(section(cashHtml, 'card-protect'), /Protection UNKNOWN: No counted 
   assert.match(decoded, /account=acct-1/); assert.match(decoded, /broker=broker_a/); assert.match(decoded, /position=acct-1:NONE/)
 }
 
+// 10b. R5b #2 (2026-11-14): the two coverage denominators are named, on the page and in the sheet, from one model.
+// Live shape it reproduces: 30 rows drawn, 11 counted, 19 not counted (14 under $100 + 5 exempt); here 6/3/3.
+{
+  const rows = [
+    row({ symbol: 'BIG1', shares: 300, stop_qty: 300 }),
+    row({ symbol: 'BIG2', protection_state: 'GAP', protection: { state: 'GAP', counted: true, as_of: AT }, stop_price: null }),
+    row({ symbol: 'BIG3', protection_state: 'UNKNOWN', protection: { state: 'UNKNOWN', cause: 'No Stop Read', counted: true, as_of: AT }, stop_price: null }),
+    row({ symbol: 'SML1', market_value: 50, protection_state: 'GAP', protection: { state: 'GAP', counted: false, as_of: AT }, stop_price: null }),
+    row({ symbol: 'SML2', market_value: 40, protection_state: 'GAP', protection: { state: 'GAP', counted: false, as_of: AT }, stop_price: null }),
+    row({ symbol: 'CASHX', is_cash: true, market_value: 900, protection_state: 'EXEMPT', protection: { state: 'EXEMPT', counted: false } }),
+  ]
+  const html = render(ok(API.holdings, wire(rows)))
+  const protect = section(html, 'card-protect')
+  // The categories count all six rows; the line says so and says how the counted rows relate to them.
+  assert.match(protect, /Coverage · all 6 rows drawn · 3 counted \(the tiles\) · 3 not counted: 2 under \$100, listed only · 1 exempt:/)
+  assert.match(protect, /<b>1<\/b> covered · <b>0<\/b> partial · <b>3<\/b> uncovered · <b>0<\/b> planned-only · <b>1<\/b> exempt · <b>1<\/b> unverifiable/)
+  // The tiles count only the three counted rows and name their own scope.
+  assert.match(protect, /3 of 3 counted positions \(non-cash, at or above \$100\)/)
+  // The sheet's coverage block names the same population (not the counted one) from the same model.
+  const pos = positionsFrom(wire(rows), NOW)
+  const holdings = ok(API.holdings, wire(rows))
+  const why = sheet(sheets.ProtectionWhySheet, { prot: protectionModel(holdings, pos), positions: pos, nowIso: new Date(NOW).toISOString(), onGoTo: noop })
+  assert.match(why, /data-testid="why-coverage">all 6 rows drawn · 3 counted \(the tiles\) · 3 not counted: 2 under \$100, listed only · 1 exempt:/)
+}
+
 // 11. The sheets: reconciliation and UNVERIFIED, gate evidence with no served gate, the last-visit window, the
 // pending risk decision (no score anywhere).
 {
@@ -301,12 +330,82 @@ assert.match(section(cashHtml, 'card-protect'), /Protection UNKNOWN: No counted 
   assert.match(mh, /DAY FIGURES UNVERIFIED/); assert.match(mh, /UNVERIFIED\./); assert.match(mh, /candidate/)
   assert.match(mh, /COMPONENTS RECONCILE/)
   assert.match(mh, /Finviz mark estimate/); assert.match(mh, /never added to any “today” measure/)
+  // PR-004: the sheet now renders the SERVED gate projection. With no answer (route not wired / read failed) it shows
+  // an honest UNAVAILABLE and says why — never the old "NOT AVAILABLE" constant and never "0 open".
   const gh = sheet(sheets.GateEvidenceSheet, { prot, measures, positions: pos })
-  assert.match(gh, /No gate store is served/); assert.match(gh, /NOT AVAILABLE/)
-  for (const h of gh.match(/data-testid="gate-item"/g) || []) assert.ok(h)
+  assert.match(gh, /the gate store read has not answered yet/)
+  assert.match(gh, /data-testid="gate-store-unavailable"/)
+  assert.match(gh, /UNAVAILABLE/)
+  assert.match(gh, /Store: the gate store could not be read; no gate verdict is shown/)
+  assert.equal((gh.match(/data-testid="gate-item"/g) || []).length, 4)
+  assert.doesNotMatch(gh, /No gate store is served/)
   assert.doesNotMatch(gh, /\b0 open\b/)
+  assert.doesNotMatch(gh, /NOT AVAILABLE/)
+
+  // The served projection: one closed gate, its clock named as a closure, its NULL blocks_trading counted as unknown.
+  const servedPayload = {
+    schema: lib.GATES_SCHEMA, served_at: AT, state: 'OK', reason: null,
+    scope: { categories: ['Order protection'], gates: 1 },
+    snapshot: { computed_at: '2031-03-06T15:00:00Z', age_s: 86400, threshold_s: 900, basis: 'closed_gates' },
+    writer: { lane_id: 'validation-gates-sync', last_ok_at: AT, receipt: 'data/runtime/validation-gates-sync_last.json' },
+    counts: { rows: 1, failed: 0, overdue: 0, open: 0, closed: 1, blocks_trading: 0, blocks_trading_unknown: 1, never_evaluated: 0 },
+    items: [{ gate_id: 'VG-PORT-COUNT-AGREES', title: 'Position count agrees', status: 'PASSED', blocks_trading: null,
+      owner: 'position sync lane', label_text: 'FIXED · UNPROVEN OVER TIME',
+      last_eval: { result: 'PASS', at: '2031-03-06T15:00:00Z', detail: '7 rows = 7 rows' },
+      clock: { state: 'closed', at: '2031-03-06T15:00:00Z', age_s: 86400, threshold_s: 900, text: 'closed at its last evaluation (24.0 h ago)' },
+      window: { end: '2031-03-09T15:00:00Z', days_remaining: 2 },
+      next_action: 'No action unless it regresses: proving over the window to 2031-03-09', decl_path: 'config/x.json' }],
+  }
+  const gs = sheet(sheets.GateEvidenceSheet, { prot, measures, positions: pos, gatesRead: ok(API.gates, servedPayload), nowMs: NOW })
+  assert.match(gs, /data-testid="gate-served-row"/)
+  assert.match(gs, /Position count agrees · VG-PORT-COUNT-AGREES/)
+  assert.match(gs, /closed at its last evaluation \(24.0 h ago\)/)
+  assert.match(gs, /Blocks trading: not declared \(unknown\)/)
+  assert.match(gs, /data-testid="gate-next-action"/)
+  assert.match(gs, /FIXED · UNPROVEN OVER TIME/)
+  assert.match(gs, /1 gate in scope · 0 open · 1 closed/)
+  assert.match(gs, /closure clock/)
+  assert.match(gs, /do not declare whether they block trading/)
+  // The expectation with a served row is GATED; the other three say ungated, which is not a pass.
+  assert.match(gs, /data-testid="gate-served-text">Store: PASSED · last result PASS at/)
+  assert.equal((gs.match(/ungated, which is not a pass/g) || []).length, 3)
+
+  // An empty scope after a good read is still not a pass, and the sheet says so in words.
+  const ge = sheet(sheets.GateEvidenceSheet, { prot, measures, positions: pos, nowMs: NOW,
+    gatesRead: ok(API.gates, { ...servedPayload, state: 'UNKNOWN', counts: null, items: [],
+      reason: 'no portfolio gate is declared for scope [&apos;Order protection&apos;]' }) })
+  assert.match(ge, /data-testid="gate-store-empty"|data-testid="gate-store-headline"/)
+  assert.match(ge, /no gate verdict: no portfolio gate is declared/)
+  assert.doesNotMatch(ge, /\b0 open\b/)
   const sh = sheet(sheets.SinceLastVisitSheet, { since, visitRecord: 'RECORDED' })
-  assert.match(sh, /Since your last visit/); assert.match(sh, /Server-stamped/); assert.match(sh, /change store \(LQ-2143\)/)
+  assert.match(sh, /Since your last visit/); assert.match(sh, /Server-stamped/)
+  assert.match(sh, /The change list was not read on this page load/)
+
+  // PR-005: the served change list. Each event keeps its OWN time; a measured zero says so; a failed read is an honest
+  // UNAVAILABLE and never "no changes".
+  const chPayload = { schema: lib.CHANGES_SCHEMA, served_at: AT, state: 'OK', reason: null,
+    window: { basis: 'last_visit', since: '2031-03-06T14:00:00Z', until: AT }, count: 1,
+    latest_at: '2031-03-07T13:04:54Z', may_be_truncated: false,
+    outside_window: { before: 0, after: 0, unreadable: 0, out_of_scope: 8 },
+    items: [{ event_id: 41, source_kind: 'gate', source_id: 'VG-R3-STOP-COVERAGE-HEARTBEAT', category: 'Order protection',
+      transition: 'passed', label: 'FIXED_UNPROVEN', label_text: 'FIXED · UNPROVEN OVER TIME',
+      occurred_at: '2031-03-07T13:04:54Z', detected_at: '2031-03-07T13:04:58Z',
+      summary: 'Stop-coverage producer heartbeat is fresh: passed', owner: 'platform' }] }
+  const chs = sheet(sheets.SinceLastVisitSheet, { since, visitRecord: 'RECORDED', changesRead: ok(API.changes, chPayload) })
+  assert.match(chs, /data-testid="changes-state"/); assert.match(chs, /1 change since your last visit/)
+  assert.match(chs, /data-testid="change-row"/)
+  assert.match(chs, /passed · FIXED · UNPROVEN OVER TIME — VG-R3-STOP-COVERAGE-HEARTBEAT/)
+  assert.match(chs, /Fri 8:04 AM/)                  // the event's own time, not the page clock
+  assert.match(chs, /8 events on this store belong to another page/)
+  assert.match(chs, /PortfolioChanges@v1/)
+  const chz = sheet(sheets.SinceLastVisitSheet, { since, visitRecord: 'RECORDED',
+    changesRead: ok(API.changes, { ...chPayload, count: 0, items: [], latest_at: null }) })
+  assert.match(chz, /NO CHANGES/); assert.match(chz, /measured zero/)
+  assert.doesNotMatch(chz, /data-testid="change-row"/)
+  const chu = sheet(sheets.SinceLastVisitSheet, { since, visitRecord: 'RECORDED',
+    changesRead: { state: 'UNKNOWN', data: null, error: 'HTTP 404', at: AT, source: API.changes } })
+  assert.match(chu, /UNAVAILABLE/); assert.match(chu, /data-testid="changes-unavailable"/)
+  assert.doesNotMatch(chu, /measured zero/)
   const rh = sheet(sheets.RiskSheet, {})
   assert.match(rh, /PENDING DECISION/); assert.match(rh, /RISK-SCORE-SPEC-20261111/); assert.match(rh, /no number and no band/)
 }
@@ -383,7 +482,7 @@ assert.match(section(cashHtml, 'card-protect'), /Protection UNKNOWN: No counted 
   }
   const html = render(ok(API.holdings, wire([row({ symbol: 'SAFE' })], { position_counts: SERVED_COUNTS })))
   const g = section(html, 'card-gates')
-  assert.match(g, /holdings\.all_rows scope counts 1; this read drew 1 row; they match/)
+  assert.match(g, /holdings\.all_rows scope counts 1; this read parsed 1 normalised row; they match/)
   assert.match(g, /headline 11 is its holdings\.non_cash_over_100 scope/)
   assert.match(g, /its own summary: 1 position at or above \$100/)
   assert.doesNotMatch(g, /disagree/i)
@@ -498,4 +597,110 @@ assert.match(section(cashHtml, 'card-protect'), /Protection UNKNOWN: No counted 
   assert.match(protectSec, /1 positions with unverifiable protection/, 'the row is counted UNKNOWN, not unprotected')
 }
 
+// 22. PR-002: one Scope line names every denominator the page uses — source rows, cash/non-cash/unpriced, quoteable,
+// drawn/filtered/rendered, the page's counted population and the count block's own headline scope — and names the fact
+// the read does not publish (the snapshot id) instead of omitting it or inventing one.
+{
+  const counts = { contract_version: 'PositionCountAuthority@v1', primary_scope: 'holdings.non_cash_over_100', agree: false,
+    position_count: 1, held_count: 2, all_rows: 3, cash_rows: 1, non_cash_rows: 2, below_100: 0,
+    scopes: { 'holdings.all_rows': 3, 'holdings.cash': 1, 'holdings.non_cash': 2, 'holdings.non_cash_over_100': 1, 'holdings.unpriced': 1 },
+    summary: '1 position at or above $100', findings: [] }
+  const rows = [row({ symbol: 'AAA' }), row({ symbol: 'BBB', market_value: 900 }),
+    row({ symbol: 'CASH', market_value: 500, is_cash: true, protection_state: 'EXEMPT', protection: { state: 'EXEMPT', counted: false }, stop_price: null, stop_qty: null })]
+  const html = render(ok(API.holdings, wire(rows, { position_counts: counts })))
+  const line = (html.match(/data-testid="scope-line">([\s\S]*?)<\/p>/) || [])[1] || ''
+  for (const t of ['all accounts (1)', 'source rows 3', 'cash 1', 'non-cash 2', 'unpriced 1', 'quoteable 2',
+    'drawn 3', 'after filter 3', 'rendered 3', 'counted here 2', 'count block 1 (holdings.non_cash_over_100)']) {
+    assert.ok(line.includes(t), `scope line names "${t}"`)
+  }
+  // R5c (b6): the snapshot identity is ONE sentence from the shared accessor Risk calls too — the id is named as
+  // not published, the read clock is the served one, and the account scope is this page's own filter.
+  assert.match(line, /data-testid="snapshot-line">snapshot id not published · positions read Fri 9:59 AM ET · all accounts \(1\)</)
+  assert.doesNotMatch(line, /differs:/, 'published denominators agree here')
+  assert.match(line, /data-testid="scope-diag"/, 'the line routes to Diagnostics')
+  // A disagreement between two published denominators is named, never silently reconciled.
+  const off = render(ok(API.holdings, wire(rows, { position_counts: { ...counts, all_rows: 2 } })))
+  assert.match(off, /differs: the count block&#x27;s all-rows scope counts 2; this read parsed 3 rows/)
+  // When the wire publishes a snapshot id, the line prints it and stops calling it missing.
+  const snap = render(ok(API.holdings, wire(rows, { position_counts: counts, snapshot_id: 'snap-20310307-1' })))
+  assert.match(snap, /snapshot snap-20310307-1/)
+  assert.doesNotMatch(snap, /not published: snapshot id/)
+  // REVIEW O1 (cc-deepseek-4): the account count is over the account KEY on both pages (Risk passes
+  // `account_id ?? account`). A display label that changes must not invent a second account.
+  const relabelled = render(ok(API.holdings, wire([
+    row({ symbol: 'AAA', account_id: 'acct-1', account_label: 'Broker A ··01' }),
+    row({ symbol: 'BBB', account_id: 'acct-1', account_label: 'Broker A ··rekeyed', market_value: 900 }),
+  ])))
+  assert.match(relabelled, /data-testid="snapshot-line">[^<]*all accounts \(1\)/)
+  assert.doesNotMatch(relabelled, /all accounts \(2\)/)
+}
+
+// 23. PR-006: the incidents badge names its entity and scope (open lifecycle incidents, all pages) and opens the
+// evidence set it counts. It is not the position review population and says so in the row.
+{
+  const html = render(ok(API.holdings, wire([row({ symbol: 'AAA' })])), ok(API.incidents, { counts: { P0: 1, P1: 16 }, served_at: AT }))
+  const line = section(html, 'card-status').split('data-testid="row-alerts"').slice(1)[0] || ''
+  assert.match(line, /Incidents · all pages/, 'the row names the entity and the scope')
+  assert.match(line, /1 P0 · 16 P1 open lifecycle incidents/)
+  assert.match(line, /not the position review count/, 'the two populations are distinguished in words')
+  assert.match(line, /data-testid="row-alerts-evidence"/, 'the count has a destination')
+  assert.match(line, /href="\/ops\/incidents"/)
+}
+
+// 24. C1 (REVIEW-S2-portfolio-risk-b1 §5): a GAP row whose stop-read time is later than the capture clock was drawn
+// NO STOP while its own sentence said the read could not be trusted. It now reads UNKNOWN with its cause, through both
+// carriers of the read time, and it is not part of the No broker stop population the tiles and filters count.
+for (const carrier of ['as_of', 'stop_captured_at']) {
+  const future = new Date(Date.parse(AT) + 12 * 3600_000).toISOString()
+  const gap = { state: 'GAP', counted: true }
+  const h = row({ symbol: 'FUTG', protection_state: 'GAP', stop_price: null, stop_qty: null, stop_captured_at: null,
+    protection: carrier === 'as_of' ? { ...gap, as_of: future } : gap, ...(carrier === 'stop_captured_at' ? { stop_captured_at: future } : {}) })
+  const hold = ok(API.holdings, wire([h]))
+  const html = render(hold)
+  const line = section(html, 'card-protect').split('data-testid="prot-row"').slice(1).find(r => r.includes('FUTG'))
+  assert.ok(line, `${carrier}: the row is drawn`)
+  assert.match(line, /UNKNOWN/, `${carrier}: an impossible read time is UNKNOWN`)
+  assert.doesNotMatch(line, /NO STOP/, `${carrier}: it is not asserted as a successful negative read`)
+  const m = positionsFrom(hold.data, NOW)[0]
+  assert.equal(m.cause, 'Invalid Stop Read Time', `${carrier}: cause`)
+  assert.match(m.reason, /later than the capture clock/)
+  assert.equal(exclusiveCoverage(positionsFrom(hold.data, NOW)).noStop, 0, `${carrier}: zero in No broker stop`)
+}
+
 console.log('PortfolioV002.view.test.mjs: ok')
+
+// 25. OBS-P1 (operator 2026-11-14 11:15 ET): the live row read Symbol/Shares/Value/Protection/Risk plus an UNLABELED %.
+// The row now draws, in the row itself: the mark with its source and read clock, the session PRICE MOVE in $ and %
+// (never called P&L), the weight (or that it is not published), and unrealized P&L ONLY on a recorded basis with the
+// read's own reason otherwise. The row markup is width-independent and no rule hides these facts at 390/412 px, so the
+// phone card and the desktop table draw the same labelled facts — nothing here is drawer-only.
+const obsp1 = render(ok(API.holdings, wire([
+  row({ symbol: 'NOB', shares: 100, price: 186.64, market_value: 18664, price_source: 'finviz', price_as_of: AT,
+    prior_close: 188.98, day_change: -234, day_change_pct: -1.24 }),
+  row({ symbol: 'RECD', shares: 50, price: 200, market_value: 10000, price_source: 'schwab', price_as_of: AT,
+    day_change: 120, day_change_pct: 1.2, cost_basis: 9000,
+    basis_truth: { cost_basis_usd: 9000, unrealized_pl_usd: 1000, unrealized_pl_pct: 11.11, source: 'broker_api', status: 'recorded', gap: null } }),
+])))
+const obRows = section(obsp1, 'card-holdings').split('data-testid="holding-row"').slice(1)
+const nob = obRows.find(r => r.includes('>NOB<')) || ''
+const recd = obRows.find(r => r.includes('>RECD<')) || ''
+assert.ok(nob && recd, 'both OBS-P1 rows are drawn')
+// Mark: the price, its source and the clock it was observed at — one sentence, in the row.
+assert.match(nob, /data-testid="row-quote">mark \$186\.64 · finviz · quote read Fri 9:59 AM ET</)
+// The session move is labelled a PRICE MOVE and carries both figures; the word P&L is not on it.
+assert.match(nob, /data-testid="row-move">price move today −1\.2% · −\$234</)
+assert.doesNotMatch(nob.slice(nob.indexOf('data-testid="row-move"'), nob.indexOf('data-testid="row-pnl"')), /P&amp;L|P&L/)
+// No recorded basis: the reason is printed, and a zero is nowhere near it.
+assert.match(nob, /data-testid="row-pnl">unrealized P&amp;L not shown — cost basis not reported by the broker read</)
+assert.doesNotMatch(nob, /\$0\b/)
+// Weight is not published by this read: the row says so instead of dividing two numbers itself.
+assert.match(nob, /data-testid="row-weight">weight not published in this read</)
+// A recorded basis: the served P&L with its own pct and the basis source.
+assert.match(recd, /data-testid="row-pnl">\+\$1,000 \(\+11\.1%\) on recorded basis · broker_api</)
+assert.match(recd, /data-testid="row-move">price move today \+1\.2% · \+\$120</)
+// The header states how much of the book's unrealized P&L can be drawn at all.
+assert.match(section(obsp1, 'card-holdings'),
+  /data-testid="basis-coverage">cost basis recorded for 1 of 2 non-cash positions \(1 without a usable basis — their unrealized P&amp;L is not drawn\)/)
+// The row's financial facts are never hidden by a breakpoint rule.
+const css = readFileSync(join(app, 'src/components/portfolio/v002/PortfolioV002.css'), 'utf8')
+assert.doesNotMatch(css, /\.pv2-hrow\s+\.facts[^{]*\{[^}]*display:\s*none/)

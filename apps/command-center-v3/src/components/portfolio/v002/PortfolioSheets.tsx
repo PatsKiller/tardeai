@@ -6,9 +6,11 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import '../../home/v010' // loads the Home v010 WhySheet styles this shell reuses
 import {
-  fmtET, fmtUsd, fmtShares, positionFields, coverageCounts, gateEvidence, stopDeskHref, RISK_SCORE, STOP_OWNER, UNVERIFIED_NOTE,
-  type AuditCategory, type GateEvidence, type HoldingsWire, type MeasureKey, type MeasuresModel, type PositionModel, type ProtectionModel,
-  type SinceVisitModel, type VisitRecord,
+  fmtET, fmtUsd, fmtShares, positionFields, coverageCounts, coverageScopeRelation, gateEvidence, gateStore, changesModel, loadingRead, API,
+  stopDeskHref, RISK_SCORE, STOP_OWNER, UNVERIFIED_NOTE,
+  type AuditCategory, type ChangesModel, type GateEvidence, type GateStoreModel, type HoldingsWire, type MeasureKey,
+  type MeasuresModel, type PortfolioChangesWire, type PortfolioGatesWire, type PositionModel, type ProtectionModel,
+  type Read, type SinceVisitModel, type VisitRecord,
 } from '../../../lib/portfolioV002'
 import { NB, stateClass } from './PortfolioV002View'
 
@@ -77,8 +79,10 @@ export function ProtectionWhySheet({ open, onClose, prot, positions, nowIso, onG
         </ol>
       )}
       <h3 className="pv2-sheet-h">Coverage categories</h3>
+      {/* R5b #2: the six categories count every drawn row, not the counted population the tiles summarise. Name
+          which population this block counts, from the same fields the page line uses. */}
       <p className="v010-why-note" data-testid="why-coverage">
-        <b>{cov.covered}</b> covered · <b>{cov.partial}</b> partial · <b>{cov.uncovered}</b> uncovered · <b>{cov.planned}</b> planned-only ·{' '}
+        {coverageScopeRelation(cov) + ': '}<b>{cov.covered}</b> covered · <b>{cov.partial}</b> partial · <b>{cov.uncovered}</b> uncovered · <b>{cov.planned}</b> planned-only ·{' '}
         <b>{cov.exempt}</b> exempt · <b>{cov.unverifiable}</b> unverifiable
         {cov.restingShares != null && cov.heldShares != null
           ? (cov.totalsComplete
@@ -263,36 +267,88 @@ export function MeasuresSheet({ open, onClose, measures, nowIso, focus }: {
   )
 }
 
-export function GateEvidenceSheet({ open, onClose, prot, measures, positions, holdings }: {
+export function GateEvidenceSheet({ open, onClose, prot, measures, positions, holdings, gatesRead, nowMs }: {
   open: boolean; onClose: () => void; prot: ProtectionModel; measures: MeasuresModel; positions: PositionModel[]
   holdings?: HoldingsWire | null
+  /** PR-004: the served portfolio gate read (PortfolioGates@v1). A failed read stays an honest unavailable state. */
+  gatesRead?: Read<PortfolioGatesWire>
+  nowMs?: number
 }) {
-  const gates: GateEvidence[] = gateEvidence(prot, measures, positions, holdings)
+  const store: GateStoreModel = gateStore(gatesRead ?? loadingRead<PortfolioGatesWire>(API.gates), nowMs ?? Date.now())
+  const gates: GateEvidence[] = gateEvidence(prot, measures, positions, holdings, store)
+  const chipOf = (g: GateEvidence) => g.servedRow
+    ? (g.servedRow.clockState === 'future' || g.servedRow.clockState === 'unreadable' ? 'UNKNOWN' : g.servedRow.status === 'FAILED' ? 'WARN' : g.servedRow.status === 'PASSED' ? 'OK' : 'UNKNOWN')
+    : g.served === 'GATED' ? 'OK' : 'UNKNOWN'
+  const labelOf = (g: GateEvidence) => g.servedRow ? g.servedRow.status : g.served === 'UNAVAILABLE' ? 'UNAVAILABLE' : 'NOT GATED BY THE STORE'
   return (
     <Sheet open={open} onClose={onClose} title="Validation gates · evidence" id="sheet-gates">
-      <p className="v010-why-note">No gate store is served for Portfolio (scope=portfolio, LQ-2141). A gate is never
-        reported open or closed here; each row names the evidence this page can see and what the served gate would
-        need. <NB /></p>
+      <p className="v010-why-note" data-testid="gate-store-line">
+        <Chip s={store.chip} label={store.state} /> <b data-testid="gate-store-headline">{store.headline}</b>
+        <br /><span className="v010-why-age" data-testid="gate-store-meta">{store.scopeLine} · {store.snapshotLine} · {store.writerLine}</span>
+        {store.reason ? <><br /><span className="v010-why-age" data-testid="gate-store-reason">Reason: {store.reason}</span></> : null}
+      </p>
+      {store.state === 'UNAVAILABLE' ? (
+        <p className="v010-why-note" data-testid="gate-store-unavailable">
+          The served gate store did not answer, so no gate is reported open or closed here. The rows below name the
+          evidence this page can see and what a declaration would need.
+        </p>
+      ) : store.rows.length === 0 ? (
+        <p className="v010-why-note" data-testid="gate-store-empty">
+          The store was read and declares no gate in this scope. That is not a pass: nothing has been checked.
+        </p>
+      ) : (
+        <ul className="v010-why-list">
+          {store.rows.map(r => (
+            <li className="v010-why-item" key={r.gateId} data-testid="gate-served-row">
+              <div className="v010-why-txt">
+                <span className="v010-why-cat">{r.title} · {r.gateId}</span>
+                <span className="v010-why-detail">
+                  {r.status}{r.labelText ? ` · ${r.labelText}` : ''} · {r.lastEvalResult ? `last result ${r.lastEvalResult}` : 'no result recorded'}
+                  {r.lastEvalAt ? ` at ${fmtET(r.lastEvalAt, true)}` : ''} · {r.clockText}
+                  {r.windowEnd ? ` · window to ${fmtET(r.windowEnd, true)}${r.daysRemaining != null ? ` (${r.daysRemaining} d)` : ''}` : ''}
+                </span>
+                <span className="v010-why-age">
+                  Blocks trading: {r.blocksTrading === true ? 'declared yes' : r.blocksTrading === false ? 'declared no' : 'not declared (unknown)'}
+                  {r.owner ? ` · Owner: ${r.owner}` : ''}{r.lastEvalDetail ? ` · ${r.lastEvalDetail}` : ''}
+                </span>
+                {r.nextAction ? <span className="v010-why-age" data-testid="gate-next-action">Next: {r.nextAction}</span> : null}
+                {r.declPath ? <span className="v010-why-age">Declaration: {r.declPath}</span> : null}
+              </div>
+              <Chip s={r.status === 'PASSED' ? 'OK' : r.status === 'FAILED' ? 'WARN' : 'UNKNOWN'} label={r.status} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {store.caveats.length > 0 && (
+        <ul className="v010-why-list" data-testid="gate-store-caveats">
+          {store.caveats.map(c => <li className="v010-why-age" key={c}>{c}</li>)}
+        </ul>
+      )}
+      <h3 className="pv2-sheet-h">Expectations this page checks itself</h3>
       <ul className="v010-why-list">
         {gates.map(g => (
           <li className="v010-why-item" key={g.gate} data-testid="gate-item">
             <div className="v010-why-txt">
               <span className="v010-why-cat">{g.gate}</span>
               <span className="v010-why-detail">Blocks: <b>{g.blocks}</b> · page evidence: {g.pageEvidence}</span>
-              <span className="v010-why-age">Threshold: {g.threshold} · Served status: {g.servedStatus} · needs {g.needs} · Owner: {g.owner}</span>
+              <span className="v010-why-age" data-testid="gate-served-text">Store: {g.servedText}</span>
+              <span className="v010-why-age">Threshold: {g.threshold} · expects gate id {g.expectsGateId} · needs {g.needs} · Owner: {g.owner}</span>
             </div>
-            <Chip s="UNKNOWN" label="NOT AVAILABLE" />
+            <Chip s={chipOf(g)} label={labelOf(g)} />
           </li>
         ))}
       </ul>
-      <p className="v010-why-age">Page evidence is computed from this load only. It is not a served gate result and cannot stand in for one.</p>
+      <p className="v010-why-age">Page evidence is computed from this load only. It is not a served gate result and cannot stand in for one: where a store gate exists its served row above is the verdict, and where none exists the row says so.</p>
     </Sheet>
   )
 }
 
-export function SinceLastVisitSheet({ open, onClose, since, visitRecord }: {
+export function SinceLastVisitSheet({ open, onClose, since, visitRecord, changesRead }: {
   open: boolean; onClose: () => void; since: SinceVisitModel; visitRecord: VisitRecord
+  /** PR-005: the served portfolio change list (PortfolioChanges@v1), windowed by the server-stamped visit cursor. */
+  changesRead?: Read<PortfolioChangesWire>
 }) {
+  const ch: ChangesModel | null = changesRead ? changesModel(changesRead, since) : null
   return (
     <Sheet open={open} onClose={onClose} title="Since your last visit" id="sheet-since">
       <p className="v010-why-note" data-testid="since-state">
@@ -309,9 +365,41 @@ export function SinceLastVisitSheet({ open, onClose, since, visitRecord }: {
       <div className="pv2-va"><span className="f">This visit</span><span className="v">{visitRecord}</span><span className="a">—</span>
         <span className="p">Recorded after the page's reads settle; refused when the session is not the operator's or the same-origin check fails.</span></div>
       <h3 className="pv2-sheet-h">The change list <NB /></h3>
-      <p className="v010-why-note">What changed since {since.seenAt ? fmtET(since.seenAt, true) : 'the window'} needs the change store
-        (LQ-2143): new / fixed-unproven / monitoring labels per holding, with before+after evidence. It is not derived from this
-        page's reads.</p>
+      {ch == null ? (
+        <p className="v010-why-note" data-testid="changes-state">The change list was not read on this page load.</p>
+      ) : (
+        <>
+          <p className="v010-why-note" data-testid="changes-state">
+            <Chip s={ch.chip} label={ch.state === 'EMPTY' ? 'NO CHANGES' : ch.state === 'OK' ? 'SERVED' : ch.state} /> {ch.headline}
+            <br /><span className="v010-why-age" data-testid="changes-window">{ch.windowLine} · source: {API.changes} (PortfolioChanges@v1)</span>
+          </p>
+          {ch.rows.length > 0 && (
+            <>
+              <div className="pv2-va-h"><span>When</span><span>What changed · gate</span><span>Detected</span></div>
+              {ch.rows.map(r => (
+                <div className="pv2-va" data-testid="change-row" key={r.key}>
+                  <span className="f">{r.occurredAt ? fmtET(r.occurredAt, true) : 'no time published'}</span>
+                  <span className="v">{r.transition}{r.labelText ? ` · ${r.labelText}` : ''} — {r.sourceId}</span>
+                  <span className="a">{r.detectedAt ? fmtET(r.detectedAt) : '—'}</span>
+                  <span className="p">{r.summary || 'no summary published'}{r.owner ? ` · owner ${r.owner}` : ''}</span>
+                </div>
+              ))}
+            </>
+          )}
+          {ch.caveats.length > 0 && (
+            <ul className="v010-why-list" data-testid="changes-caveats">
+              {ch.caveats.map(c => <li className="v010-why-age" key={c}>{c}</li>)}
+            </ul>
+          )}
+          {ch.state === 'UNAVAILABLE' && (
+            <p className="v010-why-age" data-testid="changes-unavailable">
+              No change is shown from a store this read could not open: an empty list would read as “nothing changed”,
+              which the failed read did not establish. The list is served by PortfolioChanges@v1 (LQ-2143); until that
+              route answers, this sheet says so rather than inventing a window.
+            </p>
+          )}
+        </>
+      )}
     </Sheet>
   )
 }

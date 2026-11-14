@@ -43,6 +43,12 @@ export const API = {
   /** LQ-2467: portfolio.last_seen, same server-stamped contract as Home's home.last_seen (write is gated). */
   lastSeen: '/api/v2/ui/prefs/get?key=portfolio.last_seen',
   prefs: '/api/v2/ui/prefs',
+  /** PR-004: the portfolio-scoped gate projection (PortfolioGates@v1). The route is wired by the integrator; until it
+   *  answers, the page reads HTTP 404 and renders the honest unavailable state, never a verdict. */
+  gates: '/api/v2/portfolio/gates',
+  /** PR-005: the portfolio-scoped change list (PortfolioChanges@v1). `?since=<ISO>` is the SERVER-stamped visit cursor
+   *  read before this load stamps its own visit (LQ-2467); absent, the server windows the last 24 h and says so. */
+  changes: '/api/v2/portfolio/changes',
 } as const
 export const PORTFOLIO_LAST_SEEN_KEY = 'portfolio.last_seen'
 
@@ -86,6 +92,17 @@ export interface HoldingWire {
   market_value_as_of?: string | null; market_value_source?: string | null; shares_synced_at?: string | null
   day_change?: number | null; day_change_pct?: number | null; prior_close?: number | null
   cost_basis?: number | null; cost_basis_source?: string | null; basis_status?: string | null
+  basis_partial?: boolean | null; basis_unknown?: boolean | null
+  /** cio_truth `basis_for()`: the acquisition cost AND its own verdict. `status` is 'recorded' only when a usable cost
+   *  exists; when it is 'unknown' the `gap.reason` is the precise sentence the page must print instead of a figure. */
+  basis_truth?: {
+    cost_basis_usd?: number | null; unrealized_pl_usd?: number | null; unrealized_pl_pct?: number | null
+    source?: string | null; status?: string | null; gap?: { reason?: string | null } | null
+    conflicts?: { field?: string; reason?: string | null }[] | null
+  } | null
+  /** Position weight, when the producer publishes one. Absent today: the page names it not published, never divides
+   *  two served numbers itself (operator one-broker rule, 2026-11-14). */
+  weight_pct?: number | null; weight_basis?: string | null
   is_cash?: boolean; asset_type?: string | null
   stop_state?: string | null; stop_price?: number | null; stop_qty?: number | null; stop_captured_at?: string | null; stop_source?: string | null
   stop_order_id?: string | null; order_id?: string | null; stop_note?: string | null
@@ -124,6 +141,8 @@ export interface MeasuresBlockWire {
   labels?: Partial<Record<string, string>> | null
   basis?: { applied?: string | null; why?: string | null } | null
   finviz_estimates_are_separate?: boolean
+  /** BrokerContract@v1's receipt block when the producer nests it in the measures block (R5c, b6). */
+  broker_contract?: { pnl?: { verified?: boolean | null } | null } | null
 }
 export interface HoldingsWire {
   holdings?: HoldingWire[] | null; total_value?: number | null; today_change?: number | null
@@ -139,6 +158,13 @@ export interface HoldingsWire {
   } | null
   /** PortfolioMeasures@v1. Present only once the writer has materialized it; absent is UNKNOWN, never computed here. */
   measures?: MeasuresBlockWire | null
+  /** BrokerContract@v1's input version, when the producer publishes it (PR-002/PR-018, cc-deepseek-2). Absent today:
+   *  the scope line names it as not published rather than inventing one. */
+  snapshot_id?: string | null
+  /** BrokerContract@v1's receipt block, when the producer publishes one. `pnl.verified` is the ONLY thing that can
+   *  license a verified daily P&L; a measure status alone is not a receipt (R5c, b6). */
+  broker_contract?: { pnl?: { verified?: boolean | null } | null; [k: string]: unknown } | null
+  reconciliation?: { total?: { verified?: boolean | null; provisional?: boolean | null } | null; [k: string]: unknown } | null
 }
 export interface IncidentsWire { counts?: { P0?: number; P1?: number } | null; served_at?: string | null; items?: unknown[] | null }
 
@@ -198,6 +224,12 @@ export interface PositionModel {
   lastKnownGap: boolean
   protection: RowProtection; chip: string; reason: string; cause: string | null; source: string; verifiedAt: string | null
   stopPrice: number | null; priceStale: boolean | null
+  /** OBS-P1 (operator 11:15 ET, 2026-11-14): the row's mark is an observation with a source and a clock, and its
+   *  session move is a PRICE MOVE — never called P&L. `priceAt` is the row's own `price_as_of`; null means the read
+   *  published no per-row quote clock and the row must say so (basisOf()/priceClock() name which clock was used). */
+  priceSource: string | null; priceAt: string | null
+  /** Weight and basis, drawn only as the read publishes them. `basis.status` 'UNKNOWN' carries the precise reason. */
+  weightPct: number | null; weightBasis: string | null; basis: BasisView
   /** Resting stop quantity from the wire (`stop_qty`), never a derived number; null when the read did not publish it. */
   restingShares: number | null
   /** Display-only coverage classification (covered/partial/uncovered/planned-only/exempt/unverifiable). It never
@@ -298,12 +330,21 @@ export function sessionOpenET(nowMs: number): boolean {
 export interface RowContext { nowMs: number; sessionOpen?: boolean }
 type RowView = Pick<PositionModel, 'protection' | 'chip' | 'reason' | 'cause' | 'source' | 'verifiedAt' | 'stopPrice' | 'lastKnownGap'>
 
-export function rowProtection(h: HoldingWire, ctx: RowContext = { nowMs: Date.now() }): RowView {
+/** The fields the stop-read rule reads, declared structurally so a second surface can apply the SAME rule to the
+ *  rows it is served. Risk › Exposure reads /api/v2/cio/pages, whose rows carry the stop-read clock
+ *  (`stop_captured_at`), the stop state and the projection's own `stop_evidence` mark — but no `protection` verdict.
+ *  It therefore calls this module's rule rather than computing an age or a limit of its own (2026-11-14, R5b #1:
+ *  AMANX read UNKNOWN on Portfolio and a bare "Planned level · Observed Apr 18" on Risk with no freshness verdict). */
+export type StopReadWire = Pick<HoldingWire, 'protection' | 'protection_state' | 'stop_price' | 'stop_captured_at' | 'stop_source' | 'stop_state'> & {
+  stop_evidence?: { stale?: boolean | null; age_hours?: number | null; as_of?: string | null } | null
+}
+
+export function rowProtection(h: StopReadWire, ctx: RowContext = { nowMs: Date.now() }): RowView {
   const r = rowView(h, ctx)
   return { lastKnownGap: false, ...r }
 }
 
-function rowView(h: HoldingWire, ctx: RowContext): Omit<RowView, 'lastKnownGap'> & { lastKnownGap?: boolean } {
+function rowView(h: StopReadWire, ctx: RowContext): Omit<RowView, 'lastKnownGap'> & { lastKnownGap?: boolean } {
   const p = h.protection || {}
   const st = String(h.protection_state || p.state || '').toUpperCase()
   const stopPrice = num(h.stop_price)
@@ -335,13 +376,19 @@ function rowView(h: HoldingWire, ctx: RowContext): Omit<RowView, 'lastKnownGap'>
     }
     // R2: a GAP from a read past the freshness limit is UNKNOWN; the last-known GAP stays visible. A GAP row with no
     // as_of carries no age to judge (the book-level read age is the served rollup's, G2) and stays GAP.
-    const age = ageMs(verifiedAt, ctx.nowMs)
-    const limit = open ? STOP_READ_MAX_AGE_MS.session : STOP_READ_MAX_AGE_MS.offHours
-    if (age != null && (age > limit || age < 0)) {
+    // C1 (REVIEW-S2-portfolio-risk-b1 §5): a stop-read time LATER than the capture clock is an impossible observation,
+    // not a stale one. `ageMs` clamps at 0, so its `age < 0` test could never fire and this row read NO STOP while its
+    // own sentence said the read could not be trusted. It is UNKNOWN with its own cause, it leaves the NO STOP
+    // population, and the last-known GAP stays visible (lastKnownGap).
+    const f = stopReadFreshness(h, ctx.nowMs, open)
+    if (f.kind === 'invalid') {
       return { protection: 'UNKNOWN', chip: 'UNKNOWN', lastKnownGap: true,
-        reason: age < 0
-          ? `Last known: no resting stop, but the read time is later than the capture clock; R2: UNKNOWN`
-          : `Last known: no resting stop, but the stop read is ${fmtAge(age)} old (limit ${fmtAge(limit)}); R2: UNKNOWN`,
+        reason: `The stop read time (${fmtET(verifiedAt, true)}) is later than the capture clock; the verification cannot be trusted`,
+        cause: 'Invalid Stop Read Time', source, verifiedAt, stopPrice }
+    }
+    if (f.kind === 'stale') {
+      return { protection: 'UNKNOWN', chip: 'UNKNOWN', lastKnownGap: true,
+        reason: `Last known: no resting stop, but the stop read is ${fmtAge(f.ageMs)} old (limit ${fmtAge(f.limitMs)}); R2: UNKNOWN`,
         cause: 'Stale Stop Read', source, verifiedAt, stopPrice }
     }
     return { protection: 'GAP', chip: 'NO STOP', reason: p.reason || 'Stop read succeeded and shows no resting stop',
@@ -355,6 +402,53 @@ function rowView(h: HoldingWire, ctx: RowContext): Omit<RowView, 'lastKnownGap'>
   // No verdict on the row: never guess from stop fields (I1/I2: no source -> UNKNOWN + NEEDS BACKEND).
   return { protection: 'UNKNOWN', chip: 'UNKNOWN', reason: 'The row carries no protection_state', cause: 'No Protection Verdict',
     source: 'none', verifiedAt: null, stopPrice }
+}
+
+/** R2's age rule, in ONE place: the stop-read clock, the limit that applies (session 15 m / off-hours 72 h,
+ *  STOP_READ_MAX_AGE_MS) and the verdict a read deserves. `rowView` masks a GAP with it; Risk › Exposure's stop
+ *  detail sheet draws it beside the served state instead of showing a bare "Observed Apr 18" (2026-11-14, R5b #1).
+ *  One limit, one implementation, one sentence — no surface computes its own.
+ *  - `unpublished`: the row publishes no read time, so an age cannot be measured (never drawn as fresh);
+ *  - `invalid`: the read time is later than the clock — an impossible observation, never a fresh one;
+ *  - `fresh` / `stale`: measured against the limit for the session state at `nowMs`.
+ *  When the projection also publishes `stop_evidence.stale`, the two marks are compared and a disagreement is
+ *  said out loud (a drift between the served mark and this rule is never resolved silently). */
+export interface StopReadFreshness {
+  kind: 'unpublished' | 'invalid' | 'fresh' | 'stale'
+  asOf: string | null; ageMs: number | null; limitMs: number; sessionOpen: boolean
+  servedStale: boolean | null; agreesWithServed: boolean | null
+  line: string
+}
+export function stopReadFreshness(h: StopReadWire, nowMs: number, sessionOpen?: boolean): StopReadFreshness {
+  const open = sessionOpen ?? sessionOpenET(nowMs)
+  const limitMs = open ? STOP_READ_MAX_AGE_MS.session : STOP_READ_MAX_AGE_MS.offHours
+  const p = h.protection || {}
+  const asOf = p.as_of ?? h.stop_captured_at ?? null
+  const servedStale = typeof h.stop_evidence?.stale === 'boolean' ? h.stop_evidence!.stale! : null
+  const basis = `${open ? 'session' : 'off-hours'} limit ${fmtAge(limitMs)}`
+  const skew = skewMs(asOf, nowMs)
+  let kind: StopReadFreshness['kind']; let ageMs: number | null = null; let line: string
+  if (skew == null) {
+    kind = 'unpublished'; line = 'UNKNOWN · no stop-read time is published, so the read age is not measured'
+  } else if (skew < 0) {
+    kind = 'invalid'; line = `UNKNOWN · the stop-read time (${fmtET(asOf, true)}) is later than the clock; the read cannot be trusted`
+  } else {
+    ageMs = skew
+    if (ageMs > limitMs) {
+      kind = 'stale'
+      line = `UNKNOWN · the stop read is ${fmtAge(ageMs)} old (${basis}); the served state is last known, not a current read (R2, the rule Portfolio applies)`
+    } else {
+      kind = 'fresh'; line = `fresh · read ${fmtAge(ageMs)} ago · ${basis}`
+    }
+  }
+  const agreesWithServed = servedStale == null || kind === 'unpublished' || kind === 'invalid'
+    ? null : servedStale === (kind === 'stale')
+  if (servedStale != null && !agreesWithServed) {
+    line += agreesWithServed === false
+      ? ` · the served stop evidence marks it ${servedStale ? 'stale' : 'fresh'} — the two marks disagree`
+      : ` · the served stop evidence marks it ${servedStale ? 'stale' : 'fresh'}`
+  }
+  return { kind, asOf, ageMs, limitMs, sessionOpen: open, servedStale, agreesWithServed, line }
 }
 
 export function positionsFrom(w: HoldingsWire | null, nowMs: number = Date.now()): PositionModel[] {
@@ -384,6 +478,8 @@ export function positionsFrom(w: HoldingsWire | null, nowMs: number = Date.now()
       shares: heldShares, value, price: num(h.price), dayPct: num(h.day_change_pct), dayUsd: num(h.day_change),
       isCash, counted, unpriced: unpriced && !isCash, underFloor: pr.protection !== 'EXEMPT' && !isCash && !counted,
       ...pr, priceStale: h.price_stale ?? null, restingShares: num(h.stop_qty), coverage: coverageFor(pr, h, heldShares),
+      priceSource: String(h.price_source || h.quote_source || '') || null, priceAt: h.price_as_of ?? null,
+      weightPct: num(h.weight_pct), weightBasis: String(h.weight_basis || '') || null, basis: basisView(h),
       planned, verifiedAtInvalid: atAge != null && atAge < 0, raw: h,
     }
   }).sort((a, b) => (b.value ?? -1) - (a.value ?? -1))
@@ -520,7 +616,7 @@ const COMPONENT_LABELS: Record<string, string> = {
 }
 
 /** One measure from the wire. No arithmetic: every number is the projection's, or it is absent. */
-function measureFrom(key: MeasureKey, m: MeasureWire | undefined, block: MeasuresBlockWire): MeasureView {
+function measureFrom(key: MeasureKey, m: MeasureWire | undefined, block: MeasuresBlockWire, receiptSigned = true): MeasureView {
   if (!m || typeof m !== 'object') {
     return emptyMeasure(key, 'UNKNOWN', `The measures block carries no ${key}.`,
       `The projection published no ${key}; the page does not compute it.`)
@@ -531,7 +627,9 @@ function measureFrom(key: MeasureKey, m: MeasureWire | undefined, block: Measure
   // C1 (REVIEW-CAMPAIGN8H-item1-...-cc-deepseek-6, F3): a number is drawn only when the wire published it under a
   // status that asserts a figure. A statusless value — or one the wire itself marks UNKNOWN — is not a figure: it is
   // null here, so it can never be drawn in a row or promoted to the header.
-  const value = publishedStatus != null && FIGURE_STATUSES.has(publishedStatus) ? wireValue : null
+  // R5c: a verified daily P&L draws only under a signed receipt — a VERIFIED status alone is not one.
+  const receiptAllows = key !== 'verified_daily_pnl' || receiptSigned
+  const value = receiptAllows && publishedStatus != null && FIGURE_STATUSES.has(publishedStatus) ? wireValue : null
   const label = (m.label && String(m.label)) || block.labels?.[key] || MEASURE_LABELS[key]
   const gap = m.gap && typeof m.gap === 'object' ? (m.gap.reason ?? null) : null
   const fields: string[] = []
@@ -549,6 +647,7 @@ function measureFrom(key: MeasureKey, m: MeasureWire | undefined, block: Measure
     const start = num(m.start?.equity_usd), end = num(m.end?.equity_usd)
     if (start != null || end != null) fields.push(`start ${fmtUsd(start)} → end ${fmtUsd(end)}`)
   }
+  if (key === 'verified_daily_pnl' && !receiptSigned) fields.push('no signed reconciliation receipt is on file — a VERIFIED label alone is not a receipt; the figure is not drawn')
   if (key === 'verified_daily_pnl' && value == null && num(m.candidate) != null) fields.push(`candidate ${fmtUsd(num(m.candidate), true)} (not verified)`)
   if (status === 'PARTIAL') fields.push('partial: at least one input is missing')
   if (gap) fields.push(gap)
@@ -601,14 +700,15 @@ export function measuresModel(read: Read<HoldingsWire>): MeasuresModel {
       basis: block?.basis?.applied ?? null, basisWhy: block?.basis?.why ?? null,
       measures: MEASURE_KEYS.map(k => emptyMeasure(k, 'UNKNOWN', reason, reason)) }
   }
-  const measures = MEASURE_KEYS.map(k => measureFrom(k, block!.measures?.[k], block!))
+  const receipt = pnlReceipt(read.data)
+  const measures = MEASURE_KEYS.map(k => measureFrom(k, block!.measures?.[k], block!, receipt.signed))
   const v = measures.find(m => m.key === 'verified_daily_pnl')
   return {
     ...base, state: 'PRESENT', contractVersion: block!.contract_version || MEASURES_CONTRACT, materialized: true,
     asOf: block!.as_of ?? null, generatedAt: block!.generated_at ?? null,
     basis: block!.basis?.applied ?? null, basisWhy: block!.basis?.why ?? null,
     finvizSeparate: block!.finviz_estimates_are_separate !== false,
-    dayUnverified: !v || v.status !== 'VERIFIED',
+    dayUnverified: !receipt.signed || !v || v.status !== 'VERIFIED',
     measures,
   }
 }
@@ -620,12 +720,25 @@ export interface CoverageCounts {
   /** F4 (REVIEW-CAMPAIGN8H-item1): true only when EVERY eligible row published both quantities. When false, the
    *  share totals are a partial sum and every consumer must say "published", never present them as a total. */
   totalsComplete: boolean
+  /** R5b #2 (2026-11-14): the six categories above count EVERY row this page drew (30 rows live: covered, under-$100
+   *  listed-only, exempt cash, ...). The four tiles count only `counted` rows (11 live). Both are right; the page
+   *  must name the relation instead of printing two denominators as one sentence. These fields are that relation,
+   *  counted over the same loop so the two populations can never be counted from different rows. */
+  rows: number; counted: number
+  uncountedUnderFloor: number; uncountedExempt: number
+  /** true only when counted + under-$100 + exempt accounts for every drawn row; false means the page must state the
+   *  total without asserting a split it cannot prove. */
+  uncountedReconciles: boolean
 }
 export function coverageCounts(ps: PositionModel[]): CoverageCounts {
-  const c: CoverageCounts = { covered: 0, partial: 0, uncovered: 0, planned: 0, exempt: 0, unverifiable: 0, restingShares: null, heldShares: null, totalsComplete: false }
+  const c: CoverageCounts = { covered: 0, partial: 0, uncovered: 0, planned: 0, exempt: 0, unverifiable: 0, restingShares: null, heldShares: null, totalsComplete: false,
+    rows: ps.length, counted: 0, uncountedUnderFloor: 0, uncountedExempt: 0, uncountedReconciles: false }
   let rest = 0, held = 0, restKnown = false, heldKnown = false, eligible = 0, both = 0
   for (const p of ps) {
     const cov = p.coverage
+    if (p.counted) c.counted++
+    else if (p.underFloor) c.uncountedUnderFloor++
+    else if (cov.category === 'EXEMPT') c.uncountedExempt++
     if (cov.category === 'COVERED') c.covered++
     else if (cov.category === 'PARTIAL') c.partial++
     else if (cov.category === 'PLANNED_ONLY') c.planned++
@@ -642,23 +755,221 @@ export function coverageCounts(ps: PositionModel[]): CoverageCounts {
   c.restingShares = restKnown ? rest : null
   c.heldShares = heldKnown ? held : null
   c.totalsComplete = eligible > 0 && both === eligible
+  c.uncountedReconciles = c.counted + c.uncountedUnderFloor + c.uncountedExempt === c.rows
   return c
 }
 
+/** The scope sentence both surfaces print in front of the six categories (R5b #2). It states which population the
+ *  categories count (every drawn row), which population the tiles count (`counted`), and how the two relate, so the
+ *  live page cannot read "11 counted" beside "15 uncovered" as one arithmetic claim. When the split does not
+ *  reconcile, the total is stated and the split is not asserted. */
+export function coverageScopeRelation(c: CoverageCounts): string {
+  const head = `all ${c.rows} row${c.rows === 1 ? '' : 's'} drawn · ${c.counted} counted (the tiles)`
+  const uncounted = c.rows - c.counted
+  if (uncounted <= 0) return head
+  return c.uncountedReconciles
+    ? `${head} · ${uncounted} not counted: ${c.uncountedUnderFloor} under $100, listed only · ${c.uncountedExempt} exempt`
+    : `${head} · ${uncounted} not counted (the under-$100 / exempt split does not reconcile)`
+}
+
+// ── one snapshot, two payload shapes (R5c, b6) ───────────────────────────────────────────────────────
+/** R5c (operator 2026-11-14 11:06 ET): Portfolio reads `/api/v2/portfolio/holdings`; Risk reads
+ *  `/api/v2/cio/pages`. Both are projections of ONE broker snapshot, but they are two wire shapes with the
+ *  position read clock in a different place (`positions_as_of` on one, `positions.as_of` on the other). This is
+ *  the single accessor both pages call, so the sentence they render is one computation, not two that happen to
+ *  match. `snapshot_id` is published by neither today; it is NAMED as missing, never invented. */
+export type SnapshotWire = {
+  snapshot_id?: string | null
+  positions_as_of?: string | null
+  positions?: { as_of?: string | null } | null
+}
+export interface SnapshotFacts {
+  snapshotId: string | null
+  observedAt: string | null
+  accountCount: number
+  accounts: string
+  /** The one sentence both pages render verbatim. */
+  line: string
+  missing: string[]
+}
+export function snapshotFacts(
+  w: SnapshotWire | null | undefined,
+  rows: Array<{ account_id?: string | null; account?: string | null }>,
+  accountFilter = 'all',
+): SnapshotFacts {
+  const id = typeof w?.snapshot_id === 'string' && w.snapshot_id.trim() ? w.snapshot_id.trim() : null
+  const observedAt = w?.positions_as_of || w?.positions?.as_of || null
+  const keys = new Set(rows.map(r => r.account_id ?? r.account ?? null).filter((k): k is string => !!k))
+  const accounts = accountFilter && accountFilter !== 'all' ? accountFilter : `all accounts (${keys.size})`
+  const missing: string[] = []
+  if (id == null) missing.push('snapshot id')
+  if (observedAt == null) missing.push('positions read clock')
+  const line = `${id ? `snapshot ${id}` : 'snapshot id not published'} · positions read ${observedAt ? `${fmtET(observedAt, true)} ET` : 'clock not published'} · ${accounts}`
+  return { snapshotId: id, observedAt, accountCount: keys.size, accounts, line, missing }
+}
+
+/** Two reads describe the same snapshot only when they publish the same position clock. `null` = cannot say. */
+export function sameSnapshot(a: SnapshotFacts | null | undefined, b: SnapshotFacts | null | undefined): { same: boolean | null; line: string } {
+  const x = a?.observedAt ?? null, y = b?.observedAt ?? null
+  if (!x || !y) return { same: null, line: 'the two reads cannot be compared: one of them publishes no position clock' }
+  if (x === y) return { same: true, line: `the same snapshot clock on both pages: ${fmtET(x, true)} ET` }
+  return { same: false, line: `different snapshot clocks: ${fmtET(x, true)} ET here, ${fmtET(y, true)} ET there` }
+}
+
+/** R5c item 3: the verified daily P&L is licensed by a SIGNED reconciliation receipt, not by a measure status.
+ *  The producer marks it UNKNOWN today (reconciliation total `provisional: true`), so this gate is dormant; it
+ *  exists so a producer that one day sends `status: VERIFIED` without a receipt cannot make the page print a
+ *  plausible number. `verified: false` and an absent receipt are the same fact. */
+export interface PnlReceiptWire {
+  broker_contract?: { pnl?: { verified?: boolean | null } | null } | null
+  measures?: { broker_contract?: { pnl?: { verified?: boolean | null } | null } | null } | null
+  reconciliation?: { total?: { verified?: boolean | null } | null } | null
+}
+export function pnlReceipt(w: PnlReceiptWire | null | undefined): { signed: boolean; line: string } {
+  const signed = [w?.broker_contract?.pnl?.verified, w?.measures?.broker_contract?.pnl?.verified,
+    w?.reconciliation?.total?.verified].some(v => v === true)
+  return { signed, line: signed ? 'a signed reconciliation receipt is on file' : 'no signed reconciliation receipt is on file' }
+}
+
+// ── OBS-P1: mark, session price move, weight, unrealized P&L (operator 2026-11-14 11:15 ET) ─────────
+/** The four facts the operator read as missing from the live rows. Each is drawn from the read, never computed:
+ *  the mark and its source/clock, the market value, the session PRICE MOVE (never P&L), and unrealized P&L only on a
+ *  recorded cost basis — with the read's own reason when there is none. Weight is drawn only if the producer published
+ *  it; the page never divides two served numbers (one-broker rule). */
+export interface BasisView {
+  status: 'RECORDED' | 'UNKNOWN'
+  usd: number | null
+  pnlUsd: number | null
+  pnlPct: number | null
+  source: string | null
+  /** The precise sentence to print in place of a P&L figure. Never a zero, never blank. */
+  reason: string | null
+  /** A recorded basis the read flags as conflicting is named, never silently chosen. */
+  conflict: string | null
+  /** REVIEW F1: why a RECORDED basis still has no figure (the read withheld the mark/value), else null. Kept
+   *  apart from `reason`, which says why there is no USABLE BASIS — the two must never share a sentence. */
+  pnlGap: string | null
+}
+
+export function basisView(h: HoldingWire | null | undefined): BasisView {
+  const t = h?.basis_truth ?? null
+  const usd = num(t?.cost_basis_usd) ?? num(h?.cost_basis)
+  const partial = h?.basis_partial === true || h?.basis_unknown === true
+  const statusRaw = String(t?.status ?? h?.basis_status ?? '').toLowerCase()
+  const conflict = Array.isArray(t?.conflicts) && t!.conflicts!.length
+    ? String(t!.conflicts![0]?.reason || 'the read flags a cost-basis conflict') : null
+  // REVIEW F2: a verdict is drawn from a verdict. Only the read's own `recorded` status licenses a basis (and,
+  // with it, a P&L figure). The earlier `statusRaw !== 'unknown'` also licensed a row that published NO status at
+  // all — the page manufactured a verdict the producer never gave. `unknown`, absent, and any other value are all
+  // non-recorded now, each with a reason that says which.
+  if (statusRaw === 'recorded' && usd != null && usd > 0 && !partial) {
+    const pnlUsd = num(t?.unrealized_pl_usd)
+    return { status: 'RECORDED', usd, pnlUsd, pnlPct: num(t?.unrealized_pl_pct),
+      source: String(t?.source || h?.cost_basis_source || '') || null, reason: null, conflict,
+      // REVIEW F1: cio_truth keeps status 'recorded' with unrealized_pl_usd null when the row has no mark and no
+      // market_value (value None -> pnl None). The basis is present; only the figure is absent, and the row names
+      // which input the read withheld.
+      pnlGap: pnlUsd != null ? null
+        : num(h?.price) == null && num(h?.market_value) == null
+          ? 'the read publishes no unrealized figure because the row has no published mark or market value'
+          : 'the read publishes no unrealized figure for this row' }
+  }
+  // The read's own gap sentence wins; the fallback names the exact field that is missing, never "0".
+  const reason = String(t?.gap?.reason || '') || (partial
+    ? 'cost basis is partial — the broker lot history starts after some acquisitions'
+    : statusRaw && statusRaw !== 'unknown'
+      ? `basis status "${statusRaw}" is not a recorded basis`
+      : usd != null && usd > 0
+        ? 'a cost basis value is present but no basis status is published in this read — not treated as recorded'
+        : usd != null && usd <= 0
+          ? 'cost basis is zero or negative in the read — not a usable acquisition cost'
+          : 'cost basis not reported by the broker read')
+  return { status: 'UNKNOWN', usd: null, pnlUsd: null, pnlPct: null, source: null, reason, conflict, pnlGap: null }
+}
+
+export interface PriceClock { at: string | null; perRow: boolean; line: string }
+/** The clock a mark was observed at. A row's own `price_as_of` when published; otherwise the read's batch quote clock,
+ *  labelled AS the batch — the row never inherits a per-row time it does not have. */
+export function priceClock(h: HoldingWire | null | undefined, w: HoldingsWire | null | undefined): PriceClock {
+  const own = h?.price_as_of ?? null
+  if (own) return { at: own, perRow: true, line: `quote read ${fmtET(own, true)} ET` }
+  const batch = w?.quote_as_of ?? null
+  if (batch) return { at: batch, perRow: false, line: `book quote clock ${fmtET(batch, true)} ET · no per-row quote time published` }
+  return { at: null, perRow: false, line: 'no quote clock published in this read' }
+}
+
+export interface MoneyLine { text: string; known: boolean; cls: 'up' | 'dn' | null }
+/** The session move, labelled a PRICE MOVE. (price - prior close) has never been a verified P&L: the aggregate day
+ *  figure is documented as mixing prior-mark deltas with fill-aware session P&L, so this line never says "P&L". */
+export function moveToday(p: Pick<PositionModel, 'isCash' | 'dayUsd' | 'dayPct'>): MoneyLine {
+  if (p.isCash) return { text: 'cash row · no price move', known: true, cls: null }
+  const usd = p.dayUsd, pct = p.dayPct
+  if (usd == null && pct == null) return { text: 'price move today not published in this read', known: false, cls: null }
+  const parts: string[] = []
+  if (pct != null) parts.push(fmtPct(pct))
+  if (usd != null) parts.push(fmtUsd(usd, true))
+  const v = usd ?? pct
+  return { text: `price move today ${parts.join(' · ')}${usd == null ? ' · $ move not published' : ''}`, known: true, cls: v == null || v === 0 ? null : v > 0 ? 'up' : 'dn' }
+}
+
+/** Unrealized P&L — drawn ONLY on a recorded basis, with the basis named. Otherwise the reason, never a figure. */
+export function unrealizedLine(b: BasisView, fmt: (v: number) => string = v => fmtUsd(v, true)): MoneyLine {
+  if (b.status !== 'RECORDED') {
+    return { text: `unrealized P&L not shown — ${b.reason || 'no recorded cost basis in this read'}`, known: false, cls: null }
+  }
+  // REVIEW F1: the basis IS recorded; only the figure is not published. Saying "no recorded cost basis" here
+  // contradicted the Cost basis field on the same row (and its CSV line), which carries the dollar amount.
+  if (b.pnlUsd == null) {
+    // A cost basis is a stock, not a delta: drawn unsigned, never "+$1,500".
+    return { text: `unrealized P&L not published in this read — a recorded cost basis${b.usd != null ? ` (${fmtUsd(b.usd)})` : ''} is present; ${b.pnlGap || 'the read publishes no unrealized figure for this row'}`, known: false, cls: null }
+  }
+  const pct = b.pnlPct == null ? ' % not published' : ` (${fmtPct(b.pnlPct)})`
+  return { text: `${fmt(b.pnlUsd)}${pct} on recorded basis${b.source ? ` · ${b.source}` : ''}`, known: true, cls: b.pnlUsd === 0 ? null : b.pnlUsd > 0 ? 'up' : 'dn' }
+}
+
+export function weightLine(p: Pick<PositionModel, 'isCash' | 'weightPct' | 'weightBasis'>): MoneyLine {
+  if (p.isCash) return { text: 'cash row · no position weight', known: true, cls: null }
+  if (p.weightPct == null) return { text: 'weight not published in this read', known: false, cls: null }
+  return { text: `${p.weightPct.toFixed(1)}% of ${p.weightBasis || 'the book (basis not named in the read)'}`, known: true, cls: null }
+}
+
+export interface BasisCoverage { recorded: number; missing: number; total: number; line: string }
+/** "N of M positions have a recorded cost basis", over the non-cash rows this read drew (cash has no basis). An empty
+ *  population is named as empty — never "0 of 0" and never a full-coverage claim. */
+export function basisCoverage(ps: PositionModel[]): BasisCoverage {
+  const rows = ps.filter(p => !p.isCash)
+  const recorded = rows.filter(p => p.basis.status === 'RECORDED').length
+  const missing = rows.length - recorded
+  const line = rows.length === 0
+    ? 'no non-cash rows in this read, so cost-basis coverage cannot be counted'
+    : `cost basis recorded for ${recorded} of ${rows.length} non-cash position${rows.length === 1 ? '' : 's'}${missing ? ` (${missing} without a usable basis — their unrealized P&L is not drawn)` : ''}`
+  return { recorded, missing, total: rows.length, line }
+}
+
 // ── CSV export (client-side; served columns only, no computed P&L) ───────────────────────────────────
+/** OBS-P1: the CSV carries the same four facts the rows draw, the basis verdict WITH its reason, and the one snapshot
+ *  identity every surface of the page read (`snapshotFacts()`), so an exported row cannot disagree with its row. */
 export const CSV_COLUMNS = ['symbol', 'account', 'broker', 'held_shares', 'resting_stop_shares', 'coverage', 'protection',
-  'value_usd', 'day_pct', 'stop_price', 'stop_source', 'stop_order_id', 'verified_at', 'reason'] as const
+  'price_usd', 'price_source', 'price_as_of', 'price_stale', 'value_usd', 'weight_pct', 'weight_basis',
+  'move_today_usd', 'move_today_pct', 'basis_status', 'cost_basis_usd', 'unrealized_pnl_usd', 'unrealized_pnl_pct',
+  'basis_reason', 'basis_source', 'stop_price', 'stop_source', 'stop_order_id', 'verified_at', 'reason',
+  'snapshot_id', 'positions_as_of'] as const
 function csvCell(v: unknown): string {
   const s = v == null ? '' : String(v)
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
-export function holdingsCsv(ps: PositionModel[]): string {
+export function holdingsCsv(ps: PositionModel[], snap?: Pick<SnapshotFacts, 'snapshotId' | 'observedAt'> | null): string {
   const lines = [CSV_COLUMNS.join(',')]
   for (const p of ps) {
+    const b = p.basis
     lines.push([
       p.symbol, p.account, p.broker, p.shares, p.restingShares, p.coverage.category, p.protection,
-      p.value, p.dayPct, p.stopPrice, p.raw.stop_source ?? p.source, p.raw.stop_order_id ?? p.raw.order_id ?? null,
+      p.price, p.priceSource, p.priceAt, p.priceStale, p.value, p.weightPct, p.weightBasis,
+      p.isCash ? null : p.dayUsd, p.isCash ? null : p.dayPct,
+      b.status, b.usd, b.pnlUsd, b.pnlPct, b.status === 'UNKNOWN' ? b.reason : null, b.source,
+      p.stopPrice, p.raw.stop_source ?? p.source, p.raw.stop_order_id ?? p.raw.order_id ?? null,
       p.verifiedAt, p.reason,
+      snap?.snapshotId ?? null, snap?.observedAt ?? null,
     ].map(csvCell).join(','))
   }
   return lines.join('\r\n')
@@ -686,7 +997,11 @@ export function p0Items(read: Read<HoldingsWire>, prot: ProtectionModel): P0Item
 
 // ── status rows ───────────────────────────────────────────────────────────────────────────────────────
 export type StatusState = 'OK' | 'STALE' | 'UNKNOWN' | 'TIMED OUT' | 'LOADING' | 'WARN'
-export interface StatusRow { id: string; name: string; state: StatusState | string; text: string; cause?: string; needsBackend?: boolean }
+export interface StatusRow {
+  id: string; name: string; state: StatusState | string; text: string; cause?: string; needsBackend?: boolean
+  /** PR-006: the exact evidence set this count covers, one tap away. A count without a destination is a claim. */
+  href?: string
+}
 export const LIMITS = { positionsMs: 60 * 60_000, pricesMs: 30 * 60_000, alertsMs: 15 * 60_000 }
 
 export function statusRows(hr: Read<HoldingsWire>, ir: Read<IncidentsWire>, positions: PositionModel[], nowMs: number): StatusRow[] {
@@ -722,11 +1037,14 @@ export function statusRows(hr: Read<HoldingsWire>, ir: Read<IncidentsWire>, posi
   if (ir.state === 'OK') {
     const c = ir.data?.counts
     const a = ageMs(ir.data?.served_at || ir.at, nowMs)
-    if (!c || (c.P0 == null && c.P1 == null)) rows.push({ id: 'row-alerts', name: 'Alerts', state: 'UNKNOWN', text: 'no counts in the read' })
-    else rows.push({ id: 'row-alerts', name: 'Alerts', state: (c.P0 ?? 0) > 0 ? 'WARN' : 'OK',
-      text: `${c.P0 ?? 0} P0 · ${c.P1 ?? 0} P1 open (all pages) · ${fmtAge(a)} old · limit 15 m` })
+    // PR-006: the count names its entity and its scope — open lifecycle incidents across ALL pages, deduplicated by
+    // the shared incident store. It is a different population from the position review count above, and says so.
+    if (!c || (c.P0 == null && c.P1 == null)) rows.push({ id: 'row-alerts', name: 'Incidents · all pages', state: 'UNKNOWN', text: 'no counts in the read', href: '/ops/incidents' })
+    else rows.push({ id: 'row-alerts', name: 'Incidents · all pages', state: (c.P0 ?? 0) > 0 ? 'WARN' : 'OK',
+      text: `${c.P0 ?? 0} P0 · ${c.P1 ?? 0} P1 open lifecycle incidents · read ${fmtAge(a)} old · limit 15 m · not the position review count`,
+      href: '/ops/incidents' })
   } else {
-    rows.push({ id: 'row-alerts', name: 'Alerts', state: ir.state, text: ir.state === 'LOADING' ? 'reading…' : `${ir.error || ir.state}` })
+    rows.push({ id: 'row-alerts', name: 'Incidents · all pages', state: ir.state, text: ir.state === 'LOADING' ? 'reading…' : `${ir.error || ir.state}`, href: '/ops/incidents' })
   }
   return rows
 }
@@ -762,15 +1080,76 @@ export interface ExclusiveCoverage { covered: number; partial: number; noStop: n
 export function exclusiveCoverage(ps: PositionModel[]): ExclusiveCoverage {
   const counted = ps.filter(p => p.counted)
   const n = { covered: 0, partial: 0, noStop: 0, unknown: 0 }
+  // N1 (REVIEW-S2-portfolio-risk-b1 §6): an `else` catch-all made `complete` true by construction, so the page's
+  // "the four states do not add to the counted total" sentence was dead. Every category is named here; one this rollup
+  // does not know leaves the total short and the page says so instead of quietly calling it Unknown.
+  let known = 0
   for (const p of counted) {
     const c = p.coverage.category
     if (c === 'COVERED') n.covered++
     else if (c === 'PARTIAL') n.partial++
     else if (c === 'UNCOVERED' || c === 'PLANNED_ONLY') n.noStop++
-    else n.unknown++
+    else if (c === 'UNVERIFIABLE' || c === 'EXEMPT') n.unknown++
+    else continue
+    known++
   }
-  const total = n.covered + n.partial + n.noStop + n.unknown
-  return { ...n, counted: counted.length, complete: total === counted.length }
+  return { ...n, counted: counted.length, complete: known === counted.length }
+}
+
+// ── scope and coverage (PR-002) ───────────────────────────────────────────────────────────────────────
+/** PR-002 (sprint 8H-2): one line that names every denominator the page uses, so "Holdings · 30 / $1,255,586 ·
+ *  33 rows / 28 of 33 measured / 2 of 25 stale / showing 25 of 30 / 11 counted" can be reconciled without opening
+ *  source code. Every number is a served field or a count of the rows this read drew; none is computed P&L. A fact
+ *  the read does not publish (today: the snapshot id, until BrokerContract@v1 lands on the wire) is NAMED as not
+ *  published rather than omitted or invented. */
+export interface ScopeCoverage {
+  accounts: string
+  sourceRows: number | null; cashRows: number | null; nonCashRows: number | null; unpricedRows: number | null
+  countedHere: number; countedScope: string
+  blockHeadline: number | null; blockScope: string | null
+  quoteable: number; drawn: number; filtered: number; rendered: number
+  snapshotId: string | null
+  /** Named facts the read does not publish. Never silently dropped. */
+  missing: string[]
+  /** Named disagreements between two published denominators (never a verdict). */
+  mismatches: string[]
+}
+export function scopeCoverage(
+  read: Read<HoldingsWire>, ps: PositionModel[], o: { account: string; filtered: number; rendered: number },
+): ScopeCoverage {
+  const w = read.state === 'OK' ? read.data : null
+  const pc = w?.position_counts
+  const scope = (k: string): number | null => {
+    const v = pc?.scopes?.[k]
+    return typeof v === 'number' && Number.isFinite(v) ? v : null
+  }
+  const sourceRows = typeof pc?.all_rows === 'number' ? pc.all_rows : scope('holdings.all_rows')
+  const countedHere = ps.filter(p => p.counted).length
+  const blockHeadline = typeof pc?.position_count === 'number' ? pc.position_count : null
+  const blockScope = typeof pc?.primary_scope === 'string' && pc.primary_scope ? pc.primary_scope : null
+  const quoteable = ps.filter(p => !p.isCash && p.price != null).length
+  const snapshotId = typeof w?.snapshot_id === 'string' && w.snapshot_id.trim() ? w.snapshot_id.trim() : null
+  const missing: string[] = []
+  if (read.state !== 'OK') missing.push('every count (the holdings read failed)')
+  else {
+    // R5c: the snapshot id is named by snapshotFacts()'s own line (shared with Risk); it is not repeated here.
+    if (sourceRows == null) missing.push('source row count (the count block names no all-rows scope)')
+  }
+  const mismatches: string[] = []
+  if (read.state === 'OK' && sourceRows != null && sourceRows !== ps.length) {
+    mismatches.push(`the count block's all-rows scope counts ${sourceRows}; this read parsed ${ps.length} rows`)
+  }
+  return {
+    // REVIEW O1: the account count is over the account KEY, never the display label — the Scope line and the
+    // snapshot line on the same row must not print two different account counts for one book.
+    accounts: o.account === 'all' ? `all accounts (${new Set(ps.map(p => p.accountKey)).size})` : o.account,
+    sourceRows, cashRows: scope('holdings.cash'), nonCashRows: scope('holdings.non_cash'),
+    unpricedRows: scope('holdings.unpriced'),
+    countedHere, countedScope: 'non-cash, non-exempt rows this page drew',
+    blockHeadline, blockScope,
+    quoteable, drawn: ps.length, filtered: o.filtered, rendered: o.rendered,
+    snapshotId, missing, mismatches,
+  }
 }
 
 /** The classic stop desk link carries the full position identity (2026-11-14 campaign): symbol, the account key
@@ -804,13 +1183,25 @@ export function positionFields(p: PositionModel, w: HoldingsWire | null, nowMs: 
       age: fmtAge(ageMs(p.verifiedAt, nowMs)), provenance: cov.detail },
     { field: 'Identity', value: `${p.accountKey} · ${p.broker}`, age: '—',
       provenance: `Position: ${p.symbol}${p.raw.stop_order_id || p.raw.order_id ? ` · order ${p.raw.stop_order_id || p.raw.order_id}` : ' · no order id in the read'}` },
-    { field: 'Price', value: p.price == null ? '—' : `$${p.price.toFixed(2)}`, age: fmtAge(ageMs(priceAt, nowMs)),
-      provenance: `Source: ${h.price_source || h.quote_source || 'not named in the read'} · Writer: repricer lane${p.priceStale ? ' · STALE' : ''}` },
+    { field: 'Price', value: p.price == null ? 'not published' : `$${p.price.toFixed(2)}`, age: fmtAge(ageMs(priceAt, nowMs)),
+      provenance: `Source: ${h.price_source || h.quote_source || 'not named in the read'} · Writer: repricer lane${p.priceStale ? ' · STALE' : ''} · ${priceClock(h, w).line}` },
     { field: 'Value', value: fmtUsd(p.value), age: fmtAge(ageMs(valueAt, nowMs)),
       provenance: `Source: ${h.market_value_source || 'shares × price'} · per-field writer/refresh not served (G5)`, needsBackend: true },
-    { field: 'Cost', value: fmtUsd(num(h.cost_basis)), age: '—', provenance: `Source: ${h.cost_basis_source || 'not named in the read'}${h.basis_status ? ` · ${h.basis_status}` : ''}` },
-    { field: 'Day change', value: p.dayUsd == null ? 'UNKNOWN' : `${fmtUsd(p.dayUsd, true)} (${fmtPct(p.dayPct)})`, age: fmtAge(ageMs(priceAt, nowMs)),
-      provenance: `Served value vs prior close${num(h.prior_close) != null ? ` $${num(h.prior_close)!.toFixed(2)}` : ''} · Source: quote cache · the page computes no P&L` },
+    { field: 'Weight', value: weightLine(p).text, age: '—',
+      provenance: 'Position weight is drawn only when the read publishes it; this page never divides two served numbers.' },
+    { field: 'Cost basis', value: p.isCash ? 'not applicable (cash row)' : p.basis.status === 'RECORDED' ? fmtUsd(p.basis.usd) : 'not recorded',
+      age: '—', provenance: p.isCash ? 'A cash balance has no acquisition cost; no P&L is drawn from one.'
+        : p.basis.status === 'RECORDED'
+          ? `Source: ${p.basis.source || h.cost_basis_source || 'not named in the read'}${p.basis.conflict ? ` · ${p.basis.conflict}` : ''}`
+          : p.basis.reason || 'no recorded acquisition cost' },
+    { field: 'Unrealized P&L', value: p.isCash ? 'cash row · no unrealized P&L' : unrealizedLine(p.basis).text, age: '—',
+      provenance: 'Drawn only on a recorded cost basis; otherwise the read’s own reason is printed — never a zero.' },
+    { field: 'Price move today', value: p.isCash ? 'cash row' : p.dayUsd == null && p.dayPct == null ? 'not published'
+      : `${p.dayPct == null ? '% not published' : fmtPct(p.dayPct)} · ${p.dayUsd == null ? '$ move not published' : fmtUsd(p.dayUsd, true)}`,
+      age: fmtAge(ageMs(priceAt, nowMs)),
+      provenance: `Served value vs prior close${num(h.prior_close) != null ? ` $${num(h.prior_close)!.toFixed(2)}` : ''} · Source: quote cache · this is a price move, NOT P&L — nothing here is reconciled` },
+    { field: 'Book snapshot', value: w?.snapshot_id || 'snapshot id not published', age: fmtAge(ageMs(w?.positions_as_of, nowMs)),
+      provenance: `Positions read ${w?.positions_as_of ? `${fmtET(w.positions_as_of, true)} ET` : 'clock not published'} — the same identity the header and the CSV carry` },
     { field: 'Stop', value: p.protection === 'PROTECTED' ? p.chip : p.protection === 'UNKNOWN' ? 'UNKNOWN' : p.protection === 'EXEMPT' ? 'exempt' : cov.chip,
       age: fmtAge(ageMs(p.verifiedAt, nowMs)), provenance: `Source: ${p.source} · Writer: stop read lane · ${p.reason}` },
     { field: 'Risk', value: 'PENDING DECISION', age: '—', provenance: 'no approved risk-score definition (G7); nothing is scored here', needsBackend: true },
@@ -831,9 +1222,10 @@ export function auditCategories(prot: ProtectionModel, p0: P0Item[] | null): Aud
 }
 
 // ── Since your last visit: the anchor (portfolio.last_seen, LQ-2467) ─────────────────────────────────
-/** The anchor is readable today. The change LIST is not: it needs the change store (LQ-2143), so the block states
- *  the window it would cover and marks the list NEEDS BACKEND. A visit is recorded only after the page's reads
- *  settle, and the server stamps it (scripts/lib/home_last_seen.py) — the client never sends a time. */
+/** The anchor is readable, and since PR-005 the change LIST is served too (ValidationChanges / PortfolioChanges@v1):
+ *  the sheet asks `GET /api/v2/portfolio/changes?since=<seen_at>`, where `seen_at` is the value the SERVER returned
+ *  before this load stamped its own visit. A visit is recorded only after the page's reads settle, and the server
+ *  stamps it (scripts/lib/home_last_seen.py) — the client never sends a time. */
 export interface LastSeenReadWire {
   status?: string; window_basis?: string; last_visit_recorded?: boolean; fallback_window_hours?: number; fallback_text?: string
   seen_at?: string | null; previous_seen_at?: string | null; age_sec?: number | null; device?: string | null; schema?: string; reason?: string
@@ -844,10 +1236,9 @@ export interface SinceVisitModel {
   status: 'RECORDED' | 'NOT_RECORDED' | 'UNKNOWN' | 'LOADING'
   windowBasis: string; windowText: string
   seenAt: string | null; previousSeenAt: string | null; device: string | null; reason: string | null
-  changesNeedBackend: true
 }
 export function sinceVisitModel(read: Read<LastSeenWire>): SinceVisitModel {
-  const base = { windowBasis: 'fallback_24h', seenAt: null, previousSeenAt: null, device: null, reason: null, changesNeedBackend: true as const }
+  const base = { windowBasis: 'fallback_24h', seenAt: null, previousSeenAt: null, device: null, reason: null }
   if (read.state === 'LOADING') return { ...base, status: 'LOADING', windowText: 'reading…' }
   if (read.state !== 'OK') return { ...base, status: 'UNKNOWN', reason: `${read.source}: ${read.error || read.state}`,
     windowText: `The last-visit read did not complete (${read.error || read.state}); the window is unknown.` }
@@ -864,7 +1255,7 @@ export function sinceVisitModel(read: Read<LastSeenWire>): SinceVisitModel {
     : status === 'NOT_RECORDED' ? (r.fallback_text || 'Your last visit is not recorded; the window is the last 24 h.')
       : `The last-visit record is unreadable (${r.reason || 'no valid seen_at'}); the window is unknown.`
   return { status, windowBasis, windowText, seenAt, previousSeenAt: r.previous_seen_at ?? null,
-    device: r.device ?? null, reason: r.reason ?? null, changesNeedBackend: true }
+    device: r.device ?? null, reason: r.reason ?? null }
 }
 export function deviceOf(width: number): 'phone' | 'desktop' { return width < 768 ? 'phone' : 'desktop' }
 /** Stamp this visit (same route and gate as Home): server owns the times; only the device is sent. */
@@ -883,15 +1274,247 @@ export async function recordPortfolioVisit(width: number, fetchImpl: typeof fetc
   }
 }
 
-// ── gate evidence (no served portfolio gate store: LQ-2141) ──────────────────────────────────────────
-/** Each gate the design expects, with the evidence THIS page can see and what the served gate would need. The
- *  evidence is page-computed and labelled as such; a gate is never reported open or closed without the store. */
+// ── gate evidence + the served portfolio gate store (PR-004, sprint 8H-2) ────────────────────────────
+/** Each gate the design expects, with the evidence THIS page can see and what the served store answers. The evidence
+ *  is page-computed and labelled as such; a gate is never reported open or closed without a served row. */
 export interface GateEvidence {
   gate: string; blocks: string; blocksTrading: boolean; threshold: string; pageEvidence: string
-  servedStatus: 'NOT AVAILABLE'; needs: string; owner: string
+  /** PR-004: the id a store declaration would carry for this expectation. Naming it lets a declaration match; it is
+   *  not a claim that one exists. */
+  expectsGateId: string
+  /** PR-004: what the served gate store says about this expectation. `UNAVAILABLE` = the read failed, so no verdict may
+   *  be drawn; `NOT_GATED_BY_STORE` = the store was read and declares no gate with `expectsGateId`; `GATED` = it does. */
+  served: 'GATED' | 'NOT_GATED_BY_STORE' | 'UNAVAILABLE'
+  servedText: string
+  servedRow?: GateRow
+  needs: string; owner: string
 }
+
+/** The exact contract `scripts/lib/portfolio_validation.py` serves as PortfolioGates@v1. A payload that does not name
+ *  this schema is refused rather than read optimistically (typed contracts win; unknown beats wrong). */
+export const GATES_SCHEMA = 'PortfolioGates@v1'
+export interface PortfolioGateWire {
+  gate_id: string; title?: string | null; category?: string | null; status?: string | null
+  blocks_trading?: boolean | null; due_at?: string | null; owner?: string | null
+  label?: string | null; label_text?: string | null
+  last_eval?: { result?: string | null; at?: string | null; detail?: string | null } | null
+  clock?: { state?: string | null; at?: string | null; age_s?: number | null; threshold_s?: number; text?: string | null } | null
+  window?: { end?: string | null; proven_at?: string | null; days_remaining?: number | null; label_text?: string | null } | null
+  next_action?: string | null; decl_path?: string | null
+}
+export interface PortfolioGatesWire {
+  schema: string; served_at?: string | null; state: 'OK' | 'STALE' | 'UNKNOWN'; reason?: string | null
+  text?: string | null
+  scope?: { categories?: string[]; gates?: number | null } | null
+  snapshot?: { computed_at?: string | null; age_s?: number | null; threshold_s?: number; basis?: string | null } | null
+  writer?: { lane_id?: string | null; last_ok_at?: string | null; receipt?: string | null } | null
+  counts?: { rows?: number; failed?: number; overdue?: number; open?: number; closed?: number
+    blocks_trading?: number; blocks_trading_unknown?: number; never_evaluated?: number; clock_unreadable?: number } | null
+  items?: PortfolioGateWire[] | null
+}
+/** One served gate, flattened for rendering. Every field is the projection's; nothing is inferred here. */
+export interface GateRow {
+  gateId: string; title: string; status: string; labelText: string | null
+  blocksTrading: boolean | null
+  lastEvalResult: string | null; lastEvalAt: string | null; lastEvalDetail: string | null
+  clockState: string; clockText: string
+  windowEnd: string | null; daysRemaining: number | null
+  owner: string | null; nextAction: string | null; declPath: string | null
+}
+export interface GateStoreModel {
+  /** UNAVAILABLE = the read itself failed (absent route, HTTP error, an unexpected contract) — never a verdict.
+   *  UNKNOWN = the projection answered and reached no state (its own reason is quoted, never replaced). */
+  state: 'OK' | 'STALE' | 'UNKNOWN' | 'UNAVAILABLE'
+  chip: 'OK' | 'STALE' | 'UNKNOWN'
+  reason: string | null
+  headline: string
+  scopeLine: string
+  snapshotLine: string
+  writerLine: string
+  rows: GateRow[]
+  /** Served facts that must not be read as reassurance, counted and named rather than hidden. */
+  caveats: string[]
+}
+
+const gateStr = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null)
+const gateNum = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+
+/** PR-004: the served portfolio-scoped gate projection, ready to render — or an honest refusal. A failed read is
+ *  `UNAVAILABLE` and says why; a payload under another schema is refused, not read optimistically. */
+export function gateStore(read: Read<PortfolioGatesWire>, nowMs: number): GateStoreModel {
+  const w = read.state === 'OK' && read.data && (read.data as unknown as { schema?: unknown }).schema === GATES_SCHEMA
+    ? read.data : null
+  if (w == null) {
+    const why = read.state === 'LOADING' ? 'the gate store read has not answered yet'
+      : read.state === 'OK' ? `the read answered an unexpected contract (not ${GATES_SCHEMA})`
+        : `the gate store read failed (${read.error || read.state})`
+    return { state: 'UNAVAILABLE', chip: 'UNKNOWN', reason: read.error, headline: why, rows: [], caveats: [],
+      scopeLine: 'scope: not available', snapshotLine: 'not available', writerLine: 'not available' }
+  }
+  const items = Array.isArray(w.items) ? w.items : []
+  const rows: GateRow[] = items.filter(i => i && gateStr(i.gate_id) != null).map(i => ({
+    gateId: gateStr(i.gate_id)!, title: gateStr(i.title) || 'untitled gate',
+    status: gateStr(i.status) || 'UNRECORDED', labelText: gateStr(i.label_text),
+    // tri-state: a NULL stays null so the page can say "does not declare", never "does not block"
+    blocksTrading: i.blocks_trading === true ? true : i.blocks_trading === false ? false : null,
+    lastEvalResult: gateStr(i.last_eval?.result), lastEvalAt: gateStr(i.last_eval?.at),
+    lastEvalDetail: gateStr(i.last_eval?.detail),
+    clockState: gateStr(i.clock?.state) || 'unknown', clockText: gateStr(i.clock?.text) || 'no clock published',
+    windowEnd: gateStr(i.window?.end), daysRemaining: gateNum(i.window?.days_remaining),
+    owner: gateStr(i.owner), nextAction: gateStr(i.next_action), declPath: gateStr(i.decl_path),
+  }))
+  const c = w.counts
+  const n = c?.rows ?? rows.length
+  // F2 (REVIEW-S2-portfolio-risk-b5): a counts object that omits open/closed says so. Only a SERVED zero is drawn as
+  // zero — an absent count is unavailable, never "0 open · 0 closed".
+  const counted = (label: string, v: number | undefined) => v == null ? `${label} not published` : `${v} ${label}`
+  const countsLine = c == null ? null
+    : `${n} gate${n === 1 ? '' : 's'} in scope · ${counted('open', c.open)} · ${counted('closed', c.closed)}`
+      + `${c.failed ? ` · ${c.failed} failed` : ''}${c.overdue ? ` · ${c.overdue} overdue` : ''}`
+      + `${c.blocks_trading ? ` · ${c.blocks_trading} declare they block trading` : ''}`
+  const state = w.state === 'OK' || w.state === 'STALE' ? w.state : 'UNKNOWN'
+  const headline = state === 'UNKNOWN'
+    ? `no gate verdict: ${gateStr(w.reason) || 'the projection reached no state'}`
+    : countsLine || `the projection published no counts (${rows.length} row${rows.length === 1 ? '' : 's'} read)`
+  const snap = w.snapshot
+  const snapshotLine = snap == null ? 'no snapshot clock published'
+    : `${snap.basis === 'open_gates' ? 'open-gate clock' : snap.basis === 'closed_gates' ? 'closure clock' : 'clock'}`
+      + ` · ${gateStr(snap.computed_at) ? fmtET(snap.computed_at, true) : 'no time'}`
+      + `${gateNum(snap.age_s) != null ? ` · ${fmtAge(gateNum(snap.age_s)! * 1000)} old` : ''}`
+      + `${gateNum(snap.threshold_s) != null ? ` · limit ${fmtAge(gateNum(snap.threshold_s)! * 1000)}` : ''}`
+      + `${gateStr(w.text) ? ` · ${w.text}` : ''}`
+  const writerLine = w.writer == null ? 'no writer recorded'
+    : `writer ${gateStr(w.writer.lane_id) || 'not named'} · last ok ${gateStr(w.writer.last_ok_at) ? fmtET(w.writer.last_ok_at!, true) : 'not published'}`
+      + `${gateStr(w.writer.receipt) ? ` · receipt ${w.writer.receipt}` : ''}`
+  const caveats: string[] = []
+  const blocksUnknown = rows.filter(r => r.blocksTrading == null).length
+  if (blocksUnknown) {
+    caveats.push(`${blocksUnknown} gate${blocksUnknown === 1 ? '' : 's'} do not declare whether they block trading: that is unknown, not “does not block”`)
+  }
+  const badClock = rows.filter(r => r.clockState === 'unreadable' || r.clockState === 'future').length
+  if (badClock) caveats.push(`${badClock} gate evaluation time${badClock === 1 ? ' is' : 's are'} not a readable, non-future time`)
+  if (state === 'UNKNOWN' && rows.length) caveats.push('rows are shown with their own clocks, but no verdict is drawn from them')
+  if (state === 'STALE') caveats.push(`the projection is STALE: ${gateStr(w.reason) || 'no reason published'}`)
+  // The clock is served twice (a timestamp and its age). If they disagree, say so instead of trusting one silently.
+  const at = gateStr(snap?.computed_at), ageS = gateNum(snap?.age_s)
+  if (snap && at && ageS != null && nowMs > 0) {
+    const implied = Date.parse(at) + ageS * 1000
+    if (Number.isFinite(implied) && Math.abs(nowMs - implied) > 120_000) {
+      caveats.push('the snapshot time and its own age disagree by more than two minutes')
+    }
+  }
+  return { state, chip: state, reason: gateStr(w.reason), headline, scopeLine: `scope: ${(w.scope?.categories || []).join(', ') || 'not named in the read'}`,
+    snapshotLine, writerLine, rows, caveats }
+}
+
+/** The exact contract `scripts/lib/portfolio_validation.py` serves as PortfolioChanges@v1. Refused under another
+ *  schema, never read optimistically. */
+export const CHANGES_SCHEMA = 'PortfolioChanges@v1'
+export interface PortfolioChangeWire {
+  event_id?: number | null; source_kind?: string | null; source_id?: string | null
+  category?: string | null; transition?: string | null; label?: string | null; label_text?: string | null
+  occurred_at?: string | null; detected_at?: string | null; summary?: string | null; owner?: string | null
+}
+export interface PortfolioChangesWire {
+  schema: string; served_at?: string | null; state: 'OK' | 'UNKNOWN'; reason?: string | null
+  window?: { basis?: string | null; since?: string | null; until?: string | null } | null
+  count?: number | null; latest_at?: string | null; may_be_truncated?: boolean | null
+  outside_window?: { before?: number; after?: number; unreadable?: number; out_of_scope?: number } | null
+  items?: PortfolioChangeWire[] | null
+}
+/** One served change, flattened. Each row keeps its OWN event time; nothing is re-stamped with the page clock. */
+export interface ChangeRow {
+  key: string; sourceId: string; category: string | null; transition: string; labelText: string | null
+  occurredAt: string | null; detectedAt: string | null; summary: string | null; owner: string | null
+}
+export interface ChangesModel {
+  /** EMPTY = the store was read and measured zero changes in the window (not "not declared").
+   *  UNAVAILABLE = the read itself failed — never an empty list. */
+  state: 'OK' | 'EMPTY' | 'UNKNOWN' | 'UNAVAILABLE'
+  chip: 'OK' | 'UNKNOWN'
+  reason: string | null
+  headline: string
+  windowLine: string
+  rows: ChangeRow[]
+  caveats: string[]
+}
+
+/** PR-005: the served change list, ready to render — or an honest refusal. */
+export function changesModel(read: Read<PortfolioChangesWire>, sinceVisit?: SinceVisitModel | null): ChangesModel {
+  const w = read.state === 'OK' && read.data && (read.data as unknown as { schema?: unknown }).schema === CHANGES_SCHEMA
+    ? read.data : null
+  if (w == null) {
+    const why = read.state === 'LOADING' ? 'the change list read has not answered yet'
+      : read.state === 'OK' ? `the read answered an unexpected contract (not ${CHANGES_SCHEMA})`
+        : `the change list read failed (${read.error || read.state})`
+    return { state: 'UNAVAILABLE', chip: 'UNKNOWN', reason: read.error, headline: why, windowLine: 'window: not available',
+      rows: [], caveats: [] }
+  }
+  const win = w.window
+  const basis = gateStr(win?.basis) || 'unknown'
+  const since = gateStr(win?.since), until = gateStr(win?.until)
+  // F1 (REVIEW-S2-portfolio-risk-b5): the 24 h fallback must say WHY it has no cursor. A FAILED (or unreadable)
+  // last-visit read is not a book with no recorded visit; only a successful NOT_RECORDED read may say that.
+  const cursorWhy = sinceVisit == null ? null
+    : sinceVisit.status === 'UNKNOWN' ? `the last-visit read gave no usable cursor: ${sinceVisit.reason || 'no reason published'}`
+      : sinceVisit.status === 'NOT_RECORDED' ? null
+        : `the last-visit record gives no cursor to window from (status ${sinceVisit.status})`
+  const windowLine = `${basis === 'last_visit' ? 'since your last visit' : basis === 'fallback_24h'
+    ? (cursorWhy ? `the last 24 h (${cursorWhy}; the window is a fallback, not a recorded cursor)`
+      : 'the last 24 h (no visit cursor was recorded)') : `window basis: ${basis}`}`
+    + `${since ? ` · from ${fmtET(since, true)}` : ''}${until ? ` → ${fmtET(until, true)} ET` : ''}`
+  const items = Array.isArray(w.items) ? w.items : []
+  const rows: ChangeRow[] = items.filter(i => i && (gateStr(i.source_id) != null || i.event_id != null)).map((i, n) => ({
+    key: String(i.event_id ?? `${gateStr(i.source_id) || 'event'}-${n}`),
+    sourceId: gateStr(i.source_id) || 'unnamed gate', category: gateStr(i.category),
+    transition: gateStr(i.transition) || 'unrecorded transition', labelText: gateStr(i.label_text) || gateStr(i.label),
+    occurredAt: gateStr(i.occurred_at), detectedAt: gateStr(i.detected_at),
+    summary: gateStr(i.summary), owner: gateStr(i.owner),
+  }))
+  const count = gateNum(w.count) ?? rows.length
+  const state: ChangesModel['state'] = w.state === 'OK' ? (count === 0 ? 'EMPTY' : 'OK') : 'UNKNOWN'
+  const headline = state === 'UNKNOWN'
+    ? `no change list: ${gateStr(w.reason) || 'the projection reached no state'}`
+    : count === 0 ? 'no changes in this window (a measured zero, not an absent store)'
+      : `${count} change${count === 1 ? '' : 's'} since ${basis === 'last_visit' ? 'your last visit' : 'the window opened'}`
+        + `${gateStr(w.latest_at) ? ` · newest ${fmtET(w.latest_at, true)} ET` : ''}`
+  const caveats: string[] = []
+  const out = w.outside_window
+  if (out && (out.out_of_scope || 0) > 0) {
+    caveats.push(`${out.out_of_scope} event${out.out_of_scope === 1 ? '' : 's'} on this store belong to another page's scope and are not shown`)
+  }
+  const excluded = (out?.before || 0) + (out?.after || 0) + (out?.unreadable || 0)
+  if (excluded > 0) {
+    caveats.push(`${excluded} row${excluded === 1 ? '' : 's'} fell outside the window (or carried no readable time) and are counted, not published`)
+  }
+  if (w.may_be_truncated) caveats.push(`the window may hold more than the ${rows.length} shown; the newest are listed first`)
+  if (rows.some(r => r.occurredAt == null)) caveats.push('a row without a readable event time is listed without one; the page will not invent a time')
+  return { state, chip: state === 'UNKNOWN' ? 'UNKNOWN' : 'OK', reason: gateStr(w.reason), headline, windowLine, rows, caveats }
+}
+
+/** What the served store says about one expectation, in words, with no verdict of the page's own. */
+function servedLine(expectsGateId: string, store: GateStoreModel | null): {
+  served: GateEvidence['served']; servedText: string; servedRow?: GateRow
+} {
+  if (store == null || store.state === 'UNAVAILABLE') {
+    return { served: 'UNAVAILABLE', servedText: `the gate store could not be read${store?.reason ? ` (${store.reason})` : ''}; no gate verdict is shown` }
+  }
+  const row = store.rows.find(r => r.gateId === expectsGateId)
+  if (!row) {
+    return { served: 'NOT_GATED_BY_STORE', servedText: `the store was read and declares no gate with id ${expectsGateId}; this expectation is ungated, which is not a pass` }
+  }
+  return {
+    served: 'GATED', servedRow: row,
+    servedText: `${row.status}${row.lastEvalResult ? ` · last result ${row.lastEvalResult}` : ''}`
+      + `${row.lastEvalAt ? ` at ${fmtET(row.lastEvalAt, true)}` : ' · never evaluated'}`
+      + ` · ${row.clockText}`
+      + `${row.windowEnd ? ` · window to ${fmtET(row.windowEnd, true)}` : ''}`
+      + `${row.owner ? ` · owner ${row.owner}` : ''}${row.nextAction ? ` · next: ${row.nextAction}` : ''}`,
+  }
+}
+
 export function gateEvidence(prot: ProtectionModel, measures: MeasuresModel, positions: PositionModel[],
-  holdings: HoldingsWire | null = null): GateEvidence[] {
+  holdings: HoldingsWire | null = null, store: GateStoreModel | null = null): GateEvidence[] {
   const cov = coverageCounts(positions)
   const accounts = new Set(positions.filter(p => !p.isCash).map(p => p.broker))
   // A7 (REVIEW-CAMPAIGN8H-item1-fix): a broker whose rows are all EXEMPT carries no counted position, so it must not
@@ -915,28 +1538,36 @@ export function gateEvidence(prot: ProtectionModel, measures: MeasuresModel, pos
   const countEvidence = pc == null
     ? 'the position count block is not in this read'
     : allRows == null
-      ? `the count block names no all-rows scope; ${positions.length} rows are drawn in this read and nothing here compares them`
+      ? `the count block names no all-rows scope; this read parsed ${positions.length} rows and nothing here compares them`
       : [
-        `the block's holdings.all_rows scope counts ${allRows}; this read drew ${positions.length} row${positions.length === 1 ? '' : 's'}; ${allRows === positions.length ? 'they match' : 'they differ'}`,
+        // PR-002: the comparison is normalised rows, not the rendered list ("rendered" is reserved for displayed items).
+        `the block's holdings.all_rows scope counts ${allRows}; this read parsed ${positions.length} normalised row${positions.length === 1 ? '' : 's'}; ${allRows === positions.length ? 'they match' : 'they differ'}`,
         headline != null ? `the block's headline ${headline} is its ${headlineScope} scope` : null,
         blockSummary ? `its own summary: ${blockSummary}` : null,
       ].filter(Boolean).join(' · ')
-  return [
+  const rows = [
     { gate: 'Stop read covers every broker', blocks: 'Protection: OK', blocksTrading: true, threshold: 'every broker read inside 900 s (session) / 72 h (closed)', owner: 'stops lane',
+      expectsGateId: 'VG-PORT-STOP-READ-PER-BROKER',
       pageEvidence: prot.counted == null ? 'no counted book was read' : `${prot.counted} counted position${prot.counted === 1 ? '' : 's'} in ${countedBrokers.size} of ${accounts.size} broker${accounts.size === 1 ? '' : 's'} with non-cash rows; ${prot.protectedN ?? '—'} protected, ${cov.partial} partial`,
-      servedStatus: 'NOT AVAILABLE', needs: 'a served protection rollup with a per-broker read state (G2/G3)' },
+      needs: 'a served protection rollup with a per-broker read state (G2/G3)' },
     { gate: 'Price check · 5 sessions clean', blocks: 'VALIDATED on Price Mismatch', blocksTrading: false, threshold: '5 sessions, not one read', owner: 'repricer lane',
+      expectsGateId: 'VG-PORT-PRICE-5-SESSIONS',
       pageEvidence: `${stale} stale of ${priced.length} priced rows in this read; one read cannot show a five-session window`,
-      servedStatus: 'NOT AVAILABLE', needs: 'a served check result with a five-session window (gate store, LQ-2141)' },
+      needs: 'a served check result with a five-session window (gate store, LQ-2141)' },
     { gate: 'Position count agrees', blocks: 'VALIDATED on Count Mismatch', blocksTrading: false, threshold: "the rows drawn this read = the count block's holdings.all_rows scope; no published tolerance", owner: 'position sync lane',
+      expectsGateId: 'VG-PORT-COUNT-AGREES',
       pageEvidence: countEvidence,
-      servedStatus: 'NOT AVAILABLE', needs: 'the gate store row for count agreement (the page can see the block, not the gate)' },
+      needs: 'the gate store row for count agreement (the page can see the block, not the gate)' },
     { gate: 'Value reconciles to the accounting anchor', blocks: 'VALIDATED on Value Mismatch', blocksTrading: false, threshold: 'a stored signed reconciliation', owner: 'portfolio lane',
+      expectsGateId: 'VG-PORT-VALUE-RECONCILES',
       pageEvidence: measures.state === 'PRESENT'
         ? `account value ${measures.measures.find(m => m.key === 'account_value')?.status ?? 'UNKNOWN'}; day figures ${measures.dayUnverified ? 'UNVERIFIED' : 'verified'}`
         : 'no measures block in this holdings document',
-      servedStatus: 'NOT AVAILABLE', needs: 'a stored signed reconciliation (measure 4) plus the gate store row' },
+      needs: 'a stored signed reconciliation (measure 4) plus the gate store row' },
   ]
+  // PR-004: each expectation now carries the served store's answer. A row is never labelled NOT AVAILABLE again: either
+  // the store was read (and says gated / not declared) or the read failed (and no verdict is drawn).
+  return rows.map(r => ({ ...r, ...servedLine(r.expectsGateId, store) }))
 }
 
 // ── risk score: an isolated pending decision (G7) ────────────────────────────────────────────────────

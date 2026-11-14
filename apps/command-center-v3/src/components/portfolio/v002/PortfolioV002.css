@@ -27,6 +27,8 @@
 .pv2-blk-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 24px; flex-wrap: wrap; }
 .pv2-h2 { margin: 0; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .pv2-muted { margin: 4px 0; font-size: 12px; color: var(--text-2); }
+/* PR-002: the denominators line. Small, wrapping, never a tooltip: a phone cannot hover. */
+.pv2-scope { margin: 2px 0 8px; font-size: 12px; color: var(--text-2); line-height: 1.45; }
 .pv2-unk { min-height: 44px; display: flex; align-items: center; padding: 6px 10px; margin: 6px 0; border: 1px solid var(--neutral-border); background: var(--neutral-bg); color: var(--text-1); border-radius: var(--radius-md); font-weight: 600; overflow-wrap: anywhere; }
 .pv2-unk.bad { border-color: var(--danger-border); background: var(--danger-bg); }
 .pv2-collapsed { display: flex; align-items: center; gap: 8px; min-height: 44px; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; }
@@ -77,6 +79,14 @@
 .pv2-hrow .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pv2-hrow .risk { font-size: 12px; font-weight: 700; text-align: center; color: var(--text-2); }
 .pv2-hrow .pv2-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+/* OBS-P1: the row's labelled financial facts — mark + source + clock, weight, price move, unrealized P&L. Drawn at
+   every width, including 390/412 px: none of these is drawer-only. */
+.pv2-hrow .facts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0 12px; font-size: 11px; line-height: 15px; color: var(--text-2); padding: 0 0 6px; }
+.pv2-hrow .facts > span { white-space: normal; overflow-wrap: anywhere; }
+.pv2-hrow .pv2-move.up, .pv2-hrow .pv2-pnl.up { color: var(--success-color); }
+.pv2-hrow .pv2-move.dn, .pv2-hrow .pv2-pnl.dn { color: var(--danger-color); }
+.pv2-hrow .pv2-unk-fact { font-style: italic; }
+.pv2-stale-mark { font-weight: 700; color: var(--danger-color); }
 .up { color: var(--success-color); } .dn { color: var(--danger-color); }
 .pv2-det { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; min-height: 48px; border: none; border-top: 1px solid var(--border-color); background: none; padding: 0; color: var(--text-0); font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
 .pv2-retired { color: var(--text-2); cursor: default; }

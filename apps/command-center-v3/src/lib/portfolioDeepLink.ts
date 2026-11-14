@@ -30,6 +30,26 @@ export function portfolioTabRedirect(raw: string | null | undefined): string | n
   return t ? PORTFOLIO_TAB_REDIRECTS[t] ?? null : null
 }
 
+/** The pre-v002 Portfolio hub (App.tsx declares it under this path; the UI-removal rule keeps it reachable
+ *  while the tabs below are unimplemented in v002). One constant, so a test can pin the router's path. */
+export const PORTFOLIO_CLASSIC_PATH = '/portfolio-classic'
+
+/** Query params ONLY the classic hub implements. Live surfaces still emit these hrefs: Allocation's
+ *  "Underlying stocks, sectors and industries →" and the Look-through desk emit `?tab=Look-through`;
+ *  Home and HomeDoNow emit `?tab=Returns`; the Risk desk emits `?tab=Stop Management`; OpenTrades and
+ *  Research Intel add `&symbol=`. */
+export const LEGACY_PORTFOLIO_PARAMS = ['tab', 'drawer', 'drawerTab', 'sig', 'acct'] as const
+
+/** OBS-P2a / OBS-P2b: where a legacy hub href must go, or null when the v002 page owns the link.
+ *  v002 implements no tab, so a `?tab=` link that stayed here would render Holdings under a label it never
+ *  honoured. The WHOLE query string is handed over unchanged — the classic hub understands all of it. */
+export function legacyPortfolioRedirect(search: string | null | undefined): string | null {
+  if (!search) return null
+  const q = search.startsWith('?') ? search : `?${search}`
+  const params = new URLSearchParams(q)
+  return LEGACY_PORTFOLIO_PARAMS.some(k => params.has(k)) ? `${PORTFOLIO_CLASSIC_PATH}${q}` : null
+}
+
 export interface PortfolioDeepLink {
   tab: PortfolioTab
   acct: string | null
