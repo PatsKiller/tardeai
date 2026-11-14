@@ -67,6 +67,24 @@ WAIT_S = float(os.environ.get("TRADEAI_COALESCE_WAIT_S") or 180.0)
 MAX_DONE = 128
 # Query keys that only bust browser caches; they never change the response.
 _IGNORED_QUERY_KEYS = frozenset({"_"})
+#: route -> query params that are an unordered symbol set (LQ-20261113-3034). The re-entry pages ask
+#: /api/v2/watchlist/items for the same names in a different order on each poll, and every order was its own
+#: cache key and its own 8-17 s compute (1.4 MB each on disk). The route strips, upper-cases and matches the set
+#: (``symbol = ANY``) and sorts the rows itself, so the order, case, spacing and duplicates never change the body.
+CANONICAL_SET_PARAMS = {"/api/v2/watchlist/items": frozenset({"symbols"})}
+
+
+def canonical_query_value(base: str, name: str, value: Any) -> Any:
+    """The cache-key form of one query value: a symbol-set param of ``base`` as a sorted, de-duplicated,
+    upper-case list; anything else unchanged.
+
+    Only a single string is rewritten. A repeated param arrives as a list and the route reads only its first
+    value, so two lists are different reads. A value with no names left (``","``) is kept as sent, because an
+    empty string means "no filter" to the route and ``","`` means "an empty set"."""
+    if not isinstance(value, str) or name not in CANONICAL_SET_PARAMS.get(base, ()):
+        return value
+    names = sorted({s.strip().upper() for s in value.split(",") if s.strip()})
+    return ",".join(names) if names else value
 
 
 def _paths_from_env() -> frozenset[str]:
@@ -94,6 +112,7 @@ def request_key(path: str, query: dict | None, principal: str = "") -> str | Non
     for k, v in sorted((query or {}).items()):
         if k in _IGNORED_QUERY_KEYS:
             continue
+        v = canonical_query_value(base, k, v)
         if isinstance(v, (list, tuple)):
             v = ",".join(str(x) for x in v)
         items.append(f"{k}={v}")

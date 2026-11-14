@@ -109,6 +109,7 @@ def _serve(kind: str, key: str, compute, query: dict | None) -> dict[str, Any]:
     """A last good body at once plus one background refresh, or ``compute()`` inline in every other case.
 
     Errors are never cached (``stale_serve.is_good``), an exception from ``compute`` propagates to the caller's 500,
+    a refused compute (503 ``build_deferred``) raises ``stale_serve.Deferred`` for the route to pass through,
     and any failure of the cache layer itself degrades to ``compute()`` — the request never fails because the cache
     did.
     """
@@ -123,7 +124,9 @@ def _serve(kind: str, key: str, compute, query: dict | None) -> dict[str, Any]:
         return compute()
     if server is None:
         return compute()
-    _status, body = server.get(key, lambda: (200, compute()))
+    status, body = server.get(key, lambda: (200, compute()))
+    if status != 200:  # 503 build_deferred: the route passes it through, never a 200 ok:false (LQ-3051 C1a)
+        raise mod.Deferred(status, body)
     return body
 
 

@@ -142,8 +142,8 @@ def get_curation(query: dict | None = None) -> dict[str, Any]:
 
     status, body = swr_mod.default().get(swr_mod.request_key(CURATION_SWR_PATH, query, key_principal),
                                          compute, refresh)
-    if status != 200:  # compute() only returns 200; anything else is a defect worth surfacing, not a body
-        raise ValueError(f"curation served status {status}")
+    if status != 200:  # compute() only returns 200: this is a 503 build_deferred, passed through (LQ-3051 C1b)
+        raise swr_mod.Deferred(status, body)
     return body
 
 
