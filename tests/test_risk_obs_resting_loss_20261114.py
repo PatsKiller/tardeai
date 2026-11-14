@@ -106,3 +106,21 @@ def test_no_pending_row_publishes_an_empty_state_list_not_a_zero(tmp_path):
                    [_holding("ARMD", "fixture_ira", 10, 100)],
                    [_broker_stop("ARMD", "fixture_ira", 90, "WORKING", "o-armd", 10.0)])
     assert doc["stops"]["pending_broker_states"] == []
+
+
+def test_the_page_projection_forwards_the_new_fields(tmp_path):
+    """The seam that decides whether the card can say any of this: w7_pages filters each row to display_keys.
+    A field the projection drops is a field the page never sees, however right the producer is."""
+    from scripts.lib.w7_pages import project_pages
+    doc = _resolve(tmp_path,
+                   [_holding("V", "fixture_rollover_ira", 100.7963, 425.76)],
+                   [_broker_stop("V", "fixture_rollover_ira", 406.94, "AWAITING_STOP_CONDITION", "o-v", 100.0)])
+    page = project_pages(doc, fund_cache={}, fund_symbols=set(), proxies={}, theme_members={},
+                         theme_targets={}, snapshot={})
+    row = page["positions"]["rows"][0]
+    assert row["resting_loss_qty"] == 100.0
+    assert row["resting_coverage_shortfall_qty"] == 0.7963
+    assert row["stop_qty"] == 100.0
+    assert page["positions"]["resting_loss_coverage"]["shortfalls"][0]["symbol"] == "V"
+    assert page["stops"]["pending_broker_states"] == [{"status": "AWAITING_STOP_CONDITION", "count": 1}]
+
