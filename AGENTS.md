@@ -1296,6 +1296,15 @@ What an agent still owns is proving the effect of its change after promotion.
   (§17). Prove it with `check_expected_services.py`, not with the unit file existing. *Cause: 2026-09-13 —
   `tradeai-operator-answer-quality.timer` was promoted and ran only once installed separately (LESSONS L0-13).*
 
+- **Admin modal is required parity (operator 2026-11-14 ~18:35 ET).** `/wealth/` keeps an Admin modal reachable from the
+  header/settings: connections & expiry (Schwab ~7-day manual-OAuth reauth lifecycle with reminders and the sanctioned
+  operator reauth/2FA handoff; Finviz and other cookie expiry/rejection alerts), allowlisted non-Bitwarden configuration
+  (typed, validated, atomic versioned writes, redacted audit, rollback, current admin auth + step-up), and change history &
+  diagnostics. Never an arbitrary file editor or shell executor; never a raw secret/cookie/token in a response, log, doc or
+  fixture; unknown expiry is UNKNOWN, never a date or green; no provider probe as a test; no broker/order-lock change. n8n
+  owns reminders, health evaluation and alert dedupe; existing cron/timers stay until parity is proven. Contract
+  `docs/wealth/contracts/admin@1.md`.
+
 ## Incident and rollback
 
 - **Every error goes to the incident ledger (§28.16)** — opened, fixed or `blocked` with a handoff, never dropped.
@@ -2470,15 +2479,6 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
   operator's own terminal `gh pr merge <n> --merge --match-head-commit <sha>` is the merge step. *Cause: 2026-10-28 —
   operator: "in an emergency … merge and push live … commenced through Telegram … use a digest if necessary … bypass
   Mergify" (LESSONS L25-07).*
-
-- **Admin modal is required parity (operator 2026-11-14 ~18:35 ET).** `/wealth/` keeps an Admin modal reachable from the
-  header/settings: connections & expiry (Schwab ~7-day manual-OAuth reauth lifecycle with reminders and the sanctioned
-  operator reauth/2FA handoff; Finviz and other cookie expiry/rejection alerts), allowlisted non-Bitwarden configuration
-  (typed, validated, atomic versioned writes, redacted audit, rollback, current admin auth + step-up), and change history &
-  diagnostics. Never an arbitrary file editor or shell executor; never a raw secret/cookie/token in a response, log, doc or
-  fixture; unknown expiry is UNKNOWN, never a date or green; no provider probe as a test; no broker/order-lock change. n8n
-  owns reminders, health evaluation and alert dedupe; existing cron/timers stay until parity is proven. Contract
-  `docs/wealth/contracts/admin@1.md`.
 
 ### 25.10.1 Operator-delegated promote
 
