@@ -31,6 +31,17 @@ def _f(v):
 LANE_ID = "market-regime-classifier"
 # confidence_floor, the Market Risk Engine inputs and their weights: config/market_regime_classifier.yaml
 VIX_TO_VOL_STATE = {"extreme": "high_vol", "high": "high_vol", "normal": "neutral", "low": "low_vol"}
+#: a core leg in one of these states carries no evidence (LQ-20261113-3048)
+#: a core-leg value that is not a measurement (compared stripped and lower-cased; None is unmeasured too). Mirrors
+#: UNMEASURED in apps/command-center-v3/src/lib/homeRegime.ts - a test pins the two sets equal (LQ-20261113-3061, C2).
+UNMEASURED_STATES = frozenset({"", "unknown", "not_measured", "not measured", "n/a", "none"})
+
+
+def leg_unmeasured(value) -> bool:
+    """True when a core-leg value is not a measurement: None, or a known placeholder in any case or padding."""
+    return value is None or str(value).strip().lower() in UNMEASURED_STATES
+#: a label resting on fewer measured core legs than this is stale, never a confident current verdict
+MIN_CORE_LEGS = 2
 
 
 def _uid(p="RS_"):
@@ -160,9 +171,7 @@ def classify(conn, snapshot_id=None, cfg=None):
     # Confidence is the margin over the runner-up, over at least confidence_floor points of evidence: a near-tie
     # between two regimes is low confidence, and a single small score is not certainty (top/total read 0.62 for
     # a 5-vs-3 split and 1.0 for one point).
-    confidence = round((ranked[0] - ranked[1]) / max(sum(ranked), cfg["confidence_floor"]), 2)
-    stale = len(missing) > 2 or "insufficient_indicators" in missing
-    missing.extend(partial)  # named, but a missing context leg does not make the snapshot stale
+    margin = (ranked[0] - ranked[1]) / max(sum(ranked), cfg["confidence_floor"])
 
     # States. Volatility follows the VIX bucket; trend and breadth follow the engine's observations through the
     # config maps, and stay `not_measured` (never the scanner's own population) when there is none (LQ-1613).
@@ -170,7 +179,23 @@ def classify(conn, snapshot_id=None, cfg=None):
     trend_state = mre_states.get("trend_state", "not_measured")
     breadth_state = mre_states.get("breadth_state", "not_measured")
 
-    summary = f"Regime: {regime} (conf={confidence:.0%})"
+    # LQ-20261113-3048 (A06): the label weighs three CORE legs - volatility, trend, breadth. An unmeasured core leg
+    # is missing evidence, not a neutral vote: until now trend/breadth gaps went into `partial` after the stale
+    # check, so a label resting on the VIX bucket alone published `fresh` at full confidence (11-13 05:51 ET:
+    # risk_on_trend 0.17, trend and breadth not_measured, stale_data false). Now confidence is scaled by the
+    # measured share, fewer than MIN_CORE_LEGS measured legs is stale, and any unmeasured leg is `incomplete`.
+    legs = {"volatility": vol_state, "trend": trend_state, "breadth": breadth_state}
+    measured = [k for k, v in legs.items() if not leg_unmeasured(v)]
+    unmeasured = [k for k in legs if k not in measured]
+    confidence = round(margin * len(measured) / len(legs), 2)
+    stale = len(missing) > 2 or "insufficient_indicators" in missing or len(measured) < MIN_CORE_LEGS
+    if len(measured) < MIN_CORE_LEGS:
+        missing.append(f"core_legs:{len(measured)}_of_{len(legs)}")
+    missing.extend(partial)  # named; the core legs above are what decide staleness, not a missing context leg
+    freshness = "stale" if stale else ("incomplete" if unmeasured else "fresh")
+
+    summary = f"Regime: {regime} (conf={confidence:.0%}, legs {len(measured)}/{len(legs)}"
+    summary += f", not measured: {', '.join(unmeasured)})" if unmeasured else ")"
     if missing:
         summary += f", missing: {', '.join(missing[:3])}"
 
@@ -187,10 +212,11 @@ def classify(conn, snapshot_id=None, cfg=None):
         "leadership_state": "unknown",
         "risk_appetite_state": trend_state,
         "macro_state": "unknown",
-        "data_freshness_state": "stale" if stale else "fresh",
+        "data_freshness_state": freshness,
         "stale_data": stale,
         "missing_data": missing,
-        "inputs": {**{k: v.get("signal") for k, v in indicators.items()}, "_indicator_snapshot_id": snapshot_id},
+        "inputs": {**{k: v.get("signal") for k, v in indicators.items()}, "_indicator_snapshot_id": snapshot_id,
+                   "_core_legs_measured": measured, "_core_legs_not_measured": unmeasured},
         "summary": summary,
     }
     return snapshot

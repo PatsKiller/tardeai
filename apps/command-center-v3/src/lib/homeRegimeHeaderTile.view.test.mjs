@@ -88,7 +88,8 @@ check('MetricStrip destructures the envelope and uses the shared rule', () => {
   const code = src.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')
   assert.match(src, /envelope: regimeEnv/, 'the tile does not ask useApi for the envelope')
   assert.match(src, /regimeState\(regime, regimeEnv\)/, 'the tile does not pass the envelope to regimeState')
-  assert.match(src, /tone: worseTone\(regimeInfo\.stale \? 'warn' : 'ok'/, 'the dot does not follow the regime clock')
+  // LQ-20261113-3048: the dot also drops on a missing core leg (homeRegimeLegsTile.view.test.mjs).
+  assert.match(src, /tone: worseTone\(regimeInfo\.stale( \|\| regimeInfo\.incomplete)? \? 'warn' : 'ok'/, 'the dot does not follow the regime clock')
   assert.match(src, /regimeClockTitle\(regimeInfo\)/, 'the meta line does not name the regime clock')
   assert.ok(!/tone: regimeStale \?/.test(code), 'the dot still follows the transport stale flag')
   // LQ-20261107-1610: age on the face in every state; stale is grey, not amber.

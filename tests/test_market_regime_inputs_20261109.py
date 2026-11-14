@@ -93,4 +93,8 @@ def test_confidence_is_the_margin_not_top_over_total():
 def test_a_partial_term_structure_set_is_named_not_silent():
     snap = _snap(_vix("normal", 15.2))
     assert "no_term_structure" in snap["missing_data"]
-    assert snap["stale_data"] is False  # a missing context leg is named, not a stale snapshot
+    # LQ-20261113-3048: this snapshot is stale because only the volatility leg is measured (trend and breadth have no
+    # engine rows), not because term structure is missing; a missing term structure alone does not make a snapshot
+    # stale (pinned with all three legs measured in tests/test_market_regime_legs_lq3048_20261113.py).
+    assert snap["stale_data"] is True
+    assert "core_legs:1_of_3" in snap["missing_data"]

@@ -230,11 +230,13 @@ def test_calm_and_stress_markets_get_opposite_labels_under_the_same_vix():
     assert calm["confidence"] != 0.17 or stress["confidence"] != 0.17
 
 
-def test_without_engine_rows_the_states_stay_not_measured_and_are_named_not_stale():
+def test_without_engine_rows_the_states_stay_not_measured_and_are_named():
     snap = _classify(BASE_241)
     assert snap["trend_state"] == "not_measured" and snap["breadth_state"] == "not_measured"
     assert "no_mre_technical" in snap["missing_data"] and "no_mre_breadth" in snap["missing_data"]
-    assert snap["stale_data"] is False
+    # LQ-20261113-3048 reverses the old "named, not stale" pin: with trend and breadth unmeasured the label rests on
+    # the VIX bucket alone, and a one-leg label is stale (tests/test_market_regime_legs_lq3048_20261113.py).
+    assert snap["stale_data"] is True
 
 
 def test_a_not_measured_engine_row_scores_nothing_and_names_its_reason():
