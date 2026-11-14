@@ -31980,13 +31980,21 @@ def _home_priorities_live():
     """GET /api/v2/home/priorities-live — HomePrioritiesLive@v1 (LQ-20261107-2644): the server's ranking of "Today's priorities"
     over the open incidents, the stop advice and the approvals count (lib/home_priorities_live.py). Read-only, no broker.
     An input that cannot be read is named in ``unread`` (state PARTIAL/UNKNOWN), never an empty "nothing to do".
-    An OK/PARTIAL body is cached 30 s; an UNKNOWN one is retried on the next poll."""
+    An OK/PARTIAL body is cached 30 s; an UNKNOWN one is retried on the next poll.
+
+    The cache entry is scoped to the request's authenticated principal (CAMPAIGN-8H Home item 4). The approvals input
+    is principal-gated — home_approvals_api refuses a caller that is not the operator or the service token — so this
+    body is NOT the same for every caller: a body built for one principal (OK, approvals counted) must never be served
+    to another (whose own approvals read is refused, PARTIAL/unread), and vice versa. Keying on the principal is the
+    same discipline ``_home_cio_card`` follows with ``_swr_scope_key``; the principal is thread-local, so the key is
+    resolved here on the request thread."""
     import time as _t
 
     from lib import home_approvals_api as _haa
     from lib import home_priorities_live as _hp
 
-    hit = _HOME_PRIORITIES_LIVE_CACHE.get("v")
+    key = ("v", _swr_scope_key("home_priorities_live"))
+    hit = _HOME_PRIORITIES_LIVE_CACHE.get(key)
     if hit and _t.monotonic() - hit[0] < 30:
         return hit[1]
 
@@ -31996,7 +32004,11 @@ def _home_priorities_live():
 
     out = _hp.build(_home_incidents, _home_since_close, _approvals)
     if out.get("state") in ("OK", "PARTIAL"):
-        _HOME_PRIORITIES_LIVE_CACHE["v"] = (_t.monotonic(), out)
+        # Prune expired entries so a long-lived process cannot accumulate one per principal without bound.
+        now = _t.monotonic()
+        for k in [k for k, v in _HOME_PRIORITIES_LIVE_CACHE.items() if now - v[0] >= 30]:
+            _HOME_PRIORITIES_LIVE_CACHE.pop(k, None)
+        _HOME_PRIORITIES_LIVE_CACHE[key] = (now, out)
     return out
 
 
