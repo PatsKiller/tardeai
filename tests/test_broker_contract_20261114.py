@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from lib import broker_contract as bc  # noqa: E402
 
 NOW = datetime(2026, 11, 14, 15, 0, tzinfo=timezone.utc)
-SCOPE = {"accounts": ["schwab-rollover"], "session_id": "2026-11-14-regular", "cutoff": "2026-11-14T14:30:00Z"}
+SCOPE = {"accounts": ["acct-a"], "session_id": "2026-11-14-regular", "cutoff": "2026-11-14T14:30:00Z"}
 VERSIONS = {"positions_store": "2026-11-14T14:41:02Z", "quote_price": "2026-11-14T14:58:10Z"}
 
 
@@ -55,7 +55,7 @@ def test_snapshot_id_is_stable_and_input_sensitive():
     assert a["snapshot_id"].startswith("snap_")
     c = _evidence(versions={**VERSIONS, "quote_price": "2026-11-14T14:59:00Z"})
     assert c["snapshot_id"] != a["snapshot_id"]
-    d = _evidence(scope={**SCOPE, "accounts": ["schwab-rollover", "schwab-individual"]})
+    d = _evidence(scope={**SCOPE, "accounts": ["acct-a", "acct-b"]})
     assert d["snapshot_id"] != a["snapshot_id"]
 
 
@@ -121,37 +121,37 @@ def test_partial_coverage_is_named_with_exclusions():
 def test_reconciliation_residual_within_tolerance():
     """HQ-07/PR-007: rows and headline reconcile at published precision, or expose the bridge."""
     out = bc.reconcile(
-        headline_cents=-184100,
-        rows=[("schwab-rollover", -120000), ("schwab-individual", -64000)],
+        headline_cents=-345700,
+        rows=[("acct-a", -300000), ("acct-b", -45600)],
         tolerance_cents=300,
     )
-    assert out["residual_cents"] == 100  # sum(-184000) - headline(-184100)
+    assert out["residual_cents"] == 100  # sum(-345600) - headline(-345700)
     assert out["verdict"] == "ARITHMETIC_OK"
-    bad = bc.reconcile(headline_cents=-184100, rows=[("a", -120000), ("b", -64000), ("c", -200)], tolerance_cents=50)
+    bad = bc.reconcile(headline_cents=-345700, rows=[("acct-a", -300000), ("acct-b", -45600), ("acct-c", -200)], tolerance_cents=50)
     assert bad["verdict"] == "ARITHMETIC_RESIDUAL"
-    assert bad["residual_cents"] == -100  # sum(-184200) - headline(-184100)
+    assert bad["residual_cents"] == -100  # sum(-345800) - headline(-345700)
 
 
 def test_reconciliation_incomplete_never_fabricates_a_residual():
     """A missing contributor leaves the bridge INCOMPLETE with residual None — no invented number."""
-    out = bc.reconcile(headline_cents=-184100, rows=[("a", -120000), ("b", None)], tolerance_cents=300)
+    out = bc.reconcile(headline_cents=-345700, rows=[("acct-a", -300000), ("acct-b", None)], tolerance_cents=300)
     assert out["verdict"] == "INCOMPLETE"
     assert out["residual_cents"] is None
 
 
 def test_verified_pnl_needs_signed_evidence():
     """Two agreeing candidate numbers never make P&L verified; a signed reconciliation does."""
-    unverified = bc.pnl(price_move_cents=-184100, account_change_cents=-184200)
+    unverified = bc.pnl(price_move_cents=-345700, account_change_cents=-345800)
     assert unverified["verified"] is False
     assert unverified["basis"] == "price_move"
     assert "signed" in unverified["reason"]
     # the trap the capture sets: two candidate numbers that AGREE are still not a verified result
-    agreeing = bc.pnl(price_move_cents=-184100, account_change_cents=-184100)
+    agreeing = bc.pnl(price_move_cents=-345700, account_change_cents=-345700)
     assert agreeing["verified"] is False
     assert agreeing["basis"] == "price_move"
     verified = bc.pnl(
-        price_move_cents=-184100,
-        account_change_cents=-184100,
+        price_move_cents=-345700,
+        account_change_cents=-345700,
         sign_off={"reconciliation_id": "rec_20261114_01", "signed_at": "2026-11-14T22:00:00Z", "by": "operator"},
     )
     assert verified["verified"] is True
