@@ -2,6 +2,7 @@
 
 Reference: `docs/wealth/design-reference/TradeAI_Wealth_Management_Mockups_v02.html`, sha256 `23f96d84199c5a7cabb3837a7bd94fab87d68eed15d3d5bbfb5d07e6f8dde7aa`.
 Its anchors are the hash routes `#group/tab` built from its `groups` table: **56 views** in 9 groups, 6 drawers and the shell.
+Home addendum reference **v03**: `docs/wealth/design-reference/TradeAI_Wealth_Management_Mockups_v03.html`, sha256 `6c248c9641137e32cbbfa1a06739625c285fd41785ca01f125cc4522110aafc8` (v02 + three retained Home sections, operator-approved 2026-11-14; v02 stays the spec for everything else).
 Machine-readable twin: `docs/wealth/functionality-register.json`. Keep both in step; the JSON is what checks read.
 Preview (fictional data, banner): `https://ms01-openclaw.tail163d14.ts.net/wealth/design-reference/index.html`.
 
@@ -39,6 +40,9 @@ anchor · owner/reviewer · status · existing route · endpoint/reader/producer
 | `#home/today` | Investment desk | cc-deepseek-4 → cc-deepseek-3 | UNMAPPED | /api/v2/overview, /api/v2/home/do-now, /api/v2/home/priorities-live, /api/v2/home/cio-card |  |  |  |
 | `#home/outlook` | Market outlook | cc-deepseek-4 → cc-deepseek-3 | UNMAPPED | /api/v2/market-risk/latest, /api/v2/morning-brief (no directional-outlook reader: LQ-946) |  |  |  |
 | `#home/needs` | Needs your review | cc-deepseek-4 → cc-deepseek-3 | UNMAPPED | /api/v2/needs-action, /api/v2/home/do-now |  |  |  |
+| `#home/today:book-movers` | Your book & watch movers (v03) | cc-deepseek-4 → cc-deepseek-3 | UNMAPPED | /api/v2/market-movers (finviz-market-movers), holdings read model, market-quotes-extended / market-quotes-offhours-schwab lanes |  | v03 contract: held-position $ and % regular-session move per canonical account; watch-only movers carry NO holding P&L; extended-hours quote labelled separately vs official close with its own time, never overwrites regular-session totals; nothing called live on weekends; futures/overseas coverage stated explicitly; source + session clock on every tile. | owner first pass; repair at producer, no page-load synthesis |
+| `#home/today:read-first` | What to read first (v03) | cc-deepseek-4 → cc-deepseek-3 | UNMAPPED | /api/v2/news/ (news-ingestion, news-to-catalyst, symbol-news-curation-monitor), CIO history for context links |  | v03 contract: ranked by holdings/watch/thesis relevance with documented method + coverage; why-it-matters; source, publication and observation time; duplicate headlines grouped; headline fact kept separate from model inference; an unverified headline never becomes a trading fact or stop instruction. | owner first pass; repair at producer, no page-load synthesis |
+| `#home/today:protection-plan` | Protection plan (v03) | cc-deepseek-4 → cc-deepseek-3 | UNMAPPED | /api/v2/atm/protection-coverage, /api/v2/holdings/monitored-stops, /api/v2/atm/profit-protection-advisory (holding-protection-advisor, unified-stop-supervisor, broker-stop-reconcile lanes) |  | v03 contract: account-specific exceptions first; no-change and policy-exempt cards in an expandable section with a visible count; source mark and order clocks + coverage state shown; real order evidence separate from suggestions; stops never from a headline alone; no fill guarantees. READ-ONLY: no order/approval/stop action wired or exercised. | owner first pass; repair at producer, no page-load synthesis |
 
 ## Portfolio
 

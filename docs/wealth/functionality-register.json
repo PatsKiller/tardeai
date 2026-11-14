@@ -66,6 +66,60 @@
   },
   {
    "kind": "view",
+   "page": "Home",
+   "owner": "cc-deepseek-4",
+   "reviewer": "cc-deepseek-3",
+   "status": "UNMAPPED",
+   "existing_route": "",
+   "endpoint_reader_producer": "",
+   "contract_account_security_session_metric_clock": "",
+   "observed_working": "",
+   "evidence": "",
+   "gaps_adapter_backend": "",
+   "next_step": "Owner first pass: map to the canonical n8n product + CIO history; repair missing source/clock/coverage at the producer, never copy old endpoint defects; no fresh synthesis on page load.",
+   "anchor": "#home/today:book-movers",
+   "tab": "Your book & watch movers",
+   "candidate_readers": "/api/v2/market-movers (finviz-market-movers), holdings read model, market-quotes-extended / market-quotes-offhours-schwab lanes",
+   "note": "v03 contract: held-position $ and % regular-session move per canonical account; watch-only movers carry NO holding P&L; extended-hours quote labelled separately vs official close with its own time, never overwrites regular-session totals; nothing called live on weekends; futures/overseas coverage stated explicitly; source + session clock on every tile."
+  },
+  {
+   "kind": "view",
+   "page": "Home",
+   "owner": "cc-deepseek-4",
+   "reviewer": "cc-deepseek-3",
+   "status": "UNMAPPED",
+   "existing_route": "",
+   "endpoint_reader_producer": "",
+   "contract_account_security_session_metric_clock": "",
+   "observed_working": "",
+   "evidence": "",
+   "gaps_adapter_backend": "",
+   "next_step": "Owner first pass: map to the canonical n8n product + CIO history; repair missing source/clock/coverage at the producer, never copy old endpoint defects; no fresh synthesis on page load.",
+   "anchor": "#home/today:read-first",
+   "tab": "What to read first",
+   "candidate_readers": "/api/v2/news/ (news-ingestion, news-to-catalyst, symbol-news-curation-monitor), CIO history for context links",
+   "note": "v03 contract: ranked by holdings/watch/thesis relevance with documented method + coverage; why-it-matters; source, publication and observation time; duplicate headlines grouped; headline fact kept separate from model inference; an unverified headline never becomes a trading fact or stop instruction."
+  },
+  {
+   "kind": "view",
+   "page": "Home",
+   "owner": "cc-deepseek-4",
+   "reviewer": "cc-deepseek-3",
+   "status": "UNMAPPED",
+   "existing_route": "",
+   "endpoint_reader_producer": "",
+   "contract_account_security_session_metric_clock": "",
+   "observed_working": "",
+   "evidence": "",
+   "gaps_adapter_backend": "",
+   "next_step": "Owner first pass: map to the canonical n8n product + CIO history; repair missing source/clock/coverage at the producer, never copy old endpoint defects; no fresh synthesis on page load.",
+   "anchor": "#home/today:protection-plan",
+   "tab": "Protection plan",
+   "candidate_readers": "/api/v2/atm/protection-coverage, /api/v2/holdings/monitored-stops, /api/v2/atm/profit-protection-advisory (holding-protection-advisor, unified-stop-supervisor, broker-stop-reconcile lanes)",
+   "note": "v03 contract: account-specific exceptions first; no-change and policy-exempt cards in an expandable section with a visible count; source mark and order clocks + coverage state shown; real order evidence separate from suggestions; stops never from a headline alone; no fill guarantees. READ-ONLY: no order/approval/stop action wired or exercised."
+  },
+  {
+   "kind": "view",
    "anchor": "#portfolio/holdings",
    "page": "Portfolio",
    "tab": "Holdings",
@@ -1270,5 +1324,11 @@
    "gaps_adapter_backend": "",
    "next_step": ""
   }
- ]
+ ],
+ "reference_v03": {
+  "file": "docs/wealth/design-reference/TradeAI_Wealth_Management_Mockups_v03.html",
+  "sha256": "6c248c9641137e32cbbfa1a06739625c285fd41785ca01f125cc4522110aafc8",
+  "len": 129040,
+  "scope": "v02 + three retained Home sections (operator-approved 2026-11-14)"
+ }
 }
