@@ -28,8 +28,10 @@ SCOPE_KEY = "global"
 #: Store reads that take longer than this are cancelled by Postgres and served as UNKNOWN (DSN §6.1).
 STATEMENT_TIMEOUT_MS = 250
 
-_PRODUCT_FIELDS = ("status", "as_of", "built_at", "age_s", "stale_after_s", "hard_expiry_s", "next_refresh_at",
-                   "seq", "reason", "served_from", "build_status", "build_failure")
+# LQ-20261113-3103: product, schema_version and etag are served on every stored route. The envelope always had
+# schema_version; this list dropped it, so no served ``_product`` carried the schema it was read under.
+_PRODUCT_FIELDS = ("product", "status", "as_of", "built_at", "age_s", "stale_after_s", "hard_expiry_s", "next_refresh_at",
+                   "seq", "reason", "served_from", "build_status", "build_failure", "schema_version", "etag")
 
 _COLUMNS = ("product_id, scope_key, body, etag, seq, as_of, built_at, next_refresh_at, stale_after_s, "
             "hard_expiry_s, purge_after_s, status, reason, schema_version, source_watermarks, builder_sha, bytes, "
