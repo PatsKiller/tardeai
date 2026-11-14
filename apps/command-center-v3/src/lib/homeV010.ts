@@ -158,11 +158,28 @@ export interface HomeV010Model {
   unread: UnreadSource[]
   actionEmpty: boolean
   since: { header: string; rows: SinceRow[]; state: ReadState; note: string | null }
+  /** The Watch card: Home reads no watch-item source, so it says UNKNOWN and why (never an empty list, never "No source yet"). */
+  watch: { state: 'UNKNOWN'; title: string; reason: string }
   status: StatusRow[]
   why: { blockers: Array<{ category: string; detail: string; targetId?: string; needsBackend?: boolean }>; inputs: Array<{ name: string; state: 'OK' | 'STALE' | 'UNKNOWN' | 'TIMED OUT' | 'WARN' | 'GAP' | 'NOT AVAILABLE'; ageText?: string; needsBackend?: boolean }> }
 }
 
 const NB_OWNER = 'NEEDS BACKEND'
+
+/** Home reads no watch-item feed (the Watch page has its own reads), so the card is UNKNOWN with this reason. */
+const WATCH_UNKNOWN: HomeV010Model['watch'] = {
+  state: 'UNKNOWN', title: 'Watch',
+  reason: 'Home reads no watch-item source, so what to watch today or tonight is not known here; the Watch page has its own lists',
+}
+
+/** The FIXED / UNPROVEN / MONITORING lifecycle of each "since" row: null when every row carries a label (or there
+ *  is nothing to label); otherwise an UNKNOWN sentence counting the unlabelled rows and saying why. */
+export function lifecycleNote(rows: SinceRow[], state: ReadState): string | null {
+  if (state !== 'OK' || rows.length === 0) return null
+  const missing = rows.filter(r => !r.label).length
+  if (missing === 0) return null
+  return `Lifecycle UNKNOWN for ${missing} of ${rows.length} incident${rows.length === 1 ? '' : 's'}: the incidents feed carries no FIXED / UNPROVEN / MONITORING label (validation_events is not read by Home)`
+}
 const VALID_LABELS = new Set(['FIXED', 'FIXED · UNPROVEN OVER TIME', 'MONITORING'])
 
 const VERDICTS = new Set<TradeReady>(['YES', 'NO', 'UNKNOWN'])
@@ -378,7 +395,8 @@ export function buildModel(inp: HomeV010Inputs, nowMs: number = Date.now(), last
   const ats = [inp.sinceClose, inp.approvals, inp.incidents, inp.lastSeen, ...(inp.status ? [inp.status] : [])].map(r => r.at).filter(Boolean) as string[]
   return {
     loading, checkedAt: ats.length ? ats.sort().slice(-1)[0] : null, tradeReady, tradeReadyCause, tradeReadyServed: st.served, gates: st.gates, p0, stops, p1Count, approvalsCount, unread, actionEmpty,
-    since: { header, rows: sinceRows, state: incState, note: 'FIXED / UNPROVEN / MONITORING labels need a validation-events source' },
+    since: { header, rows: sinceRows, state: incState, note: lifecycleNote(sinceRows, incState) },
+    watch: WATCH_UNKNOWN,
     status, why: { blockers, inputs },
   }
 }

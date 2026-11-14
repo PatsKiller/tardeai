@@ -124,7 +124,7 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
             <span className="v010-since-t">{r.time}</span>
           </div>
         ))}
-      <div className="v010-muted" style={{ marginTop: 4 }}>FIXED / UNPROVEN / MONITORING labels <NB /></div>
+      {m.since.note ? <div className="v010-unk" style={{ marginTop: 4 }} data-testid="since-lifecycle">{m.since.note}</div> : null}
     </section>
   )
 
@@ -180,8 +180,8 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
 
   const watch = (
     <section className="v010-card" id="card-watch" aria-labelledby="h-watch">
-      <div className="v010-card-hd"><h2 className="v010-h2" id="h-watch">Watch today / Watch tonight <NB /></h2></div>
-      <div className="v010-muted" data-testid="watch-na">No source yet for today's and tonight's watch items on Home; nothing is shown rather than a guess.</div>
+      <div className="v010-card-hd"><h2 className="v010-h2" id="h-watch">{m.watch.title}</h2></div>
+      <div className="v010-unk" data-testid="watch-unknown">{m.watch.state} — {m.watch.reason}</div>
       <Link className="v010-link" to="/watch" data-testid="watch-link">Open Watch</Link>
     </section>
   )

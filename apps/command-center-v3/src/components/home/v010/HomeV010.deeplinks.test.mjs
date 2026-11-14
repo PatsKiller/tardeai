@@ -88,7 +88,7 @@ await test('priority rows render a link, and an unknown kind says no destination
 await test('Watch block is an honest NEEDS BACKEND with the real Watch link; Details lists every destination', () => {
   const h = render(model([gate('p0', 'OK')]))
   const w = h.slice(h.indexOf('id="card-watch"'), h.indexOf('id="card-details"'))
-  assert.match(w, /NEEDS BACKEND/); assert.match(w, /href="\/watch"/)
+  assert.match(w, /UNKNOWN — Home reads no watch-item source/); assert.doesNotMatch(w, /NEEDS BACKEND|No source yet/); assert.match(w, /href="\/watch"/)
   assert.doesNotMatch(text(w), /\d+ (items?|symbols?)/)
   assert.equal(count(h, /data-testid="details-link"/g), dest.DETAILS.length)
   assert.match(h, /href="\/home-classic"/)
