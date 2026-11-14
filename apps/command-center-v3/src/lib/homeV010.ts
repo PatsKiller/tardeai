@@ -332,7 +332,17 @@ export function buildModel(inp: HomeV010Inputs, nowMs: number = Date.now(), last
     data = { id: 'row-data', name: 'Data', state: ev > 0 ? 'WARN' : 'OK', value: `${ev} data-integrity event${ev === 1 ? '' : 's'} · 24 h`,
       ...(ev > 0 ? { cause: 'Data Integrity Alert', source: di.source_id || 'alert_events', owner: di.owner && di.owner !== 'UNREGISTERED' ? di.owner : NB_OWNER } : {}) }
   }
-  const schedulers = unknownRow('row-schedulers', 'Schedulers', 'no per-lane run source')
+  // A04 (LQ-20261113-3046): the server already grades schedulers (gates[id=schedulers], lane_health_current). Show that
+  // gate, never a hard-coded "no source", so this row and the Why sheet's gate list cannot disagree about one source.
+  const sg = st.gates?.find(g => g.id === 'schedulers')
+  const schedulers: StatusRow = sg && sg.state !== 'UNKNOWN' && sg.state !== 'TIMED OUT'
+    ? { id: 'row-schedulers', name: 'Schedulers', state: sg.state,
+        value: `lane health as of ${etTime(sg.asOf, true) || 'time not recorded'}${sg.age ? ` · ${sg.age} old` : ''}`,
+        ...(sg.state !== 'OK' ? { cause: sg.reason || sg.state.toLowerCase(), source: sg.source, owner: NB_OWNER, needsBackend: sg.needsBackend } : {}) }
+    : sg ? unknownRow('row-schedulers', 'Schedulers', sg.source, sg.state, sg.needsBackend, sg.reason || 'unknown')
+    : st.gates ? unknownRow('row-schedulers', 'Schedulers', 'no schedulers gate in /api/v2/home/status')
+    // The status read itself has no gates (loading / timed out / failed / not served): carry its own state and cause (review 3054 F3).
+    : unknownRow('row-schedulers', 'Schedulers', '/api/v2/home/status', st.loading ? 'LOADING' : st.state === 'TIMED OUT' ? 'TIMED OUT' : 'UNKNOWN', st.notServed, st.cause)
   let alerts: StatusRow
   if (inp.incidents.state === 'LOADING') alerts = unknownRow('row-alerts', 'Alerts', API.incidents, 'LOADING', false)
   else if (incState !== 'OK') alerts = unknownRow('row-alerts', 'Alerts', API.incidents, incState === 'TIMED OUT' ? 'TIMED OUT' : 'UNKNOWN', false,

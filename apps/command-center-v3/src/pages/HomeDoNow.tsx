@@ -16,6 +16,7 @@ import { regimeState, regimeClockTitle } from '../lib/homeRegime'
 import { Link } from 'react-router-dom'
 import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH } from '../lib/bestOpportunities'
 import { useApi } from '../hooks/useApi'
+import { AccountsCaption } from '../components/home/AccountsCaption'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
   doNowFrom, homeWithCurrentTruth, positionsFreshness, moversBars, moversHeading, accountRows, cashPct, money, pct, ageLabel, ageFromClock, briefingSummary, briefingProvenance,
@@ -324,6 +325,7 @@ export default function HomeDoNow() {
                   ))}
                 </tbody>
               </table>
+              <AccountsCaption rows={accounts} />
               </div>
             )}
           </section>
