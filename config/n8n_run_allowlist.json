@@ -6575,6 +6575,130 @@
       "env_report_reason": "Shadow-only registration (LQ-2743): the argv is the read-only --dry-run and has not been fired by the executor, so the env closure is unaudited; report mode records the NAMES enforce would drop. Tighten before any live promotion.",
       "env_evidence": "scripts/lib/cc_products/cio_pages.py reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (psycopg2 connect, read-only PGOPTIONS in the build child), TRADEAI_STATE_ROOT (state root with data/) and TRADEAI_BUILDER_SHA (build-log provenance). No broker credential, order route or live flag.",
       "source": "LQ-20261107-2743 (lead 21:40 ET 2026-11-12, P0): release 2 (d014c75d5) was rolled back because GET /api/v2/cio/pages served only the stored cio.pages product and nothing scheduled its builder (cc_product_current 0 rows). SHADOW ONLY: dry_run_arg ['--dry-run'] writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists. Promotion (live_arg [], cadence */2) is the lead's decision. output_signal null: a live run writes cc_product_build_log (registry db_max), not a file."
+    },
+    {
+      "lane_id": "cc-product-market-risk",
+      "command": [
+        "$PY",
+        "scripts/cc_products_build.py",
+        "--product",
+        "market_risk.latest"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_cc_product_market_risk.lock",
+      "lock_kind": "flock",
+      "timeout_s": 150,
+      "market_gate": false,
+      "output_signal": null,
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_BUILDER_SHA",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Shadow-only registration (LQ-3008): the argv is the read-only --dry-run and has not been fired by the executor, so the env closure is unaudited; report mode records the NAMES enforce would drop. Tighten before any live promotion.",
+      "env_evidence": "scripts/lib/cc_products/product_builder.py + builders.py reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (psycopg2 connect, read-only PGOPTIONS in the build child), TRADEAI_STATE_ROOT (state root with data/) and TRADEAI_BUILDER_SHA (build-log provenance). No broker credential, order route or live flag.",
+      "source": "LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py (market_risk.latest). SHADOW ONLY: dry_run_arg ['--dry-run'] writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists. Promotion is the lead's decision. output_signal null: a live run writes cc_product_build_log (registry db_max), not a file."
+    },
+    {
+      "lane_id": "cc-product-risk",
+      "command": [
+        "$PY",
+        "scripts/cc_products_build.py",
+        "--product",
+        "risk"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_cc_product_risk.lock",
+      "lock_kind": "flock",
+      "timeout_s": 150,
+      "market_gate": false,
+      "output_signal": null,
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_BUILDER_SHA",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Shadow-only registration (LQ-3008): the argv is the read-only --dry-run and has not been fired by the executor, so the env closure is unaudited; report mode records the NAMES enforce would drop. Tighten before any live promotion.",
+      "env_evidence": "scripts/lib/cc_products/product_builder.py + builders.py reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (psycopg2 connect, read-only PGOPTIONS in the build child), TRADEAI_STATE_ROOT (state root with data/) and TRADEAI_BUILDER_SHA (build-log provenance). No broker credential, order route or live flag.",
+      "source": "LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py (risk). SHADOW ONLY: dry_run_arg ['--dry-run'] writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists. Promotion is the lead's decision. output_signal null: a live run writes cc_product_build_log (registry db_max), not a file."
+    },
+    {
+      "lane_id": "cc-product-analyst-links",
+      "command": [
+        "$PY",
+        "scripts/cc_products_build.py",
+        "--product",
+        "reports.analyst_links"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_cc_product_analyst_links.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": null,
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_BUILDER_SHA",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Shadow-only registration (LQ-3008): the argv is the read-only --dry-run and has not been fired by the executor, so the env closure is unaudited; report mode records the NAMES enforce would drop. Tighten before any live promotion.",
+      "env_evidence": "scripts/lib/cc_products/product_builder.py + builders.py reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (psycopg2 connect, read-only PGOPTIONS in the build child), TRADEAI_STATE_ROOT (state root with data/) and TRADEAI_BUILDER_SHA (build-log provenance). No broker credential, order route or live flag.",
+      "source": "LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py (reports.analyst_links). SHADOW ONLY: dry_run_arg ['--dry-run'] writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists. Promotion is the lead's decision. output_signal null: a live run writes cc_product_build_log (registry db_max), not a file."
+    },
+    {
+      "lane_id": "cc-product-home",
+      "command": [
+        "$PY",
+        "scripts/cc_products_build.py",
+        "--product",
+        "home"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_cc_product_home.lock",
+      "lock_kind": "flock",
+      "timeout_s": 150,
+      "market_gate": false,
+      "output_signal": null,
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_BUILDER_SHA",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Shadow-only registration (LQ-3008): the argv is the read-only --dry-run and has not been fired by the executor, so the env closure is unaudited; report mode records the NAMES enforce would drop. Tighten before any live promotion.",
+      "env_evidence": "scripts/lib/cc_products/product_builder.py + builders.py reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (psycopg2 connect, read-only PGOPTIONS in the build child), TRADEAI_STATE_ROOT (state root with data/) and TRADEAI_BUILDER_SHA (build-log provenance). No broker credential, order route or live flag.",
+      "source": "LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py (home). SHADOW ONLY: dry_run_arg ['--dry-run'] writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists. Promotion is the lead's decision. output_signal null: a live run writes cc_product_build_log (registry db_max), not a file."
     }
   ],
   "blocked_reasons": {

@@ -45447,6 +45447,494 @@
         "requested_on": null,
         "note": "Reviewed by a non-author against scripts/cc_products_cio_pages.py, scripts/lib/cc_products/cio_pages.py, the registry row and the allowlist row (LQ-2969). Shadow-stage review: the live-run checks (output_advanced, stale) and the */2 freshness tightening are re-reviewed at promotion."
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "cc-product-market-risk",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "lq_3008_cc_product_builder_lanes_20261113",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Schedule the market_risk.latest product builder so its read route has a stored copy. A shadow fire runs --dry-run: it builds the product in a forked child under RLIMIT_AS with read-only PG sessions, measures it and prints one JSON receipt, writing nothing. A live fire (not enabled) would write cc_product_current + cc_product_build_log in one transaction and refresh the hot tier.",
+        "business_function": "market risk (serves /api/v2/market-risk/latest and /api/v2/home/cio-card) served from a stored product",
+        "source": "scripts/cc_products_build.py --product market_risk.latest -> scripts/lib/cc_products/product_builder.py; LQ-20261107-3008"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/cc_products_build.py --product market_risk.latest",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_cc_product_market_risk.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (flock)"
+        },
+        {
+          "name": "data/ under TRADEAI_STATE_ROOT and Postgres (read-only sessions in the build child) via the product's build function in scripts/lib/cc_products/builders.py",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/cc_products/product_builder.py build_in_child"
+        },
+        {
+          "name": "Postgres cc_product_current, cc_product_build_log (product_id market_risk.latest); hot tier",
+          "kind": "store",
+          "direction": "write",
+          "source": "live run only (no --dry-run)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire ends RUN_DONE in mode dry_run while stage is shadow; the printed receipt has outcome OK and wrote false"
+        },
+        {
+          "check": "output_advanced",
+          "text": "after promotion: max(cc_product_build_log.finished_at) where product_id='market_risk.latest' advances each run and cc_product_current has the market_risk.latest row"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "slow",
+          "text": "build_ms above 120000 (0.8 x the dispatcher timeout_s 150)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED, or the receipt outcome is not OK (TIMEOUT, RLIMIT, ERROR)"
+        },
+        {
+          "check": "stale",
+          "text": "after promotion: the stored product passes its hard_expiry_s and the route falls back to its legacy path"
+        }
+      ],
+      "baseline": {
+        "timeout_s": 150,
+        "class": "monitor",
+        "freshness_degraded_after_h": 1.5,
+        "freshness_failed_after_h": 3.0,
+        "freshness_rule": "shadow cadence */30 * * * *: degraded beyond 3x, failed beyond 6x; promotion must tighten this to the product's stale_after_s / hard_expiry_s",
+        "computed_on": "2026-11-13",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED for the dispatcher (never dispatched). One sandboxed read-only dry run 2026-11-13: outcome OK, build_ms 814, peak_rss_kb 73040, 2421 bytes, wrote false.",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 120.0,
+        "duration_rule": "0.8x timeout_s (0.8 x 150 = 120.0 s)"
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "registry row severity High: without a stored product the route computes in the server process",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "No catalogue entry yet; regenerate config/n8n_remediation_catalogue.json after this entry merges."
+      },
+      "evidence": {
+        "receipt": "cc_product_build_log (product_id market_risk.latest)",
+        "verify": [
+          "python3 scripts/cc_products_build.py --product market_risk.latest --dry-run",
+          "psql -c \"select max(finished_at) from cc_product_build_log where product_id='market_risk.latest'\""
+        ]
+      },
+      "review_by": "2026-11-26",
+      "review": {
+        "prepared_by": "agent draft (cc-sonnet-5, LQ-3008, 2026-11-13)",
+        "status": "DRAFT",
+        "reviewed_by": null,
+        "reviewed_on": null,
+        "requested_of": "non-author reviewer",
+        "requested_on": "2026-11-13",
+        "note": "Needs a non-author review against scripts/cc_products_build.py, the registry row and the allowlist row. Shadow-stage only."
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "cc-product-risk",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "lq_3008_cc_product_builder_lanes_20261113",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Schedule the risk product builder so its read route has a stored copy. A shadow fire runs --dry-run: it builds the product in a forked child under RLIMIT_AS with read-only PG sessions, measures it and prints one JSON receipt, writing nothing. A live fire (not enabled) would write cc_product_current + cc_product_build_log in one transaction and refresh the hot tier.",
+        "business_function": "risk tier (cio.pages limits) served from a stored product",
+        "source": "scripts/cc_products_build.py --product risk -> scripts/lib/cc_products/product_builder.py; LQ-20261107-3008"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/cc_products_build.py --product risk",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_cc_product_risk.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (flock)"
+        },
+        {
+          "name": "data/ under TRADEAI_STATE_ROOT and Postgres (read-only sessions in the build child) via the product's build function in scripts/lib/cc_products/builders.py",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/cc_products/product_builder.py build_in_child"
+        },
+        {
+          "name": "Postgres cc_product_current, cc_product_build_log (product_id risk); hot tier",
+          "kind": "store",
+          "direction": "write",
+          "source": "live run only (no --dry-run)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire ends RUN_DONE in mode dry_run while stage is shadow; the printed receipt has outcome OK and wrote false"
+        },
+        {
+          "check": "output_advanced",
+          "text": "after promotion: max(cc_product_build_log.finished_at) where product_id='risk' advances each run and cc_product_current has the risk row"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "slow",
+          "text": "build_ms above 120000 (0.8 x the dispatcher timeout_s 150)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED, or the receipt outcome is not OK (TIMEOUT, RLIMIT, ERROR)"
+        },
+        {
+          "check": "stale",
+          "text": "after promotion: the stored product passes its hard_expiry_s and the route falls back to its legacy path"
+        }
+      ],
+      "baseline": {
+        "timeout_s": 150,
+        "class": "monitor",
+        "freshness_degraded_after_h": 1.5,
+        "freshness_failed_after_h": 3.0,
+        "freshness_rule": "shadow cadence */30 * * * *: degraded beyond 3x, failed beyond 6x; promotion must tighten this to the product's stale_after_s / hard_expiry_s",
+        "computed_on": "2026-11-13",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED for the dispatcher (never dispatched). One sandboxed read-only dry run 2026-11-13: outcome OK, build_ms 372, peak_rss_kb 36932, 111517 bytes, wrote false.",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 120.0,
+        "duration_rule": "0.8x timeout_s (0.8 x 150 = 120.0 s)"
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "registry row severity High: without a stored product the route computes in the server process",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "No catalogue entry yet; regenerate config/n8n_remediation_catalogue.json after this entry merges."
+      },
+      "evidence": {
+        "receipt": "cc_product_build_log (product_id risk)",
+        "verify": [
+          "python3 scripts/cc_products_build.py --product risk --dry-run",
+          "psql -c \"select max(finished_at) from cc_product_build_log where product_id='risk'\""
+        ]
+      },
+      "review_by": "2026-11-26",
+      "review": {
+        "prepared_by": "agent draft (cc-sonnet-5, LQ-3008, 2026-11-13)",
+        "status": "DRAFT",
+        "reviewed_by": null,
+        "reviewed_on": null,
+        "requested_of": "non-author reviewer",
+        "requested_on": "2026-11-13",
+        "note": "Needs a non-author review against scripts/cc_products_build.py, the registry row and the allowlist row. Shadow-stage only."
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "cc-product-analyst-links",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "lq_3008_cc_product_builder_lanes_20261113",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Schedule the reports.analyst_links product builder so its read route has a stored copy. A shadow fire runs --dry-run: it builds the product in a forked child under RLIMIT_AS with read-only PG sessions, measures it and prints one JSON receipt, writing nothing. A live fire (not enabled) would write cc_product_current + cc_product_build_log in one transaction and refresh the hot tier.",
+        "business_function": "analyst report links (shell.static tier) served from a stored product",
+        "source": "scripts/cc_products_build.py --product reports.analyst_links -> scripts/lib/cc_products/product_builder.py; LQ-20261107-3008"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/cc_products_build.py --product reports.analyst_links",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_cc_product_analyst_links.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (flock)"
+        },
+        {
+          "name": "data/ under TRADEAI_STATE_ROOT and Postgres (read-only sessions in the build child) via the product's build function in scripts/lib/cc_products/builders.py",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/cc_products/product_builder.py build_in_child"
+        },
+        {
+          "name": "Postgres cc_product_current, cc_product_build_log (product_id reports.analyst_links); hot tier",
+          "kind": "store",
+          "direction": "write",
+          "source": "live run only (no --dry-run)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire ends RUN_DONE in mode dry_run while stage is shadow; the printed receipt has outcome OK and wrote false"
+        },
+        {
+          "check": "output_advanced",
+          "text": "after promotion: max(cc_product_build_log.finished_at) where product_id='reports.analyst_links' advances each run and cc_product_current has the reports.analyst_links row"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "slow",
+          "text": "build_ms above 240000 (0.8 x the dispatcher timeout_s 300)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED, or the receipt outcome is not OK (TIMEOUT, RLIMIT, ERROR)"
+        },
+        {
+          "check": "stale",
+          "text": "after promotion: the stored product passes its hard_expiry_s and the route falls back to its legacy path"
+        }
+      ],
+      "baseline": {
+        "timeout_s": 300,
+        "class": "monitor",
+        "freshness_degraded_after_h": 18.0,
+        "freshness_failed_after_h": 36.0,
+        "freshness_rule": "shadow cadence 0 */6 * * *: degraded beyond 3x, failed beyond 6x; promotion must tighten this to the product's stale_after_s / hard_expiry_s",
+        "computed_on": "2026-11-13",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED for the dispatcher (never dispatched). One sandboxed read-only dry run 2026-11-13: outcome OK, build_ms 35, peak_rss_kb 27048, 45 bytes, wrote false.",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 240.0,
+        "duration_rule": "0.8x timeout_s (0.8 x 300 = 240.0 s)"
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "registry row severity High: without a stored product the route computes in the server process",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "No catalogue entry yet; regenerate config/n8n_remediation_catalogue.json after this entry merges."
+      },
+      "evidence": {
+        "receipt": "cc_product_build_log (product_id reports.analyst_links)",
+        "verify": [
+          "python3 scripts/cc_products_build.py --product reports.analyst_links --dry-run",
+          "psql -c \"select max(finished_at) from cc_product_build_log where product_id='reports.analyst_links'\""
+        ]
+      },
+      "review_by": "2026-11-26",
+      "review": {
+        "prepared_by": "agent draft (cc-sonnet-5, LQ-3008, 2026-11-13)",
+        "status": "DRAFT",
+        "reviewed_by": null,
+        "reviewed_on": null,
+        "requested_of": "non-author reviewer",
+        "requested_on": "2026-11-13",
+        "note": "Needs a non-author review against scripts/cc_products_build.py, the registry row and the allowlist row. Shadow-stage only."
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "cc-product-home",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "lq_3008_cc_product_builder_lanes_20261113",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Schedule the home product builder so its read route has a stored copy. A shadow fire runs --dry-run: it builds the product in a forked child under RLIMIT_AS with read-only PG sessions, measures it and prints one JSON receipt, writing nothing. A live fire (not enabled) would write cc_product_current + cc_product_build_log in one transaction and refresh the hot tier.",
+        "business_function": "Home slices (since_close, incidents, approvals_summary, priorities_live, status, gates) served from a stored product",
+        "source": "scripts/cc_products_build.py --product home -> scripts/lib/cc_products/product_builder.py; LQ-20261107-3008"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/cc_products_build.py --product home",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_cc_product_home.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (flock)"
+        },
+        {
+          "name": "data/ under TRADEAI_STATE_ROOT and Postgres (read-only sessions in the build child) via the product's build function in scripts/lib/cc_products/builders.py",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/cc_products/product_builder.py build_in_child"
+        },
+        {
+          "name": "Postgres cc_product_current, cc_product_build_log (product_id home); hot tier",
+          "kind": "store",
+          "direction": "write",
+          "source": "live run only (no --dry-run)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire ends RUN_DONE in mode dry_run while stage is shadow; the printed receipt has outcome OK and wrote false"
+        },
+        {
+          "check": "output_advanced",
+          "text": "after promotion: max(cc_product_build_log.finished_at) where product_id='home' advances each run and cc_product_current has the home row"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "slow",
+          "text": "build_ms above 120000 (0.8 x the dispatcher timeout_s 150)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED, or the receipt outcome is not OK (TIMEOUT, RLIMIT, ERROR)"
+        },
+        {
+          "check": "stale",
+          "text": "after promotion: the stored product passes its hard_expiry_s and the route falls back to its legacy path"
+        }
+      ],
+      "baseline": {
+        "timeout_s": 150,
+        "class": "monitor",
+        "freshness_degraded_after_h": 1.5,
+        "freshness_failed_after_h": 3.0,
+        "freshness_rule": "shadow cadence */30 * * * *: degraded beyond 3x, failed beyond 6x; promotion must tighten this to the product's stale_after_s / hard_expiry_s",
+        "computed_on": "2026-11-13",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED for the dispatcher (never dispatched). One sandboxed read-only dry run 2026-11-13: outcome OK, build_ms 329, peak_rss_kb 34940, 28332 bytes, wrote false.",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 120.0,
+        "duration_rule": "0.8x timeout_s (0.8 x 150 = 120.0 s)"
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "registry row severity High: without a stored product the route computes in the server process",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "No catalogue entry yet; regenerate config/n8n_remediation_catalogue.json after this entry merges."
+      },
+      "evidence": {
+        "receipt": "cc_product_build_log (product_id home)",
+        "verify": [
+          "python3 scripts/cc_products_build.py --product home --dry-run",
+          "psql -c \"select max(finished_at) from cc_product_build_log where product_id='home'\""
+        ]
+      },
+      "review_by": "2026-11-26",
+      "review": {
+        "prepared_by": "agent draft (cc-sonnet-5, LQ-3008, 2026-11-13)",
+        "status": "DRAFT",
+        "reviewed_by": null,
+        "reviewed_on": null,
+        "requested_of": "non-author reviewer",
+        "requested_on": "2026-11-13",
+        "note": "Needs a non-author review against scripts/cc_products_build.py, the registry row and the allowlist row. Shadow-stage only."
+      }
     }
   ],
   "pending_changes": {
