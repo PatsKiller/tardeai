@@ -83,6 +83,8 @@ assert.equal(staleOnlyNo({ tradeReady: 'YES', gates: [] } as never, { blockers: 
   assert.equal(after.state, 'WARN', 'the row now draws the schedulers gate')
   assert.equal(after.source, 'lane_health_current')
   assert.match(after.cause || '', /34 LATE/)
+  assert.match(after.value || '', / · lane_health_current$/, 'the reconcile draws the gate row (value carries the gate source)')
+  assert.equal(after.owner, 'see source lane')
   const g = r.model.gates!.find(x => x.id === 'schedulers')!
   assert.equal(after.state, g.state, 'System Status and Trading gates show one projection')
 }
