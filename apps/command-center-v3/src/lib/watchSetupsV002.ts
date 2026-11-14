@@ -120,6 +120,32 @@ export function discoveryGap(body: unknown): string | null {
   return null
 }
 
+export type DiscoverCard = { key: 'feed' | 'pins'; title: string; state: State; detail: string }
+/** WR-04/WR-05: the discovery feed and the saved screener finds are two sources with two clocks, each carrying its own
+ *  state. A dead feed never grades the pins card, and a fresh pins card never certifies the feed. */
+export function discoverCards(body: unknown, nowMs: number, findCount: number): DiscoverCard[] {
+  const b = unwrap(body)
+  const env = asRec(asRec(b?.feeds)?.watch_candidate_events) ?? b
+  const gap = asRec(env?.gap) ?? asRec(b?.gap)
+  const last = etText(gap?.last_as_of ?? env?.as_of)
+  const feed: DiscoverCard = gap?.kind === 'no_producer'
+    ? { key: 'feed', title: 'Discovery feed', state: 'UNKNOWN', detail: `no producer${last ? `; last event ${last}` : '; no event on record'}` }
+    : gap?.kind === 'no_coverage'
+      ? { key: 'feed', title: 'Discovery feed', state: 'UNKNOWN', detail: 'no coverage — it has never produced an event' }
+      : env?.stale === true || b?.stale === true || !last
+        ? { key: 'feed', title: 'Discovery feed', state: 'UNKNOWN', detail: `feed clock ${last ? `last event ${last}` : 'missing'}` }
+        : { key: 'feed', title: 'Discovery feed', state: 'OK', detail: `last event ${last}` }
+  const g = gradeStamp(b?.pins_as_of, b?.pins_as_of_basis ?? 'screener_find_pins', nowMs, DISCOVER_MAX_AGE_S)
+  const pinsAt = etText(b?.pins_as_of)
+  const pins: DiscoverCard = {
+    key: 'pins',
+    title: 'Saved screener finds',
+    state: g.state,
+    detail: `${findCount} find${findCount === 1 ? '' : 's'}${pinsAt ? ` · pins as of ${pinsAt}` : ' · no pins clock'}`,
+  }
+  return [feed, pins]
+}
+
 export type Certified = { text: string; mismatch: boolean; unknown: boolean }
 /** The evaluator's own count from its last OK run, with that run's age, next to the table count.
  *  Missing → "no certified count"; a run that could not read its table (armed null) → "count unknown". Never 0 by default. */
@@ -143,7 +169,24 @@ export function certifiedOf(body: unknown, nowMs: number = Date.now()): Certifie
   return { text: `Evaluator armed ${armed} · ${when} · ${tail}`, mismatch, unknown: false }
 }
 
-export type AlertRow = { id: number; symbol: string; condition: string; threshold: string; active: boolean; lastFired: string | null }
+export type AlertRow = { id: number; symbol: string; condition: string; threshold: string; active: boolean; lastFired: string | null
+  /** The row's own symbol, or null when the label came from a directive id — a directive id is not a symbol route. */
+  link: string | null }
+/** WR-07: a row's `active` flag is the DEFINITION's state, not evidence that anything is being evaluated. The label says
+ *  so, so an armed row can never read as monitoring assurance. */
+export const alertDefinitionState = (active: boolean): string => (active ? 'definition armed' : 'definition disarmed')
+
+/** WR-07/WR-05: the evaluator as its own source card — producer, schedule and whether a successful run is on record. */
+export type EvaluatorSource = { producer: string; schedule: string; record: string; state: State }
+export function evaluatorSource(body: unknown, nowMs: number): EvaluatorSource {
+  const ev = asRec(unwrap(body)?.evaluator)
+  const g = gradeAlerts(body, nowMs)
+  const record = !ev || ev.readable === false ? 'run record unreadable'
+    : ev.last_ok_at ? `last successful run ${etText(ev.last_ok_at) ?? 'at an unknown time'}`
+    : 'no successful run on record'
+  return { producer: 'watch_alerts_eval.py', schedule: 'every 20 min, 09:00–16:00 ET, Mon–Fri', record, state: g.state }
+}
+
 export function alertRows(body: unknown): AlertRow[] {
   const list = unwrap(body)?.alerts
   if (!Array.isArray(list)) return []
@@ -153,7 +196,8 @@ export function alertRows(body: unknown): AlertRow[] {
     const th = r?.threshold
     return [{ id, symbol: String(r?.symbol || r?.directive_id || '—'), condition: String(r?.condition_type || '—'),
       threshold: th === null || th === undefined ? '' : String(th), active: r?.active === true,
-      lastFired: typeof r?.last_fired_at === 'string' ? r.last_fired_at : null }]
+      lastFired: typeof r?.last_fired_at === 'string' ? r.last_fired_at : null,
+      link: r?.symbol ? String(r.symbol) : null }]
   })
 }
 
@@ -161,6 +205,34 @@ export type SectorRow = { sector: string; count: number; sample: string[] }
 export function sectorRows(body: unknown): SectorRow[] {
   const list = unwrap(body)?.sectors
   return Array.isArray(list) ? list.flatMap((r: any) => (r?.sector ? [{ sector: String(r.sector), count: Number(r.count) || 0, sample: Array.isArray(r.sample) ? r.sample.map(String) : [] }] : [])) : []
+}
+
+/** WR-03: what the Sectors inventory actually is — absolute time, named producer, limit. A missing stamp stays null
+ *  (the page then shows its UNKNOWN grade); no part of this is derived from the counts. */
+export type SectorContext = {
+  asOfText: string | null
+  producer: string
+  limitText: string
+  /** WR-02: counts are per raw provider label; a symbol may appear under more than one. Never a universe total. */
+  labelNote: string
+  /** WR-01: the approved momentum/regime blocks have no projection in this build and must say so. */
+  momentum: { state: 'UNKNOWN'; reason: string }
+}
+const SECTOR_PRODUCER: Record<string, string> = {
+  'incubator_universe.updated_at': 'incubator universe refresh',
+}
+export function sectorContext(body: unknown, nowMs: number): SectorContext {
+  const b = unwrap(body)
+  const basis = typeof b?.as_of_basis === 'string' ? b.as_of_basis : ''
+  const producer = SECTOR_PRODUCER[basis] || (basis ? basis.replace(/[_.]/g, ' ') : 'producer unknown')
+  const asOfText = etText(b?.as_of)
+  return {
+    asOfText,
+    producer,
+    limitText: ageText(SECTORS_MAX_AGE_S),
+    labelNote: 'Counts are per raw provider sector label; one symbol can appear under more than one label, so these do not add up to a universe total.',
+    momentum: { state: 'UNKNOWN', reason: 'No sector momentum/strength projection exists in this build.' },
+  }
 }
 
 export type PoolRow = { symbol: string; strategy: string; status: string; origin: string; enteredAt: string | null }
@@ -180,6 +252,26 @@ export type PullbackRow = {
 }
 const num = (v: unknown): number | null => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v))
 const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
+
+/** WR-10: the scan's technical signal and the proposal's readiness are different facts. A triggering candidate with no
+ *  live proposal is BLOCKED, not ready, and says which state blocks it. Never resurrects a rejected/expired proposal. */
+export type ProposalState = { key: 'in_queue' | 'rejected' | 'expired' | 'stale' | 'missing'; text: string; blocking: boolean }
+export function proposalState(proposalLive: boolean | null, status: string | null): ProposalState {
+  if (proposalLive === true) return { key: 'in_queue', text: 'Proposal: in queue', blocking: false }
+  const st = (status || '').toUpperCase()
+  if (proposalLive === false) {
+    if (st === 'REJECTED') return { key: 'rejected', text: 'Proposal: rejected — no live proposal', blocking: true }
+    if (st === 'EXPIRED') return { key: 'expired', text: 'Proposal: expired — no live proposal', blocking: true }
+    return { key: 'stale', text: `Proposal: not live${st ? ` (${st})` : ''}`, blocking: true }
+  }
+  return { key: 'missing', text: 'Proposal: none — no live proposal', blocking: true }
+}
+/** The technical signal, named as a signal (the green pill alone can read as readiness). */
+export const signalText = (tier: string): string => (tier === 'trigger' ? 'Signal: triggered' : `Signal: ${tier}`)
+
+/** WR-11/WR-12: what the pullback read does NOT carry. Every one of these renders UNKNOWN rather than borrowing the scan
+ *  stamp; a monitor tick, a quote time and a per-candidate evaluation are not in this payload. */
+export type PullbackUnknowns = { monitor: null; quote: null; candidateEvaluated: null }
 
 export function pullbackRows(body: unknown): PullbackRow[] {
   const list = unwrap(body)?.candidates
@@ -210,6 +302,8 @@ export type PullbackProvenance = {
   /** Every count is null when the body did not state it: a missing count must never read as 0 on this page. */
   triggers: number | null; triggersLive: number | null; triggersStale: number | null
   watch: number | null; held: number | null; dismissed: number | null
+  /** WR-11: not in the pullback read today — always null, so the page names them UNKNOWN instead of inheriting the scan. */
+  monitor: string | null; quote: string | null; candidateEvaluated: string | null
   hit: { windowDays: number | null; triggers: number | null; target1First: number | null; evaluated: number | null; medianDays: number | null } | null
 }
 /** What the scan covered and when — stated on the page instead of implied (D3 provenance). Missing pieces stay null. */
@@ -221,6 +315,7 @@ export function pullbackProvenance(body: unknown): PullbackProvenance {
     universe: str(p?.universe) || '', screened: num(p?.screened), schedule: str(p?.schedule), lastRun: str(b?.generated_at),
     triggers: num(b?.trigger_count), triggersLive: num(b?.trigger_live_count), triggersStale: num(b?.trigger_stale_count),
     watch: num(b?.watch_count), held: num(b?.held_count), dismissed: num(b?.dismissed_in_cooldown),
+    monitor: null, quote: null, candidateEvaluated: null,
     hit: h ? { windowDays: num(h.window_days), triggers: num(h.triggers), target1First: num(h.target1_first),
       evaluated: num(h.evaluated), medianDays: num(h.median_days) } : null,
   }
@@ -235,3 +330,18 @@ export function findRows(body: unknown): FindRow[] {
 
 export function setupsUrl(offset = 0): string { return `${SETUPS_API}?status=all&offset=${offset}&limit=${PAGE_LIMIT}` }
 export function disarmBody(id: number): { action: 'disarm'; id: number } { return { action: 'disarm', id } }
+
+/** WR-08/WR-X3: the disarm ACTION as a testable unit. The POST answers `ok:true` even when no row changed, so success is
+ *  never claimed here: the caller must refetch and let the stored row say `definition disarmed`. A failure keeps the
+ *  server state and names the error. */
+export type DisarmPost = (body: { action: 'disarm'; id: number }) => Promise<{ ok: boolean; status: number; body: unknown }>
+export async function disarmAlert(id: number, symbol: string, post: DisarmPost): Promise<{ ok: boolean; message: string }> {
+  try {
+    const r = await post(disarmBody(id))
+    const j = unwrap(r.body)
+    if (!r.ok || j?.ok === false) throw new Error(String(j?.error || `HTTP ${r.status}`))
+    return { ok: true, message: `Disarm sent for ${symbol}. Check the row below: it reads "definition disarmed" once the change is stored.` }
+  } catch (e) {
+    return { ok: false, message: `Failed: ${String((e as Error).message || e).slice(0, 100)}` }
+  }
+}

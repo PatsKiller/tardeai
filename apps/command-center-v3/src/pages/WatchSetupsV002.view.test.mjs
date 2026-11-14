@@ -41,6 +41,8 @@ function compile(path) {
 }
 
 const model = await import(compile(join(app, 'src/lib/watchSetupsV002.ts')))
+const disc = await import(compile(join(app, 'src/lib/watchDiscoverV002.ts')))
+const recent = await import(compile(join(app, 'src/pages/WatchDiscoverRecentV002.tsx')))
 const page = await import(compile(join(app, 'src/pages/WatchSetupsV002.tsx')))
 const { gradeStamp, certifiedOf, alertRows, poolRows, sectorRows, findRows, discoveryGap, gradeAlerts, gradePullback, pullbackRows, pullbackProvenance } = model
 const { WatchSetupsV002View } = page
@@ -139,11 +141,12 @@ assert.match(html(base({ hasMore: false })), /<button[^>]*disabled[^>]*>Next/)
     assert.ok(!/data-testid="(alert|find|sector|setup)-/.test(h) && !h.includes('watch-setups-empty'))
   }
 }
-// 14. Disarm never claims a stored change the POST cannot prove
+// 14. Disarm never claims a stored change the POST cannot prove (the message lives in the lib's disarmAlert)
 {
   const src = readFileSync(join(app, 'src/pages/WatchSetupsV002.tsx'), 'utf8')
-  assert.ok(!/alert disarmed\./.test(src), 'no "alert disarmed." claim')
-  assert.match(src, /Disarm sent for/)
+  const libSrc = readFileSync(join(app, 'src/lib/watchSetupsV002.ts'), 'utf8')
+  assert.ok(!/alert disarmed\./.test(src + libSrc), 'no "alert disarmed." claim')
+  assert.match(libSrc, /Disarm sent for/)
 }
 // 15. W-04: the shared sub-nav renders on Setups too and marks the tab the URL asks for
 {
@@ -189,4 +192,186 @@ assert.match(html(base({ hasMore: false })), /<button[^>]*disabled[^>]*>Next/)
   const he = html(base({ tab: 'pullback', grade: gradePullback({ generated_at: iso(1800) }, NOW), pullback: [], pullbackInfo: info }))
   assert.ok(he.includes('No pullback candidates from the last scan') && !he.includes('pullback-no-scan'))
 }
-console.log('16 scenarios passed')
+// 17. S7/WR-03+WR-02+WR-01: the Sectors context is auditable — absolute ET, named producer, the limit, momentum UNKNOWN
+//     (never derived from counts) and a raw-label note; sample symbols are real links to symbol detail.
+{
+  const body = { sectors: [{ sector: 'Healthcare', count: 483, sample: ['AARD', 'ABBV'] }], as_of: iso(420), as_of_basis: 'incubator_universe.updated_at' }
+  const ctx = model.sectorContext(body, NOW)
+  assert.equal(ctx.producer, 'incubator universe refresh')
+  assert.match(ctx.asOfText, /ET$/)
+  const h = html(base({ tab: 'sectors', sectors: sectorRows(body), sectorCtx: ctx }))
+  assert.match(h, /data-testid="sectors-source">incubator universe refresh · updated .* ET · limit 36 h/)
+  assert.match(h, /data-testid="sectors-momentum">Sector strength: UNKNOWN — No sector momentum\/strength projection exists in this build\./)
+  assert.match(h, /data-testid="sectors-label-note">Counts are per raw provider sector label/)
+  assert.match(h, /data-testid="sector-Healthcare"[\s\S]*href="\/watch\/intelligence\/AARD"/)
+  // an absent stamp: no invented time, the context still names the producer and the limit
+  const none = model.sectorContext({ sectors: [] }, NOW)
+  assert.equal(none.asOfText, null)
+  assert.ok(!html(base({ tab: 'sectors', sectorCtx: none })).includes('updated '))
+}
+// 18. S7/WR-07: a row's pill is the DEFINITION's state, and the evaluator is its own source card. An armed definition
+//     under an unknown evaluator can never read as monitoring assurance.
+{
+  const h = html(base({ tab: 'alerts', evaluatorSrc: model.evaluatorSource({ evaluator: { readable: true, last_run_at: null, last_ok_at: null, last_rc: null } }, NOW) }))
+  assert.match(h, /definition armed/); assert.match(h, /definition disarmed/)
+  assert.ok(!/>armed</.test(h), 'no bare "armed" pill')
+  assert.match(h, /data-testid="alerts-evaluator" data-state="UNKNOWN">Evaluator UNKNOWN: watch_alerts_eval\.py · every 20 min, 09:00–16:00 ET, Mon–Fri · no successful run on record\. Row state below is the alert definition/)
+  const ok = model.evaluatorSource({ evaluator: { readable: true, last_ok_at: iso(300), last_rc: 0 } }, NOW)
+  assert.equal(ok.state, 'OK'); assert.match(ok.record, /last successful run /)
+}
+// 19. S7/WR-08: the alert symbol opens symbol detail (a real next step), and disarm stays the only mutation.
+{
+  const h = html(base({ tab: 'alerts' }))
+  assert.match(h, /<a[^>]*href="\/watch\/intelligence\/AXTI"[^>]*>AXTI<\/a>/)
+  assert.match(h, /data-testid="alert-disarm-7"/)
+  // a row with no symbol never fabricates a link
+  const noSym = html(base({ tab: 'alerts', alerts: alertRows({ alerts: [{ id: 9, directive_id: 'D9', active: true }] }) }))
+  assert.ok(!/watch\/intelligence\/D9/.test(noSym) && noSym.includes('>D9<'))
+}
+// 20. S7/WR-10: signal and proposal are separate named facts; a dead proposal is drawn BEFORE the plan numbers and the
+//     plan numbers are labelled as scan assumptions.
+{
+  assert.equal(model.proposalState(false, 'REJECTED').key, 'rejected')
+  assert.equal(model.proposalState(false, 'EXPIRED').key, 'expired')
+  assert.equal(model.proposalState(false, 'PENDING').key, 'stale')
+  assert.equal(model.proposalState(null, null).key, 'missing')
+  assert.equal(model.proposalState(true, 'PENDING').blocking, false)
+  assert.equal(model.signalText('trigger'), 'Signal: triggered')
+  const rows = pullbackRows({ candidates: [
+    { symbol: 'VLO', tier: 'trigger', entry: 100, stop: 90, target1: 120, proposal_live: false, proposal_status: 'REJECTED' },
+    { symbol: 'NOP', tier: 'trigger', entry: 50, proposal_live: null },
+    { symbol: 'LIVE', tier: 'watch', proposal_live: true, proposal_status: 'PENDING' },
+  ] })
+  const h = html(base({ tab: 'pullback', grade: gradePullback({ generated_at: iso(1800) }, NOW), pullback: rows }))
+  assert.match(h, /data-testid="pullback-signal-VLO">Signal: triggered</)
+  const rejected = (h.match(/data-testid="pullback-proposal-VLO"[^>]*>[^<]*/) || [''])[0]
+  assert.match(rejected, /data-proposal="rejected"[^>]*>Proposal: rejected — no live proposal/)
+  assert.ok(h.indexOf('data-testid="pullback-proposal-VLO"') < h.indexOf('scan plan entry 100'), 'blocking state precedes the plan numbers')
+  assert.match(h, /Proposal: none — no live proposal/)
+  assert.match(h, /data-testid="pullback-signal-LIVE">Signal: watch</)
+  assert.match(h, /Proposal: in queue/)
+  assert.match(h, /scan plan entry 100 · stop 90 · target 120 \(assumptions as of the last scan\)/)
+  assert.ok(!/place order|buy now|submit order/i.test(h), 'no order affordance')
+}
+// 21. S7/WR-11: the scan stamp never stands in for monitor, quote or per-candidate evaluation — all three render UNKNOWN.
+{
+  const info = pullbackProvenance({ generated_at: iso(1800), scan_provenance: { universe: 'S&P 500', screened: 10 } })
+  assert.equal(info.monitor, null); assert.equal(info.quote, null); assert.equal(info.candidateEvaluated, null)
+  const h = html(base({ tab: 'pullback', grade: gradePullback({ generated_at: iso(1800) }, NOW), pullback: pullbackRows({ candidates: [{ symbol: 'AAA' }] }), pullbackInfo: info }))
+  assert.match(h, /· monitor UNKNOWN \(no monitor stamp in this read\)/)
+  assert.match(h, /· quote UNKNOWN \(no quote time in this read\)/)
+  assert.match(h, /· candidate last evaluated UNKNOWN \(first seen is not last evaluated\)/)
+}
+// 22. S7/WR-05: Discover renders two sources with two clocks and two independent states; a dead feed cannot grade pins.
+{
+  const body = { items: [{ symbol: 'FFF', reason: 'breakout' }], pins_as_of: iso(3600), pins_as_of_basis: 'screener_find_pins',
+    feeds: { watch_candidate_events: { gap: { kind: 'no_producer', last_as_of: '2026-07-16T17:00:00Z' } } } }
+  const cards = model.discoverCards(body, NOW, 1) // the same call the page host makes, with the same defaults
+  const h = html(base({ tab: 'discover', finds: findRows(body), cards }))
+  const feed = (h.match(/data-testid="discover-card-feed"[^>]*>[\s\S]*?<\/span>/) || [''])[0]
+  const pins = (h.match(/data-testid="discover-card-pins"[^>]*>[\s\S]*?<\/span>/) || [''])[0]
+  assert.match(feed, /data-state="UNKNOWN"[\s\S]*Discovery feed<\/strong>: UNKNOWN — no producer; last event Jul 16, 1:00 PM ET/)
+  assert.match(pins, /data-state="OK"[\s\S]*Saved screener finds<\/strong>: OK — 1 find · pins as of /)
+  // a fresh body with no feed block is not a fresh feed: the feed clock is missing, not OK
+  const noFeed = model.discoverCards({ pins_as_of: iso(60) }, NOW, 0)
+  assert.equal(noFeed[0].state, 'UNKNOWN'); assert.match(noFeed[0].detail, /missing/)
+}
+// 23. S7/WR-X3 journey: the disarm ACTION (not the render) — accepted is not stored; a failure keeps state and names it;
+//     the component refetches only on an accepted POST.
+{
+  const ok = await model.disarmAlert(7, 'AXTI', async () => ({ ok: true, status: 200, body: { ok: true } }))
+  assert.equal(ok.ok, true)
+  assert.match(ok.message, /^Disarm sent for AXTI\. Check the row below: it reads "definition disarmed" once the change is stored\.$/)
+  const refused = await model.disarmAlert(7, 'AXTI', async () => ({ ok: false, status: 503, body: { ok: false, error: 'db down' } }))
+  assert.equal(refused.ok, false); assert.match(refused.message, /^Failed: db down/)
+  const thrown = await model.disarmAlert(7, 'AXTI', async () => { throw new Error('network') })
+  assert.equal(thrown.ok, false); assert.match(thrown.message, /^Failed: network/)
+  const src = readFileSync(join(app, 'src/pages/WatchSetupsV002.tsx'), 'utf8')
+  assert.match(src, /if \(out\.ok\) refetch\(\)/, 'readback only after an accepted POST')
+}
+// 24. S7/WR-04/WR-05 journey: discoveries carry their source, reason and captured time; the add is proven by a membership
+//     READBACK, never by the POST's accepted answer; a readback that omits the symbol is UNKNOWN, not "not in My List".
+{
+  const body = { ok: true, data: [
+    { symbol: 'XYZ', source_key: 'finviz', source_confidence: 0.8, reason: 'breakout volume', created_at: iso(600), degraded: false, normalized_payload: {} },
+    { source_key: 'hermes', symbol: '', created_at: iso(60) },
+  ] }
+  const rows = disc.discoveryRows(body)
+  assert.deepEqual(rows, [{ symbol: 'XYZ', source: 'finviz', reason: 'breakout volume', at: iso(600), degraded: false }])
+  const clock = disc.discoveryClock(rows, NOW)
+  assert.equal(clock.state, 'OK'); assert.match(clock.asOfText, /ET$/)
+  assert.equal(disc.discoveryClock([], NOW).state, 'UNKNOWN', 'no window is not a green read')
+  assert.equal(disc.discoveryRows({ data: [{ symbol: 'old', created_at: iso(60 * 3600) }] }).length, 1)
+  assert.equal(disc.discoveryClock(disc.discoveryRows({ data: [{ symbol: 'OLD', created_at: iso(40 * 3600) }] }), NOW).state, 'STALE')
+  // Schedule-aware grading (lead 09:40 item 1): the producer is the premarket step candidate_discovery_orchestrator,
+  // weekdays 05:45 ET — no weekend run. NOW is Friday 2031-03-07 10:00 ET.
+  assert.ok(clock.nextText && /ET$/.test(clock.nextText), 'the clock always names the next scheduled run')
+  const friRow = disc.discoveryRows({ data: [{ symbol: 'FRI', created_at: '2031-03-07T10:51:00Z' }] }) // Fri 05:51 ET
+  assert.equal(disc.discoveryClock(friRow, NOW).state, 'OK', "a row from this morning's run is OK")
+  assert.equal(disc.discoveryClock(friRow, Date.parse('2031-03-08T15:00:00Z')).state, 'OK', 'Saturday: no run was due, so age is not staleness')
+  assert.equal(disc.discoveryClock(friRow, Date.parse('2031-03-09T22:00:00Z')).state, 'OK', 'Sunday evening: still OK before Monday 05:45')
+  const miss = disc.discoveryClock(friRow, Date.parse('2031-03-10T15:00:00Z')) // Monday 11:00 ET — Monday's run is overdue
+  assert.equal(miss.state, 'STALE', 'a missed weekday run is STALE, not a calm age')
+  assert.match(miss.recovery ?? '', /logs\/candidate_discovery\.log.*candidate_discovery_orchestrator/)
+  assert.match(miss.nextText ?? '', /Mar 11/, 'the stale clock names the next run')
+  assert.equal(disc.discoveryClock(friRow, Date.parse('2031-03-10T09:50:00Z')).state, 'OK', 'inside the run window the prior run is graded')
+  const ok = await disc.addToMyList('XYZ', async b => {
+    assert.deepEqual(b, { symbol: 'XYZ', strategy_type: 'discovery', source: 'discovery' })
+    return { ok: true, status: 200, body: { ok: true, data: { symbol: 'XYZ', added: true } } }
+  })
+  assert.equal(ok.ok, true); assert.match(ok.message, /readback below decides/)
+  const bad = await disc.addToMyList('XYZ', async () => ({ ok: false, status: 500, body: { ok: false, error: 'db down' } }))
+  assert.equal(bad.ok, false); assert.match(bad.message, /^Failed: db down/)
+  assert.equal(disc.isInMyList({ symbols: [{ symbol: 'XYZ', in_ai_watchlist: true }] }, 'xyz'), true)
+  assert.equal(disc.isInMyList({ symbols: [{ symbol: 'XYZ', in_ai_watchlist: false }] }, 'XYZ'), false)
+  assert.equal(disc.isInMyList({ symbols: [] }, 'XYZ'), null)
+  assert.equal(disc.isInMyList(null, 'XYZ'), null)
+}
+// 25. S7/WR-04: the Recent discoveries panel renders loading, empty, error and populated distinctly; an empty successful
+//     read says so, a read failure says it failed, and only a readback-confirmed membership hides the Add control.
+{
+  const V = recent.WatchDiscoverRecentV002View
+  const clock = disc.discoveryClock([], NOW)
+  const h = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(V, { rows: [], clock, loading: false, error: null, message: '', member: {}, onAdd: noop })))
+  assert.match(h, /data-testid="discover-recent-clock" data-state="UNKNOWN"><strong>Recent discoveries<\/strong>: no window · candidate-discovery events/)
+  assert.match(h, /data-testid="discover-recent-empty">No discovery events in the returned window\. That is an empty successful read, not unread data\./)
+  const loads = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(V, { rows: [], clock, loading: true, error: null, message: '', member: {}, onAdd: noop })))
+  assert.ok(loads.includes('Loading…') && !loads.includes('discover-recent-empty'), 'loading is not empty')
+  const err = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(V, { rows: [], clock, loading: false, error: 'HTTP 503', message: '', member: {}, onAdd: noop })))
+  assert.match(err, /data-testid="discover-recent-error">Discoveries could not be read: HTTP 503/)
+  // STALE names the missed run and its recovery action (lead 09:40 item 1); OK/UNKNOWN do not.
+  const staleRows = disc.discoveryRows({ data: [{ symbol: 'OLD', created_at: iso(40 * 3600) }] })
+  const stale = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(V, { rows: staleRows, clock: disc.discoveryClock(staleRows, NOW), loading: false, error: null, message: '', member: {}, onAdd: noop })))
+  assert.match(stale, /data-testid="discover-recent-clock" data-state="STALE"/)
+  assert.match(stale, /data-testid="discover-recent-recovery" role="alert">A scheduled run produced no discoveries\. [^<]*candidate_discovery_orchestrator/)
+  const okRows = disc.discoveryRows({ data: [{ symbol: 'XYZ', created_at: iso(300) }] })
+  const okH = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(V, { rows: okRows, clock: disc.discoveryClock(okRows, NOW), loading: false, error: null, message: '', member: {}, onAdd: noop })))
+  assert.ok(!okH.includes('discover-recent-recovery'), 'an OK read names no recovery')
+  assert.match(okH, /next run [^<]*ET/)
+  const rows = disc.discoveryRows({ data: [{ symbol: 'XYZ', source_key: 'finviz', reason: 'breakout', created_at: iso(300), degraded: true }] })
+  const okClock = disc.discoveryClock(rows, NOW)
+  const rowH = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(V, { rows, clock: okClock, loading: false, error: null, message: '', member: {}, onAdd: noop })))
+  assert.match(rowH, /data-testid="discovery-XYZ"[\s\S]*href="\/watch\/intelligence\/XYZ"[\s\S]*finviz[\s\S]*breakout[\s\S]*degraded source/)
+  assert.match(rowH, /data-testid="discovery-add-XYZ"/)
+  const inList = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(V, { rows, clock: okClock, loading: false, error: null, message: '', member: { XYZ: true }, onAdd: noop })))
+  assert.ok(inList.includes('in My List') && !inList.includes('discovery-add-XYZ'), 'a readback-confirmed row has no Add button')
+  // Review F1: an unread membership is a THIRD state, labelled — the Add button never speaks for it.
+  assert.match(rowH, /data-testid="discovery-membership-XYZ" data-membership="unread">membership not checked/)
+  const unread = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(V, { rows, clock: okClock, loading: false, error: null, message: '', member: {}, onAdd: noop })))
+  assert.match(unread, /data-membership="unread">membership not checked/)
+  const unknown = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(V, { rows, clock: okClock, loading: false, error: null, message: '', member: { XYZ: null }, onAdd: noop })))
+  assert.match(unknown, /data-membership="unknown">membership UNKNOWN — the readback did not include this symbol/)
+  assert.match(unknown, /data-testid="discovery-add-XYZ"/, 'UNKNOWN keeps the control, it does not claim "in list"')
+  // Review F2: `false` is reachable (the readback is read unfiltered), and a known membership is labelled nothing.
+  const notIn = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(V, { rows, clock: okClock, loading: false, error: null, message: '', member: { XYZ: false }, onAdd: noop })))
+  assert.match(notIn, /data-testid="discovery-add-XYZ"/)
+  assert.ok(!notIn.includes('membership UNKNOWN') && !notIn.includes('membership not checked'), 'a known membership needs no unknown label')
+  // Review F4: no write on read — the only POST in the panel lives inside add().
+  const panelSrc = readFileSync(join(app, 'src/pages/WatchDiscoverRecentV002.tsx'), 'utf8')
+  assert.equal((panelSrc.match(/method:\s*'POST'/g) || []).length, 1, 'exactly one POST in the panel')
+  const postAt = panelSrc.indexOf("method: 'POST'")
+  assert.ok(postAt > panelSrc.indexOf('const add = async') && postAt < panelSrc.indexOf('return <WatchDiscoverRecentV002View'),
+    'the only POST is inside add(); the read path is GET')
+  assert.match(panelSrc, /fetch\(MEMBERSHIP_API, \{ cache: 'no-store' \}\)/, 'the membership read is a GET')
+}
+console.log('25 scenarios passed')
