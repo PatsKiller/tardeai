@@ -45280,18 +45280,10 @@ def _pullback_macd_candidates(query=None):
     )
     run = _execute("SELECT * FROM pullback_macd_runs ORDER BY created_at DESC LIMIT 1", fetch="one")
 
-    # Watch Desk v2 (D1): idempotent trigger recorder — every active trigger gets
-    # one history row per (symbol, day); the weekly reconciler fills outcomes
-    try:
-        _execute(
-            """INSERT INTO pullback_trigger_history (symbol, trigger_date, score, entry, stop, target1)
-                    SELECT symbol, COALESCE(scan_date, CURRENT_DATE), score, entry, stop, target1
-                    FROM pullback_macd_candidates WHERE tier='trigger' AND status='active'
-                    ON CONFLICT (symbol, trigger_date) DO NOTHING""",
-            fetch=None,
-        )
-    except Exception:
-        pass
+    # Watch Desk v2 (D1) trigger recorder MOVED to the producer (S2 producers-perf, WR-05/WR-11). This GET used to
+    # INSERT one history row per active trigger per day on EVERY page load and tab poll. The writer now lives in
+    # scripts/pullback_macd_screener.py (_record_trigger_history) and runs the same idempotent statement once per
+    # producer pass (daily 16:40 scan + 35 9-15 monitor). A GET reads; a producer writes. Do not re-add a write here.
 
     # Watch Desk v2 (D2): dismissal memory — dismissed symbols sit out a config
     # cooldown (default 10 trading days ≈ 14 calendar) unless score improved ≥25%
