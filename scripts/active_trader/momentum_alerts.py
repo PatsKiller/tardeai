@@ -249,14 +249,45 @@ class Candidate:
 
 
 def alert_kind(c: Candidate, *, now: float, cfg: AlertConfig) -> Optional[str]:
-    """Which alert this candidate is a candidate FOR (before evidence). None = not interesting."""
+    """Which alert this candidate is a candidate FOR (before evidence). None = not interesting.
+
+    A TRIGGERED hint is not taken on faith: the fast loop re-emits one fire for the whole
+    extended_watch_min window (15 min), so the hint alone journaled "time to buy" evidence for
+    fires 12-16 min old while the rules the page prints say "trigger fired ≤ max_fire_age_s"
+    (LQ-20261113-3133: SMX 11:15 fire still VETOed at 11:30:10). Past the bound, or with no
+    fire timestamp to prove freshness, a TRIGGERED hint is not a new signal: it is dropped, never
+    re-labelled ARMED (the setup already fired). This constrains the hint branch only — a candidate
+    that arrives with NO kind hint is classified further down and may still read ARMED from its own
+    lane or fsm_state, as it always has (test_active_trader_momentum_alerts_20261004.py:86 pins it).
+
+    F1 (review 3133): the bound applies to the BUY claim only. A fire whose price is already past
+    chase_r·R above entry is not "time to buy" — apply_chase_guard turns that TRIGGERED into
+    EXTENDED ("don't chase, wait for the pullback") and writes the buy zone / arms the PULLBACK_ZONE
+    watch. Bounding the hint on the way in retired that safety heads-up and its zone silently for
+    fires 6-15 min old, so a stale run-away fire still returns the TRIGGERED hint here and the chase
+    guard converts it exactly as before. Every other stale fire stays dropped.
+    """
     if c.kind_hint in KINDS:
-        return c.kind_hint
+        if c.kind_hint != TRIGGERED:
+            return c.kind_hint
+        if c.fire_ts_epoch is not None and (now - c.fire_ts_epoch) <= cfg.max_fire_age_s:
+            return TRIGGERED
+        return _runaway_heads_up(c, cfg)
     if c.fire_ts_epoch is not None and (now - c.fire_ts_epoch) <= cfg.max_fire_age_s:
         return TRIGGERED
     if c.lane in cfg.armed_lanes or str(c.fsm_state).upper() == "ARMED":
         return ARMED
     return None
+
+
+def _runaway_heads_up(c: Candidate, cfg: AlertConfig) -> Optional[str]:
+    """A fire past the age bound survives ONLY as the don't-chase heads-up: it is already past entry by
+    chase_r·R (or chase_pct), so it can never be a fresh buy claim; the chase guard will convert the
+    TRIGGERED hint to EXTENDED and set the zone. Without a fire timestamp there is no freshness fact to
+    reason about, so nothing survives (fail closed)."""
+    if c.fire_ts_epoch is None or not is_extended(c, cfg):
+        return None
+    return TRIGGERED
 
 
 def buy_zone(c: Candidate, cfg: AlertConfig) -> Optional[tuple[float, float]]:
@@ -365,14 +396,20 @@ class Throttle:
         self.vetoed: dict[str, list] = dict((state or {}).get("vetoed") or {})
 
     def veto_repeat(self, symbol: str, kind: str, level: str, reasons: Sequence[str], now: float) -> bool:
-        """The sub-minute loop re-evaluates every ~5 s: the same veto (same key, same reasons) is
-        journaled once per cooldown window, not every tick."""
+        """The sub-minute loop re-evaluates every ~5 s: one veto per (symbol, kind, level) per
+        cooldown window, not one per tick.
+
+        The window keys on the repeat identity, not on the reason signature. The reason set churns
+        tick to tick as the book/tape flickers (SPREAD_WIDE → +TAPE_SELLERS → L2_ASK_HEAVY →
+        QUOTE_STALE …), so comparing reasons defeated the cooldown and journaled one trigger 15-18x
+        for the whole extended watch (LQ-20261113-3133: 57 TRIGGERED rows, 7 fires). The window
+        starts at the first veto and the reason set that was journaled is kept for observability.
+        """
         key = self._key(symbol, kind, level)
         prev = self.vetoed.get(key)
-        sig = sorted(reasons)
-        if prev and now - prev[0] < self.cfg.cooldown_s and prev[1] == sig:
+        if prev and now - prev[0] < self.cfg.cooldown_s:
             return True
-        self.vetoed[key] = [now, sig]
+        self.vetoed[key] = [now, sorted(reasons)]
         return False
 
     @staticmethod

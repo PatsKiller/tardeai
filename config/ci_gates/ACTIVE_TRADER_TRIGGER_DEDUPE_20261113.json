@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ACTIVE_TRADER_TRIGGER_DEDUPE_20261113",
+  "files": [
+    "tests/test_active_trader_trigger_dedupe_20261113.py"
+  ],
+  "anchor": "ACTIVE_TRADER_TRIGGER_DEDUPE_20261113",
+  "comment": [
+    "ANCHOR: ACTIVE_TRADER_TRIGGER_DEDUPE_20261113 — LQ-20261113-3133: one Active Trader trigger was journaled 15-18x (reason-set churn defeated veto_repeat's cooldown) and alert_kind honoured a TRIGGERED re-emission up to 15 min old while the page's printed rule is max_fire_age_s (6 min)."
+  ]
+}
