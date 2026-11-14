@@ -369,8 +369,14 @@ def test_pressure_guard_pages_the_governed_route(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(g, "RECEIPT", tmp_path / "receipts.jsonl")
     # The report-only path under test: pin the arming switch off (the live config is operator-armed since 2026-11-07).
     monkeypatch.setattr(g, "act_config", lambda *a, **k: {"active": False, "why_not_active": "test: disarmed"})
-    # Free space rises 1 GiB between the two reads from unrelated host activity: the guard did none of it.
-    reads = iter([(91.0, 40 * 1024**3, 468 * 1024**3), (90.8, 41 * 1024**3, 468 * 1024**3)])
+    # Free space rises 1 GiB between the two reads of the mount that pages, from unrelated host activity: the
+    # guard did none of it. LQ-20261113-3152: the guard measures EVERY disk_caps mount ("/" then "/data") and the
+    # third read re-measures the worst one -- one tuple per read, in that order, or the iterator runs dry.
+    reads = iter([
+        (91.0, 40 * 1024**3, 468 * 1024**3),      # "/" before: over its alert, so it is the mount that pages
+        (54.0, 800 * 1024**3, 1833 * 1024**3),    # "/data" before: measured, under its own threshold
+        (90.8, 41 * 1024**3, 468 * 1024**3),      # "/" again, after the plan call: unrelated recovery of 1 GiB
+    ])
     monkeypatch.setattr(g, "disk_used_pct", lambda path="/": next(reads))
     monkeypatch.setattr(g, "run_enforcer", lambda **k: {"_would_remove_count": 3, "_deleted_count": 0})
     monkeypatch.setattr(acs, "observe", lambda *a, **k: {"action": "alert", "notify": True})

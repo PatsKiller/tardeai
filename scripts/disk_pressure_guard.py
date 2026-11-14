@@ -494,6 +494,20 @@ def _write_receipt(payload: dict) -> str:
         return f"error:{type(exc).__name__}"
 
 
+def default_paths(rules_path: Path) -> list[str]:
+    """Every mount the cleaner itself governs (disk_caps.disks), else "/" — LQ-20261113-3152.
+
+    Reading the cleaner's own list means the guard cannot measure a mount the cleaner does not know about, and a
+    rules file without disk_caps (tests, older hosts) keeps the historical single "/" behaviour."""
+    try:
+        doc = json.loads(Path(rules_path).read_text(encoding="utf-8"))
+        mounts = [str(d["mount"]) for d in (doc.get("disk_caps") or {}).get("disks") or []
+                  if isinstance(d, dict) and d.get("mount")]
+    except (OSError, ValueError, TypeError, AttributeError):
+        mounts = []
+    return mounts or ["/"]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument(
@@ -502,7 +516,8 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_USED_PCT,
         help=f"act at or above this %% used (default {DEFAULT_USED_PCT})",
     )
-    ap.add_argument("--path", default="/")
+    ap.add_argument("--path", action="append", default=None,
+                    help="mount to measure; repeatable. Default: every mount in disk_caps.disks (LQ-20261113-3152)")
     ap.add_argument("--rules", default=str(DEFAULT_RULES), help="rules file holding the operator's pressure_act switch")
     ap.add_argument("--state-root", default=None, help="passed through to the cleaner's receipts (default: its own resolver)")
     ap.add_argument(
@@ -511,15 +526,26 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
 
-    used, free, total = disk_used_pct(a.path)
-    over = used >= a.used_pct
+    # LQ-20261113-3152: /data is a real storage root now, and this host P1 backstop measured only "/". Measuring
+    # every disk_caps mount by default is registration, not a new deletion class: the cleaner's own selection and
+    # caps are unchanged, and the switch still defaults OFF.
+    paths: list[str] = list(a.path) if a.path else default_paths(Path(a.rules))
+    mounted: list[dict] = []
+    for pth in paths:
+        u, f, _t = disk_used_pct(pth)
+        mounted.append({"mount": pth, "used_pct": round(u, 2), "free_bytes": f,
+                        "over_threshold": u >= a.used_pct})
+    worst = max(mounted, key=lambda m: m["used_pct"])
+    used, free = float(worst["used_pct"]), int(worst["free_bytes"])
+    over = any(m["over_threshold"] for m in mounted)
     act = act_config(Path(a.rules))
     # `--dry-run` reports: it asks for plans and never triggers an apply, even when the operator has armed the switch.
     acting = bool(over and act["active"] and not a.dry_run)
     out: dict = {
         "schema": "DiskPressureGuard@v1",
         "ts": datetime.now(timezone.utc).isoformat(),
-        "path": a.path,
+        "path": worst["mount"],
+        "mounts": mounted,
         "used_pct": round(used, 2),
         "free": _fmt_gb(free),
         "trigger_pct": a.used_pct,
@@ -536,7 +562,8 @@ def main(argv: list[str] | None = None) -> int:
                                          target_pct=act.get("target_pct"))
         else:
             out["enforcer"] = run_enforcer(dry_run=a.dry_run)
-        used_after, free_after, _ = disk_used_pct(a.path)
+        # Re-measure the mount that paged (the worst one); the others are reported as measured before the call.
+        used_after, free_after, _ = disk_used_pct(worst["mount"])
         out["used_pct_after"] = round(used_after, 2)
         out["free_after"] = _fmt_gb(free_after)
         # Signed change in free space observed across the plan/act call -- only the cleaner's apply reclaims, and
@@ -555,7 +582,8 @@ def main(argv: list[str] | None = None) -> int:
             state,
             alertable=(state == "PRESSURE"),
             min_realert_minutes=REALERT_MINUTES,
-            extra={"used_pct": final_used, "free": out.get("free_after", out["free"])},
+            extra={"used_pct": final_used, "free": out.get("free_after", out["free"]),
+                   "mount": worst["mount"], "mounts": mounted},
         )
         out["condition"] = {"action": obs.get("action"), "notify": bool(obs.get("notify"))}
     except Exception as exc:  # noqa: BLE001
@@ -578,7 +606,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         out["removal"] = "none (AGENTS.md §24.12: the disk-hygiene lane owns reclaim)"
     if out.get("condition", {}).get("notify"):
-        line = f"💾 Disk {final_used:.1f}% used ({out.get('free_after', out['free'])} free) — trigger {a.used_pct:.0f}%"
+        line = (f"💾 Disk {worst['mount']} {final_used:.1f}% used "
+                f"({out.get('free_after', out['free'])} free) — trigger {a.used_pct:.0f}%")
         if acting:
             if decision == "applied":
                 line += (f"\npressure act: ARMED — cleaner removed {cleaner.get('removed')} item(s), reclaimed "

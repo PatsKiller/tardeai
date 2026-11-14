@@ -3,7 +3,7 @@
   "as_of": "2026-10-09",
   "_why": "Thresholds and paths for the three read-only ops lanes (storage-watch, backup-verify, trade-ai-restore-drill). Data, not code: the scripts read every threshold from here so a change is a reviewed config diff, never an edit to a literal. Paths starting with ~ expand to the running user's home; an env override named in *_env wins when set.",
   "storage_watch": {
-    "filesystems": ["/"],
+    "filesystems": ["/", "/data"],
     "disk_warn_used_pct": 80,
     "disk_crit_used_pct": 90,
     "inode_warn_used_pct": 80,
@@ -32,7 +32,9 @@
       "~/.local/share",
       "~/.claude/projects",
       "/usr/share/ollama",
-      "/var/log/postgresql"
+      "/var/log/postgresql",
+      "/data/worktrees",
+      "/data/agent-tmp"
     ],
     "pg_log_dir": "/var/log/postgresql",
     "pg_log_warn_bytes": 2147483648,
