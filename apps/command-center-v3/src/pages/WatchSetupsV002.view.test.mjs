@@ -464,4 +464,28 @@ assert.match(html(base({ hasMore: false })), /<button[^>]*disabled[^>]*>Next/)
   assert.match(src, /setSp\(next, \{ replace: true \}\)/)
   assert.match(src, /alertView=\{alertView\} onAlertView=\{onAlertView\}/, 'the URL view reaches the tab host')
 }
-console.log('28 scenarios passed')
+// 29. SEV-2 (live on R5c): the page's `useApi` hands subscribers `json.data`, so the recent-discoveries read arrives as the
+//     BARE ARRAY. An object-only reader discarded it, the panel then asserted an empty successful read while the API held
+//     50 rows — the UI contradicting reality. The bare array is read, the clock grades it, and the enveloped fixtures stay.
+{
+  const events = [
+    { symbol: 'axti', source_key: 'finviz_screener', reason: 'unusual volume', created_at: iso(3600) },
+    { symbol: 'QQQ', source_key: 'premarket_gap', created_at: iso(7200), degraded: true },
+  ]
+  const rows = disc.discoveryRows(events)
+  assert.equal(rows.length, 2, 'the bare array the live hook delivers is read, not discarded for lacking a `.data` object')
+  assert.deepEqual(rows.map(r => r.symbol), ['AXTI', 'QQQ'])
+  assert.equal(rows[0].source, 'finviz_screener')
+  assert.equal(rows[1].degraded, true)
+  const clock = disc.discoveryClock(rows, NOW)
+  assert.equal(clock.state, 'OK'); assert.match(clock.asOfText, /ET$/)
+  assert.equal(disc.discoveryRows({ data: [{ symbol: 'X' }] }).length, 1, 'the enveloped fixture shape still reads')
+  assert.equal(disc.discoveryRows({ events: [{ symbol: 'Y' }] }).length, 1)
+  assert.equal(disc.discoveryRows({ items: [{ symbol: 'Z' }] }).length, 1)
+  assert.equal(disc.discoveryRows([]).length, 0, 'an empty array is still an empty read')
+  const h = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(recent.WatchDiscoverRecentV002View,
+    { rows, clock, loading: false, error: null, message: '', member: {}, onAdd: noop })))
+  assert.ok(h.includes('data-testid="discovery-AXTI"'), 'the panel renders the rows it was given')
+  assert.ok(!h.includes('No discovery events in the returned window'), 'a populated read never claims to be empty')
+}
+console.log('29 scenarios passed')

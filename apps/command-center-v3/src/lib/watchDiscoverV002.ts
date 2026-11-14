@@ -100,8 +100,16 @@ export type DiscoveryRow = { symbol: string; source: string; reason: string; at:
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 
 export function discoveryRows(body: unknown): DiscoveryRow[] {
+  // The page's `useApi` hands subscribers `json.data`, not the envelope (useApi.ts apply()), so the live read arrives as
+  // the bare ARRAY of events — an object-only reader saw 0 rows and the panel then asserted an empty successful read,
+  // which contradicted the API (SEV-2, R5c f7faf772d). Accept the array first; keep the enveloped shapes for fixtures and
+  // for any caller that passes the whole body.
   const b = unwrap(body)
-  const list = Array.isArray(b?.data) ? b.data : Array.isArray(b?.events) ? b.events : []
+  const list = Array.isArray(body) ? body
+    : Array.isArray(b?.data) ? b.data
+    : Array.isArray(b?.events) ? b.events
+    : Array.isArray(b?.items) ? b.items
+    : []
   return list.flatMap((r: any) => {
     const symbol = str(r?.symbol).toUpperCase()
     if (!symbol) return []
