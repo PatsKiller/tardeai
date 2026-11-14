@@ -34,7 +34,7 @@ test('F-rot: publication UNAVAILABLE alone (data.ok missing) is still UNKNOWN', 
 })
 
 // ---- F-rec: count 0 + state ok, no as_of -------------------------------------------------
-const F_REC = { ok: true, data: { recovery_cases: { count: 0, state: 'ok', generated_at: '2026-11-14T23:29:59Z' }, items: [{ id: 1 }] } }
+const F_REC = { ok: true, data: { ok: true, recovery_cases: { count: 0, state: 'ok', generated_at: '2026-11-14T23:29:59Z' }, items: [{ id: 1 }] } }
 
 test('F-rec: recovery count 0 with state ok and no fresh as_of renders UNKNOWN, never EMPTY', () => {
   const st = deriveRenderState({ envelope: env('/api/v2/recovery', F_REC), now: NOW,
@@ -323,11 +323,12 @@ test('no row gates on the SWR cache annotations (cache_stale / cache_as_of / cac
 
 // ---- r5b: cc-deepseek-5 check: absence of every health field must not read calm ----
 test('a non-producer row whose health fields are all absent from the payload reads Health UNKNOWN, not calm', () => {
-  const missing = deriveRenderState({ envelope: env('/api/v2/recovery', wrap({ rows: [{ id: 1 }] })), now: NOW })
+  const spec = { path: '/api/v2/synthetic', timeoutMs: 1000, heavy: false, clock: 'none', unavailableWhen: [{ at: 'data.stale', staleFlag: true }], note: 't' }
+  const missing = deriveRenderState({ envelope: env('/api/v2/synthetic', wrap({ rows: [{ id: 1 }] })), spec, now: NOW })
   assert.equal(missing.status, 'OK')
   assert.match(missing.healthUnproven ?? '', /no health flag/)
-  const present = deriveRenderState({ envelope: env('/api/v2/recovery', wrap({ ok: true, rows: [{ id: 1 }] })), now: NOW })
-  assert.equal(present.healthUnproven, null, 'data.ok present and healthy: signal exists')
+  const present = deriveRenderState({ envelope: env('/api/v2/synthetic', wrap({ stale: false, rows: [{ id: 1 }] })), spec, now: NOW })
+  assert.equal(present.healthUnproven, null, 'stale present and false: signal exists')
 })
 
 test('an unregistered path (default spec) inherits Health UNKNOWN, never calm by omission', () => {
@@ -356,4 +357,38 @@ test('/risk: no rule relies on a status value the producer never emits (FAILED)'
 
 test('protection-truth note does not advertise the withdrawn 3.653 s tail ratio', () => {
   assert.doesNotMatch(specFor('/api/v2/risk/protection-truth').note, /3\.653|2\.2x/)
+})
+
+// ---- r7: cc-deepseek-7 (v2c 920accda): an equals rule that cannot read its field must not assert health ----
+test('equals rule: a missing field fires (cannot confirm it is not the unavailable value); staleFlag is the only absent-is-no-signal kind', async () => {
+  const { ruleFires } = await import('../../src/api/readers.ts')
+  assert.equal(ruleFires({ at: 'data.ok', equals: false }, undefined), true)
+  assert.equal(ruleFires({ at: 'data.ok', equals: false }, true), false)
+  assert.equal(ruleFires({ at: 'data.ok', equals: false }, false), true)
+})
+
+test('rotation with data.publication dropped → UNKNOWN naming the missing field', () => {
+  const body = wrap({ ok: true, stale: false, generated_at: '2026-11-14T23:00:00Z' })
+  const st = deriveRenderState({ envelope: env('/api/v2/rotation/summary', body), now: NOW })
+  assert.equal(st.status, 'UNKNOWN')
+  assert.match(st.reason, /data\.publication\.status.*missing/)
+})
+
+test('rotation publication siblings (cc-deepseek-5): null status and renamed key → UNKNOWN; a healthy publication still reaches OK', () => {
+  const base = { ok: true, stale: false, generated_at: '2026-11-14T23:00:00Z' }
+  const rs = pub => deriveRenderState({ envelope: env('/api/v2/rotation/summary', wrap({ ...base, publication: pub })), now: NOW })
+  assert.equal(rs({ status: null }).status, 'UNKNOWN')
+  assert.match(rs({ status: null }).reason, /data\.publication\.status/)
+  assert.equal(rs(null).status, 'UNKNOWN')
+  assert.equal(rs({ state: 'PUBLISHED' }).status, 'UNKNOWN')
+  assert.equal(rs({ status: 'PUBLISHED' }).status, 'OK')
+})
+
+test('recovery with data.ok missing → UNKNOWN (class A always carries data.ok; absence = changed envelope)', () => {
+  assert.equal(deriveRenderState({ envelope: env('/api/v2/recovery', wrap({ rows: [{ id: 1 }] })), now: NOW }).status, 'UNKNOWN')
+  assert.equal(deriveRenderState({ envelope: env('/api/v2/recovery', wrap({ ok: true, rows: [{ id: 1 }] })), now: NOW }).status, 'OK')
+})
+
+test('/risk with data._product dropped → UNKNOWN (pins the notEquals path)', () => {
+  assert.equal(deriveRenderState({ envelope: env('/api/v2/risk', wrap({ truth: { stale: false } })), now: NOW }).status, 'UNKNOWN')
 })

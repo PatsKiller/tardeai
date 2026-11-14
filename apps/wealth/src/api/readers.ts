@@ -20,7 +20,10 @@
 
 type Scalar = string | number | boolean | null
 
-/** Exactly one of `equals` / `notEquals`. A missing value never satisfies `notEquals`'s healthy value. */
+/** Exactly one of `equals` / `notEquals` / `staleFlag`. Absence: `equals` and `notEquals` fire on a missing or
+ *  null value (a check that cannot read its field must not assert health); `staleFlag` is the only kind where a
+ *  missing value is no signal. Known limit: `equals` cannot catch a new unhealthy spelling (e.g. "DEGRADED");
+ *  prefer `notEquals` on the producer's healthy value wherever that value is confirmed in the tree. */
 export type UnavailableRule =
   /** Dotted path into the JSON body, e.g. "data.publication.status". Never "ok". Arrays index by position. */
   | { at: string; equals: Scalar; notEquals?: never; staleFlag?: never }
@@ -36,7 +39,9 @@ export type ClockKind = 'producer' | 'request-time' | 'none'
 /** True when the rule says the read is not real. */
 export function ruleFires(rule: UnavailableRule, value: unknown): boolean {
   if (rule.staleFlag === true) return value !== undefined && value !== null && value !== false
-  return 'notEquals' in rule && rule.notEquals !== undefined ? value !== rule.notEquals : value === rule.equals
+  if ('notEquals' in rule && rule.notEquals !== undefined) return value !== rule.notEquals
+  // A missing or null field fires: an unavailable-check that cannot read its value must not assert health.
+  return value === undefined || value === null || value === rule.equals
 }
 
 export interface ReaderSpec {

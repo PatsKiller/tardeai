@@ -59,7 +59,9 @@ export function deriveRenderState<T>({ envelope, spec, now, isEmpty }: DeriveInp
         ? (v === true ? `source reports ${rule.at} = true` : `source reports ${rule.at} = ${JSON.stringify(v)}: not a boolean, unit unconfirmed, freshness unproven`)
         : 'notEquals' in rule && rule.notEquals !== undefined
           ? `source reports ${rule.at} = ${v === undefined ? 'missing' : JSON.stringify(v)}, not ${JSON.stringify(rule.notEquals)}`
-          : `source reports ${rule.at} = ${JSON.stringify(rule.equals)}`)
+          : v === undefined || v === null
+            ? `source omits ${rule.at} (${v === null ? 'null' : 'missing'}): cannot confirm it is not ${JSON.stringify(rule.equals)}`
+            : `source reports ${rule.at} = ${JSON.stringify(rule.equals)}`)
     }
   }
   let asOf: string | null = null
