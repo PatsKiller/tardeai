@@ -16,9 +16,12 @@ def _holding(symbol, account, shares, price):
             "market_value": round(shares * price, 2), "day_change": 0, "as_of": AT}
 
 
-def _stop(symbol, account, price, status, order):
+def _stop(symbol, account, price, status, order, qty):
+    # OBS-R1 (operator 2026-11-14): the resting scenario is summed over the quantity each broker order COVERS, so
+    # a fixture order covers the shares it is written against — a 1-share order on a 20-share holding would have
+    # described a position no broker holds.
     return {"account": account, "symbol": symbol, "stop_price": price, "status": status,
-            "captured_at": AT, "order_id": order, "qty": 1}
+            "captured_at": AT, "order_id": order, "qty": qty}
 
 
 def _doc(tmp_path):
@@ -31,8 +34,8 @@ def _doc(tmp_path):
         _holding("NONE", "fixture_ira", 2, 90),      # no stop at all
         _holding("DUST", "fixture_ira", 1, 5),       # below the counted threshold
     ]}
-    broker = [_stop("ACTV", "fixture_ira", 90, "WORKING", "o1"), _stop("PEND", "fixture_ira", 45, "pending_activation", "o2"),
-              _stop("FILD", "fixture_roth", 38, "FILLED", "o3"), _stop("UNKN", "fixture_roth", 55, None, "o4")]
+    broker = [_stop("ACTV", "fixture_ira", 90, "WORKING", "o1", 10), _stop("PEND", "fixture_ira", 45, "pending_activation", "o2", 20),
+              _stop("FILD", "fixture_roth", 38, "FILLED", "o3", 5), _stop("UNKN", "fixture_roth", 55, None, "o4", 4)]
     planned = {"PLAN:fixture_ira": {"account": "fixture_ira", "stop": 60, "set_date": "2026-10-01"}}
     return truth.resolve(tmp_path, NOW, inputs={"holdings": holdings, "broker_stops": broker, "planned_stops": planned,
                                                 "companies": {}, "policy": {}, "cio_status": {}})

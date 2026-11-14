@@ -519,9 +519,13 @@ def _resting_summary(counted: list[dict], total_usd, *, broker_available: bool) 
     """Counted positions by stop category plus the loss if every resting broker stop (active or pending) fills.
 
     Display only. ``loss_at_stop_usd`` stays the active-stop figure; pending stops are reported beside it.
+    OBS-R1 (operator 2026-11-14): the scenario is summed over the COVERED quantity of each resting order
+    (``resting_loss_qty``), and the rows where the order covers less than the holding are named, so the
+    figure can be reconciled to the orders behind it instead of silently using the held quantity.
     """
     if not broker_available:
-        return {"stop_breakdown": None, "loss_at_resting_stops_usd": None, "resting_heat_pct": None}
+        return {"stop_breakdown": None, "loss_at_resting_stops_usd": None, "resting_heat_pct": None,
+                "resting_loss_coverage": None}
     breakdown = {}
     for cat in STOP_CATEGORIES:
         group = [p for p in counted if p.get("stop_category") == cat]
@@ -531,8 +535,19 @@ def _resting_summary(counted: list[dict], total_usd, *, broker_available: bool) 
     resting = [p for p in counted if p.get("stop_category") in _RESTING_STOP_STATES]
     losses = [p.get("loss_at_resting_stop_usd") for p in resting]
     loss = round(sum(losses), 2) if all(v is not None for v in losses) else None
+    shortfalls, missing_qty = [], []
+    for p in resting:
+        if p.get("resting_coverage_shortfall_qty"):
+            shortfalls.append({"symbol": p["symbol"], "account_id": p["account_id"],
+                               "held": _number(p.get("shares")), "covered": _number(p.get("resting_loss_qty")),
+                               "shortfall": p["resting_coverage_shortfall_qty"]})
+        elif _number(p.get("stop_qty")) is None or (_number(p.get("stop_qty")) or 0) <= 0:
+            missing_qty.append(p["symbol"])
     return {"stop_breakdown": breakdown, "loss_at_resting_stops_usd": loss,
-            "resting_heat_pct": round(loss / total_usd * 100, 3) if total_usd and loss is not None else None}
+            "resting_heat_pct": round(loss / total_usd * 100, 3) if total_usd and loss is not None else None,
+            "resting_loss_coverage": {
+                "basis": "covered quantity of each resting broker order (min(held, order qty))",
+                "shortfalls": shortfalls, "qty_not_published": missing_qty}}
 
 
 _ORDER_ID_IN_DESCRIPTION = re.compile(r"\border\s+(\d{6,})", re.IGNORECASE)
@@ -2245,10 +2260,20 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None, ledger_root=None
                                          "protection_state", "protection")},
                   # the stored broker order id, so a page can show a resting stop without a live broker read
                   "stop_order_id": p.get("order_id")} for p in positions]
+    # OBS-R1 (operator 2026-11-14): "pending activation" is the DISPLAY name; the page must be able to explain
+    # it from the broker order state the read recorded (e.g. Schwab AWAITING_STOP_CONDITION). Published as the
+    # raw states behind the pending count, never as a paraphrase. No pending row = [] (a measured empty list),
+    # and an unavailable read leaves the counts null above, so this list is not drawn as a zero.
+    pending_states = {}
+    for p in counted_positions:
+        if p.get("stop_state") == "pending_activation":
+            raw = str(p.get("stop_status_raw") or "pending_activation")
+            pending_states[raw] = pending_states.get(raw, 0) + 1
     stops = {"rows": stop_rows, "active_count": counts["active"], "pending_count": counts["pending_activation"],
              "filled_count": counts["filled"], "unprotected_count": len(proven_unprotected),
              "unproven_count": len(unproven_positions),
              "position_count": portfolio["position_count"],
+             "pending_broker_states": [{"status": s, "count": c} for s, c in sorted(pending_states.items())],
              "nearest": None, "awaiting_fill": [],
              **stop_clock(positions, now, broker_available=broker is not None, contract=inputs.get("stop_freshness"))}
     if broker is None:
@@ -2268,8 +2293,21 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None, ledger_root=None
         # needs to read ("To stop", "Loss at stop"). These fields never count as protection (broker_protected).
         resting = p.get("stop_source") == "broker_resting" and p.get("stop_state") in _RESTING_STOP_STATES
         p["resting_stop_distance_pct"] = round(100 * (price-sp) / price, 2) if resting and price and sp else None
-        p["loss_at_resting_stop_usd"] = round(max(0, price-sp) * shares, 2) if (
-            resting and price is not None and sp is not None and shares is not None) else None
+        # OBS-R1 (operator 2026-11-14): the resting scenario is "every resting stop FILLS", so it is bounded by
+        # the quantity each broker order actually covers, not by the holding. V held 100.7963 with a 100-share
+        # stop: the 0.7963 remainder has no order and cannot fill at the stop price. An order quantity is capped
+        # at the held quantity (a stop cannot sell more than is held); when the broker published no quantity
+        # the held quantity is the only basis and the row says so. `loss_at_stop_usd` keeps its held basis.
+        order_qty = _number(p.get("stop_qty"))
+        resting_qty = shares
+        if resting and shares is not None and order_qty is not None and order_qty > 0:
+            resting_qty = min(shares, order_qty)
+        p["resting_loss_qty"] = resting_qty if resting else None
+        p["resting_coverage_shortfall_qty"] = (
+            round(shares - resting_qty, 4)
+            if resting and shares is not None and resting_qty is not None and shares > resting_qty else None)
+        p["loss_at_resting_stop_usd"] = round(max(0, price-sp) * resting_qty, 2) if (
+            resting and price is not None and sp is not None and resting_qty is not None) else None
         planned_level = p.get("stop_source") == "planned"
         p["planned_stop_distance_pct"] = round(100 * (price-sp) / price, 2) if planned_level and price and sp else None
         p["counted"] = any(p is c for c in counted_positions)

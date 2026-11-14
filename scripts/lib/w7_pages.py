@@ -195,7 +195,10 @@ def project_pages(truth: dict, **lookthrough_inputs) -> dict:
                     "stop_price", "stop_source", "stop_state", "stop_captured_at", "stop_evidence", "broker_protected",
                     "distance_to_stop_pct", "loss_at_stop_usd", "risk_usd",
                     # #2141 stop categories: Risk/Defense need these to show resting stops and hide dust rows.
+                    # OBS-R1: the resting scenario is over the covered order quantity, so the row publishes the
+                    # quantity it used and what the holding leaves uncovered.
                     "counted", "stop_category", "resting_stop_distance_pct", "loss_at_resting_stop_usd",
+                    "resting_loss_qty", "resting_coverage_shortfall_qty", "stop_qty",
                     "planned_stop_distance_pct"}
     result["positions"] = {**result["positions"], "rows": [
         {k: v for k, v in row.items() if k in display_keys} for row in result["positions"].get("rows") or []]}
