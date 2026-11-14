@@ -12,6 +12,15 @@ rule exists is in `LESSONS_LEARNED.md`; what is still open is in `OPEN_ITEMS.md`
 The complete AGENTS.md 25.0.1 text is preserved byte-exact at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`
 (sha256 pinned in `tests/support/agents_policy_frozen.py`), and every earlier version is in git history.
 
+## 2026-11-14 — 32.2.0: Wealth Management 501
+
+The operator directed that the Wealth Management 501 standard (v1.0) and its implementation addendum v1.1 live in the
+actual project with an AGENTS.md reference, preserving existing policy. 32.2.0 adds the guide at
+`docs/design/WEALTH_MANAGEMENT_501.md`, the addendum at `docs/design/WEALTH_MANAGEMENT_501_ADDENDUM_V1_1.md`, §9.6 and a
+banner. It adds product and evidence duties only; §0, §2, §17 and the tool adapters are unchanged. A separate
+unratified 33.0.0 proposal (branch wt/stopcov-lq3038-ratify33, §23.20b) is not included and must rebase onto 32.2.0.
+Committed locally while git pushes are suspended.
+
 ## 2026-11-10 — 32.1.0: Engineering Constitution v1.1
 
 The operator issued the Command Center Engineering Constitution v1.1 (Trust, Quality, Auditability, and Production

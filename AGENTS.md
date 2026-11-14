@@ -1,17 +1,22 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      32.1.0
+Policy-Version:      32.2.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
-Effective-Date:      2026-11-10
-Last-Reviewed:       2026-11-10T17:05:00Z
+Effective-Date:      2026-11-14
+Last-Reviewed:       2026-11-14T20:13:54Z
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          32.0.0
+Supersedes:          32.1.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**32.2.0 is ACTIVE (MINOR)**: the operator's **Wealth Management 501** standard (v1.0 + addendum v1.1, 2026-11-14) binds
+every route, tab, detail, read model and producer: §9.6, `docs/design/WEALTH_MANAGEMENT_501.md`,
+`docs/design/WEALTH_MANAGEMENT_501_ADDENDUM_V1_1.md`. It adds product and evidence duties only; it lifts no rail, grants
+nothing, and leaves §0, §2, §17 and the adapters unchanged.
 
 **32.1.0 is ACTIVE (MINOR)**: the operator's **Engineering Constitution v1.1** (2026-11-10) is foundational doctrine for every
 agent: `docs/governance/ENGINEERING_CONSTITUTION.md`. *Trust is a feature. A feature is not complete until it is observable,
@@ -1158,6 +1163,24 @@ A scheduled job never pushes, opens a PR or writes to a remote (§24.5).
 - **Opportunities come from `config/opportunity_conviction.yaml`** (`lib/data_broker/opportunity.py`), persisted
   only by `scripts/cio_opportunity_curator.py`, never as a `cio_theses` version, never with a behaviour key (`stop`,
   `limit`, `shares`, `qty`, `order`): levels are `entry_ref` / `invalidation_level` / `targets`.
+
+## 9.6 Wealth Management 501 — product and delivery contract
+
+Apply the project's canonical [`docs/design/WEALTH_MANAGEMENT_501.md`](docs/design/WEALTH_MANAGEMENT_501.md) (v1.0) and
+implementation addendum v1.1 [`docs/design/WEALTH_MANAGEMENT_501_ADDENDUM_V1_1.md`](docs/design/WEALTH_MANAGEMENT_501_ADDENDUM_V1_1.md)
+to every route, tab, detail, read model and producer.
+
+- Build one investment desk across daily, swing, monthly/quarterly/yearly, long-term and dividend horizons. Surface supported hold/reduce/exit/rotate/wait decisions, reasons, evidence, horizon, triggers and safe next steps.
+- Inventory and reuse existing backend capabilities first. Shared canonical broker/read contracts govern account/security/scope, currency, metric, source clock, session and calculation version. No invented numbers, source access, model capabilities or completion claims.
+- Keep deterministic accounting/risk separate from governed CIO synthesis. Retain questions, evidence, recommendations, corrections and outcomes in durable authorized CIO memory. No page-triggered model/heavy build calls.
+- Overview/header refresh is n8n-owned 24/7, independent of browser/Claude sessions. Prove source-clock correctness, compatible stored output, automatic receipts and bounded failure/recovery before stored-reader cutover. Retire only proven duplicate related cron/timer/agent refresh jobs after replacement proof.
+- Use the existing governed LLM router; verify effective routes and permitted usage. OAuth configuration does not establish free/unlimited/callable service. Never expose credentials or use live provider/financial probes for tests.
+- Make surgical vertical changes with named author/reviewer, isolated meaningful tests, exact patch/source/build identity and preserved real exits/baseline failures/skips. Do not expand frozen releases, duplicate frameworks or warehouse qualified independent changes behind unrelated scope.
+- After every release inspect the affected live pages/tabs/details/shared consumers, financial consistency, safe interactions and desktop/mobile layout. Record PASS/FAIL/NOT_TESTED and evidence; keep rollback ready and bounded follow-up checks. HTTP200/build/assignment is not acceptance.
+- Maintain the route migration/retirement register, backend feature inventory and durable handoff. Preserve working deep links and financial/data/CIO history. Diagnose legacy use from actual wiring, not names alone.
+- Follow the user's current sprint authority: no invented grants or GitHub push/PR requirement. Preserve authentication, 2FA, broker locks and financial-action boundaries; do not perform real orders/approvals or weaken controls.
+
+This section supplements existing safety/security and repository instructions; it does not erase them.
 
 ---
 
@@ -2722,6 +2745,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 32.2.0 | 2026-11-14 | ACTIVE | MINOR | Supersedes 32.1.0. Adds §9.6 Wealth Management 501 product and delivery contract and the canonical guide `docs/design/WEALTH_MANAGEMENT_501.md` (v1.0) + `docs/design/WEALTH_MANAGEMENT_501_ADDENDUM_V1_1.md` (v1.1): all-horizon investment desk, inventory-before-build, deterministic accounting vs governed CIO synthesis, n8n-owned 24/7 overview refresh, route migration/retirement register, live acceptance. Product and evidence duties only: no rail lifted, no grant, §0/§2/§17 and adapters unchanged. | Operator directive 2026-11-14 ~15:00-15:10 ET (actual-project persistence + AGENTS.md update, "already authorized, no new grant"), relayed in-session to the lead; local commit only while git pushes are suspended. |
 | 32.1.0 | 2026-11-10 | ACTIVE | MINOR | Supersedes 32.0.0. Adopts the operator's Engineering Constitution v1.1 (`docs/governance/ENGINEERING_CONSTITUTION.md`) as foundational doctrine; summary added under §8 "What counts as verified". Evidence duties only: no rail lifted, no grant, §0/§2/§17 and adapters unchanged. | Operator directive 2026-11-10 ~11:55 ET ("make these golden rules for all agents … These should appear in: Agent.md, Runbooks, …"), relayed in-session to the lead; local commit only, pending operator ratification on the next push window. |
 | 32.0.0 | 2026-11-09 | ACTIVE | MAJOR | Supersedes 31.0.0. §23.20a: ONE named exception for one broker market-data quote lane on the n8n dispatcher — `vix-index-quotes-schwab` (R1 `ingest`, `$VIX`/`$VIX9D`/`$VIX3M` into `market_quotes`) may carry the `schwab` token and reach `schwab_token_manager` only, in a code-pinned shape (`lane_dispatch.SCHWAB_QUOTE_READ_*`); no trade context, account read, send or credential in n8n. §0, §2, §2A, §7A, §17, §23.14 and §27.1 unchanged. | `APPROVE_AGENTS_POLICY_32_0_0 <pr> <head_sha>` |
 | 31.0.0 | 2026-11-03 | ACTIVE | MAJOR | Supersedes 30.0.1. §24.16: ONE named exception to §24.5 for the `self-heal-fixer` lane only — it may push one `self-heal-fix/…` branch and open one draft PR per fix job (labelled `self-heal-fix`), within the push budget and never with an override; never main/release, never force-push, never broker/credential/order/execution/policy paths, the diff guard still refuses them; every fix PR needs two independent reviews and the fixer never merges; armed only by an active `git-push` grant naming `self-heal-fixer`. Nothing else in §24.5 loosens. | `APPROVE_AGENTS_POLICY_31_0_0 2538 331e39d303f2af7c948306f8475b4aa1fc43438e` (operator, https://github.com/PatsKiller/tardeai/pull/2538#issuecomment-6618462233). Provenance: issued at 331e39d3, whose `AGENTS.md` is byte-identical (blob `c6dac5f08`) to the 31.0.0 text merged in this PR at its tip; later commits are the `origin/main` merge and this repair, with no rule-text change. |
