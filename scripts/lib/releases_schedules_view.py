@@ -185,6 +185,9 @@ def default_paths(env: Optional[Mapping[str, str]] = None) -> dict[str, Path]:
                        or state_root / "data" / "governance" / "n8n_coordination_ledger.sqlite"),
         # scripts/check_registry_runtime_truth.DEFAULT_LIVE_LANES_ENV (names only are read)
         "live_lanes_env": HOME / ".config" / "tradeai" / "n8n-live-lanes.env",
+        # scripts/lib/n8n_relay_live_lanes.py DEFAULT_STATE_ROOT: the ops-controls pause overrides live here, so the
+        # effective relay list cannot be resolved without naming it (OPS-C6b finding 1, 2026-11-14).
+        "state_root": state_root,
         "registry": ROOT / "config" / "lane_registry.json",
         # scripts/main_ci_watch.py (lib/lane_last_receipt.receipt_path("main-ci-watch"))
         "main_ci_receipt": state_root / "data" / "runtime" / "main-ci-watch_last.json",
@@ -837,11 +840,52 @@ def _rows_for(fires: list[datetime], base: dict[str, Any]) -> list[dict[str, Any
     return [{**base, "at": _iso(f), "fires_in_horizon": 1, "cadence_label": None} for f in fires]
 
 
+def _host_env_key(path: Path, key: str) -> Optional[str]:
+    """One KEY=value from the relay's host env file (the only two keys read are the live list and its paused list)."""
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        k, v = s.split("=", 1)
+        if k.strip() == key:
+            return v.strip().strip('"').strip("'") or None
+    return None
+
+
+def _effective_live_block(eff: Optional[Mapping[str, Any]], eff_lanes: Optional[set[str]],
+                          eff_why: Optional[str], host: Optional[set[str]],
+                          release_root: Path) -> dict[str, Any]:
+    """The relay's own live set, with its source, its age and the host-file override shown next to it (not merged)."""
+    from scripts.lib import n8n_relay_live_lanes as RLL
+
+    render = Path(release_root) / RLL.RENDER_NAME
+    both = host is not None and eff_lanes is not None
+    return {"status": "OK" if eff_lanes is not None else "UNAVAILABLE",
+            "source": (eff or {}).get("source"),
+            "detail": eff_why or (eff or {}).get("detail"),
+            "count": len(eff_lanes) if eff_lanes is not None else None,
+            "as_of": _mtime_iso(render), "render_path": str(render),
+            "paused_by_override": list((eff or {}).get("paused") or []) if eff_lanes is not None else None,
+            "only_in_host_file": sorted(host - eff_lanes) if both else None,
+            "only_effective": sorted(eff_lanes - host) if both else None}
+
+
 def read_timeline(now: datetime, *, registry_path: Path, live_lanes_path: Path,
                   crontab_reader: Optional[Callable[[], tuple[str, str, Optional[str], Optional[float]]]] = None,
-                  last_run_by_lane: Optional[Mapping[str, Any]] = None, hours: int = HORIZON_H) -> dict[str, Any]:
-    """Next ``hours`` of host cron and n8n lanes. ``crontab_reader`` returns (text, source, error, age_s)."""
-    src = "crontab -l (or its fresh snapshot) + config/lane_registry.json + n8n-live-lanes.env (names only)"
+                  last_run_by_lane: Optional[Mapping[str, Any]] = None, hours: int = HORIZON_H,
+                  state_root: Optional[Path] = None) -> dict[str, Any]:
+    """Next ``hours`` of host cron and n8n lanes. ``crontab_reader`` returns (text, source, error, age_s).
+
+    ``state_root`` is the persistent-state root the ops pause overrides live under. ``None`` means the caller did not
+    name it: the effective relay list is then UNAVAILABLE (never guessed), because the overrides were not read.
+    """
+    from scripts.lib import n8n_relay_live_lanes as RLL
+
+    src = "crontab -l (or its fresh snapshot) + config/lane_registry.json + n8n-relay-effective (registry render)"
     end = now + timedelta(hours=hours)
     notes: list[str] = []
     try:
@@ -859,8 +903,32 @@ def read_timeline(now: datetime, *, registry_path: Path, live_lanes_path: Path,
     except Exception as exc:  # noqa: BLE001
         live_status, live_names, live_note = "unavailable", [], type(exc).__name__
     live = set(live_names) if live_status == "ok" else None
+    # OPS-C6b finding 1 (2026-11-14): the host file is an INPUT to the relay's live set, not the set. This view used
+    # to call it "the relay live list" and the page still said "relay live list 104 lanes"; since 2026-10-31 the relay
+    # resolves the release's registry render first (`n8n_relay_live_lanes.resolve`), so the effective set is a
+    # different number (measured 134 vs 104 on the served release at 2026-11-14T20:45Z). Resolve it the same way the
+    # relay does — same resolver, same release the registry came from — and keep the host file visible next to it.
+    eff: Optional[dict[str, Any]] = None
+    eff_why: Optional[str] = None
+    if state_root is None:
+        eff_why = "the state root was not named, so the ops pause overrides were not read"
+    else:
+        environ: dict[str, str] = {"TRADEAI_STATE_ROOT": str(state_root)}
+        if live_status == "ok":
+            environ[RLL.LIVE_LANES_ENV] = " ".join(live_names)
+        paused_host = _host_env_key(live_lanes_path, RLL.PAUSED_ENV)
+        if paused_host:
+            environ[RLL.PAUSED_ENV] = paused_host
+        try:
+            eff = RLL.resolve(environ, Path(registry_path).parent.parent)
+        except Exception as exc:  # noqa: BLE001 — a display path never raises
+            eff_why = f"effective list resolution failed: {type(exc).__name__}"
+    eff_lanes = set(eff["lanes"]) if eff is not None and eff.get("lanes") is not None else None
+    if eff_lanes is None:
+        notes.append(f"relay effective live list unavailable ({eff_why or (eff or {}).get('detail') or 'unknown'}); "
+                     "n8n live membership unknown")
     if live is None:
-        notes.append(f"relay live list unavailable ({live_note}); n8n live membership unknown")
+        notes.append(f"host relay env file unavailable ({live_note}); the host-file override is unknown")
     if crontab_reader is None:
         try:
             from lib import crontab_snapshot as CSN
@@ -906,13 +974,17 @@ def read_timeline(now: datetime, *, registry_path: Path, live_lanes_path: Path,
         if not fires:
             continue
         lane_id = str(r.get("lane_id"))
-        in_live = (lane_id in live) if live is not None else None
+        in_host = (lane_id in live) if live is not None else None
+        in_relay = (lane_id in eff_lanes) if eff_lanes is not None else None
         if stage:
             label = stage.upper()
         else:
-            label = "LIVE" if in_live else ("NOT LIVE" if in_live is False else "UNKNOWN")
+            label = "LIVE" if in_relay else ("NOT LIVE" if in_relay is False else "UNKNOWN")
         rows.extend(_rows_for(fires, {"lane": lane_id, "lane_id": lane_id, "runner": "n8n", "schedule": expr,
-                                      "stage": label, "n8n_stage": stage, "in_relay_live_list": in_live,
+                                      "stage": label, "n8n_stage": stage,
+                                      # in_relay_live_list is the relay's own membership (what runs live);
+                                      # in_host_live_list is the env-file override, kept visible, never substituted.
+                                      "in_relay_live_list": in_relay, "in_host_live_list": in_host,
                                       "registry_state": r.get("state"), "last_run": last.get(lane_id),
                                       "paused_since": None, "paused_note": None}))
     discrete = sorted((x for x in rows if x["fires_in_horizon"] == 1), key=lambda x: (x["at"], x["lane"]))
@@ -923,11 +995,15 @@ def read_timeline(now: datetime, *, registry_path: Path, live_lanes_path: Path,
              "recurring": recurring[:MAX_TIMELINE], "rows_total": len(discrete), "recurring_total": len(recurring),
              "truncated": truncated, "crontab": {"source": cron_source, "error": cron_error, "age_s": cron_age,
                                                  "active_lines": len(active), "paused_lines": len(paused)},
-             "live_lanes": {"status": live_status, "count": len(live) if live is not None else None},
+             # The host env file, kept as the override it is — never presented as the relay's live list.
+             "live_lanes": {"status": live_status, "count": len(live) if live is not None else None,
+                            "role": "host env file (fallback input + paused override), not the relay's live list"},
+             # What the relay actually runs (OPS-C6b finding 1): same resolver, same release, named with its age.
+             "effective_live": _effective_live_block(eff, eff_lanes, eff_why, live, Path(registry_path).parent.parent),
              "registry_lanes": len(lanes) if lanes is not None else None, "notes": notes}
     if lanes is None and not cron_ok:
         return field(value, None, "UNAVAILABLE", src, "; ".join(notes), now=now)
-    fresh = "OK" if (cron_ok and lanes is not None and live is not None) else "STALE"
+    fresh = "OK" if (cron_ok and lanes is not None and live is not None and eff_lanes is not None) else "STALE"
     return field(value, _iso(now), fresh, src, "; ".join(notes) or None, now=now)
 
 
@@ -1006,7 +1082,8 @@ def build(db_query, *, now: Optional[datetime] = None, paths: Optional[Mapping[s
         "release_errors": lambda: read_release_errors(p["deploy_state_dir"], p["release_window_state_dir"], now,
                                                       stop=stop, main_ci_receipt=p.get("main_ci_receipt")),
         "timeline": lambda: read_timeline(now, registry_path=p["registry"], live_lanes_path=p["live_lanes_env"],
-                                          crontab_reader=crontab_reader, last_run_by_lane=ledger_last),
+                                          crontab_reader=crontab_reader, last_run_by_lane=ledger_last,
+                                          state_root=p.get("state_root")),
     }, remaining, executor=ex)
     src2 = {"next_release": "git:canonical origin/main", "release_errors": "release receipts",
             "deployment_log": "file:deployment_log/deployments.json",

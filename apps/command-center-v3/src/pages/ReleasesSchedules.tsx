@@ -16,7 +16,8 @@ import './OpsEvidencePages.css'
 import { Chip, ChipRow } from '../components/primitives'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import {
-  ciLabel, ciTone, countOrUnavailable, etDateTime, etTime, freshnessTone, kpiDisplay, prList, RELEASES_SCHEDULES_PATH,
+  ciLabel, ciTone, countOrUnavailable, effectiveLiveChip, etDateTime, etTime, freshnessTone, hostFileChip,
+  kpiDisplay, prList, RELEASES_SCHEDULES_PATH,
   sectionView, stageTone, stopFacts, verifyLabel, verifyVerdict,
   type Freshness, type LedgerToday, type NextRelease, type ReleaseError, type ReleaseRow, type ReleasesSchedulesWire,
   type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow,
@@ -287,12 +288,17 @@ function N8nTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
   const tl = s.timeline.value as Timeline | null
   const td = s.n8n_today.value as LedgerToday | null
   const max = Math.max(1, ...(td?.busiest ?? []).map(b => b.runs))
+  // OPS-C6b finding 1: the relay's effective list and the host file shown distinctly — never one number called "live",
+  // and never a relation the server did not compute (F1: null is "not compared", not "all effective").
+  const effChip = tl ? effectiveLiveChip(tl) : null
+  const hostChip = tl ? hostFileChip(tl) : null
   return <div style={{ display: 'grid', gap: 12 }}>
     <Section title={`Coming up · next ${tl?.horizon_hours ?? 3} hours`} sub="host cron and n8n lanes, one timeline · stage shown" testId="rs-timeline" v={s.timeline}>
       {tl ? <>
         <ChipRow>
           <Chip tone={tl.crontab.source === 'crontab' || tl.crontab.source === 'snapshot' ? 'neutral' : 'warning'} title={tl.crontab.error ?? ''}>crontab {tl.crontab.source} · {tl.crontab.active_lines} active · {tl.crontab.paused_lines} paused</Chip>
-          <Chip tone={tl.live_lanes.status === 'ok' ? 'neutral' : 'warning'}>relay live list {tl.live_lanes.status === 'ok' ? `${tl.live_lanes.count} lanes` : 'UNAVAILABLE'}</Chip>
+          <Chip tone={effChip!.tone} title={effChip!.title}>{effChip!.text}</Chip>
+          <Chip tone={hostChip!.tone} title={hostChip!.title}>{hostChip!.text}</Chip>
           {tl.truncated ? <Chip tone="warning">truncated</Chip> : null}
         </ChipRow>
         {tl.notes.map((n, i) => <p key={i} style={{ ...muted, color: toneVars('warning').color }}>{n}</p>)}

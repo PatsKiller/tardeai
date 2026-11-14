@@ -39,9 +39,64 @@ export type LedgerToday = { day: string; total: number; by_mode: Record<string, 
   dead_letters: { available: boolean; unreleased: number | null; recent: Array<{ lane: string; dead_at: string; last_state: string | null; last_reason: string | null }> | null } }
 export type TimelineRow = { at: string; lane: string; lane_id: string | null; runner: 'cron' | 'n8n'; schedule: string; stage: string; n8n_stage: string | null
   fires_in_horizon: number; cadence_label: string | null; paused_since: string | null; paused_note: string | null; in_relay_live_list?: boolean | null
+  // OPS-C6b finding 1: the host env file's membership, kept visible; in_relay_live_list is the relay's own answer.
+  in_host_live_list?: boolean | null
   last_run: { at: string | null; state: string; mode: string } | null }
+/** A chip's whole content, computed once so the page cannot invent a relation the server did not compute. */
+export type ChipModel = { tone: 'neutral' | 'warning'; text: string; title: string }
+/** The resolver's own source names, in the operator's words (the server decides the value; the page only says it). */
+const SOURCE_WORD: Record<string, string> = {
+  registry_render: 'release registry render', host_env_fallback: 'host file FALLBACK (render unusable)',
+  host_env_legacy: 'host file (render not in force)', unavailable: 'source unavailable',
+}
+/** Chip 1: what the relay runs. Unknown when the resolver could not answer — never a number the page inferred. */
+export function effectiveLiveChip(tl: Timeline): ChipModel {
+  const el = tl.effective_live
+  if (el?.status !== 'OK') {
+    return { tone: 'warning', text: 'relay live UNKNOWN',
+             title: el?.detail ?? 'the effective list was not served; membership is unknown, not zero' }
+  }
+  return { tone: 'neutral',
+           text: `relay live ${el.count} lanes · ${SOURCE_WORD[el.source ?? ''] ?? el.source ?? 'source unknown'}`,
+           title: `${el.render_path}${el.as_of ? ` · rendered ${etDateTime(el.as_of)}` : ''}`
+             + (el.paused_by_override?.length ? ` · paused by override: ${el.paused_by_override.join(', ')}` : '') }
+}
+/**
+ * Chip 2: the host env file next to the relay's set. `only_in_host_file` is the server's computed relation; `null`
+ * means it was NOT computed, and that renders "not compared" — never "all effective", which would claim a relation
+ * nobody measured (OPS-C6b F1, review -3 2026-11-14).
+ */
+export function hostFileChip(tl: Timeline): ChipModel {
+  const host = tl.live_lanes
+  if (host.status !== 'ok') {
+    return { tone: 'warning', text: 'host file UNAVAILABLE',
+             title: 'the host env file could not be read; the override is unknown, not absent' }
+  }
+  const base = `host file ${host.count ?? '?'}`
+  const cmp = tl.effective_live?.only_in_host_file
+  if (cmp == null) {
+    return { tone: 'neutral', text: `${base} · not compared`,
+             title: tl.effective_live?.status === 'OK'
+               ? 'the host-file relation was not served for this snapshot'
+               : `the relay list is unknown (${tl.effective_live?.detail ?? 'not served'}), so host-file membership could not be compared` }
+  }
+  if (cmp.length) {
+    return { tone: 'warning', text: `host file lists ${cmp.length} more that the relay ignores`,
+             title: `listed in the host env file but not effective: ${cmp.join(', ')}` }
+  }
+  return { tone: 'neutral', text: `${base} · all effective`,
+           title: host.role ?? 'the host env file is an input to the relay, not the live list' }
+}
+/** What the relay itself runs, resolved server-side by n8n_relay_live_lanes.resolve (never joined client-side). */
+export type EffectiveLive = { status: string; source: string | null; detail: string | null; count: number | null
+  as_of: string | null; render_path: string; paused_by_override: string[] | null
+  only_in_host_file: string[] | null; only_effective: string[] | null }
 export type Timeline = { horizon_hours: number; from: string; to: string; rows: TimelineRow[]; recurring: TimelineRow[]; rows_total: number; recurring_total: number
-  truncated: boolean; crontab: { source: string; error: string | null; active_lines: number; paused_lines: number }; live_lanes: { status: string; count: number | null }; notes: string[] }
+  truncated: boolean; crontab: { source: string; error: string | null; active_lines: number; paused_lines: number }
+  /** The host env file: a fallback input and the paused override, not the relay's live list. */
+  live_lanes: { status: string; count: number | null; role?: string }
+  effective_live?: EffectiveLive
+  notes: string[] }
 
 export type ReleasesSchedulesWire = {
   schema?: string; generated_at?: string; status?: string; kpis?: Kpi[]

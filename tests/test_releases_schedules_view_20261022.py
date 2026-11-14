@@ -144,6 +144,8 @@ def host(tmp_path):
                           "is_current": True}]}))
     paths = {"releases_base": base, "deploy_state_dir": dep, "canonical_source": tmp_path / "canonical",
              "release_window_state_dir": rw, "ledger": ledger, "live_lanes_env": live, "registry": registry,
+             # Named so the effective-list resolution reads this fixture's state root, never the host's overrides.
+             "state_root": tmp_path / "state",
              "deployment_log": deployment_log}
     crontab = ("SHELL=/bin/bash\n"
                "35 17 * * 1-5 cd $P && python scripts/entry_plans.py >> logs/x.log 2>&1\n"
