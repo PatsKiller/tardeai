@@ -28430,22 +28430,34 @@
         "kind": "n8n",
         "expression": "dispatcher",
         "match": "scripts/build_overview_projection.py",
-        "cadence": "*/1 4-20 * * 1-5",
+        "cadence": "*/1 4-20 * * 1-5 + */5 0-3,21-23 * * 1-5 + */5 * * * 0,6",
+        "cadence_slots": [
+          "*/1 4-20 * * 1-5",
+          "*/5 0-3,21-23 * * 1-5",
+          "*/5 * * * 0,6"
+        ],
+        "due_schedules": [
+          "*/1 4-20 * * 1-5",
+          "*/5 0-3,21-23 * * 1-5",
+          "*/5 * * * 0,6"
+        ],
         "timezone": "America/New_York",
         "stage": "canary",
         "wave": "W5"
       },
-      "expected_cadence_hours": 0.016666666666666666,
+      "expected_cadence_hours": 1.0833333333333333,
       "active_days": [
+        0,
         1,
         2,
         3,
         4,
-        5
+        5,
+        6
       ],
       "state": "ACTIVE",
       "state_since": "2026-11-10",
-      "state_reason": "LQ-20261107-1612 (DESIGN-LQ-20261107-1612; operator noon registry order 2026-11-10): /api/v2/overview is the most-read route (157 GETs) and its cold, memory-pressured tail reached 22.9 s. This lane builds the same body out of process every 60 s inside the market window and writes OverviewProjection@v1 atomically; api_v2 serves it while it is fresh and from the same release, and otherwise computes inline with the reason named, so a builder outage costs latency, never the overview. Scheduled only 04:00-20:00 ET weekdays: outside that window the API computes inline, which is the designed fallback (DESIGN option B), not a gap.",
+      "state_reason": "LQ-20261107-1612 + INC-OVW (OP-042, operator 2026-11-14): /api/v2/overview is the most-read route (157 GETs) and its cold, memory-pressured tail reached 22.9 s, so this lane builds the body out of process and writes OverviewProjection@v1 atomically. R7 served it stored-only (no inline fallback) and a weekday-only 04:00-20:00 schedule left the header UNKNOWN all weekend (2026-11-14: body age 63,686 s at the page). The lane has ONE owner, the n8n dispatcher, on a 24/7 union: every 60 s from 04:00 to 20:59 ET Mon-Fri, every 5 min otherwise, including all of Saturday and Sunday. expected_cadence_hours 1.0833 is the MEASURED largest real gap between admissions (65 min on the fall-back night, when the repeated 01:xx slot fires once), not the in-hours cadence. scripts/lib/overview_lane_contract.py derives it from these expressions and pins LAST_GOOD_MAX_S (5400 s) above it plus the lane's retry span and the dispatcher's allowed delay.",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/overview_projection.json",
@@ -28454,7 +28466,9 @@
       "dispatch": {
         "mode": "live",
         "cron": [
-          "*/1 4-20 * * 1-5"
+          "*/1 4-20 * * 1-5",
+          "*/5 0-3,21-23 * * 1-5",
+          "*/5 * * * 0,6"
         ],
         "tz": "America/New_York",
         "wave": "W5",

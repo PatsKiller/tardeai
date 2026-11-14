@@ -46,7 +46,6 @@ LIVE_CURRENT = RELEASES / "portfolio-server" / "CURRENT"
 RECEIPT_TAIL = 2000
 ALERT_STALE_MINUTES = 10
 CATALYST_WINDOW_HOURS = 24
-OVERVIEW_MAX_AGE_S = 300
 CAPITAL_PLAN_MAX_AGE_H = 26.0
 REGIME_MAX_AGE_H = 24.0
 CRONTAB_AUDIT_BASELINE_ACTIVE = 298  # audit 2026-11-09: 298 active crontab lines
@@ -226,13 +225,87 @@ def _file_age_s(path: Path, now: datetime) -> float | None:
         return None
 
 
+def _read_json_lenient(path: Path) -> tuple[dict | None, str | None]:
+    """(doc, why-not) without raising: a missing or unreadable file is a named state, never a crash."""
+    try:
+        doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None, f"missing {path}"
+    except (OSError, ValueError) as exc:
+        return None, f"unreadable {path}: {type(exc).__name__}"
+    return (doc if isinstance(doc, dict) else None), (None if isinstance(doc, dict) else f"not an object {path}")
+
+
 def overview_projection(state_root: Path, now: datetime) -> list[Row]:
-    path = state_root / "data" / "runtime" / "overview_projection.json"
-    age = _file_age_s(path, now)
-    if age is None:
-        return [Row("overview_projection", "file_age_s", None, f"<= {OVERVIEW_MAX_AGE_S}", "FAIL", f"missing {path}")]
-    return [Row("overview_projection", "file_age_s", age, f"<= {OVERVIEW_MAX_AGE_S}",
-                _verdict(age <= OVERVIEW_MAX_AGE_S), str(path))]
+    """The 24/7 lane, against its DERIVED contract: body age, expiry headroom, and the last run receipt.
+
+    INC-OVW (OP-042): this used to be one row, ``file_age_s <= 300``. That number was neither the schedule's max
+    gap nor the reader's last-good window, and it could not tell "a slot is late" from "the producer is dead" from
+    "the body is old but the lane is fine". The thresholds now come from
+    ``scripts/lib/overview_lane_contract.py`` (registry cadence + retry policy + the dispatcher's allowed delay),
+    so the monitor moves when the schedule moves. Reads files only: no DB, no dispatch, no write.
+    """
+    try:
+        from scripts.lib import overview_lane_contract as C
+    except ImportError:  # pragma: no cover - imported as lib.*
+        from lib import overview_lane_contract as C
+
+    runtime = state_root / "data" / "runtime"
+    proj_doc, proj_why = _read_json_lenient(runtime / "overview_projection.json")
+    rec_doc, rec_why = _read_json_lenient(runtime / "overview-projection_last.json")
+    try:
+        contract = C.contract()
+    except Exception as exc:  # noqa: BLE001 - an unreadable contract is a finding, not a crash
+        return [Row("overview_projection", "contract", None, "readable", "ERROR",
+                    f"{type(exc).__name__}: {exc}"[:300])]
+    health = C.lane_health(projection=proj_doc, projection_readable=proj_doc is not None,
+                           receipt=rec_doc, receipt_readable=rec_doc is not None,
+                           now=now.timestamp(), contract_doc=contract)
+    exp, proj, rec = health["expected"], health["projection"], health["receipt"]
+    horizon = exp["floor_s"]  # max gap + retry span + allowed dispatch delay
+    action = "" if health["next_action"] in ("", "none") else f" Next: {health['next_action']}"
+    slot_plus_retries = exp["max_gap_s"] + exp["retry_span_s"]
+    # R8's reader computes on the request thread: there is no window, so a body cannot expire and the schedule
+    # cannot make the page lie. Naming that is not the same as passing the inequality - the detail says which.
+    inline = exp["last_good_max_s"] is None
+    contract_headroom = None if inline else float(contract["headroom_s"])  # last_good_max_s - floor_s
+    clocks = (proj.get("source_clocks") or {}).get("clocks") or {}
+    rows: list[Row] = [
+        Row("overview_projection", "body_age_s", proj["age_s"],
+            f"<= {horizon:.0f} (max gap {exp['max_gap_s']:.0f} + retries {exp['retry_span_s']:.0f} "
+            f"+ delay {exp['dispatch_delay_s']:.0f})"
+            + ("" if inline else f"; UNKNOWN past {exp['last_good_max_s']:.0f}"),
+            "FAIL" if proj["age_s"] is None or proj["age_s"] > horizon else "PASS",
+            f"{proj_why or 'readable'}; status {proj['status']!r}; code_identity {proj['code_identity']!r}; "
+            f"reader {health['reader']}.{action}"),
+        Row("overview_projection", "body_expiry_headroom_s", exp["headroom_s"],
+            "n/a (inline reader)" if inline else f">= {slot_plus_retries:.0f} (one max gap plus one retry span)",
+            "PASS" if inline or (exp["headroom_s"] is not None and exp["headroom_s"] >= slot_plus_retries) else "FAIL",
+            "inline reader: the page computes instead of answering UNKNOWN, so a body has no expiry" if inline else
+            "how long THIS body has before the reader answers UNKNOWN; below one slot + retries, a single missed "
+            "dispatch expires it"),
+        Row("overview_projection", "contract_headroom_s", contract_headroom,
+            "n/a (inline reader)" if inline else
+            "> 0 (last_good_max_s must exceed max gap + retries + allowed delay)",
+            "PASS" if inline or contract_headroom > 0 else "FAIL",
+            "inline reader: no last-good window exists, so the schedule cannot expire a served body" if inline else
+            f"last_good_max_s {exp['last_good_max_s']:.0f} - floor {horizon:.0f}, derived from the registry cadence "
+            f"and the retry policy; a lowered last-good window shows up here even while the producer is healthy"),
+        Row("overview_projection", "lane_receipt_age_s", rec["age_s"],
+            f"<= {exp['max_gap_s'] + exp['dispatch_delay_s']:.0f} (one max gap + allowed delay)",
+            "FAIL" if rec["age_s"] is None or rec["age_s"] > exp["max_gap_s"] + exp["dispatch_delay_s"] else "PASS",
+            f"{rec_why or 'readable'}; status {rec['status']!r}; empty_reason {rec['empty_reason']!r}; "
+            f"consecutive_failures {rec['consecutive_failures']!r}; code_sha {rec['code_sha']!r}"),
+        Row("overview_projection", "source_clocks_present", len(clocks),
+            ">= 1 for a stored-only reader",
+            "PASS" if clocks or inline else "FAIL",
+            (f"the body's DATA clocks, kept apart from built_at: {len(clocks)} present" if clocks else
+             "the body carries no DATA clocks; no stored-only reader consumes them here (inline reader)")),
+    ]
+    if health["broken"]:
+        rows.append(Row("overview_projection", "verdict", ",".join(health["broken"]), "empty", "FAIL",
+                        health["next_action"]))
+    return rows
 
 
 def capital_plan_record(state_root: Path, now: datetime) -> list[Row]:
@@ -337,7 +410,7 @@ def measure(
         ("retrieval", f"shadow_share_last_{RECEIPT_TAIL}", "< 1.0", lambda: retrieval_mode(state_root)),
         ("regime", "snapshot", f"<= {REGIME_MAX_AGE_H:g}h", lambda: regime(query, now)),
         ("catalyst_lead_time", "lag", "see rows", lambda: catalyst_lead_time(query)),
-        ("overview_projection", "file_age_s", f"<= {OVERVIEW_MAX_AGE_S}", lambda: overview_projection(state_root, now)),
+        ("overview_projection", "body_age_s", "see rows (derived contract)", lambda: overview_projection(state_root, now)),
         ("capital_plan_record", "lane_receipt_age_h", f"<= {CAPITAL_PLAN_MAX_AGE_H:g}",
          lambda: capital_plan_record(state_root, now)),
         ("quotes", "yfinance_rows_last_1h", "== 0", lambda: yfinance_quotes(query)),

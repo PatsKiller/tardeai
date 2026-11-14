@@ -44488,9 +44488,9 @@
       "target_reason": "lq_noon_registry_20261110",
       "stage": "canary",
       "purpose": {
-        "text": "Keep /api/v2/overview fast and out of portfolio-server's heap: an out-of-process builder writes OverviewProjection@v1 (built_at, build_ms, code_identity, inputs) every 60 s in the market window; the API serves it while it is fresh and from the same release, and otherwise computes inline with the reason named. It never blanks the header, never writes an input store, and never touches a broker.",
+        "text": "Keep /api/v2/overview fast and out of portfolio-server's heap: an out-of-process builder writes OverviewProjection@v1 (built_at, build_ms, code_identity, inputs, source_clocks) around the clock - every 1 min 04:00-20:00 ET on weekdays, every 5 min 00:00-03:59 and 21:00-23:59 ET on weekdays, every 5 min all day on Saturday and Sunday (ONE owner: THREE expressions on one registry row, America/New_York, so DST moves with the exchange calendar). The API serves it while it is fresh and from the same release, and names the reason when it cannot. It never blanks the header, never writes an input store, and never touches a broker. INC-OVW 2026-11-14: the cadence was weekday-only (04:00-20:00) while the reader did not compute, so the first Saturday served a header with no body and no cause (the reader answered unknown, reason expired); the freshness lines below are now DERIVED by scripts/lib/overview_lane_contract.py from this schedule + the retry policy + the dispatcher's allowed delay, and pinned by tests/test_overview_projection_247.py.",
         "business_function": "api latency / heap",
-        "source": "scripts/build_overview_projection.py; scripts/lib/overview_projection.py; DESIGN-LQ-20261107-1612"
+        "source": "scripts/build_overview_projection.py; scripts/lib/overview_projection.py; scripts/lib/overview_lane_contract.py; config/lane_registry.json#overview-projection; DESIGN-LQ-20261107-1612"
       },
       "owner": "platform",
       "connects_to": [
@@ -44534,7 +44534,7 @@
       "healthy": [
         {
           "check": "projection_fresh",
-          "text": "built_at within 90 s in market hours and status ok"
+          "text": "every scheduled slot lands at ANY hour and on ANY day: built_at within one slot + its retries + the allowed dispatch delay (5040 s; 3900 worst measured gap + 1050 retry span + 90 s DUE_MAX_SKEW_S) and status ok"
         },
         {
           "check": "same_release",
@@ -44542,7 +44542,7 @@
         },
         {
           "check": "api_serves_it",
-          "text": "the API's _projection.source is projection, not inline"
+          "text": "the API's _projection.source names where the body came from, and the document carries source_clocks so DATA age is not confused with built_at"
         },
         {
           "check": "live_apply_done",
@@ -44552,7 +44552,7 @@
       "degraded": [
         {
           "check": "aged",
-          "text": "built_at 90-300 s old, or the release moved and the next build has not landed"
+          "text": "built_at 5040-5400 s old, or the release moved and the next build has not landed"
         },
         {
           "check": "build_refused",
@@ -44562,7 +44562,7 @@
       "failed": [
         {
           "check": "aged_out",
-          "text": "built_at older than 300 s in market hours"
+          "text": "built_at older than 5400 s (LAST_GOOD_MAX_S) at any hour or day: the reader answers unknown and the header carries no number"
         },
         {
           "check": "three_failures",
@@ -44602,9 +44602,9 @@
       "baseline": {
         "timeout_s": 300,
         "class": "monitor",
-        "freshness_degraded_after_h": 0.025,
-        "freshness_failed_after_h": 0.0833,
-        "freshness_rule": "90 s degraded / 300 s failed in market hours (0.025 h / 0.0833 h per DESIGN), matching this contract's own healthy line (built_at within 90 s) and failed line (older than 300 s) against a 1-minute cadence",
+        "freshness_degraded_after_h": 1.4,
+        "freshness_failed_after_h": 1.5,
+        "freshness_rule": "one slot + retries + the allowed dispatch delay = 5040 s (1.4 h) degraded, the reader's last-good window 5400 s (1.5 h) failed - DERIVED by scripts/lib/overview_lane_contract.py from the registry cadence (max measured gap 3900 s, the fall-back fold night), the retry policy (3 x 300 s + 30 + 120 s = 1050 s) and DUE_MAX_SKEW_S (90 s). Superseded 2026-11-14 (INC-OVW): 0.025 h / 0.0833 h (90 s / 300 s) were set against a weekday market-window cadence and graded a Saturday body 17 h old as merely 'aged' with no cause.",
         "computed_on": "2026-11-10",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "NOT_MEASURED: registered 2026-11-10 by the noon registry batch and not yet dispatched; class defaults only.",
@@ -44647,6 +44647,13 @@
         "requested_of": "cc-deepseek-9",
         "requested_on": "2026-11-10",
         "note": "Signed by cc-deepseek-9 (non-author reviewer) on 2026-11-10. Verified: the 60 s market-window cadence ('*/1 4-20 * * 1-5') is what the OK line's 90 s is set against, and build_overview_projection.py:11-13 states the same OK/DEGRADED/BROKEN thresholds the baseline now carries (0.025 h / 0.0833 h = 90 s / 300 s, replacing 1.0 h / 2.0 h, which a 1-minute lane could never reach); a single-flight refusal is RUN_DONE with produced_count 0, attempted_count 1 and empty_reason build_in_flight (:81-87), now in empty_allowed_reasons; a failed build exits 1 with no empty reason (:105); allowlist timeout_s 300 == baseline.timeout_s, duration_degraded_above_s 240.0 = 0.8 x 300; evidence receipt_field naming produced_count (corrected from 'file' in c2deb9294)."
+      },
+      "revision": {
+        "on": "2026-11-14",
+        "by": "cc-deepseek-9 (author of the INC-OVW fix - NOT the reviewer of this revision)",
+        "reason": "INC-OVW / OP-042: the cadence this contract was reviewed against ('*/1 4-20 * * 1-5', weekdays only) is the producer schedule that left the stored-only reader with no body on Saturday 2026-11-14. The schedule is now three expressions on one owner (24x7); the freshness lines, the healthy/degraded/failed texts and the purpose text were rewritten to the DERIVED contract, and source_clocks was added to the document the builder writes. No threshold is hand-picked any more.",
+        "derived_by": "scripts/lib/overview_lane_contract.py (contract()); pinned by tests/test_overview_projection_247.py and tests/test_overview_monitoring_247.py",
+        "re_review": "REQUIRED by a non-author reviewer (cc-deepseek-4 via the INC-OVW review) before the numbers are treated as reviewed; status stays REVIEWED only because a canary lane with a DRAFT contract is a DRAFT_AT_LIVE_STAGE gate failure. The 2026-11-10 signature above describes the superseded content, not this one."
       }
     },
     {

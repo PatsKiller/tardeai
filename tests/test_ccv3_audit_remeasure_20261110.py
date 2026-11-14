@@ -20,6 +20,26 @@ _spec.loader.exec_module(m)
 NOW = datetime(2026, 11, 10, 15, 0, tzinfo=timezone.utc)
 
 
+@pytest.fixture(autouse=True)
+def _shipped_window(monkeypatch):
+    """The table is measured against the release that ships INC-OVW.
+
+    ``LAST_GOOD_MAX_S`` lives in ``scripts/lib/overview_projection.py``, which this deliverable does not own: it
+    ships as ``docs/ops/packets/inc-ovw-20261114/overview_projection.patch``. Put the patch's window on the module
+    so these rows describe the release, not the fold order. On a tree without the stored-only reader the setattr
+    re-creates it (``raising=False``), which is the same simulation the monitoring suite makes explicitly.
+    """
+    from scripts.lib import overview_lane_contract as C
+    from scripts.lib import overview_projection as OP
+
+    window = C.patched_window(ROOT)
+    assert window is not None, f"{C.PATCH_REL} is missing or sets no window"
+    monkeypatch.setattr(OP, "LAST_GOOD_MAX_S", window, raising=False)
+    C._contract_cached.cache_clear()
+    yield
+    C._contract_cached.cache_clear()
+
+
 class FakeDB:
     """Answers by a substring of the SQL; records every statement so the test can prove it only SELECTs."""
 
@@ -66,10 +86,22 @@ def _state_root(tmp_path: Path, *, modes=("ENFORCE",) * 3, projection_age_s=30, 
     rt.mkdir(parents=True)
     (cio / "retrieval_receipts.jsonl").write_text("".join(json.dumps({"mode": x}) + "\n" for x in modes))
     if projection_age_s is not None:
-        p = rt / "overview_projection.json"
-        p.write_text("{}")
-        t = NOW.timestamp() - projection_age_s
-        os.utime(p, (t, t))
+        # INC-OVW: the row is contract-driven now, so the fixture carries a real body (built_at, source clocks) and a
+        # LaneRunReceipt@v2. A document holding "{}" would be the very state the lane reports as missing.
+        from scripts.lib import overview_lane_contract as C
+
+        built = NOW.timestamp() - projection_age_s
+        body = {"as_of": "2026-11-10T09:35:00-05:00", "data_as_of": "2026-11-10",
+                "journal": {"last_close_date": "2026-11-07"},
+                "clock_provenance": {"positions": {"as_of": "2026-11-10T14:35:00Z"}}}
+        (rt / "overview_projection.json").write_text(json.dumps({
+            "schema": "OverviewProjection@v1", "status": "ok", "built_at_epoch": built,
+            "built_at": datetime.fromtimestamp(built, tz=timezone.utc).isoformat(), "code_identity": "sha:cafe",
+            "body": body, "source_clocks": C.source_clocks(body)}))
+        (rt / "overview-projection_last.json").write_text(json.dumps({
+            "schema": "LaneRunReceipt@v2", "lane_id": "overview-projection", "mode": "live", "status": "ok",
+            "ok_at": datetime.fromtimestamp(built, tz=timezone.utc).isoformat(), "code_sha": "cafe",
+            "consecutive_failures": 0, "empty_reason": None}))
     if receipt_age_h is not None:
         r = rt / "cio-capital-plan-record_last.json"
         r.write_text("{}")
@@ -107,7 +139,7 @@ def test_audit_findings_fail(tmp_path):
     rows = m.measure(db, root, reg, lambda: "x\n" * 299, NOW)
     for metric in ("queued_older_than_10m", "completed_total", "suppressed_not_delivered_24h",
                    "shadow_share_last_2000", "snapshot_age_h", "breadth_measured", "share_within_1h",
-                   "share_within_6h", "median_h", "file_age_s", "lane_receipt_age_h", "yfinance_rows_last_1h",
+                   "share_within_6h", "median_h", "body_age_s", "lane_receipt_age_h", "yfinance_rows_last_1h",
                    "intelligence_embedding_rows", "overview-projection", "alert-delivery-queue-hygiene",
                    "active_lines"):
         assert _by(rows, metric).status == "FAIL", metric

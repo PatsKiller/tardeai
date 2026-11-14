@@ -1,0 +1,71 @@
+diff --git a/scripts/lib/overview_projection.py b/scripts/lib/overview_projection.py
+index d23580bcf..5bf6aee82 100644
+--- a/scripts/lib/overview_projection.py
++++ b/scripts/lib/overview_projection.py
+@@ -32,7 +32,17 @@ MAX_AGE_S = 150.0
+ #: LAST-GOOD window (S2 item 2, operator 2026-11-14): past MAX_AGE_S the body is served STALE WITH ITS AGE
+ #: (``_projection.stale`` / ``_projection.age_s``) instead of being recomputed on the request thread. Beyond this it is
+ #: a different answer, not an old one, and the route answers the named UNKNOWN (``unknown_body``).
+-LAST_GOOD_MAX_S = 1800.0
++#:
++#: INC-OVW (OP-042, 2026-11-14): 1800 s was smaller than the lane's own 24/7 schedule contract, and on a weekend
++#: (weekday-only schedule at the time) the header answered UNKNOWN. The window is now DERIVED, not chosen:
++#:   3900 s  largest MEASURED gap between admitted slots (the fall-back fold night, where the repeated 01:xx slot
++#:           fires once; measured over five reference weeks with cron_schedule.fires_between)
++#: + 1050 s  the lane's retry span: 3 attempts x timeout_s 300 + backoff 30 + 120 (transient-2)
++#: +   90 s  the dispatcher's allowed dispatch delay (n8n_coordination_gateway.DUE_MAX_SKEW_S)
++#: = 5040 s  floor; 5400 s (90 min) is the next whole minute above it.
++#: scripts/lib/overview_lane_contract.py computes every term from the registry, the retry policy and the allowlist,
++#: and tests/test_overview_projection_247.py fails if this constant and the schedule ever drift apart again.
++LAST_GOOD_MAX_S = 5400.0
+ OWNER = "lane overview-projection (scripts/build_overview_projection.py, n8n dispatcher)"
+ NEXT_ACTION = {
+     "missing": "Dispatch the lane or check its next tick: n8n dispatcher row `overview-projection` "
+@@ -129,6 +139,23 @@ def _input_mtimes(state_dir: Path | None) -> dict[str, str | None]:
+     return out
+ 
+ 
++def _source_clocks(body: Any) -> dict:
++    """The body's SOURCE clocks, copied verbatim and kept apart from this build's own clock (INC-OVW item 3).
++
++    ``built_at`` is the ASSEMBLY clock: it advances on every run, including a Saturday rebuild of Friday's data.
++    The clocks in here are the clocks of the DATA the overview reports (valuation/basis/quote/positions/stops/
++    regime/sectors and the session identity when the read resolves one). A rebuild copies them; it never
++    re-stamps them, so a weekend page can say "built 2 min ago, data from Friday's close" truthfully.
++    The implementation lives in ``overview_lane_contract`` so monitoring, the cutover gate and this document all
++    read one list; the import is lazy because the module is imported both as ``scripts.lib`` and as ``lib``.
++    """
++    try:
++        from scripts.lib.overview_lane_contract import source_clocks
++    except ImportError:  # pragma: no cover - imported as lib.overview_projection
++        from lib.overview_lane_contract import source_clocks
++    return source_clocks(body)
++
++
+ def _atomic_write(path: Path, doc: dict) -> None:
+     path.parent.mkdir(parents=True, exist_ok=True)
+     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+@@ -187,6 +214,7 @@ def build(compute: Callable[[], Any], *, path: Path, identity: str | Callable[[]
+                 "build_ms": int(round((built - started) * 1000)),
+                 "code_identity": identity,
+                 "inputs": _input_mtimes(state_dir),
++                "source_clocks": _source_clocks(body),
+                 "body": body,
+             }
+             _atomic_write(path, doc)
+@@ -270,8 +298,13 @@ def read(path: Path, *, identity: str, invalidated_at: Any, now: float | None =
+     # The served stamp carries built_at and the reason, not age_s: within one reason the body is byte-identical, so
+     # the server's ETag cache answers repeat polls with 304 instead of re-serializing 65 KB. It changes bytes once,
+     # when a body crosses from current to stale — one re-serialization per transition, not one per poll.
+-    return ({**doc["body"], "_projection": {"source": "projection", "built_at": doc.get("built_at"),
+-                                            "stale": stale, "reason": why}}, meta)
++    # INC-OVW item 3: the ASSEMBLY clock (built_at) and the SOURCE clocks travel separately, so a Saturday body
++    # can say "built 2 min ago, data as of Friday's close" instead of appearing to be Friday's data restamped.
++    projection_block: dict[str, Any] = {"source": "projection", "built_at": doc.get("built_at"),
++                                        "stale": stale, "reason": why}
++    if isinstance(doc.get("source_clocks"), dict):
++        projection_block["source_clocks"] = doc["source_clocks"]
++    return ({**doc["body"], "_projection": projection_block}, meta)
+ 
+ 
+ def is_servable(path: Path | None = None, *, now: float | None = None,

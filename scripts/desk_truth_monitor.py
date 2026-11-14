@@ -617,16 +617,71 @@ def _tolerance(value: Optional[float], usd: float, pct: float) -> float:
     return max(float(usd), float(pct) * base)
 
 
+def _projection_findings(lane: Optional[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Pure. The overview-projection lane's own state, read from ``overview_lane_contract.lane_health``.
+
+    INC-OVW (OP-042): the header and the card are served from ``overview_projection.json``. The monitor used to see
+    that file only as "something displayed was readable", so on 2026-11-14 a body 17 hours old and a producer whose
+    last slot was Friday 19:55 read as two UNKNOWN findings with no cause. The cause - expiry, a missed slot, a
+    failed run, a lock that never released - is computed by the lane's contract module (one implementation, not a
+    second copy here) and is mapped to one finding per state. ``None`` means the caller injected no lane source, so
+    this check has nothing to say; an ERROR dict means the monitor itself could not read, which is never clean.
+    """
+    if not isinstance(lane, Mapping):
+        return []
+    if lane.get("error"):
+        return [_f("DT_PROJECTION_UNREADABLE", "projection:lane",
+                   f"the projection lane could not be read: {lane['error']}", error=str(lane["error"]))]
+    verdicts = lane.get("verdicts") if isinstance(lane.get("verdicts"), Mapping) else {}
+    proj = lane.get("projection") if isinstance(lane.get("projection"), Mapping) else {}
+    rec = lane.get("receipt") if isinstance(lane.get("receipt"), Mapping) else {}
+    exp = lane.get("expected") if isinstance(lane.get("expected"), Mapping) else {}
+    action = str(lane.get("next_action") or "")
+    age, floor, last_good = proj.get("age_s"), exp.get("floor_s"), exp.get("last_good_max_s")
+    ev = dict(age_s=age, status=proj.get("status"), expected_floor_s=floor, last_good_max_s=last_good,
+              body_expiry_headroom_s=exp.get("headroom_s"), receipt_status=rec.get("status"),
+              empty_reason=rec.get("empty_reason"), consecutive_failures=rec.get("consecutive_failures"),
+              next_action=action or None)
+    tail = f" {action}" if action and action != "none" else ""
+    out: list[dict[str, Any]] = []
+    if verdicts.get("missing") or verdicts.get("expired"):
+        how = ("is missing or unreadable" if verdicts.get("missing") else
+               f"is {age:,.0f} s old, past the {last_good:,.0f} s last-good window")
+        out.append(_f("DT_PROJECTION_UNKNOWN", "projection:served",
+                      f"the overview the page serves has no live body: {how}; the header answers UNKNOWN.{tail}", **ev))
+    if verdicts.get("refused_streak"):
+        out.append(_f("DT_PROJECTION_LOCK_HELD", "projection:lock",
+                      f"the producer has been refused the build lock for {age:,.0f} s (a whole slot plus its "
+                      f"retries); empty_reason={rec.get('empty_reason')!r}.{tail}", **ev))
+    if verdicts.get("failed"):
+        out.append(_f("DT_PROJECTION_RUN_FAILED", "projection:receipt",
+                      f"the last run failed (status={rec.get('status')!r}, "
+                      f"consecutive_failures={rec.get('consecutive_failures')!r}) and the next slot has passed.{tail}",
+                      **ev))
+    if verdicts.get("missed"):
+        out.append(_f("DT_PROJECTION_MISSED_SLOT", "projection:slot",
+                      f"no new body for {age:,.0f} s: a whole slot plus its retries plus the allowed dispatch delay "
+                      f"({floor:,.0f} s) has passed.{tail}", **ev))
+    if verdicts.get("headroom_low"):
+        out.append(_f("DT_PROJECTION_HEADROOM", "projection:headroom",
+                      f"the served body expires in {exp.get('headroom_s')} s, less than one slot plus one retry span "
+                      f"({(exp.get('max_gap_s') or 0) + (exp.get('retry_span_s') or 0):,.0f} s): the next missed "
+                      f"dispatch is an UNKNOWN, not a late number.{tail}", alert=False, **ev))
+    return out
+
+
 def display_truth(current: Iterable[Mapping[str, Any]], quotes: Iterable[Mapping[str, Any]],
                   stops: Iterable[Mapping[str, Any]], displayed: Mapping[str, Any], cfg: Mapping[str, Any], *,
                   now: datetime, session: bool, previous: Optional[Mapping[str, Any]] = None,
-                  reconcile: Optional[Callable[..., dict[str, Any]]] = None) -> dict[str, Any]:
+                  reconcile: Optional[Callable[..., dict[str, Any]]] = None,
+                  projection_lane: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
     """Pure. Compares what is shown with what an independent recomputation says it should be.
 
     ``displayed`` = {"overview": doc|None, "since_close": doc|None, "header": doc|None, "card": doc|None,
     "dom": doc|None}. ``previous`` is the carry block of the last run (same shape as this report's ``carry``).
     ``reconcile`` is ``since_close_card.reconcile_stop_advice`` injected so this module holds no second copy of the
-    stop-advice rule.
+    stop-advice rule. ``projection_lane`` is ``overview_lane_contract.lane_health`` for the projection the page
+    serves - the same one implementation the audit and the cutover gate read, never a second copy of the cadence.
     """
     findings: list[dict[str, Any]] = []
     book = recompute_book(current, quotes, stops, cfg, now=now, session=session)
@@ -742,6 +797,8 @@ def display_truth(current: Iterable[Mapping[str, Any]], quotes: Iterable[Mapping
                                "header-market-freshness-health grades the header/card VIX contract BROKEN: "
                                f"{reasons.get('vix') or 'no reason recorded'}",
                                contract="vix", verdict=vix_state, reason=reasons.get("vix")))
+    # ---- the lane that feeds the page: alive, on schedule, holding nothing back --------------------------------
+    findings.extend(_projection_findings(projection_lane))
     if dom:
         allowed = {str(k).lower(): {str(x).lower() for x in v or ()}
                    for k, v in (cfg.get("tier_segment_states") or {}).items()}
@@ -823,6 +880,11 @@ DISPLAY_HEAL_LANES = {
     "DT_STOP_ADVICE_SATISFIED": "since-close-snapshot",
     "DT_ASOF_MISLABEL": "since-close-snapshot",
     "DT_HEADER_CARD_SPLIT": "header-warm",
+    # the lane that feeds the header and the card: re-dispatch is the only remedy that produces a body. A lock that
+    # never released (DT_PROJECTION_LOCK_HELD) is deliberately absent: a re-dispatch is refused while one is held.
+    "DT_PROJECTION_UNKNOWN": "overview-projection",
+    "DT_PROJECTION_MISSED_SLOT": "overview-projection",
+    "DT_PROJECTION_RUN_FAILED": "overview-projection",
 }
 
 
@@ -949,10 +1011,19 @@ def run_check(check: str, *, now: datetime, cfg: Mapping[str, Any], sources: Map
         except ImportError:  # pragma: no cover - scripts/ on sys.path
             from lib.since_close_card import reconcile_stop_advice as _reconcile  # type: ignore[no-redef] -- one module, two sys.path roots
         prev = get("previous_display")
+        # not via get(): an injected-sources test has no projection_lane, and that must not abort the display check
+        lane_src = sources.get("projection_lane")
+        projection_lane: Optional[dict[str, Any]] = None
+        if callable(lane_src):
+            try:
+                projection_lane = lane_src()
+            except Exception as exc:  # noqa: BLE001 - a monitor that cannot read its input is never clean
+                projection_lane = {"error": f"{type(exc).__name__}: {exc}"[:200]}
         rep.update(display_truth(list(rows), list(quotes or []), list(stops_rows or []), shown or {}, c, now=now,
                                  session=in_session(now, c["session_start_et"], c["session_end_et"],
                                                     trading_day=trading_day),
-                                 previous=prev if isinstance(prev, Mapping) else None, reconcile=_reconcile))
+                                 previous=prev if isinstance(prev, Mapping) else None, reconcile=_reconcile,
+                                 projection_lane=projection_lane))
     alertable = sorted(f["key"] for f in rep.get("findings") or [] if f.get("alert"))
     rep.update(finding_count=len(rep.get("findings") or []), alertable=alertable,
                by_code=_count(f["code"] for f in rep.get("findings") or []), fingerprint=fingerprint(alertable))
@@ -1023,11 +1094,24 @@ def host_sources(check: str, proposals: Path, *, cfg: Optional[Mapping[str, Any]
             carry = doc.get("carry") if isinstance(doc, Mapping) else None
             return carry if isinstance(carry, Mapping) else None
 
+        def _projection_lane() -> dict[str, Any]:
+            # the lane's own verdict, computed by ONE module (overview_lane_contract) from the projection body and
+            # the LaneRunReceipt@v2. Never raises: an unreadable input is that module's "missing" state, so it can
+            # never turn this check into a dependency_unavailable. Reads disk only; starts and dispatches nothing.
+            from scripts.lib import overview_lane_contract as C
+
+            now_s = datetime.now(timezone.utc).timestamp()
+            proj = _read_json(overview)
+            rec = _read_json(runtime / "overview-projection_last.json")
+            return C.lane_health(projection=proj, projection_readable=proj is not None,
+                                 receipt=rec, receipt_readable=rec is not None, now=now_s)
+
         sources.update({
             "stop_last_known": lambda: _select(conn(), STOP_LAST_KNOWN_SQL),
             "market_quotes": lambda: _select(conn(), quotes_sql(feeds)),
             "displayed": _displayed,
             "previous_display": _previous,
+            "projection_lane": _projection_lane,
         })
     return sources
 

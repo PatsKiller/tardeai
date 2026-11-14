@@ -90,6 +90,39 @@ print("  wrote deploy receipt", p)
 PY
 }
 
+# Put CURRENT, the drop-in and the service back on the previous release, and write the receipts. One definition so a
+# second refusal path cannot roll back differently from the first. Never called when PREV_RELEASE is unusable.
+rollback_to_prev() {
+    local health="$1" extra="$2"
+    if [[ -z "$PREV_RELEASE" || ! -d "$PREV_RELEASE" ]]; then
+        echo "  No usable previous release — cannot roll back."
+        write_deploy_receipt false "$health" false "prev_missing" "${RELEASE_DIR}/DEPLOY_RECEIPT.json"
+        write_deploy_receipt false "$health" false "prev_missing"
+        return 1
+    fi
+    echo "  Rolling back CURRENT → $PREV_RELEASE"
+    local prev_sha
+    prev_sha="$(tr -d '[:space:]' < "${PREV_RELEASE}/BUILD_SHA" 2>/dev/null || echo "$GIT_SHA")"
+    ln -sfn "$PREV_RELEASE" "${RELEASES_BASE}/CURRENT"
+    mkdir -p "$(dirname "$SYSTEMD_DROPIN")"
+    cat > "$SYSTEMD_DROPIN" << DROPIN
+[Service]
+WorkingDirectory=${PREV_RELEASE}
+Environment=PYTHONPATH=${PREV_RELEASE}/scripts
+Environment=LLM_GLOBAL_DAILY_USD_CAP=0.50
+Environment=TRADEAI_CC_DEPLOYED_SHA=${prev_sha}
+${CIO_SOURCE_PR:+Environment=TRADEAI_CC_SOURCE_PR=${CIO_SOURCE_PR}}
+Environment=TRADEAI_WATCH_DEFAULT_WORKSPACE=intelligence
+ExecStart=
+ExecStart=${VENV_PYTHON} ${PREV_RELEASE}/scripts/portfolio_server.py
+DROPIN
+    systemctl --user daemon-reload
+    systemctl --user restart "$SERVICE_NAME"
+    write_deploy_receipt false "$health" true "$extra" "${RELEASE_DIR}/DEPLOY_RECEIPT.json"
+    write_deploy_receipt false "$health" true "$extra"
+    return 0
+}
+
 # --- Validate prerequisites ---
 if [[ ! -d "$CANONICAL_SOURCE" ]]; then
     echo "ERROR: Canonical source not found at $CANONICAL_SOURCE"
@@ -287,31 +320,31 @@ done
 
 if ! $HEALTH_OK; then
     echo "ERROR: health timeout — not claiming deploy OK"
-    if [[ -n "$PREV_RELEASE" && -d "$PREV_RELEASE" ]]; then
-        echo "  Rolling back CURRENT → $PREV_RELEASE"
-        PREV_SHA="$(tr -d '[:space:]' < "${PREV_RELEASE}/BUILD_SHA" 2>/dev/null || echo "$GIT_SHA")"
-        ln -sfn "$PREV_RELEASE" "${RELEASES_BASE}/CURRENT"
-        mkdir -p "$(dirname "$SYSTEMD_DROPIN")"
-        cat > "$SYSTEMD_DROPIN" << DROPIN
-[Service]
-WorkingDirectory=${PREV_RELEASE}
-Environment=PYTHONPATH=${PREV_RELEASE}/scripts
-Environment=LLM_GLOBAL_DAILY_USD_CAP=0.50
-Environment=TRADEAI_CC_DEPLOYED_SHA=${PREV_SHA}
-${CIO_SOURCE_PR:+Environment=TRADEAI_CC_SOURCE_PR=${CIO_SOURCE_PR}}
-Environment=TRADEAI_WATCH_DEFAULT_WORKSPACE=intelligence
-ExecStart=
-ExecStart=${VENV_PYTHON} ${PREV_RELEASE}/scripts/portfolio_server.py
-DROPIN
-        systemctl --user daemon-reload
-        systemctl --user restart "$SERVICE_NAME"
-        write_deploy_receipt false timeout true "rolled_back_to_prev" "${RELEASE_DIR}/DEPLOY_RECEIPT.json"
-        write_deploy_receipt false timeout true "rolled_back_to_prev"
-    else
-        write_deploy_receipt false timeout false "prev_missing" "${RELEASE_DIR}/DEPLOY_RECEIPT.json"
-        write_deploy_receipt false timeout false "prev_missing"
-    fi
+    rollback_to_prev timeout rolled_back_to_prev || true
     exit 1
+fi
+
+# --- Step 8: the overview cutover gate (INC-OVW / OP-041) ---
+# 2026-11-14: R7 shipped a STORED-ONLY overview reader (it never computes) on top of a weekday 04:00-20:00 ET
+# producer. Nothing at activation asked whether anything could keep that reader alive, so the first Saturday the
+# header answered UNKNOWN. The gate asks it: the 24/7 schedule contract holds, the projection on disk is this
+# release's, unexpired and clocked, and this release has an actual lane receipt. It runs AFTER CURRENT flips because
+# a receipt can only carry this release's sha once this release is the one running, hence the bounded wait: the
+# lane's last-good window is 5400 s and its retry span 1050 s, so 420 s covers a dispatch plus a retry. An
+# inline-fallback reader (R6 and earlier) is admitted with a warning, so a rollback is never blocked by this.
+if [[ -f "${RELEASE_DIR}/scripts/check_overview_cutover.py" ]]; then
+    echo "[8/8] Overview cutover gate..."
+    GATE_RC=0
+    "$VENV_PYTHON" "${RELEASE_DIR}/scripts/check_overview_cutover.py" \
+        --release-dir "$RELEASE_DIR" --sha "$GIT_SHA" --wait-s 420 || GATE_RC=$?
+    if [[ "$GATE_RC" -ne 0 ]]; then
+        echo "ERROR: overview cutover gate refused (rc=$GATE_RC) — not claiming deploy OK"
+        echo "       A stored-only reader with no proof it is fed answers UNKNOWN. See the REFUSED lines above."
+        rollback_to_prev cutover_gate_refused rolled_back_to_prev || true
+        exit 1
+    fi
+else
+    echo "[8/8] Overview cutover gate SKIPPED — no scripts/check_overview_cutover.py in ${RELEASE_DIR}"
 fi
 
 # --- Final status ---
