@@ -1,12 +1,12 @@
-"""LQ-20261107-2743 part 2: the ``cio.pages`` product builder gets a SHADOW n8n dispatcher lane (``cio-pages-product``).
+"""LQ-20261107-2743 part 2 (+ LQ-20261113-3096 promotion): the ``cio.pages`` product builder's n8n dispatcher lane (``cio-pages-product``), now canary/live.
 
 Release 2 was rolled back because nothing scheduled ``scripts/lib/cc_products/cio_pages.py`` (no lane, 0 stored rows).
 Pins that the three config files agree and that the registration can only ever run the write-nothing argv:
-  * the registry row is a dispatcher row at stage shadow / dispatch.mode dry_run, matched on the entrypoint, with a
+  * the registry row is a dispatcher row at stage canary / dispatch.mode live, matched on the entrypoint, with a
     db_max signal on the build log the builder writes;
-  * the allowlist entry runs the entrypoint with ``--dry-run`` and has no live argv (live_arg null);
+  * the allowlist entry keeps ``--dry-run`` as dry_run_arg and has live_arg [] (LQ-3096);
   * the entrypoint adds ``--lane cio-pages-product`` and imports neither api_v2 nor any broker-side module;
-  * compute_due on the real row emits only dry_run, one per 30-minute slot, against a throwaway ledger;
+  * compute_due on the real row emits live, one per 2-minute slot, against a throwaway ledger;
   * the contract is DRAFT at the registry's stage (a non-author reviewer is still needed).
 Every fixture is synthetic (tmp_path ledger, no DB, no build, no provider, no broker, no systemd call).
 """
@@ -51,14 +51,14 @@ def contract():
     return next(c for c in _load("n8n_health_contracts.json")["contracts"] if c.get("id") == LID)
 
 
-def test_the_row_is_a_shadow_dispatcher_lane_on_the_entrypoint():
+def test_the_row_is_a_canary_live_dispatcher_lane_on_the_entrypoint():
     r = row()
     assert validate_row(r) == []
     s = r["scheduler"]
-    assert (s["kind"], s["expression"], s["stage"]) == ("n8n", "dispatcher", "shadow")
+    assert (s["kind"], s["expression"], s["stage"]) == ("n8n", "dispatcher", "canary")
     assert s["match"] == SCRIPT and (ROOT / SCRIPT).is_file()
-    assert r["dispatch"]["mode"] == "dry_run" and r["state"] == "ACTIVE"
-    assert tuple(parse_dispatch_block(r).cron) == (s["cadence"],) == ("*/30 * * * *",)
+    assert r["dispatch"]["mode"] == "live" and r["state"] == "ACTIVE"
+    assert tuple(parse_dispatch_block(r).cron) == (s["cadence"],) == ("*/2 * * * *",)
     assert r["active_days"] == [0, 1, 2, 3, 4, 5, 6]
     sig = r["output_signal"]
     assert (sig["kind"], sig["table"], sig["column"]) == ("db_max", "cc_product_build_log", "finished_at")
@@ -67,14 +67,14 @@ def test_the_row_is_a_shadow_dispatcher_lane_on_the_entrypoint():
     assert ok, why
 
 
-def test_the_entry_is_shadow_only_and_runs_the_write_nothing_flag():
+def test_the_entry_has_the_live_argv_and_keeps_the_write_nothing_flag():
     from scripts.n8n_run_executor import validate_entry
 
     e = entry()
     assert validate_entry(e) is None
     assert e["command"] == ["$PY", SCRIPT]
     assert e["dry_run_arg"] == ["--dry-run"]
-    assert e["live_arg"] is None, "shadow: no live argv exists; promotion is the lead's decision"
+    assert e["live_arg"] == [], "promoted (LQ-3096): the live argv is the bare command"
     assert e["lock_kind"] == "flock" and e["market_gate"] is False
     from scripts.lib.cc_products import cio_pages
 
@@ -127,8 +127,8 @@ print(json.dumps({"lane": ns["LANE_ID"], "calls": calls, "rc": [rc1, rc2, rc3, r
     assert got["refused"] == [] and got["api_v2"] == []
 
 
-def test_compute_due_emits_only_dry_run_one_per_thirty_minute_slot(tmp_path, monkeypatch):
-    monkeypatch.delenv(D.LIVE_LANES_ENV, raising=False)
+def test_compute_due_emits_live_one_per_two_minute_slot(tmp_path, monkeypatch):
+    monkeypatch.setenv(D.LIVE_LANES_ENV, LID)
     ledger = CoordinationLedger(tmp_path / "ledger.sqlite")
     store = LedgerRunStore(ledger)
     try:
@@ -140,14 +140,14 @@ def test_compute_due_emits_only_dry_run_one_per_thirty_minute_slot(tmp_path, mon
             resp = D.compute_due([row()], allow, POLICIES, store, now)
             assert resp["errors"] == [], resp["errors"]
             for it in resp["items"]:
-                assert it["mode"] == "dry_run", "a shadow lane can never be emitted live"
+                assert it["mode"] == "live", "a promoted lane in the relay live set is emitted live"
                 seen.append(it["slot_local"])
-                store.request(run_id=it["idempotency_key"], lane_id=LID, mode="dry_run", requested_by="t",
+                store.request(run_id=it["idempotency_key"], lane_id=LID, mode="live", requested_by="t",
                               caller_id="t", now=now.timestamp())
                 ledger._conn.execute("UPDATE runs SET state='RUN_DONE', finished_at=?, exit_code=0 WHERE run_id=?",
                                      (now.isoformat(), it["idempotency_key"]))
                 ledger._conn.commit()
-        assert len(seen) == len(set(seen)) >= 4, seen
+        assert len(seen) == len(set(seen)) >= 55, seen
     finally:
         ledger.close()
 
@@ -157,6 +157,6 @@ def test_the_contract_is_reviewed_by_a_non_author_at_the_registry_stage():
     c = contract()
     assert c["status"] == "REVIEWED" and c["review"]["status"] == "REVIEWED"
     assert c["review"]["reviewed_by"] and "cc-opus-2" not in c["review"]["reviewed_by"]
-    assert c["stage"] == row()["scheduler"]["stage"] == "shadow"
+    assert c["stage"] == row()["scheduler"]["stage"] == "canary"
     assert c["baseline"]["timeout_s"] == entry()["timeout_s"]
     assert c["baseline"]["duration_degraded_above_s"] == 0.8 * entry()["timeout_s"]

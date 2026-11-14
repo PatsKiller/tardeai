@@ -6556,7 +6556,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "lock": "/tmp/tradeai_cc_product_cio_pages.lock",
       "lock_kind": "flock",
       "timeout_s": 150,
@@ -6574,7 +6574,7 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "Shadow-only registration (LQ-2743): the argv is the read-only --dry-run and has not been fired by the executor, so the env closure is unaudited; report mode records the NAMES enforce would drop. Tighten before any live promotion.",
       "env_evidence": "scripts/lib/cc_products/cio_pages.py reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (psycopg2 connect, read-only PGOPTIONS in the build child), TRADEAI_STATE_ROOT (state root with data/) and TRADEAI_BUILDER_SHA (build-log provenance). No broker credential, order route or live flag.",
-      "source": "LQ-20261107-2743 (lead 21:40 ET 2026-11-12, P0): release 2 (d014c75d5) was rolled back because GET /api/v2/cio/pages served only the stored cio.pages product and nothing scheduled its builder (cc_product_current 0 rows). SHADOW ONLY: dry_run_arg ['--dry-run'] writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists. Promotion (live_arg [], cadence */2) is the lead's decision. output_signal null: a live run writes cc_product_build_log (registry db_max), not a file."
+      "source": "PROMOTED shadow->canary/live by LQ-20261113-3096 (prepared, not applied; live_arg [], cron */2 * * * *; cio.pages stale_after_s 360 s, hard_expiry_s 1800 s). The text that follows was written for the shadow phase. LQ-20261107-2743 (lead 21:40 ET 2026-11-12, P0): release 2 (d014c75d5) was rolled back because GET /api/v2/cio/pages served only the stored cio.pages product and nothing scheduled its builder (cc_product_current 0 rows). SHADOW ONLY: dry_run_arg ['--dry-run'] writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists. Promotion (live_arg [], cadence */2) is the lead's decision. output_signal null: a live run writes cc_product_build_log (registry db_max), not a file."
     },
     {
       "lane_id": "cc-product-market-risk",
@@ -6587,7 +6587,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "lock": "/tmp/tradeai_cc_product_market_risk.lock",
       "lock_kind": "flock",
       "timeout_s": 150,
@@ -6605,7 +6605,7 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "Shadow-only registration (LQ-3008): the argv is the read-only --dry-run and has not been fired by the executor, so the env closure is unaudited; report mode records the NAMES enforce would drop. Tighten before any live promotion.",
       "env_evidence": "scripts/lib/cc_products/product_builder.py + builders.py reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (psycopg2 connect, read-only PGOPTIONS in the build child), TRADEAI_STATE_ROOT (state root with data/) and TRADEAI_BUILDER_SHA (build-log provenance). No broker credential, order route or live flag.",
-      "source": "LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py (market_risk.latest). SHADOW ONLY: dry_run_arg ['--dry-run'] writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists. Promotion is the lead's decision. output_signal null: a live run writes cc_product_build_log (registry db_max), not a file."
+      "source": "PROMOTED shadow->canary/live by LQ-20261113-3096 (prepared, not applied; live_arg [], cron 30-59 9 * * 1-5 | * 10-15 * * 1-5 | 0-14 16 * * 1-5 | 15 16 * * 1-5 | 0 0-9,17-23 * * 1-5 | 0 * * * 0,6; market_risk.latest stale_after_s 180 s market / 9000 s off-hours, hard_expiry_s 300 s market / 14400 s off-hours). The text that follows was written for the shadow phase. LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py (market_risk.latest). SHADOW ONLY: dry_run_arg ['--dry-run'] writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists. Promotion is the lead's decision. output_signal null: a live run writes cc_product_build_log (registry db_max), not a file."
     },
     {
       "lane_id": "cc-product-risk",
@@ -6618,7 +6618,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "lock": "/tmp/tradeai_cc_product_risk.lock",
       "lock_kind": "flock",
       "timeout_s": 150,
@@ -6636,7 +6636,7 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "Shadow-only registration (LQ-3008): the argv is the read-only --dry-run and has not been fired by the executor, so the env closure is unaudited; report mode records the NAMES enforce would drop. Tighten before any live promotion.",
       "env_evidence": "scripts/lib/cc_products/product_builder.py + builders.py reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (psycopg2 connect, read-only PGOPTIONS in the build child), TRADEAI_STATE_ROOT (state root with data/) and TRADEAI_BUILDER_SHA (build-log provenance). No broker credential, order route or live flag.",
-      "source": "LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py (risk). SHADOW ONLY: dry_run_arg ['--dry-run'] writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists. Promotion is the lead's decision. output_signal null: a live run writes cc_product_build_log (registry db_max), not a file."
+      "source": "PROMOTED shadow->canary/live by LQ-20261113-3096 (prepared, not applied; live_arg [], cron 30-58/2 9 * * 1-5 | */2 10-15 * * 1-5 | 0-14/2 16 * * 1-5 | 15 16 * * 1-5 | 0 0-9,17-23 * * 1-5 | 0 * * * 0,6; risk stale_after_s 360 s market / 9000 s off-hours, hard_expiry_s 1800 s market / 14400 s off-hours). The text that follows was written for the shadow phase. LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py (risk). SHADOW ONLY: dry_run_arg ['--dry-run'] writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists. Promotion is the lead's decision. output_signal null: a live run writes cc_product_build_log (registry db_max), not a file."
     },
     {
       "lane_id": "cc-product-analyst-links",
@@ -6649,7 +6649,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "lock": "/tmp/tradeai_cc_product_analyst_links.lock",
       "lock_kind": "flock",
       "timeout_s": 300,
@@ -6667,7 +6667,7 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "Shadow-only registration (LQ-3008): the argv is the read-only --dry-run and has not been fired by the executor, so the env closure is unaudited; report mode records the NAMES enforce would drop. Tighten before any live promotion.",
       "env_evidence": "scripts/lib/cc_products/product_builder.py + builders.py reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (psycopg2 connect, read-only PGOPTIONS in the build child), TRADEAI_STATE_ROOT (state root with data/) and TRADEAI_BUILDER_SHA (build-log provenance). No broker credential, order route or live flag.",
-      "source": "LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py (reports.analyst_links). SHADOW ONLY: dry_run_arg ['--dry-run'] writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists. Promotion is the lead's decision. output_signal null: a live run writes cc_product_build_log (registry db_max), not a file."
+      "source": "PROMOTED shadow->canary/live by LQ-20261113-3096 (prepared, not applied; live_arg [], cron 0 */6 * * *; reports.analyst_links stale_after_s 129600 s, hard_expiry_s 604800 s). The text that follows was written for the shadow phase. LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py (reports.analyst_links). SHADOW ONLY: dry_run_arg ['--dry-run'] writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists. Promotion is the lead's decision. output_signal null: a live run writes cc_product_build_log (registry db_max), not a file."
     },
     {
       "lane_id": "cc-product-home",
@@ -6680,7 +6680,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "lock": "/tmp/tradeai_cc_product_home.lock",
       "lock_kind": "flock",
       "timeout_s": 150,
@@ -6698,7 +6698,7 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "Shadow-only registration (LQ-3008): the argv is the read-only --dry-run and has not been fired by the executor, so the env closure is unaudited; report mode records the NAMES enforce would drop. Tighten before any live promotion.",
       "env_evidence": "scripts/lib/cc_products/product_builder.py + builders.py reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (psycopg2 connect, read-only PGOPTIONS in the build child), TRADEAI_STATE_ROOT (state root with data/) and TRADEAI_BUILDER_SHA (build-log provenance). No broker credential, order route or live flag.",
-      "source": "LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py (home). SHADOW ONLY: dry_run_arg ['--dry-run'] writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists. Promotion is the lead's decision. output_signal null: a live run writes cc_product_build_log (registry db_max), not a file."
+      "source": "PROMOTED shadow->canary/live by LQ-20261113-3096 (prepared, not applied; live_arg [], cron 30-59 9 * * 1-5 | * 10-15 * * 1-5 | 0-14 16 * * 1-5 | 15 16 * * 1-5 | 0 0-9,17-23 * * 1-5 | 0 * * * 0,6; home stale_after_s 180 s market / 9000 s off-hours, hard_expiry_s 900 s market / 14400 s off-hours). The text that follows was written for the shadow phase. LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py (home). SHADOW ONLY: dry_run_arg ['--dry-run'] writes nothing; live_arg null and dispatch.mode dry_run, so no live argv exists. Promotion is the lead's decision. output_signal null: a live run writes cc_product_build_log (registry db_max), not a file."
     }
   ],
   "blocked_reasons": {

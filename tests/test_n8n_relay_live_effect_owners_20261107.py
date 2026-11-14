@@ -71,6 +71,23 @@ UNKEYED_BASELINE = frozenset(
 )
 
 
+# LQ-20261113-3096: the five product-builder lanes (scripts/cc_products_build.py, scripts/cc_products_cio_pages.py) are
+# OVERWRITE-ONLY by the canary-key convention (config/n8n_effect_keys.json _comment_canary_keys): the live effect is one
+# upsert of the single cc_product_current row for (product, scope) plus one cc_product_build_log audit row, serialised by
+# the per-product flock lock (SKIPPED_BUSY, never a second writer), with a stale-guard (REFUSED_OLDER). They have no cron
+# twin: the dispatcher is their only scheduler. They are named here, not added to UNKEYED_BASELINE (whose rule is "never
+# add"), so the exemption is explicit, reasoned and reviewable; a non-author reviewer may prefer a staged key instead.
+LQ3096_OVERWRITE_ONLY_BUILDERS = frozenset(
+    {
+        "cc-product-market-risk",
+        "cc-product-risk",
+        "cc-product-analyst-links",
+        "cc-product-home",
+        "cio-pages-product",
+    }
+)
+
+
 def _relay_live() -> set[str]:
     reg = json.loads((ROOT / RLL.REGISTRY_REL).read_text(encoding="utf-8"))
     al = json.loads((ROOT / RLL.ALLOWLIST_REL).read_text(encoding="utf-8"))
@@ -92,7 +109,7 @@ LIVE_LANES = sorted(_relay_live())
 @pytest.mark.parametrize("lane", LIVE_LANES)
 def test_every_relay_live_lane_is_keyed_or_on_the_unkeyed_baseline(lane):
     keyed = set(load_effect_lanes())
-    assert lane in keyed or lane in UNKEYED_BASELINE, (
+    assert lane in keyed or lane in UNKEYED_BASELINE or lane in LQ3096_OVERWRITE_ONLY_BUILDERS, (
         f"relay-live lane {lane} has no effect key and is not on UNKEYED_BASELINE: key it (staged) in "
         f"config/n8n_effect_keys.json instead of adding a baseline name"
     )
@@ -104,6 +121,16 @@ def test_the_guard_reports_a_new_unkeyed_live_lane_by_name():
     assert _unkeyed(live, {"keyed-lane"}, frozenset({"baselined-lane"})) == ["new-unkeyed-lane"]
     assert _unkeyed(live, {"keyed-lane", "new-unkeyed-lane"}, frozenset({"baselined-lane"})) == []
     assert _unkeyed(set(), set()) == []
+
+
+def test_the_overwrite_only_builder_exemption_is_exactly_the_five_builders():
+    """The exemption cannot quietly cover another lane: it names five lanes, each with the single flock lock and no cron twin."""
+    al = {e["lane_id"]: e for e in json.loads((ROOT / RLL.ALLOWLIST_REL).read_text(encoding="utf-8"))["lanes"]}
+    assert len(LQ3096_OVERWRITE_ONLY_BUILDERS) == 5
+    assert not (LQ3096_OVERWRITE_ONLY_BUILDERS & UNKEYED_BASELINE)
+    for lane in LQ3096_OVERWRITE_ONLY_BUILDERS:
+        assert al[lane]["lock_kind"] == "flock" and al[lane]["lock"].startswith("/tmp/tradeai_cc_product_")
+        assert any(x in al[lane]["command"][1] for x in ("cc_products_build.py", "cc_products_cio_pages.py"))
 
 
 def test_the_baseline_only_shrinks():

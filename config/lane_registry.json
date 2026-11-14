@@ -28715,15 +28715,15 @@
         "kind": "n8n",
         "expression": "dispatcher",
         "match": "scripts/cc_products_cio_pages.py",
-        "cadence": "*/30 * * * *",
-        "stage": "shadow",
+        "cadence": "*/2 * * * *",
+        "stage": "canary",
         "wave": "W5",
         "timezone": "America/New_York"
       },
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
-          "*/30 * * * *"
+          "*/2 * * * *"
         ],
         "tz": "America/New_York",
         "wave": "W5",
@@ -28731,7 +28731,7 @@
         "priority": 3,
         "retry_policy": "transient-2"
       },
-      "expected_cadence_hours": 0.5,
+      "expected_cadence_hours": 0.034,
       "active_days": [
         0,
         1,
@@ -28751,7 +28751,7 @@
       "review_by": "2026-11-26",
       "value_class": "Operationally Important",
       "severity": "High",
-      "note": "LQ-20261107-2743 (lead 21:40 ET 2026-11-12, P0): release 2 (d014c75d5) was rolled back because GET /api/v2/cio/pages served only the stored cio.pages product and nothing scheduled its builder (cc_product_current 0 rows). This lane schedules the builder (scripts/lib/cc_products/cio_pages.py via the entrypoint scripts/cc_products_cio_pages.py). SHADOW: dispatch.mode dry_run and live_arg null, so every fire is --dry-run: it builds in a forked child under RLIMIT_AS 512 MB, measures and prints, and writes nothing (no PG row, no hot tier, no lock); the db_max signal therefore does not advance until promotion. The shadow cadence is */30 so a dry run (about 17 s, about 312 MB peak on 2026-11-12) does not burn CPU every 2 minutes. Promotion is the lead's call: cadence */2 (the builder's CADENCE_S 120; stale after 360 s, hard expiry 1800 s) and live_arg []. Until then the route computes in the server on a miss (LQ-2743 part 1). READ_ONLY: no broker, no order, no AI call (MBI_BEHAVIOR = 0)."
+      "note": "PROMOTED shadow->canary/live by LQ-20261113-3096 (prepared, not applied; live_arg [], cron */2 * * * *; cio.pages stale_after_s 360 s, hard_expiry_s 1800 s). The text that follows was written for the shadow phase. LQ-20261107-2743 (lead 21:40 ET 2026-11-12, P0): release 2 (d014c75d5) was rolled back because GET /api/v2/cio/pages served only the stored cio.pages product and nothing scheduled its builder (cc_product_current 0 rows). This lane schedules the builder (scripts/lib/cc_products/cio_pages.py via the entrypoint scripts/cc_products_cio_pages.py). SHADOW: dispatch.mode dry_run and live_arg null, so every fire is --dry-run: it builds in a forked child under RLIMIT_AS 512 MB, measures and prints, and writes nothing (no PG row, no hot tier, no lock); the db_max signal therefore does not advance until promotion. The shadow cadence is */30 so a dry run (about 17 s, about 312 MB peak on 2026-11-12) does not burn CPU every 2 minutes. Promotion is the lead's call: cadence */2 (the builder's CADENCE_S 120; stale after 360 s, hard expiry 1800 s) and live_arg []. Until then the route computes in the server on a miss (LQ-2743 part 1). READ_ONLY: no broker, no order, no AI call (MBI_BEHAVIOR = 0)."
     },
     {
       "lane_id": "cc-product-market-risk",
@@ -28760,15 +28760,20 @@
         "kind": "n8n",
         "expression": "dispatcher",
         "match": "scripts/cc_products_build.py --product market_risk.latest",
-        "cadence": "*/30 * * * *",
-        "stage": "shadow",
+        "cadence": "30-59 9 * * 1-5",
+        "stage": "canary",
         "wave": "W5",
         "timezone": "America/New_York"
       },
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
-          "*/30 * * * *"
+          "30-59 9 * * 1-5",
+          "* 10-15 * * 1-5",
+          "0-14 16 * * 1-5",
+          "15 16 * * 1-5",
+          "0 0-9,17-23 * * 1-5",
+          "0 * * * 0,6"
         ],
         "tz": "America/New_York",
         "wave": "W5",
@@ -28776,7 +28781,7 @@
         "priority": 3,
         "retry_policy": "transient-2"
       },
-      "expected_cadence_hours": 0.5,
+      "expected_cadence_hours": 1.0,
       "active_days": [
         0,
         1,
@@ -28796,7 +28801,7 @@
       "review_by": "2026-11-26",
       "value_class": "Operationally Important",
       "severity": "High",
-      "note": "LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py for the market risk (serves /api/v2/market-risk/latest and /api/v2/home/cio-card) product (market_risk.latest). SHADOW: dispatch.mode dry_run and live_arg null, so every fire is --dry-run: it builds in a forked child under RLIMIT_AS, measures and prints, and writes nothing (no PG row, no hot tier); the db_max signal therefore does not advance until promotion. One read-only dry run 2026-11-13: outcome OK, build_ms 814, peak_rss_kb 73040, 2421 bytes, wrote false. Promotion (live_arg [], the product's CADENCE_S) is the lead's call. READ_ONLY: no broker, no order, no AI call (MBI_BEHAVIOR = 0)."
+      "note": "PROMOTED shadow->canary/live by LQ-20261113-3096 (prepared, not applied; live_arg [], cron 30-59 9 * * 1-5 | * 10-15 * * 1-5 | 0-14 16 * * 1-5 | 15 16 * * 1-5 | 0 0-9,17-23 * * 1-5 | 0 * * * 0,6; market_risk.latest stale_after_s 180 s market / 9000 s off-hours, hard_expiry_s 300 s market / 14400 s off-hours). The text that follows was written for the shadow phase. LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py for the market risk (serves /api/v2/market-risk/latest and /api/v2/home/cio-card) product (market_risk.latest). SHADOW: dispatch.mode dry_run and live_arg null, so every fire is --dry-run: it builds in a forked child under RLIMIT_AS, measures and prints, and writes nothing (no PG row, no hot tier); the db_max signal therefore does not advance until promotion. One read-only dry run 2026-11-13: outcome OK, build_ms 814, peak_rss_kb 73040, 2421 bytes, wrote false. Promotion (live_arg [], the product's CADENCE_S) is the lead's call. READ_ONLY: no broker, no order, no AI call (MBI_BEHAVIOR = 0)."
     },
     {
       "lane_id": "cc-product-risk",
@@ -28805,15 +28810,20 @@
         "kind": "n8n",
         "expression": "dispatcher",
         "match": "scripts/cc_products_build.py --product risk",
-        "cadence": "*/30 * * * *",
-        "stage": "shadow",
+        "cadence": "30-58/2 9 * * 1-5",
+        "stage": "canary",
         "wave": "W5",
         "timezone": "America/New_York"
       },
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
-          "*/30 * * * *"
+          "30-58/2 9 * * 1-5",
+          "*/2 10-15 * * 1-5",
+          "0-14/2 16 * * 1-5",
+          "15 16 * * 1-5",
+          "0 0-9,17-23 * * 1-5",
+          "0 * * * 0,6"
         ],
         "tz": "America/New_York",
         "wave": "W5",
@@ -28821,7 +28831,7 @@
         "priority": 3,
         "retry_policy": "transient-2"
       },
-      "expected_cadence_hours": 0.5,
+      "expected_cadence_hours": 1.0,
       "active_days": [
         0,
         1,
@@ -28841,7 +28851,7 @@
       "review_by": "2026-11-26",
       "value_class": "Operationally Important",
       "severity": "High",
-      "note": "LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py for the risk tier (cio.pages limits) product (risk). SHADOW: dispatch.mode dry_run and live_arg null, so every fire is --dry-run: it builds in a forked child under RLIMIT_AS, measures and prints, and writes nothing (no PG row, no hot tier); the db_max signal therefore does not advance until promotion. One read-only dry run 2026-11-13: outcome OK, build_ms 372, peak_rss_kb 36932, 111517 bytes, wrote false. Promotion (live_arg [], the product's CADENCE_S) is the lead's call. READ_ONLY: no broker, no order, no AI call (MBI_BEHAVIOR = 0)."
+      "note": "PROMOTED shadow->canary/live by LQ-20261113-3096 (prepared, not applied; live_arg [], cron 30-58/2 9 * * 1-5 | */2 10-15 * * 1-5 | 0-14/2 16 * * 1-5 | 15 16 * * 1-5 | 0 0-9,17-23 * * 1-5 | 0 * * * 0,6; risk stale_after_s 360 s market / 9000 s off-hours, hard_expiry_s 1800 s market / 14400 s off-hours). The text that follows was written for the shadow phase. LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py for the risk tier (cio.pages limits) product (risk). SHADOW: dispatch.mode dry_run and live_arg null, so every fire is --dry-run: it builds in a forked child under RLIMIT_AS, measures and prints, and writes nothing (no PG row, no hot tier); the db_max signal therefore does not advance until promotion. One read-only dry run 2026-11-13: outcome OK, build_ms 372, peak_rss_kb 36932, 111517 bytes, wrote false. Promotion (live_arg [], the product's CADENCE_S) is the lead's call. READ_ONLY: no broker, no order, no AI call (MBI_BEHAVIOR = 0)."
     },
     {
       "lane_id": "cc-product-analyst-links",
@@ -28851,12 +28861,12 @@
         "expression": "dispatcher",
         "match": "scripts/cc_products_build.py --product reports.analyst_links",
         "cadence": "0 */6 * * *",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W5",
         "timezone": "America/New_York"
       },
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "0 */6 * * *"
         ],
@@ -28886,7 +28896,7 @@
       "review_by": "2026-11-26",
       "value_class": "Operationally Important",
       "severity": "High",
-      "note": "LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py for the analyst report links (shell.static tier) product (reports.analyst_links). SHADOW: dispatch.mode dry_run and live_arg null, so every fire is --dry-run: it builds in a forked child under RLIMIT_AS, measures and prints, and writes nothing (no PG row, no hot tier); the db_max signal therefore does not advance until promotion. One read-only dry run 2026-11-13: outcome OK, build_ms 35, peak_rss_kb 27048, 45 bytes, wrote false. Promotion (live_arg [], the product's CADENCE_S) is the lead's call. READ_ONLY: no broker, no order, no AI call (MBI_BEHAVIOR = 0)."
+      "note": "PROMOTED shadow->canary/live by LQ-20261113-3096 (prepared, not applied; live_arg [], cron 0 */6 * * *; reports.analyst_links stale_after_s 129600 s, hard_expiry_s 604800 s). The text that follows was written for the shadow phase. LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py for the analyst report links (shell.static tier) product (reports.analyst_links). SHADOW: dispatch.mode dry_run and live_arg null, so every fire is --dry-run: it builds in a forked child under RLIMIT_AS, measures and prints, and writes nothing (no PG row, no hot tier); the db_max signal therefore does not advance until promotion. One read-only dry run 2026-11-13: outcome OK, build_ms 35, peak_rss_kb 27048, 45 bytes, wrote false. Promotion (live_arg [], the product's CADENCE_S) is the lead's call. READ_ONLY: no broker, no order, no AI call (MBI_BEHAVIOR = 0)."
     },
     {
       "lane_id": "cc-product-home",
@@ -28895,15 +28905,20 @@
         "kind": "n8n",
         "expression": "dispatcher",
         "match": "scripts/cc_products_build.py --product home",
-        "cadence": "*/30 * * * *",
-        "stage": "shadow",
+        "cadence": "30-59 9 * * 1-5",
+        "stage": "canary",
         "wave": "W5",
         "timezone": "America/New_York"
       },
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
-          "*/30 * * * *"
+          "30-59 9 * * 1-5",
+          "* 10-15 * * 1-5",
+          "0-14 16 * * 1-5",
+          "15 16 * * 1-5",
+          "0 0-9,17-23 * * 1-5",
+          "0 * * * 0,6"
         ],
         "tz": "America/New_York",
         "wave": "W5",
@@ -28911,7 +28926,7 @@
         "priority": 3,
         "retry_policy": "transient-2"
       },
-      "expected_cadence_hours": 0.5,
+      "expected_cadence_hours": 1.0,
       "active_days": [
         0,
         1,
@@ -28931,7 +28946,7 @@
       "review_by": "2026-11-26",
       "value_class": "Operationally Important",
       "severity": "High",
-      "note": "LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py for the Home slices (since_close, incidents, approvals_summary, priorities_live, status, gates) product (home). SHADOW: dispatch.mode dry_run and live_arg null, so every fire is --dry-run: it builds in a forked child under RLIMIT_AS, measures and prints, and writes nothing (no PG row, no hot tier); the db_max signal therefore does not advance until promotion. One read-only dry run 2026-11-13: outcome OK, build_ms 329, peak_rss_kb 34940, 28332 bytes, wrote false. Promotion (live_arg [], the product's CADENCE_S) is the lead's call. READ_ONLY: no broker, no order, no AI call (MBI_BEHAVIOR = 0)."
+      "note": "PROMOTED shadow->canary/live by LQ-20261113-3096 (prepared, not applied; live_arg [], cron 30-59 9 * * 1-5 | * 10-15 * * 1-5 | 0-14 16 * * 1-5 | 15 16 * * 1-5 | 0 0-9,17-23 * * 1-5 | 0 * * * 0,6; home stale_after_s 180 s market / 9000 s off-hours, hard_expiry_s 900 s market / 14400 s off-hours). The text that follows was written for the shadow phase. LQ-20261107-3008 (lead 2026-11-13 18:04 ET): builder lanes for scripts/cc_products_build.py for the Home slices (since_close, incidents, approvals_summary, priorities_live, status, gates) product (home). SHADOW: dispatch.mode dry_run and live_arg null, so every fire is --dry-run: it builds in a forked child under RLIMIT_AS, measures and prints, and writes nothing (no PG row, no hot tier); the db_max signal therefore does not advance until promotion. One read-only dry run 2026-11-13: outcome OK, build_ms 329, peak_rss_kb 34940, 28332 bytes, wrote false. Promotion (live_arg [], the product's CADENCE_S) is the lead's call. READ_ONLY: no broker, no order, no AI call (MBI_BEHAVIOR = 0)."
     }
   ],
   "freshness_contracts": [

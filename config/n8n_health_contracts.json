@@ -45329,7 +45329,7 @@
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
       "target_reason": "lq_2743_cio_pages_product_builder_20261112",
-      "stage": "shadow",
+      "stage": "canary",
       "purpose": {
         "text": "Schedule the cio.pages product builder so GET /api/v2/cio/pages has a stored copy. A shadow fire runs --dry-run: it builds the CIO page record in a forked child under RLIMIT_AS 512 MB with read-only PG sessions, measures it and prints one JSON receipt, writing nothing. A live fire (not enabled) would write cc_product_current + cc_product_build_log in one transaction and refresh the hot tier.",
         "business_function": "CIO page served from a stored product",
@@ -45370,12 +45370,12 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire ends RUN_DONE in mode dry_run while stage is shadow; the printed receipt has outcome OK and wrote false"
+          "check": "last_live_run_done",
+          "text": "the latest dispatcher fire is RUN_DONE in mode live (stage canary); the receipt outcome is BUILT or UNCHANGED, never TIMEOUT, RLIMIT or ERROR"
         },
         {
           "check": "output_advanced",
-          "text": "after promotion: max(cc_product_build_log.finished_at) where product_id='cio.pages' advances each run and cc_product_current has the cio.pages row"
+          "text": "max(cc_product_build_log.finished_at) where product_id='cio.pages' advances each run and cc_product_current has the cio.pages row"
         }
       ],
       "degraded": [
@@ -45395,15 +45395,15 @@
         },
         {
           "check": "stale",
-          "text": "after promotion: the stored product passes hard_expiry_s 1800 and the route falls back to the in-server compute"
+          "text": "the stored product passes hard_expiry_s 1800 and the route falls back to the in-server compute"
         }
       ],
       "baseline": {
         "timeout_s": 150,
         "class": "monitor",
-        "freshness_degraded_after_h": 1.5,
-        "freshness_failed_after_h": 3.0,
-        "freshness_rule": "shadow cadence */30: degraded beyond 3x, failed beyond 6x; promotion to */2 must tighten this to the product's stale_after_s 360 / hard_expiry_s 1800",
+        "freshness_degraded_after_h": 0.1,
+        "freshness_failed_after_h": 0.5,
+        "freshness_rule": "LQ-3096 live cadence */2 * * * *: degraded beyond stale_after_s 360 s (0.1 h), failed beyond hard_expiry_s 1800 s (0.5 h); flat, no off-hours tier in cio_pages.py.",
         "computed_on": "2026-11-12",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "NOT_MEASURED for the dispatcher (never dispatched). One sandboxed read-only dry run 2026-11-13T02:52Z: outcome OK, build_ms 17,044, peak_rss_kb 311,884, 649,401 bytes, wrote false.",
@@ -45445,7 +45445,7 @@
         "reviewed_on": "2026-11-13",
         "requested_of": null,
         "requested_on": null,
-        "note": "Reviewed by a non-author against scripts/cc_products_cio_pages.py, scripts/lib/cc_products/cio_pages.py, the registry row and the allowlist row (LQ-2969). Shadow-stage review: the live-run checks (output_advanced, stale) and the */2 freshness tightening are re-reviewed at promotion."
+        "note": "Reviewed by a non-author against scripts/cc_products_cio_pages.py, scripts/lib/cc_products/cio_pages.py, the registry row and the allowlist row (LQ-2969). Shadow-stage review: the live-run checks (output_advanced, stale) and the */2 freshness tightening are re-reviewed at promotion. LQ-3096 PROMOTION DELTA (stage canary, live_arg [], new cadence, tightened baseline) was prepared by cc-sonnet-5 and is NOT covered by the LQ-3094 registration-only review: it needs a non-author re-review before it is applied."
       }
     },
     {
@@ -45455,7 +45455,7 @@
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
       "target_reason": "lq_3008_cc_product_builder_lanes_20261113",
-      "stage": "shadow",
+      "stage": "canary",
       "purpose": {
         "text": "Schedule the market_risk.latest product builder so its read route has a stored copy. A shadow fire runs --dry-run: it builds the product in a forked child under RLIMIT_AS with read-only PG sessions, measures it and prints one JSON receipt, writing nothing. A live fire (not enabled) would write cc_product_current + cc_product_build_log in one transaction and refresh the hot tier.",
         "business_function": "market risk (serves /api/v2/market-risk/latest and /api/v2/home/cio-card) served from a stored product",
@@ -45496,12 +45496,12 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire ends RUN_DONE in mode dry_run while stage is shadow; the printed receipt has outcome OK and wrote false"
+          "check": "last_live_run_done",
+          "text": "the latest dispatcher fire is RUN_DONE in mode live (stage canary); the receipt outcome is BUILT or UNCHANGED, never TIMEOUT, RLIMIT or ERROR"
         },
         {
           "check": "output_advanced",
-          "text": "after promotion: max(cc_product_build_log.finished_at) where product_id='market_risk.latest' advances each run and cc_product_current has the market_risk.latest row"
+          "text": "max(cc_product_build_log.finished_at) where product_id='market_risk.latest' advances each run and cc_product_current has the market_risk.latest row"
         }
       ],
       "degraded": [
@@ -45517,15 +45517,15 @@
         },
         {
           "check": "stale",
-          "text": "after promotion: the stored product passes its hard_expiry_s and the route falls back to its legacy path"
+          "text": "the stored product passes its hard_expiry_s and the route falls back to its legacy path"
         }
       ],
       "baseline": {
         "timeout_s": 150,
         "class": "monitor",
-        "freshness_degraded_after_h": 1.5,
-        "freshness_failed_after_h": 3.0,
-        "freshness_rule": "shadow cadence */30 * * * *: degraded beyond 3x, failed beyond 6x; promotion must tighten this to the product's stale_after_s / hard_expiry_s",
+        "freshness_degraded_after_h": 2.5,
+        "freshness_failed_after_h": 4.0,
+        "freshness_rule": "LQ-3096 live cadence (every minute 09:30-16:14 ET weekdays, 16:15 flip, hourly otherwise): degraded beyond the loosest tier's stale_after_s, failed beyond its hard_expiry_s (9000 s / 14400 s). The baseline holds ONE pair, so it carries the off-hours tier; the market-hours tier is checked by the stored row's own stale_after_s and by the post-activation SQL in the LQ-3096 READY.",
         "computed_on": "2026-11-13",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "NOT_MEASURED for the dispatcher (never dispatched). One sandboxed read-only dry run 2026-11-13: outcome OK, build_ms 814, peak_rss_kb 73040, 2421 bytes, wrote false.",
@@ -45565,7 +45565,7 @@
         "status": "REVIEWED",
         "reviewed_by": "cc-sonnet-6/LQ-3094 (non-author; author cc-sonnet-5); registration only",
         "reviewed_on": "2026-11-13",
-        "note": "registration only: shadow lane, --dry-run argv, baseline.source NOT_MEASURED for the dispatcher; no live fire. Checked against scripts/cc_products_build.py --product, the registry row and the allowlist row (REVIEW-LQ-20261113-3094)."
+        "note": "registration only: shadow lane, --dry-run argv, baseline.source NOT_MEASURED for the dispatcher; no live fire. Checked against scripts/cc_products_build.py --product, the registry row and the allowlist row (REVIEW-LQ-20261113-3094). LQ-3096 PROMOTION DELTA (stage canary, live_arg [], new cadence, tightened baseline) was prepared by cc-sonnet-5 and is NOT covered by the LQ-3094 registration-only review: it needs a non-author re-review before it is applied."
       }
     },
     {
@@ -45575,7 +45575,7 @@
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
       "target_reason": "lq_3008_cc_product_builder_lanes_20261113",
-      "stage": "shadow",
+      "stage": "canary",
       "purpose": {
         "text": "Schedule the risk product builder so its read route has a stored copy. A shadow fire runs --dry-run: it builds the product in a forked child under RLIMIT_AS with read-only PG sessions, measures it and prints one JSON receipt, writing nothing. A live fire (not enabled) would write cc_product_current + cc_product_build_log in one transaction and refresh the hot tier.",
         "business_function": "risk tier (cio.pages limits) served from a stored product",
@@ -45616,12 +45616,12 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire ends RUN_DONE in mode dry_run while stage is shadow; the printed receipt has outcome OK and wrote false"
+          "check": "last_live_run_done",
+          "text": "the latest dispatcher fire is RUN_DONE in mode live (stage canary); the receipt outcome is BUILT or UNCHANGED, never TIMEOUT, RLIMIT or ERROR"
         },
         {
           "check": "output_advanced",
-          "text": "after promotion: max(cc_product_build_log.finished_at) where product_id='risk' advances each run and cc_product_current has the risk row"
+          "text": "max(cc_product_build_log.finished_at) where product_id='risk' advances each run and cc_product_current has the risk row"
         }
       ],
       "degraded": [
@@ -45637,15 +45637,15 @@
         },
         {
           "check": "stale",
-          "text": "after promotion: the stored product passes its hard_expiry_s and the route falls back to its legacy path"
+          "text": "the stored product passes its hard_expiry_s and the route falls back to its legacy path"
         }
       ],
       "baseline": {
         "timeout_s": 150,
         "class": "monitor",
-        "freshness_degraded_after_h": 1.5,
-        "freshness_failed_after_h": 3.0,
-        "freshness_rule": "shadow cadence */30 * * * *: degraded beyond 3x, failed beyond 6x; promotion must tighten this to the product's stale_after_s / hard_expiry_s",
+        "freshness_degraded_after_h": 2.5,
+        "freshness_failed_after_h": 4.0,
+        "freshness_rule": "LQ-3096 live cadence (every 2 min 09:30-16:14 ET weekdays, 16:15 flip, hourly otherwise): degraded beyond the loosest tier's stale_after_s, failed beyond its hard_expiry_s (9000 s / 14400 s). The baseline holds ONE pair, so it carries the off-hours tier; the market-hours tier is checked by the stored row's own stale_after_s and by the post-activation SQL in the LQ-3096 READY.",
         "computed_on": "2026-11-13",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "NOT_MEASURED for the dispatcher (never dispatched). One sandboxed read-only dry run 2026-11-13: outcome OK, build_ms 372, peak_rss_kb 36932, 111517 bytes, wrote false.",
@@ -45685,7 +45685,7 @@
         "status": "REVIEWED",
         "reviewed_by": "cc-sonnet-6/LQ-3094 (non-author; author cc-sonnet-5); registration only",
         "reviewed_on": "2026-11-13",
-        "note": "registration only: shadow lane, --dry-run argv, baseline.source NOT_MEASURED for the dispatcher; no live fire. Checked against scripts/cc_products_build.py --product, the registry row and the allowlist row (REVIEW-LQ-20261113-3094)."
+        "note": "registration only: shadow lane, --dry-run argv, baseline.source NOT_MEASURED for the dispatcher; no live fire. Checked against scripts/cc_products_build.py --product, the registry row and the allowlist row (REVIEW-LQ-20261113-3094). LQ-3096 PROMOTION DELTA (stage canary, live_arg [], new cadence, tightened baseline) was prepared by cc-sonnet-5 and is NOT covered by the LQ-3094 registration-only review: it needs a non-author re-review before it is applied."
       }
     },
     {
@@ -45695,7 +45695,7 @@
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
       "target_reason": "lq_3008_cc_product_builder_lanes_20261113",
-      "stage": "shadow",
+      "stage": "canary",
       "purpose": {
         "text": "Schedule the reports.analyst_links product builder so its read route has a stored copy. A shadow fire runs --dry-run: it builds the product in a forked child under RLIMIT_AS with read-only PG sessions, measures it and prints one JSON receipt, writing nothing. A live fire (not enabled) would write cc_product_current + cc_product_build_log in one transaction and refresh the hot tier.",
         "business_function": "analyst report links (shell.static tier) served from a stored product",
@@ -45736,12 +45736,12 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire ends RUN_DONE in mode dry_run while stage is shadow; the printed receipt has outcome OK and wrote false"
+          "check": "last_live_run_done",
+          "text": "the latest dispatcher fire is RUN_DONE in mode live (stage canary); the receipt outcome is BUILT or UNCHANGED, never TIMEOUT, RLIMIT or ERROR"
         },
         {
           "check": "output_advanced",
-          "text": "after promotion: max(cc_product_build_log.finished_at) where product_id='reports.analyst_links' advances each run and cc_product_current has the reports.analyst_links row"
+          "text": "max(cc_product_build_log.finished_at) where product_id='reports.analyst_links' advances each run and cc_product_current has the reports.analyst_links row"
         }
       ],
       "degraded": [
@@ -45757,15 +45757,15 @@
         },
         {
           "check": "stale",
-          "text": "after promotion: the stored product passes its hard_expiry_s and the route falls back to its legacy path"
+          "text": "the stored product passes its hard_expiry_s and the route falls back to its legacy path"
         }
       ],
       "baseline": {
         "timeout_s": 300,
         "class": "monitor",
-        "freshness_degraded_after_h": 18.0,
-        "freshness_failed_after_h": 36.0,
-        "freshness_rule": "shadow cadence 0 */6 * * *: degraded beyond 3x, failed beyond 6x; promotion must tighten this to the product's stale_after_s / hard_expiry_s",
+        "freshness_degraded_after_h": 36.0,
+        "freshness_failed_after_h": 168.0,
+        "freshness_rule": "LQ-3096 live cadence 0 */6 * * *: degraded beyond the product's stale_after_s 129600 s (36 h), failed beyond hard_expiry_s 604800 s (168 h); one tier, off_hours False.",
         "computed_on": "2026-11-13",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "NOT_MEASURED for the dispatcher (never dispatched). One sandboxed read-only dry run 2026-11-13: outcome OK, build_ms 35, peak_rss_kb 27048, 45 bytes, wrote false.",
@@ -45805,7 +45805,7 @@
         "status": "REVIEWED",
         "reviewed_by": "cc-sonnet-6/LQ-3094 (non-author; author cc-sonnet-5); registration only",
         "reviewed_on": "2026-11-13",
-        "note": "registration only: shadow lane, --dry-run argv, baseline.source NOT_MEASURED for the dispatcher; no live fire. Checked against scripts/cc_products_build.py --product, the registry row and the allowlist row (REVIEW-LQ-20261113-3094)."
+        "note": "registration only: shadow lane, --dry-run argv, baseline.source NOT_MEASURED for the dispatcher; no live fire. Checked against scripts/cc_products_build.py --product, the registry row and the allowlist row (REVIEW-LQ-20261113-3094). LQ-3096 PROMOTION DELTA (stage canary, live_arg [], new cadence, tightened baseline) was prepared by cc-sonnet-5 and is NOT covered by the LQ-3094 registration-only review: it needs a non-author re-review before it is applied."
       }
     },
     {
@@ -45815,7 +45815,7 @@
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
       "target_reason": "lq_3008_cc_product_builder_lanes_20261113",
-      "stage": "shadow",
+      "stage": "canary",
       "purpose": {
         "text": "Schedule the home product builder so its read route has a stored copy. A shadow fire runs --dry-run: it builds the product in a forked child under RLIMIT_AS with read-only PG sessions, measures it and prints one JSON receipt, writing nothing. A live fire (not enabled) would write cc_product_current + cc_product_build_log in one transaction and refresh the hot tier.",
         "business_function": "Home slices (since_close, incidents, approvals_summary, priorities_live, status, gates) served from a stored product",
@@ -45856,12 +45856,12 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire ends RUN_DONE in mode dry_run while stage is shadow; the printed receipt has outcome OK and wrote false"
+          "check": "last_live_run_done",
+          "text": "the latest dispatcher fire is RUN_DONE in mode live (stage canary); the receipt outcome is BUILT or UNCHANGED, never TIMEOUT, RLIMIT or ERROR"
         },
         {
           "check": "output_advanced",
-          "text": "after promotion: max(cc_product_build_log.finished_at) where product_id='home' advances each run and cc_product_current has the home row"
+          "text": "max(cc_product_build_log.finished_at) where product_id='home' advances each run and cc_product_current has the home row"
         }
       ],
       "degraded": [
@@ -45877,15 +45877,15 @@
         },
         {
           "check": "stale",
-          "text": "after promotion: the stored product passes its hard_expiry_s and the route falls back to its legacy path"
+          "text": "the stored product passes its hard_expiry_s and the route falls back to its legacy path"
         }
       ],
       "baseline": {
         "timeout_s": 150,
         "class": "monitor",
-        "freshness_degraded_after_h": 1.5,
-        "freshness_failed_after_h": 3.0,
-        "freshness_rule": "shadow cadence */30 * * * *: degraded beyond 3x, failed beyond 6x; promotion must tighten this to the product's stale_after_s / hard_expiry_s",
+        "freshness_degraded_after_h": 2.5,
+        "freshness_failed_after_h": 4.0,
+        "freshness_rule": "LQ-3096 live cadence (every minute 09:30-16:14 ET weekdays, 16:15 flip, hourly otherwise): degraded beyond the loosest tier's stale_after_s, failed beyond its hard_expiry_s (9000 s / 14400 s). The baseline holds ONE pair, so it carries the off-hours tier; the market-hours tier is checked by the stored row's own stale_after_s and by the post-activation SQL in the LQ-3096 READY.",
         "computed_on": "2026-11-13",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "NOT_MEASURED for the dispatcher (never dispatched). One sandboxed read-only dry run 2026-11-13: outcome OK, build_ms 329, peak_rss_kb 34940, 28332 bytes, wrote false.",
@@ -45925,7 +45925,7 @@
         "status": "REVIEWED",
         "reviewed_by": "cc-sonnet-6/LQ-3094 (non-author; author cc-sonnet-5); registration only",
         "reviewed_on": "2026-11-13",
-        "note": "registration only: shadow lane, --dry-run argv, baseline.source NOT_MEASURED for the dispatcher; no live fire. Checked against scripts/cc_products_build.py --product, the registry row and the allowlist row (REVIEW-LQ-20261113-3094)."
+        "note": "registration only: shadow lane, --dry-run argv, baseline.source NOT_MEASURED for the dispatcher; no live fire. Checked against scripts/cc_products_build.py --product, the registry row and the allowlist row (REVIEW-LQ-20261113-3094). LQ-3096 PROMOTION DELTA (stage canary, live_arg [], new cadence, tightened baseline) was prepared by cc-sonnet-5 and is NOT covered by the LQ-3094 registration-only review: it needs a non-author re-review before it is applied."
       }
     }
   ],
