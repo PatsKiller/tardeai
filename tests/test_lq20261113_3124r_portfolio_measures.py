@@ -1096,3 +1096,67 @@ def test_a_closed_row_outside_the_interval_does_not_make_the_days_fee_unknown():
     assert dd["closed_today_rows"][0]["fee_complete"] is False
     assert dd["fees_today"] == 0.00                        # no in-scope commission is missing
     assert dd["closed_today_complete"] is False            # the set was still read gross
+
+
+def test_a_position_moved_between_two_covered_accounts_keeps_its_prior_value():
+    """LQ-3124R-partial (review cc-deepseek-8 rev-8 note 2): an internal transfer moves a position from one
+    account the prior book covers to another the book also covers. The destination's key is absent from the book,
+    but the symbol is not absent from the book -- reading the row as "bought inside the interval" and valuing it at
+    0.0 would drop the whole position's prior value. The estimate keeps it, and the transfer itself cancels as an
+    internal flow.
+    """
+    rows = [_row("ZZX", 100, 21.0, account="acct_b", prior_close=20.0, broker_market_value=2100.0),
+            _row("CASH", 5000.0, 1.0, account="acct_b", is_cash=True, market_value=5000.0,
+                 broker_market_value=None, broker_shares=None)]
+    prior = _prior({("acct_a", "ZZX"): 2000.0, ("acct_a", "CASH"): 0.0, ("acct_b", "CASH"): 5000.0})
+    transfers = [{"from_account": "acct_a", "to_account": "acct_b", "amount": 2000.0,
+                  "transfer_type": "internal", "transfer_date": "2026-11-13"}]
+    change = pm.portfolio_measures(_doc(rows, closed_today={}), prior_snapshot=prior, trades=[],
+                                   transfers=transfers, now=NOW)["measures"]["account_value_change_1d"]
+    assert change["start"]["equity_usd"] == 7000.0     # the moved position keeps its 2,000.00, never 0.00
+    assert change["end"]["equity_usd"] == 7100.0
+    assert change["value"] == 100.0                    # never 2100.0
+
+
+def test_a_same_day_buy_of_a_symbol_held_in_another_account_starts_at_zero():
+    """LQ-3124R-partial r2 (review cc-deepseek-8 2026-11-14 C1): adding to a name the book already holds in a
+    DIFFERENT account is an ordinary purchase, not a transfer. The symbol-elsewhere guard valued acct_b's new
+    lot at shares x prior_close and fabricated a 5,000.00 start -- published change -5,200.00 where the
+    measure's own definition (end - start) gives -200.00, and base was exact there. The day's BUY names the
+    row, so it keeps the 0.00 start a purchase has.
+    """
+    rows = [_row("ZZX", 100, 50.0, account="acct_a", prior_close=50.0, broker_market_value=5000.0),
+            _row("CASH", 0.0, 1.0, account="acct_a", is_cash=True, market_value=0.0,
+                 broker_market_value=None, broker_shares=None),
+            _row("ZZX", 100, 50.0, account="acct_b", prior_close=50.0, broker_market_value=5000.0),
+            _row("CASH", 0.0, 1.0, account="acct_b", is_cash=True, market_value=0.0,
+                 broker_market_value=None, broker_shares=None)]
+    prior = _prior({("acct_a", "ZZX"): 5000.0, ("acct_a", "CASH"): 0.0, ("acct_b", "CASH"): 5200.0})
+    trades = [{"account": "acct_b", "symbol": "ZZX", "action": "BUY", "quantity": 100,
+               "amount": 5200.0, "fees": 0.0}]
+    change = pm.portfolio_measures(_doc(rows, closed_today={}), prior_snapshot=prior, trades=trades,
+                                   now=NOW)["measures"]["account_value_change_1d"]
+    assert change["start"]["equity_usd"] == 10200.0    # the cash that bought the lot, never the lot's prior value
+    assert change["end"]["equity_usd"] == 10000.0
+    assert change["value"] == -200.0                   # the lot's move since purchase, never -5,200.00
+
+
+def test_a_moved_position_is_not_read_as_a_purchase_from_another_accounts_trade():
+    """The purchase discriminator matches the trade's exact ``(account, symbol)`` key, never a symbol match:
+    with a BUY of ZZX in ``acct_a`` today (a top-up there) and ZZX moved into ``acct_b``, a symbol-wide match
+    would label the moved lot a purchase and zero the prior value this ticket restored. Same fixture as the
+    transfer pin, plus that BUY.
+    """
+    rows = [_row("ZZX", 100, 21.0, account="acct_b", prior_close=20.0, broker_market_value=2100.0),
+            _row("CASH", 5000.0, 1.0, account="acct_b", is_cash=True, market_value=5000.0,
+                 broker_market_value=None, broker_shares=None)]
+    prior = _prior({("acct_a", "ZZX"): 2000.0, ("acct_a", "CASH"): 0.0, ("acct_b", "CASH"): 5000.0})
+    trades = [{"account": "acct_a", "symbol": "ZZX", "action": "BUY", "quantity": 50,
+               "amount": 1050.0, "fees": 0.0}]
+    transfers = [{"from_account": "acct_a", "to_account": "acct_b", "amount": 2000.0,
+                  "transfer_type": "internal", "transfer_date": "2026-11-13"}]
+    change = pm.portfolio_measures(_doc(rows, closed_today={}), prior_snapshot=prior, trades=trades,
+                                   transfers=transfers, now=NOW)["measures"]["account_value_change_1d"]
+    assert change["start"]["equity_usd"] == 7000.0     # the moved position still keeps its 2,000.00
+    assert change["end"]["equity_usd"] == 7100.0
+    assert change["value"] == 100.0                    # never 2100.0 from a zeroed start

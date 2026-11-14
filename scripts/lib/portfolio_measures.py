@@ -191,10 +191,36 @@ def _row_prior_value(row: Mapping[str, Any], prior_rows: Mapping[tuple[str, str]
     return None, None
 
 
+def _purchase_keys(trades: Iterable[Mapping[str, Any]] | None) -> set[tuple[str, str]]:
+    """The ``(account, symbol)`` keys that a **purchase** created inside the interval.
+
+    The prior book is symbol-blind for transfers (``_transfers_block`` carries from/to/amount/type/date, no
+    symbol), so "this account holds a symbol the book never held here" alone cannot say whether the position
+    was bought or moved in. The day's trades can, for the account they name: a ``BUY`` for that key is a
+    purchase, and its start contributes 0.00 (the cash left the account; base was exact on that case -- review
+    cc-deepseek-8 2026-11-14 §4, start 15,200.00 / change -5,200.00 where the truth is -200.00).
+
+    Only an exact key match counts, and only ``BUY``. The symbol fallback ``_trades_effect`` uses for a
+    label mismatch is deliberately *not* reused: with one SELL of a symbol elsewhere today it would label a
+    moved position a purchase and zero the transfer this ticket fixes. An acquisition the ledger calls
+    something else (``REINVEST SHARES``, ``JOURNALED SHARES``, ``SECURITY TRANSFER``) therefore keeps the
+    estimated basis -- the pre-fix behaviour, disclosed, never silently zeroed.
+    """
+    bought: set[tuple[str, str]] = set()
+    for trade in trades or []:
+        if not isinstance(trade, Mapping):
+            continue
+        if str(trade.get("action") or "").strip().upper() != "BUY":
+            continue
+        bought.add((str(trade.get("account") or ""), str(trade.get("symbol") or "").upper()))
+    return bought
+
+
 def _row_start_value(row: Mapping[str, Any], prior_rows: Mapping[tuple[str, str], float] | None,
                      prior_source: str | None,
                      book_accounts: set[str],
-                     prior_shares: Mapping[tuple[str, str], float] | None = None) -> tuple[float | None, str | None]:
+                     prior_shares: Mapping[tuple[str, str], float] | None = None,
+                     bought_today: set[tuple[str, str]] | None = None) -> tuple[float | None, str | None]:
     """The value a still-held row contributes to the prior-close **start** of the change.
 
     The start is the position **as it stood at the prior close**, not today's position re-marked: the prior
@@ -210,7 +236,10 @@ def _row_start_value(row: Mapping[str, Any], prior_rows: Mapping[tuple[str, str]
     * an account the book does not cover at all (e.g. a renamed account key) falls through to the estimated
       basis, because absence there says nothing about the position.
 
-    The price-move estimate keeps its own fill-aware basis; this helper is only for the change's start.
+    "Bought" is decided from the day's trades where they can decide it (``_purchase_keys``): a ``BUY`` for
+    this exact key contributes 0.00 even when the symbol is held in another account, because adding to a name
+    you already hold elsewhere is an ordinary purchase, not a transfer. Without that trade row the row keeps
+    the estimated basis -- a transfer, or a purchase whose ledger label does not match the book key.
     """
     key = _key(row)
     if prior_rows is not None:
@@ -221,7 +250,12 @@ def _row_start_value(row: Mapping[str, Any], prior_rows: Mapping[tuple[str, str]
         observed = prior_rows.get(key)
         if observed is not None:
             return round(observed, 2), prior_source or "prior_snapshot"
-        if key[0] in book_accounts:
+        if key in (bought_today or set()):
+            return 0.0, "bought_today"
+        # "Bought inside the interval" needs the symbol to be absent from the book *everywhere*: an internal
+        # transfer moves a position to an account the book covers but whose key the book never held, and that
+        # position's prior value must not be read as zero (review cc-deepseek-8 rev-8 note 2).
+        if key[0] in book_accounts and key[1] not in {k[1] for k in prior_rows}:
             return 0.0, "not_held_at_prior_close"
     return _row_prior_value(row, prior_rows, prior_source)
 
@@ -469,7 +503,7 @@ def _close_scope(trade: Mapping[str, Any], prior_rows: Mapping[tuple[str, str], 
     fees_incomplete = any(not r.get("fee_complete") for r in in_scope)
     # A row dropped before it reached ``rows`` still had a commission nobody read: the fee total is complete
     # only when every closed row of the day was valued (review cc-deepseek-8 rev-7 delta C1).
-    unvalued_rows = int(trade.get("unvalued_rows") or 0)
+    unvalued_rows = int(trade.get("unvalued_rows") or 0)  # nosemgrep: tq-py-missing-as-zero -- a count of dropped rows, not a value: absence means the trades pass counted none
     return {
         "rows": rows,
         "start_add": round(sum(float(r["prior_usd"]) for r in rows if r["counted_in_start"]), 2),
@@ -545,7 +579,8 @@ def _reconciliation(rows: list[Mapping[str, Any]], *, prior_rows: Mapping[tuple[
                     trades: Iterable[Mapping[str, Any]] | None, income: Any, external_flows: Any,
                     transfers: Mapping[str, Any] | None, transfers_observed: bool = False,
                     transfers_unread: int = 0,
-                    prior_shares: Mapping[tuple[str, str], float] | None = None) -> dict[str, Any]:
+                    prior_shares: Mapping[tuple[str, str], float] | None = None,
+                    bought_today: set[tuple[str, str]] | None = None) -> dict[str, Any]:
     """The signed per-account bridge, published as evidence — never as an invented final P&L number."""
     per_account: list[dict[str, Any]] = []
     book_accounts = {k[0] for k in (prior_rows or {})}
@@ -571,7 +606,8 @@ def _reconciliation(rows: list[Mapping[str, Any]], *, prior_rows: Mapping[tuple[
                 if before is not None:
                     start += before
                 continue
-            prior, _source = _row_start_value(row, prior_rows, prior_source, book_accounts, prior_shares)
+            prior, _source = _row_start_value(row, prior_rows, prior_source, book_accounts, prior_shares,
+                                              bought_today)
             if prior is None:
                 start_unknown.append(f"{symbol}: no prior-close baseline")
             else:
@@ -737,6 +773,9 @@ def portfolio_measures(doc: Mapping[str, Any] | None, *, prior_snapshot: Mapping
                             for k, v in raw_shares.items()}
         prior_as_of = prior_snapshot.get("as_of")
         prior_source = prior_snapshot.get("source") or "prior_snapshot"
+    # Which rows a purchase created inside the interval -- built once so the change's start and the signed
+    # bridge cannot disagree about a row (review cc-deepseek-8 2026-11-14 C1).
+    bought_today = _purchase_keys(trades)
 
     # 1. account value: the broker anchor, with the Finviz estimate beside it.
     total = 0.0
@@ -821,7 +860,8 @@ def portfolio_measures(doc: Mapping[str, Any] | None, *, prior_snapshot: Mapping
                 if before is not None:
                     start += before
                 continue
-            prior, _source = _row_start_value(row, prior_rows, prior_source, book_accounts, prior_shares)
+            prior, _source = _row_start_value(row, prior_rows, prior_source, book_accounts, prior_shares,
+                                              bought_today)
             if prior is None:
                 start_unknown.append({"account": row.get("account_key") or row.get("account"),
                                       "symbol": str(row.get("symbol") or "").upper(),
@@ -885,7 +925,7 @@ def portfolio_measures(doc: Mapping[str, Any] | None, *, prior_snapshot: Mapping
                                      external_flows=external_flows, transfers=transfer_block,
                                      transfers_observed=transfers is not None,
                                      transfers_unread=len(transfer_block["unread"]),
-                                     prior_shares=prior_shares)
+                                     prior_shares=prior_shares, bought_today=bought_today)
     coverage = {
         "prior_close_book": {
             "observed": prior_rows is not None,
