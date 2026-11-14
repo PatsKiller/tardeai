@@ -1,4 +1,4 @@
-import { classifyRunHealth, isRunHealthDegraded, type RunHealthTier } from './runHealth.ts'
+import { classifyRunHealth, isRunHealthDegraded, runHealthLabel, type RunHealthTier } from './runHealth.ts'
 
 /**
  * setupRunSummary.ts — client half of the run-scoped GO/WAIT/NOGO contract.
@@ -126,6 +126,11 @@ export type SetupCountsRender = {
   runHealth: RunHealthTier
   /** Raw producer status, e.g. RUN_UNDERFILLED. Null when the run never reported one. */
   runHealthStatus: string | null
+  /** True when the run never stated a health we can classify (absent, "UNKNOWN", or an unrecognised string).
+   *  Unknown is NOT healthy: a caller must not draw it as success (LQ-20261113-3100, A06). */
+  healthUnknown: boolean
+  /** True when the run health came from the fallback status, not from the embedded summary. */
+  healthFromFallback: boolean
   /** True when the RUN is unhealthy. Never merged into `degraded` (reconciliation). */
   healthDegraded: boolean
   integrity: string
@@ -144,7 +149,7 @@ export type SetupCountsRender = {
  */
 export function renderSetupCounts(
   s: SetupRunSummary | null | undefined,
-  opts: { stale?: boolean; staleLabel?: string | null } = {},
+  opts: { stale?: boolean; staleLabel?: string | null; fallbackStatus?: string | null } = {},
 ): SetupCountsRender {
   const integrity = setupIntegrity(s)
   const runId = s?.run_id ?? null
@@ -152,8 +157,15 @@ export function renderSetupCounts(
   // Run health rides alongside reconciliation on every return path, including
   // the stale and pre-run branches — a stale surface can still report that the
   // last run it saw was underfilled.
-  const runHealthStatus = s?.freshness_status ?? null
+  // The producer's embedded summary can carry freshness_status "UNKNOWN" while the same payload's top-level
+  // run_health_status names the real state (live 7b0cc18d0: RUN_UNDERFILLED). The embedded value wins when it
+  // classifies; otherwise the top-level status the caller passes is used, and the render says it came from there.
+  const embeddedStatus = s?.freshness_status ?? null
+  const fallbackStatus = opts.fallbackStatus ?? null
+  const healthFromFallback = classifyRunHealth(embeddedStatus) === 'unknown' && classifyRunHealth(fallbackStatus) !== 'unknown'
+  const runHealthStatus = healthFromFallback ? fallbackStatus : embeddedStatus
   const runHealth = classifyRunHealth(runHealthStatus)
+  const healthUnknown = runHealth === 'unknown'
   const healthDegraded = isRunHealthDegraded(runHealth)
 
   if (opts.stale) {
@@ -163,6 +175,8 @@ export function renderSetupCounts(
       unaccounted: 0,
       runHealth,
       runHealthStatus,
+      healthUnknown,
+      healthFromFallback,
       healthDegraded,
       integrity,
       degraded: true,
@@ -179,6 +193,8 @@ export function renderSetupCounts(
       unaccounted: 0,
       runHealth,
       runHealthStatus,
+      healthUnknown,
+      healthFromFallback,
       healthDegraded,
       integrity,
       degraded: integrity !== RECONCILED,
@@ -224,6 +240,8 @@ export function renderSetupCounts(
     unaccounted,
     runHealth,
     runHealthStatus,
+    healthUnknown,
+    healthFromFallback,
     healthDegraded,
     integrity,
     // Reconciliation ONLY. Run health is healthDegraded, deliberately separate:
@@ -233,4 +251,27 @@ export function renderSetupCounts(
     runId,
     runTimestamp,
   }
+}
+
+/**
+ * The words a surface prints beside the counts when the run is not known healthy (LQ-20261113-3100, A06).
+ * null only when the run's health classifies as healthy. Unknown reads "health UNKNOWN", never nothing: a tile
+ * with counts and no health word is read as "fine".
+ */
+export function runHealthNote(
+  r: Pick<SetupCountsRender, 'runHealth' | 'runHealthStatus' | 'healthUnknown'>,
+  runDate?: string | null,
+): string | null {
+  // LQ-20261113-3100-r1 (M1): on a 412 px phone there is no tooltip, so the unknown word carries its own date.
+  if (r.healthUnknown) return `health UNKNOWN · ${runDate && String(runDate).trim() ? `run ${String(runDate).trim()}` : 'run date unknown'}`
+  if (r.runHealth === 'healthy') return null
+  return runHealthLabel(r.runHealthStatus)
+}
+
+/** Tone of the Home "Latest scan" tile. Success only for a run that reconciles AND is known healthy. */
+export function setupTileTone(
+  r: Pick<SetupCountsRender, 'degraded' | 'healthDegraded' | 'healthUnknown'>,
+  o: { scanStale: boolean; present: boolean },
+): 'warning' | 'success' {
+  return o.scanStale || r.degraded || r.healthDegraded || (o.present && r.healthUnknown) ? 'warning' : 'success'
 }

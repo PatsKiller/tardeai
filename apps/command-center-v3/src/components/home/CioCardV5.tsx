@@ -8,6 +8,7 @@ import '../../styles/cioCard.css'
 import { toneVars } from '../../lib/designTokens'
 import { actionVerb, accountText, bookAccountsText, calDay, daysUntil, etDay, etTime, fv, meterParts, TIER_CUTOFFS, usd, usdShort, tierToneOf, type CioCard } from '../../lib/cioCard'
 import { renderedTier } from '../../lib/marketRisk'
+import { catalystView } from '../../lib/cioCatalyst'
 
 /** "DEFENSIVE — HOLD CASH" → "Hold cash." (the part after the dash, sentence case). */
 function postureLine(p: string | undefined): string | null {
@@ -43,6 +44,7 @@ export default function CioCardV5({ card, adviceOk, adviceReason, nowMs, actions
   const parts = meterParts(drivers)
   const sum = fv(card.score_sum)
   const cat = card.catalyst
+  const catV = catalystView(cat, card.catalyst_state)
   const tMinus = cat ? daysUntil(cat.date, nowMs) : null
   const held = card.held
   const sectors = card.sectors
@@ -89,7 +91,7 @@ export default function CioCardV5({ card, adviceOk, adviceReason, nowMs, actions
         </div>
       </div>
 
-      {(drivers.length > 0 || cat || held || card.calm || (card.gaps ?? []).length > 0) && (
+      {(drivers.length > 0 || catV || held || card.calm || (card.gaps ?? []).length > 0) && (
         <div className="drv" data-testid="cio5-drivers">
           <div className="drv-h">
             <h4>What's driving {head ? `"${head.replace(/\.$/, '').toLowerCase()}"` : `${tier}`}</h4>
@@ -123,11 +125,17 @@ export default function CioCardV5({ card, adviceOk, adviceReason, nowMs, actions
                 {d.detail && <span className="det">{d.detail}{d.as_of ? ` (${short(d.as_of)})` : ''}</span>}
               </div>
             ))}
-            {cat && (
-              <div className="d next" data-testid="cio5-catalyst" title={cat.source_id}>
-                <span className="n">Next catalyst: {cat.label}</span>
+            {catV.kind === 'event' ? (
+              <div className="d next" data-testid="cio5-catalyst" title={catV.sourceId}>
+                <span className="n">Next catalyst: {catV.text}</span>
                 <span className="pts" style={{ color: 'var(--text-0)' }}>{tMinus != null && tMinus >= 0 ? `T−${tMinus}d` : ''}</span>
                 <span className="det">The next scheduled print that can move the tier.{noBuys ? ' No buys until it prints.' : ''}</span>
+              </div>
+            ) : (
+              <div className="d next" data-testid="cio5-catalyst" data-catalyst-state={catV.label}>
+                <span className="n">{catV.text}</span>
+                <span className="pts" style={{ color: 'var(--text-2)' }}>—</span>
+                <span className="det">{catV.reason}{catV.asOf ? ` (as of ${short(catV.asOf)})` : ''}</span>
               </div>
             )}
             {held && (

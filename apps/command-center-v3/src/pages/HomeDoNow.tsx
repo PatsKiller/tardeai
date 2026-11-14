@@ -23,7 +23,7 @@ import {
   portfolioTotalView,
 } from '../lib/homeDoNow'
 import { platformHealthFrom, countsLabel } from '../lib/platformHealth'
-import { renderSetupCounts } from '../lib/setupRunSummary'
+import { renderSetupCounts, runHealthNote, setupTileTone } from '../lib/setupRunSummary'
 import { tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
 import { runLabel } from '../lib/homeLabels'
 import { DEPLOYS_PATHS, deploysSummary, freshness, type DeploysStatusWire } from '../lib/deploys'
@@ -220,7 +220,9 @@ export default function HomeDoNow() {
   const opps: any[] = (unwrap(oppTop)?.items || []).slice(0, 5)
   const ph = platformHealthFrom(platformApi.data, { error: platformApi.error, loading: platformApi.loading, nowMs: now })
   const scanStale = tradeAiSurfaceFreshness(tradeAi).stale
-  const setup = renderSetupCounts(tradeAi?.setup_run_summary, { stale: scanStale, staleLabel: 'STALE' })
+  const setup = renderSetupCounts(tradeAi?.setup_run_summary, { stale: scanStale, staleLabel: 'STALE', fallbackStatus: tradeAi?.run_health_status })
+  const setupHealth = runHealthNote(setup, tradeAi?.run_date)
+  const setupReasons: string[] = Array.isArray(tradeAi?.reason_codes) ? tradeAi.reason_codes.map((x: unknown) => String(x)).filter(Boolean) : []
   const dpF = freshness(dpApi.data?.generated_at, !!dpApi.data, { nowMs: now, loading: dpApi.loading, error: dpApi.error })
   const dp = deploysSummary(dpApi.data, dpF)
   const notFresh: string[] = overview?.observation?.not_fresh_datasets ?? []
@@ -228,8 +230,10 @@ export default function HomeDoNow() {
   const pulse: { k: string; v: string; tone: Tone; tip: string; to: string }[] = [
     { k: 'Platform component checks', v: ph.state === 'LOADING' ? '…' : ph.state === 'UNAVAILABLE' ? 'UNAVAILABLE' : countsLabel(ph.counts), to: '/system?tab=Platform',
       tone: ph.state === 'OK' ? 'success' : ph.state === 'CRIT' ? 'danger' : 'warning', tip: `/api/v2/system/platform-health counts component probes; header Health counts findings from /api/v2/health · ${ph.state}${ph.reason ? ` · ${ph.reason}` : ''}` },
-    { k: 'Latest scan', v: tradeAi ? `${runLabel(tradeAi.run_label, tradeAi.run_date)} · ${setup.counts}` : '—', to: '/trading',
-      tone: scanStale || setup.degraded || setup.healthDegraded ? 'warning' : 'success', tip: `/api/v2/trade-ai/summary · ${setup.population || 'population unknown'}${setup.runHealthStatus ? ` · ${setup.runHealthStatus}` : ''}` },
+    { k: 'Latest scan', v: tradeAi ? `${runLabel(tradeAi.run_label, tradeAi.run_date)} · ${setup.counts}${setupHealth && !scanStale ? ` · ${setupHealth}` : ''}` : '—', to: '/trading',
+      // Unknown run health is not healthy (LQ-20261113-3100): the live run's health was UNKNOWN and the tile drew success.
+      tone: setupTileTone(setup, { scanStale, present: !!tradeAi }),
+      tip: `/api/v2/trade-ai/summary · ${setup.population || 'population unknown'} · run health ${setup.runHealthStatus ?? 'UNKNOWN'}${setup.healthFromFallback ? ' (from run_health_status)' : ''}${setupReasons.length ? ` · ${setupReasons.join(', ')}` : ''}` },
     { k: 'Data health', v: overview ? `${overview.pipeline_status ?? 'unknown'}${notFresh.length ? ` · ${notFresh.length} not fresh` : ''}` : '—', to: '/system?tab=Data%20Sources',
       tone: overview?.pipeline_status === 'fresh' && !notFresh.length ? 'success' : 'warning', tip: `/api/v2/overview observation.surface_status${notFresh.length ? ` · not fresh: ${notFresh.join(', ')}` : ''}` },
     { k: 'Do-now sources', v: dn.state === 'LOADING' ? '…' : `${dn.sources.length - dn.unavailableSources.length}/${dn.sources.length} answered${dn.staleSources.length ? ` · ${dn.staleSources.length} stale` : ''}`, to: '/health',

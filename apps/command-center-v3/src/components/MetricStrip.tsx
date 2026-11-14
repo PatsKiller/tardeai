@@ -471,6 +471,7 @@ export default function MetricStrip({ onDrill }: Props) {
   const setupRun = renderSetupCounts(tradeAi?.setup_run_summary, {
     stale: scanStale,
     staleLabel: setupsFresh.surfaceLabel || `STALE · ${setupsRun}`,
+    fallbackStatus: tradeAi?.run_health_status,
   })
   // ── run health, and the two run clocks ────────────────────────────────────
   // freshness_status answers "did the run scan enough to be worth trusting?".
@@ -501,7 +502,8 @@ export default function MetricStrip({ onDrill }: Props) {
   const runFinishedMark = runAge.label
 
   const setupsTone: Tone = worseTone(
-    setupRun.runHealth === 'failed' ? 'bad' : setupRun.healthDegraded ? 'warn' : 'ok',
+    // Unknown run health is not healthy (LQ-20261113-3100).
+    setupRun.runHealth === 'failed' ? 'bad' : setupRun.healthDegraded || (!!tradeAi && setupRun.healthUnknown) ? 'warn' : 'ok',
     setupRun.degraded ? 'warn' : 'ok',
     scanStale ? 'warn' : 'ok',
     runAge.tone,

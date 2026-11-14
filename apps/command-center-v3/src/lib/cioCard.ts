@@ -30,7 +30,9 @@ export interface CioCard {
   gaps?: (Prov & { name: string; detail?: string })[]
   sectors?: SectorsFact
   shock?: Fact<string>
-  catalyst?: Prov & { event: string; date: string; time_et?: string; label: string }
+  catalyst?: Prov & { event: string; date: string; time_et?: string; label?: string }
+  /** Present when `catalyst` is absent: why there is no event to show (UNKNOWN = could not read, NONE = read and none qualified). */
+  catalyst_state?: { state: 'UNKNOWN' | 'NONE'; reason: string; as_of?: string | null }
   this_week?: WeekEvent[]
   do_now?: StopAction
   actions?: StopAction[]

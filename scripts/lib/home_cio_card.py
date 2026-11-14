@@ -187,6 +187,64 @@ def _drivers(mr: Mapping) -> tuple[list, dict | None, dict | None, list]:
     return drivers, score_sum, calm_item, gaps
 
 
+def _iso_date(v: Any) -> str | None:
+    """``YYYY-MM-DD`` when ``v`` parses as an ISO date, else None. A string compare put "Nov 18" after "2026-11-16"
+    (LQ-20261113-3100-r1 M2), so a calendar date is parsed, never compared as text."""
+    try:
+        return date.fromisoformat(str(v).strip()[:10]).isoformat() if v else None
+    except ValueError:
+        return None
+
+
+def _usable_event(m: Any) -> bool:
+    return isinstance(m, Mapping) and bool(m.get("event")) and _iso_date(m.get("date")) is not None
+
+
+def _synopsis_age_note(fr: Mapping | None, syn_as_of: Any, now: datetime) -> str | None:
+    """A reason when the synopsis is not a fresh read of the current window (same test ``advice_gate`` applies)."""
+    fr = fr or {}
+    if not (fr.get("stale") or fr.get("window_current") is False):
+        return None
+    age_s = fr.get("age_seconds")
+    if age_s is None:
+        try:
+            t = datetime.fromisoformat(str(syn_as_of).replace("Z", "+00:00"))
+            age_s = (now - (t if t.tzinfo else t.replace(tzinfo=now.tzinfo))).total_seconds()
+        except (TypeError, ValueError):
+            age_s = None
+    how = f"{_r(age_s / 3600)} h old" if isinstance(age_s, (int, float)) else "stale or from an earlier window"
+    return f"the synopsis is {how}, so the calendar may be missing events"
+
+
+def _catalyst_state(syn: Mapping | None, catalyst: dict | None, fr: Mapping | None = None,
+                    now: datetime | None = None) -> dict | None:
+    """Why the card has no catalyst event (LQ-20261113-3100). None when it has one.
+
+    UNKNOWN = the calendar could not be read, was not fresh, or held rows that could not be read; NONE = a FRESH
+    synopsis was read cleanly and no macro event is dated today or later and still to print (including an empty
+    calendar). Either way the card says so with a reason and the synopsis as-of, instead of drawing nothing.
+    """
+    if catalyst:
+        return None
+    if not syn:
+        return {"state": "UNKNOWN", "reason": "no CIO synopsis to read the macro calendar from", "as_of": None}
+    as_of = syn.get("as_of")
+    if not as_of:
+        return {"state": "UNKNOWN", "reason": "the synopsis has no as_of, so no catalyst can be sourced from it", "as_of": None}
+    tw = syn.get("this_week")
+    macro = tw.get("macro") if isinstance(tw, Mapping) else None
+    if not isinstance(macro, list):
+        return {"state": "UNKNOWN", "reason": "the synopsis carries no macro calendar (this_week.macro)", "as_of": as_of}
+    old = _synopsis_age_note(fr, as_of, now or datetime.now(timezone.utc))
+    if old:
+        return {"state": "UNKNOWN", "reason": old, "as_of": as_of}
+    bad = [m for m in macro if not _usable_event(m)]
+    if bad:
+        return {"state": "UNKNOWN", "as_of": as_of,
+                "reason": f"{len(bad)} of {len(macro)} calendar rows could not be read (no event or no ISO date)"}
+    return {"state": "NONE", "reason": "no macro event is dated today or later and still to print in the synopsis calendar", "as_of": as_of}
+
+
 def _catalyst(syn: Mapping, now: datetime) -> dict | None:
     tw = syn.get("this_week") or {}
     sid = f"cio_synopsis:{syn.get('as_of')}"
@@ -195,7 +253,7 @@ def _catalyst(syn: Mapping, now: datetime) -> dict | None:
         # LQ-20261107-1784: a release already behind ``now`` is not "the next event". The old date-only test kept
         # "CPI Tue 11-10 08:30 ET" on the card all day, after the print, which is exactly the stale line the
         # operator called out. Fall through to the next event; if none is ahead, the card shows the gate's state.
-        if (isinstance(m, Mapping) and str(m.get("date") or "") >= today and m.get("event")
+        if (isinstance(m, Mapping) and (_iso_date(m.get("date")) or "") >= today and m.get("event")
                 and not _event_passed(m.get("date"), m.get("time_et"), now)):
             return item(sid, syn.get("as_of"), event=m.get("event"), date=m.get("date"), time_et=m.get("time_et"),
                         label=(syn.get("buys") or {}).get("until"))
@@ -215,7 +273,7 @@ def _this_week(syn: Mapping, mr: Mapping, now: datetime) -> list:
     out = []
     today = now.date().isoformat()
     for m in tw.get("macro") or []:
-        if isinstance(m, Mapping) and m.get("date") and str(m["date"]) >= today:
+        if isinstance(m, Mapping) and (_iso_date(m.get("date")) or "") >= today:
             out.append(item(sid, at, kind="macro", date=m.get("date"), time_et=m.get("time_et"), label=m.get("event")))
     for e in tw.get("earnings") or []:
         if isinstance(e, Mapping) and e.get("date") and str(e["date"]) >= today:
@@ -320,6 +378,7 @@ def build_card(mr: Mapping, sc: Mapping | None, now: datetime, advice_ok: bool) 
         "sectors": _sector_line(mr),
         "shock": fact(syn.get("market", {}).get("shock_class") if isinstance(syn.get("market"), Mapping) else None, ssid, sat),
         "catalyst": _catalyst(syn, now) if syn else None,
+        "catalyst_state": None,
         "this_week": _this_week(syn, mr, now) if syn else [],
         "do_now": None,
         "actions": [],
@@ -331,6 +390,7 @@ def build_card(mr: Mapping, sc: Mapping | None, now: datetime, advice_ok: bool) 
             card["do_now"] = item(first["source_id"], first["as_of"], symbol=first["symbol"], account=first.get("account"),
                                   answer=first.get("answer"), suggested_stop=first.get("suggested_stop"),
                                   n=1, of=len(card["actions"]))
+    card["catalyst_state"] = _catalyst_state(syn, card["catalyst"], (sc or {}).get("freshness"), now)
     return card
 
 
