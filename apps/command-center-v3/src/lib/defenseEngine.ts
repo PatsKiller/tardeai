@@ -286,6 +286,47 @@ export function tierPair(p: DefenseProjection, live?: LiveAuthority | null): Tie
   return { tier: t.tier ?? null, score: num(t.score), asOf: t.as_of ?? null, source: 'projection' }
 }
 
+export type TierClockFacts = {
+  /** The live observation, when the snapshot answered (a tier or a score). Null otherwise. */
+  live: { tier: string | null; score: number | null; asOf: string | null } | null
+  /** The projection's frozen copy — the record that built the ladder text and the recommendations. */
+  projected: { tier: string | null; score: number | null; asOf: string | null; builtAt: string }
+  /** The two records say different things (tier, or a score at the page's 0.05 precision). */
+  disagree: boolean
+  /** Whole minutes the live evidence is newer than the projection's input; null when unknown or not newer. */
+  lagMinutes: number | null
+}
+
+/** Whole minutes `newer` leads `older`; null when either is not an instant or it does not lead. */
+export function newerMinutes(newer: string | null | undefined, older: string | null | undefined): number | null {
+  const at = (v: string) => (/T.*(?:Z|[+-]\d\d:\d\d)$/.test(v) ? Date.parse(v) : NaN)
+  if (!newer || !older) return null
+  const a = at(newer), b = at(older)
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null
+  const minutes = Math.floor((a - b) / 60_000)
+  return minutes > 0 ? minutes : null
+}
+
+/** DR-D04 (sprint 8H-2 b3): the clocks behind the market-risk conclusions.
+ *
+ *  The page reads the live snapshot (/api/v2/market-risk/latest) AND the projection, which embeds a frozen copy
+ *  of the same tier and score and republishes the snapshot as one of its source rows. Two nearly identical
+ *  source cards with different clocks ("Market risk (engine) 07:00 ET", "Market Risk engine 08:00 ET") left the
+ *  reader unable to say which record the headline, ladder and trigger text came from. This gathers the two
+ *  records once so every surface names its own: the live observation with its evidence time, the projection
+ *  with its build time and input time, whether they disagree, and how far the projection trails. */
+export function tierClockFacts(p: DefenseProjection, live?: LiveAuthority | null): TierClockFacts {
+  const a = live?.marketRisk ?? null
+  const answered = a && (a.tier != null || num(a.score) !== null)
+  const t = p.tier ?? {}
+  const projected = { tier: t.tier ?? null, score: num(t.score), asOf: t.as_of ?? null, builtAt: p.generated_at }
+  const observed = answered ? { tier: a!.tier ?? null, score: num(a!.score), asOf: a!.asOf ?? null } : null
+  const disagree = !!observed && (
+    (observed.tier != null && projected.tier != null && observed.tier !== projected.tier)
+    || (observed.score != null && projected.score != null && Math.abs(observed.score - projected.score) >= 0.05))
+  return { live: observed, projected, disagree, lagMinutes: newerMinutes(observed?.asOf, projected.asOf) }
+}
+
 /** DR-D01: how much of the book the exposure figure rests on, and whether the figure may be printed at all.
  *  Only `coverage_status: 'measured'` yields a number; everything else — `partial`, `unknown`, or a projection
  *  built before the field existed — yields `headline: 'Unknown'` with the coverage that IS known. A Book whose

@@ -57,7 +57,10 @@ function compile(path) {
 
 const { default: View } = await import(compile(join(app, 'src/components/defense/engine/DefenseEngine.tsx')))
 const { EngineSheetBody, SHEET_TITLES } = await import(compile(join(app, 'src/components/defense/engine/DefenseEngine.tsx')))
-const { defenseLines, exposureCoverage, money } = await import(compile(join(app, 'src/lib/defenseEngine.ts')))
+const { defenseLines, exposureCoverage, money, tierClockFacts } = await import(compile(join(app, 'src/lib/defenseEngine.ts')))
+// DR-D04: the desk builds its source cards from the live read + the projection's own rows; that builder is a
+// pure function so the duplicate-label rule can be tested without standing up the page's four reads.
+const { defenseSources } = await import(compile(join(app, 'src/pages/desks/DefenseDesk.tsx')))
 
 const AT = '2031-03-07T14:59:00Z'
 
@@ -363,6 +366,138 @@ await test('DR-D02 sheet: a resting pending stop is never described as active', 
   const body = text(renderSheet(projection(plain, { stops: STOPS }), 'stops'))
   assert.match(body, /Pending activation/, 'the pending population is not named')
   assert.doesNotMatch(body, /5 active/, `a pending stop is described as active: "${body}"`)
+})
+
+// ── DR-D04: which market-risk clock drives each visible conclusion ─────────────────────────────────────────
+// The page combines a live risk headline (MarketRiskSnapshot@v1 via /api/v2/market-risk/latest) with a ladder,
+// a trigger matrix and recommendations that came from the projection's frozen copy. In the supplied capture the
+// two source cards read "Market risk (engine) 07:00 ET" and "Market Risk engine 08:00 ET" with no statement of
+// which record each number came from. These fixtures give the two records different values AND different clocks,
+// so a surface that silently mixes them cannot pass: every conclusion must name its authority and its time, and
+// a disagreement must be said out loud.
+const CLOCKS = { built: '2031-03-07T15:25:00Z', input: '2031-03-07T14:00:00Z', live: '2031-03-07T14:59:00Z' }
+const CLOCKED = () => projection(plain, {
+  generated_at: CLOCKS.built,
+  tier: { tier: 'YELLOW', score: 41.8, as_of: CLOCKS.input, ladder: [], history: [] },
+})
+const DISAGREE = { marketRisk: { tier: 'YELLOW', score: 52.3, asOf: CLOCKS.live } }
+const AGREE = { marketRisk: { tier: 'YELLOW', score: 41.8, asOf: CLOCKS.live } }
+
+const renderLive = (p, live) => renderToStaticMarkup(React.createElement(MemoryRouter, { initialEntries: ['/v3/defense'] },
+  React.createElement(View, { p, onOpen() {}, live })))
+
+await test('DR-D04: the headline names the live observation, its authority and its evidence time', () => {
+  const fact = text(separator(renderLive(CLOCKED(), DISAGREE), 'defense-market-risk-fact'))
+  assert.match(fact, /Market risk \(engine\)/, `no named market-risk observation: "${fact}"`)
+  assert.match(fact, /MarketRiskSnapshot@v1/, `the observation does not name its authority: "${fact}"`)
+  assert.match(fact, /52\.3/, `the live score is not shown: "${fact}"`)
+  assert.match(fact, /09:59 ET/, `the live evidence time is missing: "${fact}"`)
+})
+
+await test('DR-D04: the projection build time and its input time are labelled apart from the live clock', () => {
+  const built = text(separator(renderLive(CLOCKED(), DISAGREE), 'defense-projection-built'))
+  assert.match(built, /built .*10:25 ET/, `the projection generation time is not labelled: "${built}"`)
+  assert.match(built, /input was .*09:00 ET/, `the projection input time is not labelled apart: "${built}"`)
+  assert.match(built, /59 min newer/, `the lag between the live snapshot and the projection input is not stated: "${built}"`)
+})
+
+await test('DR-D04: a live score that differs is an explicit discrepancy, with both values and both clocks', () => {
+  const html = renderLive(CLOCKED(), DISAGREE)
+  const note = text(separator(html, 'defense-tier-discrepancy'))
+  assert.match(note, /disagree/, `the two records are silently mixed: "${note}"`)
+  assert.match(note, /52\.3/, `the live value is missing from the discrepancy: "${note}"`)
+  assert.match(note, /41\.8/, `the projection value is missing from the discrepancy: "${note}"`)
+  assert.match(note, /09:59 ET/, `the live time is missing from the discrepancy: "${note}"`)
+  assert.match(note, /09:00 ET/, `the projection input time is missing from the discrepancy: "${note}"`)
+  // and the headline still shows the live figure (tierPair), not the frozen one
+  assert.match(text(html), /YELLOW · 52\.3/, 'the headline does not show the live record')
+})
+
+await test('DR-D04: agreeing records show both clocks and no discrepancy', () => {
+  const html = renderLive(CLOCKED(), AGREE)
+  assert.ok(!html.includes('data-testid="defense-tier-discrepancy"'), 'an agreeing record is reported as a disagreement')
+  assert.match(text(separator(html, 'defense-projection-built')), /59 min newer/, 'the lag is hidden when the values agree')
+})
+
+await test('DR-D04: with no live snapshot the page names the projection as the score authority', () => {
+  const html = renderView(CLOCKED())
+  const fact = text(separator(html, 'defense-market-risk-fact'))
+  assert.match(fact, /this projection/, `the score's authority is not named when the snapshot is silent: "${fact}"`)
+  assert.match(fact, /09:00 ET/, `the projection input clock is missing: "${fact}"`)
+  assert.match(fact, /did not answer/, `a silent live read is not stated: "${fact}"`)
+  assert.ok(!html.includes('data-testid="defense-tier-discrepancy"'), 'a discrepancy is invented with no live record')
+})
+
+await test('DR-D04: the ladder names the record and clock behind its current step', () => {
+  const live = text(separator(renderLive(CLOCKED(), DISAGREE), 'defense-ladder-authority'))
+  assert.match(live, /live snapshot/, `the ladder does not name the live record: "${live}"`)
+  assert.match(live, /09:59 ET/, `the ladder does not date its current step: "${live}"`)
+  assert.match(live, /thresholds .*this projection/, `the ladder does not attribute its thresholds: "${live}"`)
+  assert.match(live, /built .*10:25 ET/, `the ladder does not give the projection build time: "${live}"`)
+  const own = text(separator(renderView(CLOCKED()), 'defense-ladder-authority'))
+  assert.match(own, /this projection.*did not answer/, `the ladder borrows a live clock with no snapshot: "${own}"`)
+})
+
+await test('DR-D04: the trigger matrix names its authority and the lag to the live snapshot', () => {
+  const hedge = { ...HEDGE, as_of: CLOCKS.input }
+  const view = renderLive(projection(plain, { generated_at: CLOCKS.built, hedge_readiness: hedge,
+    tier: { tier: 'YELLOW', score: 41.8, as_of: CLOCKS.input, ladder: [], history: [] } }), DISAGREE)
+  const row = text(separator(view, 'hedge-condition-exposure'))
+  assert.match(row, /from this projection/, `the matrix does not name the record it evaluated: "${row}"`)
+  assert.match(row, /evaluated at .*09:00 ET/, `the matrix's evaluation clock is not stated: "${row}"`)
+  const lag = text(separator(view, 'defense-hedge-clock-lag'))
+  assert.match(lag, /59 min newer/, `the live snapshot's lead over the evaluation is hidden: "${lag}"`)
+  assert.match(lag, /09:59 ET/, `the live snapshot's own evidence time is not named: "${lag}"`)
+})
+
+await test('DR-D04: the recommendation rows name the clocks they rest on', () => {
+  const fact = text(separator(renderLive(CLOCKED(), DISAGREE), 'defense-steps-clock'))
+  assert.match(fact, /this projection's recommendations/, `the recommendations do not name their record: "${fact}"`)
+  assert.match(fact, /built .*10:25 ET/, `the recommendations' build time is missing: "${fact}"`)
+  assert.match(fact, /projection's tier YELLOW/, `the tier they were written at is not named: "${fact}"`)
+  assert.match(fact, /52\.3 .*09:59 ET/, `the live observation is not named beside them: "${fact}"`)
+  const silent = text(separator(renderView(CLOCKED()), 'defense-steps-clock'))
+  assert.match(silent, /did not answer/, `a silent live read is not stated on the recommendations: "${silent}"`)
+})
+
+await test('DR-D04: every line that publishes an evidence time prints it', () => {
+  const p = projection(plain, { stops: { ...STOPS, as_of: CLOCKS.input } })
+  const html = renderView(p)
+  assert.match(text(separator(html, 'defense-line-clock-stops')), /09:00 ET/, 'the stop line prints its figure without its clock')
+  assert.match(text(separator(html, 'defense-line-clock-book')), /09:59 ET/, 'the book line prints its figure without its clock')
+})
+
+await test('DR-D04: two near-identical market-risk source cards collapse into one, naming both clocks', () => {
+  const desk = { tabs: {}, sources: [
+    { id: 'market_risk', label: 'Market Risk engine', as_of: CLOCKS.input, lane_ids: ['market-risk-evaluate'], state: 'fresh' },
+    { id: 'stops', label: 'Stops (CIO record)', as_of: CLOCKS.input, lane_ids: ['unified-stop-supervisor'], state: 'fresh' },
+  ] }
+  const srcs = defenseSources({ ep: CLOCKED(), live: DISAGREE, projection: desk })
+  const risk = srcs.filter(s => /market risk/i.test(s.label))
+  assert.equal(risk.length, 1, `duplicate market-risk source cards: ${srcs.map(s => s.label).join(' | ')}`)
+  assert.equal(risk[0].label, 'Market risk (engine)', 'the surviving card is not the live observation')
+  assert.match(String(risk[0].note ?? ''), /projection's copy/, `the projection's own copy is hidden: "${risk[0].note}"`)
+  assert.match(String(risk[0].note ?? ''), /09:00 ET/, `the older copy's clock is hidden: "${risk[0].note}"`)
+  assert.ok(srcs.some(s => s.id === 'stops'), 'an unrelated source row was dropped with the duplicate')
+  // with no live snapshot the projection's row is the only record and keeps its own label
+  const alone = defenseSources({ ep: CLOCKED(), live: { marketRisk: null }, projection: desk })
+  assert.equal(alone.filter(s => /market risk/i.test(s.label)).length, 1, 'the projection row was dropped with no live record')
+  assert.equal(alone.find(s => /market risk/i.test(s.label)).label, 'Market Risk engine')
+})
+
+await test('DR-D04: a differing score OR a differing tier is a disagreement; equal records are not', () => {
+  const p = CLOCKED()
+  assert.equal(tierClockFacts(p, DISAGREE).disagree, true, 'a different score is not read as a disagreement')
+  assert.equal(tierClockFacts(p, { marketRisk: { tier: 'ORANGE', score: 41.8, asOf: CLOCKS.live } }).disagree, true,
+    'a different tier is not read as a disagreement')
+  assert.equal(tierClockFacts(p, AGREE).disagree, false, 'equal records are reported as a disagreement')
+  // a snapshot that answered with no score cannot agree or disagree on a number it did not publish
+  assert.equal(tierClockFacts(p, { marketRisk: { tier: 'YELLOW', score: null, asOf: CLOCKS.live } }).disagree, false,
+    'a missing live score is compared against the frozen one')
+  // the lag is the live evidence's lead, never a negative or invented number
+  assert.equal(tierClockFacts(p, AGREE).lagMinutes, 59, 'the lag is not measured')
+  assert.equal(tierClockFacts(p, { marketRisk: { tier: 'YELLOW', score: 41.8, asOf: CLOCKS.input } }).lagMinutes, null,
+    'a snapshot older than the projection reports a lag')
 })
 
 console.log(`${n} passed, ${failures.length} failed`)

@@ -5,7 +5,7 @@ import { DeskPanels, type DeskProjection } from '../../components/DeskBoard'
 import W7DetailSheet, { useW7Detail } from '../../components/W7DetailSheet'
 import DefenseEngineView, { EngineSheetBody, SHEET_TITLES } from '../../components/defense/engine/DefenseEngine'
 import { useApi } from '../../hooks/useApi'
-import { unwrapProjection, type LiveAuthority } from '../../lib/defenseEngine'
+import { clockET, unwrapProjection, type DefenseProjection, type LiveAuthority } from '../../lib/defenseEngine'
 import { marketRiskFact, unprotectedFact } from '../../lib/metricAuthority'
 /**
  * Approved board 3, redesigned per design defense/v001. Sector momentum is owned by Watch › Sectors
@@ -22,6 +22,38 @@ export const DEFENSE_TABS = [
 
 const ENGINE_PREFIX = 'engine:'
 
+/** DR-D04: the market-risk snapshot is two records on this page — this desk's live read and the projection's
+ *  frozen copy, which the projection republishes as its own source row ("Market Risk engine"). Two nearly
+ *  identical cards with different clocks left the reader unable to say which record a number came from. The live
+ *  read keeps the card; the projection's older copy is named in its note with its own clock and build time, so
+ *  the dependency is shown, not hidden. */
+const MARKET_RISK_LANE = 'market-risk-evaluate'
+const isRiskCopy = (s: { id: string; lane_ids?: string[] }) => s.id === 'market_risk' || (s.lane_ids ?? []).includes(MARKET_RISK_LANE)
+
+/** The desk's source cards. Exported so the duplicate-label rule is tested without standing up four reads. */
+export function defenseSources({ ep, live, projection, engineLoading = false, deskLoading = false }: {
+  ep: DefenseProjection | null
+  live: LiveAuthority
+  projection: DeskProjection | null
+  engineLoading?: boolean
+  deskLoading?: boolean
+}): DeskSource[] {
+  const riskCopy = projection?.sources.find(isRiskCopy) ?? null
+  return [
+    // Writer of record: the 17:55 inverse-stoplights cron builds and writes the projection today; switch to the
+    // defense-engine-build lane id when that n8n lane is promoted past dry-run (config/n8n_run_allowlist.json).
+    ...(ep ? [{ id: 'defense-engine', label: 'Defense engine', asOf: ep.generated_at, laneIds: ['defense-inverse-stoplights'], gap: ep.served?.stale ? ep.served.fallback_reason ?? 'served stale' : undefined }]
+      : [{ id: 'defense-engine', label: 'Defense engine', gap: engineLoading ? 'Loading the defense projection.' : 'The defense projection has not answered.' }]),
+    // LQ-20261107-1837 (C4): the tier and score printed above come from this read, not from the projection.
+    ...(live.marketRisk ? [{ id: 'market-risk', label: 'Market risk (engine)', asOf: live.marketRisk.asOf ?? undefined, laneIds: [MARKET_RISK_LANE],
+      note: riskCopy?.as_of ? `The projection's copy of this observation was taken ${clockET(riskCopy.as_of)}${ep ? `, in the build at ${clockET(ep.generated_at)}` : ''}.` : undefined }] : []),
+    ...(projection
+      ? projection.sources.filter(s => !(live.marketRisk && s === riskCopy)).map(s => ({ id: s.id, label: s.label, asOf: s.as_of, laneIds: s.lane_ids, maxAgeHours: s.max_age_hours, gap: s.gap ?? undefined, writerNote: s.writer_note ?? undefined,
+          owner: s.owner, reviewHref: s.review_href, reviewLabel: s.review_label }))
+      : [{ id: 'projection', label: 'Defense desk projection', gap: deskLoading ? 'Loading the desk projection.' : 'The desk projection has not answered.' }]),
+  ]
+}
+
 export default function DefenseDesk() {
   const desk = useApi<DeskProjection>('/api/v2/desks/defense', 300_000)
   const engine = useApi<unknown>('/api/v2/defense/engine', 300_000)
@@ -37,17 +69,7 @@ export default function DefenseDesk() {
   const { selected, open, close } = useW7Detail()
   const projection = desk.data && typeof desk.data === 'object' && 'tabs' in desk.data ? desk.data : null
   const ep = unwrapProjection(engine.data)
-  const sources: DeskSource[] = [
-    // Writer of record: the 17:55 inverse-stoplights cron builds and writes the projection today; switch to the
-    // defense-engine-build lane id when that n8n lane is promoted past dry-run (config/n8n_run_allowlist.json).
-    ...(ep ? [{ id: 'defense-engine', label: 'Defense engine', asOf: ep.generated_at, laneIds: ['defense-inverse-stoplights'], gap: ep.served?.stale ? ep.served.fallback_reason ?? 'served stale' : undefined }]
-      : [{ id: 'defense-engine', label: 'Defense engine', gap: engine.loading ? 'Loading the defense projection.' : 'The defense projection has not answered.' }]),
-    // LQ-20261107-1837 (C4): the tier and score printed above come from this read, not from the projection.
-    ...(live.marketRisk ? [{ id: 'market-risk', label: 'Market risk (engine)', asOf: live.marketRisk.asOf ?? undefined, laneIds: ['market-risk-evaluate'] }] : []),
-    ...(projection
-      ? projection.sources.map(s => ({ id: s.id, label: s.label, asOf: s.as_of, laneIds: s.lane_ids, maxAgeHours: s.max_age_hours, gap: s.gap ?? undefined, writerNote: s.writer_note ?? undefined }))
-      : [{ id: 'projection', label: 'Defense desk projection', gap: desk.loading ? 'Loading the desk projection.' : 'The desk projection has not answered.' }]),
-  ]
+  const sources: DeskSource[] = defenseSources({ ep, live, projection, engineLoading: engine.loading, deskLoading: desk.loading })
   const openEngine = (k: string) => open(`${ENGINE_PREFIX}${k}`)
   const engineSheet = selected?.startsWith(ENGINE_PREFIX) ? selected.slice(ENGINE_PREFIX.length) : null
   const [panelId, rowId] = !engineSheet && selected ? selected.split(':') : []
@@ -58,7 +80,7 @@ export default function DefenseDesk() {
   return <div data-testid="defense-desk">
     <DeskPage title="Defense" purpose="How exposed is the book if the market turns — and what hedges are ready?"
       tabs={DEFENSE_TABS} tabAliases={{ act: 'where-to-act', book: 'your-book', 'short-side': 'hedges', review: 'review-log' }}
-      sources={sources} decisions={projection?.decisions}
+      sources={sources} sourcesLast decisions={projection?.decisions}
       decisionGap={projection ? projection.decision_gap ?? 'No open decisions on file for this desk.' : 'The desk projection has not answered.'}>
       {(active: string) => <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
         {active === 'where-to-act' && (ep

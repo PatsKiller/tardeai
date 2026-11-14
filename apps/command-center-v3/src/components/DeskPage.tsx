@@ -25,6 +25,11 @@ export type DeskSource = {
   writerNote?: string
   /** With no asOf, headline the newest writer's last successful run (labelled as such) instead of "unavailable". */
   writerClockFallback?: boolean
+  /** DR-D05: who answers for this evidence — the owner a reader would ask about a stale or paused source. */
+  owner?: string
+  /** DR-D05: where this evidence is reviewed. Absent means the review surface is not published for the source. */
+  reviewHref?: string
+  reviewLabel?: string
 }
 export type DeskDecision = { id: string; title: string; detail?: string; href?: string }
 export type DeskWriter = {
@@ -95,11 +100,14 @@ export type DeskPageProps = {
   sources: readonly DeskSource[]
   decisions?: readonly DeskDecision[]
   decisionGap?: string
+  /** DR-D06: put the desk content and decisions first and the source clocks below them (Defense). Other desks keep
+   *  the default order. A one-line source-health count stays above the content either way. */
+  sourcesLast?: boolean
   children: ReactNode | ((activeTab: string) => ReactNode)
 }
 
 /** No page facts are computed here: callers supply source timestamps and decisions. */
-export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAliases, sources, decisions, decisionGap, children }: DeskPageProps) {
+export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAliases, sources, decisions, decisionGap, sourcesLast = false, children }: DeskPageProps) {
   const homeData = title === 'Home' && typeof children !== 'function' ? cioPageDataFrom(children) : null
   const pageSources = homeData ? withHomeClocks(sources, homeData) : sources
   const [active, setTab] = useDeskTab(tabs, defaultTab, tabAliases)
@@ -122,6 +130,95 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
   const sourceReadFailed = Boolean(data) && (('ok' in (data as object) && (data as { ok: boolean }).ok !== true) || !Array.isArray(payload?.writers))
   const writerRows = Array.isArray(payload?.writers) ? payload!.writers : []
   const writers = new Map(writerRows.filter(writer => writer && typeof writer.lane_id === 'string').map(writer => [writer.lane_id, writer]))
+  // One reading per source, computed once: the health line and the card must not disagree about the same source.
+  const readFailed = Boolean(error || stale || sourceReadFailed)
+  const views = pageSources.map(source => {
+    const sourceWriters = (source.laneIds ?? []).map(id => ({ id, writer: writers.get(id) }))
+    const writerRun = !source.asOf && source.writerClockFallback ? newestWriterRun(sourceWriters.map(w => w.writer)) : null
+    const shownAt = source.asOf ?? writerRun
+    const age = clock(shownAt, now)
+    const staleSource = source.maxAgeHours !== undefined && age.hours !== undefined && age.hours > source.maxAgeHours
+    const gap = (writerRun ? null : source.gap) || age.gap || (staleSource ? 'This source is older than the freshness window for this view.' : null)
+      || (writerRun && age.hours !== undefined && age.hours > 26 ? 'The writer has not succeeded in over a day.' : null)
+    const badWriter = sourceWriters.some(({ writer }) => writer && writer.state && writer.state !== 'ACTIVE')
+    // A lane with no evidence row (or one that declares no state) is unknown, never quietly healthy.
+    const unknownWriter = sourceWriters.some(({ writer }) => !writer || writer.state === null) || (loading && sourceWriters.length > 0)
+    const needsAttention = Boolean(gap) || badWriter
+    return { source, age, writerRun, shownAt, gap, sourceWriters, needsAttention,
+      unknown: !needsAttention && (readFailed ? sourceWriters.length > 0 : unknownWriter) }
+  })
+  const attentionCount = views.filter(view => view.needsAttention).length
+  const unknownCount = views.filter(view => view.unknown).length
+  const health = views.length === 0 ? 'no source clocks supplied'
+    : [`${views.length} source${views.length === 1 ? '' : 's'}`,
+       attentionCount ? `${attentionCount} ${attentionCount === 1 ? 'needs' : 'need'} attention` : null,
+       unknownCount ? `${unknownCount} unknown` : null,
+       !attentionCount && !unknownCount ? 'all writers active' : null].filter(Boolean).join(' · ')
+  const healthStyle: CSSProperties = { margin: 0, fontSize: TYPE.base, color: attentionCount || unknownCount ? BB.amber : BB.text3 }
+  // Mobile first (operator 2026-11-07 "catalog not showing on mobile"): on a phone the clocks pushed the page's own
+  // content a full screen down. Below 820px they fold into one tap-to-open line; nothing is removed, and they open
+  // on their own when the clocks could not be read.
+  const clocks = <section aria-label="Source clocks" style={panel}>
+    <details data-testid="desk-source-clocks" open={!narrow || readFailed}>
+    <summary style={{ cursor: 'pointer', minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, listStyle: narrow ? undefined : 'none' }}>
+      <h2 style={{ margin: 0, fontSize: TYPE.md }}>Source clocks</h2>
+      {narrow && <span style={{ fontSize: TYPE.sm, color: BB.text3 }}>{pageSources.length} source{pageSources.length === 1 ? '' : 's'} · tap for when each was last updated</span>}
+    </summary>
+    <div style={{ marginTop: 12 }}>
+    {readFailed && <DeskGap title="Writer clocks unavailable" reason="The latest execution evidence could not be loaded. Any retained clocks are historical.">
+      <button type="button" onClick={refetch} style={{ minHeight: 44, width: '100%', marginTop: 8 }}>Retry writer clocks</button>
+    </DeskGap>}
+    {pageSources.length === 0 && <DeskGap title="Source evidence unavailable" reason="This view has not supplied source clocks." />}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 12 }}>
+      {views.map(({ source, age, writerRun, shownAt, gap, sourceWriters }) => <article key={source.id} style={{ ...panel, padding: 12 }}>
+          <strong>{source.label}</strong>
+          {/* DR-D05: who answers for this evidence, and where it is reviewed. Both are primary text — a reader
+              deciding whether to trust a stale or paused source needs them before opening Diagnostics. */}
+          {source.owner && <div data-testid="desk-source-owner" style={{ fontSize: TYPE.base, color: BB.text2, marginTop: 2 }}>Owner: {source.owner}</div>}
+          <div data-testid="desk-source-age" style={{ color: gap ? BB.amber : BB.text2, marginTop: 6 }}>{age.hours !== undefined ? `${writerRun ? 'Writer last ran' : 'Updated'} ${age.text}` : sentence(age.text)}</div>
+          {shownAt && <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>{writerRun ? 'Last successful run at' : 'As of'} <ReadableTime value={shownAt} testId="desk-source-as-of" /></div>}
+          {source.note && <div data-testid="desk-source-note" style={{ fontSize: TYPE.base, color: BB.text2, marginTop: 6 }}>{source.note}</div>}
+          {source.reviewHref
+            ? <Link data-testid="desk-source-review" style={{ color: T.link, display: 'flex', alignItems: 'center', minHeight: 44, fontSize: TYPE.base }} to={source.reviewHref}>{source.reviewLabel ?? 'Review this source'} →</Link>
+            : sourcesLast && <p data-testid="desk-source-review" style={{ color: BB.text3, fontSize: TYPE.base, margin: '4px 0 0' }}>No review link is published for this source.</p>}
+          {sourceWriters.length === 0 && source.writerNote && <p data-testid="desk-source-writer-note" style={{ color: BB.text2, fontSize: TYPE.base }}>{source.writerNote}</p>}
+          {sourceWriters.length === 0 && !source.writerNote && !source.clockOnly && <p style={{ color: BB.amber, fontSize: TYPE.base }}>Writer not identified for this source.</p>}
+          {sourceWriters.map(({ id, writer }, index) => {
+            // FQ-051: the operator needs one fact — is this source still being refreshed, and what it costs if not.
+            // The writer's own state code, its last successful run and its last output are how that is worked out, not
+            // what a person reads first: they move one tap away, none of them removed.
+            const st = writer?.state
+            // Every declared state gets its own true sentence: PAUSED and NONE are read successfully, so neither may
+            // be reported as "State unavailable". See lib/deskWriterState.ts and its test.
+            const words = writerStateWords(st, loading)
+            return <div key={id} style={{ borderTop: `1px solid ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>
+              <div data-testid="source-writer-state" style={{ color: st === 'ACTIVE' ? BB.text2 : BB.amber }}>{words}{sourceWriters.length > 1 ? ` · ${index + 1}` : ''}</div>
+              <details data-testid="source-writer-diagnostics" style={{ marginTop: 4 }}>
+                <summary style={{ cursor: 'pointer', fontSize: TYPE.sm, color: BB.text3, minHeight: 44, display: 'flex', alignItems: 'center' }}>Diagnostics</summary>
+                <div style={{ color: BB.text3, fontSize: TYPE.sm, display: 'grid', gap: 2 }}>
+                  <div>Writer state: {st ?? (loading ? 'loading' : 'unavailable')}</div>
+                  <div>Last successful run: {writer?.last_success_at ? clock(writer.last_success_at, now).text : 'not measured'}</div>
+                  {writer?.last_success_at && <div>At <ReadableTime value={writer.last_success_at} /></div>}
+                  <div>Evidence captured: {writer?.evidence_as_of ? clock(writer.evidence_as_of, now).text : 'not measured'}</div>
+                  {(writer?.reason || !writer) && <div style={{ color: BB.amber }}>{writer?.reason ?? (loading ? 'Loading execution evidence.' : 'Execution evidence is unavailable for this writer.')}</div>}
+                </div>
+              </details>
+            </div>
+          })}
+          {gap && <div role="note" style={{ color: BB.amber, borderTop: `1px dashed ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>{gap}</div>}
+        </article>)}
+    </div>
+    </div>
+    </details>
+  </section>
+  const decisionsBlock = <section aria-label="Decisions for you" style={panel}>
+    <h2 style={{ fontSize: TYPE.md, margin: '0 0 8px' }}>Decisions for you</h2>
+    {decisions?.length ? <ul style={{ paddingLeft: 20, margin: 0 }}>{decisions.map(decision => <li key={decision.id} style={{ marginTop: 8 }}>
+      {!decision.href && <strong>{decision.title}</strong>}
+      {decision.detail && <div style={{ fontSize: TYPE.base, color: BB.text3, marginTop: 4 }}>{decision.detail}</div>}
+      {decision.href && <Link style={{ color: T.link, display: 'flex', alignItems: 'center', minHeight: 44, width: '100%' }} to={decision.href}>{decision.title}</Link>}
+    </li>)}</ul> : <p style={{ color: BB.text3, margin: 0 }}>{decisionGap ?? 'Decision evidence has not been supplied for this view.'}</p>}
+  </section>
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0, color: BB.text1 }}>
     <header><h1 style={{ margin: 0, fontSize: TYPE.xl, color: BB.text0 }}>{title}</h1>
       <p style={{ margin: '6px 0 0', color: BB.text3, fontSize: TYPE.md }}>{purpose}</p></header>
@@ -131,72 +228,11 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
         border: `1px solid ${active === tab.id ? T.link : BB.border}`, color: active === tab.id ? T.link : BB.text2, background: BB.bgPanel,
       }}>{tab.label}</button>)}
     </nav>}
-    {/* Mobile first (operator 2026-11-07 "catalog not showing on mobile"): on a phone the clocks pushed the page's own
-        content a full screen down. Below 820px they fold into one tap-to-open line; nothing is removed, and they open
-        on their own when the clocks could not be read. */}
-    <section aria-label="Source clocks" style={panel}>
-      <details data-testid="desk-source-clocks" open={!narrow || !!(error || stale || sourceReadFailed)}>
-      <summary style={{ cursor: 'pointer', minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, listStyle: narrow ? undefined : 'none' }}>
-        <h2 style={{ margin: 0, fontSize: TYPE.md }}>Source clocks</h2>
-        {narrow && <span style={{ fontSize: TYPE.sm, color: BB.text3 }}>{pageSources.length} source{pageSources.length === 1 ? '' : 's'} · tap for when each was last updated</span>}
-      </summary>
-      <div style={{ marginTop: 12 }}>
-      {(error || stale || sourceReadFailed) && <DeskGap title="Writer clocks unavailable" reason="The latest execution evidence could not be loaded. Any retained clocks are historical.">
-        <button type="button" onClick={refetch} style={{ minHeight: 44, width: '100%', marginTop: 8 }}>Retry writer clocks</button>
-      </DeskGap>}
-      {pageSources.length === 0 && <DeskGap title="Source evidence unavailable" reason="This view has not supplied source clocks." />}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 12 }}>
-        {pageSources.map(source => {
-          const sourceWriters = (source.laneIds ?? []).map(id => writers.get(id))
-          const writerRun = !source.asOf && source.writerClockFallback ? newestWriterRun(sourceWriters) : null
-          const shownAt = source.asOf ?? writerRun
-          const age = clock(shownAt, now)
-          const staleSource = source.maxAgeHours !== undefined && age.hours !== undefined && age.hours > source.maxAgeHours
-          const gap = (writerRun ? null : source.gap) || age.gap || (staleSource ? 'This source is older than the freshness window for this view.' : null)
-            || (writerRun && age.hours !== undefined && age.hours > 26 ? 'The writer has not succeeded in over a day.' : null)
-          return <article key={source.id} style={{ ...panel, padding: 12 }}>
-            <strong>{source.label}</strong><div data-testid="desk-source-age" style={{ color: gap ? BB.amber : BB.text2, marginTop: 6 }}>{age.hours !== undefined ? `${writerRun ? 'Writer last ran' : 'Updated'} ${age.text}` : sentence(age.text)}</div>
-            {shownAt && <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>{writerRun ? 'Last successful run at' : 'As of'} <ReadableTime value={shownAt} testId="desk-source-as-of" /></div>}
-            {source.note && <div data-testid="desk-source-note" style={{ fontSize: TYPE.base, color: BB.text2, marginTop: 6 }}>{source.note}</div>}
-            {sourceWriters.length === 0 && source.writerNote && <p data-testid="desk-source-writer-note" style={{ color: BB.text2, fontSize: TYPE.base }}>{source.writerNote}</p>}
-            {sourceWriters.length === 0 && !source.writerNote && !source.clockOnly && <p style={{ color: BB.amber, fontSize: TYPE.base }}>Writer not identified for this source.</p>}
-            {sourceWriters.map((writer, index) => {
-              // FQ-051: the operator needs one fact — is this source still being refreshed, and what it costs if not.
-              // The writer's own state code, its last successful run and the execution-evidence capture are how that is
-              // worked out, not what a person reads: they move one tap away, none of them removed.
-              const st = writer?.state
-              // Every declared state gets its own true sentence: PAUSED and NONE are read successfully, so neither may
-              // be reported as "State unavailable". See lib/deskWriterState.ts and its test.
-              const words = writerStateWords(st, loading)
-              return <div key={source.laneIds![index]} style={{ borderTop: `1px solid ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>
-                <div data-testid="source-writer-state" style={{ color: st === 'ACTIVE' ? BB.text2 : BB.amber }}>{words}{sourceWriters.length > 1 ? ` · ${index + 1}` : ''}</div>
-                <details data-testid="source-writer-diagnostics" style={{ marginTop: 4 }}>
-                  <summary style={{ cursor: 'pointer', fontSize: TYPE.sm, color: BB.text3, minHeight: 44, display: 'flex', alignItems: 'center' }}>Diagnostics</summary>
-                  <div style={{ color: BB.text3, fontSize: TYPE.sm, display: 'grid', gap: 2 }}>
-                    <div>Writer state: {st ?? (loading ? 'loading' : 'unavailable')}</div>
-                    <div>Last successful run: {writer?.last_success_at ? clock(writer.last_success_at, now).text : 'not measured'}</div>
-                    {writer?.last_success_at && <div>At <ReadableTime value={writer.last_success_at} /></div>}
-                    {writer?.evidence_as_of && <div>Evidence captured: {clock(writer.evidence_as_of, now).text}</div>}
-                    {(writer?.reason || !writer) && <div style={{ color: BB.amber }}>{writer?.reason ?? (loading ? 'Loading execution evidence.' : 'Execution evidence is unavailable for this writer.')}</div>}
-                  </div>
-                </details>
-              </div>
-            })}
-            {gap && <div role="note" style={{ color: BB.amber, borderTop: `1px dashed ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>{gap}</div>}
-          </article>
-        })}
-      </div>
-      </div>
-      </details>
-    </section>
-    <section aria-label="Decisions for you" style={panel}>
-      <h2 style={{ fontSize: TYPE.md, margin: '0 0 8px' }}>Decisions for you</h2>
-      {decisions?.length ? <ul style={{ paddingLeft: 20, margin: 0 }}>{decisions.map(decision => <li key={decision.id} style={{ marginTop: 8 }}>
-        {!decision.href && <strong>{decision.title}</strong>}
-        {decision.detail && <div style={{ fontSize: TYPE.base, color: BB.text3, marginTop: 4 }}>{decision.detail}</div>}
-        {decision.href && <Link style={{ color: T.link, display: 'flex', alignItems: 'center', minHeight: 44, width: '100%' }} to={decision.href}>{decision.title}</Link>}
-      </li>)}</ul> : <p style={{ color: BB.text3, margin: 0 }}>{decisionGap ?? 'Decision evidence has not been supplied for this view.'}</p>}
-    </section>
+    {/* DR-D06: when the evidence moves below the answer, its health must not move with it. */}
+    {sourcesLast && <p data-testid="desk-source-health" style={healthStyle}><strong>Source health:</strong> {health}</p>}
+    {!sourcesLast && clocks}
+    {decisionsBlock}
     <div ref={contentRef} style={{ scrollMarginTop: 8 }}>{homeData ? <HomeBoardMount data={homeData} /> : (typeof children === 'function' ? children(active) : children)}</div>
+    {sourcesLast && clocks}
   </div>
 }

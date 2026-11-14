@@ -23,6 +23,9 @@ from zoneinfo import ZoneInfo
 
 READ_LIMIT = 4 * 1024 * 1024
 MAX_ROWS = 12
+# DR-R05: the modern Re-Entry view carries the whole current packet queue instead of sending two-thirds of it to
+# Classic. 200 is a payload guard, not a review limit: past it the panel says exactly how many are not listed.
+QUEUE_CAP = 200
 DESKS = ("reentry", "strategy", "defense", "agents")
 GAP_NOT_ON_FILE = "not on file"
 GAP_NOT_MEASURED = "not measured"
@@ -154,14 +157,35 @@ def _panel(pid: str, title: str, rows: list[dict], *, sub: str | None = None, sp
 
 
 def _source(sid: str, label: str, as_of: Any, lanes: list[str], *, gap: str | None = None,
-            max_age_hours: float | None = None, writer_note: str | None = None) -> dict:
+            max_age_hours: float | None = None, writer_note: str | None = None,
+            owner: str | None = None, review_href: str | None = None, review_label: str | None = None) -> dict:
     out = {"id": sid, "label": label, "as_of": _iso(as_of), "lane_ids": lanes, "gap": gap}
     if writer_note and not lanes:
         # LQ-20261107-529: a source with no scheduled writer says why, instead of "Writer not identified".
         out["writer_note"] = writer_note
     if max_age_hours is not None:
         out["max_age_hours"] = max_age_hours
+    # DR-D05: who answers for this evidence, and where it is reviewed.
+    if owner is not None:
+        out["owner"] = owner
+    if review_href:
+        out["review_href"] = review_href
+        out["review_label"] = review_label or "Review this source"
     return out
+
+
+def lane_owners(root: Path) -> dict[str, str] | None:
+    """lane_id → registered owner, or None when the registry cannot be read.
+
+    The lane registry has published an ``owner`` per lane all along; the desk sources never carried it, so a
+    paused or stale source had no addressee. A lane registered without an owner is absent from the map (the
+    caller says "not published") rather than inheriting a neighbour's.
+    """
+    doc, _gap = _read_json(Path(root) / "config" / "lane_registry.json")
+    if not isinstance(doc, dict) or not isinstance(doc.get("lanes"), list):
+        return None
+    return {str(l.get("lane_id")): str(l.get("owner")) for l in doc["lanes"]
+            if isinstance(l, dict) and l.get("owner")}
 
 
 def lane_states(root: Path) -> dict[str, str] | None:
@@ -249,6 +273,61 @@ def _candidate_evidence(r: dict, level: dict | None, max_age_h: float) -> list[t
     ]
 
 
+def _held_positions(symbol: str, truth: dict) -> list[dict] | None:
+    """DR-R03: cio_truth's position rows for this symbol, or None when the holdings record was not read.
+
+    The capture had a BUY_READY candidate for a name the Portfolio held, and the candidate row said nothing
+    about it. None means "unreadable", never "unheld": the record is one row per account/instrument, each with
+    its own position_clock, and a candidate is only called unheld when the record was read and carried none.
+    Cash and loan rows are not positions; a zero- or negative-share row is not a holding either.
+    """
+    block = truth.get("positions") if isinstance(truth, dict) else None
+    rows = block.get("rows") if isinstance(block, dict) else None
+    if not isinstance(rows, list):
+        return None
+    out = []
+    for p in rows:
+        if not isinstance(p, dict) or p.get("is_cash") or p.get("is_loan"):
+            continue
+        if str(p.get("symbol") or "").upper() != symbol.upper():
+            continue
+        shares = _num(p.get("shares")) if p.get("shares") is not None else _num(p.get("quantity"))
+        if shares is None or shares <= 0:
+            continue
+        out.append({**p, "_shares": shares})
+    return out
+
+
+HOLDINGS_UNREADABLE = "unverified — the holdings record could not be read"
+EXIT_JOIN_MISSING = ("unverified — no canonical candidate-to-exit join is published (position_snapshot_id, "
+                     "matched exit ids and quantities); this row does not match exits by symbol")
+
+
+def _held_context(symbol: str, truth: dict) -> tuple[list[tuple[str, Any]], str | None]:
+    """The holding fields for one candidate and its compact row marker (None when there is none to show)."""
+    held = _held_positions(symbol, truth)
+    if held is None:
+        fields: list[tuple[str, Any]] = [("Holding state", HOLDINGS_UNREADABLE)]
+        marker = None
+    elif not held:
+        # the record was read and carries no position; that is not evidence the whole position was exited
+        fields = [("Holding state", "no position in the holdings record — not proof of a full exit")]
+        marker = None
+    else:
+        n = len(held)
+        fields = [("Holding state", f"Currently held — {n} {'account' if n == 1 else 'accounts'}")]
+        for p in held:
+            label = p.get("account_label") or p.get("account_id") or "account not recorded"
+            mv = _money(p.get("market_value"))
+            clock = (p.get("position_clock") or {}).get("as_of") if isinstance(p.get("position_clock"), dict) else None
+            observed = f"observed {_date(clock)}" if _time(clock) else "observation time not published"
+            fields.append((f"Currently held · {label}", f"{_count(p['_shares'])} sh · {mv} · {observed}"))
+        # one account's own shares, never a sum across accounts: two accounts are two positions
+        marker = f"held {_count(held[0]['_shares'])} sh" if n == 1 else f"held in {n} accounts"
+    fields.append(("Exit match", EXIT_JOIN_MISSING))
+    return fields, marker
+
+
 def _cio_stance_text(stance: dict | None) -> str:
     if not stance or stance.get("gap") or stance.get("stance") is None:
         return "CIO stance not on file"
@@ -297,27 +376,51 @@ def reentry_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     resist = resist_doc.get("symbols") if isinstance(resist_doc.get("symbols"), dict) else {}
 
     ready_rows = []
-    for r in rows[:MAX_ROWS]:
+    # DR-R05: an explicit, stated order — newest packet first, ties by symbol then account — and one row per PACKET.
+    # Two accounts holding the same instrument used to produce two rows with one ID; the ID now names the account
+    # when, and only when, the symbol appears in more than one packet.
+    queue = sorted(rows, key=lambda r: (-(_time(r.get("saved_at")) or datetime.min.replace(tzinfo=timezone.utc)).timestamp(),
+                                        str(r.get("symbol") or ""), str(r.get("account") or "")))
+    per_symbol: dict[str, int] = {}
+    for r in queue:
+        per_symbol[str(r.get("symbol") or "?").upper()] = per_symbol.get(str(r.get("symbol") or "?").upper(), 0) + 1
+    for r in queue[:QUEUE_CAP]:
         sym = str(r.get("symbol") or "?")
+        acct = str(r.get("account") or "")
+        rid = f"pkt-{sym}-{acct}" if acct and per_symbol.get(sym.upper(), 0) > 1 else f"pkt-{sym}"
         lo, hi = _num(r.get("entry_low")), _num(r.get("entry_high"))
         zone = f"zone ${lo:,.2f}–${hi:,.2f}" if lo is not None and hi is not None else "zone not on file"
         st = stances.get(sym.upper())
-        ready_rows.append(_row(f"pkt-{sym}", f"{sym} · {zone}", str(r.get("state") or GAP_NOT_ON_FILE),
+        # DR-R03: the holdings record's own rows for this symbol, so a candidate the book already holds says so
+        holding, held_marker = _held_context(sym, truth)
+        ready_rows.append(_row(rid, f"{sym} · {zone}" + (f" · {held_marker}" if held_marker else ""),
+                               str(r.get("state") or GAP_NOT_ON_FILE),
                                "good" if r.get("state") == "BUY_READY" else "info",
                                detail=_detail(f"{sym} · {r.get('state') or 'packet'}", [
                                    ("Stage (packet)", r.get("state")),
+                                   ("Account", acct or "not recorded in the packet"),
                                    ("Entry zone", zone.removeprefix("zone ")),
+                                   *holding,
                                    *_candidate_evidence(r, resist.get(sym.upper()) if isinstance(resist.get(sym.upper()), dict) else None, max_age_h),
                                    ("Planned stop", f"${_num(r.get('stop')):,.2f}" if _num(r.get("stop")) is not None else None),
                                    ("Planned target", f"${_num(r.get('target')):,.2f}" if _num(r.get("target")) is not None else None),
                                    ("Plan R:R", r.get("rr_plan")),
                                    ("Catalyst", r.get("catalyst") if isinstance(r.get("catalyst"), str) else (r.get("catalyst") or {}).get("summary") if isinstance(r.get("catalyst"), dict) else None),
                                    ("CIO stance (cio_truth)", _cio_stance_text(st)),
-                               ], "data/runtime/buy_ready_packets/<SYM>.json via buy_ready_packets_index; resistance via ui_prefs portfolio.reentry.resistance.v1; stance via cio_truth.stances_for_symbols",
+                               ], "data/runtime/buy_ready_packets/<SYM>.json via buy_ready_packets_index; resistance via ui_prefs portfolio.reentry.resistance.v1; stance via cio_truth.stances_for_symbols; holdings via cio_truth positions.rows",
                                    href=f"/watch?symbol={sym}", href_label="Set an alert on Watch →")))
-    if len(rows) > MAX_ROWS:
-        ready_rows.append(_row("pkt-more", f"{len(rows) - MAX_ROWS} more current packets", "Classic view →", "info",
-                               href="/portfolio/re-entry/classic"))
+    if len(rows) > QUEUE_CAP:
+        ready_rows.append(_row("pkt-more", f"{len(rows) - QUEUE_CAP} more current packets — not listed here (no paging is published)",
+                               "Classic view →", "info", href="/portfolio/re-entry/classic"))
+    ready_rows.append(_row("pkt-controls", "Search and filters", "not published", "info",
+                           detail=_detail("Ready now · queue controls", [
+                               ("Published here", f"every current packet ({_plural(len(rows), 'packet')}), newest first"),
+                               ("Order", "newest packet first; ties by symbol, then account"),
+                               ("Search", "not published: the packet index has no server-side search (NEEDS BACKEND)"),
+                               ("Filters", "not published: no filter read model is served (NEEDS BACKEND)"),
+                               ("Paging", "not needed while the queue fits this view; the list states any it does not hold"),
+                               ("Classic view", "remains as secondary access, not the only route to the queue"),
+                           ], "GET /api/v2/desks/reentry (this projection); the packet index is read whole here")))
     ready_rows.append(_row("pkt-alert", "Set an alert on any name", "→ Watch alerts", "info", href="/watch"))
     stale_note = (f"{_plural(len(stale), 'packet')} older than {packets.get('max_age_h', 48):g} h {'is' if len(stale) == 1 else 'are'} hidden here and kept in history."
                   if stale else None)
@@ -337,13 +440,97 @@ def reentry_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     exit_symbols = sorted({str(r.get("symbol") or "").upper() for r in exit_rows_raw if r.get("symbol")})
     missing_res = [s for s in exit_symbols if not isinstance(resist.get(s), dict) or resist[s].get("state") in (None, "UNAVAILABLE")]
     class_gap = "Your saved exit classifications could not be read." if prefs is None else None
+    # DR-R06: counts without their relation were unusable — "Stopped out 5" and "Exits classified 30" looked like
+    # two universes. Each count now names the set it counts and the sets it sits inside; the unclassified total and
+    # the subset relation are published, and the five stopped-out records are listed, not counted.
+    def _key(r: dict) -> str:
+        return str(r.get("event_key") or "")
+
+    classified = [r for r in exit_rows_raw if _key(r) in saved]
+    stopped_out = [r for r in classified if saved[_key(r)].get("eventType") == "stopped_out"]
+    unclassified_exits = [r for r in exit_rows_raw if _key(r) not in saved]
+    counts_ok = prefs is not None and exit_gap is None
+    # Nothing read is not zero counted: every count field says "not on file" when the history or the saved
+    # classifications could not be read.
+    def _ct(text: str) -> str:
+        return text if counts_ok else GAP_NOT_ON_FILE
+
     classification = [
-        _row("cls-stopped", "Stopped out (saved by you)", _count(sum(1 for v in saved.values() if v.get("eventType") == "stopped_out")) if prefs is not None else GAP_NOT_ON_FILE),
-        _row("cls-saved", "Exits classified (saved by you)", _count(len(saved)) if prefs is not None else GAP_NOT_ON_FILE),
-        _row("cls-res", "Sold names with no resistance level on file", _count(len(missing_res)) if prefs is not None and exit_gap is None else GAP_NOT_ON_FILE,
-             "warn" if missing_res else None),
+        _row("cls-stopped", "Stopped out (saved by you)",
+             f"{len(stopped_out)} of {_plural(len(classified), 'classified exit')}" if counts_ok else GAP_NOT_ON_FILE,
+             detail=_detail("Classification · stopped out", [
+                 ("Counts", _ct(f"{len(stopped_out)} exits you classified stopped out")),
+                 ("Subset", "stopped out is a subset of the classified exits — every one of these is also in that count"),
+                 ("Universe", _ct(f"{_plural(len(exit_rows_raw), 'sell')} in the exit history read by this desk")),
+                 ("Where the records are", "listed individually under Exits review · stopped out"),
+             ], "ui_prefs portfolio.reentry.event-classifications.v1 (saved by you); trade_transactions + deploy_events")),
+        _row("cls-saved", "Exits classified (saved by you)",
+             f"{len(classified)} of {_plural(len(exit_rows_raw), 'sell')} classified" if counts_ok else GAP_NOT_ON_FILE,
+             detail=_detail("Classification · classified exits", [
+                 ("Counts", _ct(f"{len(classified)} of {len(exit_rows_raw)} sells carry a saved classification")),
+                 ("Saved by", "you, through the exit classification review"),
+                 ("Of which stopped out", _count(len(stopped_out)) if counts_ok else GAP_NOT_ON_FILE),
+             ], "ui_prefs portfolio.reentry.event-classifications.v1")),
+        _row("cls-unclassified", "Exits with no saved classification",
+             f"{_plural(len(unclassified_exits), 'exit')} {'has' if len(unclassified_exits) == 1 else 'have'} no saved classification"
+             if counts_ok else GAP_NOT_ON_FILE,
+             "warn" if unclassified_exits else None,
+             detail=_detail("Classification · unclassified", [
+                 ("Counts", _ct(f"{len(unclassified_exits)} of {len(exit_rows_raw)} sells have no saved classification")),
+                 ("Why it matters", "an unclassified exit has no saved reason, so its re-entry intent cannot be reviewed"),
+                 ("Next step", "classify each one in the exit review (Classic today)"),
+             ], "trade_transactions + deploy_events vs ui_prefs portfolio.reentry.event-classifications.v1")),
+        _row("cls-res", "Sold names with no resistance level on file",
+             f"{_count(len(missing_res))} sold names, no level on file" if counts_ok else GAP_NOT_ON_FILE,
+             "warn" if missing_res else None,
+             detail=_detail("Classification · sold names without a level", [
+                 ("Counts", _ct(f"{len(missing_res)} of {len(exit_symbols)} sold symbols have no usable level")),
+                 ("Unit", "one row per SYMBOL, not per sell: a name sold twice is one missing level"),
+                 ("Where the records are", "listed individually under Resistance & levels · sold names with no level"),
+             ], "ui_prefs portfolio.reentry.resistance.v1 vs exit symbols")),
         _row("cls-edit", "Classify or edit an exit", "Classic view →", "info", href="/portfolio/re-entry/classic"),
     ]
+    # DR-R06: the stopped-out count is now a queue. One row per record, keyed by its exit ID; the reason is the
+    # one you saved, and the quantity is "not published" because the exit read model carries proceeds, not shares.
+    stopped_queue = []
+    for r in sorted(stopped_out, key=lambda r: str(r.get("trade_date") or ""), reverse=True):
+        key, sym = _key(r), str(r.get("symbol") or "?")
+        c = saved.get(key) or {}
+        level = resist.get(sym.upper()) if isinstance(resist.get(sym.upper()), dict) else None
+        stopped_queue.append(_row(f"exit-review-{key}", f"{sym} · sold {str(r.get('trade_date') or '')[:10]}",
+                                  str(c.get("eventType") or "stopped out").replace("_", " "), "warn",
+                                  detail=_detail(f"{sym} · stopped-out exit {key}", [
+                                      ("Exit ID", key),
+                                      ("Symbol", sym),
+                                      ("Account", r.get("account_label") or r.get("account") or "not published"),
+                                      ("Exit date", str(r.get("trade_date") or "")[:10] or None),
+                                      ("Proceeds", _money(r.get("proceeds_usd"))),
+                                      ("Quantity", "not published (the exit read model publishes proceeds, not shares sold)"),
+                                      ("Your reason", c.get("reason")),
+                                      ("Classification", str(c.get("eventType") or "not classified").replace("_", " ")),
+                                      ("Level on file", (level.get("state") if level else "no record")),
+                                      ("Level evidence time", _date(level.get("as_of")) if level else "no record"),
+                                      ("Redeploy event", r.get("event_status") or "not matched"),
+                                      ("Next step", "review this exit's classification in the exit review (Classic today; "
+                                                    "no modern edit action is published)"),
+                                  ], "ui_prefs portfolio.reentry.event-classifications.v1 + trade_transactions + deploy_events")))
+    # DR-R06: the no-level count is a queue too, one row per sold symbol, with the state its own record carries.
+    levels_missing = []
+    for sym in missing_res:
+        rec = resist.get(sym) if isinstance(resist.get(sym), dict) else None
+        state = str((rec or {}).get("state") or "no record")
+        levels_missing.append(_row(f"no-level-{sym}", f"{sym} · no usable resistance level", state,
+                                   "warn" if rec else None,
+                                   detail=_detail(f"{sym} · resistance level missing", [
+                                       ("Symbol", sym),
+                                       ("Level record", state),
+                                       ("Last known level", _num((rec or {}).get("resistance")) or "not published"),
+                                       ("Level evidence time", _date((rec or {}).get("as_of")) if rec and rec.get("as_of")
+                                                               else ("no record on file" if not rec else "not published")),
+                                       ("Why it is missing", "the resistance cache has no usable level for this sold name"),
+                                       ("Next step", "classify it or set a level in the resistance review (Classic today; "
+                                                     "a modern edit action is not published — NEEDS BACKEND)"),
+                                   ], "ui_prefs portfolio.reentry.resistance.v1; absence is the finding, not a zero")))
     workbench = []
     for r in sorted(recent, key=lambda r: str(r.get("trade_date") or ""), reverse=True)[:MAX_ROWS]:
         sym, key = str(r.get("symbol") or "?"), str(r.get("event_key") or "")
@@ -424,7 +611,7 @@ def reentry_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     # than borrowing a number. Overlap between sources is "not counted" because no shared candidate ID exists.
     index_read = bool(packets)
     current_instruments = {str(r.get("symbol") or "").upper() for r in rows if r.get("symbol")}
-    drawn, more_current = min(len(rows), MAX_ROWS), max(0, len(rows) - MAX_ROWS)
+    drawn, more_current = min(len(rows), QUEUE_CAP), max(0, len(rows) - QUEUE_CAP)
     newest_stale = max((r.get("saved_at") for r in stale if _time(r.get("saved_at"))),
                        key=lambda v: _time(v), default=None)
     populations = [
@@ -446,8 +633,10 @@ def reentry_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
                  ("Rule", f"{max_age_h:g} h, counted in trading days — weekends and exchange holidays do not count"),
                  ("Dedupe", "one packet per (symbol, account): a symbol held in two accounts is two packets and one instrument"),
                  ("As of", _date(packets.get("as_of")) if index_read else GAP_NOT_ON_FILE),
-                 ("Shown here", (f"{drawn} of {len(rows)}" + (f" — {more_current} more listed below" if more_current else ""))
+                 ("Shown here", (f"{drawn} of {len(rows)}" + (f" — {more_current} not listed (no paging is published)"
+                                                               if more_current else " — all current packets are listed below"))
                                  if index_read else GAP_NOT_ON_FILE),
+                 ("Order", "newest packet first; ties by symbol, then account"),
                  ("Overlap with history", "none: a packet is current or historical by its trading age, never both"),
              ], "data/runtime/buy_ready_packets/*.json via buy_ready_packets_index.index_packets")),
         _row("pop-history", "Historical packets",
@@ -508,10 +697,16 @@ def reentry_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
             _panel("workbench", "Exit workbench", workbench, sub="sells in the last 30 days", span=2, gap=exit_gap,
                    empty="No sells in the last 30 days."),
             _panel("classification-x", "Classification", classification, sub="why you exited", gap=class_gap or exit_gap),
+            _panel("exits-stopped", "Exits review · stopped out (saved by you)", stopped_queue,
+                   sub="one row per stopped-out exit · newest first", gap=exit_gap or class_gap,
+                   empty="No exit is classified stopped out."),
         ]},
         "resistance-levels": {"panels": [
             _panel("levels", "Resistance & levels", levels, sub=f"nearest first · {_count(resist_doc.get('symbol_count')) if resist_doc else GAP_NOT_ON_FILE} names cached", span=2,
                    gap=class_gap or (None if resist else "No resistance levels on file."), empty="No resistance levels on file."),
+            _panel("levels-missing", "Resistance & levels · sold names with no level", levels_missing,
+                   sub="one row per sold symbol · absence of a level is the finding",
+                   gap=class_gap or exit_gap, empty="Every sold symbol has a usable level on file."),
         ]},
         "analyst-evidence": {"panels": [
             _panel("analyst", "Analyst evidence", analyst, sub=f"pro-analyst pills {_count(pills_doc.get('symbol_count'))} · {_date(pills_doc.get('updated_at'))}", span=2,
@@ -695,6 +890,16 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     rt = root / "data" / "runtime"
     truth = truth if isinstance(truth, dict) else {}
     states = states if states is not None else lane_states(root)
+    # DR-D05: the lane registry's own `owner` field, joined onto the source that lane writes. Not read ⇒ every
+    # source says "not published"; the operator-written review console is the one owner known without a lane.
+    owners = lane_owners(root)
+
+    def _own(key: str) -> str:
+        lanes = DEFENSE_LANES[key]
+        if not lanes:
+            return "operator"
+        return (owners or {}).get(lanes[0], "not published")
+
     momentum, m_gap = _read_json(rt / "sector_momentum_latest.json")
     momentum = momentum if isinstance(momentum, dict) else {}
     industries, i_gap = _read_json(rt / "industry_momentum_latest.json")
@@ -880,18 +1085,26 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
         _source("engine", "Market Risk engine",
                 (mr_snap.get("as_of") if _tier_source == "market-risk snapshot" else engine.get("generated_at")),
                 DEFENSE_LANES["engine"],
-                gap=None if (engine or mr_snap) else (e_gap or mr_gap), max_age_hours=2),
-        _source("posture", "Sector posture", momentum.get("generated_at"), DEFENSE_LANES["posture"], gap=m_gap, max_age_hours=26),
+                gap=None if (engine or mr_snap) else (e_gap or mr_gap), max_age_hours=2,
+                owner=_own("engine"), review_href="/defense", review_label="Review the engine on Defense"),
+        _source("posture", "Sector posture", momentum.get("generated_at"), DEFENSE_LANES["posture"], gap=m_gap, max_age_hours=26,
+                owner=_own("posture"), review_href="/watch?tab=sectors", review_label="Review sector posture on Watch › Sectors"),
         _source("industries", f"Industries · {len(industries.get('industries') or [])}" if industries else "Industries",
-                industries.get("captured_at"), DEFENSE_LANES["industries"], gap=i_gap),
+                industries.get("captured_at"), DEFENSE_LANES["industries"], gap=i_gap,
+                owner=_own("industries"), review_href="/watch?tab=sectors", review_label="Review industries on Watch › Sectors"),
         _source("recommendations", f"Recommendations · {total_recs}" if recs else "Recommendations",
-                recs.get("generated_at"), DEFENSE_LANES["recommendations"], gap=r_gap),
-        _source("stoplights", "Inverse stoplights", lights.get("generated_at"), DEFENSE_LANES["stoplights"], gap=l_gap),
-        _source("options", "Options lifecycle", options.get("generated_at"), DEFENSE_LANES["options"], gap=o_gap),
-        _source("cash", "Cash alternatives", cash.get("generated_at"), DEFENSE_LANES["cash"], gap=c_gap),
+                recs.get("generated_at"), DEFENSE_LANES["recommendations"], gap=r_gap,
+                owner=_own("recommendations"), review_href="/defense?tab=your-book", review_label="Review recommendations on Defense › Your book"),
+        _source("stoplights", "Inverse stoplights", lights.get("generated_at"), DEFENSE_LANES["stoplights"], gap=l_gap,
+                owner=_own("stoplights"), review_href="/defense?tab=hedges", review_label="Review stoplights on Defense › Hedges"),
+        _source("options", "Options lifecycle", options.get("generated_at"), DEFENSE_LANES["options"], gap=o_gap,
+                owner=_own("options"), review_href="/defense?tab=hedges", review_label="Review options on Defense › Hedges"),
+        _source("cash", "Cash alternatives", cash.get("generated_at"), DEFENSE_LANES["cash"], gap=c_gap,
+                owner=_own("cash"), review_href="/defense?tab=hedges", review_label="Review cash alternatives on Defense › Hedges"),
         _source("review", "Review console", None, DEFENSE_LANES["review"],
                 writer_note="Operator-written through the review console (config/promote_criteria.json). No scheduled job writes it.",
-                gap=v_gap or (f"Last lock {_date(review.get('locked_at'))} (recorded without a time zone, so only the date is shown)." if review.get("locked_at") else "No lock on file.")),
+                gap=v_gap or (f"Last lock {_date(review.get('locked_at'))} (recorded without a time zone, so only the date is shown)." if review.get("locked_at") else "No lock on file."),
+                owner=_own("review"), review_href="/defense?tab=review-log", review_label="Review the lock log on Defense › Review log"),
     ]
     decisions = _writer_decisions(sources, states, {
         "options": "The options lifecycle panel shows the last output of a paused writer.",

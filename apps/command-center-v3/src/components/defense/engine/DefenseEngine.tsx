@@ -4,8 +4,8 @@ import { BB, T, TYPE } from '../../../lib/watchTokens'
 import { RADIUS } from '../../../lib/designTokens'
 import { scoreText } from '../../../lib/metricAuthority'
 import {
-  clockET, defenseLines, exposureCoverage, GAP, GLOSSARY, hedgeSub, ladder, money, pct, readinessTone, scorePosition, signed, sourceSummaryText,
-  sourceTone, tierPair, tierTone, unprotectedPair, type DefenseProjection, type LiveAuthority, type Tone,
+  clockET, defenseLines, exposureCoverage, GAP, GLOSSARY, hedgeSub, ladder, money, newerMinutes, pct, readinessTone, scorePosition, signed, sourceSummaryText,
+  sourceTone, tierClockFacts, tierPair, tierTone, unprotectedPair, type DefenseProjection, type LiveAuthority, type Tone,
 } from '../../../lib/defenseEngine'
 
 /**
@@ -51,16 +51,23 @@ function Chip({ tone, children }: { tone: Tone; children: ReactNode }) {
   return <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: RADIUS.md, border: `1px solid ${TONE[tone]}`, color: TONE[tone], fontSize: TYPE.base, fontWeight: 600, ...mono }}>{children}</span>
 }
 
+/** One record's tier, score and evidence time as primary text ("YELLOW 41.8 · as of Fri 09:59 ET"). */
+function riskText(r: { tier: string | null; score: number | null; asOf: string | null }, noTime = 'no evidence time published') {
+  return `${r.tier ?? `TIER ${GAP}`} ${scoreText(r.score)} · ${r.asOf ? `as of ${clockET(r.asOf)}` : noTime}`
+}
+
 function Hero({ p, onOpen }: { p: DefenseProjection; onOpen: (k: string) => void }) {
   const t = p.tier ?? {}
   const live = useContext(LiveCtx)
-  const auth = live?.marketRisk ?? null
   // LQ-20261107-1837 (C4, REWORK 2 F4): tier and score are ONE record — the live snapshot's when it answered,
   // the projection's frozen copy only when it did not. A per-field fallback pairs the live tier with a frozen
   // score; `tierPair` cannot.
   const tp = tierPair(p, live)
+  // DR-D04 (sprint 8H-2 b3): the two records and their clocks. The headline prints one of them; the reader is
+  // told which, when it was observed, and when the projection that built everything else was built — and a
+  // disagreement is stated rather than smoothed away.
+  const clocks = tierClockFacts(p, live)
   const tone = tierTone(tp.tier)
-  const scoreDiffers = auth?.score != null && t.score != null && Math.abs(auth.score - Number(t.score)) >= 0.05
   return <section aria-label="Defense headline" data-testid="defense-engine-hero" style={{ ...card, borderLeft: `3px solid ${TONE[tone]}` }}>
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
       {/* DR-D10 (sprint 8H-2 b1): the chip used to BE the ladder opener, so the chip's definition (`Term`, which
@@ -72,7 +79,21 @@ function Hero({ p, onOpen }: { p: DefenseProjection; onOpen: (k: string) => void
       {t.shock?.label && <span style={small}>{t.shock.label}</span>}
       {t.confirming?.n != null && <span style={small}>{t.confirming.n} of {t.confirming.of} categories confirming</span>}
     </div>
-    {scoreDiffers && <p data-testid="defense-tier-authority-note" style={small}>Live market risk is {scoreText(auth?.score)}; this projection was built with {scoreText(t.score)} at {clockET(p.generated_at)}. The live snapshot is shown.</p>}
+    {/* DR-D04: one named current market-risk observation, its authority and its evidence time; the projection's
+        build and input clocks labelled apart; the lag — or the disagreement — said out loud. */}
+    <p data-testid="defense-market-risk-fact" style={{ ...small, margin: 0 }}>
+      {clocks.live
+        ? `Market risk (engine) · MarketRiskSnapshot@v1 · ${riskText(clocks.live)}`
+        : `Market risk (engine) · this projection's own copy · ${riskText(clocks.projected)} · the live snapshot did not answer`}
+    </p>
+    <p data-testid="defense-projection-built" style={{ ...small, margin: 0 }}>
+      Defense projection built {clockET(clocks.projected.builtAt)}
+      {clocks.projected.asOf ? ` · its market-risk input was ${clockET(clocks.projected.asOf)}` : ' · its market-risk input time is not published'}
+      {clocks.lagMinutes != null ? ` · the live snapshot is ${clocks.lagMinutes} min newer` : ''}.
+    </p>
+    {clocks.disagree && clocks.live && <p role="note" data-testid="defense-tier-discrepancy" style={{ ...small, margin: 0, color: BB.amber }}>
+      The live snapshot and this projection disagree: live {riskText(clocks.live)}; this projection was built with {riskText(clocks.projected)}. The live snapshot is shown.
+    </p>}
     <h2 style={{ margin: 0, fontSize: TYPE.lg, color: BB.text0, lineHeight: 1.3 }}>{p.narrative?.headline ?? 'The defense projection has no headline on file.'}</h2>
     {p.stale_reason && <div role="note" style={{ padding: '8px 10px', borderRadius: RADIUS.md, border: `1px dashed ${BB.amber}`, color: BB.amber, fontSize: TYPE.base }}>{p.stale_reason}</div>}
     <h3 style={{ ...h3, marginTop: 6 }}>Where we stand</h3>
@@ -87,8 +108,19 @@ function Hero({ p, onOpen }: { p: DefenseProjection; onOpen: (k: string) => void
 
 function WhatToDo({ p, onOpen }: { p: DefenseProjection; onOpen: (k: string) => void }) {
   const steps = p.narrative?.what_to_do ?? []
+  const live = useContext(LiveCtx)
+  const clocks = tierClockFacts(p, live)
+  // DR-D04: these recommendations are the projection's, built at `generated_at` for the projection's own tier.
+  // They do not follow a newer live observation, and the reader is told both clocks rather than left to assume.
+  const writtenFor = p.playbook?.current_tier ?? p.tier?.tier ?? null
   return <section aria-label="What to do about it" data-testid="defense-engine-steps" style={card}>
     <h3 style={h3}>What to do about it</h3>
+    <p data-testid="defense-steps-clock" style={{ ...small, margin: 0 }}>
+      These are this projection's recommendations, built {clockET(p.generated_at)}{writtenFor ? `, at the projection's tier ${writtenFor}` : ''}.
+      {' '}{clocks.live
+        ? `The live market-risk observation is ${riskText(clocks.live)}.`
+        : 'The live market-risk snapshot did not answer.'}
+    </p>
     {steps.map((s, i) => <button key={s.id} type="button" onClick={() => onOpen(s.sheet)} data-testid={`defense-step-${s.id}`} style={{ ...rowBtn, alignItems: 'flex-start' }}>
       <span style={{ display: 'flex', gap: 10, minWidth: 0 }}>
         <span style={{ ...mono, color: TONE[(s.tone as Tone) in TONE ? (s.tone as Tone) : 'muted'], fontWeight: 700 }}>{i + 1}</span>
@@ -110,11 +142,20 @@ export function Ladder({ p }: { p: DefenseProjection }) {
   // REWORK 2 F4: the clock is the answered record's own — the snapshot's `as_of` when it supplied the figure,
   // the projection's only when it supplied all three. Never the live tier dated by the frozen build.
   const tp = tierPair(p, live)
+  const clocks = tierClockFacts(p, live)
   const pos = scorePosition(tp.score)
   return <section aria-label="Tier ladder" data-testid="defense-engine-ladder" style={card}>
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
       <h3 style={h3}>Tier ladder</h3><Stamp asOf={tp.asOf} why={tp.source === 'projection' ? t.stale_reason : null} />
     </div>
+    {/* DR-D04: the current step is one record's; the thresholds are the projection's. Both are named with their
+        own clocks, so "the ladder says ORANGE" can be traced to the snapshot or to the build. */}
+    <p data-testid="defense-ladder-authority" style={{ ...small, margin: 0 }}>
+      {tp.source === 'snapshot'
+        ? `Current step from the live snapshot${tp.asOf ? ` at ${clockET(tp.asOf)}` : ''}.`
+        : `Current step from this projection's own copy${tp.asOf ? ` at ${clockET(tp.asOf)}` : ''}${clocks.live ? '' : ' — the live snapshot did not answer'}.`}
+      {' '}Ladder thresholds from this projection, built {clockET(p.generated_at)}.
+    </p>
     <div style={{ position: 'relative', height: 10, borderRadius: RADIUS.md, background: BB.bgShift, border: `1px solid ${BB.border}` }}>
       {pos != null && <span aria-label={`score ${pos}`} style={{ position: 'absolute', left: `calc(${pos}% - 2px)`, top: -3, width: 4, height: 14, background: TONE[tierTone(tp.tier)], borderRadius: RADIUS.sm }} />}
     </div>
@@ -137,6 +178,9 @@ function Lines({ p, onOpen }: { p: DefenseProjection; onOpen: (k: string) => voi
       <span style={{ minWidth: 0 }}>
         <span style={{ display: 'block', color: BB.text0 }}>{l.label}</span>
         <span style={{ display: 'block', ...small }}>{l.staleReason ?? l.sub}</span>
+        {/* DR-D04: a figure whose section publishes an evidence time prints it beside the figure — the row's own
+            clock, not the page's build time. */}
+        {l.asOf && <span data-testid={`defense-line-clock-${l.id}`} style={{ display: 'block', ...small }}>as of {clockET(l.asOf)}</span>}
       </span>
       <span style={{ textAlign: 'right', minWidth: 0, flexShrink: 0, maxWidth: '45%' }}>
         <span style={{ display: 'block', ...mono, color: TONE[l.tone], overflowWrap: 'anywhere' }}>{l.value}</span>
@@ -166,6 +210,10 @@ export function SourceStrip({ p, onOpen }: { p: DefenseProjection; onOpen: (k: s
  */
 export function HedgeConditions({ p, onOpen }: { p: DefenseProjection; onOpen: (k: string) => void }) {
   const h = p.hedge_readiness ?? {}
+  const live = useContext(LiveCtx)
+  // DR-D04: the matrix evaluates the projection's frozen inputs. The live snapshot may be newer than that
+  // evaluation; when it is, the gap in time is a fact a reader needs to assess the verdict, so it is stated.
+  const riskLag = newerMinutes(live?.marketRisk?.asOf, h.as_of)
   const triggers = h.triggers ?? []
   const gates = Object.entries(h.inverse_triggers ?? {})
   const life = h.put_protection?.lifecycle
@@ -187,8 +235,12 @@ export function HedgeConditions({ p, onOpen }: { p: DefenseProjection; onOpen: (
       </span>
       <span style={small}>Observed {observed(t)}{t.detail ? ` · ${t.detail}` : ''}</span>
       <span style={small}>Rule: {t.when ?? (t.threshold != null ? `${t.threshold}${t.unit ? ` ${t.unit}` : ''}` : 'not on file')}
-        {' · '}Market Risk hedge thresholds{h.as_of ? ` · as of ${clockET(h.as_of)}` : ' · no clock published'}</span>
+        {' · '}Market Risk hedge thresholds, from this projection, built {clockET(p.generated_at)}
+        {' · '}evaluated at {h.as_of ? clockET(h.as_of) : 'no clock published'}</span>
     </div>)}
+    {riskLag != null && <p data-testid="defense-hedge-clock-lag" style={{ ...small, margin: 0, color: BB.amber }}>
+      The live market-risk snapshot{live?.marketRisk?.asOf ? ` (as of ${clockET(live.marketRisk.asOf)})` : ''} is {riskLag} min newer than this evaluation.
+    </p>}
     {!triggers.length && <Note>This projection publishes no hedge condition, so nothing is evaluated here.</Note>}
     {gates.length > 0 && <>
       <h4 style={{ ...h3, marginTop: 6, fontWeight: 600 }}>Inverse ETF gates</h4>

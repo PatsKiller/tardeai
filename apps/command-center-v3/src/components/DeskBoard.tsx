@@ -21,7 +21,9 @@ export type DeskProjection = {
   ok?: boolean
   desk: string
   as_of: string
-  sources: { id: string; label: string; as_of: string | null; lane_ids: string[]; max_age_hours?: number; gap?: string | null; writer_note?: string }[]
+  sources: { id: string; label: string; as_of: string | null; lane_ids: string[]; max_age_hours?: number; gap?: string | null; writer_note?: string
+    /** DR-D05: the registered owner of the writing lane, and the surface this evidence is reviewed on. */
+    owner?: string; review_href?: string; review_label?: string }[]
   decisions: DeskDecision[]
   decision_gap?: string | null
   tabs: Record<string, { panels: DeskPanel[] }>
@@ -77,7 +79,8 @@ export default function DeskBoard({ desk, title, purpose, tabs, tabAliases, clas
   const { selected, open, close } = useW7Detail()
   const projection = data && typeof data === 'object' && 'tabs' in data ? data : null
   const sources: DeskSource[] = projection
-    ? projection.sources.map(s => ({ id: s.id, label: s.label, asOf: s.as_of, laneIds: s.lane_ids, maxAgeHours: s.max_age_hours, gap: s.gap ?? undefined, writerNote: s.writer_note ?? undefined }))
+    ? projection.sources.map(s => ({ id: s.id, label: s.label, asOf: s.as_of, laneIds: s.lane_ids, maxAgeHours: s.max_age_hours, gap: s.gap ?? undefined, writerNote: s.writer_note ?? undefined,
+        owner: s.owner, reviewHref: s.review_href, reviewLabel: s.review_label }))
     : [{ id: 'projection', label: `${title} projection`, gap: loading ? 'Loading the desk projection.' : 'The desk projection has not answered.' }]
   const [panelId, rowId] = (selected ?? '').split(':')
   const detailRow = projection && selected

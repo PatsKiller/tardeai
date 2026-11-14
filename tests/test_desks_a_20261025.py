@@ -102,8 +102,12 @@ def test_reentry_ready_now_hides_stale_packets_and_uses_cio_stance(tmp_path):
     beta = row(ready, "pkt-BETA")["detail"]["fields"]
     assert {"label": "CIO stance (cio_truth)", "value": "CIO stance not on file"} in beta
     cls = panel(out, "ready-now", "classification")
-    assert row(cls, "cls-stopped")["value"] == "1" and row(cls, "cls-saved")["value"] == "2"
-    assert row(cls, "cls-res")["value"] == "2"  # DELT and OLDX have no resistance level; GAMA does
+    # DR-R06: each count names the set it counts and the set it sits inside (2 of 3 sells carry a saved
+    # classification; e1 is the one stopped out of those two).
+    assert row(cls, "cls-stopped")["value"] == "1 of 2 classified exits"
+    assert row(cls, "cls-saved")["value"] == "2 of 3 sells classified"
+    assert row(cls, "cls-unclassified")["value"] == "1 exit has no saved classification"
+    assert row(cls, "cls-res")["value"] == "2 sold names, no level on file"  # DELT and OLDX; GAMA has one
     work = panel(out, "exits-review", "workbench")
     assert [r["label"].split(" sold")[0] for r in work["rows"]] == ["GAMA", "DELT"]  # 30-day window
     assert {"label": "Reclaim price vs now", "value": "not measured"} in work["rows"][0]["detail"]["fields"]

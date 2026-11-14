@@ -94,15 +94,15 @@ def test_dr_r02_two_accounts_hold_one_instrument_but_two_packets(tmp_path):
 
 
 def test_dr_r02_visible_rows_plus_the_more_row_reconcile_to_the_current_count(tmp_path):
+    # DR-R05 changed the cap: the whole current queue is listed here now (no "N more" row), and the population
+    # row states the same total. The old contract (MAX_ROWS drawn + "2 more current packets") is asserted nowhere.
     out = build(tmp_path, packets(n_current=14))
     ready = panel(out, "ready-now", "ready")
-    more = row(ready, "pkt-more")
-    drawn = [r for r in ready["rows"] if r["id"].startswith("pkt-") and r["id"] not in ("pkt-more", "pkt-alert")]
-    assert len(drawn) == desk.MAX_ROWS
-    # 12 drawn + 2 more = 14 current packets, and the population row states the same total
-    assert more["label"] == "2 more current packets"
-    assert row(panel(out, "ready-now", "populations"), "pop-current")["value"] == "14 packets · 14 instruments"
-    assert fields(panel(out, "ready-now", "populations"), "pop-current")["Shown here"] == "12 of 14 — 2 more listed below"
+    drawn = [r for r in ready["rows"] if r["id"].startswith("pkt-") and r["id"] not in ("pkt-more", "pkt-alert", "pkt-controls")]
+    assert len(drawn) == 14 and not any(r["id"] == "pkt-more" for r in ready["rows"])
+    pops = panel(out, "ready-now", "populations")
+    assert row(pops, "pop-current")["value"] == "14 packets · 14 instruments"
+    assert fields(pops, "pop-current")["Shown here"] == "14 of 14 — all current packets are listed below"
 
 
 def test_dr_r02_an_unreadable_packet_index_states_no_population_count(tmp_path):
