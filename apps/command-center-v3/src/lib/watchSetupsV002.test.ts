@@ -1,4 +1,4 @@
-import { alertRows, certifiedOf, disarmBody, discoveryGap, etText, findRows, gradeAlerts, gradeDiscover, gradePullback, gradeSectors, gradeSetups, gradeStamp, lastRthTickMs, PULLBACK_API, PULLBACK_MAX_AGE_S, poolRows, pullbackProvenance, pullbackRows, sectorRows, setupsUrl } from './watchSetupsV002.ts'
+import { alertRows, certifiedOf, closeInstantMs, disarmBody, discoveryGap, etText, findRows, gradeAlerts, gradeDiscover, gradePullback, gradeSectors, gradeSetups, gradeStamp, lastRthTickMs, PULLBACK_API, PULLBACK_MAX_AGE_S, poolRows, poolValidity, pullbackProvenance, pullbackRows, setupsUrl } from './watchSetupsV002.ts'
 
 declare const process: { exit(code?: number): never }
 const fail = (m: string): never => { console.error('FAIL: ' + m); process.exit(1) }
@@ -52,8 +52,33 @@ t('lastRthTickMs lands on a weekday tick', () => {
 t('setups/sectors grade their own basis; unavailable is UNKNOWN', () => {
   assert.equal(gradeSetups({ as_of: iso(RTH, 600), as_of_basis: 'strategy_watchpool.entered_at' }, RTH).state, 'OK')
   assert.equal(gradeSetups({ status: 'unavailable', as_of: iso(RTH, 1) }, RTH).state, 'UNKNOWN')
-  assert.equal(gradeSectors({ as_of: iso(RTH, 40 * 3600) }, RTH).state, 'STALE')
+  assert.equal(gradeSectors({ rs_as_of: iso(RTH, 40 * 3600) }, RTH).state, 'STALE')
   assert.equal(gradeSectors({}, RTH).state, 'UNKNOWN')
+})
+t('OBS-W6-a: a fresh quote does not make a stale momentum read OK (kills the two-clocks trap)', () => {
+  // The payload's top as_of is the market-quote envelope, minutes old on a live quote.
+  const freshQuote = { as_of: iso(RTH, 60), rs_as_of: iso(RTH, 60 * 3600) }
+  assert.equal(gradeSectors(freshQuote, RTH).state, 'STALE')
+  assert.equal(gradeSectors(freshQuote, RTH).basis, 'rs_as_of · sector relative strength (20d/60d vs SPY)')
+  assert.equal(gradeSectors({ as_of: iso(RTH, 60), rs_as_of: iso(RTH, 600) }, RTH).state, 'OK')
+})
+t('OBS-W6-a: a date-only rs_as_of is that session close, not UTC midnight', () => {
+  // 2026-11-13 close is 16:00 EST = 21:00Z. Parsed as an instant it would be 00:00Z — five hours fresher.
+  assert.equal(new Date(closeInstantMs('2026-11-13')).toISOString(), '2026-11-13T21:00:00.000Z')
+  // DST is resolved by the zone, not guessed: 16:00 EDT is 20:00Z.
+  assert.equal(new Date(closeInstantMs('2026-07-16')).toISOString(), '2026-07-16T20:00:00.000Z')
+  assert.ok(Number.isNaN(closeInstantMs('2026-11-13T21:00:00Z')))
+  // 34 h after the Friday close is within the 36 h limit; 40 h is not.
+  assert.equal(gradeSectors({ rs_as_of: '2026-11-13' }, Date.parse('2026-11-15T07:00:00Z')).state, 'OK')
+  assert.equal(gradeSectors({ rs_as_of: '2026-11-13' }, Date.parse('2026-11-15T13:00:00Z')).state, 'STALE')
+})
+t('OBS-W6-b: validity comes from expires_at, and an unreaped expiry says so', () => {
+  const NOW2 = Date.parse('2026-11-14T22:30:00Z')
+  assert.equal(poolValidity('2026-11-10T15:00:00Z', NOW2).key, 'expired_unreaped')
+  assert.match(poolValidity('2026-11-10T15:00:00Z', NOW2).text, /^expired 4 d ago — still ACTIVE \(no reaper writes this table\)$/)
+  assert.equal(poolValidity('2026-11-20T15:00:00Z', NOW2).key, 'active')
+  assert.match(poolValidity('2026-11-20T15:00:00Z', NOW2).text, /^within its window — expires in 6 d$/)
+  assert.equal(poolValidity(null, NOW2).key, 'no_expiry')
 })
 t('R3: discover grades the pins clock, never the dead feed (kills F5)', () => {
   const dead = { feeds: { watch_candidate_events: { as_of: iso(RTH, 60), stale: false } }, as_of: iso(RTH, 60) }
@@ -92,8 +117,11 @@ t('R2/F6: certified count — missing, unreadable, unknown armed, real zero; age
 t('row mappers tolerate junk and keep envelope data', () => {
   assert.equal(alertRows({ data: { alerts: [{ id: 3, symbol: 'AXTI', condition_type: 'rsi_below', threshold: 30, active: true }, { nope: 1 }] } }).length, 1)
   assert.equal(alertRows(null).length, 0)
-  assert.equal(sectorRows({ sectors: [{ sector: 'Tech', count: 3, sample: ['A'] }, {}] }).length, 1)
+  // OBS-W6-a: the sectors inventory mapper moved to lib/watchSectorsV002.ts (see its own test).
   assert.equal(poolRows({ rows: [{ symbol: 'A', current_status: 'ACTIVE' }, {}] })[0].origin, 'screener')
+  // OBS-W6-b: expires_at is in the read and was being dropped by the mapper.
+  assert.equal(poolRows({ rows: [{ symbol: 'A', expires_at: '2026-11-10T15:00:00Z' }] })[0].expiresAt, '2026-11-10T15:00:00Z')
+  assert.equal(poolRows({ rows: [{ symbol: 'A' }] })[0].expiresAt, null)
   assert.equal(findRows({ items: [{ symbol: 'Z', reason: 'r' }] })[0].note, 'r')
 })
 t('urls and bodies', () => { assert.equal(setupsUrl(25), '/api/v2/watchpool?status=all&offset=25&limit=25'); assert.equal(disarmBody(9).action, 'disarm') })

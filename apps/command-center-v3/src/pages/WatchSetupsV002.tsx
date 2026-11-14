@@ -12,8 +12,8 @@ import WatchDiscoverRecentV002 from './WatchDiscoverRecentV002'
 import {
   ALERTS_API, ALERTS_POST, ALERT_VIEW_DEFAULT, DISCOVER_API, PAGE_LIMIT, PULLBACK_API, SECTORS_API, alertDefinitionState, alertDuplicates,
   alertGroups, alertLifecycle, alertPolicy, alertRows, alertSplit, alertTotals, alertViewFrom, alertViewQuery, certifiedOf, disarmAlert,
-  discoverCards, discoveryGap, etText, evaluatorSource, findRows, gradeAlerts, gradeDiscover, gradePullback, gradeSectors, gradeSetups, poolRows,
-  proposalState, pullbackProvenance, pullbackRows, sectorContext, sectorRows, setupsUrl, signalText, unwrap,
+  discoverCards, discoveryGap, etText, evaluatorSource, findRows, gradeAlerts, gradeDiscover, gradePullback, gradeSectors, gradeSetups, poolRows, poolValidity,
+  proposalState, pullbackProvenance, pullbackRows, sectorContext, sectorRows, setupsUrl, signalText, unwrap, SETUPS_EVIDENCE_GAP,
   type AlertRow, type AlertView, type Certified, type DiscoverCard, type EvaluatorSource, type FindRow, type Grade, type PoolRow,
   type PullbackProvenance, type PullbackRow, type SectorContext, type SectorRow, type TabKey,
 } from '../lib/watchSetupsV002'
@@ -43,6 +43,9 @@ export type SetupsViewProps = {
   certified: Certified | null
   pullback: PullbackRow[]
   pullbackInfo: PullbackProvenance | null
+  /** The clock the pullback row ages are measured against. Optional so an older caller still renders; the host passes
+   *  the same `nowMs` it graded the tab with, so a quote's age and the scan's grade never disagree. */
+  nowMs?: number
   onPage: (offset: number) => void
   onDisarm: (a: AlertRow) => void
   onRetry: () => void
@@ -120,15 +123,23 @@ export function WatchSetupsV002View(p: SetupsViewProps) {
       )}
       {p.message && <div className="ws2-note" data-testid="setups-message" role="status">{p.message}</div>}
       {unread || p.loading ? null : p.tab === 'setups' ? (
-        p.pool.length === 0 ? empty('No setups in the watchpool.') : (
+        p.pool.length === 0 ? empty('No setups in the watchpool.') : (<>
+          {/* OBS-W6-b: what the read does not carry, said once above the rows. The stored snapshot has the mechanics; the
+              bounded read drops it. A page that printed "ACTIVE" as validity would be inventing an evaluation. */}
+          <div className="ws2-note" data-testid="setups-evidence-gap">{SETUPS_EVIDENCE_GAP}</div>
           <ul className="ws2-rows" data-testid="setups-rows">
-            {p.pool.map(r => (
-              <li key={`${r.symbol}-${r.strategy}-${r.origin}`} className="ws2-row" data-testid={`setup-${r.symbol}`}>
-                <Link className="v010-link ws2-sym" to={detail(r.symbol)}>{r.symbol}</Link><span>{r.strategy}</span><span>{r.status}</span><span className="ws2-dim">{r.origin}</span>
-                {etText(r.enteredAt) && <span className="ws2-dim">entered {etText(r.enteredAt)}</span>}
-              </li>
-            ))}
-          </ul>)
+            {p.pool.map(r => {
+              const v = poolValidity(r.expiresAt, p.nowMs ?? Date.now())
+              return (
+                <li key={`${r.symbol}-${r.strategy}-${r.origin}`} className="ws2-row" data-testid={`setup-${r.symbol}`}>
+                  <Link className="v010-link ws2-sym" to={detail(r.symbol)}>{r.symbol}</Link><span>{r.strategy}</span><span>{r.status}</span><span className="ws2-dim">{r.origin}</span>
+                  {etText(r.enteredAt) && <span className="ws2-dim">entered {etText(r.enteredAt)}</span>}
+                  {etText(r.expiresAt) && <span className="ws2-dim">expires {etText(r.expiresAt)}</span>}
+                  <span className={`ws2-dim${v.key === 'expired_unreaped' ? ' bad' : ''}`} data-testid={`setup-validity-${r.symbol}`} data-validity={v.key}>{v.text}</span>
+                </li>
+              )
+            })}
+          </ul></>)
       ) : p.tab === 'sectors' ? (
         p.sectors.length === 0 ? empty('No sectors.') : (<>
           {p.sectorCtx && (
@@ -318,6 +329,7 @@ export function WatchSetupsTab({ tab, alertView, onAlertView }: {
         alertView={alertView} onAlertView={onAlertView}
         evaluatorSrc={tab === 'alerts' && body ? evaluatorSource(body, nowMs) : null}
         pullback={tab === 'pullback' ? pullbackRows(body) : []} pullbackInfo={tab === 'pullback' && body ? pullbackProvenance(body) : null}
+        nowMs={nowMs}
         certified={tab === 'alerts' && body ? certifiedOf(body, nowMs) : null}
         onPage={setOffset} onDisarm={a => void disarm(a)} onRetry={() => refetch()}
       />

@@ -53,21 +53,26 @@ const noop = () => {}
 const base = (o = {}) => ({
   tab: 'setups', grade: gradeStamp(iso(60), 'strategy_watchpool.entered_at', NOW, 3600), loading: false, error: null, message: '',
   offset: 0, total: 60, hasMore: true,
-  pool: poolRows({ rows: [{ symbol: 'AAA', strategy_id: 's1', current_status: 'ACTIVE', entered_at: iso(100) }] }),
+  pool: poolRows({ rows: [{ symbol: 'AAA', strategy_id: 's1', current_status: 'ACTIVE', entered_at: iso(100), expires_at: iso(86400) }] }),
   sectors: sectorRows({ sectors: [{ sector: 'Tech', count: 3, sample: ['A', 'B'] }] }),
   finds: findRows({ items: [{ symbol: 'FFF', reason: 'breakout' }] }),
   alerts: alertRows({ alerts: [{ id: 7, symbol: 'AXTI', condition_type: 'rsi_below', threshold: 30, active: true }, { id: 8, symbol: 'ZZZ', condition_type: 'rsi_above', threshold: 70, active: false }] }),
-  gap: null, certified: null, pullback: [], pullbackInfo: null, onPage: noop, onDisarm: noop, onRetry: noop, ...o,
+  gap: null, certified: null, pullback: [], pullbackInfo: null, onPage: noop, onDisarm: noop, onRetry: noop, nowMs: NOW, ...o,
 })
 const html = p => renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(WatchSetupsV002View, p)))
 const asof = h => (h.match(/data-testid="setups-asof"[^>]*>/) || [''])[0]
 
-// 1. setups: OK, row + detail link, paging
+// 1. setups: OK, row + detail link, paging; OBS-W6-b validity from expires_at + the named evidence gap
 {
   const h = html(base())
   assert.match(asof(h), /data-state="OK"/)
   assert.ok(h.includes('data-testid="setup-AAA"') && h.includes('href="/watch/intelligence/AAA"'))
   assert.match(h, /1–1 of 60/)
+  assert.match(h, /data-testid="setups-evidence-gap">Price, mechanics \(RVOL, RSI, ATR, trend\) and sector are not in this read: the bounded watchpool read drops the stored entry snapshot/)
+  assert.match(h, /data-testid="setup-validity-AAA" data-validity="expired_unreaped">expired 24 h ago — still ACTIVE \(no reaper writes this table\)/)
+  // A row whose read states no expiry says so; it is never drawn as valid.
+  const noExp = html(base({ pool: poolRows({ rows: [{ symbol: 'BBB', current_status: 'ACTIVE' }] }) }))
+  assert.match(noExp, /data-testid="setup-validity-BBB" data-validity="no_expiry">expiry not stated in this read/)
 }
 // 2. stale and unknown are visible
 {
@@ -488,4 +493,4 @@ assert.match(html(base({ hasMore: false })), /<button[^>]*disabled[^>]*>Next/)
   assert.ok(h.includes('data-testid="discovery-AXTI"'), 'the panel renders the rows it was given')
   assert.ok(!h.includes('No discovery events in the returned window'), 'a populated read never claims to be empty')
 }
-console.log('29 scenarios passed')
+console.log('WatchSetupsV002.view: every scenario block passed (each assertion throws on failure)')

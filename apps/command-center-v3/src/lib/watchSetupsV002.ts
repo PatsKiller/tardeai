@@ -97,9 +97,32 @@ export function gradeSetups(body: unknown, nowMs: number): Grade {
   const b = unwrap(body)
   return b?.status === 'unavailable' ? gradeStamp(null, null, nowMs, SETUPS_MAX_AGE_S) : gradeStamp(b?.as_of, b?.as_of_basis, nowMs, SETUPS_MAX_AGE_S)
 }
+/** A date-only stamp (`YYYY-MM-DD`) means "that session's close". Parsed as an instant it would land at UTC midnight —
+ *  in ET, 7 or 8 PM of the PREVIOUS day — which makes the read look 20–21 hours OLDER than the close it describes
+ *  (REVIEW-OBS-W6 F3a: this sentence had the direction backwards; the code and mutant M13 were right). Grade it as
+ *  16:00 ET on that date, with the zone's own offset (DST is resolved from the zone, not guessed). */
+export function closeInstantMs(v: unknown): number {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return NaN
+  const [y, m, d] = v.split('-').map(Number)
+  const guess = Date.UTC(y, m - 1, d, 16, 0, 0) // 16:00Z is 11:00/12:00 ET on the same date
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })
+    .formatToParts(new Date(guess))
+  const hh = Number(parts.find(p => p.type === 'hour')?.value)
+  const mm = Number(parts.find(p => p.type === 'minute')?.value)
+  const offMin = (hh * 60 + mm) - (16 * 60) // ET wall minus UTC wall at that instant
+  return Date.UTC(y, m - 1, d, 16, 0, 0) - offMin * 60_000
+}
+
+/** OBS-W6-a: the Sectors tab is graded on the SECTOR MOMENTUM clock (`rs_as_of`, a daily close), never on the
+ *  payload's top `as_of` — that is the market-quote envelope and is minutes old on a fresh quote. Grading on it would
+ *  let a fresh quote declare a day-old momentum read fresh. */
 export function gradeSectors(body: unknown, nowMs: number): Grade {
   const b = unwrap(body)
-  return b?.status === 'unavailable' || b?.status === 'empty' ? gradeStamp(null, null, nowMs, SECTORS_MAX_AGE_S) : gradeStamp(b?.as_of, b?.as_of_basis, nowMs, SECTORS_MAX_AGE_S)
+  if (b?.status === 'unavailable' || b?.status === 'empty') return gradeStamp(null, null, nowMs, SECTORS_MAX_AGE_S)
+  const basis = 'rs_as_of · sector relative strength (20d/60d vs SPY)'
+  const rs = b?.rs_as_of
+  const t = /^\d{4}-\d{2}-\d{2}$/.test(String(rs)) ? closeInstantMs(rs) : (typeof rs === 'string' ? Date.parse(rs) : NaN)
+  return gradeStamp(Number.isFinite(t) ? new Date(t).toISOString() : null, basis, nowMs, SECTORS_MAX_AGE_S)
 }
 /** Discover is stamped by the clock of the rows it lists (the screener-find pins). The discovery feed behind it
  *  (watch_candidate_events) is a separate, labelled gap; it never grades the tab. */
@@ -250,10 +273,35 @@ export function sectorContext(body: unknown, nowMs: number): SectorContext {
   }
 }
 
-export type PoolRow = { symbol: string; strategy: string; status: string; origin: string; enteredAt: string | null }
+export type PoolRow = {
+  symbol: string; strategy: string; status: string; origin: string; enteredAt: string | null
+  /** OBS-W6-b: `expires_at` is in the bounded read; the page had been dropping it. It is the only validity signal the
+   *  read carries — see `SETUPS_EVIDENCE_GAP`. */
+  expiresAt: string | null
+}
 export function poolRows(body: unknown): PoolRow[] {
   const list = unwrap(body)?.rows
-  return Array.isArray(list) ? list.flatMap((r: any) => (r?.symbol ? [{ symbol: String(r.symbol), strategy: String(r.strategy_id || '—'), status: String(r.current_status || '?'), origin: String(r.origin_system || 'screener'), enteredAt: typeof r.entered_at === 'string' ? r.entered_at : null }] : [])) : []
+  return Array.isArray(list) ? list.flatMap((r: any) => (r?.symbol ? [{ symbol: String(r.symbol), strategy: String(r.strategy_id || '—'), status: String(r.current_status || '?'), origin: String(r.origin_system || 'screener'), enteredAt: typeof r.entered_at === 'string' ? r.entered_at : null, expiresAt: typeof r.expires_at === 'string' ? r.expires_at : null }] : [])) : []
+}
+
+/** OBS-W6-b: what the watchpool read drops, said on the surface. The bounded read selects 11 columns and the four that
+ *  would describe an evaluation (`entry_snapshot`, `last_evaluated_at`, `evaluation_count`, `triggered_at`,
+ *  `failed_reason`) are not among them — and no writer ever updates the latter three anyway. */
+export const SETUPS_EVIDENCE_GAP =
+  'Price, mechanics (RVOL, RSI, ATR, trend) and sector are not in this read: the bounded watchpool read drops the stored '
+  + 'entry snapshot. Those fields are stored, so this is a missing projection, not a missing producer. '
+  + '"Last evaluated" and "evaluation count" are never shown here: their column defaults make every row look evaluated '
+  + 'once, at insert, and nothing writes them afterwards.'
+
+/** OBS-W6-b: validity from the one column the read does carry. `current_status` is the insert default, not validity: no
+ *  reaper flips an expired row, so a row can be ACTIVE past its own expiry. Both facts are printed together. */
+export type PoolValidity = { key: 'active' | 'expired_unreaped' | 'no_expiry'; text: string }
+export function poolValidity(expiresAt: string | null, nowMs: number): PoolValidity {
+  const t = expiresAt ? Date.parse(expiresAt) : NaN
+  if (!Number.isFinite(t)) return { key: 'no_expiry', text: 'expiry not stated in this read' }
+  const ageS = Math.max(0, Math.round((nowMs - t) / 1000))
+  if (nowMs > t) return { key: 'expired_unreaped', text: `expired ${ageText(ageS)} ago — still ACTIVE (no reaper writes this table)` }
+  return { key: 'active', text: `within its window — expires in ${ageText(Math.max(0, Math.round((t - nowMs) / 1000)))}` }
 }
 
 /** Pullback/MACD (W-04 in-page nested view). Stamped by the last completed SCAN, not by request time: the screener is
