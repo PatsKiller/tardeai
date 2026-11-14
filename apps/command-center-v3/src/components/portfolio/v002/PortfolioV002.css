@@ -50,10 +50,19 @@
 .pv2-own b { color: var(--text-1); font-weight: 600; }
 .pv2-more { min-height: 44px; width: 100%; background: none; border: none; border-top: 1px solid var(--border-color); color: var(--info-color); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
 .pv2-lnk { min-height: 44px; background: none; border: none; padding: 0; color: var(--info-color); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.pv2-lnk:disabled { color: var(--text-2); cursor: default; }
 .pv2-st { padding: 2px 0; }
 .pv2-st .s1 { display: grid; grid-template-columns: 62px 84px minmax(0, 1fr); gap: 6px; align-items: center; min-height: 22px; }
 .pv2-st .n { color: var(--text-0); font-weight: 600; }
 .pv2-st .sub { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
+/* Coverage line + the four measure rows (2026-11-14). 44 px targets; text never below 11 px. */
+.pv2-covline { display: block; width: 100%; min-height: 44px; padding: 4px 0; border: none; border-top: 1px solid var(--border-color);
+  background: none; color: var(--text-1); font: inherit; font-size: 12px; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.pv2-covline b { color: var(--text-0); }
+.pv2-measure { display: grid; grid-template-columns: 74px 84px minmax(0, 1fr); gap: 6px; align-items: center; width: 100%; min-height: 44px;
+  border: none; border-top: 1px solid var(--border-color); background: none; padding: 2px 0; color: var(--text-0); font: inherit; text-align: left; cursor: pointer; }
+.pv2-measure .n { font-weight: 600; }
+.pv2-measure .sub { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
 .pv2-sel { display: block; margin: 6px 0; }
 .pv2-sel select { width: 100%; min-height: 44px; padding: 0 10px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-2); color: var(--text-0); font: inherit; }
 .pv2-fchips { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0; }
@@ -72,7 +81,14 @@
 .pv2-det { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; min-height: 48px; border: none; border-top: 1px solid var(--border-color); background: none; padding: 0; color: var(--text-0); font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
 .pv2-retired { color: var(--text-2); cursor: default; }
 .pv2-chip-btn:focus-visible, .pv2-ask:focus-visible, .pv2-act:focus-visible, .pv2-tile:focus-visible, .pv2-prow-main:focus-visible,
-.pv2-hrow:focus-visible, .pv2-fchip:focus-visible, .pv2-det:focus-visible, .pv2-lnk:focus-visible, .pv2-more:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.pv2-hrow:focus-visible, .pv2-fchip:focus-visible, .pv2-det:focus-visible, .pv2-lnk:focus-visible, .pv2-more:focus-visible,
+.pv2-covline:focus-visible, .pv2-measure:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* validation gates: a named gate, an unticked box, the evidence this load can see (design .gate/.box) */
+.pv2-gate { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 0 8px; align-items: start; padding: 6px 0; border-bottom: 1px solid var(--border-color); }
+.pv2-gbox { width: 10px; height: 10px; margin-top: 5px; border: 1px solid var(--text-2); border-radius: var(--radius-sm); }
+.pv2-g1 { color: var(--text-0); font-weight: 600; line-height: 17px; }
+.pv2-g2 { font-size: 11px; line-height: 15px; color: var(--text-2); overflow-wrap: anywhere; }
+.pv2-g2 b { color: var(--text-1); font-weight: 600; }
 /* sheets (shell from Home v010 WhySheet.css) */
 .pv2-sheet-h { margin: 14px 0 4px; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
 .pv2-go { display: inline-flex; align-items: center; text-decoration: none; margin: 4px 0 8px; }

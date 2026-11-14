@@ -2,10 +2,15 @@
 // Phone order (390/412): header -> Action·Protection -> Validation gates -> Since last visit -> Portfolio status
 // -> Holdings -> Details. Every block shows its age; UNKNOWN is never drawn as NO STOP; NEEDS BACKEND marks
 // blocks with no production source in this build.
+// 2026-11-14 (campaign CAMPAIGN-8H item 1): the four financial measures are drawn from cc-deepseek-7's
+// PortfolioMeasures@v1 projection only (never computed here), stop coverage is drawn as covered / partial /
+// uncovered / planned-only / exempt / unverifiable with resting vs held shares, and the risk score is an isolated
+// pending decision (G7).
 import { Link } from 'react-router-dom'
 import {
-  fmtAge, fmtET, fmtPct, fmtShares, fmtUsd, filterPositions, STOP_OWNER,
-  type HoldingsFilter, type P0Item, type PositionModel, type ProtectionModel, type Read, type HoldingsWire, type StatusRow,
+  fmtAge, fmtET, fmtPct, fmtShares, fmtUsd, filterPositions, coverageCounts, gateEvidence, STOP_OWNER, stopDeskHref,
+  type CoverageCounts, type HoldingsFilter, type MeasuresModel, type P0Item, type PositionModel,
+  type ProtectionModel, type Read, type HoldingsWire, type SinceVisitModel, type StatusRow, type VisitRecord, type MeasureKey,
 } from '../../../lib/portfolioV002'
 import './PortfolioV002.css'
 
@@ -14,40 +19,88 @@ export const NB = ({ short }: { short?: boolean }) => (
 )
 
 export function stateClass(s: string): string {
-  if (s === 'OK' || s === 'PROTECTED' || s === 'CLEAR') return 'ok'
-  if (s === 'WARN' || s === 'STALE' || s === 'MEDIUM' || s === 'EXPIRED') return 'warn'
-  if (s === 'GAP' || s === 'NO STOP' || s === 'TIMED OUT') return 'bad'
+  if (s === 'OK' || s === 'PROTECTED' || s === 'CLEAR' || s === 'MEASURED' || s === 'VERIFIED' || s === 'COVERED') return 'ok'
+  if (s === 'WARN' || s === 'STALE' || s === 'MEDIUM' || s === 'EXPIRED' || s === 'PARTIAL' || s === 'UNVERIFIED' || s === 'PLANNED ONLY') return 'warn'
+  if (s === 'GAP' || s === 'NO STOP' || s === 'TIMED OUT' || s === 'UNCOVERED') return 'bad'
   return 'neutral'
 }
+/** The row chip is the coverage chip: it says how much of the holding a resting stop covers, which the verdict alone
+ *  does not (a PROTECTED row whose stop covers 200 of 300 shares is PARTIAL, drawn as such, verdict unchanged). */
+const rowChip = (p: PositionModel) => p.coverage.chip
 const rowChipClass = (p: PositionModel) =>
-  p.protection === 'PROTECTED' ? 'ok' : p.protection === 'GAP' ? 'bad' : p.protection === 'WARN' ? 'warn' : 'neutral'
+  p.coverage.category === 'COVERED' ? 'ok'
+    : p.coverage.category === 'PARTIAL' ? 'warn'
+      : p.coverage.category === 'UNCOVERED' || p.coverage.category === 'PLANNED_ONLY' ? 'bad' : 'neutral'
+
+const MEASURE_SHORT: Record<MeasureKey, string> = {
+  account_value: 'Value', price_move_estimate: 'Price move', account_value_change_1d: 'Change 1D', verified_daily_pnl: 'Verified P&L',
+}
+const FILTERS: [HoldingsFilter, string][] = [
+  ['all', 'All'], ['unprotected', 'Unprotected'], ['partial', 'Partial'], ['planned', 'Planned'], ['unknown', 'Unknown'],
+  ['exempt', 'Exempt'], ['under100', 'Under $100'],
+]
 
 export interface ViewProps {
   holdings: Read<HoldingsWire>; positions: PositionModel[]; prot: ProtectionModel; p0: P0Item[] | null; status: StatusRow[]
-  nowIso: string; filter: HoldingsFilter; account: string; showAll: boolean; showAllAction: boolean
-  onFilter: (f: HoldingsFilter) => void; onAccount: (a: string) => void; onShowAll: () => void; onShowAllAction: () => void
+  measures: MeasuresModel; sinceVisit: SinceVisitModel; visitRecord: VisitRecord
+  nowIso: string; filter: HoldingsFilter; account: string; shownCount: number; showAllAction: boolean
+  onFilter: (f: HoldingsFilter) => void; onAccount: (a: string) => void; onShowMore: () => void; onShowAllAction: () => void
   onOpenWhy: () => void; onOpenDiag: () => void; onOpenAudit: () => void; onOpenPosition: (key: string) => void
+  onOpenMeasures: () => void; onOpenMeasure: (key: MeasureKey) => void
+  onOpenGates: () => void; onOpenSince: () => void; onOpenSync: () => void
+  onOpenRisk: () => void; onExportCsv: () => void
 }
 
 const ACTION_LIMIT = 6
-const HOLDINGS_LIMIT = 25
+export const HOLDINGS_PAGE = 25
 
 function verdictLabel(v: ProtectionModel['verdict']): string {
   return v === 'LOADING' ? 'reading…' : v
 }
 
+/** The header figure: the projection's account value when materialized; else the store total, labelled as such;
+ *  else UNKNOWN. Never a page-side sum, and never one of two candidate totals picked silently.
+ *  C2/C3 (REVIEW-CAMPAIGN8H-item1-...-cc-deepseek-6, F1/F2): the fallback's reason follows the state it was taken
+ *  in, and when the figure is the store total the "store total · not reconciled" mark is VISIBLE text beside it at
+ *  390/412 px — never a title= tooltip, which a phone cannot hover. */
+function headerValue(measures: MeasuresModel, w: HoldingsWire | null): { text: string; title: string; mark: string | null } {
+  const av = measures.measures.find(m => m.key === 'account_value')
+  if (measures.state === 'LOADING') return { text: 'reading…', title: 'Reading holdings', mark: null }
+  if (measures.state === 'PRESENT' && av && av.value != null) {
+    return { text: `${fmtUsd(av.value)}`, title: `${av.label}: ${av.status} · PortfolioMeasures@v1 (broker store basis)`,
+      mark: av.status === 'MEASURED' || av.status === 'VERIFIED' ? null : `${av.status} · not reconciled` }
+  }
+  const t = typeof w?.total_value === 'number' && Number.isFinite(w.total_value) ? w.total_value : null
+  if (t != null) {
+    // A8 (REVIEW-CAMPAIGN8H-item1-fix): only PRESENT/ABSENT can reach here — an unreadable read has no data, so there
+    // is no store total either; the dead third arm is gone and the unreadable case is named below.
+    const title = measures.state === 'PRESENT'
+      ? 'The projection did not publish an account value; the store total is shown unreconciled.'
+      : 'The four measures are not materialized in this read; the store total is shown unreconciled.'
+    return { text: fmtUsd(t), title, mark: 'store total · not reconciled' }
+  }
+  // A8: when the holdings read itself failed, the header names the read error instead of a generic sentence.
+  const unknownTitle = measures.state === 'UNREADABLE' && measures.reason
+    ? `${measures.reason}; no account value was published`
+    : 'No account value was published; the page does not compute one'
+  return { text: 'value UNKNOWN', title: unknownTitle, mark: null }
+}
+
 export default function PortfolioV002View(props: ViewProps) {
-  const { holdings, positions, prot, p0, status, nowIso, filter, account } = props
+  const { holdings, positions, prot, p0, status, measures, sinceVisit, nowIso, filter, account } = props
   const w = holdings.data
-  const total = holdings.state === 'OK' ? w?.total_value ?? null : null
+  const hv = headerValue(measures, w)
   const accounts = [...new Set(positions.map(p => p.account))].sort()
   const visible = filterPositions(positions, filter, account)
-  const shown = props.showAll ? visible : visible.slice(0, HOLDINGS_LIMIT)
+  const shown = visible.slice(0, props.shownCount)
   const action = props.showAllAction ? prot.action : prot.action.slice(0, ACTION_LIMIT)
+  const cov: CoverageCounts = coverageCounts(positions)
+  const gates = gateEvidence(prot, measures, positions, w)
   const counts = {
     unprotected: positions.filter(p => p.counted && (p.protection === 'GAP' || p.protection === 'WARN')).length,
     unknown: positions.filter(p => p.counted && p.protection === 'UNKNOWN').length,
     under100: positions.filter(p => p.underFloor).length,
+    partial: cov.partial, planned: cov.planned, exempt: cov.exempt,
   }
   const verdictCls = prot.verdict === 'OK' ? 'ok' : prot.verdict === 'GAP' ? 'bad' : prot.verdict === 'WARN' ? 'warn' : 'neutral'
 
@@ -58,7 +111,8 @@ export default function PortfolioV002View(props: ViewProps) {
         <div className="pv2-hdr-main">
           <div className="pv2-hdr-t">
             <h1 className="pv2-title">Portfolio</h1>
-            <span className="pv2-age" data-testid="hdr-value">· {total == null ? (holdings.state === 'LOADING' ? 'reading…' : 'value UNKNOWN') : fmtUsd(total)}</span>
+            <span className="pv2-age" data-testid="hdr-value" title={hv.title}>· {hv.text}</span>
+            {hv.mark && <span className="pv2-age" data-testid="hdr-mark">· {hv.mark}</span>}
             <span className="pv2-age">· {fmtET(nowIso, true)} ET</span>
           </div>
           <div className="pv2-chips">
@@ -70,6 +124,9 @@ export default function PortfolioV002View(props: ViewProps) {
               {p0 == null ? 'P0 ?' : `${p0.length} P0`}
             </span>
             <span className="pv2-chip neutral" data-testid="chip-gates">Gates — <NB short /></span>
+            {measures.state === 'PRESENT' && measures.dayUnverified && (
+              <span className="pv2-chip warn" data-testid="chip-unverified" title="Verified daily P&L has no stored reconciliation">UNVERIFIED</span>
+            )}
           </div>
         </div>
         {/* LQ-2752 (operator 2026-11-12 21:56 ET): the classic page stays one tap away until v002 is validated. */}
@@ -103,19 +160,27 @@ export default function PortfolioV002View(props: ViewProps) {
                     <button type="button" className="pv2-tile bad" onClick={() => props.onFilter('unprotected')}><span className="k">Unprotected</span><span className="n">{(prot.gap ?? 0) + (prot.warn ?? 0)}</span></button>
                     <button type="button" className="pv2-tile unk" onClick={() => props.onFilter('unknown')}><span className="k">Unknown</span><span className="n">{prot.unknown}</span></button>
                   </div>
+                  {/* Coverage categories (campaign 2026-11-14): counted by the display classifier; the verdict above
+                      stays the backend's. Partial is called out because a tile cannot show "200 of 300". */}
+                  <button type="button" className="pv2-covline" data-testid="prot-coverage" onClick={props.onOpenWhy}
+                    aria-label="Stop coverage detail">
+                    Coverage: <b>{cov.covered}</b> covered · <b>{cov.partial}</b> partial · <b>{cov.uncovered}</b> uncovered · <b>{cov.planned}</b> planned-only · <b>{cov.exempt}</b> exempt · <b>{cov.unverifiable}</b> unverifiable
+                    {cov.restingShares != null && cov.heldShares != null && <> · resting <b>{fmtShares(cov.restingShares)}</b> of <b>{fmtShares(cov.heldShares)}</b>{cov.totalsComplete ? ' held shares' : ' published held shares (some rows publish no quantity)'}</>}
+                    <span aria-hidden="true"> ›</span>
+                  </button>
                   <div className="pv2-pt-h" aria-hidden="true"><span>Symbol</span><span>Stop status</span><span>Last verified</span><span className="r">Action</span></div>
                   <div id="prot-rows">
                     {groupByCause(action).map(g => (
                       <div key={g.cause}>
                         {g.rows.map(p => (
                           <div className="pv2-prow" key={p.key} data-testid="prot-row">
-                            <button type="button" className="pv2-prow-main" onClick={() => props.onOpenPosition(p.key)} aria-label={`${p.symbol} ${p.chip}. Open detail`}>
+                            <button type="button" className="pv2-prow-main" onClick={() => props.onOpenPosition(p.key)} aria-label={`${p.symbol} ${rowChip(p)}. Open detail`}>
                               <span className="sym">{p.symbol}</span>
-                              <span><span className={`pv2-chip ${rowChipClass(p)}`}>{p.chip}</span></span>
+                              <span><span className={`pv2-chip ${rowChipClass(p)}`}>{rowChip(p)}</span></span>
                               <span className="ver">{p.verifiedAt ? fmtET(p.verifiedAt, true) : 'never'} · {p.account}</span>
                             </button>
-                            {p.protection === 'GAP' || p.protection === 'WARN'
-                              ? <Link className="pv2-act" to={`/portfolio-classic?tab=Stop+Management&symbol=${encodeURIComponent(p.symbol)}`}>Place stop ›</Link>
+                            {p.protection === 'GAP' || p.protection === 'WARN' || p.coverage.category === 'PARTIAL'
+                              ? <Link className="pv2-act" to={stopDeskHref(p)} title={`Stop desk · ${p.symbol} · ${p.accountKey} · ${p.broker}`}>Place stop ›</Link>
                               : <button type="button" className="pv2-act" onClick={() => props.onOpenPosition(p.key)}>Verify ›</button>}
                           </div>
                         ))}
@@ -131,25 +196,74 @@ export default function PortfolioV002View(props: ViewProps) {
             </section>
           )}
 
-          {/* Validation gates — no gate store in this build */}
+          {/* Validation gates — no gate store in this build. The four gates the design expects are named with the
+              evidence this page can see; the box is never ticked and no gate is ever counted as open or closed. */}
           <section className="pv2-blk" id="card-gates" data-testid="card-gates">
-            <div className="pv2-blk-h"><h2 className="pv2-h2">Validation gates <NB /></h2><span className="pv2-age">not available</span></div>
-            <p className="pv2-muted">Gate store not served for Portfolio (scope=portfolio, LQ-2141).</p>
+            <div className="pv2-blk-h"><h2 className="pv2-h2">Validation gates <NB /></h2><span className="pv2-age">result not available</span></div>
+            <p className="pv2-muted">Gate store not served for Portfolio (scope=portfolio, LQ-2141). A gate is never reported by a count here.</p>
+            {gates.map(g => (
+              <div className="pv2-gate" key={g.gate} data-testid="gate-row">
+                <span className="pv2-gbox" aria-hidden="true" />
+                <div>
+                  <div className="pv2-g1">{g.gate}</div>
+                  <div className="pv2-g2">Blocks: <b>{g.blocks}</b>{g.blocksTrading ? ' · BLOCKS TRADING' : ''} · needs {g.threshold}</div>
+                  <div className="pv2-g2">In this read: {g.pageEvidence}</div>
+                </div>
+              </div>
+            ))}
+            <p className="pv2-muted">Each gate's evidence above is this page's observation, not a gate result. The served result needs the gate store (LQ-2141).</p>
+            <button type="button" className="pv2-lnk" onClick={props.onOpenGates} data-testid="open-gates">Gate evidence ›</button>
           </section>
 
-          {/* Since your last visit — no portfolio.last_seen / change store in this build */}
+          {/* Since your last visit — the anchor is served (LQ-2467); the change list needs the change store (LQ-2143) */}
           <section className="pv2-blk" id="card-since" data-testid="card-since">
-            <div className="pv2-blk-h"><h2 className="pv2-h2">Since your last visit <NB /></h2><span className="pv2-age">not available</span></div>
-            <p className="pv2-muted">Needs portfolio.last_seen (G13) and the change store (LQ-2143).</p>
+            <div className="pv2-blk-h">
+              <h2 className="pv2-h2">Since your last visit <NB /></h2>
+              <span className="pv2-age">{sinceVisit.status === 'RECORDED' ? fmtET(sinceVisit.seenAt) : sinceVisit.status.toLowerCase().replace('_', ' ')}</span>
+            </div>
+            <p className="pv2-muted" data-testid="since-window">{sinceVisit.windowText}</p>
+            <p className="pv2-muted" data-testid="since-detail">{sinceVisit.status === 'RECORDED'
+              ? `Last visit ${fmtET(sinceVisit.seenAt, true)}${sinceVisit.device ? ` · ${sinceVisit.device}` : ''} · ${sinceVisit.previousSeenAt ? `previous ${fmtET(sinceVisit.previousSeenAt, true)}` : 'no previous visit recorded'}`
+              : sinceVisit.reason || 'the previous-visit record is not available'}</p>
+            <p className="pv2-muted">The change list needs the change store (LQ-2143). <NB short /></p>
+            <button type="button" className="pv2-lnk" onClick={props.onOpenSince} data-testid="open-since">Last visit &amp; window ›</button>
           </section>
 
-          {/* Portfolio status */}
+          {/* Portfolio status: the four measures, then the system rows */}
           <section className="pv2-blk" id="card-status" data-testid="card-status">
             <div className="pv2-blk-h">
-              <h2 className="pv2-h2">Portfolio status <span className="pv2-age pv2-plain">· {holdings.at ? fmtET(holdings.at) : '—'}</span></h2>
-              <button type="button" className="pv2-lnk" onClick={props.onOpenDiag} data-testid="open-diag">Diagnostics ›</button>
+              <h2 className="pv2-h2">Portfolio status <span className="pv2-age pv2-plain">· {measures.asOf ? fmtET(measures.asOf) : holdings.at ? fmtET(holdings.at) : '—'}</span></h2>
+              <span className="pv2-chips">
+                {measures.state !== 'PRESENT' && <NB short />}
+                {measures.state === 'PRESENT' && measures.dayUnverified && <span className="pv2-chip warn">UNVERIFIED</span>}
+                <button type="button" className="pv2-lnk" onClick={props.onOpenDiag} data-testid="open-diag">Diagnostics ›</button>
+              </span>
             </div>
-            {status.map(r => (
+            {measures.measures.map(m => (
+              <button type="button" className="pv2-measure" key={m.key} data-testid="measure-row" onClick={() => props.onOpenMeasure(m.key)}
+                title={`${m.label} — open its reconciliation`}>
+                <span className="n">{MEASURE_SHORT[m.key]}</span>
+                <span><span className={`pv2-chip ${m.statusClass}`}>{m.status}</span></span>
+                <span className="sub">{m.text}{m.estimate ? ` · Finviz estimate ${fmtUsd(m.estimate.value)}${m.estimate.delta != null ? ` (${fmtUsd(m.estimate.delta, true)})` : ''}, separate` : ''}</span>
+              </button>
+            ))}
+            <p className="pv2-muted" data-testid="measures-note">
+              {measures.state === 'PRESENT'
+                ? `PortfolioMeasures@v1 · basis ${measures.basis || 'not named'} · Finviz marks are a separate estimate and never added to a “today” figure.${measures.dayUnverified ? ' Verified daily P&L has no stored reconciliation, so it stays UNKNOWN.' : ''}`
+                : measures.reason || 'the four measures are not published in this read'}
+            </p>
+            {status.map(r => r.id === 'row-risk' ? (
+              <div className="pv2-st" id={r.id} key={r.id} data-testid={r.id}>
+                <div className="s1">
+                  <span className="n">{r.name}</span>
+                  <span><span className="pv2-chip warn">PENDING</span></span>
+                  <span className="sub">pending decision: no approved risk-score definition (G7){' '}
+                    <button type="button" className="pv2-lnk" onClick={props.onOpenRisk} data-testid="risk-why">Why ›</button>
+                  </span>
+                </div>
+                <div className="pv2-own">RISK-SCORE-SPEC-20261111 is PROPOSED; nothing is scored, no letter, no colour, no number.</div>
+              </div>
+            ) : (
               <div className="pv2-st" id={r.id} key={r.id} data-testid={r.id}>
                 <div className="s1">
                   <span className="n">{r.name}</span>
@@ -178,41 +292,57 @@ export default function PortfolioV002View(props: ViewProps) {
                   </select>
                 </label>
                 <div className="pv2-fchips" role="group" aria-label="Filter holdings">
-                  {([['all', 'All', null], ['unprotected', 'Unprotected', counts.unprotected], ['unknown', 'Unknown', counts.unknown], ['under100', 'Under $100', counts.under100]] as const).map(([k, label, n]) => (
-                    <button type="button" key={k} className={`pv2-fchip ${filter === k ? 'on' : ''}`} aria-pressed={filter === k} onClick={() => props.onFilter(k)}>
-                      {label}{n != null ? ` ${n}` : ''}
-                    </button>
-                  ))}
+                  {FILTERS.map(([k, label]) => {
+                    const n = k === 'all' ? null : counts[k]
+                    return (
+                      <button type="button" key={k} className={`pv2-fchip ${filter === k ? 'on' : ''}`} aria-pressed={filter === k} onClick={() => props.onFilter(k)}>
+                        {label}{n != null ? ` ${n}` : ''}
+                      </button>
+                    )
+                  })}
                 </div>
                 <div className="pv2-hl-h" aria-hidden="true"><span>Symbol</span><span className="r">Shares</span><span className="r">Value</span><span>Protection</span><span>Risk</span></div>
                 {shown.map(p => (
                   <button type="button" className="pv2-hrow" key={p.key} onClick={() => props.onOpenPosition(p.key)} data-testid="holding-row">
-                    <span className="c1"><b>{p.symbol}</b><span className="s2">{p.account} · <span className={p.dayPct == null ? '' : p.dayPct >= 0 ? 'up' : 'dn'}>{fmtPct(p.dayPct)}</span>{p.underFloor ? ' · under $100' : ''}</span></span>
+                    <span className="c1"><b>{p.symbol}</b><span className="s2">{p.account} · <span className={p.dayPct == null ? '' : p.dayPct >= 0 ? 'up' : 'dn'}>{fmtPct(p.dayPct)}</span>{p.underFloor ? ' · under $100' : ''}{p.coverage.category === 'PARTIAL' ? ` · stop ${fmtShares(p.coverage.restingShares)}/${fmtShares(p.coverage.heldShares)}` : ''}</span></span>
                     <span className="num">{fmtShares(p.shares)}</span>
                     <span className="num">{fmtUsd(p.value)}</span>
-                    <span><span className={`pv2-chip ${rowChipClass(p)}`}>{p.isCash && p.protection === 'EXEMPT' ? 'CASH' : p.chip}</span></span>
-                    <span className="risk" title="Risk score: NEEDS BACKEND (G7)">—</span>
+                    <span><span className={`pv2-chip ${rowChipClass(p)}`}>{p.isCash && p.protection === 'EXEMPT' ? 'CASH' : rowChip(p)}</span></span>
+                    <span className="risk" title="Risk score: pending decision (G7)">—</span>
                   </button>
                 ))}
                 {visible.length === 0 && <p className="pv2-muted">No holdings match this filter.</p>}
                 {visible.length > shown.length && (
-                  <button type="button" className="pv2-more" onClick={props.onShowAll}>{visible.length - shown.length} more ›</button>
+                  <button type="button" className="pv2-more" onClick={props.onShowMore} data-testid="show-more">
+                    Showing {shown.length} of {visible.length} · show {Math.min(HOLDINGS_PAGE, visible.length - shown.length)} more ›
+                  </button>
                 )}
-                <p className="pv2-muted">Risk column: score not defined yet <NB short /> · tap a row for its full-screen detail</p>
+                <div className="pv2-blk-h">
+                  <p className="pv2-muted">Risk column: pending decision <NB short /> · tap a row for its full-screen detail</p>
+                  <button type="button" className="pv2-lnk" onClick={props.onExportCsv} data-testid="export-csv"
+                    disabled={visible.length === 0} aria-label="Export the filtered holdings as CSV">Export CSV</button>
+                </div>
               </>
             )}
           </section>
 
-          {/* Details: replaces the 8 tabs (R3); each opens a full-screen sheet or the classic desk */}
+          {/* Details: replaces the 8 tabs (R3); each opens a full-screen sheet or a desk */}
           <section className="pv2-blk" id="card-details" data-testid="card-details">
             <div className="pv2-blk-h"><h2 className="pv2-h2">Details</h2></div>
             <button type="button" className="pv2-det" onClick={props.onOpenAudit} data-testid="open-audit"><span>Audit state</span><span>›</span></button>
+            <button type="button" className="pv2-det" onClick={props.onOpenMeasures} data-testid="open-measures"><span>The numbers · reconciliation</span><span>›</span></button>
+            <button type="button" className="pv2-det" onClick={props.onOpenSync} data-testid="open-sync"><span>Sync &amp; export</span><span>›</span></button>
+            <button type="button" className="pv2-det" onClick={props.onOpenRisk} data-testid="open-risk"><span>Risk score · pending decision</span><span>›</span></button>
+            <Link className="pv2-det" to="/retirement" data-testid="lnk-retirement"><span>Retirement</span><span>›</span></Link>
+            <Link className="pv2-det" to="/risk" data-testid="lnk-risk"><span>Risk desk</span><span>›</span></Link>
+            <Link className="pv2-det" to="/defense" data-testid="lnk-defense"><span>Defense</span><span>›</span></Link>
+            <Link className="pv2-det" to="/portfolio/re-entry" data-testid="lnk-reentry"><span>Re-entry</span><span>›</span></Link>
+            <Link className="pv2-det" to="/rotation" data-testid="lnk-rotation"><span>Rotation review</span><span>›</span></Link>
+            <Link className="pv2-det" to="/redeploy" data-testid="lnk-redeploy"><span>Redeploy desk</span><span>›</span></Link>
             <Link className="pv2-det" to="/portfolio-classic?tab=Allocation"><span>Allocation · Look-through</span><span>›</span></Link>
             <Link className="pv2-det" to="/portfolio-classic?tab=Returns"><span>Returns · Dividends · Forecast</span><span>›</span></Link>
             <Link className="pv2-det" to="/portfolio-classic?tab=Tax"><span>Tax lots</span><span>›</span></Link>
             <Link className="pv2-det" to="/portfolio-classic?tab=Stop+Management"><span>Stop management desk</span><span>›</span></Link>
-            <Link className="pv2-det" to="/rotation"><span>Rotation review</span><span>›</span></Link>
-            <Link className="pv2-det" to="/redeploy"><span>Redeploy desk</span><span>›</span></Link>
             <div className="pv2-det pv2-retired" data-testid="retired-fidelity"><span>Fidelity GTC stop sync</span><span className="pv2-chip neutral">Retired</span></div>
             <Link className="pv2-det" to="/portfolio-classic" data-testid="classic-link"><span>Classic Portfolio page (sync, export, stop audit)</span><span>›</span></Link>
           </section>

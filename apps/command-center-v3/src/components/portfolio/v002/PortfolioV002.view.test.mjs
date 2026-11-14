@@ -1,6 +1,10 @@
 // Portfolio v002 (design/pages/portfolio/v002, operator-approved 2026-11-11) — what the page draws.
 // Pins: UNKNOWN rows never read NO STOP; a failed/timed-out read shows TIMED OUT / UNKNOWN and "P0 ?", never "0 P0";
 // gates are NEEDS BACKEND, never "0 open"; a fully protected book collapses Action·Protection to CLEAR.
+// 2026-11-14 campaign: the four measures come only from PortfolioMeasures@v1 (measure 4 UNKNOWN with its cause, the
+// Finviz mark a separate estimate beside the anchor), stop coverage is drawn in its six categories with resting vs
+// held shares, the stop link carries full identity, the risk score is an isolated pending decision, and the six
+// subnav desks keep their deep links.
 // Synthetic fixtures only (public repo). Same harness as the Home v010 view test.
 import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
@@ -29,6 +33,9 @@ function compile(path) {
     compilerOptions: { jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
   }).outputText
   js = js.replace(/import\s+['"][^'"]+\.css['"];?/g, '')
+  // The sheets' `import '../../home/v010'` is a side-effect CSS load; the shell markup is local. Drop it so the
+  // harness never has to resolve a directory index.
+  js = js.replace(/import\s+['"][^'"]*home\/v010['"];?/g, '')
   js = js.replace(/from ["']([^"']+)["']/g, (whole, spec) => {
     if (!spec.startsWith('.')) return `from ${JSON.stringify(pathToFileURL(require.resolve(spec)).href)}`
     let target = resolve(dirname(path), spec)
@@ -43,7 +50,8 @@ function compile(path) {
 
 const lib = await import(compile(join(app, 'src/lib/portfolioV002.ts')))
 const { default: View } = await import(compile(join(app, 'src/components/portfolio/v002/PortfolioV002View.tsx')))
-const { positionsFrom, protectionModel, p0Items, statusRows, API } = lib
+const sheets = await import(compile(join(app, 'src/components/portfolio/v002/PortfolioSheets.tsx')))
+const { positionsFrom, protectionModel, p0Items, statusRows, measuresModel, sinceVisitModel, STOP_READ_MAX_AGE_MS, API } = lib
 
 const NOW = Date.parse('2031-03-07T15:00:00Z')
 const AT = '2031-03-07T14:59:00Z'
@@ -51,26 +59,50 @@ const ok = (source, data) => ({ state: 'OK', data, error: null, at: AT, source }
 const fail = (source, state = 'UNKNOWN') => ({ state, data: null, error: 'HTTP 503', at: AT, source })
 const row = o => ({ symbol: 'AAA', account_id: 'acct-1', account_label: 'Broker A ··01', broker: 'broker_a', shares: 10, market_value: 1000,
   price: 100, price_as_of: AT, protection_state: 'PROTECTED', protection: { state: 'PROTECTED', source: 'stop store', as_of: AT, counted: true },
-  stop_price: 90, ...o })
-const wire = rows => ({ holdings: rows, total_value: 9999, today_change: 5, positions_as_of: AT, valuation_as_of: AT, quote_as_of: AT,
-  position_counts: { agree: true } })
+  stop_price: 90, stop_qty: 10, ...o })
+const wire = (rows, extra = {}) => ({ holdings: rows, total_value: 9999, today_change: 5, positions_as_of: AT, valuation_as_of: AT, quote_as_of: AT,
+  position_counts: { agree: true }, ...extra })
 const noop = () => {}
+const LAST_SEEN_UNKNOWN = { state: 'UNKNOWN', data: null, error: 'HTTP 404', at: AT, source: API.lastSeen }
 
-function render(holdings, incidents = ok(API.incidents, { counts: { P0: 0, P1: 0 }, served_at: AT })) {
+const MEASURES = {
+  contract_version: 'PortfolioMeasures@v1', materialized: true, as_of: AT, generated_at: AT,
+  basis: { applied: 'broker_positions_store', why: 'broker values are the accounting anchor' },
+  finviz_estimates_are_separate: true,
+  measures: {
+    account_value: { label: 'Account value', value: 1252980.85, status: 'MEASURED', as_of: AT, rows: 31,
+      finviz_estimate: { label: 'Finviz mark estimate', value: 1255586.37, delta: -2605.52, marks_at: AT, note: 'a mark difference is not a move and not P&L' } },
+    price_move_estimate: { label: 'Estimated price movement of current holdings', value: -1836.58, status: 'PARTIAL', as_of: AT,
+      coverage: { measured_rows: 28, unknown_rows: 1, row_count: 29 }, gap: { reason: 'one row has no prior-close baseline' } },
+    account_value_change_1d: { label: 'Account value change since prior close', value: -5020.07, status: 'MEASURED', as_of: AT,
+      start: { equity_usd: 1258000.92, as_of: AT }, end: { equity_usd: 1252980.85, as_of: AT },
+      drill_down: { price_move_estimate: -4467.14, closed_today_trade_effect: -552.93, fees_today: 0.47, income_today: 0, external_flows_today: 0, reconciles: true } },
+    verified_daily_pnl: { label: 'Verified daily P&L', value: null, status: 'UNKNOWN', candidate: -5020.07,
+      gap: { reason: 'no stored verified reconciliation exists', requires: 'stored signed per-account reconciliation' },
+      known_components: { price_move_estimate: -4467.14, closed_today_trade_effect: -552.93, fees_today: 0.47, income_today: null, external_flows_today: null } },
+  },
+}
+
+function render(holdings, incidents = ok(API.incidents, { counts: { P0: 0, P1: 0 }, served_at: AT }), lastSeen = LAST_SEEN_UNKNOWN, shownCount = 25) {
   const positions = holdings.state === 'OK' ? positionsFrom(holdings.data) : []
   const prot = protectionModel(holdings, positions)
   const props = { holdings, positions, prot, p0: p0Items(holdings, prot), status: statusRows(holdings, incidents, positions, NOW),
-    nowIso: new Date(NOW).toISOString(), filter: 'all', account: 'all', showAll: false, showAllAction: false,
-    onFilter: noop, onAccount: noop, onShowAll: noop, onShowAllAction: noop, onOpenWhy: noop, onOpenDiag: noop, onOpenAudit: noop, onOpenPosition: noop }
+    measures: measuresModel(holdings), sinceVisit: sinceVisitModel(lastSeen), visitRecord: 'PENDING',
+    nowIso: new Date(NOW).toISOString(), filter: 'all', account: 'all', shownCount, showAllAction: false,
+    onFilter: noop, onAccount: noop, onShowMore: noop, onShowAllAction: noop, onOpenWhy: noop, onOpenDiag: noop, onOpenAudit: noop,
+    onOpenPosition: noop, onOpenMeasures: noop, onOpenMeasure: noop, onOpenGates: noop, onOpenSince: noop, onOpenSync: noop,
+    onOpenRisk: noop, onExportCsv: noop }
   return renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(View, props)))
 }
+const sheet = (Comp, props) => renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(Comp, { open: true, onClose: noop, ...props })))
 const chipP0 = html => (html.match(/data-testid="chip-p0">([^<]*)</) || [])[1]
 const section = (html, id) => { const i = html.indexOf(`data-testid="${id}"`); assert.ok(i >= 0, `missing ${id}`); return html.slice(i, html.indexOf('</section>', i)) }
+const measureRows = html => section(html, 'card-status').split('data-testid="measure-row"').slice(1)
 
 // 1. UNKNOWN rows render UNKNOWN with their cause; only a GAP row reads NO STOP.
 const gapHtml = render(ok(API.holdings, wire([
-  row({ symbol: 'UNK', market_value: 5000, protection_state: 'UNKNOWN', protection: { state: 'UNKNOWN', cause: 'No Stop Read', counted: true }, stop_price: null }),
-  row({ symbol: 'GAPX', market_value: 2000, protection_state: 'GAP', protection: { state: 'GAP', counted: true }, stop_price: null }),
+  row({ symbol: 'UNK', market_value: 5000, protection_state: 'UNKNOWN', protection: { state: 'UNKNOWN', cause: 'No Stop Read', counted: true }, stop_price: null, stop_qty: null }),
+  row({ symbol: 'GAPX', market_value: 2000, protection_state: 'GAP', protection: { state: 'GAP', counted: true }, stop_price: null, stop_qty: null }),
   row({ symbol: 'SAFE', market_value: 3000 }),
 ])))
 const protect = section(gapHtml, 'card-protect')
@@ -92,6 +124,12 @@ assert.match(toHtml, /value UNKNOWN/); assert.doesNotMatch(toHtml, />CLEAR</)
 // 3. A failed (non-timeout) read is UNKNOWN, never CLEAR.
 const failHtml = render(fail(API.holdings))
 assert.match(section(failHtml, 'card-protect'), /UNKNOWN/); assert.doesNotMatch(failHtml, />CLEAR</)
+// A8 (REVIEW-CAMPAIGN8H-item1-fix): on an unreadable read the header's title names the read error (the value itself
+// stays UNKNOWN and no number is drawn); the dead "unreadable store total" branch is gone.
+const failHdr = failHtml.match(/data-testid="hdr-value"[^>]*>([^<]*)</) || []
+assert.match(failHdr[1], /value UNKNOWN/)
+assert.match(failHdr[0], /HTTP 503; no account value was published/is)
+assert.doesNotMatch(failHdr[0], /store total/)
 
 // 4. Every counted row protected: Action·Protection collapses to CLEAR, 0 P0.
 const okHtml = render(ok(API.holdings, wire([row({ symbol: 'ONE' }), row({ symbol: 'TWO', stop_state: 'pending_activation' })])))
@@ -102,7 +140,7 @@ assert.doesNotMatch(okHtml, /(\d+) of \1 brokers/); assert.match(okHtml, /1 brok
 
 // 5. LQ-2460 F1 (REVIEW-2448): an unpriced GAP (counted:false, no value) is a GAP row and a P0, never CLEAR.
 const unpricedHtml = render(ok(API.holdings, wire([row({ symbol: 'SAFE' }),
-  row({ symbol: 'NOPX', market_value: null, price: null, protection_state: 'GAP', protection: { state: 'GAP', counted: false }, stop_price: null })])))
+  row({ symbol: 'NOPX', market_value: null, price: null, protection_state: 'GAP', protection: { state: 'GAP', counted: false }, stop_price: null, stop_qty: null })])))
 assert.doesNotMatch(unpricedHtml, />CLEAR</); assert.equal(chipP0(unpricedHtml), '1 P0')
 assert.match(section(unpricedHtml, 'card-protect').split('data-testid="prot-row"').find(r => r.includes('NOPX')) || '', /NO STOP/)
 
@@ -138,6 +176,246 @@ assert.match(section(cashHtml, 'card-protect'), /Protection UNKNOWN: No counted 
   const rule = (css.match(/\.pv2-classic\s*\{([^}]*)\}/) || [])[1] || ''
   assert.match(rule, /min-height:\s*44px/, '.pv2-classic is not a 44 px tap target')
   assert.doesNotMatch(css, /\.pv2-classic[^{]*\{[^}]*(display:\s*none|visibility:\s*hidden)/, '.pv2-classic is hidden somewhere')
+}
+
+// 8. Measures absent: four UNKNOWN rows carrying the writer's reason; no page-side number, no UNVERIFIED claim
+// (there is nothing to call verified), and the header is the store total, labelled as not reconciled.
+{
+  const html = render(ok(API.holdings, wire([row({ symbol: 'ONE' })])))
+  const mrows = measureRows(html)
+  assert.equal(mrows.length, 4, 'four measure rows')
+  for (const m of mrows) assert.match(m, /UNKNOWN/)
+  assert.match(section(html, 'card-status'), /the writer must run once before the four measures are published/)
+  const hdr = html.match(/data-testid="hdr-value"[^>]*>([^<]*)</) || []
+  assert.match(hdr[1], /\$9,999/, 'store total drawn with its label')
+  // C3 (REVIEW-CAMPAIGN8H-item1 F1): the qualification is VISIBLE text beside the figure at 390/412 — never only a
+  // title= a phone cannot hover. The title now names the state it was taken in (C2, F2).
+  const mark = (html.match(/data-testid="hdr-mark"[^>]*>([^<]*)</) || [])[1] || ''
+  assert.match(mark, /store total · not reconciled/, 'the unreconciled qualification is drawn as text')
+  assert.match(hdr[0], /not materialized in this read/)
+  assert.doesNotMatch(html, /data-testid="chip-unverified"/)
+}
+
+// 8b. C1 (REVIEW F3): a statusless value is not a figure — it is never drawn in its measure row nor promoted to the
+// header. The header falls back to the store total, visibly marked unreconciled.
+{
+  const html = render(ok(API.holdings, wire([row({ symbol: 'ONE' })], { measures: { materialized: true, measures: { account_value: { value: 777777 } } }, total_value: 888888 })))
+  const hdr = html.match(/data-testid="hdr-value"[^>]*>([^<]*)</) || []
+  assert.match(hdr[1], /\$888,888/, 'the store total, not the statusless number')
+  assert.doesNotMatch(html, /777,777/, 'a statusless value appears nowhere in the markup')
+  assert.match(measureRows(html)[0], /status not published — not a figure/)
+  const mark = (html.match(/data-testid="hdr-mark"[^>]*>([^<]*)</) || [])[1] || ''
+  assert.match(mark, /store total · not reconciled/)
+}
+
+// 8c. C2 (REVIEW F2): with the block MATERIALIZED but no account_value figure published, the fallback must not claim
+// the measures are not materialized (the card beside it reads MEASURED), and the unreconciled mark stays visible.
+{
+  const noFigure = { ...MEASURES, measures: { ...MEASURES.measures, account_value: { label: 'Account value', value: null, status: 'MEASURED', as_of: AT } } }
+  const html = render(ok(API.holdings, wire([row({ symbol: 'ONE' })], { measures: noFigure, total_value: 7654321 })))
+  const hdr = html.match(/data-testid="hdr-value"[^>]*>([^<]*)</) || []
+  assert.match(hdr[1], /\$7,654,321/)
+  assert.doesNotMatch(hdr[0], /not materialized/, 'the block IS materialized; the reason must not say otherwise')
+  assert.match(hdr[0], /did not publish an account value/i)
+  const mark = (html.match(/data-testid="hdr-mark"[^>]*>([^<]*)</) || [])[1] || ''
+  assert.match(mark, /store total · not reconciled/)
+  assert.match(measureRows(html)[0], /MEASURED/)   // the header fallback does not contradict the card
+}
+
+// 8d. C4 (REVIEW, mutants M3/M5): the status card has no Value/Today row, today_change never reaches the markup, and
+// the store total is drawn only in the header fallback. (M3 — coverage PARTIAL rolling up as GAP — is pinned in the
+// model test: a PROTECTED/PARTIAL-only book reads OK, counted 1.)
+{
+  const html = render(ok(API.holdings, wire([row({ symbol: 'ONE' })], { total_value: 7654321, today_change: 4321 })))
+  assert.doesNotMatch(html, /today_change/)
+  const stNames = [...html.matchAll(/data-testid="(row-[a-z]+)"><div class="s1"><span class="n">([^<]*)</g)].map(m => m[2])
+  assert.ok(stNames.length > 0, 'status rows are rendered')
+  for (const n of stNames) assert.doesNotMatch(n, /^(value|today)\b/i, `status row named ${n}`)
+  assert.equal(html.split('7,654,321').length - 1, 1, 'the store total is drawn exactly once — in the header')
+  assert.match(html, /data-testid="hdr-value"/)
+}
+
+// 9. Measures present: the anchor and the four measures come from the projection; measure 4 is UNKNOWN with its
+// candidate; the Finviz mark is separate and labelled; the page never shows a computed "today".
+{
+  const html = render(ok(API.holdings, wire([row({ symbol: 'ONE' })], { measures: MEASURES })))
+  const hdr = html.match(/data-testid="hdr-value"[^>]*>([^<]*)</) || []
+  assert.match(hdr[1], /1,252,981/, 'header is the broker anchor')
+  assert.doesNotMatch(hdr[1], /1,255,586/, 'the Finviz estimate is not the header figure')
+  assert.match(html, /data-testid="chip-unverified"/)
+  const mrows = measureRows(html)
+  assert.match(mrows[0], /MEASURED/); assert.match(mrows[0], /1,252,981/)
+  assert.match(mrows[0], /Finviz estimate \$1,255,586.*separate/)
+  assert.match(mrows[1], /PARTIAL/); assert.match(mrows[1], /1,837/)
+  assert.match(mrows[2], /MEASURED/); assert.match(mrows[2], /5,020/)
+  assert.match(mrows[3], /UNKNOWN/); assert.match(mrows[3], /candidate .*5,020.*not verified/)
+  assert.doesNotMatch(mrows[3], /VERIFIED</, 'measure 4 is never drawn verified without a stored reconciliation')
+  assert.match(section(html, 'card-status'), /never added to a “today” figure/)
+}
+
+// 10. Coverage categories in the rows and the coverage line; resting vs held; the stop link carries identity.
+{
+  const html = render(ok(API.holdings, wire([
+    row({ symbol: 'FULL', shares: 300, stop_qty: 300 }),
+    row({ symbol: 'HALF', shares: 300, stop_qty: 200 }),
+    row({ symbol: 'PLAN', protection_state: 'GAP', protection: { state: 'GAP', counted: true }, stop_source: 'planned', stop_price: null, stop_qty: null }),
+    row({ symbol: 'NONE', protection_state: 'GAP', protection: { state: 'GAP', counted: true }, stop_price: null, stop_qty: null }),
+  ])))
+  const holdings = section(html, 'card-holdings')
+  const half = holdings.split('data-testid="holding-row"').find(r => r.includes('HALF')) || ''
+  assert.match(half, /PARTIAL 200\/300/)
+  const plan = holdings.split('data-testid="holding-row"').find(r => r.includes('PLAN<')) || ''
+  assert.match(plan, /PLANNED ONLY/)
+  const none = holdings.split('data-testid="holding-row"').find(r => r.includes('NONE')) || ''
+  assert.match(none, /NO STOP/)
+  assert.match(section(html, 'card-protect'), /Coverage: <b>1<\/b> covered · <b>1<\/b> partial · <b>1<\/b> uncovered · <b>1<\/b> planned-only/)
+  // F4 (REVIEW advisory): PLAN/NONE publish no resting quantity, so the totals are a partial sum and the line says
+  // "published" instead of presenting 500/620 as the book's totals.
+  assert.match(section(html, 'card-protect'), /resting <b>500<\/b> of <b>620<\/b> published held shares/)
+  // ...and when every eligible row publishes both quantities, the line reads as the plain totals.
+  const completeHtml = render(ok(API.holdings, wire([
+    row({ symbol: 'FULL', shares: 300, stop_qty: 300 }),
+    row({ symbol: 'GAPY', shares: 300, protection_state: 'GAP', protection: { state: 'GAP', counted: true }, stop_price: null, stop_qty: 0 }),
+  ])))
+  assert.match(section(completeHtml, 'card-protect'), /resting <b>300<\/b> of <b>600<\/b> held shares/)
+  const hrefs = [...html.matchAll(/href="([^"]*portfolio-classic\?tab=Stop\+Management[^"]*)"/g)].map(m => m[1])
+  assert.ok(hrefs.length >= 1, 'stop desk link')
+  const decoded = hrefs.map(h => decodeURIComponent(h.replace(/\+/g, ' '))).find(d => /symbol=NONE/.test(d)) || ''
+  assert.ok(decoded, 'the uncovered row carries a stop desk link')
+  assert.match(decoded, /account=acct-1/); assert.match(decoded, /broker=broker_a/); assert.match(decoded, /position=acct-1:NONE/)
+}
+
+// 11. The sheets: reconciliation and UNVERIFIED, gate evidence with no served gate, the last-visit window, the
+// pending risk decision (no score anywhere).
+{
+  const pos = positionsFrom(wire([row({ symbol: 'HALF', shares: 300, stop_qty: 200 })]), NOW)
+  const holdings = ok(API.holdings, wire([row({})], { measures: MEASURES }))
+  const measures = measuresModel(holdings)
+  const prot = protectionModel(holdings, positionsFrom(holdings.data, NOW))
+  const since = sinceVisitModel(ok(API.lastSeen, { read: { status: 'RECORDED', window_basis: 'last_visit', seen_at: AT, age_sec: 60, device: 'phone' } }))
+  const mh = sheet(sheets.MeasuresSheet, { measures, nowIso: new Date(NOW).toISOString() })
+  assert.match(mh, /DAY FIGURES UNVERIFIED/); assert.match(mh, /UNVERIFIED\./); assert.match(mh, /candidate/)
+  assert.match(mh, /COMPONENTS RECONCILE/)
+  assert.match(mh, /Finviz mark estimate/); assert.match(mh, /never added to any “today” measure/)
+  const gh = sheet(sheets.GateEvidenceSheet, { prot, measures, positions: pos })
+  assert.match(gh, /No gate store is served/); assert.match(gh, /NOT AVAILABLE/)
+  for (const h of gh.match(/data-testid="gate-item"/g) || []) assert.ok(h)
+  assert.doesNotMatch(gh, /\b0 open\b/)
+  const sh = sheet(sheets.SinceLastVisitSheet, { since, visitRecord: 'RECORDED' })
+  assert.match(sh, /Since your last visit/); assert.match(sh, /Server-stamped/); assert.match(sh, /change store \(LQ-2143\)/)
+  const rh = sheet(sheets.RiskSheet, {})
+  assert.match(rh, /PENDING DECISION/); assert.match(rh, /RISK-SCORE-SPEC-20261111/); assert.match(rh, /no number and no band/)
+}
+
+// 12. Pagination: 40 rows, 25 shown, a "show more" control; the count is exact.
+{
+  const many = Array.from({ length: 40 }, (_, i) => row({ symbol: `S${i}`, market_value: 1000 + i }))
+  const html = render(ok(API.holdings, wire(many)), undefined, undefined, 25)
+  assert.match(html, /Showing 25 of 40 · show 15 more/)
+  assert.match(html, /data-testid="show-more"/)
+  const all = render(ok(API.holdings, wire(many)), undefined, undefined, 40)
+  assert.doesNotMatch(all, /data-testid="show-more"/)
+}
+
+// 13. The six subnav desks keep their deep links.
+{
+  const d = section(okHtml, 'card-details')
+  for (const [id, href] of [['lnk-retirement', '/retirement'], ['lnk-risk', '/risk'], ['lnk-defense', '/defense'],
+    ['lnk-reentry', '/portfolio/re-entry'], ['lnk-rotation', '/rotation'], ['lnk-redeploy', '/redeploy']]) {
+    assert.ok(d.includes(`data-testid="${id}" href="${href}"`), `missing or wrong link ${id}`)
+  }
+}
+
+// 14. Risk: the row and the Details entry say pending decision; no score band or number is drawn.
+{
+  const statusHtml = section(okHtml, 'card-status')
+  assert.match(statusHtml, /PENDING DECISION|PENDING/)
+  assert.match(statusHtml, /RISK-SCORE-SPEC-20261111 is PROPOSED/)
+  assert.match(statusHtml, /data-testid="risk-why"/)
+  assert.doesNotMatch(okHtml, /data-testid="row-risk"[\s\S]{0,300}score \d/)
+  assert.match(section(okHtml, 'card-details'), /Risk score · pending decision/)
+}
+
+// 15. Export: a CSV control in the holdings block, disabled state is not the default; the file name carries no symbol.
+{
+  const html = render(ok(API.holdings, wire([row({})])))
+  assert.match(section(html, 'card-holdings'), /data-testid="export-csv"/)
+  assert.match(section(html, 'card-holdings'), /Export the filtered holdings as CSV/)
+  const page = readFileSync(join(app, 'src/pages/PortfolioV002.tsx'), 'utf8')
+  assert.match(page, /portfolio-holdings-\$\{new Date\(\)\.toISOString\(\)\.slice\(0, 10\)\}\.csv/)
+  assert.doesNotMatch(page, /\.csv`?.*symbol/i)
+}
+
+// 16. Validation gates: the four named gates with their evidence, an unticked box each, no count and no verdict.
+{
+  const html = render(ok(API.holdings, wire([row({ symbol: 'AAA' }), row({ symbol: 'BBB', price_stale: true })])))
+  const g = section(html, 'card-gates')
+  assert.equal((g.match(/data-testid="gate-row"/g) || []).length, 4)
+  assert.match(g, /Stop read covers every broker/)
+  assert.match(g, /Price check · 5 sessions clean/)
+  assert.match(g, /Position count agrees/)
+  assert.match(g, /Value reconciles to the accounting anchor/)
+  assert.match(g, /In this read: 1 stale of 2 priced rows in this read; one read cannot show a five-session window/)
+  assert.match(g, /BLOCKS TRADING/)
+  assert.match(g, /data-testid="open-gates"/)
+  assert.equal((g.match(/class="pv2-gbox"/g) || []).length, 4)
+  assert.doesNotMatch(g, /\b(PASS|FAIL|OPEN|CLOSED|0 open)\b/)
+  assert.doesNotMatch(g, /✓|✔/)
+  // The header never counts gates: the chip says NEEDS BACKEND, the block age says the result is unavailable.
+  assert.match(section(html, 'card-gates'), /result not available/)
+  assert.doesNotMatch(section(okHtml, 'card-gates'), /Gates \d/)
+}
+
+// 16b. C5/C6 (REVIEW-CAMPAIGN8H-item1-fix-cc-deepseek-2) at the rendered level: the served count block's cross-scope
+// `agree:false` is not a mismatch and not a P0 — the gate speaks the like-for-like row count, and a healthy,
+// fully protected book draws "0 P0".
+{
+  const SERVED_COUNTS = {
+    contract_version: 'PositionCountAuthority@v1', primary_scope: 'holdings.non_cash_over_100', agree: false,
+    position_count: 11, held_count: 28, all_rows: 1, cash_rows: 0, non_cash_rows: 1, below_100: 0,
+    distinct_values: [0, 1, 11, 28],
+    scopes: { 'holdings.all_rows': 1, 'holdings.cash': 0, 'holdings.non_cash': 1, 'holdings.non_cash_over_100': 1 },
+    summary: '1 position at or above $100', findings: [],
+  }
+  const html = render(ok(API.holdings, wire([row({ symbol: 'SAFE' })], { position_counts: SERVED_COUNTS })))
+  const g = section(html, 'card-gates')
+  assert.match(g, /holdings\.all_rows scope counts 1; this read drew 1 row; they match/)
+  assert.match(g, /headline 11 is its holdings\.non_cash_over_100 scope/)
+  assert.match(g, /its own summary: 1 position at or above \$100/)
+  assert.doesNotMatch(g, /disagree/i)
+  assert.doesNotMatch(g, /summary 11 vs/)
+  assert.equal(chipP0(html), '0 P0', 'a healthy book with no published finding draws no P0')
+  // ...and a published finding still raises exactly one P0, with its detail on the page.
+  const withFinding = render(ok(API.holdings, wire([row({ symbol: 'SAFE' })], { position_counts: { ...SERVED_COUNTS, findings: [{ code: 'LIVE_MARK_COUNT_DIFFERS', detail: 'the live re-mark counts 12 instruments at or above $100 where the positions store counts 11' }] } })))
+  assert.equal(chipP0(withFinding), '1 P0')
+  // The finding's detail is carried by the P0 model (asserted in the model suite); the page draws the count.
+}
+
+// 17. A status row opens the measures sheet at its own measure (drawn first, marked); the other three stay.
+{
+  const measures = measuresModel(ok(API.holdings, wire([row({})], { measures: MEASURES })))
+  const mh = sheet(sheets.MeasuresSheet, { measures, nowIso: new Date(NOW).toISOString(), focus: 'verified_daily_pnl' })
+  const blocks = mh.split('data-testid="measure-detail"').slice(1)
+  assert.equal(blocks.length, 4)
+  assert.match(blocks[0], /data-focus="true"/)
+  assert.match(blocks[0], /Verified daily P&amp;L/)
+  assert.equal((mh.match(/data-focus="true"/g) || []).length, 1)
+  // The page wires the row to the focused sheet, and the Details entry opens it unfocused.
+  const page = readFileSync(join(app, 'src/pages/PortfolioV002.tsx'), 'utf8')
+  assert.match(page, /onOpenMeasure=\{k => \{ setMeasureFocus\(k\); setMeasuresOpen\(true\) \}\}/)
+  assert.match(page, /onOpenMeasures=\{\(\) => \{ setMeasureFocus\(null\); setMeasuresOpen\(true\) \}\}/)
+}
+
+// 18. Since your last visit: the anchor, device and previous visit when recorded; an explicit reason when not.
+{
+  const r = ok(API.lastSeen, { read: { status: 'RECORDED', window_basis: 'last_visit', seen_at: AT,
+    previous_seen_at: '2031-03-01T15:00:00Z', age_sec: 60, device: 'phone' } })
+  const s = section(render(ok(API.holdings, wire([row({})])), undefined, r), 'card-since')
+  assert.match(s, /Last visit /); assert.match(s, /phone/); assert.match(s, /previous /)
+  assert.match(s, /data-testid="since-window"/)
+  const unknown = section(okHtml, 'card-since')
+  assert.match(unknown, /data-testid="since-detail"/)
+  assert.doesNotMatch(unknown, /Last visit \d/, 'no visit time is drawn when the record is missing')
 }
 
 console.log('PortfolioV002.view.test.mjs: ok')
