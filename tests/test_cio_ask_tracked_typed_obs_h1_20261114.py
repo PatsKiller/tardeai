@@ -120,6 +120,24 @@ def test_untracked_typed_entity_is_not_published(tmp_path):
     assert rows == []
 
 
+# ── F1 (review cc-deepseek-2, 16:50:33Z): the filtered rows must be NAMED, not silently dropped ────────────────
+#
+# `tracked: []` was byte-identical whether nothing was tracked or a name-only entity was tracked and filtered out.
+# That is an absence of evidence served as evidence of absence. The census rides beside the rows; the page may
+# render it or not, but the read names the population the header cannot chip.
+
+
+def test_untyped_tracked_entities_are_named_in_a_census(tmp_path):
+    store = _store(tmp_path, _ledger_like_the_bhvn_thread())
+    census = store.untyped_tracked_entities()
+    assert {r["name"] for r in census} == {"Review BHVN", "WATCH Card", "Risk", "SpaceX"}, census
+    assert all(r["thread_id"] for r in census), "the census keeps each row's thread context"
+    assert not {r["name"] for r in census} & {r["name"] for r in store.tracked_entities()}, \
+        "the two populations are disjoint: the census never promotes a row into the header"
+    assert {r["thread_id"] for r in census if r["name"] == "SpaceX"} == {"thr_private"}
+    assert census[0]["key"], "each census row is addressable by the key its thread already holds"
+
+
 if __name__ == "__main__":
     import tempfile
 
@@ -128,7 +146,8 @@ if __name__ == "__main__":
         for fn in (test_typed_tracking_class_names_only_symbol_account_thread,
                    test_tracked_entities_never_publish_a_name_only_private_entity,
                    test_tracked_entities_keeps_account_and_thread_entities,
-                   test_untracked_typed_entity_is_not_published):
+                   test_untracked_typed_entity_is_not_published,
+                   test_untyped_tracked_entities_are_named_in_a_census):
             try:
                 if fn.__code__.co_argcount:
                     fn(Path(d))
@@ -138,5 +157,5 @@ if __name__ == "__main__":
             except AssertionError as exc:  # noqa: BLE001
                 fails += 1
                 print(f"  [FAIL] {fn.__name__}: {exc}")
-    print(f"obs_h1_tracked_typed: {4 - fails} passed, {fails} failed")
+    print(f"obs_h1_tracked_typed: {5 - fails} passed, {fails} failed")
     sys.exit(1 if fails else 0)

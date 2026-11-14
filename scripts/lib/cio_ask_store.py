@@ -338,5 +338,21 @@ class AskEventStore:
                     out.append({"thread_id": t["thread_id"], **ent})
         return out
 
+    def untyped_tracked_entities(self) -> list[dict[str, Any]]:
+        """Tracked entities the shared header CANNOT name — the census that rides beside ``tracked_entities``.
+
+        OBS-H1 F1 (review cc-deepseek-2, 2026-11-14): filtering untyped rows out of ``tracked_entities`` made
+        ``tracked: []`` mean two different things — nothing tracked, or something tracked that cannot be a chip.
+        This read names the second population (and only it), so a caller can tell the states apart. Same read
+        projection as its sibling: no ledger rewrite, no tracking-state change, each row keeps its thread context.
+        """
+        out = []
+        for t in self.threads().values():
+            for ent in t["entities"]:
+                if (ent.get("tracking") or {}).get("state") == "tracked" and not typed_tracking_class(ent):
+                    out.append({"thread_id": t["thread_id"], "key": ent.get("key"), "kind": ent.get("kind"),
+                                "name": ent.get("name"), "entity_guid": ent.get("entity_guid")})
+        return out
+
 
 __all__ = ["AskEventStore", "STORE_SCHEMA", "EVENT_KINDS", "default_path", "event_id_for"]
