@@ -9,7 +9,7 @@
 //  * UNKNOWN is never green: its cue level is NEUTRAL with the word UNKNOWN.
 import type { Envelope } from '../api/client.ts'
 import type { ReaderSpec } from '../api/readers.ts'
-import { readPath } from '../api/readers.ts'
+import { readPath, ruleFires } from '../api/readers.ts'
 
 export type RenderStatus = 'LOADING' | 'UNKNOWN' | 'ERROR' | 'EMPTY' | 'OK'
 
@@ -49,8 +49,11 @@ export function deriveRenderState<T>({ envelope, spec, now, isEmpty }: DeriveInp
   }
   const body = envelope.data
   for (const rule of s.unavailableWhen) {
-    if (readPath(body, rule.at) === rule.equals) {
-      return base('UNKNOWN', `source reports ${rule.at} = ${JSON.stringify(rule.equals)}`)
+    const v = readPath(body, rule.at)
+    if (ruleFires(rule, v)) {
+      return base('UNKNOWN', 'notEquals' in rule && rule.notEquals !== undefined
+        ? `source reports ${rule.at} = ${v === undefined ? 'missing' : JSON.stringify(v)}, not ${JSON.stringify(rule.notEquals)}`
+        : `source reports ${rule.at} = ${JSON.stringify(rule.equals)}`)
     }
   }
   let asOf: string | null = null

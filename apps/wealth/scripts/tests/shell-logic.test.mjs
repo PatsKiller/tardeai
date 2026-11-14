@@ -54,10 +54,86 @@ test('EMPTY is reachable only with a fresh declared as_of', () => {
   assert.match(st.reason, /stale/)
 })
 
-test('defense posture: engine_gaps [] last checked 100 days ago is not all-clear (stale → UNKNOWN)', () => {
-  const body = { as_of: '2026-08-06T00:00:00Z', stale: false, engine_gaps: { gaps: [], last_check: '2026-08-06' } }
-  const st = deriveRenderState({ envelope: env('/api/v2/defense/posture', body), now: NOW, isEmpty: b => b.engine_gaps.gaps.length === 0 })
+// Every canonical reader answers {"ok": true, "data": {...}} (cc-deepseek-7 captures 2026-11-14 23:00-23:27Z):
+// fixtures below use that envelope, so a row whose path forgets the `data.` level cannot pass.
+const wrap = d => ({ ok: true, data: d })
+
+test('defense posture: fresh enveloped as_of reads OK (the row reads data.as_of, not a top-level as_of)', () => {
+  const st = deriveRenderState({ envelope: env('/api/v2/defense/posture', wrap({ ok: true, as_of: '2026-11-14T22:00:00Z', stale: false })), now: NOW })
+  assert.equal(st.status, 'OK', st.reason)
+  assert.equal(st.asOf, '2026-11-14T22:00:00Z')
+})
+
+test('defense posture: data.stale true → UNKNOWN naming data.stale', () => {
+  const st = deriveRenderState({ envelope: env('/api/v2/defense/posture', wrap({ ok: true, as_of: '2026-11-14T22:00:00Z', stale: true })), now: NOW })
   assert.equal(st.status, 'UNKNOWN')
+  assert.match(st.reason, /data\.stale/)
+})
+
+test('defense posture: engine_gaps [] last checked 100 days ago is not all-clear (stale → UNKNOWN)', () => {
+  const body = wrap({ as_of: '2026-08-06T00:00:00Z', stale: false, engine_gaps: { gaps: [], last_check: '2026-08-06' } })
+  const st = deriveRenderState({ envelope: env('/api/v2/defense/posture', body), now: NOW, isEmpty: b => b.data.engine_gaps.gaps.length === 0 })
+  assert.equal(st.status, 'UNKNOWN')
+  assert.match(st.reason, /^stale/)
+})
+
+test('decision desk: freshness comes from data.computed_at (a projection clock)', () => {
+  const st = deriveRenderState({ envelope: env('/api/v2/reentry/decision-desk', wrap({ ok: true, computed_at: '2026-11-14T23:01:04Z', rows: [{}] })), now: NOW })
+  assert.equal(st.status, 'OK', st.reason)
+  assert.equal(st.asOf, '2026-11-14T23:01:04Z')
+})
+
+test('defense recommendations: clock is recommendations.generated_at, never the date-only as_of; mode SHADOW noted', () => {
+  const s = specFor('/api/v2/defense/recommendations')
+  assert.equal(s.asOfAt, 'data.recommendations.generated_at')
+  assert.equal(s.clock, 'producer')
+  assert.match(s.note, /SHADOW/)
+  const body = wrap({ ok: true, recommendations: { as_of: '2026-11-13', generated_at: '2026-11-13T22:50:02.391865+00:00', mode: 'SHADOW' } })
+  assert.equal(deriveRenderState({ envelope: env('/api/v2/defense/recommendations', body), now: NOW }).status, 'OK')
+})
+
+test('request-time clocks are never declared as freshness', () => {
+  for (const p of ['/api/v2/risk/protection-truth', '/api/v2/reentry/status', '/api/v2/cio/capital-plan', '/api/v2/redeploy/capital-pools']) {
+    const s = specFor(p)
+    assert.notEqual(s.note, 'default', `${p} has a row`)
+    assert.equal(s.asOfAt, undefined, p)
+    assert.equal(s.clock, 'request-time', p)
+  }
+  for (const p of ['/api/v2/stops/reentry-watch', '/api/v2/journal/exit-intelligence', '/api/v2/time-exit/proposals', '/api/v2/market-event/active']) {
+    const s = specFor(p)
+    assert.notEqual(s.note, 'default', `${p} has a row`)
+    assert.equal(s.asOfAt, undefined, p)
+    assert.equal(s.clock, 'none', p)
+  }
+})
+
+test('clockless empty (time-exit proposals []) is UNKNOWN, never EMPTY', () => {
+  const st = deriveRenderState({ envelope: env('/api/v2/time-exit/proposals', wrap({ proposals: [], count: 0, note: 'paper-only' })), now: NOW, isEmpty: b => b.data.count === 0 })
+  assert.equal(st.status, 'UNKNOWN')
+})
+
+test('registry rows: every declared path is under data. and asOfAt is set exactly when clock is producer', () => {
+  for (const r of READERS) {
+    assert.ok(r.clock, `${r.path} declares its clock`)
+    assert.equal(!!r.asOfAt, r.clock === 'producer', r.path)
+    for (const p of [r.asOfAt, ...r.unavailableWhen.map(u => u.at)].filter(Boolean)) assert.match(p, /^data\./, `${r.path}: ${p}`)
+  }
+})
+
+test('notEquals rule: anything but the healthy value (or a missing value) is UNKNOWN', () => {
+  const spec = { path: '/api/v2/x', timeoutMs: 1000, heavy: false, clock: 'none', unavailableWhen: [{ at: 'data.status', notEquals: 'OK' }], note: 't' }
+  const mk = d => ({ ...env('/api/v2/x', wrap(d)), spec })
+  assert.equal(deriveRenderState({ envelope: mk({ status: 'OK' }), now: NOW }).status, 'OK')
+  const deg = deriveRenderState({ envelope: mk({ status: 'DEGRADED' }), now: NOW })
+  assert.equal(deg.status, 'UNKNOWN')
+  assert.match(deg.reason, /data\.status = "DEGRADED".*not "OK"/)
+  assert.equal(deriveRenderState({ envelope: mk({}), now: NOW }).status, 'UNKNOWN')
+})
+
+test('readPath indexes arrays by position', async () => {
+  const { readPath } = await import('../../src/api/readers.ts')
+  assert.equal(readPath(wrap({ w: [{ as_of: 'a' }, { as_of: 'b' }] }), 'data.w.1.as_of'), 'b')
+  assert.equal(readPath(wrap({ w: [] }), 'data.w.0.as_of'), undefined)
 })
 
 test('OK only when no rule fires; UNKNOWN cue is NEUTRAL with the word UNKNOWN (never green)', () => {
@@ -129,9 +205,11 @@ test('heavy readers refuse a shell-originated read; pages may read them', async 
   assert.equal(e.ok, true)
 })
 
-test('protection-truth has its own timeout below the default', () => {
+test('protection-truth: heavy, timeout at least 2x the measured 3.653 s tail, data.status UNAVAILABLE → UNKNOWN', () => {
   const s = specFor('/api/v2/risk/protection-truth')
-  assert.ok(s.timeoutMs < 8000 && s.heavy)
+  assert.ok(s.heavy && s.timeoutMs >= 2 * 3653, String(s.timeoutMs))
+  const st = deriveRenderState({ envelope: env('/api/v2/risk/protection-truth', wrap({ status: 'UNAVAILABLE', as_of: '2026-11-14T23:29:59Z' })), now: NOW })
+  assert.equal(st.status, 'UNKNOWN')
 })
 
 test('client is GET-only and refuses non-/api/ paths', async () => {
