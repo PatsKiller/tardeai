@@ -19,3 +19,22 @@
 .wl2-next { font-size: 13px; color: var(--text-1); overflow-wrap: anywhere; }
 .wl2-paging { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--text-2); }
 .wl2-dismissed summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+.wl2-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wl2-purpose { margin: 0; font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; }
+.wl2-lanes { display: flex; gap: 6px; flex-wrap: wrap; padding: 4px 0; }
+.wl2-lane-n { font-size: 12px; color: var(--text-2); }
+.wl2-lane-on[data-active="1"] { border-color: var(--info-border); background: var(--bg-2); color: var(--text-0); }
+.wl2-tools { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.wl2-search { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--text-2); }
+.wl2-search input { min-height: 44px; padding: 0 10px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-1); color: var(--text-0); font-size: 14px; min-width: 0; width: 14rem; max-width: 100%; }
+.wl2-tools-note { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
+
+/* WL-10/WL-16/WL-26: the clocks the body carries, side by side; the age is page arithmetic, the stamps are the server's. */
+.wl2-clocks { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; margin: 0.35rem 0 0.6rem; padding: 0.45rem 0.6rem; border-left: 3px solid var(--v010-line, #d0d5dd); }
+.wl2-clock { display: flex; flex-direction: column; min-width: 8rem; }
+.wl2-clock dt { font-size: 0.72rem; letter-spacing: 0.02em; text-transform: uppercase; opacity: 0.75; }
+.wl2-clock dd { margin: 0; font-variant-numeric: tabular-nums; }
+@media (max-width: 480px) { .wl2-clock { min-width: 45%; } }
+
+/* WL-13: the payload's own definition of the ranked number, stated once above the rows. */
+.wl2-legend { margin: 0.25rem 0 0.5rem; font-size: 0.86rem; opacity: 0.9; }

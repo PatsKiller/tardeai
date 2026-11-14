@@ -11,9 +11,17 @@ import WatchSubnav from '../components/watch/WatchSubnav'
 import './WatchListsV002.css'
 import { mineAction } from '../components/watch/MineControls'
 import {
-  curationUrl, dismissedSet, gradeCuration, gradeProspects, pagingOf, pagingText, prospectsUrl, rowView,
-  type DismissedItem, type ListGrade, type ListKey, type ListPaging, type ListRowView,
+  ageText, clocksOf, curationUrl, dismissedSet, filterRows, gradeCuration, gradeProspects, laneOverflow, laneTabs, membershipSources,
+  otherMembership, pagingOf, pagingText, prospectsUrl, rankingLegend, rowView,
+  type Clock, type DismissedItem, type LaneTab, type ListGrade, type ListKey, type ListPaging, type ListRowView,
+  type MemberSource,
 } from '../lib/watchListsV002'
+
+const TAB_COPY: Record<ListKey, { title: string; purpose: string }> = {
+  mine: { title: 'My List', purpose: 'Every name you monitor, including invalid or expired signals, until you remove it.' },
+  suggests: { title: 'Suggestions', purpose: 'Ranked names not already on My List; dismiss for 30 days or add.' },
+  prospects: { title: 'Prospects', purpose: 'The CIO prospect collection by lifecycle stage — review, do not enter from here.' },
+}
 
 export type ListsViewProps = {
   tab: ListKey
@@ -28,22 +36,100 @@ export type ListsViewProps = {
   message: string
   dismissedStatus: string
   dismissedItems: DismissedItem[]
+  /** Prospects only: the lane the URL selects and the server's lanes with counts. */
+  lane?: string | null
+  lanes?: LaneTab[]
+  /** Cap overflow names for the active prospects lane (never silently dropped). */
+  overflow?: string[]
+  /** Client-side text filter over the fetched page (no server text search exists yet). */
+  query?: string
+  /** A command is in flight for this row key (`<symbol>:<action>`); its controls are disabled until it settles. */
+  busy?: string | null
+  /** The clocks the body itself distinguishes (composition vs source vs ranking), never a render-time age. */
+  clocks?: Clock[]
+  /** `ranking.label`: the body's own definition of what the ranked number is. */
+  legend?: string | null
+  /** Per-source read status of operator membership (`my_watchlist.sources`). */
+  sources?: MemberSource[]
   onStar: (r: ListRowView) => void
   onDismiss: (r: ListRowView) => void
   onRestore: (r: ListRowView) => void
   onPage: (offset: number) => void
   onRetry: () => void
+  onLane?: (lane: string) => void
+  onQuery?: (q: string) => void
 }
 
 export function WatchListsV002View(p: ListsViewProps) {
+  const copy = TAB_COPY[p.tab]
+  const lane = p.lane ?? null
+  const lanes = p.lanes ?? []
+  const query = p.query ?? ''
+  const overflow = p.overflow ?? []
+  const busy = p.busy ?? null
+  const clocks = p.clocks ?? []
+  const sources = p.sources ?? []
+  const staleSources = sources.filter(s => s.status !== 'ok')
+  const shown = filterRows(p.rows, query)
+  const filtered = query.trim() ? ` · ${shown.length} of ${p.rows.length} on this page match “${query.trim()}”` : ''
   return (
     <section className="v010 wl2" data-testid="watch-lists-v002">
       {/* W-04: the shared sub-nav IS the tab bar on this page — one tab set, no duplicate row. */}
       <WatchSubnav />
+      <div className="wl2-head">
+        <h1 className="v010-h1">{copy.title}</h1>
+        <p className="wl2-purpose">{copy.purpose}</p>
+      </div>
+      {p.tab === 'prospects' && lanes.length > 0 && (
+        <div className="wl2-lanes" data-testid="watch-lanes" role="tablist" aria-label="Prospect stage">
+          {lanes.map(t => (
+            <button key={t.id} type="button" role="tab" aria-selected={t.active} data-testid={`watch-lane-${t.id}`}
+              data-active={t.active ? '1' : '0'} className={`v010-btn${t.active ? ' wl2-lane-on' : ''}`}
+              onClick={() => p.onLane?.(t.id)}>
+              {t.label} <span className="wl2-lane-n" data-count={t.count ?? 'unknown'}>{t.count === null ? 'count unknown' : t.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="wl2-asof" data-testid="watch-list-asof" data-state={p.grade?.state ?? (p.loading ? 'LOADING' : 'UNKNOWN')}>
         <span className={`v010-pill ${p.grade?.state === 'OK' ? 'ok' : p.grade?.state === 'STALE' ? 'warn' : p.loading ? '' : 'bad'}`}>{p.loading ? 'LOADING' : p.grade?.state ?? 'UNKNOWN'}</span>
         <span>{p.loading ? 'Loading…' : p.grade ? `${p.grade.label.replace(/^[A-Z]+ · /, '')} · ${p.grade.basis.replace(/_/g, ' ')}` : 'list could not be read'}</span>
         {p.grade?.reason ? <span className="wl2-why">{p.grade.reason}</span> : null}
+      </div>
+      {/* WL-10/WL-16/WL-26: every clock the body carries, side by side and labelled. The age is this page's arithmetic
+          against its own clock; no clock here is derived from the moment the page rendered. */}
+      {clocks.length > 0 && (
+        <dl className="wl2-clocks" data-testid="watch-list-clocks" aria-label="Clocks this list carries">
+          {clocks.map(c => (
+            <div key={c.id} className="wl2-clock">
+              <dt>{c.label}</dt>
+              <dd data-clock={c.id} data-age-s={c.ageS ?? 'unknown'}>
+                {c.at ? `${new Date(c.at).toISOString().slice(11, 16)}Z` : 'no timestamp'} · <span className="wl2-why">{c.ageS === null ? 'age unknown' : `${ageText(c.ageS)} old`}</span>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {p.tab === 'mine' && sources.length > 0 && (
+        <div className={`wl2-note${staleSources.length ? ' warn' : ''}`} data-testid="watch-membership-sources" role={staleSources.length ? 'alert' : 'status'}>
+          Membership sources: {sources.map(s => `${s.kind.replace(/_/g, ' ')} ${s.status === 'ok' ? 'ok' : s.status}`).join(' · ')}.
+          {staleSources.length > 0
+            ? ` A name whose membership source could not be read may be missing from this list — this list is not complete.`
+            : ' Names reach this list from any of these sources, not only the star.'}
+        </div>
+      )}
+      {p.tab === 'suggests' && p.legend && (
+        <p className="wl2-legend" data-testid="watch-ranking-legend">
+          Ranked by: {p.legend}. Conviction and universe rank are two different numbers and are labelled separately below.
+        </p>
+      )}
+      <div className="wl2-tools">
+        <label className="wl2-search">
+          <span className="wl2-search-l">Find on this page</span>
+          <input type="search" value={query} placeholder="Symbol or company" data-testid="watch-list-search"
+            onChange={e => p.onQuery?.(e.target.value)} />
+        </label>
+        <span className="wl2-tools-note" data-testid="watch-list-count">Filters the rows on this page only — server text search is not available yet.{filtered}</span>
       </div>
       {p.error && <div className="wl2-note bad" data-testid="watch-list-error" role="alert">List could not be read: {p.error} <button type="button" className="v010-btn" onClick={p.onRetry}>Retry</button></div>}
       {p.tab === 'suggests' && !p.loading && p.dismissedStatus !== 'ok' && p.dismissedStatus !== 'absent' && (
@@ -59,28 +145,56 @@ export function WatchListsV002View(p: ListsViewProps) {
         ) : (
           <div className="wl2-note" data-testid="watch-list-empty">{p.paging.total === 0 ? 'No names in this list.' : 'Nothing on this page.'}</div>
         )
+      ) : shown.length === 0 ? (
+        <div className="wl2-note" data-testid="watch-list-no-match">{p.rows.length} rows on this page, none match “{query.trim()}”. <button type="button" className="v010-btn" onClick={() => p.onQuery?.('')}>Clear</button></div>
       ) : (
         <ul className="wl2-rows" data-testid="watch-list-rows">
-          {p.rows.map(r => (
+          {shown.map(r => (
             <li key={r.symbol} className="wl2-row" data-testid={`watch-row-${r.symbol}`} data-dismissed={r.dismissed ? '1' : '0'}>
               <div className="wl2-main">
                 {p.tab !== 'prospects' && (
                   <button type="button" className="wl2-star" aria-pressed={r.starred} aria-label={r.starred ? `Remove ${r.symbol} from My List` : `Add ${r.symbol} to My List`}
-                    data-testid={`watch-star-${r.symbol}`} onClick={() => p.onStar(r)}>{r.starred ? '★' : '☆'}</button>
+                    data-testid={`watch-star-${r.symbol}`} disabled={busy === `${r.symbol}:star`} onClick={() => p.onStar(r)}>{r.starred ? '★' : '☆'}</button>
                 )}
                 <Link className="v010-link wl2-sym" to={r.detailHref} data-testid={`watch-detail-${r.symbol}`}>{r.symbol}</Link>
                 {r.company && <span className="wl2-co">{r.company}</span>}
                 <span className="v010-pill">{r.stage}</span>
                 {r.held && <span className="v010-pill info">{r.held}</span>}
-                <span className="wl2-conv">{r.conviction === null ? 'no score' : `conviction ${Math.round(r.conviction)}`}</span>
+                {r.membership.filter(m => m.kind !== 'starred').map(m => (
+                  <span key={m.kind} className="v010-pill info" data-testid={`watch-member-${r.symbol}-${m.kind}`} title={m.at ? `since ${m.at}` : undefined}>
+                    {m.label}
+                  </span>
+                ))}
+                {r.expiryReason && (
+                  <span className="v010-pill warn" data-testid={`watch-expiry-${r.symbol}`} title={r.expiryReason}>
+                    expired signal — review, not removed
+                  </span>
+                )}
+                {/* WL-13: conviction and universe rank are different measurements from different producers; label both,
+                    never let one read as the other. */}
+                <span className="wl2-conv" data-testid={`watch-conviction-${r.symbol}`}>
+                  {r.conviction === null ? 'no score' : `conviction ${Math.round(r.conviction)}`}
+                  {r.rank === null ? '' : ` · universe rank #${r.rank}`}
+                </span>
               </div>
-              {r.nextAction && <div className="wl2-next">{r.nextAction}</div>}
+              {/* WL-08: the star is a pin, not the only route onto My List — say so on the rows where it matters. */}
+              {otherMembership(r).length > 0 && (
+                <div className="wl2-why" data-testid={`watch-pin-note-${r.symbol}`}>
+                  {r.starred ? 'Starred (your pin). ' : ''}Also listed via {otherMembership(r).map(m => m.label).join(', ')} — unstarring keeps it on this list.
+                </div>
+              )}
+              {r.nextAction && <div className="wl2-next" data-guidance="1">Next step (guidance — open the symbol for actions): {r.nextAction}</div>}
               {r.why && <div className="wl2-why">{r.why}</div>}
               {p.tab === 'suggests' && !r.dismissed && (
-                <button type="button" className="v010-btn" data-testid={`watch-dismiss-${r.symbol}`} onClick={() => p.onDismiss(r)}>Dismiss 30 d</button>)}
+                <button type="button" className="v010-btn" data-testid={`watch-dismiss-${r.symbol}`} disabled={busy === `${r.symbol}:dismiss`} onClick={() => p.onDismiss(r)}>Dismiss 30 d</button>)}
             </li>
           ))}
         </ul>
+      )}
+      {overflow.length > 0 && (
+        <div className="wl2-note" data-testid="watch-lane-overflow" role="status">
+          At this lane&apos;s cap: {overflow.length} more name{overflow.length === 1 ? '' : 's'} counted but not shown ({overflow.join(', ')}).
+        </div>
       )}
       {p.tab === 'suggests' && p.dismissedItems.length > 0 && (
         <details className="wl2-dismissed" data-testid="watch-dismissed" open>
@@ -89,7 +203,7 @@ export function WatchListsV002View(p: ListsViewProps) {
             {p.dismissedItems.map(d => (
               <li key={d.symbol} className="wl2-row" data-testid={`watch-dismissed-${d.symbol}`}>
                 <strong>{d.symbol}</strong>{d.reason && <span>{d.reason}</span>}{d.until && <span>until {d.until.slice(0, 10)}</span>}
-                <button type="button" className="v010-btn" data-testid={`watch-restore-${d.symbol}`} onClick={() => p.onRestore({ symbol: d.symbol } as ListRowView)}>Restore</button>
+                <button type="button" className="v010-btn" data-testid={`watch-restore-${d.symbol}`} disabled={busy === `${d.symbol}:restore`} onClick={() => p.onRestore({ symbol: d.symbol } as ListRowView)}>Restore</button>
               </li>
             ))}
           </ul>
@@ -122,34 +236,87 @@ const listKey = (q: string | null): ListKey => (q === 'suggests' ? 'suggests' : 
 
 /** The parent keys this by tab, so a tab switch remounts it: useApi keeps its last body across a path change, and a body from
  *  another list must not be graded or parsed by this one (review 2993ab-v2r N4; same defect as 2993cr R4). */
-export function WatchListsTab({ tab }: { tab: ListKey }) {
-  const [offset, setOffset] = useState(0)
+export function WatchListsTab({ tab, lane = null, offset = 0, query = '', onLane, onPage, onQuery }: {
+  tab: ListKey
+  lane?: string | null
+  offset?: number
+  query?: string
+  onLane?: (lane: string) => void
+  onPage?: (offset: number) => void
+  onQuery?: (q: string) => void
+}) {
   const [message, setMessage] = useState('')
-  const url = tab === 'prospects' ? prospectsUrl('forming', offset) : curationUrl(tab, offset)
+  const [busy, setBusy] = useState<string | null>(null)
+  const url = tab === 'prospects' ? prospectsUrl(lane || 'actionable', offset) : curationUrl(tab, offset)
   const { data, loading, error, refetch } = useApi<any>(url, 120_000)
   const body = useMemo(() => (data && typeof data === 'object' ? ((data as any).data ?? data) : null), [data])
   const nowMs = Date.now()
-  const grade = body ? (tab === 'prospects' ? gradeProspects(body, nowMs) : gradeCuration(body, tab, nowMs)) : null
+  const grade = body ? (tab === 'prospects' ? gradeProspects(body, nowMs, lane || 'actionable') : gradeCuration(body, tab, nowMs)) : null
   const dis = dismissedSet(body)
   const section = tab === 'mine' ? body?.my_watchlist : tab === 'suggests' ? body?.suggests : { rows: (body?.lanes || []).flatMap((l: any) => l?.items || []), pagination: body?.pagination }
   const rows = (Array.isArray(section?.rows) ? section.rows : []).map((r: unknown) => rowView(r, dis.symbols)).filter(Boolean) as ListRowView[]
-  const act = async (fn: () => Promise<string>) => {
-    try { setMessage(await fn()); refetch() } catch (e) { setMessage(`Failed: ${String((e as Error).message || e).slice(0, 100)}`) }
+  const act = async (key: string, fn: () => Promise<string>) => {
+    if (busy) return // one command at a time: a second click cannot race the first
+    setBusy(key)
+    try { setMessage(await fn()); refetch() } catch (e) { setMessage(`Failed: ${String((e as Error).message || e).slice(0, 100)}`) } finally { setBusy(null) }
   }
   return (
     <WatchListsV002View
       tab={tab} grade={grade} rows={rows} paging={pagingOf(section)} offset={offset} loading={loading && !body}
       error={error ? String(error) : null} gap={gapOf(body, section)} message={message} dismissedStatus={body?.suggests ? dis.status : 'absent'} dismissedItems={dis.items}
-      onStar={r => void act(async () => { const res = await mineAction(r.symbol, r.starred ? 'remove' : 'add', undefined, 'watch.v002'); if (!res.ok) throw new Error(res.message); return res.message })}
-      onDismiss={r => void act(async () => { await post('/api/v3/watch/commands/suggest-dismiss', { symbol: r.symbol }); return `${r.symbol} dismissed for 30 days.` })}
-      onRestore={r => void act(async () => { await post('/api/v3/watch/commands/suggest-restore', { symbol: r.symbol }); return `${r.symbol} restored.` })}
-      onPage={setOffset} onRetry={() => refetch()}
+      lane={lane} lanes={tab === 'prospects' ? laneTabs(body, lane || 'actionable') : []}
+      overflow={tab === 'prospects' ? laneOverflow(body, lane || 'actionable') : []}
+      clocks={body ? clocksOf(body, tab, lane, nowMs) : []}
+      legend={tab === 'suggests' ? rankingLegend(body) : null}
+      sources={tab === 'mine' ? membershipSources(body) : []}
+      query={query} busy={busy}
+      onStar={r => void act(`${r.symbol}:star`, async () => { const res = await mineAction(r.symbol, r.starred ? 'remove' : 'add', undefined, 'watch.v002'); if (!res.ok) throw new Error(res.message); return res.message })}
+      onDismiss={r => void act(`${r.symbol}:dismiss`, async () => { await post('/api/v3/watch/commands/suggest-dismiss', { symbol: r.symbol }); return `${r.symbol} dismissed for 30 days.` })}
+      onRestore={r => void act(`${r.symbol}:restore`, async () => { await post('/api/v3/watch/commands/suggest-restore', { symbol: r.symbol }); return `${r.symbol} restored.` })}
+      onPage={o => onPage?.(o)} onRetry={() => refetch()}
+      onLane={l => onLane?.(l)} onQuery={q => onQuery?.(q)}
     />
   )
 }
 
-export default function WatchListsV002() {
-  const [sp] = useSearchParams()
+export type ListQuery = { tab: ListKey; lane: string | null; offset: number; query: string }
+
+/** Parse the URL into the view state. `list` picks the tab; `stage` (Prospects only) picks the lane; `offset` is the
+ *  page cursor and `q` the on-page filter. All four live in the URL so Back and a deep link restore the same view
+ *  (WL-23/WL-29). An unknown `stage` is passed through rather than rewritten: the server decides which lanes exist,
+ *  and the page shows what the server returns instead of inventing a lane. */
+export function listQuery(sp: URLSearchParams): ListQuery {
   const tab = listKey(sp.get('list'))
-  return <WatchListsTab key={tab} tab={tab} />
+  const raw = Number(sp.get('offset') || 0)
+  return {
+    tab,
+    lane: tab === 'prospects' ? sp.get('stage') || 'actionable' : null,
+    offset: Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : 0,
+    query: sp.get('q') || '',
+  }
+}
+
+/** Write one navigation into the current params: a page change keeps lane and filter, a lane change clears the cursor,
+ *  and clearing the filter deletes `q` instead of leaving `q=` behind. */
+export function listParams(sp: URLSearchParams, patch: { offset?: number; stage?: string | null; query?: string }): URLSearchParams {
+  const next = new URLSearchParams(sp)
+  if (patch.offset !== undefined) {
+    if (patch.offset > 0) next.set('offset', String(patch.offset)); else next.delete('offset')
+  }
+  if (patch.stage) next.set('stage', patch.stage)
+  if (patch.query !== undefined) {
+    if (patch.query) next.set('q', patch.query); else next.delete('q')
+  }
+  return next
+}
+
+/** `list` picks the tab; `stage` (Prospects), `offset` and `q` live in the URL so Back and a deep link restore the same
+ *  view (WL-23/WL-29). An offset is a page cursor, never a filter. */
+export default function WatchListsV002() {
+  const [sp, setSp] = useSearchParams()
+  const q = listQuery(sp)
+  const tab = q.tab
+  const go = (patch: { offset?: number; stage?: string | null; query?: string }) => setSp(listParams(sp, patch), { replace: true })
+  return <WatchListsTab key={tab} tab={tab} lane={q.lane} offset={q.offset} query={q.query}
+    onLane={l => go({ offset: 0, stage: l })} onPage={o => go({ offset: o })} onQuery={text => go({ query: text })} />
 }

@@ -93,6 +93,11 @@ export function WatchV002View({ m, checkedLabel, ov, onOpenWhy, onOpenDiag, onRe
   const unreadOf = (...names: string[]) => ov.unread.filter(u => names.includes(u))
   const actionUnread = unreadOf('alert list', 'pullback candidates')
   const sinceUnread = unreadOf('alert list', 'pullback candidates', 'last visit')
+  // WL-01: the verdict is computed over the required inputs only; say so and mark each input's scope, so a green
+  // four-input verdict cannot be read as a certification of every Watch feature.
+  const requiredIds = new Set(m.gates.map(g => g.id))
+  const requiredCount = m.inputs.filter(i => requiredIds.has(i.id)).length
+  const optionalCount = m.inputs.length - requiredCount
   return (
     <div className="v010" data-testid="watch-v002">
       <div className="v010-head">
@@ -187,7 +192,9 @@ export function WatchV002View({ m, checkedLabel, ov, onOpenWhy, onOpenDiag, onRe
         <div className="wv2-gate" data-testid="ov-status-row" data-state={m.chip.state}>
           <span className="wv2-gate-n">Verdict</span>
           <span className={pill(m.chip.tone)}>{m.chip.state}</span>
-          <span className="wv2-gate-m">{m.cause}</span>
+          {/* WL-01/WL-06: state the scope of the verdict exactly once — the cause itself is rendered in Validation
+              Gates above, not repeated here; and the verdict is only as wide as the required inputs it covers. */}
+          <span className="wv2-gate-m" data-testid="ov-status-scope">{`computed over ${m.gates.length} required input${m.gates.length === 1 ? '' : 's'}${optionalCount ? ` · ${optionalCount} optional input${optionalCount === 1 ? '' : 's'} not in the verdict` : ''}`}</span>
           <span className="wv2-gate-r">
             session {ov.session} · status read {ov.statusState}{ov.statusAt ? ` at ${new Date(ov.statusAt).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} ET` : ''}
             {ov.readFrom ? ` · read from ${ov.readFrom}` : ''}
@@ -195,13 +202,14 @@ export function WatchV002View({ m, checkedLabel, ov, onOpenWhy, onOpenDiag, onRe
         </div>
       </Section>
 
-      <Section id="ov-details" title="Details" meta={`${m.inputs.length} input${m.inputs.length === 1 ? '' : 's'}`}>
+      <Section id="ov-details" title="Details" meta={`${m.inputs.length} input${m.inputs.length === 1 ? '' : 's'} · ${requiredCount} required`}>
         {m.inputs.length === 0 ? (
           <div className="v010-line" data-testid="ov-details-none">No input detail: the status read carried none.</div>
         ) : m.inputs.map(i => (
           <div className="wv2-detail" key={`d-${i.id}`} data-testid={`detail-${i.id}`} data-state={i.state}>
             <span className="wv2-gate-n">{i.label}</span>
             <span className={pill(i.state === 'OK' ? 'ok' : i.state === 'STALE' ? 'warn' : 'bad')}>{i.state}</span>
+            <span className="v010-pill" data-testid={`detail-${i.id}-scope`}>{requiredIds.has(i.id) ? 'required' : 'optional'}</span>
             <span className="wv2-detail-s">{i.source} · owner {i.owner} · {i.asOfText} · age {i.age} · limit {i.threshold}</span>
             <span className="wv2-gate-r">{i.reason ?? 'within its threshold'}{i.needsBackend ? ' · NEEDS BACKEND' : ''}</span>
           </div>

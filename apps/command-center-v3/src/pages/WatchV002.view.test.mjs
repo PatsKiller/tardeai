@@ -244,3 +244,20 @@ console.log('WatchV002.view: ok')
   for (const q of links) assert.ok(!at(q).includes('data-testid="watch-v002"'), `${q} must redirect, not render the Overview`)
 }
 console.log('deep-link redirect checks passed')
+
+// WL-01/WL-06 (sprint 8H-2 b1): the verdict states its own scope, and the cause is rendered exactly once.
+{
+  const m = buildWatchStatus(ok(body([...IDS.map(i => inp(i)), inp('x_optional', { required: false })])), NOW)
+  const h = html(m)
+  const scope = (h.match(/data-testid="ov-status-scope"[^>]*>([^<]*)</) || [null, ''])[1]
+  assert.equal(scope, 'computed over 4 required inputs · 1 optional input not in the verdict', 'the verdict names the inputs it covers')
+  assert.match((h.match(/data-testid="detail-my_list-scope"[^>]*>([^<]*)</) || [null, ''])[1], /^required$/)
+  assert.match((h.match(/data-testid="detail-x_optional-scope"[^>]*>([^<]*)</) || [null, ''])[1], /^optional$/, 'an optional input is not part of the verdict')
+  assert.ok(h.includes('5 inputs · 4 required'), 'the Details meta separates the total from the required set')
+  assert.equal(h.split('All required Watch inputs are within their thresholds').length - 1, 1, 'the cause is rendered once, not in both Gates and Watch Status')
+  // every input required: no optional disclosure is invented
+  const all = html(buildWatchStatus(ok(body()), NOW))
+  assert.equal((all.match(/data-testid="ov-status-scope"[^>]*>([^<]*)</) || [null, ''])[1], 'computed over 4 required inputs')
+  assert.ok(!all.includes('optional input not in the verdict'))
+}
+console.log('WL-01/WL-06 scope checks passed')
