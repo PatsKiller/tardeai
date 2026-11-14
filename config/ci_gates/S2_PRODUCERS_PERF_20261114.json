@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "S2_PRODUCERS_PERF_20261114",
+  "files": [
+    "tests/test_s2_producers_perf_20261114.py",
+    "tests/test_s2_pullback_get_readonly_20261114.py"
+  ],
+  "anchor": "S2_PRODUCERS_PERF",
+  "comment": [
+    "ANCHOR: S2_PRODUCERS_PERF — sprint 8H-2 producers-perf (cc-deepseek-9). WR-07: the alert evaluator's runs record carries what it could NOT evaluate (evaluated/eligible/failed/quote coverage/run_id) and a never-written store reads store_missing, never an empty one. WR-05/WR-11: pullback_trigger_history is written by the producer (scripts/pullback_macd_screener.py::_record_trigger_history) and the candidates GET issues no write — the second file is RED on this branch head until the api_v2.py wiring patch is applied (hot file owned by the integrator), and GREEN with it."
+  ]
+}

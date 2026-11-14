@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 WRITE_VERBS = ("INSERT", "UPDATE", "DELETE", "ALTER", "DROP", "CREATE", "TRUNCATE", "GRANT", "REVOKE", "VACUUM")
+ANCHOR = "S2_PRODUCERS_PERF"  # greppable: config/ci_gates/S2_PRODUCERS_PERF_20261114.json
 
 
 class _Recorder:
