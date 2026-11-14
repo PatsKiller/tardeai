@@ -79,8 +79,8 @@ const STATUS_NO = { schema: 'HomeStatus@v1', verdict: 'NO', trade_ready: { verdi
 const STATUS_UNKNOWN = { schema: 'HomeStatus@v1', verdict: 'UNKNOWN', trade_ready: { verdict: 'UNKNOWN', cause: 'data: quote store unreadable' },
   gates: [gate('p0', 'OK'), gate('data', 'UNKNOWN', { reason: 'quote store unreadable' })], blockers: [],
   unknown_inputs: [{ input: 'data', state: 'UNKNOWN', reason: 'quote store unreadable' }] }
-const render = model => renderToStaticMarkup(React.createElement(MemoryRouter, { initialEntries: ['/'] },
-  React.createElement(View, { model, nowIso: new Date(NOW).toISOString(), onOpenWhy() {}, onOpenDiag() {} })))
+const render = (model, now = NOW) => renderToStaticMarkup(React.createElement(MemoryRouter, { initialEntries: ['/'] },
+  React.createElement(View, { model, nowIso: new Date(now).toISOString(), onOpenWhy() {}, onOpenDiag() {} })))
 const text = html => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
 
 let n = 0
@@ -140,6 +140,18 @@ await test('served YES -> chip YES, gates listed with state + age, no NEEDS BACK
   assert.match(gates, /\+1 more gates/)
   assert.match(gates, /portfolio OK as of .* · 10 m old/)
   assert.equal(m.status.find(r => r.name === 'Portfolio').state, 'OK')
+})
+
+// Campaign item 1 (controlling decision 2026-11-13 §2): the check time is absolute and its age is computed at render.
+// The model is pure — rendering the same payload at a later client clock ages the check; nothing stores "just now".
+await test('check time: absolute ET time + render-time age; the same payload ages when the client clock moves', () => {
+  const m = buildModel({ ...CLEAR, status: ok(API.status, STATUS_YES) }, NOW)
+  const t = text(render(m))
+  assert.match(t, /checked 9:59 AM ET · 1 m old/)
+  const later = text(render(m, NOW + 3_600_000))
+  assert.match(later, /checked 9:59 AM ET · 1 h 1 m old/, 'the same absolute check time, one hour older at render')
+  assert.doesNotMatch(later, /just now/i, 'no stored relative wording is ever echoed')
+  assert.match(later, /Nothing needs action · checked 9:59 AM ET · 1 h 1 m old/)
 })
 
 await test('served NO -> chip NO with the blocker as cause; an unread gate stays UNKNOWN + NEEDS BACKEND', () => {

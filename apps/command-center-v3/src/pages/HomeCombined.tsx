@@ -26,7 +26,7 @@ import { PRIORITIES_API, prioritiesView, recordVisit, type PrioritiesWire } from
 import { readFromBody, readShared } from '../lib/sharedRead'
 import { COMBINED_SECTION_ID, COMBINED_SECTION_TITLE, reconcileModel } from '../lib/homeCombined'
 import { listLastGood, subscribeAnyBody, subscribeBody } from '../hooks/useApi'
-import { PRODUCTS_HOME_API, clockAt, clockCells, productClock, productsFromBundle, versionMismatch, type ProductClock } from '../lib/productEnvelope'
+import { PRODUCTS_HOME_API, clockAges, clockAt, clockCells, productClock, productsFromBundle, versionMismatch, type ProductClock } from '../lib/productEnvelope'
 import { etTime } from '../lib/homeV010'
 
 const LAST_GOOD_KEY = 'cc.home.v010.lastGood'
@@ -165,18 +165,22 @@ export function ProductClocks({ consumed, held, nowMs }: { consumed: Record<stri
   const defects = list.filter(([, r]) => r.defect).length
   const t = (iso: string | null) => (iso ? etTime(iso, true) : '—')
   const cells = (c: ProductClock) => clockCells(c, iso => etTime(iso, true))
+  // Absolute instants stay in the cells above; the age is recomputed here from each row's OWN clock on every tick.
+  const ages = (c: ProductClock) => clockAges(c, now)
   return (
     <details data-testid="home-product-clocks" style={{ marginTop: 16, fontSize: 12, color: 'var(--text1)' }}>
       <summary style={{ cursor: 'pointer', color: 'var(--text0)', fontWeight: 600 }}>
         Product clocks · {list.length} endpoints{defects ? ` · ${defects} version DEFECT${defects > 1 ? 'S' : ''}` : ''}
       </summary>
       <p style={{ margin: '6px 0', color: 'var(--text2)' }}>
-        Source time (as of) and build time are separate clocks. &quot;Not a product&quot; means the route is still computed per request.
+        Source time (as of) and build time are separate clocks. A relative age is computed at render from that row&apos;s
+        own clock, once per row — never stored, never inherited from a parent product. &quot;Not a product&quot; means
+        the route is still computed per request.
       </p>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 560 }}>
           <thead><tr style={{ textAlign: 'left', color: 'var(--text2)' }}>
-            <th>Endpoint</th><th>Used by</th><th>Product</th><th>Source as of</th><th>Built</th><th>Fresh / expiry</th><th>Version</th>
+            <th>Endpoint</th><th>Used by</th><th>Product</th><th>Source as of</th><th>Age (at render)</th><th>Built</th><th>Fresh / expiry</th><th>Version</th>
           </tr></thead>
           <tbody>
             {list.map(([path, r]) => (
@@ -188,6 +192,7 @@ export function ProductClocks({ consumed, held, nowMs }: { consumed: Record<stri
                   {r.defect ? <div role="alert" style={{ color: 'var(--red)' }}>{r.defect}</div> : null}
                 </td>
                 <td data-testid="clock-source" title={r.clock.sourceTimeReason ?? undefined}>{cells(r.clock).source}</td>
+                <td data-testid="clock-age">{ages(r.clock).source || '—'}{ages(r.clock).built ? <div style={{ color: 'var(--text2)' }}>built {ages(r.clock).built}</div> : null}</td>
                 <td data-testid="clock-built">{cells(r.clock).built}</td>
                 <td>{r.clock.staleAfterS != null ? `stale after ${r.clock.staleAfterS}s` : '—'}{r.clock.hardExpiryS != null ? ` · expires ${r.clock.hardExpiryS}s` : ''}{r.clock.nextRefreshAt ? ` · next ${t(r.clock.nextRefreshAt)}` : ''}</td>
                 <td>{r.clock.version ?? '—'}</td>

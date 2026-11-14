@@ -14,6 +14,10 @@
  *  /api/v2/home/diagnostics is read only when the operator opens the drawer. Pure functions; the page owns fetching. */
 
 import { sinceCloseModel, type SinceCloseWire } from './sinceClose.ts'
+import { ageSecondsFrom, ageText } from './ageText.ts'
+
+// Re-exported for the page model's existing consumers (the view imports ageText from here).
+export { ageSecondsFrom, ageText }
 
 export const HOME_V010_TIMEOUT_MS = 30_000
 export const API = {
@@ -102,19 +106,7 @@ export function etTime(iso: string | null | undefined, withDay = false): string 
   if (Number.isNaN(d.getTime())) return ''
   return d.toLocaleString('en-US', { timeZone: 'America/New_York', ...(withDay ? { weekday: 'short' } : {}), hour: 'numeric', minute: '2-digit' }) + ' ET'
 }
-export function ageText(seconds: number | null | undefined): string {
-  if (seconds == null || !Number.isFinite(seconds)) return ''
-  const m = Math.floor(seconds / 60)
-  if (m < 1) return '<1 m'
-  if (m < 60) return `${m} m`
-  const h = Math.floor(m / 60)
-  return h < 48 ? `${h} h ${m % 60} m` : `${Math.floor(h / 24)} d`
-}
-const ageFrom = (iso: string | null | undefined, nowMs: number): number | null => {
-  if (!iso) return null
-  const t = new Date(iso).getTime()
-  return Number.isNaN(t) ? null : Math.max(0, Math.round((nowMs - t) / 1000))
-}
+const ageFrom = ageSecondsFrom
 
 /** A read is only usable when the HTTP read worked AND the body itself does not say it failed. */
 function incidentsState(r: Read<IncidentsWire>): ReadState {
@@ -210,7 +202,9 @@ export function statusFrom(r: Read<HomeStatusWire> | undefined, nowMs: number): 
   const gates: GateRow[] | null = Array.isArray(d.gates) ? d.gates.map((g, i) => {
     const s = String(g.state || 'UNKNOWN').replace('_', ' ') as RowState
     const asOf = g.as_of || null
-    const age = typeof g.age_s === 'number' ? g.age_s : (asOf ? Math.max(0, Math.round((nowMs - new Date(asOf).getTime()) / 1000)) : null)
+    // Render-time age from the slice's OWN source clock; the served age_s is only the fallback when the slice carries
+    // no as_of. A stored age freezes on a long-open tab and can contradict a newer source stamp (combined Home §2).
+    const age = ageSecondsFrom(asOf, nowMs) ?? (typeof g.age_s === 'number' ? g.age_s : null)
     return { id: g.id || `gate-${i}`, label: g.label || g.id || 'input', required: !!g.required, state: GATE_STATES.has(s) ? s : 'UNKNOWN',
       age: ageText(age), asOf, source: g.source_id || 'unknown', reason: g.reason || null, needsBackend: !!g.needs_backend,
       count: typeof g.value === 'number' ? g.value : null,

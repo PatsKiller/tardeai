@@ -11,6 +11,8 @@
  *  never makes a stale source look fresh; a product that is BUILDING / UNKNOWN / missing (or an HTTP 503 "building")
  *  is UNKNOWN with its reason, never blank and never an all-clear. Pure functions. */
 
+import { ageSecondsFrom, ageText } from './ageText.ts'
+
 export type ProductStatus = 'OK' | 'STALE' | 'UNKNOWN' | 'BUILDING' | 'NOT A PRODUCT'
 
 export interface ProductClock {
@@ -103,9 +105,17 @@ export const PRODUCTS_HOME_API = '/api/v2/products/home'
  *  OK -> STALE past stale_after_s; anything -> UNKNOWN past hard_expiry_s. A clock with no as_of keeps the served
  *  verdict (the server's age_s already said what it knew). */
 export function clockAt(c: ProductClock, nowMs: number): ProductClock {
-  const src = c.asOf ? Date.parse(c.asOf) : NaN
-  if (!Number.isFinite(src) || c.status === 'NOT A PRODUCT') return c
-  const ageS = Math.max(0, Math.floor((nowMs - src) / 1000))
+  // The SOURCE clock is the only clock that can make a product stale. When the producer says as_of is the build time
+  // (LQ-3136), age the real source clock; if it has none, this page cannot derive freshness from a build and must not
+  // try — a fresh build of a stale source must never read fresh (controlling decision §2).
+  const sourceIso = c.asOfBasis === 'build_time' ? c.sourceAsOf : c.asOf
+  const ageS = ageSecondsFrom(sourceIso, nowMs)
+  if (ageS == null) {
+    if (c.asOfBasis === 'build_time') return { ...c, ageS: null, reason: c.reason ?? c.sourceTimeReason }
+    return c
+  }
+  // A request-time route has no producer verdict to downgrade, but its own clock still ages at render.
+  if (c.status === 'NOT A PRODUCT') return { ...c, ageS }
   if (c.hardExpiryS != null && ageS > c.hardExpiryS && c.verdict !== 'UNKNOWN') {
     return { ...c, status: 'UNKNOWN', verdict: 'UNKNOWN', ageS, reason: `past hard expiry (${ageS}s > ${c.hardExpiryS}s): not current` }
   }
@@ -113,6 +123,17 @@ export function clockAt(c: ProductClock, nowMs: number): ProductClock {
     return { ...c, status: 'STALE', verdict: 'STALE', ageS, reason: `source ${ageS}s old > stale after ${c.staleAfterS}s` }
   }
   return { ...c, ageS }
+}
+
+/** The two RELATIVE ages of a product row, computed at render: source age from the source clock (never the build
+ *  clock) and build age from the build instant. Wording: "12 m old", "1 h 5 m ago"; '' when that clock is absent.
+ *  One payload rendered twice at different client times gives different ages — nothing here is stored. */
+export function clockAges(c: ProductClock, nowMs: number): { source: string; built: string } {
+  const sourceIso = c.asOfBasis === 'build_time' ? c.sourceAsOf : c.asOf
+  const builtIso = c.asOfBasis === 'build_time' ? c.asOf : c.builtAt
+  const s = ageSecondsFrom(sourceIso, nowMs)
+  const b = ageSecondsFrom(builtIso, nowMs)
+  return { source: s == null ? '' : `${ageText(s)} old`, built: b == null ? '' : `${ageText(b)} ago` }
 }
 
 /** Every product in a /api/v2/products/home body: a single envelope, { products: [envelope…] },

@@ -2,7 +2,7 @@
  *  Every block with no production source carries a visible NEEDS BACKEND tag; a failed read is drawn as UNKNOWN. */
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { etTime, type HomeV010Model, type RowState } from '../../../lib/homeV010'
+import { ageSecondsFrom, ageText, etTime, type HomeV010Model, type RowState } from '../../../lib/homeV010'
 import { PRIORITIES_VISIBLE, type PrioritiesView } from '../../../lib/homePriorities'
 import { DETAILS, blocksText, gateOverflow, priorityDestination } from '../../../lib/homeDestinations'
 import './HomeV010.css'
@@ -34,17 +34,20 @@ export default function HomeV010View({ model: m, nowIso, onOpenWhy, onOpenDiag, 
   const go = m.gates ? gateOverflow(m.gates, showAllGates) : { shown: [], hidden: 0 }
   const p0Shown = showAllP0 ? m.p0 : m.p0.slice(0, P0_VISIBLE)
   const p0More = m.p0.length - p0Shown.length
+  // The check time is absolute; its age is recomputed from the client clock on every 30 s tick, never stored.
+  const checkedAge = ageText(ageSecondsFrom(m.checkedAt, Date.parse(nowIso)))
+  const checkedText = m.checkedAt ? `checked ${etTime(m.checkedAt)}${checkedAge ? ` · ${checkedAge} old` : ''}` : ''
 
   const action = (
     <section className="v010-card" id="card-action" aria-labelledby="h-action">
       <div className="v010-card-hd">
         <h2 className="v010-h2" id="h-action">Action required</h2>
-        <span className="v010-meta">{m.checkedAt ? `checked ${etTime(m.checkedAt)}` : ''}</span>
+        <span className="v010-meta">{checkedText}</span>
       </div>
       {m.loading && m.p0.length === 0 && m.unread.length === 0 ? (
         <div className="v010-line" data-testid="action-loading">Reading action sources…</div>
       ) : m.actionEmpty ? (
-        <div className="v010-line" data-testid="action-clear">Nothing needs action · checked {etTime(m.checkedAt)}</div>
+        <div className="v010-line" data-testid="action-clear">Nothing needs action · {checkedText}</div>
       ) : (
         <>
           {m.unread.map(u => (
