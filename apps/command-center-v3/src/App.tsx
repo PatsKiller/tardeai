@@ -25,6 +25,9 @@ import HermesHub from './pages/HermesHub'
 import RetirementHub from './pages/RetirementHub'
 import TradeInViewPage from './pages/TradeInViewPage'
 import WatchHub from './pages/WatchHub'
+import WatchV002 from './pages/WatchV002'
+import WatchListsV002 from './pages/WatchListsV002'
+import WatchSetupsV002 from './pages/WatchSetupsV002'
 import SymbolIntelligencePage from './pages/SymbolIntelligencePage'
 import WatchDiscovery from './pages/WatchDiscovery'
 import WatchLegacy from './pages/WatchLegacy'
@@ -291,7 +294,11 @@ function Shell() {
             <Route path="retirement" element={<RouteErrorBoundary route="/v3/retirement"><RetirementHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="journal" element={<RouteErrorBoundary route="/v3/journal"><TradeInViewPage onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="trade-in-view" element={<RouteErrorBoundary route="/v3/trade-in-view"><Navigate to="/journal" replace /></RouteErrorBoundary>} />
-            <Route path="watch" element={<RouteErrorBoundary route="/v3/watch"><WatchHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            {/* Watch v002 (LQ-20261107-2993): Overview first; the old 8-tab hub stays reachable at /watch-classic. */}
+            <Route path="watch" element={<RouteErrorBoundary route="/v3/watch"><WatchV002 /></RouteErrorBoundary>} />
+            <Route path="watch-classic" element={<RouteErrorBoundary route="/v3/watch-classic"><WatchHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="watch-lists" element={<RouteErrorBoundary route="/v3/watch-lists"><WatchListsV002 /></RouteErrorBoundary>} />
+            <Route path="watch-setups" element={<RouteErrorBoundary route="/v3/watch-setups"><WatchSetupsV002 /></RouteErrorBoundary>} />
             <Route path="watch/intelligence/:symbol" element={<RouteErrorBoundary route="/v3/watch/intelligence/:symbol"><SymbolIntelligencePage /></RouteErrorBoundary>} />
             <Route path="watch/discovery" element={<RouteErrorBoundary route="/v3/watch/discovery"><WatchDiscovery onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="watch-legacy" element={<RouteErrorBoundary route="/v3/watch-legacy"><WatchLegacyGate onDrill={setDrill} /></RouteErrorBoundary>} />

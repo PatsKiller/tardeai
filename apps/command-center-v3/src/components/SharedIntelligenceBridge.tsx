@@ -58,7 +58,8 @@ function tone(state: string): string { return state === 'CLASSIFIED' ? BB.green 
 
 export default function SharedIntelligenceBridge() {
   const location = useLocation()
-  const showWatch = location.pathname === '/watch' || location.pathname.startsWith('/watch/')
+  // LQ-2993ab-v3 N1: bare /watch is the v002 Overview (no context banner); the re-entry links land on /watch-classic after the redirect.
+  const showWatch = location.pathname === '/watch-classic' || location.pathname.startsWith('/watch-classic/') || location.pathname.startsWith('/watch/')
   const showJournal = location.pathname === '/journal' || location.pathname.startsWith('/journal/')
   const show = showWatch || showJournal
   const exitPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(EXIT_CACHE_KEY)}`, 120_000, show)

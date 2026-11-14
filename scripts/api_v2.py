@@ -9865,9 +9865,12 @@ def _screener_finds_candidates(query=None):
         _wd_env = _brk_wd_env(_db_query)
     except Exception:
         _wd_env = {}
+    from lib.watch_setups_reads import pins_as_of as _pins_as_of  # LQ-20261107-2993c-v2 R3: the clock of the rows listed
+
     return _json_clean(
         {
             **_wd_env,
+            **_pins_as_of(pins),
             "feeds": {"watch_candidate_events": {k: v for k, v in _wd_env.items() if k != "schema"}},
             "ok": True,
             "count": len(pins),
@@ -37602,13 +37605,10 @@ def _watch_alerts_list(query=None):
                         FROM watch_alerts ORDER BY active DESC, created_at DESC LIMIT 100""")
         or []
     )
-    return {
-        "ok": True,
-        "alerts": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
-        "active_count": sum(1 for r in rows if r.get("active")),
-        # LQ-20261107-2622 WV-02: the store's own newest write time (data time), None when empty -- never "now"
-        "as_of": _newest_ts(rows, ("last_fired_at", "created_at")),
-    }
+    from lib.watch_setups_reads import alerts_payload
+    out = alerts_payload(rows)  # LQ-20261107-2993c: as_of = evaluator liveness, not the newest alert row
+    out["alerts"] = [{k: _json_clean(v) for k, v in r.items()} for r in rows]
+    return out
 
 
 def _watch_alerts_post(body=None):
@@ -39881,15 +39881,10 @@ def _watchpool_list(query=None):
 @_db_explicit
 def _watch_sectors(query=None):
     """GET /api/v2/watch/sectors — Finviz sector list with DISTINCT constituent counts + sample
-    symbols, for the Add-Watch sector dropdown + constituent preview. Read-only."""
-    rows = (
-        _db_required("""SELECT sector, count(DISTINCT symbol) AS n,
-                          (array_agg(DISTINCT symbol ORDER BY symbol))[1:10] AS sample
-                        FROM incubator_universe WHERE sector IS NOT NULL AND sector <> ''
-                        GROUP BY sector ORDER BY count(DISTINCT symbol) DESC""")
-        or []
-    )
-    return {"sectors": [{"sector": r["sector"], "count": r["n"], "sample": r.get("sample") or []} for r in rows]}
+    symbols, for the Add-Watch sector dropdown + constituent preview. Read-only.
+    LQ-20261107-2993c: carries as_of (newest incubator_universe.updated_at); unreadable -> explicit."""
+    from lib.watch_setups_reads import sectors_payload
+    return sectors_payload(lambda sql: _db_required(sql))
 
 
 def _hermes_setup(rsi, trend):

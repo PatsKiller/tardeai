@@ -546,6 +546,35 @@ def prospects_page(
     return paged
 
 
+#: Row keys the My List / Suggestions list rows never render: they feed the symbol detail sheet only
+#: (LQ-20261107-2993b). ``shape=list`` drops them; ``symbols=A,B`` (max 30) returns the full row for a name on demand.
+LIST_SHAPE_DROP = (
+    "cio_truth",
+    "surfaces",
+    "company_facts",
+    "whats_missing",
+    "levels_ref",
+    "next_trigger",
+    "cio_stance_gap",
+)  # conflict_section_gap stays: _flagged_name_count reads it, and a dropped gap would read as "no flags"
+LIST_DEFAULT_LIMIT = 25
+SYMBOLS_MAX = 30
+
+
+def _curation_symbols(query):
+    raw = value(query, "symbols", "") or ""
+    out = []
+    for part in str(raw).split(","):
+        sym = part.strip().upper()
+        if sym and sym not in out:
+            out.append(sym)
+    return out[:SYMBOLS_MAX]
+
+
+def _project_list_rows(rows):
+    return [{k: v for k, v in r.items() if k not in LIST_SHAPE_DROP} for r in rows]
+
+
 def read_curation(
     query=None,
     *,
@@ -559,7 +588,11 @@ def read_curation(
     from .data_broker.watch_prospects import gather
     from .data_broker.watch_curation import build_curation, read_dismissed, eligible_opportunities, my_rows
 
-    g = gather(query or {})
+    query = dict(query or {})
+    list_shape = str(value(query, "shape", "full")) == "list"
+    if list_shape and "limit" not in query:
+        query["limit"] = LIST_DEFAULT_LIMIT
+    g = gather(query)
     now = g.get("now") or datetime.now(timezone.utc)
     eligible = eligible_opportunities(g.get("opps") or {}, g["row_for"], now=now)
     dismissed, status = read_dismissed(now=now)
@@ -618,13 +651,24 @@ def read_curation(
         "Eligible names from the ranked research universe; Prospects shows a capped stage view."
     )
     view = value(query, "view", "both")
+    wanted = _curation_symbols(query)
+    # shape=list pages by ROW COUNT on the first pass (rows still carry the detail keys the attach steps read);
+    # the byte budget is enforced on the projected rows in the final pass below.
+    first_budget = POLL_BUDGET if list_shape else 210_000
+    as_of = {"my_watchlist": out.get("generated_at"), "suggests": (out.get("ranking") or {}).get("as_of")}
     for section in ("my_watchlist", "suggests"):
         data = out[section]
+        if wanted:
+            data = {**data, "rows": [r for r in data.get("rows") or [] if str(r.get("symbol") or "").upper() in wanted]}
         if view in {"mine", "suggests"} and (view == "mine") != (section == "my_watchlist"):
             out[section] = {k: v for k, v in data.items() if k != "rows"}
             out[section]["rows"] = []
         else:
-            out[section] = page_rows(data, "rows", query, budget=210_000)
+            out[section] = page_rows(data, "rows", query, budget=first_budget)
+        out[section]["as_of"] = as_of[section]
+        out[section]["as_of_basis"] = (
+            "composed_at" if section == "my_watchlist" else "ranking_projection"
+        )
     emitted = out["my_watchlist"]["rows"] + out["suggests"]["rows"]
     # Only displayed suggestions need this batch. Personal-list market evidence
     # already came from gather; never turn a research universe into N+1 reads.
@@ -639,6 +683,8 @@ def read_curation(
         attach_conflict_sections(emitted, reader=section_reader, root=section_root), reader=review_reader
     )
     n_mine = len(out["my_watchlist"]["rows"])
+    if list_shape:
+        attached = _project_list_rows(attached)
     for section, rows in (("my_watchlist", attached[:n_mine]), ("suggests", attached[n_mine:])):
         data = out[section]
         if "pagination" not in data:
@@ -650,6 +696,7 @@ def read_curation(
         data["conflict_count"] = None if data.get("payload_gap") else _flagged_name_count(data["rows"])
         data["conflict_count_scope"] = "flagged_names_on_page"
         out[section] = data
+    out["shape"] = "list" if list_shape else "full"
     if encoded_size(out) > POLL_BUDGET:
         return {
             "schema": out.get("schema"),
@@ -694,12 +741,18 @@ def read_watchpool(query=None, *, db_query, clean=lambda x: x):
         if status == "all"
         else sum(n for key, n in by_status.items() if key.upper() == status.upper())
     )
+    stamp = db_query(WATCHPOOL_CTE + "SELECT max(entered_at) AS as_of FROM population")
+    as_of = clean(stamp[0].get("as_of")) if stamp else None
+    if hasattr(as_of, "isoformat"):
+        as_of = as_of.isoformat()
     return page_rows(
         {
             "rows": [{k: clean(v) for k, v in r.items()} for r in rows],
             "count": sum(by_status.values()),
             "by_status": dict(by_status),
             "by_origin": dict(by_origin),
+            "as_of": as_of,
+            "as_of_basis": "strategy_watchpool.entered_at",
         },
         "rows",
         query,

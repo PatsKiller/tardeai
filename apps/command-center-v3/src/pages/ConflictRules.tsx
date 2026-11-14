@@ -115,7 +115,7 @@ function Body({view, openRule, proposalsAvailable, proposalsError, effective}: {
           <div><span>All open</span><strong>{view.live.open_total ?? '—'}</strong></div>
           {live.map(row => <div key={row.kind}><span>{row.label}</span><strong>{row.count}</strong></div>)}
         </div>}
-      <Link className="cr-link" to="/watch">See flagged names on Watch →</Link>
+      <Link className="cr-link" to="/watch-classic">See flagged names on Watch →</Link>
     </section>
 
     <section className="cr-panel" aria-labelledby="cr-tiers">

@@ -1,0 +1,21 @@
+/* Watch v002 lists (LQ-20261107-2993b, rework R5). Tokens only; shares the v010 pill/button/link primitives. */
+.wl2 { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.wl2-tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--border-color); }
+.wl2-tab { min-height: 44px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-1); color: var(--text-1); font-weight: 700; font-size: 14px; cursor: pointer; }
+.wl2-tab[aria-selected="true"] { background: var(--bg-2); color: var(--text-0); border-color: var(--info-border); }
+.wl2-asof { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 13px; color: var(--text-1); }
+.wl2-why { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
+.wl2-note { font-size: 14px; color: var(--text-1); padding: 8px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow-wrap: anywhere; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.wl2-note.bad { border-color: var(--danger-border); }
+.wl2-note.warn { border-color: var(--warning-border); }
+.wl2-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.wl2-row { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--border-color); min-height: 44px; }
+.wl2-row:last-child { border-bottom: none; }
+.wl2-main { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; min-width: 0; }
+.wl2-star { min-width: 44px; min-height: 44px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-1); color: var(--text-1); font-size: 18px; cursor: pointer; }
+.wl2-sym { font-weight: 700; }
+.wl2-co { color: var(--text-2); font-size: 13px; overflow-wrap: anywhere; min-width: 0; }
+.wl2-conv { color: var(--text-1); font-size: 13px; }
+.wl2-next { font-size: 13px; color: var(--text-1); overflow-wrap: anywhere; }
+.wl2-paging { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--text-2); }
+.wl2-dismissed summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }

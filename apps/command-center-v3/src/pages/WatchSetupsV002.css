@@ -1,0 +1,16 @@
+/* Watch v002 Setups / Sectors / Discover / Alerts (LQ-20261107-2993c-v2, review R6). Tokens only; v010 pill/button/link primitives. */
+.ws2 { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ws2-tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--border-color); }
+.ws2-tab { min-height: 44px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-1); color: var(--text-1); font-weight: 700; font-size: 14px; cursor: pointer; }
+.ws2-tab[aria-selected="true"] { background: var(--bg-2); color: var(--text-0); border-color: var(--info-border); }
+.ws2-asof { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 13px; color: var(--text-1); }
+.ws2-why { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
+.ws2-note { font-size: 14px; color: var(--text-1); padding: 8px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow-wrap: anywhere; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.ws2-note.bad { border-color: var(--danger-border); }
+.ws2-note.warn { border-color: var(--warning-border); }
+.ws2-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ws2-row { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border-color); min-height: 44px; min-width: 0; overflow-wrap: anywhere; }
+.ws2-row:last-child { border-bottom: none; }
+.ws2-sym { font-weight: 700; }
+.ws2-dim { color: var(--text-2); font-size: 13px; }
+.ws2-paging { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--text-2); }

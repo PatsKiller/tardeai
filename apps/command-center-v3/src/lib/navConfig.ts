@@ -82,7 +82,7 @@ export const NAV: NavSection[] = [
     id: 'trade', label: 'Trade', groups: [
       { label: 'Trade', pages: [
         { to: '/trading', label: 'Trading', match: ['/go/order', '/go/proposal', '/manual-execution'] },
-        { to: '/watch', label: 'Watch', match: ['/watch-legacy', '/watchlist', '/watchpool', '/sectors', '/pullback-macd'] },
+        { to: '/watch', label: 'Watch', match: ['/watch-legacy', '/watch-classic', '/watch-lists', '/watch-setups', '/watchlist', '/watchpool', '/sectors', '/pullback-macd'] },
         { to: '/active-trader', label: 'Active Trader' },
         { to: '/strategy', label: 'Strategy', match: ['/rec-intel'] },
         { to: '/journal', label: 'Journal (TradeInView)', match: ['/trade-in-view'] },
