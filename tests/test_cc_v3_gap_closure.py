@@ -183,7 +183,11 @@ def test_symbol_cards_query_filters_without_rebuild():
 def test_reentry_batches_watchlist_and_filters_cards():
     intel = (ROOT / "apps/command-center-v3/src/components/reentry/ReEntryCurrentIntelligence.tsx").read_text()
     rot = (ROOT / "apps/command-center-v3/src/components/reentry/ReEntryRotationWorkspace.tsx").read_text()
-    for src in (intel, rot):
+    # LQ-20261113-3062: the rotation workspace's batched watchlist read moved into reentryWatchFetch.ts (503 ->
+    # UNKNOWN with a retry hint); the batching contract is unchanged and is checked across both files.
+    rot_watch = (ROOT / "apps/command-center-v3/src/components/reentry/reentryWatchFetch.ts").read_text()
+    assert "loadWatchMap(" in rot
+    for src in (intel, rot + rot_watch):
         assert "watchlist/items?symbols=" in src
         assert "watchlist/items?symbol=${" not in src
         assert "symbol-cards?symbols=" in src

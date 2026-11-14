@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { BB } from '../../lib/holdingsTerminalTokens'
 import { fmt$ } from '../../lib/format'
 import { macdLabel, macdReadFromDeskRow } from '../../lib/reentryFieldReads'
+import { loadWatchMap, MAX_RETRIES, retryDelaySec, unknownSymbols, watchUnknownMessage, type WatchUnknown } from './reentryWatchFetch'
 
 const MANDATE_KEY = 'portfolio.reentry.mandates.v4'
 const EVENT_KEY = 'portfolio.reentry.event-classifications.v1'
@@ -98,6 +99,8 @@ type Technical = {
   ma50: number | null
   ma200: number | null
   asOf: string | null
+  /** LQ-3062: the watchlist read for this symbol answered UNKNOWN (e.g. 503 build_deferred); its fields are not known. */
+  watchUnknown?: boolean
 }
 
 function useJson(url: string | null, ms = 120_000) {
@@ -367,7 +370,7 @@ function AnalystPill({ symbol, data, isFund }: { symbol: string; data: any; isFu
 function TechnicalCard({ value, analyst, lookthrough }: { value: Technical; analyst: any; lookthrough: any }) {
   const isFund = Boolean(lookthrough || /ETF|FUND/i.test(text(analyst?.instrument_type)))
   return <div style={{ ...panel, padding: 10 }}>
-    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}><b style={{ fontSize: 16 }}>{value.symbol}</b><AnalystPill symbol={value.symbol} data={isFund ? lookthrough : analyst} isFund={isFund} /><span style={{ fontSize: 10, color: BB.text3 }}>{age(value.asOf)}</span></div>
+    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}><b style={{ fontSize: 16 }}>{value.symbol}</b><AnalystPill symbol={value.symbol} data={isFund ? lookthrough : analyst} isFund={isFund} /><span style={{ fontSize: 10, color: BB.text3 }}>{age(value.asOf)}</span>{value.watchUnknown && <span data-testid="reentry-watch-unknown-pill" style={{ fontSize: 10, fontWeight: 900, color: BB.amber }}>WATCH DATA UNKNOWN — retrying, see banner</span>}</div>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 7, marginTop: 8, fontSize: 10.5 }}>
       <div><span style={{ color: BB.text3 }}>Price</span><br /><b>{dollars(value.price)}</b></div><div><span style={{ color: BB.text3 }}>RSI</span><br /><b>{value.rsi === null ? '—' : value.rsi.toFixed(1)}</b></div><div><span style={{ color: BB.text3 }}>Trend</span><br /><b>{value.trend}</b></div>
       <div><span style={{ color: BB.text3 }}>Resistance</span><br /><b>{dollars(value.resistance)}</b></div><div><span style={{ color: BB.text3 }}>Distance</span><br /><b>{value.resistanceSide} · {pct(value.resistanceDistancePct)}</b></div><div><span style={{ color: BB.text3 }}>Held above</span><br /><b>{value.resistanceHoldDays === null ? 'UNAVAILABLE' : `${value.resistanceHoldDays} closed sessions`}</b></div>
@@ -399,6 +402,10 @@ export default function ReEntryRotationWorkspace({ mode = 'full', eventId: event
   const [links, setLinks] = useState<Record<string, RotationLink>>({})
   const [compositeAlerts, setCompositeAlerts] = useState<Record<string, CompositeAlert>>({})
   const [watchMap, setWatchMap] = useState<Record<string, any>>({})
+  const [watchUnknown, setWatchUnknown] = useState<WatchUnknown[]>([])
+  const [watchRetryIn, setWatchRetryIn] = useState<number | null>(null)
+  const [watchTick, setWatchTick] = useState(0)
+  const watchAttempt = useRef({ key: '', n: 0 })
   const [search, setSearch] = useState(initialSymbol ?? '')
   const [selectedEvent, setSelectedEvent] = useState<any>(null)
   const [rotationEvent, setRotationEvent] = useState<any>(null)
@@ -431,34 +438,30 @@ export default function ReEntryRotationWorkspace({ mode = 'full', eventId: event
 
   const symbols = useMemo(() => [...new Set([...allEvents.map(row => row.symbol), ...Object.values(links).flatMap(link => [link.sourceSymbol, link.destinationSymbol])].filter(Boolean))].slice(0, 300), [allEvents, links])
   const cards = useJson(symbols.length ? `/api/v2/symbol-cards?symbols=${encodeURIComponent(symbols.join(','))}` : null, 300_000)
+  // LQ-20261113-3062 (review 3051 A3): a non-OK answer (503 build_deferred) is UNKNOWN with its retry hint, never an
+  // empty watch row. Last-good items stay; the UNKNOWN symbols are named in a banner and retried on the server's hint.
+  const symbolsKey = symbols.join('|')
   useEffect(() => {
-    if (!symbols.length) return
+    if (!symbols.length) { setWatchUnknown([]); setWatchRetryIn(null); return }
+    if (watchAttempt.current.key !== symbolsKey) watchAttempt.current = { key: symbolsKey, n: 0 }
     let dead = false
+    let timer = 0
     const controller = new AbortController()
-    let cursor = 0
-    const output: Record<string, any> = {}
-    const worker = async () => {
-      const CHUNK = 80
-      while (!dead) {
-        const index = cursor
-        cursor += CHUNK
-        if (index >= symbols.length) return
-        const chunk = symbols.slice(index, index + CHUNK)
-        try {
-          const response = await fetch(`/api/v2/watchlist/items?symbols=${encodeURIComponent(chunk.join(','))}`, { cache: 'no-store', signal: controller.signal })
-          const payload = unwrap(await response.json())
-          for (const item of (payload?.items ?? [])) {
-            const sym = String(item?.symbol || '').toUpperCase()
-            if (sym) output[sym] = item
-          }
-        } catch {
-          for (const symbol of chunk) output[symbol] = output[symbol] ?? null
-        }
-      }
-    }
-    void Promise.all(Array.from({ length: Math.min(2, Math.ceil(symbols.length / 80) || 1) }, () => worker())).then(() => { if (!dead) setWatchMap(previous => ({ ...previous, ...output })) })
-    return () => { dead = true; controller.abort() }
-  }, [symbols.join('|')])
+    loadWatchMap((url, init) => fetch(url, init), symbols, controller.signal).then(({ items, unknown }) => {
+      if (dead) return
+      setWatchMap(previous => ({ ...previous, ...items }))
+      setWatchUnknown(unknown)
+      if (!unknown.length) { watchAttempt.current.n = 0; setWatchRetryIn(null); return }
+      const attempt = watchAttempt.current.n
+      if (attempt >= MAX_RETRIES) { setWatchRetryIn(null); return }
+      const sec = retryDelaySec(unknown)
+      setWatchRetryIn(sec)
+      timer = window.setTimeout(() => { watchAttempt.current.n = attempt + 1; setWatchTick(value => value + 1) }, sec * 1000)
+    }).catch(() => { /* aborted: unmount or a new symbol set */ })
+    return () => { dead = true; controller.abort(); if (timer) window.clearTimeout(timer) }
+  }, [symbolsKey, watchTick])
+  const watchUnknownSet = unknownSymbols(watchUnknown)
+  const watchUnknownText = watchUnknownMessage(watchUnknown, { inSec: watchRetryIn, attempt: watchAttempt.current.n })
 
   const cardMap: Record<string, any> = unwrap(cards.data)?.cards ?? {}
   const deskMap: Record<string, any> = {}
@@ -494,6 +497,7 @@ export default function ReEntryRotationWorkspace({ mode = 'full', eventId: event
 
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
     {header}
+    {watchUnknownText && <div data-testid="reentry-watch-unknown" style={{ ...panel, padding: 10, borderColor: BB.amber }}><b style={{ color: BB.amber }}>WATCHLIST DATA UNKNOWN</b><div style={{ fontSize: 10, color: BB.amber }}>{watchUnknownText}</div></div>}
     {sourceErrors.length > 0 && <div style={{ ...panel, padding: 10, borderColor: BB.red }}><b style={{ color: BB.red }}>COVERAGE BLOCKED</b>{sourceErrors.map(error => <div key={String(error)} style={{ fontSize: 10, color: BB.red }}>{error}</div>)}</div>}
     <div style={{ ...panel, padding: 9, display: 'grid', gridTemplateColumns: mode === 'full' ? 'minmax(220px,1fr) repeat(4,minmax(120px,160px))' : '1fr', gap: 8 }}>
       <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search symbol, account, or reason…" style={field} />
@@ -519,8 +523,8 @@ export default function ReEntryRotationWorkspace({ mode = 'full', eventId: event
     {Object.values(links).length > 0 && <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
       <div style={{ fontSize: 13, fontWeight: 900 }}>ROTATION PAIRS — BOTH-SIDE MONITORING</div>
       {Object.values(links).map(link => {
-        const source = technical(link.sourceSymbol, cardMap, watchMap, deskMap[String(link.sourceSymbol || '').toUpperCase()] ?? null)
-        const destination = technical(link.destinationSymbol, cardMap, watchMap, deskMap[String(link.destinationSymbol || '').toUpperCase()] ?? null)
+        const source = { ...technical(link.sourceSymbol, cardMap, watchMap, deskMap[String(link.sourceSymbol || '').toUpperCase()] ?? null), watchUnknown: watchUnknownSet.has(String(link.sourceSymbol || '').toUpperCase()) }
+        const destination = { ...technical(link.destinationSymbol, cardMap, watchMap, deskMap[String(link.destinationSymbol || '').toUpperCase()] ?? null), watchUnknown: watchUnknownSet.has(String(link.destinationSymbol || '').toUpperCase()) }
         const sourceAnalyst = analystFor(link.sourceSymbol, analyst.data)
         const destAnalyst = analystFor(link.destinationSymbol, analyst.data)
         const sourceLook = lookthroughFor(link.sourceSymbol, lookthrough.data)
