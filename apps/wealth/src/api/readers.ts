@@ -64,14 +64,18 @@ export const READERS: ReaderSpec[] = [
   // ---- protection ----
   {
     path: '/api/v2/risk', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: false, clock: 'producer',
-    unavailableWhen: [{ at: 'data.truth.stale', staleFlag: true }, { at: 'data._product.status', equals: 'FAILED' }],
+    unavailableWhen: [
+      { at: 'data.truth.stale', staleFlag: true },
+      { at: 'data._product.status', notEquals: 'OK' },
+      { at: 'data._product.greyed', staleFlag: true },
+    ],
     asOfAt: 'data._product.as_of', maxAgeHours: 2.5,
-    note: `${M}: 140,325 B; no data.ok; _product stale_after_s 9000. Page: _product.status != OK → DEGRADED with reason; greyed → banner. Do not take protection from pct_protected.`,
+    note: `${M}: 140,325 B; no data.ok; _product stale_after_s 9000. Producer statuses OK / STALE / UNKNOWN (greyed last good) / BUILDING (scripts/lib/cc_products/product_route.py); FAILED is never emitted. Only OK with greyed false is current: STALE is caught on purpose (same verdict as the 2.5 h clock), greyed is "never shown as current" (cc-deepseek-5 FINDING 88723f18). The page may still draw a greyed last good under "UNKNOWN · last good <time>". Do not take protection from pct_protected.`,
   },
   {
     path: '/api/v2/risk/protection-truth', timeoutMs: 8000, heavy: true, clock: 'request-time',
     unavailableWhen: [{ at: 'data.status', notEquals: 'OK' }],
-    note: `${M}: 4,698 B; 77 ms median, 3.653 s tail (8 s = 2.2x); data.as_of is request time. Second population (11) over a risk build the route does not serve; never the same rows as /risk.`,
+    note: `${M}: 4,698 B; ~2 ms warm, 3.0-3.7 s cold rebuild of the risk builder's uncached inputs (cc-deepseek-5/-7 errata); 8 s is a guardrail bound, not a ratio, and the producer fix is memoization. data.as_of is request time. Second population (11) over a risk build the route does not serve; never the same rows as /risk.`,
   },
   {
     path: '/api/v2/defense/posture', timeoutMs: 12000, heavy: true, clock: 'producer',

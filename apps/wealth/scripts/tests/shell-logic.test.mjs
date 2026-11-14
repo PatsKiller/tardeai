@@ -210,9 +210,9 @@ test('heavy readers refuse a shell-originated read; pages may read them', async 
   assert.equal(e.ok, true)
 })
 
-test('protection-truth: heavy, timeout at least 2x the measured 3.653 s tail, data.status UNAVAILABLE → UNKNOWN', () => {
+test('protection-truth: heavy, timeout at least 2x the measured cold rebuild (3.0-3.7 s), data.status UNAVAILABLE → UNKNOWN', () => {
   const s = specFor('/api/v2/risk/protection-truth')
-  assert.ok(s.heavy && s.timeoutMs >= 2 * 3653, String(s.timeoutMs))
+  assert.ok(s.heavy && s.timeoutMs >= 2 * 3700, String(s.timeoutMs))
   const st = deriveRenderState({ envelope: env('/api/v2/risk/protection-truth', wrap({ status: 'UNAVAILABLE', as_of: '2026-11-14T23:29:59Z' })), now: NOW })
   assert.equal(st.status, 'UNKNOWN')
 })
@@ -335,4 +335,25 @@ test('an unregistered path (default spec) inherits Health UNKNOWN, never calm by
   assert.equal(specFor('/api/v2/watchpool').note, 'default')
   assert.equal(st.status, 'OK')
   assert.ok(st.healthUnproven, 'no row, no flag, no clock')
+})
+
+// ---- r6: cc-deepseek-5 FINDING-RISK-GREYED (88723f18). Producer statuses: OK / STALE / UNKNOWN(greyed) / BUILDING
+//      (scripts/lib/cc_products/product_route.py); FAILED is never emitted. A clock proves build time, not fitness. ----
+test('/risk: only _product.status OK with greyed false is current; UNKNOWN+greyed, BUILDING, STALE, missing → UNKNOWN', () => {
+  const p = '/api/v2/risk', fresh = '2026-11-14T23:00:00Z'
+  const st = prod => deriveRenderState({ envelope: env(p, wrap({ truth: { stale: false }, _product: { as_of: fresh, ...prod } })), now: NOW }).status
+  assert.equal(st({ status: 'OK', greyed: false }), 'OK')
+  assert.equal(st({ status: 'UNKNOWN', greyed: true }), 'UNKNOWN', 'last good past hard expiry: never shown as current')
+  assert.equal(st({ status: 'OK', greyed: true }), 'UNKNOWN', 'greyed alone is enough')
+  assert.equal(st({ status: 'BUILDING', greyed: false }), 'UNKNOWN')
+  assert.equal(st({ status: 'STALE', greyed: false }), 'UNKNOWN', 'soft-stale: same verdict as the 2.5 h clock')
+  assert.equal(st({ greyed: false }), 'UNKNOWN', 'status missing')
+})
+
+test('/risk: no rule relies on a status value the producer never emits (FAILED)', () => {
+  for (const r of specFor('/api/v2/risk').unavailableWhen) assert.notEqual(r.equals, 'FAILED', r.at)
+})
+
+test('protection-truth note does not advertise the withdrawn 3.653 s tail ratio', () => {
+  assert.doesNotMatch(specFor('/api/v2/risk/protection-truth').note, /3\.653|2\.2x/)
 })
