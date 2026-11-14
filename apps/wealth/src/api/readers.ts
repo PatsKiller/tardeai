@@ -23,15 +23,19 @@ type Scalar = string | number | boolean | null
 /** Exactly one of `equals` / `notEquals`. A missing value never satisfies `notEquals`'s healthy value. */
 export type UnavailableRule =
   /** Dotted path into the JSON body, e.g. "data.publication.status". Never "ok". Arrays index by position. */
-  | { at: string; equals: Scalar; notEquals?: never }
+  | { at: string; equals: Scalar; notEquals?: never; staleFlag?: never }
   /** The read is real only when the value at `at` is exactly this (e.g. status must be "OK"). */
-  | { at: string; notEquals: Scalar; equals?: never }
+  | { at: string; notEquals: Scalar; equals?: never; staleFlag?: never }
+  /** A `stale` field: true fires; false/missing do not. Any non-boolean fires too: `stale` is boolean on most
+   *  payloads but a number on others (unit unconfirmed), so a non-boolean cannot be read as fresh. */
+  | { at: string; staleFlag: true; equals?: never; notEquals?: never }
 
 /** Where a row's freshness comes from. Only 'producer' may declare asOfAt. */
 export type ClockKind = 'producer' | 'request-time' | 'none'
 
 /** True when the rule says the read is not real. */
 export function ruleFires(rule: UnavailableRule, value: unknown): boolean {
+  if (rule.staleFlag === true) return value !== undefined && value !== null && value !== false
   return 'notEquals' in rule && rule.notEquals !== undefined ? value !== rule.notEquals : value === rule.equals
 }
 
@@ -60,18 +64,18 @@ export const READERS: ReaderSpec[] = [
   // ---- protection ----
   {
     path: '/api/v2/risk', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: false, clock: 'producer',
-    unavailableWhen: [{ at: 'data.truth.stale', equals: true }, { at: 'data._product.status', equals: 'FAILED' }],
+    unavailableWhen: [{ at: 'data.truth.stale', staleFlag: true }, { at: 'data._product.status', equals: 'FAILED' }],
     asOfAt: 'data._product.as_of', maxAgeHours: 2.5,
     note: `${M}: 140,325 B; no data.ok; _product stale_after_s 9000. Page: _product.status != OK → DEGRADED with reason; greyed → banner. Do not take protection from pct_protected.`,
   },
   {
     path: '/api/v2/risk/protection-truth', timeoutMs: 8000, heavy: true, clock: 'request-time',
-    unavailableWhen: [{ at: 'data.status', equals: 'UNAVAILABLE' }],
+    unavailableWhen: [{ at: 'data.status', notEquals: 'OK' }],
     note: `${M}: 4,698 B; 77 ms median, 3.653 s tail (8 s = 2.2x); data.as_of is request time. Second population (11) over a risk build the route does not serve; never the same rows as /risk.`,
   },
   {
     path: '/api/v2/defense/posture', timeoutMs: 12000, heavy: true, clock: 'producer',
-    unavailableWhen: [{ at: 'data.stale', equals: true }],
+    unavailableWhen: [{ at: 'data.stale', staleFlag: true }],
     asOfAt: 'data.as_of', maxAgeHours: 26,
     note: `${M}: 29,268 B; 7.341 s cold (61 % of 12 s); stale_after_hours 26`,
   },
@@ -83,13 +87,13 @@ export const READERS: ReaderSpec[] = [
   },
   {
     path: '/api/v2/market-risk/latest', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'producer',
-    unavailableWhen: [],
+    unavailableWhen: [{ at: 'data.state', notEquals: 'evaluated' }, { at: 'data.stale', staleFlag: true }],
     asOfAt: 'data.as_of', maxAgeHours: 26,
-    note: `${M}: 243,946 B; no ok/status flag; score is not a probability.`,
+    note: `${M}: 243,946 B; score is not a probability. Health: data.state "evaluated" + data.stale (cc-deepseek-5 DELTA-G13 e7fd59f8).`,
   },
   {
     path: '/api/v2/market-event/active', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'none',
-    unavailableWhen: [],
+    unavailableWhen: [{ at: 'data.stale', staleFlag: true }],
     note: `${M}: 263,626 B MarketEvent@v1; episode.as_of null, opened_at is episode age; the gate-window as_of is per array element with no declared latest index, so no freshness path is declared.`,
   },
   // ---- reposition ----
@@ -98,6 +102,7 @@ export const READERS: ReaderSpec[] = [
     unavailableWhen: [
       { at: 'data.ok', equals: false },
       { at: 'data.publication.status', equals: 'UNAVAILABLE' },
+      { at: 'data.stale', staleFlag: true },
     ],
     asOfAt: 'data.generated_at',
     note: `cc-deepseek-7 2307Z: HTTP 200 + outer ok:true while data.ok=false, publication UNAVAILABLE (unbound_cache_inputs). Page: candidates only when publication.status is OK; on UNAVAILABLE show reasons + producer_ok.`,
@@ -110,7 +115,7 @@ export const READERS: ReaderSpec[] = [
   },
   {
     path: '/api/v2/reentry/status', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: false, clock: 'request-time',
-    unavailableWhen: [],
+    unavailableWhen: [{ at: 'data.state', notEquals: 'POPULATED' }],
     note: `${M}: 87,080 B ReentryStatus@v1; data.as_of matched the request minute. READY/HELD/BLOCKED is its own population, never merged with the decision desk's actionable count.`,
   },
   {

@@ -219,3 +219,62 @@ test('client is GET-only and refuses non-/api/ paths', async () => {
   assert.equal(seen.method, 'GET')
   assert.throws(() => c.get('/v3/'), /canonical \/api\//)
 })
+
+// ---- r3: cc-deepseek-5 envelope classes (DELTA-G13 e7fd59f8): healthy spellings, stale typing, no-signal rows ----
+test('staleFlag rule: true fires; false/missing do not; a non-boolean (e.g. 955, unit unconfirmed) fires as unreadable', async () => {
+  const { ruleFires } = await import('../../src/api/readers.ts')
+  const r = { at: 'data.stale', staleFlag: true }
+  assert.equal(ruleFires(r, true), true)
+  assert.equal(ruleFires(r, false), false)
+  assert.equal(ruleFires(r, undefined), false)
+  assert.equal(ruleFires(r, 955), true, 'a number is not a boolean flag; its unit is unconfirmed, so it cannot read as fresh')
+  assert.equal(ruleFires(r, 0), true, 'even 0: we do not know the unit or the meaning')
+  assert.equal(ruleFires(r, 'false'), true)
+})
+
+test('registry: no stale path is policed by equals:true (it misses non-boolean stale); all use staleFlag', () => {
+  for (const s of READERS) for (const r of s.unavailableWhen) {
+    if (/(^|\.)stale$/.test(r.at)) assert.ok(r.staleFlag === true && !('equals' in r), `${s.path} ${r.at}`)
+  }
+})
+
+test('protection-truth: only status "OK" is real; DEGRADED or missing → UNKNOWN', () => {
+  const p = '/api/v2/risk/protection-truth'
+  assert.equal(deriveRenderState({ envelope: env(p, wrap({ status: 'OK' })), now: NOW }).status, 'OK')
+  assert.equal(deriveRenderState({ envelope: env(p, wrap({ status: 'DEGRADED' })), now: NOW }).status, 'UNKNOWN')
+  assert.equal(deriveRenderState({ envelope: env(p, wrap({})), now: NOW }).status, 'UNKNOWN')
+})
+
+test('market-risk: state must be "evaluated" and stale must not be true', () => {
+  const p = '/api/v2/market-risk/latest', a = '2026-11-14T23:00:00Z'
+  assert.equal(deriveRenderState({ envelope: env(p, wrap({ state: 'evaluated', stale: false, as_of: a })), now: NOW }).status, 'OK')
+  assert.equal(deriveRenderState({ envelope: env(p, wrap({ state: 'pending', stale: false, as_of: a })), now: NOW }).status, 'UNKNOWN')
+  assert.equal(deriveRenderState({ envelope: env(p, wrap({ state: 'evaluated', stale: true, as_of: a })), now: NOW }).status, 'UNKNOWN')
+})
+
+test('reentry/status: state must be "POPULATED"; missing → UNKNOWN', () => {
+  const p = '/api/v2/reentry/status'
+  assert.equal(deriveRenderState({ envelope: env(p, wrap({ state: 'POPULATED' })), now: NOW }).status, 'OK')
+  assert.equal(deriveRenderState({ envelope: env(p, wrap({})), now: NOW }).status, 'UNKNOWN')
+})
+
+test('rotation and market-event: stale true → UNKNOWN', () => {
+  const rot = wrap({ ok: true, stale: true, generated_at: '2026-11-14T23:00:00Z', publication: { status: 'PUBLISHED' } })
+  assert.equal(deriveRenderState({ envelope: env('/api/v2/rotation/summary', rot), now: NOW }).status, 'UNKNOWN')
+  assert.equal(deriveRenderState({ envelope: env('/api/v2/market-event/active', wrap({ stale: true, events: [] })), now: NOW }).status, 'UNKNOWN')
+  assert.equal(deriveRenderState({ envelope: env('/api/v2/market-event/active', wrap({ stale: false, events: [{ id: 1 }] })), now: NOW }).status, 'OK')
+})
+
+test('no-signal rows (no health rule, no producer clock) read OK only with health UNKNOWN attached, never calm', async () => {
+  const { healthCue } = await import('../../src/components/renderState.ts')
+  for (const p of ['/api/v2/stops/reentry-watch', '/api/v2/time-exit/proposals']) {
+    const st = deriveRenderState({ envelope: env(p, wrap({ rows: [{ id: 1 }] })), now: NOW })
+    assert.equal(st.status, 'OK', p)
+    assert.match(st.healthUnproven ?? '', /no health flag and no producer clock/, p)
+    const c = healthCue(st)
+    assert.equal(c.level, 'NEUTRAL'); assert.match(c.label, /UNKNOWN/)
+  }
+  const ok = deriveRenderState({ envelope: env('/api/v2/risk/protection-truth', wrap({ status: 'OK' })), now: NOW })
+  assert.equal(ok.healthUnproven, null, 'a row with a health rule is not flagged')
+  assert.equal(healthCue(ok), null)
+})

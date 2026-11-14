@@ -2,7 +2,7 @@
 // UNKNOWN is never green and never blank: it says UNKNOWN and why. OK and EMPTY hand control to the page.
 import type { ReactNode } from 'react'
 import type { RenderState } from './renderState'
-import { statusCue } from './renderState'
+import { healthCue, statusCue } from './renderState'
 import { CueBadge } from './primitives'
 
 export function ageText(seconds: number): string {
@@ -26,6 +26,8 @@ export function StateView<T>({ state, children, empty, renderLastGood }: {
   renderLastGood?: (data: T) => ReactNode
 }) {
   const cue = statusCue(state as RenderState<unknown>)
+  const hc = healthCue(state as RenderState<unknown>)
+  const health = hc ? <div className="source-qualifier" data-health="UNKNOWN"><CueBadge cue={hc} /></div> : null
   switch (state.status) {
     case 'LOADING':
       return <div className="empty-state" aria-busy="true">{cue && <CueBadge cue={cue} />}</div>
@@ -41,8 +43,8 @@ export function StateView<T>({ state, children, empty, renderLastGood }: {
         </div>
       )
     case 'EMPTY':
-      return <div className="empty-state" data-state="EMPTY">{empty ?? <p>None.</p>}<AsOf asOf={state.asOf} ageHours={state.ageHours} /></div>
+      return <div className="empty-state" data-state="EMPTY">{health}{empty ?? <p>None.</p>}<AsOf asOf={state.asOf} ageHours={state.ageHours} /></div>
     case 'OK':
-      return <>{children(state.data as T)}</>
+      return <>{health}{children(state.data as T)}</>
   }
 }
