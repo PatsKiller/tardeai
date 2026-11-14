@@ -1192,7 +1192,18 @@ sha256 `9bafaac1c883fb554143aa6531eaa06df035fa454cb1431afd9f98d1154a943a`). It i
 `apps/wealth`, served at `/wealth/`**, in parallel with Command Center v3.
 
 - **/v3 is untouched.** Never retrofit the new visual design into `apps/command-center-v3`, change its default landing,
-  or delete or decommission any of its UI. /v3 correctness and reliability fixes continue on their own track.
+  or delete or decommission any of its UI.
+- **Old site frozen (operator scope update 2026-11-14 17:56 ET).** No discretionary /v3 page upgrades and no old-site
+  release trains. /v3 stays live and accessible as the transition reference. A narrow /v3 change is allowed only for
+  essential refresh, monitoring or security, or a material production incident, and is documented as an exception; no
+  grant is invented for it. Source writers and 24/7 schedules keep running; a frozen UI is never a reason to stop a job.
+  Unactivated old-only release work is held and its reviewed parts are reused in `apps/wealth`.
+- **Measured re-architecture is authorized.** Bottlenecks that are measured and traced first (shared data authority and
+  finance definitions; cache key, clock, expiry and refresh lifecycle; cheap authorized GETs; n8n producer ownership,
+  retries, overlap and self-healing; persistent CIO memory; request fan-out; packet decoding; observability; memory
+  growth) may be re-architected in bounded, versioned, consumer-compatible changes verified against isolated failure
+  cases. Never copy an old inefficiency into the new frontend, never add a duplicate store or producer, never assume an
+  abbreviation's meaning, and never attempt a speculative whole-backend rewrite.
 - **One backend.** `apps/wealth` reuses the canonical broker/read models, n8n producers, the governed CIO backend and
   memory, and existing auth, 2FA and financial gates. It must not fork a calculation, source authority, database, CIO
   memory or producer ownership. Its client is GET-only, same-origin, and handles no credentials. A shared backend change
@@ -1216,7 +1227,8 @@ sha256 `9bafaac1c883fb554143aa6531eaa06df035fa454cb1431afd9f98d1154a943a`). It i
 - **Decommissioning is a separate final phase.** It comes only after replacement parity, deployed verification, new-site
   acceptance and rollback readiness. Never delete data, history or jobs silently.
 
-Decision record: `coordination/coordinator/campaign-8h2-20261114/handoff/DECISION-WEALTH-NEW-SITE-20261114T225159Z.md`.
+Decision records: `coordination/coordinator/campaign-8h2-20261114/handoff/DECISION-WEALTH-NEW-SITE-20261114T225159Z.md` and
+`DECISION-WEALTH-SCOPE-OLD-SITE-FROZEN-20261114T2256Z.md` (same folder); ownership in `WEALTH-PROGRAM-20261114T2259Z.md`.
 
 ---
 
@@ -2781,7 +2793,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 32.3.0 | 2026-11-14 | ACTIVE | MINOR | Supersedes 32.2.0. Adds §9.6.1 Wealth site: net-new `apps/wealth` frontend at `/wealth/` built in parallel with /v3 (untouched), shared canonical backend, separate build identity and rollback, design fidelity to the accepted reference, colour-never-alone cues, versioned `valuation-assessment@1` contract, decommissioning as a separate final phase. Product and delivery duties only: no rail lifted, no grant, §0/§2/§17 and adapters unchanged. | Operator directive 2026-11-14 17:50 ET (John approved the wealth-management design direction; build as a net-new site in parallel), relayed in-session to the lead; local commit only while git pushes are suspended. |
+| 32.3.0 | 2026-11-14 | ACTIVE | MINOR | Supersedes 32.2.0. Adds §9.6.1 Wealth site: net-new `apps/wealth` frontend at `/wealth/` built in parallel with /v3 (untouched, frozen for discretionary upgrades per the 17:56 ET scope update; measured re-architecture authorized), shared canonical backend, separate build identity and rollback, design fidelity to the accepted reference, colour-never-alone cues, versioned `valuation-assessment@1` contract, decommissioning as a separate final phase. Product and delivery duties only: no rail lifted, no grant, §0/§2/§17 and adapters unchanged. | Operator directive 2026-11-14 17:50 ET (John approved the wealth-management design direction; build as a net-new site in parallel), relayed in-session to the lead; local commit only while git pushes are suspended. |
 | 32.2.0 | 2026-11-14 | SUPERSEDED | MINOR | Supersedes 32.1.0. Adds §9.6 Wealth Management 501 product and delivery contract and the canonical guide `docs/design/WEALTH_MANAGEMENT_501.md` (v1.0) + `docs/design/WEALTH_MANAGEMENT_501_ADDENDUM_V1_1.md` (v1.1): all-horizon investment desk, inventory-before-build, deterministic accounting vs governed CIO synthesis, n8n-owned 24/7 overview refresh, route migration/retirement register, live acceptance. Product and evidence duties only: no rail lifted, no grant, §0/§2/§17 and adapters unchanged. | Operator directive 2026-11-14 ~15:00-15:10 ET (actual-project persistence + AGENTS.md update, "already authorized, no new grant"), relayed in-session to the lead; local commit only while git pushes are suspended. |
 | 32.1.0 | 2026-11-10 | ACTIVE | MINOR | Supersedes 32.0.0. Adopts the operator's Engineering Constitution v1.1 (`docs/governance/ENGINEERING_CONSTITUTION.md`) as foundational doctrine; summary added under §8 "What counts as verified". Evidence duties only: no rail lifted, no grant, §0/§2/§17 and adapters unchanged. | Operator directive 2026-11-10 ~11:55 ET ("make these golden rules for all agents … These should appear in: Agent.md, Runbooks, …"), relayed in-session to the lead; local commit only, pending operator ratification on the next push window. |
 | 32.0.0 | 2026-11-09 | ACTIVE | MAJOR | Supersedes 31.0.0. §23.20a: ONE named exception for one broker market-data quote lane on the n8n dispatcher — `vix-index-quotes-schwab` (R1 `ingest`, `$VIX`/`$VIX9D`/`$VIX3M` into `market_quotes`) may carry the `schwab` token and reach `schwab_token_manager` only, in a code-pinned shape (`lane_dispatch.SCHWAB_QUOTE_READ_*`); no trade context, account read, send or credential in n8n. §0, §2, §2A, §7A, §17, §23.14 and §27.1 unchanged. | `APPROVE_AGENTS_POLICY_32_0_0 <pr> <head_sha>` |
