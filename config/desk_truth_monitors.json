@@ -43,7 +43,6 @@
     "account_aliases": {"schwab_roth": "schwab_roth_ira"},
     "include_cash": true,
     "exclude_asset_types": ["option"],
-    "min_position_value_usd": 1000.0,
     "working_stop_statuses": ["pending_activation", "active", "working", "open", "placed", "accepted", "new", "queued"],
     "tier_segment_states": {
       "low": ["low", "calm", "green", "ok"],
@@ -77,9 +76,7 @@
     "exclude_asset_types": ["option", "MUTUAL_FUND"],
     "not_stop_protectable_labels": {"mutual_fund": "not stop-protectable (mutual fund)"},
     "_exclude_note": "LQ-20261107-2964 lead decision 2026-11-13 09:39 ET: mutual funds cannot carry stop orders, so a held MUTUAL_FUND is not a coverage gap. It is never hidden: an excluded type with a label in not_stop_protectable_labels is listed in the scan, the heartbeat and the Home Orders reading (data_quality) with that label.",
-    "min_position_value_usd": 1000.0,
-    "min_position_value_usd": 1000.0,
     "account_aliases": {"schwab_roth": "schwab_roth_ira"},
-    "_note": "Held = positions_current non-cash rows with qty > 0 (live accounts). A position is covered when stop_lifecycle (the stop_lifecycle_monitor snapshot) has a row for the same account and symbol whose lifecycle is in working_lifecycles. A position whose positions_current broker_market_value is below min_position_value_usd (fractional DRIP remainders, measured 2026-10-22: 14 of 27 held rows under $1,000) is counted as below_value_floor, not checked; a missing value is checked. Paper-account stop rows are counted and tagged PAPER; paper positions are not read (no broker read here). exempt: [{\"account\": \"...\", \"symbol\": \"...\", \"reason\": \"...\"}], each a reviewed operator decision."
+    "_note": "Held = positions_current non-cash rows with qty > 0 (live accounts). A position is covered when stop_lifecycle (the stop_lifecycle_monitor snapshot) has a row for the same account and symbol whose lifecycle is in working_lifecycles. A position whose positions_current broker_market_value is above $0 and below the policy floor (config/position_count_authority.json min_position_usd, $100; LQ-20261113-3047 A05, DECISIONS-20261111 §Exemptions) is listed in below_value_floor_rows with its threshold, not counted; a missing or $0 value is unpriced and checked, never dust. The old $1,000 min_position_value_usd (2026-10-22) contradicted the policy and is removed. Paper-account stop rows are counted and tagged PAPER; paper positions are not read (no broker read here). exempt: [{\"account\": \"...\", \"symbol\": \"...\", \"reason\": \"...\"}], each a reviewed operator decision."
   }
 }

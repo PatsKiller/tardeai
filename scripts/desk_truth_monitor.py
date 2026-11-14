@@ -272,6 +272,21 @@ def options_desk_staleness(doc: Mapping[str, Any], cfg: Mapping[str, Any], *, no
 # ── held exit coverage ──────────────────────────────────────────────────────────────────────────────────────────
 
 
+def _protection_policy():
+    try:
+        from scripts.lib import protection_policy as pp
+    except ImportError:  # pragma: no cover - scripts/ on sys.path
+        from lib import protection_policy as pp  # type: ignore[no-redef]
+    return pp
+
+
+def _count_floor() -> tuple[float, str]:
+    """The protection count floor and its config (LQ-20261113-3047, A05): policy $100, one owner, never cfg."""
+    pp = _protection_policy()
+    src = pp.source()
+    return src["count_floor_usd"], f'{pp.FLOOR_CONFIG} ({src["source"]})'
+
+
 def held_exit_coverage(current: list[Mapping[str, Any]], snapshot: list[Mapping[str, Any]], cfg: Mapping[str, Any],
                        *, now: datetime, session: bool) -> dict[str, Any]:
     aliases = dict(cfg.get("account_aliases") or {})
@@ -280,20 +295,47 @@ def held_exit_coverage(current: list[Mapping[str, Any]], snapshot: list[Mapping[
     exclude = {str(x).lower() for x in cfg.get("exclude_asset_types") or []}
     exempt = {(str(e.get("account")), str(e.get("symbol")).upper()) for e in cfg.get("exempt") or []
               if isinstance(e, Mapping)}
-    floor = float(cfg.get("min_position_value_usd", 0) or 0)
+    # A05 (LQ-20261113-3047): the policy floor ($100), never cfg's old $1,000 min_position_value_usd. Every row the
+    # check does not count is LISTED with why: below the floor (with the threshold), unpriced, or not stop-protectable.
+    floor, floor_source = _count_floor()
     held = {}
     below_floor = 0
+    below_rows: list[dict[str, Any]] = []
+    unpriced_rows: list[dict[str, Any]] = []
+    excluded_rows: list[dict[str, Any]] = []
+    exempt_rows: list[dict[str, Any]] = []
+    no_symbol_rows: list[dict[str, Any]] = []
+    pp = _protection_policy()
     for c in current:
-        if c.get("is_cash") or str(c.get("asset_type") or "").lower() in exclude:
+        why = pp.exempt_reason(is_cash=c.get("is_cash"), asset_type=c.get("asset_type"))
+        if why:  # policy-exempt (cash / money-market fund / sweep): listed with the reason, never counted
+            if (_num(c.get("qty")) or 0.0) > 0:
+                exempt_rows.append({"account": str(c.get("account_key")),
+                                    "symbol": str(c.get("symbol") or "").upper(), "why": why})
+            continue
+        if str(c.get("asset_type") or "").lower() in exclude:
+            if (_num(c.get("qty")) or 0.0) > 0:
+                excluded_rows.append({"account": str(c.get("account_key")), "symbol": str(c.get("symbol") or "").upper(),
+                                      "asset_type": str(c.get("asset_type"))})
             continue
         q = _num(c.get("qty")) or 0.0
         if q <= 0:
             continue
         mv = _num(c.get("broker_market_value"))
-        if floor and mv is not None and abs(mv) < floor:
-            below_floor += 1  # dust / fractional DRIP remainders; a missing value is never treated as small
+        key = (str(c.get("account_key")), str(c.get("symbol") or "").strip().upper())
+        if not key[1]:
+            # LQ-3068 C3: a held row with no symbol is a data defect, listed; it stays held, so with no stop it is a gap
+            no_symbol_rows.append({"account": key[0], "symbol": "", "qty": q, "broker_market_value": mv,
+                                   "state": "DEFECT", "why": "held row has no symbol"})
+        if mv is not None and mv <= 0:
+            # a quantity the broker values at $0 is unpriced, never dust: checked like a missing value, and listed
+            unpriced_rows.append({"account": key[0], "symbol": key[1], "broker_market_value": mv})
+        elif floor and mv is not None and mv < floor:
+            below_floor += 1  # under the policy floor: listed with the threshold, not counted
+            below_rows.append({"account": key[0], "symbol": key[1], "broker_market_value": mv,
+                               "threshold_usd": floor})
             continue
-        held[(str(c.get("account_key")), str(c.get("symbol") or "").upper())] = q
+        held[key] = q
     covered: set[tuple[str, str]] = set()
     paper_rows = 0
     newest: Optional[datetime] = None
@@ -320,7 +362,9 @@ def held_exit_coverage(current: list[Mapping[str, Any]], snapshot: list[Mapping[
                            alert=not stale, account=a, symbol=s, held_qty=held[(a, s)], tag="LIVE"))
     return {"findings": findings, "held": len(held), "covered": len(held) - len(uncovered),
             "uncovered": len(uncovered), "exempt": len([k for k in held if k in exempt]),
-            "below_value_floor": below_floor, "value_floor_usd": floor,
+            "below_value_floor": below_floor, "value_floor_usd": floor, "value_floor_source": floor_source,
+            "below_value_floor_rows": below_rows, "unpriced_rows": unpriced_rows, "excluded_type_rows": excluded_rows,
+            "policy_exempt_rows": exempt_rows, "no_symbol_rows": no_symbol_rows,
             "coverage_verdict": "NOT_MEASURED" if stale else ("GAPS" if uncovered else "COVERED"),
             "snapshot_age_h": age_h, "paper_stop_rows": paper_rows, "paper_tag": "PAPER",
             "paper_positions": "NOT_MEASURED (no paper position source is read; no broker call)",
@@ -482,15 +526,17 @@ def recompute_book(current: Iterable[Mapping[str, Any]], quotes: Iterable[Mappin
     day_pnl = round(sum(day_by_account.values()), 2) if measured and not no_prev else None
     # the same value floor as held_exit_coverage: a fractional DRIP remainder is not an unprotected position, and a
     # missing value is checked rather than excused (a position whose size is unknown is not known to be small)
-    floor = float(cfg.get("min_position_value_usd", 1000.0))
+    floor, _ = _count_floor()   # A05: the policy's $100, not cfg's old $1,000 min_position_value_usd
     uncovered: list[tuple[str, str]] = []
     below_floor = 0
+    below_rows: list[dict[str, Any]] = []
     for k in sorted(held):
         if k in covered:
             continue
         v = held_value.get(k)
-        if v is not None and v < floor:
+        if v is not None and 0 < v < floor:   # a $0 value is unpriced, never below the floor
             below_floor += 1
+            below_rows.append({"account": k[0], "symbol": k[1], "value_usd": v, "threshold_usd": floor})
             continue
         uncovered.append(k)
     return {
@@ -511,7 +557,7 @@ def recompute_book(current: Iterable[Mapping[str, Any]], quotes: Iterable[Mappin
             "held": len(held), "covered": len(held) - len(uncovered),
             "uncovered": [{"account": a, "symbol": s, "held_qty": held[(a, s)], "value_usd": held_value.get((a, s))}
                           for a, s in uncovered],
-            "below_value_floor": below_floor,
+            "below_value_floor": below_floor, "below_value_floor_rows": below_rows, "value_floor_usd": floor,
             "verdict": "NOT_MEASURED" if stops_stale else ("GAPS" if uncovered else "COVERED"),
             "stops_as_of": stops_newest.isoformat() if stops_newest else None,
             "stops_age_h": stops_age,

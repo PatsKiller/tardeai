@@ -413,7 +413,9 @@ def stop_protects(p: dict) -> bool:
 
 # LQ-20261107-2165 (Portfolio G1, DECISIONS-20261111): one backend verdict per holdings row.
 PROTECTION_STATES = ("PROTECTED", "GAP", "UNKNOWN", "EXEMPT")
-COUNT_FLOOR_USD = 100
+# LQ-20261113-3047 (A05): the floor's one owner is config/protection_policy.json (policy $100, DECISIONS-20261111).
+from . import protection_policy as _protection_policy  # noqa: E402
+COUNT_FLOOR_USD = _protection_policy.count_floor_usd()
 # Broker families that have a stop read source: Schwab orders land in stop_last_known; Fidelity has no order API,
 # its GTC stops are operator records in manual_broker_stops. Moomoo and Alpaca have neither: nothing is ever read.
 STOP_READ_BROKERS = ("schwab", "fidelity")
@@ -2175,6 +2177,9 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None, ledger_root=None
                         "unprotected_counted_value_usd": unprotected_counted_mv,
                         "unprotected_residual_value_usd": unprotected_residual_mv,
                         "largest_name": None,
+                        # A05 (LQ-3047): the effective count floor every row's `counted` used, from its one owner
+                        "count_floor_usd": COUNT_FLOOR_USD,
+                        "count_floor_config": _protection_policy.FLOOR_CONFIG,
                         "loss_basis": "loss to observed active stops; unprotected downside is not bounded",
                         # `gap` answers ONE question — are the positions available — because that is how every
                         # consumer reads it (Home's Do-now source `cio_positions`, the Risk desk). The aggregate's

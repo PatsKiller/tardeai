@@ -55,7 +55,6 @@
         "near_trigger"
       ],
       "snapshot_stale_after_h": 0.25,
-      "min_position_value_usd": 1000.0,
       "exclude_asset_types": [
         "option"
       ],

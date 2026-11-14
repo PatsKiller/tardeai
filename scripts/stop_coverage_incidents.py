@@ -130,12 +130,35 @@ MAX_AGE_OFF_S = 5400
 POSITIONS_MAX_AGE_SESSION_S = 7200
 WORKING = ("working", "near_trigger")
 SNAPSHOT_SQL = ("SELECT account, symbol, status, lifecycle, health, flags, held_qty, snapshot_at FROM stop_lifecycle")
+# LQ-3047: cash rows are read too, so they are LISTED as policy-exempt instead of vanishing in SQL (no hidden rows)
 POSITIONS_SQL = ("SELECT account_key, symbol, qty, broker_market_value, asset_type, is_cash, as_of "
-                 "FROM positions_current WHERE NOT is_cash AND qty > 0")
+                 "FROM positions_current WHERE qty > 0")
+
+
+def _float_or_none(v) -> float | None:
+    """A number, or None when the value is missing or unreadable (never a crash, never a made-up 0)."""
+    if v is None:
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if f == f else None   # NaN is not a value
+
+
+def _policy():
+    try:
+        from lib import protection_policy
+    except ImportError:  # pragma: no cover - repo root on sys.path
+        from scripts.lib import protection_policy  # type: ignore[no-redef]
+    return protection_policy
 
 
 def _held_filter() -> dict:
-    """The held-position bar the desk-truth coverage check already uses (floor, paper accounts, aliases, exempt)."""
+    """The held-position bar the desk-truth coverage check already uses (paper accounts, aliases, exempt, types).
+
+    The value floor is NOT read from here: its one owner is config/position_count_authority.json (A05, LQ-3047).
+    """
     try:
         cfg = json.loads((PROJECT_ROOT / "config" / "desk_truth_monitors.json").read_text(encoding="utf-8"))
         return dict(cfg.get("held_exit_coverage") or {})
@@ -144,20 +167,28 @@ def _held_filter() -> dict:
 
 
 def scan_from_snapshot(snapshot: list[dict], positions: list[dict], *, now: datetime, session_open: bool = True,
-                       cfg: dict | None = None) -> dict:
+                       cfg: dict | None = None, floor_usd: float | None = None) -> dict:
     """Pure. Build a ``scan``-shaped dict from the persisted snapshot + positions; no broker is read.
 
     * snapshot missing or older than the limit -> ``stale_snapshot`` (every position UNAVAILABLE);
     * a held position with no WORKING stop in a snapshotted account -> one ``unprotected`` record (a gap);
     * a held position with a WORKING stop -> a healthy record (covered);
-    * a held position in an account the snapshot has no row for at all (another broker) -> omitted: unknown, never a gap.
+    * a held position in an account the snapshot has no row for at all (another broker) -> no record: listed in
+      ``population`` as ``stop_source_unobserved`` (UNKNOWN), never a gap.
+
+    LQ-20261113-3047 (A05): every row read lands in ``population`` (counted with its state, or excluded with its
+    reason). The value floor is the policy's ($100, :mod:`lib.protection_policy`); a priced row under it is listed
+    as ``below_value_floor`` with ``threshold_usd``; cash/MMF/sweep rows are ``policy_exempt``; a $0 value is
+    unpriced, never dust.
     """
     cfg = _held_filter() if cfg is None else cfg
     aliases = dict(cfg.get("account_aliases") or {})
     paper = {str(x) for x in cfg.get("paper_accounts") or []}
     exempt = {(str(e.get("account")), str(e.get("symbol")).upper()) for e in cfg.get("exempt") or []
               if isinstance(e, dict)}
-    floor = float(cfg.get("min_position_value_usd", 0) or 0)
+    policy = _policy()
+    # A05: one floor, the policy's ($100). A stale min_position_value_usd in cfg is ignored, never a second floor.
+    floor = float(policy.count_floor_usd() if floor_usd is None else floor_usd)
     skip_types = {str(x).lower() for x in cfg.get("exclude_asset_types") or []}
     labels = {str(k).lower(): str(v) for k, v in (cfg.get("not_stop_protectable_labels") or {}).items()}
     not_protectable: list[dict] = []
@@ -180,26 +211,73 @@ def scan_from_snapshot(snapshot: list[dict], positions: list[dict], *, now: date
     working = {(str(aliases.get(r.get("account"), r.get("account"))), str(r.get("symbol") or "").upper())
                for r in snapshot if str(r.get("lifecycle") or "") in WORKING}
     stops: list[dict] = []
+    # 2026-11-13 operator point 4: every held row lands in exactly one bucket, so "0 gaps" can never imply that
+    # every holding was evaluated. A missing or non-positive market value on a nonzero quantity is UNPRICED
+    # (unverifiable), never dust; an account with no row in the stop snapshot is unobserved, never skipped silently.
+    pop = {"total": 0, "eligible": 0, "covered": 0, "uncovered": 0, "exclusions": {}, "counted_rows": []}
+
+    def _excl(reason: str, acct: str, sym: str, **extra) -> None:
+        pop["exclusions"].setdefault(reason, []).append({"account": acct, "symbol": sym, **extra})
+
     for p in positions:
         acct, sym = str(p.get("account_key")), str(p.get("symbol") or "").strip().upper()
-        if not sym or acct in paper or acct not in live_accts or (acct, sym) in exempt:
+        pop["total"] += 1
+        if not sym:   # LQ-3068 C3: a held row with no symbol is a data defect, listed, never silently dropped
+            _excl("no_symbol", acct, "", state="DEFECT", why="held row has no symbol: coverage cannot be checked",
+                  qty=_float_or_none(p.get("qty")), broker_market_value=_float_or_none(p.get("broker_market_value")))
+            continue
+        why_exempt = policy.exempt_reason(is_cash=p.get("is_cash"), asset_type=p.get("asset_type"))
+        if why_exempt:
+            _excl("policy_exempt", acct, sym, why=why_exempt)   # listed with its reason, never counted
+            continue
+        if acct in paper:
+            _excl("paper_account", acct, sym)
+            continue
+        if (acct, sym) in exempt:
+            _excl("exempt", acct, sym, why="operator exemption (held_exit_coverage.exempt)")
             continue
         if str(p.get("asset_type") or "").lower() in skip_types:
             label = labels.get(str(p.get("asset_type") or "").lower())
             if label:   # not a gap, but never hidden (LQ-2964: a mutual fund cannot carry a stop)
                 not_protectable.append({"symbol": sym, "asset_type": str(p.get("asset_type")), "label": label})
+            _excl("not_stop_protectable", acct, sym, asset_type=str(p.get("asset_type")), label=label)
             continue
-        mv = p.get("broker_market_value")
-        if floor and mv is not None and abs(float(mv)) < floor:
-            continue                       # dust: not checked (a missing value is checked)
+        if acct not in live_accts:
+            _excl("stop_source_unobserved", acct, sym, state="UNKNOWN",
+                  why="no stop snapshot row for this account")   # coverage UNKNOWN, never a gap or covered
+            continue
+        mv_f = _float_or_none(p.get("broker_market_value"))   # None: missing or unreadable, checked (counted)
+        if mv_f is not None and mv_f <= 0 and (acct, sym) not in working:
+            # a nonzero quantity the broker values at $0: not dust and not a proven gap. Listed in the scan with
+            # health "unknown" (plan() neither opens nor resolves on it) and in the population as unverifiable.
+            _excl("unpriced_unverifiable", acct, sym, broker_market_value=mv_f, qty=float(p.get("qty") or 0))
+            stops.append({"account": acct, "symbol": sym, "health": "unknown", "flags": ["unpriced"]})
+            continue
+        if floor and mv_f is not None and mv_f > 0 and mv_f < floor:
+            _excl("below_value_floor", acct, sym, broker_market_value=mv_f, threshold_usd=floor,
+                  covered=(acct, sym) in working)   # listed with the threshold, not counted
+            continue
+        pop["eligible"] += 1
+        # LQ-3068 C1: a counted row whose value is missing is still counted (its size is unknown, so it is not known
+        # to be small), and it says so: value_state UNKNOWN, never a number it does not have
+        pop["counted_rows"].append({"account": acct, "symbol": sym, "broker_market_value": mv_f,
+                                    "value_state": "UNKNOWN" if mv_f is None else ("UNPRICED" if mv_f <= 0 else "VALUED"),
+                                    "state": "covered" if (acct, sym) in working else "uncovered"})
         if (acct, sym) in working:
+            pop["covered"] += 1
             stops.append({"account": acct, "symbol": sym, "health": "ok", "flags": []})
         else:
+            pop["uncovered"] += 1
             stops.append({"account": acct, "symbol": sym, "health": "alert", "flags": ["unprotected"],
                           "held_qty": float(p.get("qty") or 0), "status": None})
+    pop["floor_usd"] = floor
+    pop["floor_source"] = (f'{policy.FLOOR_CONFIG} ({policy.source()["source"]})' if floor_usd is None
+                           else "argument")
+    pop["exclusion_counts"] = {k: len(v) for k, v in sorted(pop["exclusions"].items())}
     return {"ok": True, "stops": stops, "generated_at": now, "snapshot_age_s": round(age),
             "summary": {"total": len(stops)}, "errors": [], "schwab_stops_status": "SNAPSHOT",
-            "not_stop_protectable": sorted(not_protectable, key=lambda r: r["symbol"])}
+            "not_stop_protectable": sorted(not_protectable, key=lambda r: r["symbol"]),
+            "population": pop}
 
 
 def _fetch(conn, sql: str) -> list[dict]:
@@ -265,6 +343,8 @@ def main(argv: list[str] | None = None) -> int:
         doc = {"started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(), "status": status,
                "dry_run": not apply, **{k: len(v) if isinstance(v, list) else v for k, v in out.items()}}
         doc["not_stop_protectable"] = list(scan.get("not_stop_protectable") or [])   # the list, not a count
+        if scan.get("population") is not None:
+            doc["population"] = scan["population"]
     except BaseException as exc:
         _heartbeat({"started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(),
                     "status": "error", "error": f"{type(exc).__name__}: {exc}"[:300]})
