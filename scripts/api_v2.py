@@ -31867,6 +31867,17 @@ def _needs_action(query=None):
 
 
 _HOME_DO_NOW_CACHE: dict = {}
+# One background Do-now rebuild at a time (S2 2026-11-14): expired reads are served as last-known-good and only the
+# holder of this lock rebuilds, so a Home poll burst cannot start a thread per reader.
+_HOME_DO_NOW_REFRESHING = threading.Lock()
+# Last refresh attempt and its outcome (review 6888bda645 F2, 2026-11-14): a stale read must be able to say WHY it is
+# stale. Without this, a two-hour-old body was published with status OK and nothing named the failed rebuild, so "quiet
+# market, nothing to do" and "Home has been serving a stale queue" looked identical on the wire (silent failure).
+# Written only by the refresher that holds _HOME_DO_NOW_REFRESHING; `_failed_mono` is the retry clock and is never served.
+_HOME_DO_NOW_REFRESH: dict = {"attempted_at": None, "failed_at": None, "error": None, "_failed_mono": None}
+# A failed rebuild is retried on a later expired read, but not sooner than this, so a broken build is attempted at most
+# once per cooldown instead of at every Home poll.
+_HOME_DO_NOW_RETRY_COOLDOWN_S = 30.0
 
 
 def _market_risk_latest_projection():
@@ -32164,13 +32175,32 @@ def _home_do_now(query=None):
     scripts/lib/data_broker/home_do_now.py; operator-approved Home redesign 2026-10-22). One deduplicated queue over
     needs-action, the operator inbox, the risk snapshot, the desk-truth stop-coverage receipt, pending paper proposals
     and open redeploys, each source with its own as_of / age / stale. Read-only; never a broker read (the risk
-    snapshot is read without the /api/v2/risk broker-stop overlay). Cached 60 s so Home polling never fans out more
-    than once a minute."""
-    import time as _t
+    snapshot is read without the /api/v2/risk broker-stop overlay).
 
+    S2 (2026-11-14): the build is a ~5 s fan-out over eight probes and it is NOT the request's work. A body younger
+    than 60 s is served directly; a body older than 60 s is served as last-known-good (every source in it carries its
+    own as_of/age, so the older clock is visible) while exactly ONE background thread rebuilds the cache. Only the
+    first-ever call — no body at all, e.g. the first Home open after a restart — builds on the request thread: the
+    first reader after a restart pays one build, and a reader that arrives once that build is cached is served from
+    cache (concurrent first readers each build once, because there is nothing else to serve them). Refreshes are
+    deduplicated, daemon-threaded and cannot accumulate; a stale read carries a `served` block naming its age and the
+    last refresh attempt, and a failed rebuild names itself there (never silent) while the last-good body is kept."""
     hit = _HOME_DO_NOW_CACHE.get("v")
-    if hit and _t.monotonic() - hit[0] < 60:
+    if hit and time.monotonic() - hit[0] < 60:
         return hit[1]
+    if hit:  # stale: answer now, rebuild behind the reader's back
+        _home_do_now_refresh_in_background()
+        return {**hit[1], "served": {  # a copy per read: the cached body itself is never mutated
+            "stale": True,
+            "age_s": round(time.monotonic() - hit[0], 1),
+            "refresh": {k: v for k, v in _HOME_DO_NOW_REFRESH.items() if not k.startswith("_")},
+        }}
+    return _home_do_now_build()
+
+
+def _home_do_now_build():
+    """The expensive, side-effect-free build (eight read-only probes). Runs on a request thread only when no body
+    exists yet — see _home_do_now — and otherwise on the one background refresher."""
     from lib import needs_action as _na
     from lib.data_broker import home_do_now as _hdn
 
@@ -32199,8 +32229,49 @@ def _home_do_now(query=None):
         "cio": _cio_capital_plan_probe,
     }
     out = _hdn.build(probes)
-    _HOME_DO_NOW_CACHE["v"] = (_t.monotonic(), out)
+    _HOME_DO_NOW_CACHE["v"] = (time.monotonic(), out)
     return out
+
+
+def _home_do_now_refresh_in_background():
+    """Kick at most one rebuild. The lock is held for the rebuild, not the request: a second expired read while a
+    rebuild is in flight returns the same last-good body and starts nothing.
+
+    Review 6888bda645 F1/F2 (2026-11-14): the slot is released on every path — including a thread that cannot start
+    (otherwise one `can't start new thread` held the lock forever, turned that read into a 500 and permanently stopped
+    refreshes) — and the attempt is recorded so a stale read can name it. A failed rebuild is retried only after
+    _HOME_DO_NOW_RETRY_COOLDOWN_S, so a broken build is not re-attempted at Home poll cadence.
+    """
+    if not _HOME_DO_NOW_REFRESHING.acquire(blocking=False):
+        return
+    failed_mono = _HOME_DO_NOW_REFRESH.get("_failed_mono")
+    if failed_mono is not None and (time.monotonic() - failed_mono) < _HOME_DO_NOW_RETRY_COOLDOWN_S:
+        _HOME_DO_NOW_REFRESHING.release()  # inside the cooldown after a failure: do not retry yet
+        return
+
+    def _run():
+        _HOME_DO_NOW_REFRESH.update(attempted_at=datetime.now(timezone.utc).isoformat())
+        try:
+            _home_do_now_build()
+        except Exception as error:  # noqa: BLE001 -- named on the wire and in the log; last-good keeps being served
+            message = f"{type(error).__name__}: {str(error)[:160]}"
+            _HOME_DO_NOW_REFRESH.update(failed_at=datetime.now(timezone.utc).isoformat(), error=message,
+                                        _failed_mono=time.monotonic())
+            print(f"  [home/do-now] background rebuild failed: {message}")
+        else:
+            _HOME_DO_NOW_REFRESH.update(failed_at=None, error=None, _failed_mono=None)
+        finally:
+            _HOME_DO_NOW_REFRESHING.release()
+
+    thread = threading.Thread(target=_run, name="home-do-now-refresh", daemon=True)
+    try:
+        thread.start()
+    except RuntimeError as error:  # cannot start a thread: free the slot, name it, and still answer this read
+        message = f"background refresh could not start: {type(error).__name__}: {str(error)[:140]}"
+        _HOME_DO_NOW_REFRESH.update(failed_at=datetime.now(timezone.utc).isoformat(), error=message,
+                                    _failed_mono=time.monotonic())
+        print(f"  [home/do-now] {message}")
+        _HOME_DO_NOW_REFRESHING.release()
 
 
 def _queue_pending():

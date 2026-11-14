@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "S2_HOME_SWR_R6_20261114",
+  "files": [
+    "tests/test_s2_home_do_now_swr_20261114.py"
+  ],
+  "anchor": "S2_PRODUCERS_PERF",
+  "comment": [
+    "R6 cut of S2_PRODUCERS_PERF_20261114 (cc-deepseek-9). R6 folds only the Home do-now stale-while-revalidate pair: the api_v2.py hunk PATCH-S2-home-do-now-swr-r2-117a24449-cc-deepseek-9.patch (sha256 2b587e6acf6f0f0bef154962268ccff3228742c570b4ede9b8f529d4c9c9c5dd) and this one test file. The other four files of the full gate are NOT in R6 and two of them depend on code that is not there, so the full gate would register missing files here.",
+    "Contract, unchanged: with the api_v2.py hunk NOT applied this file is RED (8 failed / 8 passed, reviewed independently by cc-deepseek-2 in REVIEW-S2-home-do-now-swr-r2-cc-deepseek-2.md); with it applied, 16 passed with tests/test_s2_home_probe_guard_20261114.py, and 9 passed for this file alone. The fix is CONTAINMENT only - moving the ~5 s build off the request path - not the durable read model, which is a separate n8n-produced snapshot.",
+    "S2_PRODUCERS_PERF_20261114.json supersedes this cut when the producers-perf branch folds whole."
+  ]
+}
