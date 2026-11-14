@@ -141,5 +141,30 @@ check(JSON.stringify([...CLOSED_ACTIONS].sort()) === JSON.stringify(serverTypes)
 const src = readFileSync(cardPath, 'utf8')
 check(!/window\.confirm|\bconfirm\(/.test(src) && !/\balert\(/.test(src), 'no window.confirm/alert')
 
+// 9. LQ-20261113-3076 (trace A02): a refused read (403/401) is UNKNOWN with its reason, never a count, never an all-clear.
+{
+  const why = 'forbidden — this operator is not permitted this surface; this will not resolve by waiting'
+  const three = queue([item({ id: 'req-a' }), item({ id: 'req-b', type: 'install_schedule' }), item({ id: 'req-c', type: 'rerun_ci' })])
+  for (const [label, q] of [['no list ever read', null], ['an older list of 3 still held', three], ['an older empty list still held', queue([])]]) {
+    const got = h(React.createElement(NeedsYouView, { queue: q, error: why, authState: 'FORBIDDEN', onAct: noop }))
+    check(/data-state="unknown"/.test(got), `403 (${label}): state must be unknown`)
+    check(/data-testid="needs-you-unknown"[^>]*>UNKNOWN</.test(got), `403 (${label}): UNKNOWN label missing`)
+    check(got.includes('HTTP 403 refused: ' + why), `403 (${label}): the reason must be shown`)
+    check(!/needs-you-count/.test(got) && !/needs-you-request/.test(got), `403 (${label}): no count and no requests`)
+    check(!/Nothing need/.test(got) && !/<button/.test(got), `403 (${label}): no all-clear and no buttons`)
+  }
+  const r401 = h(React.createElement(NeedsYouView, { queue: three, error: 'not authorized', authState: 'UNAUTHORIZED', onAct: noop }))
+  check(/data-state="unknown"/.test(r401) && r401.includes('HTTP 401 refused: not authorized') && !/needs-you-count/.test(r401), '401 must be UNKNOWN too')
+  const okAuth = h(React.createElement(NeedsYouView, { queue: three, authState: 'OK', onAct: noop }))
+  check(/data-testid="needs-you-count"[^>]*>3</.test(okAuth), 'an authorized read still shows its count')
+  // a non-auth refresh failure over an empty last-good list is not a fresh all-clear
+  const emptyStale = h(React.createElement(NeedsYouView, { queue: queue([]), error: 'network error', onAct: noop }))
+  check(!/Nothing needs you/.test(emptyStale) && /refresh failed: network error/.test(emptyStale) && !/success-color/.test(emptyStale.split('needs-you-empty')[1] ?? ''),
+    'an empty list held after a failed refresh must say so, not a green all-clear')
+  const down2 = h(React.createElement(NeedsYouView, { queue: null, error: 'approvals service unavailable', onAct: noop }))
+  check(/UNKNOWN · could not be checked: approvals service unavailable/.test(down2), 'unreadable store must say UNKNOWN')
+  check(/authState=\{api\.authState\}/.test(src), 'the live card must pass useApi authState to the view')
+}
+
 if (failed) { console.error(`needsYouCard.render: ${failed} failure(s)`); process.exit(1) }
 console.log('needsYouCard.render: ok')

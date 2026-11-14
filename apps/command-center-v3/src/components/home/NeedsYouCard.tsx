@@ -165,19 +165,37 @@ export function ConfirmSheet({ sheet, onCancel, onConfirm, onNote }: {
 }
 
 /** The card body for a loaded queue. Pure enough to render in a test with renderToStaticMarkup. */
-export function NeedsYouView({ queue, error, loading, outcomes = {}, blocked = {}, busyId = null, onAct, surface = 'home' }: {
+export function NeedsYouView({ queue, error, loading, outcomes = {}, blocked = {}, busyId = null, onAct, surface = 'home', authState = null }: {
   queue: NeedsYouQueue | null; error?: string | null; loading?: boolean; outcomes?: Record<string, Outcome>; blocked?: Record<string, string>
   busyId?: string | null; onAct: (verb: Verb, item: NeedsYouItem) => void; surface?: 'home' | 'approvals'
+  /** useApi's authorization answer for the queue read: 'FORBIDDEN' (403) / 'UNAUTHORIZED' (401) are terminal. */
+  authState?: 'OK' | 'UNAUTHORIZED' | 'FORBIDDEN' | null
 }) {
   const { items, hiddenUnknown } = needsYouList(queue)
   const asOf = queue?.as_of ? timeLabel(queue.as_of) : null
+  // LQ-20261113-3076 (trace A02): a refused read (401/403) is UNKNOWN with its reason, never a count and never an
+  // all-clear, even when an older list is still held — the caller cannot see the queue, so nobody knows what is in it.
+  const refused = authState === 'FORBIDDEN' || authState === 'UNAUTHORIZED'
+  if (refused) {
+    const code = authState === 'FORBIDDEN' ? 'HTTP 403' : 'HTTP 401'
+    return (
+      <section data-testid="needs-you-card" data-state="unknown" aria-label="Needs you" style={{ ...S.card, borderLeftColor: warn.color, padding: '8px 14px', gap: 4 }}>
+        <div style={S.hd}>
+          <h2 style={{ ...S.h2, fontSize: 14 }}>Needs you</h2>
+          <span data-testid="needs-you-unknown" style={{ color: warn.color, fontWeight: 700, fontSize: 13 }}>UNKNOWN</span>
+          <span style={{ ...S.sub, overflowWrap: 'anywhere' }}>{code} refused: {error || 'the approvals read was refused'}</span>
+        </div>
+        <span style={S.meta}>{asOf ? `The list last read at ${asOf} is not shown: it may have changed since.` : 'The approvals list has not been read.'} Open Approvals from a signed-in operator session to see it.</span>
+      </section>
+    )
+  }
   if (!queue) {
     // An unreadable store is never shown as "Nothing needs you" (home_approvals_api: "never an empty list").
     if (!error && loading) return null
     if (!error) return null
     return (
       <section data-testid="needs-you-card" data-state="unavailable" aria-label="Needs you" style={{ ...S.card, borderLeftColor: TOKENS.border, padding: '8px 14px' }}>
-        <div style={S.hd}><h2 style={{ ...S.h2, fontSize: 14 }}>Needs you</h2><span style={{ ...S.sub, overflowWrap: 'anywhere' }}>could not be checked: {error}</span></div>
+        <div style={S.hd}><h2 style={{ ...S.h2, fontSize: 14 }}>Needs you</h2><span style={{ ...S.sub, overflowWrap: 'anywhere' }}>UNKNOWN · could not be checked: {error}</span></div>
       </section>
     )
   }
@@ -187,8 +205,10 @@ export function NeedsYouView({ queue, error, loading, outcomes = {}, blocked = {
       <section data-testid="needs-you-card" data-state="empty" aria-label="Needs you" style={{ ...S.card, borderLeftColor: ok.color, padding: '8px 14px', gap: 4 }}>
         <div style={S.hd}>
           <h2 style={{ ...S.h2, fontSize: 14 }}>Needs you</h2>
-          <span data-testid="needs-you-empty" style={{ color: ok.color, fontWeight: 600, fontSize: 13 }}>{queue.empty_text || 'Nothing needs you'}</span>
-          {asOf && <span style={S.sub}>checked {asOf}</span>}
+          {error
+            ? <span data-testid="needs-you-empty" data-stale="true" style={{ color: warn.color, fontWeight: 600, fontSize: 13 }}>Nothing needed you{asOf ? ` at ${asOf}` : ''}</span>
+            : <span data-testid="needs-you-empty" style={{ color: ok.color, fontWeight: 600, fontSize: 13 }}>{queue.empty_text || 'Nothing needs you'}</span>}
+          {error ? <span style={{ ...S.sub, overflowWrap: 'anywhere' }}>refresh failed: {error}</span> : asOf && <span style={S.sub}>checked {asOf}</span>}
         </div>
         {hiddenUnknown > 0 && <span style={S.meta}>{hiddenUnknown} request(s) not shown: type is not on the reviewed action list.</span>}
       </section>
@@ -264,7 +284,7 @@ export default function NeedsYouCard({ surface = 'home' }: { surface?: 'home' | 
     <>
       <style>{SHEET_CSS}</style>
       <NeedsYouView queue={api.data} error={api.error} loading={api.loading} outcomes={outcomes} blocked={blocked}
-        busyId={sheet?.item.id ?? null} onAct={onAct} surface={surface} />
+        busyId={sheet?.item.id ?? null} onAct={onAct} surface={surface} authState={api.authState} />
       {sheet && <ConfirmSheet sheet={sheet} onCancel={close} onConfirm={onConfirm} onNote={note => setSheet(s => s ? { ...s, note } : s)} />}
     </>
   )

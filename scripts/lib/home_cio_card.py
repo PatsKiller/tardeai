@@ -258,6 +258,36 @@ def _sector_line(mr: Mapping) -> dict | None:
                 resilient=list(s.get("resilient") or []))
 
 
+LEGACY_ACCOUNTS_DEFINITION = (
+    "accounts holding a non-cash position (a brief written before LQ-3076; the count of all accounts "
+    "in the book, cash-only ones included, is not in it)"
+)
+
+
+def _book_accounts(book: Mapping[str, Any]) -> dict[str, Any]:
+    """LQ-20261113-3076 (A07): the card's account counts, each named, from the brief's one definition.
+
+    A brief written before the shared definition carries only ``accounts`` = accounts with a non-cash
+    position. That number is passed on under its own name and the all-accounts count is None (unknown),
+    so the card never prints the narrower count as "accounts".
+    """
+    if book.get("accounts_definition"):
+        return {
+            "accounts": book.get("accounts"),
+            "accounts_with_positions": book.get("accounts_with_positions"),
+            "cash_only_accounts": list(book.get("cash_only_accounts") or []),
+            "accounts_unnamed_rows": book.get("accounts_unnamed_rows") or 0,
+            "accounts_definition": book.get("accounts_definition"),
+        }
+    return {
+        "accounts": None,
+        "accounts_with_positions": book.get("accounts"),
+        "cash_only_accounts": None,
+        "accounts_unnamed_rows": None,
+        "accounts_definition": LEGACY_ACCOUNTS_DEFINITION,
+    }
+
+
 def build_card(mr: Mapping, sc: Mapping | None, now: datetime, advice_ok: bool) -> dict:
     sid, at = f"market_risk:{mr.get('as_of')}", mr.get("as_of")
     syn = ((sc or {}).get("cio_brief") or {}).get("synopsis") or {}
@@ -279,8 +309,8 @@ def build_card(mr: Mapping, sc: Mapping | None, now: datetime, advice_ok: bool) 
         "largest_unprotected": item(lu.get("source_id"), book.get("as_of") or sat, symbol=lu.get("symbol"),
                                     account=lu.get("account"), shares=_num(lu.get("shares")),
                                     price=_num(lu.get("price")), value=_num(lu.get("value"))) if lu.get("symbol") else None,
-        "book": item(ssid, book.get("as_of") or sat, positions=book.get("positions"), accounts=book.get("accounts"),
-                     cash=_num(book.get("cash"))) if book else None,
+        "book": item(ssid, book.get("as_of") or sat, positions=book.get("positions"), cash=_num(book.get("cash")),
+                     **_book_accounts(book)) if book else None,
         "reentry": item(ssid, re_.get("as_of") or sat, ready=re_.get("stage3"), near=re_.get("stage2"),
                         tracked=re_.get("tracked"), line=re_.get("line")) if re_ else None,
         "drivers": drivers,

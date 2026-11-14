@@ -173,10 +173,80 @@ def position_summary(scopes: Mapping[str, int], min_position_usd: Optional[float
     return " · ".join(parts)
 
 
+ACCOUNTS_DEFINITION = (
+    "an account is in the book when the read has at least one row for it with a quantity above zero "
+    "(or no quantity field), cash rows included, or a cash row with a value above zero; 'with positions' = it holds at least one "
+    "non-cash row with a quantity above zero; 'cash only' = the rest. A short (quantity below zero) is not "
+    "counted, as in the position count. Account names are taken exactly as stored"
+)
+
+
+def _book_quantity(r: Mapping[str, Any]) -> Optional[float]:
+    """The one quantity reader for the account rule: the first readable of quantity, shares, qty, broker_shares."""
+    for f in ("quantity", "shares", "qty", "broker_shares"):
+        q = _num(r.get(f))
+        if q is not None:
+            return q
+    return None
+
+
+def row_in_book(r: Mapping[str, Any]) -> bool:
+    """Whether a row puts its account in the book (ACCOUNTS_DEFINITION). Shared by ``account_population`` and
+    ``accounts_from_rows`` so the CIO card's count and the Home Accounts table's in-book rows are one rule.
+
+    A cash balance often carries no meaningful quantity (LQ-20261113-3092, REVIEW-3086 R4): a cash row with a
+    value above zero is in the book even at quantity 0, so a cash-only account never vanishes from the count.
+    """
+    q = _book_quantity(r)
+    if q is None or q > 0:
+        return True
+    if is_cash_row(r):
+        mv = _num(r.get("market_value"))
+        return mv is not None and mv > 0
+    return False
+
+
+def _row_holds_position(r: Mapping[str, Any]) -> bool:
+    return not is_cash_row(r) and row_in_book(r)
+
+
+def account_population(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """The one account count (LQ-20261113-3076/3092, trace A07), used by the CIO card and published by Home.
+
+    ``accounts`` is every account in the book, a cash-only account included; ``accounts_with_positions``
+    is the narrower count the CIO book line used to call "accounts". A row with no account name (empty or
+    whitespace) is not dropped: it is counted in ``unnamed_rows`` so a reader can say the count is incomplete.
+    The account key is the stored name, exactly as ``accounts_from_rows`` keys the Home table, so
+    ``accounts`` == the number of ``by_account`` entries flagged ``in_book``.
+    """
+    in_book: set[str] = set()
+    with_positions: set[str] = set()
+    unnamed = 0
+    for r in rows:
+        if not isinstance(r, Mapping) or not row_in_book(r):
+            continue
+        acct = _account_of(r)
+        if not acct.strip():
+            unnamed += 1
+            continue
+        in_book.add(acct)
+        if _row_holds_position(r):
+            with_positions.add(acct)
+    return {
+        "accounts": len(in_book),
+        "accounts_with_positions": len(with_positions),
+        "cash_only_accounts": sorted(in_book - with_positions),
+        "unnamed_rows": unnamed,
+        "definition": ACCOUNTS_DEFINITION,
+    }
+
+
 def accounts_from_rows(rows: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
     """Per-account value, cash and held count from the same rows as the total (LQ-1611 F1).
 
-    An account with an unusable market_value is ``value: None`` — unknown, never a short sum.
+    An account with an unusable market_value is ``value: None`` — unknown, never a short sum. Every stored
+    account name gets an entry (closed and unnamed included, so the entries sum to the total); ``in_book``
+    says which entries are accounts by ``ACCOUNTS_DEFINITION`` (the count ``account_population`` publishes).
     """
     out: dict[str, dict[str, Any]] = {}
     acct_rows: dict[str, list[Mapping[str, Any]]] = {}
@@ -185,10 +255,15 @@ def accounts_from_rows(rows: Iterable[Mapping[str, Any]]) -> dict[str, dict[str,
             acct_rows.setdefault(_account_of(r), []).append(r)
     for acct, rs in acct_rows.items():
         cash = sum(_num(r.get("market_value")) or 0.0 for r in rs if is_cash_row(r))
+        named = bool(acct.strip())
         out[acct] = {
             "value": rows_total(rs),
             "cash": round(cash, 2),
             "position_count": position_scopes(rs)[POSITION_SCOPE],
+            # LQ-3092 (REVIEW-3086 R1): every row stays in the table so its values sum to the total, but only an
+            # entry flagged in_book is an account by ACCOUNTS_DEFINITION; unnamed rows are listed, never an account
+            "in_book": named and any(row_in_book(r) for r in rs),
+            "unnamed": not named,
         }
     return out
 
@@ -315,6 +390,7 @@ def build_portfolio_total(document: Optional[Mapping[str, Any]], *,
         "position_summary": position_summary(counts),
         "by_account": by_account,
         "by_account_sum": by_account_sum,
+        "account_population": account_population(rows),
         "alternatives": alternatives,
         "tolerance_usd": float(tolerance_usd),
         "agree": not alerting,
@@ -343,4 +419,5 @@ __all__ = [
     "CONTRACT_VERSION", "POSITION_SCOPE", "POSITION_SCOPE_DEFINITION", "SCOPE_DEFINITIONS",
     "DEFAULT_TOLERANCE_USD", "MIN_POSITION_USD", "build_portfolio_total", "load_portfolio_total",
     "position_scopes", "position_summary", "accounts_from_rows", "rows_total", "is_cash_row", "OVER_100_SCOPE",
+    "ACCOUNTS_DEFINITION", "account_population", "row_in_book",
 ]

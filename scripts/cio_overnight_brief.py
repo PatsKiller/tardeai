@@ -55,6 +55,7 @@ from lib.cio_buys_gate import buys_block  # noqa: E402  (LQ-1311 synopsis buy ga
 from lib.cio_regime import reader as regime_reader  # noqa: E402  (LQ-1317 regime block)
 from lib.cio_regime import build as build_regime  # noqa: E402
 from lib.instrument_normalize import is_stopless_asset  # noqa: E402  (LQ-1739/1740: one classifier)
+from lib.portfolio_total_contract import account_population, is_cash_row, row_in_book  # noqa: E402  (LQ-3076/3092 A07)
 
 LANE_ID = "cio-overnight-brief"
 SCHEMA = "CIOOvernightBrief@v1"
@@ -966,12 +967,14 @@ def book_summary(
         source = "holdings.json:" + str(holdings_doc.get("generated_at"))
         when = holdings_doc.get("generated_at")
 
-    def qty(r: Mapping[str, Any]) -> float:
-        return _f(r.get("qty"), _f(r.get("broker_shares"), 0.0)) or 0.0
-
-    equities = [r for r in rows if not r.get("is_cash") and qty(r) > 0]
-    cash = sum(_f(r.get("market_value"), 0.0) or 0.0 for r in rows if r.get("is_cash"))
-    accounts = sorted({str(r.get("account") or "") for r in equities if r.get("account")})
+    # LQ-20261113-3092 (REVIEW-3086 R5): positions and cash use the account rule's own readers (is_cash_row: the
+    # flag or CASH/SPAXX/FDRXX; row_in_book: quantity, shares, qty, broker_shares), so "N position(s) in M
+    # account(s) with positions" cannot disagree with itself on an unflagged money-market row.
+    equities = [r for r in rows if isinstance(r, Mapping) and not is_cash_row(r) and row_in_book(r)]
+    cash = sum(_f(r.get("market_value"), 0.0) or 0.0 for r in rows if isinstance(r, Mapping) and is_cash_row(r))
+    # LQ-20261113-3076 (A07): the account count is ACCOUNTS_DEFINITION, the rule the Home contract's by_account
+    # in_book flag uses (cash-only accounts included); the narrower "with positions" count is carried and named.
+    population = account_population(rows)
 
     worst: Optional[dict[str, Any]] = None
     for symbol, pos in held.items():
@@ -1006,14 +1009,27 @@ def book_summary(
         )
     else:
         tail = "every held share is covered by a working stop"
+    n_all = population["accounts"]
+    n_pos = population["accounts_with_positions"]
+    cash_only = population["cash_only_accounts"]
+    accounts_text = f"{n_pos} account(s) with positions ({n_all} account(s) in the book"
+    if cash_only:
+        accounts_text += "; cash only: " + ", ".join(_acct(a) for a in cash_only)
+    if population["unnamed_rows"]:
+        accounts_text += f"; {population['unnamed_rows']} row(s) with no account name"
+    accounts_text += ")"
     line = (
-        f"{len(equities)} position(s) in {len(accounts)} account(s), ${cash:,.0f} cash; {tail}"
+        f"{len(equities)} position(s) in {accounts_text}, ${cash:,.0f} cash; {tail}"
     )
     return {
         "line": line + stale_note(when, as_of, service, "positions"),
         "positions": len(equities),
         "symbols": len(held),
-        "accounts": len(accounts),
+        "accounts": n_all,
+        "accounts_with_positions": n_pos,
+        "cash_only_accounts": cash_only,
+        "accounts_unnamed_rows": population["unnamed_rows"],
+        "accounts_definition": population["definition"],
         "cash": _r(cash),
         "largest_unprotected_risk": worst,
         "as_of": when,

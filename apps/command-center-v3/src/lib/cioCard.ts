@@ -23,7 +23,7 @@ export interface CioCard {
   buys_gate?: Fact<string>; buys_until?: Fact<string>; buys_until_short?: Fact<string>; buys_line?: Fact<string>
   stops_total?: Fact<number>; stops_actionable?: Fact<number>
   largest_unprotected?: Prov & { symbol: string; account?: string; shares?: number; price?: number; value?: number }
-  book?: Prov & { positions?: number; accounts?: number; cash?: number }
+  book?: Prov & BookAccounts & { positions?: number; cash?: number }
   reentry?: Prov & { ready?: number; near?: number; tracked?: number; line?: string }
   drivers?: Driver[]; score_sum?: Fact<number>
   calm?: Prov & { n: number; of: number; names?: string[]; details?: string[] }
@@ -34,6 +34,36 @@ export interface CioCard {
   this_week?: WeekEvent[]
   do_now?: StopAction
   actions?: StopAction[]
+}
+
+/** LQ-20261113-3076 (A07): the book's account counts, each under its own name (scripts/lib/portfolio_total_contract
+ *  account_population: ACCOUNTS_DEFINITION, the rule behind the Home contract's by_account `in_book` flag; the Home
+ *  table also lists closed and unnamed entries, flagged not in the book). `accounts` is every account in the book,
+ *  cash-only ones included; `accounts_with_positions` is the narrower count. A card without `accounts_definition`
+ *  was built before the shared definition: its `accounts` meant "with positions" and the all-accounts count is unknown. */
+export interface BookAccounts {
+  accounts?: number | null; accounts_with_positions?: number | null; cash_only_accounts?: string[] | null
+  accounts_unnamed_rows?: number | null; accounts_definition?: string | null
+}
+
+/** The Book row's account phrase. Never prints the narrower count as plain "accounts". */
+export function bookAccountsText(book: BookAccounts | null | undefined): { text: string | null; title: string | null } {
+  if (!book) return { text: null, title: null }
+  const legacy = !book.accounts_definition
+  const all = legacy ? null : (typeof book.accounts === 'number' ? book.accounts : null)
+  const withPos = legacy ? (typeof book.accounts === 'number' ? book.accounts : (book.accounts_with_positions ?? null)) : (book.accounts_with_positions ?? null)
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
+  let text: string | null
+  if (all != null && withPos != null) text = all === withPos ? plural(all, 'account') : `${plural(all, 'account')} (${withPos} with positions)`
+  else if (all != null) text = plural(all, 'account')
+  else if (withPos != null) text = `${plural(withPos, 'account')} with positions (all-accounts count unknown)`
+  else text = null
+  const unnamed = book.accounts_unnamed_rows ?? 0
+  if (text && unnamed > 0) text += ` · ${plural(unnamed, 'row')} with no account`
+  const cashOnly = book.cash_only_accounts?.length ? `Cash only: ${book.cash_only_accounts.map(a => accountText(a)).join(', ')}` : null
+  const title = [book.accounts_definition ?? 'accounts holding a non-cash position (card built before the shared account definition)', cashOnly]
+    .filter(Boolean).join('\n')
+  return { text, title: text ? title : null }
 }
 
 export interface HedgeTrigger extends Prov { key: string; label: string; value: number; consider?: number; act?: number; fill?: number }
