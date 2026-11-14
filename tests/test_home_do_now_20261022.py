@@ -13,7 +13,6 @@ Hermetic: in-memory payloads, a fake db_query. No database, no network, no broke
 """
 from __future__ import annotations
 
-import ast
 import re
 import time
 from datetime import datetime, timedelta, timezone
@@ -360,27 +359,9 @@ def test_probe_pending_proposals_reads_only_and_none_is_unavailable():
 def test_route_and_catalog_registration():
     src = (ROOT / "scripts" / "api_v2.py").read_text()
     assert '"/api/v2/home/do-now": lambda: _home_do_now(),' in src
-    # The handler's own source only: slicing to the next `def _queue_pending(` would also swallow
-    # `_home_do_now_build` (it sits between them), and its `def` line would satisfy the no-build-path pin below —
-    # the same docstring/slice trap the r4 pin had. End at the next top-level def instead.
-    start = src.index("def _home_do_now(")
-    body = src[start:src.index("\ndef ", start + 1)]
-    # Re-pointed for S2 item 2 (ACC-CACHE r4, 2026-11-14): the 120 s in-process cache this line used to pin
-    # (_HOME_DO_NOW_CACHE, max_age_s=120) is gone because the GET no longer builds. The invariant it protected is
-    # unchanged — the route never does the ~5 s eight-probe build itself — so it is now pinned as the r4 shape:
-    # the body comes from the out-of-process snapshot, and there is no build path in the handler at all.
-    #
-    # Parsed, not searched. The handler's own docstring names `_home_do_now_can_read_gated` while explaining the
-    # re-check, so a plain substring pin stays green when the call is replaced by `authorized = True` (measured:
-    # that mutant survived the first version of this test). Strip the docstring and pin the call itself.
-    handler = ast.parse(body).body[0]
-    code = "\n".join(ast.unparse(node) for node in handler.body[1:]) if (
-        handler.body and isinstance(handler.body[0], ast.Expr) and isinstance(handler.body[0].value, ast.Constant)
-    ) else "\n".join(ast.unparse(node) for node in handler.body)
-    assert "_snap.serve(" in code, "the GET must read the out-of-process snapshot"
-    assert "_home_do_now_can_read_gated()" in code, "the caller's gate is rechecked per request, not trusted"
-    assert "_home_do_now_build" not in code, "the GET must never build: the lane scripts/build_home_do_now_snapshot.py does"
-    assert not re.search(r"(?<![\w])risk\(\)", code) and "open_trades_intelligence" not in code  # no broker-stop overlay, no broker read
+    body = src[src.index("def _home_do_now("):src.index("def _queue_pending(")]
+    assert "_HOME_DO_NOW_CACHE" in body and "max_age_s=120" in body
+    assert not re.search(r"(?<![\w])risk\(\)", body) and "open_trades_intelligence" not in body  # no broker-stop overlay, no broker read
     from lib.data_broker.catalog import PROJECTIONS
     row = next(p for p in PROJECTIONS if p["id"] == "home_do_now")
     assert row["http"] == ["/api/v2/home/do-now"] and row["read_only"] is True and row["provider_calls"] == 0

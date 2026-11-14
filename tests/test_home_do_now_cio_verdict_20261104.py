@@ -453,27 +453,14 @@ def test_cx2_fresh_aggregate_clock_does_not_hide_a_member_with_no_clock():
 
 
 def test_cx1_a_cache_miss_do_now_request_never_writes_the_decision_journal(tmp_path, monkeypatch):
-    """cx1 (codex-cloud at 8802d4da9): the Do-now path must not write durable state.
+    """cx1 (codex-cloud at 8802d4da9): GET /api/v2/home/do-now must not write durable state.
 
     The recording capital-plan build appends every unseen decision id to the authoritative decision journal and
     fsyncs it (AGENTS.md §28.9; §28.11 forbids new side-effecting GET exceptions). The Do-now queue only displays
-    the plan, so it builds it WITHOUT recording: the journal is absent after the read.
-
-    Re-pointed for S2 item 2 (ACC-CACHE r4). The route used to build the body itself on a cache miss; r4 removed
-    that cache and that build path altogether. A miss is now the snapshot file being absent, and the build that
-    used to run on the request thread is the producer's ``_home_do_now_build`` (called by
-    scripts/build_home_do_now_snapshot.py, never by a GET). Both halves are pinned here:
-
-    * the producer build — same probe table, and the journal must stay absent. Pointing the ``cio`` probe back at
-      the recording handler makes this fail.
-    * the GET on a miss — a NAMED UNKNOWN with null counts (an unknown queue is not an empty one), and no build
-      path in the route at all. Giving the route a build fallback makes this fail.
+    the plan, so its cache-miss probe builds it WITHOUT recording: the journal is absent (or unchanged) after the
+    request. Reverting the probe to the recording handler makes this test fail.
     """
-    import ast
-    import inspect
-
     import api_v2
-    import lib.data_broker.home_do_now as HD_API
     import lib.data_broker.home_do_now as HD_API
     import lib.data_broker.risk_snapshot as RS_API
     import lib.data_broker.watch_domains as WD_API
@@ -505,30 +492,10 @@ def test_cx1_a_cache_miss_do_now_request_never_writes_the_decision_journal(tmp_p
                                                                         "source": "test", "symbols": []})
     monkeypatch.setattr(NA_API, "probe_desk_truth", lambda: {})
     monkeypatch.setattr(HD_API, "probe_pending_proposals", lambda query: {"pending": 0})
-
-    # (1) the producer build the GET replaced (scripts/build_home_do_now_snapshot.py::_compute runs this).
-    body = api_v2._home_do_now_build()
-
-    assert body["sources"]["cio"]["status"] == "OK", body["sources"]["cio"]
-    assert not journal.exists(), journal.read_text(encoding="utf-8")
-
-    # (2) the GET on a miss: no snapshot on disk -> a NAMED UNKNOWN, not an empty queue, and still no journal.
-    from lib import home_do_now_snapshot as SNAP
-
-    monkeypatch.setenv(SNAP.PATH_ENV, str(tmp_path / "home_do_now_snapshot.json"))
-    monkeypatch.setattr(api_v2, "_home_do_now_can_read_gated", lambda: False)
-    api_v2._HOME_DO_NOW_SERVE_CACHE.clear()  # a body cached by an earlier test in this session is not this miss
+    monkeypatch.setitem(api_v2._HOME_DO_NOW_CACHE, "v", None)  # force a cache miss
 
     out = api_v2._home_do_now()
 
-    assert out["status"] == "UNKNOWN", out
-    assert out["unknown"]["reason"] == "missing", out["unknown"]
-    assert out["counts"] is None, out["counts"]  # null, never zeros: an unknown queue is not an empty one
-    # No build path on the request thread: the route's CODE may call the reader, never the builder. Parsed, not
-    # grepped, so a docstring that names the builder cannot satisfy the pin.
-    node = ast.parse(inspect.getsource(api_v2._home_do_now)).body[0]
-    body_nodes = node.body[1:] if (node.body and isinstance(node.body[0], ast.Expr)
-                                   and isinstance(node.body[0].value, ast.Constant)) else node.body
-    assert "_home_do_now_build" not in "\n".join(ast.unparse(n) for n in body_nodes)
+    assert out["sources"]["cio"]["status"] == "OK", out["sources"]["cio"]
     assert not journal.exists(), journal.read_text(encoding="utf-8")
 

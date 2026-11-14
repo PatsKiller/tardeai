@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "S2_R8_READER_REVERT_20261114",
+  "files": [
+    "tests/test_s2_r8_reader_revert_20261114.py"
+  ],
+  "anchor": "S2_R8_READER_REVERT_20261114",
+  "comment": [
+    "ANCHOR: S2_R8_READER_REVERT_20261114 — R8 restores the R6 inline fallback for /api/v2/overview and /api/v2/home/do-now (INC-OVW-20261114, LEAD-RULING-R8-base-after-R7-rollback-20261114T1951Z).",
+    "Pins: an aged (MAX_AGE_S+0.5 s and the incident's 63,686 s) or missing projection is answered by the inline compute with _projection.reason named; the route hands serve() _overview_with_today_move, never None; the kept producer guard (a build never moves the projection backwards); do-now is the R6 stale-while-revalidate route with no snapshot reader.",
+    "The stored-only reader returns only with the INC-OVW permanent fix (24/7 n8n schedule plus admission test), which must retire or re-point this gate in the same change.",
+    "Synthetic projection files in tmp_path and stubbed compute/build functions only; no DB, no network, no scheduled job."
+  ]
+}

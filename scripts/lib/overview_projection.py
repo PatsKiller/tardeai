@@ -29,24 +29,6 @@ from typing import Any, Callable
 SCHEMA = "OverviewProjection@v1"
 ROUTE = "/api/v2/overview"
 MAX_AGE_S = 150.0
-#: LAST-GOOD window (S2 item 2, operator 2026-11-14): past MAX_AGE_S the body is served STALE WITH ITS AGE
-#: (``_projection.stale`` / ``_projection.age_s``) instead of being recomputed on the request thread. Beyond this it is
-#: a different answer, not an old one, and the route answers the named UNKNOWN (``unknown_body``).
-LAST_GOOD_MAX_S = 1800.0
-OWNER = "lane overview-projection (scripts/build_overview_projection.py, n8n dispatcher)"
-NEXT_ACTION = {
-    "missing": "Dispatch the lane or check its next tick: n8n dispatcher row `overview-projection` "
-               "(scripts/build_overview_projection.py --apply). The projection file has never been written under "
-               "this state root.",
-    "expired": "The lane has not landed a body inside its last-good window. Check the lane receipt and the n8n "
-               "dispatch, then re-dispatch `overview-projection`; do not read the header as zero meanwhile.",
-    "corrupt": "Re-dispatch the lane; the build validates the body before replacing the file, so a persistent "
-               "corrupt file means something other than the lane is writing it.",
-    "unreadable": "Check the file's permissions and the state root, then re-dispatch the lane.",
-    "not_ok": "Read the lane receipt: the last build reported a non-ok status. Re-dispatch after fixing it.",
-    "clock_skew": "The projection's clock is ahead of this host's; compare the producer host and this one.",
-    "default": "Re-dispatch the lane `overview-projection` and read its receipt.",
-}
 #: a projection stamped this far in the future is a clock problem, not a fresh read
 FUTURE_TOLERANCE_S = 5.0
 PATH_ENV = "TRADEAI_OVERVIEW_PROJECTION_PATH"
@@ -230,65 +212,27 @@ def _load(path: Path) -> tuple[dict | None, str | None]:
 
 
 def read(path: Path, *, identity: str, invalidated_at: Any, now: float | None = None,
-         max_age_s: float = MAX_AGE_S, last_good_max_s: float = LAST_GOOD_MAX_S) -> tuple[dict | None, dict]:
-    """(body, meta) when a projection may be served, else (None, {"source": "none", "reason": ...}).
-
-    S2 item 2 (operator 2026-11-14): this reader NEVER asks for a build, so every case it can answer is either a
-    labelled body or a named reason — there is no third path in which the request computes the overview itself.
-
-    * age <= max_age_s and not invalidated and the same release -> current, ``stale: false``;
-    * aged, or invalidated by an operator write, or built by another release -> LAST-KNOWN-GOOD with its age,
-      ``stale: true`` and ``reason`` naming which of the three ("aged" / "invalidated" / "code_mismatch"). A deploy
-      therefore never blanks the header for the minute before the lane's next tick, and a write does not silently
-      show a pre-write body as current — it shows it as stale, with the clock that says so;
-    * missing / unreadable / corrupt / not ok / older than last_good_max_s / from the future -> (None, reason).
-    """
+         max_age_s: float = MAX_AGE_S) -> tuple[dict | None, dict]:
+    """(body, meta) when the projection may be served, else (None, {"source": "inline", "reason": ...})."""
+    if invalidated_at is WRITE_TRACKING_OFF:
+        return None, {"source": "inline", "reason": "write_tracking_off"}
     doc, reason = _load(Path(path))
     if doc is None:
-        return None, {"source": "none", "reason": reason}
+        return None, {"source": "inline", "reason": reason}
+    if doc.get("code_identity") != identity:
+        return None, {"source": "inline", "reason": "code_mismatch"}
     now = time.time() if now is None else now
     age = now - float(doc["built_at_epoch"])
-    base: dict[str, Any] = {"built_at": doc.get("built_at"), "age_s": round(max(age, 0.0), 1),
-                            "code_identity": doc.get("code_identity")}
     if age < -FUTURE_TOLERANCE_S:
-        return None, {"source": "none", "reason": "clock_skew", **base}
-    if age > last_good_max_s:
-        return None, {"source": "none", "reason": "expired", **base}
-    why = None
-    if doc.get("code_identity") != identity:
-        why = "code_mismatch"
-    elif invalidated_at is WRITE_TRACKING_OFF:
-        # no write tracking means no way to know this body pre-dates a write: serve it, but never as current
-        why = "write_tracking_off"
-    elif age > max_age_s:
-        why = "aged"
-    elif invalidated_at is not None and float(invalidated_at) >= float(doc["started_at_epoch"]):
-        why = "invalidated"
-    stale = why is not None
-    meta = {"source": "projection", "built_at": doc.get("built_at"), "age_s": base["age_s"],
-            "stale": stale, "reason": why}
-    # The served stamp carries built_at and the reason, not age_s: within one reason the body is byte-identical, so
-    # the server's ETag cache answers repeat polls with 304 instead of re-serializing 65 KB. It changes bytes once,
-    # when a body crosses from current to stale — one re-serialization per transition, not one per poll.
-    return ({**doc["body"], "_projection": {"source": "projection", "built_at": doc.get("built_at"),
-                                            "stale": stale, "reason": why}}, meta)
-
-
-def is_servable(path: Path | None = None, *, now: float | None = None,
-                last_good_max_s: float = LAST_GOOD_MAX_S) -> bool:
-    """True when a request would be a file read: a well-formed projection inside the LAST-GOOD window.
-
-    S2 item 2: since ``serve`` no longer computes, EVERY window it serves is cheap; this is the predicate the
-    request semaphore should exempt on (``is_fresh`` is the narrower "served as current" question). Never raises:
-    unknown is False."""
-    try:
-        doc, _reason = _load(Path(path) if path is not None else projection_path())
-        if doc is None:
-            return False
-        age = (time.time() if now is None else now) - float(doc["built_at_epoch"])
-        return -FUTURE_TOLERANCE_S <= age <= last_good_max_s
-    except Exception:  # noqa: BLE001
-        return False
+        return None, {"source": "inline", "reason": "clock_skew"}
+    if age > max_age_s:
+        return None, {"source": "inline", "reason": "aged"}
+    if invalidated_at is not None and float(invalidated_at) >= float(doc["started_at_epoch"]):
+        return None, {"source": "inline", "reason": "invalidated"}
+    meta = {"source": "projection", "built_at": doc.get("built_at"), "age_s": round(max(age, 0.0), 1)}
+    # The served stamp carries built_at, not age_s: the body stays byte-identical for the projection's whole
+    # life, so the server's ETag cache answers repeat polls with 304 instead of re-serializing 65 KB.
+    return {**doc["body"], "_projection": {"source": "projection", "built_at": doc.get("built_at")}}, meta
 
 
 def is_fresh(path: Path | None = None, *, now: float | None = None) -> bool:
@@ -324,48 +268,25 @@ def invalidation_reader(swr_module: Any = None) -> Callable[[], Any]:
     return _read
 
 
-def unknown_body(reason: dict) -> dict:
-    """The named UNKNOWN in the route's own body shape: every number null, the gap named with owner and next action.
-
-    Nothing here is a fabricated zero. A surface that renders these nulls as "—" is telling the truth; one that
-    renders them as 0 would be showing a portfolio value of zero, which is why ``unavailable`` is set as well."""
-    why = str(reason.get("reason") or "missing")
-    return {
-        "status": "UNKNOWN",
-        "unavailable": True,
-        "as_of": None,
-        "portfolio_value": None,
-        "total_value": None,
-        "total_cash": None,
-        "position_count": None,
-        "today_change": None,
-        "today_pct": None,
-        "gap": {"reason": why, "owner": OWNER, "next_action": NEXT_ACTION.get(why, NEXT_ACTION["default"])},
-        "_projection": {"source": "unknown", "reason": why, "age_s": reason.get("age_s"),
-                        "built_at": reason.get("built_at")},
-    }
-
-
-def serve(compute: Callable[[], dict] | None = None, *, path: Path | None = None, identity: str,
-          invalidated_at_fn: Callable[[], Any], now: float | None = None,
-          last_good_max_s: float = LAST_GOOD_MAX_S) -> dict:
-    """The servable projection, else the named UNKNOWN. NEVER computes.
-
-    ``compute`` is accepted only so existing call sites keep working; it is not called, ever (S2 item 2, operator
-    2026-11-14: a GET never triggers heavy compute). Removing the call here — rather than adding a flag — is what
-    makes "no request-path compute" a property of the module instead of a promise at the call site."""
+def serve(compute: Callable[[], dict], *, path: Path | None = None, identity: str,
+          invalidated_at_fn: Callable[[], Any], now: float | None = None) -> dict:
+    """The projection when it may be served, else ``compute()`` with ``_projection.reason``. Never blank."""
     try:
         cut = invalidated_at_fn()
-    except Exception:  # noqa: BLE001 -- an unreadable write record must never be shown as a current body
-        cut = float("inf")  # a write is possible: the body is served, labelled stale, never regenerated here
-    try:
-        body, reason = read(path if path is not None else projection_path(), identity=identity,
-                            invalidated_at=cut, now=now, last_good_max_s=last_good_max_s)
-    except Exception as exc:  # noqa: BLE001 -- the reader must never cost the operator the overview
-        body, reason = None, {"source": "none", "reason": f"reader_error:{type(exc).__name__}"}
-    if body is not None:
-        return body
-    return unknown_body(reason)
+    except Exception:  # noqa: BLE001 -- an unknown write record must never serve a pre-write body
+        reason: dict = {"source": "inline", "reason": "invalidation_unreadable"}
+    else:
+        try:
+            body, reason = read(path if path is not None else projection_path(), identity=identity,
+                                invalidated_at=cut, now=now)
+        except Exception as exc:  # noqa: BLE001 -- the reader must never cost the operator the overview
+            body, reason = None, {"source": "inline", "reason": f"reader_error:{type(exc).__name__}"}
+        if body is not None:
+            return body
+    out = compute()
+    if isinstance(out, dict):
+        out["_projection"] = reason
+    return out
 
 
 def register_write_invalidation(swr_module: Any) -> None:

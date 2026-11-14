@@ -6,10 +6,9 @@
   ],
   "anchor": "OVERVIEW_PROJECTION_20261114",
   "comment": [
-    "ANCHOR: OVERVIEW_PROJECTION_20261114 — the overview-projection lane, its builder, and the identity / path / invalidation plumbing the route depends on.",
-    "Successor to config/ci_gates/overview_projection_20261109.json, which retired together with its test file into archive/s2_overview_20261109_retired_20261114/ (R7 blocker, LEAD 2026-11-14T18:46Z). That gate pinned the pre-S2 reader contract — a route that reads the projection while fresh and computes INLINE on every miss, naming the reason in _projection — which ACC-CACHE r4 replaced by design: the reader is now LAST-KNOWN-GOOD-or-named-UNKNOWN and serve() never computes (S2 item 2, operator 2026-11-14).",
-    "The reader matrix half of the retired file is now registered under S2_READ_MODEL_20261114 (tests/test_s2_overview_never_inline_20261114.py). This gate keeps the half whose behaviour did not change (builder atomics/failure/overlap, parity, code identity, path override, invalidation registration, serve-never-computes, ETag byte-identity) plus five restated behaviours: the route binding, per-read dict isolation, the no-body cases for a missing file and a future stamp, the write-tracking-off sentinel, and a write older than the build.",
-    "archive/s2_overview_20261109_retired_20261114/COVERAGE-MAP.md maps all 26 retired tests to the test that carries each behaviour; nothing was deleted without a row and no assertion was weakened.",
+    "ANCHOR: OVERVIEW_PROJECTION_20261114 — the overview-projection lane, its builder, and the R6 reader contract the route depends on: serve the projection while fresh, same release and newer than the last operator write; otherwise compute inline and name the reason in _projection. Never blank.",
+    "R8 reader revert (INC-OVW-20261114, LEAD-RULING-R8-base-after-R7-rollback-20261114T1951Z): R7's stored-only reader (ACC-CACHE r4) blanked the header outside the weekday lane window, so R8 restores the R6 reader. The ten tests R7 had restated or moved to S2_READ_MODEL_20261114 are back here verbatim from tests/test_overview_projection_20261109.py at 6e4c41770 (git history; the archived copy is not restored, its restore is operator-only). S2_READ_MODEL_20261114 is archive-moved in the same commit to archive/s2_r8_reader_revert_20261114/.",
+    "The stored-only reader returns only with the INC-OVW permanent fix (24/7 n8n schedule plus admission test, OP-038/OP-042), which must re-point this gate in the same change.",
     "Synthetic documents and a scratch state directory only; no production DB, no Valkey, no scheduled job."
   ]
 }

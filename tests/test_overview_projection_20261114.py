@@ -1,20 +1,19 @@
 """ANCHOR: OVERVIEW_PROJECTION_20261114 — the overview projection lane, its builder and its reader's contract.
 
-R7 blocker (LEAD 2026-11-14T18:46Z). This file is the successor to
-``tests/test_overview_projection_20261109.py``, which was archive-moved with its gate to
-``archive/s2_overview_20261109_retired_20261114/`` (see the COVERAGE-MAP.md there for the
-test-by-test map). That file pinned the pre-S2 meta contract — ``(None, {"source": "inline",
-"reason": ...})`` with an inline compute on every miss — which ACC-CACHE r4 replaced by design:
-the reader is now LAST-KNOWN-GOOD-or-named-UNKNOWN and ``serve()`` never computes (S2 item 2,
-operator 2026-11-14; gate S2_READ_MODEL_20261114).
+R8 reader revert (INC-OVW-20261114, LEAD-RULING-R8-base-after-R7-rollback-20261114T1951Z). R7's
+stored-only reader (ACC-CACHE r4: 0eb740a8b + 979ffb34f) blanked the header on Saturday because the
+lane runs weekdays 04:00-20:59 ET and the reader no longer fell back inline. R8 restores the R6
+reader: the route serves the projection while it is fresh, from this release and newer than the
+last operator write, and otherwise computes ``_overview_with_today_move()`` inline with
+``_projection.reason`` naming why. Never blank.
 
-Of its 26 tests, the 16 that describe behaviour that did not change (builder, identity, path,
-parity, invalidation registration, serve-never-computes, ETag byte-identity) are ported here
-verbatim; 5 are covered only by ``tests/test_s2_overview_never_inline_20261114.py`` because their
-subject changed under the new contract; and 5 are new, restating a behaviour whose shape changed
-(the route binding, per-read dict isolation, the no-body cases for a missing file and a future
-stamp, the write-tracking-off sentinel, and a write older than the build). No assertion was
-weakened: each coverage-map row names the assertion that carries the behaviour.
+This file therefore pins the R6 contract again. The ten tests R7 had moved out or restated (route
+binding, the aged / future / another-release / write-after-build / missing / corrupt reader matrix,
+serve-never-blank, the unreadable invalidation record, per-read dict isolation, write tracking off)
+are taken verbatim from ``tests/test_overview_projection_20261109.py`` at 6e4c41770 (git history;
+the archived copy under ``archive/s2_overview_20261109_retired_20261114/`` is not read or restored —
+its restore is operator-only). The other 16 tests are unchanged. The producer-side
+never-go-backwards guard that R8 keeps is pinned in ``tests/test_s2_r8_reader_revert_20261114.py``.
 
 Every fixture here is synthetic.
 """
@@ -41,7 +40,6 @@ IDENT = "sha:1111111111111111111111111111111111111111"
 T0 = 1_800_000_000.0
 
 
-
 def _body(value: float = 1000.5) -> dict:
     return {"portfolio_value": value, "position_count": 3, "today_move": {"status": "OK", "change": 1.25}}
 
@@ -66,24 +64,14 @@ def _route_target_name() -> str:
 # ----------------------------------------------------------------------------- the route
 
 
-def test_the_overview_route_is_bound_to_the_projection_reader():
-    """The route table entry resolves to the reader; the inline compute is reachable only on an import failure.
-
-    The retired test asserted the route "reads the projection before computing inline". That is no longer the
-    contract (serve() never computes), so the assertion is restated: the target of /api/v2/overview calls
-    ``.serve(``, and the only occurrence of the inline compute sits inside the ``_overview_projection is None``
-    guard — the import-failure branch. Together with
-    ``test_s2_overview_never_inline_20261114.test_the_overview_route_never_computes`` (which runs the target),
-    this pins both halves: what the route is bound to, and that running it never computes."""
+def test_overview_route_reads_the_projection_before_computing_inline():
+    """FAIL-BEFORE: the route called _overview_with_today_move directly, every request, cold or warm."""
     name = _route_target_name()
-    assert name != "_overview_with_today_move", "the route must not be the inline compute"
     tree = ast.parse((ROOT / "scripts" / "api_v2.py").read_text(encoding="utf-8"))
     fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name)
     src = ast.unparse(fn)
-    assert ".serve(" in src, f"{name} does not call the projection reader"
-    assert src.count("_overview_with_today_move") == 1, "exactly one inline-compute path may exist"
-    before, _, _after = src.partition("_overview_with_today_move")
-    assert "_overview_projection is None" in before, "the only inline-compute path must be the import-failure guard"
+    assert "overview_projection" in src and ".serve(" in src, f"{name} does not read the projection"
+    assert "_overview_with_today_move" in src, "the inline fallback must stay the same code path"
 
 
 # ----------------------------------------------------------------------------- the reader matrix
@@ -102,21 +90,50 @@ def test_corrupt_projection_falls_back_with_the_reason(tmp_path, content, reason
     assert body is None and meta["reason"] == reason
 
 
-def test_read_refuses_a_missing_file_and_a_future_stamp_with_a_named_reason(tmp_path):
-    """read() returns no body — and names why — for the two cases the retired file pinned directly.
-
-    Both are still ``(None, reason)`` under the S2 contract; what changed is the label on
-    ``meta.source`` (``none``, never ``inline``: nothing is computed here). The missing file's meta is
-    compared whole; a clock-skewed read additionally carries the stamps it read."""
-    body, meta = op.read(tmp_path / "nope.json", identity=IDENT, invalidated_at=None, now=T0)
-    assert body is None and meta == {"source": "none", "reason": "missing"}
+@pytest.mark.parametrize("now, reason", [(T0 + op.MAX_AGE_S + 0.5, "aged"), (T0 - 60, "clock_skew")])
+def test_aged_or_future_projection_falls_back(tmp_path, now, reason):
     p = tmp_path / "overview_projection.json"
     _build(p)
-    body, meta = op.read(p, identity=IDENT, invalidated_at=None, now=T0 - 60)
-    assert body is None and meta["source"] == "none" and meta["reason"] == "clock_skew"
+    body, meta = op.read(p, identity=IDENT, invalidated_at=None, now=now)
+    assert body is None and meta == {"source": "inline", "reason": reason}
+
+
+def test_projection_from_another_release_falls_back(tmp_path):
+    p = tmp_path / "overview_projection.json"
+    _build(p, identity="sha:2222222222222222222222222222222222222222")
+    body, meta = op.read(p, identity=IDENT, invalidated_at=None, now=T0 + 5)
+    assert body is None and meta["reason"] == "code_mismatch"
+
+
+def test_a_write_after_the_build_started_falls_back(tmp_path):
+    """An operator write at T0+1 lands after a build that STARTED at T0: that body predates the write."""
+    p = tmp_path / "overview_projection.json"
+    _build(p)
+    body, meta = op.read(p, identity=IDENT, invalidated_at=T0 + 1, now=T0 + 5)
+    assert body is None and meta["reason"] == "invalidated"
+    body, meta = op.read(p, identity=IDENT, invalidated_at=T0 - 1, now=T0 + 5)
+    assert body is not None and meta["source"] == "projection"
+
+
+def test_missing_projection_falls_back(tmp_path):
+    body, meta = op.read(tmp_path / "nope.json", identity=IDENT, invalidated_at=None, now=T0)
+    assert body is None and meta == {"source": "inline", "reason": "missing"}
 
 
 # ----------------------------------------------------------------------------- serve()
+
+
+def test_serve_never_blank_inline_body_names_the_reason(tmp_path):
+    calls = []
+
+    def compute():
+        calls.append(1)
+        return _body(7.0)
+
+    out = op.serve(compute, path=tmp_path / "missing.json", identity=IDENT, invalidated_at_fn=lambda: None,
+                   now=T0)
+    assert calls == [1] and out["portfolio_value"] == 7.0
+    assert out["_projection"] == {"source": "inline", "reason": "missing"}
 
 
 def test_serve_prefers_a_fresh_projection_and_does_not_compute(tmp_path):
@@ -127,20 +144,27 @@ def test_serve_prefers_a_fresh_projection_and_does_not_compute(tmp_path):
     assert out["_projection"]["source"] == "projection" and out["portfolio_value"] == 1000.5
 
 
+def test_unreadable_invalidation_record_is_inline_never_a_pre_write_body(tmp_path):
+    p = tmp_path / "overview_projection.json"
+    _build(p)
+
+    def boom():
+        raise OSError("swr dir unreadable")
+
+    out = op.serve(lambda: _body(3.0), path=p, identity=IDENT, invalidated_at_fn=boom, now=T0 + 5)
+    assert out["_projection"] == {"source": "inline", "reason": "invalidation_unreadable"}
+
+
 # ----------------------------------------------------------------------------- per-read isolation and ETags
 
 
-def test_a_served_projection_is_a_fresh_top_level_dict_each_read(tmp_path):
-    """A caller cannot poison the next read by mutating the body it was served (the parsed document is cached)."""
+def test_served_projection_is_a_fresh_top_level_dict_each_read(tmp_path):
     p = tmp_path / "overview_projection.json"
     _build(p)
     a, _ = op.read(p, identity=IDENT, invalidated_at=None, now=T0 + 1)
-    built_at = a["_projection"]["built_at"]
     a["portfolio_value"] = -1
-    a["_projection"]["stale"] = True
     b, _ = op.read(p, identity=IDENT, invalidated_at=None, now=T0 + 2)
-    assert b["portfolio_value"] == 1000.5
-    assert b["_projection"] == {"source": "projection", "built_at": built_at, "stale": False, "reason": None}
+    assert b["portfolio_value"] == 1000.5 and b["_projection"] == {"source": "projection", "built_at": a["_projection"]["built_at"]}
 
 
 def test_served_body_is_byte_identical_across_reads_so_etags_hold(tmp_path):
@@ -263,30 +287,15 @@ def test_operator_writes_invalidate_the_overview(monkeypatch):
     assert op.ROUTE not in stale_serve.invalidate_for_write("/api/v2/watchlist/items/add", server=srv)
 
 
-def test_write_tracking_off_is_the_sentinel_and_serves_last_good(tmp_path, monkeypatch):
-    """TRADEAI_SWR=0 records no write, so the reader says WRITE_TRACKING_OFF and a body is never served as current."""
+def test_write_tracking_off_means_inline(tmp_path, monkeypatch):
+    """TRADEAI_SWR=0 turns off invalidate_for_write, so no write is tracked: never serve a projection."""
     monkeypatch.setenv("TRADEAI_SWR", "0")
     p = tmp_path / "overview_projection.json"
     _build(p)
-    reader = op.invalidation_reader()
-    assert reader() is op.WRITE_TRACKING_OFF
-    body, meta = op.read(p, identity=IDENT, invalidated_at=reader(), now=T0 + 1)
-    assert body is not None and body["portfolio_value"] == 1000.5
-    assert meta["stale"] is True and meta["reason"] == "write_tracking_off"
-
-
-def test_a_write_older_than_the_build_does_not_downgrade_it(tmp_path):
-    """The invalidation cut is compared with the build's START: a write that predates it leaves the body current.
-
-    The retired file asserted this half too (``invalidated_at=T0 - 1`` beside ``= T0 + 1``). Only the
-    "a write landed after the build started" half moved to S2, so the other half is restated here — a
-    reader that downgraded on ANY recorded write would still pass every S2 test, which pass None or a
-    post-build stamp."""
-    p = tmp_path / "overview_projection.json"
-    _build(p)
-    body, meta = op.read(p, identity=IDENT, invalidated_at=T0 - 1, now=T0 + 5)
-    assert body is not None and body["portfolio_value"] == 1000.5
-    assert meta["stale"] is False and meta["reason"] is None
+    assert op.invalidation_reader()() is op.WRITE_TRACKING_OFF
+    out = op.serve(lambda: _body(1.0), path=p, identity=IDENT, invalidated_at_fn=op.invalidation_reader(),
+                   now=T0 + 1)
+    assert out["_projection"] == {"source": "inline", "reason": "write_tracking_off"}
 
 
 # ----------------------------------------------------------------------------- the lane script

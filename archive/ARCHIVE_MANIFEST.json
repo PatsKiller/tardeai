@@ -1471,6 +1471,51 @@
       "date": "2026-11-14",
       "review_by": "2026-12-14",
       "restore_command": "git mv archive/s2_overview_20261109_retired_20261114/config/ci_gates/overview_projection_20261109.json config/ci_gates/overview_projection_20261109.json"
+    },
+    {
+      "path": "archive/s2_r8_reader_revert_20261114/tests/test_s2_overview_never_inline_20261114.py",
+      "original_path": "tests/test_s2_overview_never_inline_20261114.py",
+      "verdict": "REVERTED",
+      "evidence": "R8 reader revert (INC-OVW-20261114, LEAD-RULING-R8-base-after-R7-rollback-20261114T1951Z): R7's stored-only reader blanked the overview header outside the weekday lane window, so R8 restores the R6 inline-fallback reader. Pins the stored-only overview reader R8 reverts; its build-never-goes-backwards half is re-pinned in tests/test_s2_r8_reader_revert_20261114.py. cc-opus-3, 2026-11-14.",
+      "date": "2026-11-14",
+      "review_by": "2026-12-14",
+      "restore_command": "git mv archive/s2_r8_reader_revert_20261114/tests/test_s2_overview_never_inline_20261114.py tests/test_s2_overview_never_inline_20261114.py"
+    },
+    {
+      "path": "archive/s2_r8_reader_revert_20261114/config/ci_gates/S2_READ_MODEL_20261114.json",
+      "original_path": "config/ci_gates/S2_READ_MODEL_20261114.json",
+      "verdict": "REVERTED",
+      "evidence": "R8 reader revert (INC-OVW-20261114, LEAD-RULING-R8-base-after-R7-rollback-20261114T1951Z): R7's stored-only reader blanked the overview header outside the weekday lane window, so R8 restores the R6 inline-fallback reader. Gate for the stored-only reader tests; archived with them so the gate and the tests cannot disagree. Replaced by config/ci_gates/S2_R8_READER_REVERT_20261114.json. cc-opus-3, 2026-11-14.",
+      "date": "2026-11-14",
+      "review_by": "2026-12-14",
+      "restore_command": "git mv archive/s2_r8_reader_revert_20261114/config/ci_gates/S2_READ_MODEL_20261114.json config/ci_gates/S2_READ_MODEL_20261114.json"
+    },
+    {
+      "path": "archive/s2_r8_reader_revert_20261114/tests/test_s2_home_do_now_snapshot_20261114.py",
+      "original_path": "tests/test_s2_home_do_now_snapshot_20261114.py",
+      "verdict": "REVERTED",
+      "evidence": "R8 reader revert (INC-OVW-20261114, LEAD-RULING-R8-base-after-R7-rollback-20261114T1951Z): R7's stored-only reader blanked the overview header outside the weekday lane window, so R8 restores the R6 inline-fallback reader. Pins the stored-only Home do-now reader R8 reverts to the R6 stale-while-revalidate route. cc-opus-3, 2026-11-14.",
+      "date": "2026-11-14",
+      "review_by": "2026-12-14",
+      "restore_command": "git mv archive/s2_r8_reader_revert_20261114/tests/test_s2_home_do_now_snapshot_20261114.py tests/test_s2_home_do_now_snapshot_20261114.py"
+    },
+    {
+      "path": "archive/s2_r8_reader_revert_20261114/scripts/lib/home_do_now_snapshot.py",
+      "original_path": "scripts/lib/home_do_now_snapshot.py",
+      "verdict": "REVERTED",
+      "evidence": "R8 reader revert (INC-OVW-20261114, LEAD-RULING-R8-base-after-R7-rollback-20261114T1951Z): R7's stored-only reader blanked the overview header outside the weekday lane window, so R8 restores the R6 inline-fallback reader. Reader/producer library for the stored-only do-now snapshot; no lane writes the snapshot on this host (home-do-now-snapshot lane unregistered, no home_do_now_snapshot.json in the state root), so R7's do-now read was UNKNOWN every time. cc-opus-3, 2026-11-14.",
+      "date": "2026-11-14",
+      "review_by": "2026-12-14",
+      "restore_command": "git mv archive/s2_r8_reader_revert_20261114/scripts/lib/home_do_now_snapshot.py scripts/lib/home_do_now_snapshot.py"
+    },
+    {
+      "path": "archive/s2_r8_reader_revert_20261114/scripts/build_home_do_now_snapshot.py",
+      "original_path": "scripts/build_home_do_now_snapshot.py",
+      "verdict": "REVERTED",
+      "evidence": "R8 reader revert (INC-OVW-20261114, LEAD-RULING-R8-base-after-R7-rollback-20261114T1951Z): R7's stored-only reader blanked the overview header outside the weekday lane window, so R8 restores the R6 inline-fallback reader. Producer entry point for the do-now snapshot; never registered as a lane. Returns with the INC-OVW permanent fix if the lead re-admits it. cc-opus-3, 2026-11-14.",
+      "date": "2026-11-14",
+      "review_by": "2026-12-14",
+      "restore_command": "git mv archive/s2_r8_reader_revert_20261114/scripts/build_home_do_now_snapshot.py scripts/build_home_do_now_snapshot.py"
     }
   ]
 }
