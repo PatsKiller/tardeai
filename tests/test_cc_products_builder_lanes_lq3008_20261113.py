@@ -209,13 +209,15 @@ from zoneinfo import ZoneInfo  # noqa: E402
 from scripts.lib import cron_schedule as CS  # noqa: E402
 
 ET = ZoneInfo("America/New_York")
-# Stored limits per product at a build instant. cio.pages has flat limits (cio_pages.py STALE_AFTER_S / HARD_EXPIRY_S).
+# Stored limits per product at a build instant. cio.pages has the MARKET-HOURS constants 360/1800 (CIO_LIMITS) and, since
+# LQ-3082/3095, the off-hours tier clamped to the next 09:30 ET open plus a grace: its limits come from cio_pages.limits_for.
 CIO_LIMITS = {"stale_after_s": 360, "hard_expiry_s": 1800}
 
 
 def _limits(pid, at):
     if pid == CIO_PAGES:
-        return CIO_LIMITS
+        from scripts.lib.cc_products import cio_pages
+        return cio_pages.limits_for(at)
     return PB.limits_for(PB.CATALOGUE[pid], at)
 
 
@@ -240,6 +242,11 @@ def test_the_gap_to_the_next_fire_is_under_half_the_stale_window_in_an_ordinary_
     for a, b in zip(fires, fires[1:]):
         gap = (b.astimezone(timezone.utc) - a.astimezone(timezone.utc)).total_seconds()
         stale = _limits(pid, a)["stale_after_s"]
+        if pid == CIO_PAGES and stale < 360:
+            # the build just before the open: its limits are clamped to the open (+ grace), so the 09:30 build must land
+            # before it goes stale, not within half of it. Still strictly inside the window.
+            assert gap < stale, f"{pid}: fire {a.astimezone(ET):%a %H:%M} stale {stale} gap {gap:.0f}"
+            continue
         assert gap <= stale / 2, f"{pid}: fire {a.astimezone(ET):%a %H:%M} stores stale_after_s {stale} but the next fire is {gap:.0f} s later"
         worst = max(worst, gap / stale)
     assert worst <= 0.5
@@ -253,25 +260,39 @@ def test_a_dst_transition_never_lets_the_gap_pass_the_stale_window(pid, window):
     for a, b in zip(fires, fires[1:]):
         gap = (b.astimezone(timezone.utc) - a.astimezone(timezone.utc)).total_seconds()
         worst = max(worst, gap)
-        if (pid, window) == (CIO_PAGES, DST_FALL):
-            continue  # KNOWN: see the next test
         assert gap < _limits(pid, a)["stale_after_s"], f"{pid}: {a.astimezone(ET):%a %H:%M} gap {gap:.0f} s"
 
 
-def test_known_gap_cio_pages_loses_the_repeated_fall_back_hour():
-    """cron_schedule dedupes by local slot, so the second 01:00-01:59 pass of fall-back night (Sun 1 Nov 2026) has no fire.
-    A */2 lane therefore goes 62 minutes between builds once a year, on a Sunday 01:58 EDT -> 02:00 EST, against
-    stale_after_s 360. Weekend, markets closed. Pinned so a change to the cron or the dedupe rule is on purpose."""
+def test_cio_pages_still_loses_the_repeated_fall_back_hour_but_off_hours_limits_now_cover_it():
+    """cron_schedule dedupes by local slot, so the second 01:00-01:59 pass of fall-back night (Sun 1 Nov 2026) has no fire:
+    a */2 lane goes 62 minutes between builds once a year. With the flat 360 s window that was a violation (REVIEW-3105 F-1);
+    the off-hours tier (3082, stale 9000 s on Sunday 01:58 ET) covers it. Pinned both ways: the gap is still there, and it is inside."""
     fires = _fires(CIO_PAGES, *DST_FALL)
-    gaps = [(b.astimezone(timezone.utc) - a.astimezone(timezone.utc)).total_seconds() for a, b in zip(fires, fires[1:])]
-    assert max(gaps) == 3720 and sum(1 for g in gaps if g > 360) == 1
+    gaps = [((b.astimezone(timezone.utc) - a.astimezone(timezone.utc)).total_seconds(), a) for a, b in zip(fires, fires[1:])]
+    assert max(g for g, _ in gaps) == 3720 and sum(1 for g, _ in gaps if g > 360) == 1
+    g, a = max(gaps, key=lambda x: x[0])
+    assert g < _limits(CIO_PAGES, a)["stale_after_s"] == 9000
+
+
+def test_cio_pages_limits_are_market_flat_off_hours_tiered_and_clamped_to_the_open():
+    at = lambda *x: datetime(*x, tzinfo=ET)
+    assert (_limits(CIO_PAGES, at(2026, 11, 10, 10, 0))["stale_after_s"], _limits(CIO_PAGES, at(2026, 11, 10, 10, 0))["hard_expiry_s"]) == (360, 1800)
+    assert _limits(CIO_PAGES, at(2026, 11, 10, 20, 0))["stale_after_s"] == 9000
+    assert _limits(CIO_PAGES, at(2026, 11, 13, 20, 0))["hard_expiry_s"] == 14400       # Friday: next open is far past the tier
+    lim = _limits(CIO_PAGES, at(2026, 11, 10, 9, 28))                                    # 2 min before the open
+    assert (lim["stale_after_s"], lim["hard_expiry_s"]) == (180, 270)
 
 
 @pytest.mark.parametrize("pid", PRODUCTS)
 def test_the_gap_is_under_the_hard_expiry_with_a_margin_of_four(pid):
     fires = _fires(pid, *WEEK)
     for a, b in zip(fires, fires[1:]):
-        assert (b.astimezone(timezone.utc) - a.astimezone(timezone.utc)).total_seconds() * 4 <= _limits(pid, a)["hard_expiry_s"]
+        gap = (b.astimezone(timezone.utc) - a.astimezone(timezone.utc)).total_seconds()
+        lim = _limits(pid, a)
+        if pid == CIO_PAGES and lim["stale_after_s"] < 360:
+            assert gap * 2 <= lim["hard_expiry_s"]   # the open-clamped build: margin two (cadence 120 vs grace 150), not four
+            continue
+        assert gap * 4 <= lim["hard_expiry_s"]
 
 
 @pytest.mark.parametrize("pid", ["market_risk.latest", "home", "risk"])
