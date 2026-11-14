@@ -1296,7 +1296,7 @@ What an agent still owns is proving the effect of its change after promotion.
   (§17). Prove it with `check_expected_services.py`, not with the unit file existing. *Cause: 2026-09-13 —
   `tradeai-operator-answer-quality.timer` was promoted and ran only once installed separately (LESSONS L0-13).*
 
-- **Admin modal is required parity (operator 2026-11-14 ~18:35 ET).** `/wealth/` keeps an Admin modal reachable from the
+- **Admin modal is required parity (operator 2026-11-14 ~18:27 ET).** `/wealth/` keeps an Admin modal reachable from the
   header/settings: connections & expiry (Schwab ~7-day manual-OAuth reauth lifecycle with reminders and the sanctioned
   operator reauth/2FA handoff; Finviz and other cookie expiry/rejection alerts), allowlisted non-Bitwarden configuration
   (typed, validated, atomic versioned writes, redacted audit, rollback, current admin auth + step-up), and change history &
