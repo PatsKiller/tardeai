@@ -1,0 +1,25 @@
+{
+  "name": "wealth",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Trade-AI Wealth: net-new frontend built in parallel with Command Center v3 (operator decision 2026-11-14). Shares the canonical backend; owns only its UI.",
+  "scripts": {
+    "dev": "vite",
+    "check": "node scripts/check-contracts.mjs",
+    "build": "node scripts/check-contracts.mjs && tsc && vite build"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2"
+  }
+}

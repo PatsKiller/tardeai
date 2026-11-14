@@ -1,19 +1,22 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      32.2.0
+Policy-Version:      32.3.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
 Effective-Date:      2026-11-14
-Last-Reviewed:       2026-11-14T20:13:54Z
+Last-Reviewed:       2026-11-14T22:58:00Z
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          32.1.0
+Supersedes:          32.2.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**32.2.0 is ACTIVE (MINOR)**: the operator's **Wealth Management 501** standard (v1.0 + addendum v1.1, 2026-11-14) binds
+**32.3.0 is ACTIVE (MINOR)**: §9.6.1 adds the Wealth site, a net-new `apps/wealth` frontend at `/wealth/` built in
+parallel with /v3 (untouched) on the shared canonical backend. It adds product and delivery duties only.
+
+**32.2.0 (MINOR)**: the operator's **Wealth Management 501** standard (v1.0 + addendum v1.1, 2026-11-14) binds
 every route, tab, detail, read model and producer: §9.6, `docs/design/WEALTH_MANAGEMENT_501.md`,
 `docs/design/WEALTH_MANAGEMENT_501_ADDENDUM_V1_1.md`. It adds product and evidence duties only; it lifts no rail, grants
 nothing, and leaves §0, §2, §17 and the adapters unchanged.
@@ -1181,6 +1184,39 @@ to every route, tab, detail, read model and producer.
 - Follow the user's current sprint authority: no invented grants or GitHub push/PR requirement. Preserve authentication, 2FA, broker locks and financial-action boundaries; do not perform real orders/approvals or weaken controls.
 
 This section supplements existing safety/security and repository instructions; it does not erase them.
+
+### 9.6.1 Wealth site — net-new frontend built in parallel (operator decision 2026-11-14 17:50 ET)
+
+John approved the wealth-management design direction (reference `TradeAI_Wealth_Management_Mockups_v01.html`,
+sha256 `9bafaac1c883fb554143aa6531eaa06df035fa454cb1431afd9f98d1154a943a`). It is built as a **separate application,
+`apps/wealth`, served at `/wealth/`**, in parallel with Command Center v3.
+
+- **/v3 is untouched.** Never retrofit the new visual design into `apps/command-center-v3`, change its default landing,
+  or delete or decommission any of its UI. /v3 correctness and reliability fixes continue on their own track.
+- **One backend.** `apps/wealth` reuses the canonical broker/read models, n8n producers, the governed CIO backend and
+  memory, and existing auth, 2FA and financial gates. It must not fork a calculation, source authority, database, CIO
+  memory or producer ownership. Its client is GET-only, same-origin, and handles no credentials. A shared backend change
+  stays backward-compatible with /v3.
+- **Separate identity and rollback.** The app has its own `build-meta.json` (`app: "wealth"`) and its own deploy root,
+  swapped atomically. Rolling it back never touches the /v3 bundle or the server release.
+- **Design fidelity.** Build only from the accepted reference once it is on the server and checksum-verified. Do not
+  improvise a visual design. Colour cues (GREEN/AMBER/RED) always carry a text label, an icon and a tooltip; key values
+  and exceptions are bold; qualified, source and context text is italic.
+- **Valuation contract `valuation-assessment@1`.** It is centralized and versioned, and carries evidence, benchmark,
+  coverage, as-of and reason. Trailing and forward P/E are separate, with earnings period and basis, compared against
+  sector and industry peers and the security's own history.
+  - There is no universal cutoff, and a low P/E is never a buy signal.
+  - Nonpositive earnings show `N/M` with a reason. Cash shows `N/A`. Funds use a separately defined fund metric.
+  - Missing or stale peers mean neutral `UNASSESSED`.
+  - Row, drawer, fundamentals, CIO and CSV must agree.
+  - Demo thresholds are not policy.
+- **No mock data and no permanent NEEDS BACKEND.** A missing reader is owned backend work.
+- **Releases.** Run gates on the exact candidate. Check every release at +15, +30 and +60 minutes on desktop and mobile,
+  covering tabs, details, rows and CSV. A scaffold, screenshot or assignment is not "live".
+- **Decommissioning is a separate final phase.** It comes only after replacement parity, deployed verification, new-site
+  acceptance and rollback readiness. Never delete data, history or jobs silently.
+
+Decision record: `coordination/coordinator/campaign-8h2-20261114/handoff/DECISION-WEALTH-NEW-SITE-20261114T225159Z.md`.
 
 ---
 
@@ -2745,7 +2781,8 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 32.2.0 | 2026-11-14 | ACTIVE | MINOR | Supersedes 32.1.0. Adds §9.6 Wealth Management 501 product and delivery contract and the canonical guide `docs/design/WEALTH_MANAGEMENT_501.md` (v1.0) + `docs/design/WEALTH_MANAGEMENT_501_ADDENDUM_V1_1.md` (v1.1): all-horizon investment desk, inventory-before-build, deterministic accounting vs governed CIO synthesis, n8n-owned 24/7 overview refresh, route migration/retirement register, live acceptance. Product and evidence duties only: no rail lifted, no grant, §0/§2/§17 and adapters unchanged. | Operator directive 2026-11-14 ~15:00-15:10 ET (actual-project persistence + AGENTS.md update, "already authorized, no new grant"), relayed in-session to the lead; local commit only while git pushes are suspended. |
+| 32.3.0 | 2026-11-14 | ACTIVE | MINOR | Supersedes 32.2.0. Adds §9.6.1 Wealth site: net-new `apps/wealth` frontend at `/wealth/` built in parallel with /v3 (untouched), shared canonical backend, separate build identity and rollback, design fidelity to the accepted reference, colour-never-alone cues, versioned `valuation-assessment@1` contract, decommissioning as a separate final phase. Product and delivery duties only: no rail lifted, no grant, §0/§2/§17 and adapters unchanged. | Operator directive 2026-11-14 17:50 ET (John approved the wealth-management design direction; build as a net-new site in parallel), relayed in-session to the lead; local commit only while git pushes are suspended. |
+| 32.2.0 | 2026-11-14 | SUPERSEDED | MINOR | Supersedes 32.1.0. Adds §9.6 Wealth Management 501 product and delivery contract and the canonical guide `docs/design/WEALTH_MANAGEMENT_501.md` (v1.0) + `docs/design/WEALTH_MANAGEMENT_501_ADDENDUM_V1_1.md` (v1.1): all-horizon investment desk, inventory-before-build, deterministic accounting vs governed CIO synthesis, n8n-owned 24/7 overview refresh, route migration/retirement register, live acceptance. Product and evidence duties only: no rail lifted, no grant, §0/§2/§17 and adapters unchanged. | Operator directive 2026-11-14 ~15:00-15:10 ET (actual-project persistence + AGENTS.md update, "already authorized, no new grant"), relayed in-session to the lead; local commit only while git pushes are suspended. |
 | 32.1.0 | 2026-11-10 | ACTIVE | MINOR | Supersedes 32.0.0. Adopts the operator's Engineering Constitution v1.1 (`docs/governance/ENGINEERING_CONSTITUTION.md`) as foundational doctrine; summary added under §8 "What counts as verified". Evidence duties only: no rail lifted, no grant, §0/§2/§17 and adapters unchanged. | Operator directive 2026-11-10 ~11:55 ET ("make these golden rules for all agents … These should appear in: Agent.md, Runbooks, …"), relayed in-session to the lead; local commit only, pending operator ratification on the next push window. |
 | 32.0.0 | 2026-11-09 | ACTIVE | MAJOR | Supersedes 31.0.0. §23.20a: ONE named exception for one broker market-data quote lane on the n8n dispatcher — `vix-index-quotes-schwab` (R1 `ingest`, `$VIX`/`$VIX9D`/`$VIX3M` into `market_quotes`) may carry the `schwab` token and reach `schwab_token_manager` only, in a code-pinned shape (`lane_dispatch.SCHWAB_QUOTE_READ_*`); no trade context, account read, send or credential in n8n. §0, §2, §2A, §7A, §17, §23.14 and §27.1 unchanged. | `APPROVE_AGENTS_POLICY_32_0_0 <pr> <head_sha>` |
 | 31.0.0 | 2026-11-03 | ACTIVE | MAJOR | Supersedes 30.0.1. §24.16: ONE named exception to §24.5 for the `self-heal-fixer` lane only — it may push one `self-heal-fix/…` branch and open one draft PR per fix job (labelled `self-heal-fix`), within the push budget and never with an override; never main/release, never force-push, never broker/credential/order/execution/policy paths, the diff guard still refuses them; every fix PR needs two independent reviews and the fixer never merges; armed only by an active `git-push` grant naming `self-heal-fixer`. Nothing else in §24.5 loosens. | `APPROVE_AGENTS_POLICY_31_0_0 2538 331e39d303f2af7c948306f8475b4aa1fc43438e` (operator, https://github.com/PatsKiller/tardeai/pull/2538#issuecomment-6618462233). Provenance: issued at 331e39d3, whose `AGENTS.md` is byte-identical (blob `c6dac5f08`) to the 31.0.0 text merged in this PR at its tip; later commits are the `origin/main` merge and this repair, with no rule-text change. |
