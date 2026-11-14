@@ -13,7 +13,7 @@ import { Fragment, useEffect } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import './v02.css'
 import { Icon } from '../components/Icon'
-import { DrawerProvider } from '../components/Drawer'
+import { DrawerProvider, useDrawer } from '../components/Drawer'
 import { CueBadge } from '../components/primitives'
 import { NAV, groupPath, resolve, viewPath } from './nav'
 
@@ -25,6 +25,27 @@ const UNBOUND = {
 }
 
 export function Shell() {
+  return <DrawerProvider><ShellFrame /></DrawerProvider>
+}
+
+// The reference's "Page intent" drawer: process text from v02, with this build's identity. No data.
+function intentBody(groupLabel: string, viewLabel: string) {
+  return (
+    <>
+      <h3>{groupLabel} / {viewLabel}</h3>
+      <p>Primary question: what does the investor need to understand or decide here? The mockup is a proposed UI contract, not evidence that its backend already exists.</p>
+      <h3>Parallel implementation mandate</h3>
+      <p>Build a net-new Wealth application beside the current site. Freeze old-site feature upgrades. Reuse canonical backend authority and CIO history; redesign measured bottlenecks. Decommission only after replacement acceptance and rollback readiness.</p>
+      <h3>Before each slice</h3>
+      <p>Map the actual route, retained capabilities, canonical source, producer, clock, owner and acceptance. Use available backend first. Missing capabilities remain owned work.</p>
+      <h3>This build</h3>
+      <p>Wealth v{__WEALTH_APP_VERSION__} · build {SOURCE}. Not yet accepted; Command Center stays available. Read-only: no orders, no approvals, no writes.</p>
+    </>
+  )
+}
+
+function ShellFrame() {
+  const drawer = useDrawer()
   const { pathname } = useLocation()
   const { group, view, known } = resolve(pathname)
 
@@ -35,7 +56,7 @@ export function Shell() {
   }, [pathname, group.label, view.label])
 
   return (
-    <DrawerProvider>
+    <>
       <div className="preview-ribbon" role="note">
         <b>TRADE-AI WEALTH · v{__WEALTH_APP_VERSION__}</b>
         <span>build {SOURCE}</span>
@@ -73,6 +94,10 @@ export function Shell() {
               <div>
                 <div className="eyebrow">{group.tagline}</div>
                 <h1 style={{ marginTop: 7 }}>{group.label} <span className="muted" style={{ fontWeight: 300 }}>/</span> {view.label}</h1>
+                <p>One book, clear evidence, supported next steps</p>
+              </div>
+              <div className="heading-action">
+                <button className="small" onClick={() => drawer.open({ eyebrow: 'PAGE INTENT', title: 'Page intent & implementation gate', body: intentBody(group.label, view.label) })}>Page intent →</button>
               </div>
             </div>
             <nav className="tabs" aria-label={`${group.label} tabs`}>
@@ -85,6 +110,6 @@ export function Shell() {
           </main>
         </div>
       </div>
-    </DrawerProvider>
+    </>
   )
 }
