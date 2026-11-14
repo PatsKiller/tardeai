@@ -10,10 +10,14 @@ import { regroupPath } from './askCioGroups.ts'
 export class AskApiError extends Error {
   code: string
   status: number
+  /** The server's own detail sentence, kept separate from `message` so a surface can render the typed denial
+   *  (code + detail apart) instead of slicing an English string back apart. Empty when the body sent none. */
+  detail: string
   constructor(code: string, status: number, detail?: string) {
     super(detail ? `${code}: ${detail}` : code)
     this.code = code
     this.status = status
+    this.detail = detail ? detail : ''
   }
 }
 

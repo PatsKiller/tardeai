@@ -1,20 +1,22 @@
 import { useCallback, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, chipStyle } from '../../lib/designTokens'
-import { askCio, askErrorText } from '../../lib/askCioApi'
+import { askCio } from '../../lib/askCioApi'
 import { TOOLTIPS, cioMemoryState, cioReviewNote, reviewStateText, reviewStateTone, type ProspectRow, type ReviewState } from '../../lib/watchProspectsModel'
 import { requestCioReview } from '../../lib/watchListsModel'
 import { newerReviewState } from '../../lib/watchReviewState'
 import {
-  answeringView, askedView, finishAsk, stanceFromAskPayload, watchAskQuestion,
-  type WatchAskView,
+  runCioAsk, watchAskQuestion,
+  type CioAskEntry, type WatchAskView,
 } from '../../lib/watchCioAsk'
 
 /** Watch "Ask the CIO": the button uses the same ask endpoint as the header Ask bar (POST /api/v2/cio/ask) and shows
- *  asked → answering → answered with a thread link and structured stance. The thesis-queue request stays a secondary
- *  note and cannot hide an ask failure or replace an answer; the review's CIO-memory linkage is shown beside it. */
+ *  sending → asked (the server accepted the question) → answered, with a thread link and structured stance. The
+ *  thesis-queue request stays a secondary note and cannot hide an ask failure or replace an answer; the review's
+ *  CIO-memory linkage is shown beside it. A4: the labels come from `runCioAsk`'s lifecycle, so nothing says the CIO
+ *  is answering before the server accepted the question, and a refusal reads as the typed denial. */
 
-type Entry = { busy: boolean; message: string; state: ReviewState | null; view?: WatchAskView; requestId?: string | null; nextRun?: string | null; errorReason?: string | null }
+type Entry = CioAskEntry
 export type CioReviewController = {
   entries: Record<string, Entry>
   ask: (row: ProspectRow, conflictKey?: string | null) => Promise<void>
@@ -29,40 +31,16 @@ export function useCioReview(onDone?: () => void): CioReviewController {
     if (inFlight.current.has(sym)) return
     inFlight.current.add(sym)
     const put = (entry: Entry) => setEntries(prev => ({ ...prev, [sym]: entry }))
-    put({ busy: true, message: 'Asked', state: null, view: askedView() })
-    await new Promise(resolve => setTimeout(resolve, 0))
-    put({ busy: true, message: 'Answering', state: null, view: answeringView() })
-    let askOk = false
-    let askMessage = 'The CIO did not return a thread.'
-    let threadId: string | null = null
-    let stance: string | null = null
     try {
-      const result = await askCio(watchAskQuestion(row))
-      threadId = result.thread_id || null
-      stance = stanceFromAskPayload(result).stance
-      if (threadId) askOk = true
-    } catch (err) {
-      askMessage = askErrorText(err)
+      const outcome = await runCioAsk({
+        put,
+        ask: () => askCio(watchAskQuestion(row)),
+        queue: () => requestCioReview(sym, cioReviewNote(row), conflictKey),
+      })
+      if (outcome.ok) onDone?.()
+    } finally {
+      inFlight.current.delete(sym)
     }
-    const queued = await requestCioReview(sym, cioReviewNote(row), conflictKey)
-    const view = finishAsk({
-      askOk,
-      askMessage,
-      threadId,
-      stance,
-      queueMessage: queued.message,
-    })
-    put({
-      busy: false,
-      message: view.message,
-      state: newerReviewState(queued.state, null),
-      view,
-      requestId: queued.requestId,
-      nextRun: queued.nextRun,
-      errorReason: askOk ? null : askMessage,
-    })
-    if (askOk || queued.ok) onDone?.()
-    inFlight.current.delete(sym)
   }, [onDone])
   const sync = useCallback((states: Record<string, ReviewState>) => {
     setEntries(prior => {
@@ -100,7 +78,9 @@ export function AskPhaseStatus({ entry, testId = 'watch-ask-phase' }: { entry?: 
   const view = entry?.view
   if (!view) return null
   const id = (suffix: string) => testId === 'watch-ask-phase' ? `watch-ask-${suffix}` : `${testId}-${suffix}`
-  return <div data-testid={testId} data-phase={view.phase} role="status" style={{ display: 'grid', gap: 4, fontSize: TYPE.base, color: TOKENS.text[1] }}>
+  return <div data-testid={testId} data-phase={view.phase} data-denied={view.denied ? 'true' : undefined}
+    data-code={view.code ?? undefined} role={view.phase === 'failed' ? 'alert' : 'status'}
+    style={{ display: 'grid', gap: 4, fontSize: TYPE.base, color: TOKENS.text[1] }}>
     <span>{view.message}</span>
     {view.phase === 'answered' && view.stance && <span data-testid={id('stance')}>CIO stance: {view.stance}</span>}
     {view.phase === 'answered' && view.stanceGap && <span data-testid={id('stance-gap')}>{view.stanceGap}</span>}
@@ -141,7 +121,7 @@ export function CioReviewPanel({ row, cio, conflictKey }: { row: ProspectRow; ci
     <button type="button" data-testid="watch-ask-cio" className="mobile-detail-primary" disabled={!!entry?.busy}
       onClick={() => { void cio.ask(row, conflictKey) }}
       style={{ ...chipStyle('warning', 'outline', 'md'), cursor: entry?.busy ? 'default' : 'pointer', minHeight: 44, width: '100%', borderRadius: RADIUS.md, justifyContent: 'center' }}>
-      {entry?.busy ? (entry.view?.message || 'Asking the CIO…') : entry?.errorReason ? `Retry — ${entry.errorReason}` : state?.status === 'waiting_budget' ? state.label : 'Ask the CIO to review'}
+      {entry?.busy ? (entry.view?.message || 'Sending the question…') : entry?.errorReason ? `Retry — ${entry.errorReason}` : state?.status === 'waiting_budget' ? state.label : 'Ask the CIO to review'}
     </button>
     {entry?.message && !entry.busy && <span role="status" data-testid="watch-cio-message" style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>{entry.message}</span>}
     {(entry?.requestId || state?.request_id) && <small data-testid="watch-cio-request" style={{ color: TOKENS.text[2] }}>
