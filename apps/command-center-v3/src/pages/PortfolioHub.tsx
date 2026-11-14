@@ -1,6 +1,7 @@
 import W7Lookthrough, { W7Allocation } from '../components/W7Lookthrough'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, useSearchParams } from 'react-router-dom'
+import { PORTFOLIO_TABS, resolvePortfolioTab, resolvePortfolioTabParam } from '../lib/portfolioTabs.ts'
 import { useApi } from '../hooks/useApi'
 import RotationPublicationNotice from '../components/RotationPublicationNotice'
 import { useRotationAvailability } from '../hooks/useRotationAvailability'
@@ -41,7 +42,8 @@ import { downloadHoldingsCsv } from '../lib/exportHoldingsCsv'
 import { BB, T, DASH } from '../lib/watchTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Holdings', 'Allocation', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Stop Management'] as const
+// OBS-B2-4e: one tab list and one resolver (lib/portfolioTabs) so a ?tab= link is not matched case-sensitively here.
+const TABS = PORTFOLIO_TABS
 const COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9', '#fb923c']
 
 const ACCT_COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9']
@@ -120,10 +122,9 @@ function LlmBadges({ cov }: { cov?: any[] }) {
 
 export default function PortfolioHub({ onDrill }: Props) {
   const [searchParams, setSearchParams] = useSearchParams()
-  const resolveTab = (t: string | null): typeof TABS[number] => {
-    if (!t) return 'Holdings'
-    return (TABS as readonly string[]).includes(t) ? t as typeof TABS[number] : 'Holdings'
-  }
+  const resolveTab = resolvePortfolioTab
+  const tabParam = searchParams.get('tab')
+  const tabParamUnknown = !resolvePortfolioTabParam(tabParam).known
   const [tab, setTab] = useState<typeof TABS[number]>(resolveTab(searchParams.get('tab')))
   useEffect(() => {
     try { localStorage.removeItem('cc-v3-holdings-view') } catch { /* private mode */ }
@@ -543,6 +544,11 @@ export default function PortfolioHub({ onDrill }: Props) {
           {/* Design pages/jobs v002 (operator-approved 2026-11-06): Redeploy is its own desk; this was a duplicate sub-tab. */}
           <Link to="/redeploy" data-testid="portfolio-redeploy-link" style={{ ...hubTab(false, terminalUi), minHeight: 44, display: 'inline-flex', alignItems: 'center', textDecoration: 'none', boxSizing: 'border-box' }}>Redeploy desk →</Link>
         </div>
+        {tabParamUnknown && (
+          <div data-testid="portfolio-tab-unknown" role="status" style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+            The link asked for a Portfolio view named “{tabParam}”, which does not exist. Showing Holdings.
+          </div>
+        )}
       </div>
 
       {needHoldingsDesk && <PortfolioDeskHealth
