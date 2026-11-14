@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "S2_READ_MODEL_20261114",
+  "files": [
+    "tests/test_s2_home_do_now_snapshot_20261114.py",
+    "tests/test_s2_overview_never_inline_20261114.py"
+  ],
+  "anchor": "S2_READ_MODEL",
+  "comment": [
+    "ANCHOR: S2_READ_MODEL — S2 item 2 / ACC-CACHE (cc-deepseek-9). No GET computes: /api/v2/home/do-now reads HomeDoNowSnapshot@v1 written by the lane home-do-now-snapshot, and /api/v2/overview reads OverviewProjection@v1 through a reader that takes no compute callable at all. Cold start, cache miss, an aged/expired/corrupt/not-ok product, a body from another release and an outage each answer a labelled LAST-KNOWN-GOOD or a NAMED UNKNOWN (counts null, never zero) — never a request-thread build.",
+    "Contract: the route half of this gate is RED on a branch where the api_v2.py patch is not applied (measured 2026-11-14 on 52ab48c26: 2 failed / 7 errors / 35 passed — the home-do-now route, its auth helper and its projected-cache bound are in the hot file), and GREEN with PATCH-S2-read-model-r3-52ab48c26-cc-deepseek-9.patch applied (44 passed). The store/reader/producer half is green either way.",
+    "api_v2.py is a shared hot file owned by the integrator: this gate does not imply api_v2 alone — apply the patch and this gate in one release, and retire tests/test_s2_home_do_now_swr_20261114.py (S2_HOME_SWR_R6_20261114) in the same release, because this gate's route supersedes its stale-while-revalidate containment.",
+    "Synthetic documents and a scratch snapshot path only; no production DB, no Valkey, no scheduled job."
+  ]
+}
