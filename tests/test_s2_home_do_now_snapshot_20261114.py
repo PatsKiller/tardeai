@@ -355,6 +355,33 @@ def test_repeated_polls_are_served_from_the_projected_cache_and_still_do_not_bui
     assert len(route[0]._HOME_DO_NOW_SERVE_CACHE) == 1, "the cache is keyed per principal scope and bounded"
 
 
+def test_the_producer_build_executes_end_to_end(monkeypatch):
+    """Execute api_v2._home_do_now_build() — the call the lane makes — with only the world stubbed.
+
+    Every route test above REPLACES this function (to prove the route never builds), which is also why no test ever
+    *ran* it. REVIEW-S2-ACC-CACHE F1: r3's dead write to the removed ``_HOME_DO_NOW_CACHE`` at the end of this
+    function was a NameError that killed the lane while the gate stayed green. Stub only ``home_do_now.build``: the
+    rest of the function body (imports, the eight-entry probe table) executes for real, so any NameError/AttributeError
+    in it is red here. Anchor: S2_READ_MODEL. Mutation that must fail this test: add
+    ``_HOME_DO_NOW_CACHE["v"] = 1`` as the last line of ``_home_do_now_build``.
+    """
+    from lib.data_broker import home_do_now as hdn
+
+    import api_v2
+
+    seen = {}
+
+    def fake_build(probes):
+        seen["probes"] = sorted(probes)
+        return {"items": [], "sources": {name: {"status": "OK"} for name in probes}}
+
+    monkeypatch.setattr(hdn, "build", fake_build, raising=True)
+    body = api_v2._home_do_now_build()
+    assert body["items"] == []
+    assert seen["probes"] == ["cio", "deploy", "desk_truth", "held", "inbox", "needs_action", "proposals", "risk"]
+    assert sorted(body["sources"]) == seen["probes"], "the producer must call build() with its own probe table"
+
+
 # ── a build that is older than what is on disk never replaces it (ACC-CACHE item 3) ────────────────────────────
 
 def test_an_older_build_never_overwrites_a_newer_valid_snapshot(paths):
