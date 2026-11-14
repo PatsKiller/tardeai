@@ -7,7 +7,7 @@
 //  * EMPTY needs a fresh as_of behind it. An empty list or count 0 without one is UNKNOWN
 //    ("not materialised" and "nothing there" look the same on the wire).
 //  * UNKNOWN is never green: its cue level is NEUTRAL with the word UNKNOWN.
-//  * A row with no health rule and no producer clock has no signal at all: its OK carries
+//  * A read with no health field present in the payload and no producer clock has no signal: its OK carries
 //    healthUnproven, and the page shows "Health UNKNOWN" beside the body. A missing flag is not ok.
 import type { Envelope } from '../api/client.ts'
 import type { ReaderSpec } from '../api/readers.ts'
@@ -74,7 +74,9 @@ export function deriveRenderState<T>({ envelope, spec, now, isEmpty }: DeriveInp
       return base('UNKNOWN', `stale: ${ageHours.toFixed(1)} h old (limit ${s.maxAgeHours} h)`, { asOf, ageHours })
     }
   }
-  const healthUnproven = s.unavailableWhen.length === 0 && s.clock !== 'producer'
+  // Derived from the payload, not declared: a rule whose field is absent is no signal at all.
+  const healthFieldPresent = s.unavailableWhen.some(r => readPath(body, r.at) !== undefined)
+  const healthUnproven = !healthFieldPresent && s.clock !== 'producer'
     ? 'this source carries no health flag and no producer clock: health UNKNOWN until the producer adds one'
     : null
   if (isEmpty && isEmpty(body)) {

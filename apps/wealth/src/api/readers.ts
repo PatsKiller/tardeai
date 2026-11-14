@@ -89,13 +89,13 @@ export const READERS: ReaderSpec[] = [
     path: '/api/v2/market-risk/latest', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'producer',
     unavailableWhen: [{ at: 'data.state', notEquals: 'evaluated' }, { at: 'data.stale', staleFlag: true }],
     asOfAt: 'data.as_of', maxAgeHours: 1,
-    note: `${M}: 243,946 B; score is not a probability. maxAgeHours 1: the producer's own stale_after_hours 1.0 (cc-deepseek-7 ADDENDUM v2a 0ab2c54a); hourly producer, so expect UNKNOWN near the hour boundary. Health: data.state "evaluated" + data.stale (cc-deepseek-5 DELTA-G13 e7fd59f8).`,
+    note: `${M}: 243,946 B; score is not a probability. maxAgeHours 1: the producer's own stale_after_hours 1.0 (cc-deepseek-7 ADDENDUM v2a 0ab2c54a); hourly producer, so expect UNKNOWN near the hour boundary. Strict > (age exactly 1.0 h is fresh). Gate on data.stale, never the SWR cache_stale/cache_as_of annotations. Health: data.state "evaluated" + data.stale (cc-deepseek-5 DELTA-G13 e7fd59f8).`,
   },
   {
     path: '/api/v2/market-event/active', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'producer',
     unavailableWhen: [{ at: 'data.stale', staleFlag: true }],
-    asOfAt: 'data.inputs_as_of.market_risk', maxAgeHours: 1,
-    note: `${M}: 263,626 B MarketEvent@v1. Clock: inputs_as_of.market_risk (cc-deepseek-7 ADDENDUM v2a 0ab2c54a); computed_at follows the request and is not a clock. maxAgeHours 1 mirrors the market-risk input's own limit (cc-opus-3 inference; v2a names no limit).`,
+    asOfAt: 'data.inputs_as_of.market_risk', maxAgeHours: 26,
+    note: `${M}: 263,626 B MarketEvent@v1. Clock: inputs_as_of.market_risk (cc-deepseek-7 v2a 0ab2c54a); computed_at follows the request and is not a clock. maxAgeHours 26 = the producer's STALE_SNAPSHOT_HOURS (scripts/lib/market_event_api.py, strict >; v2b dc7bcb5a). data.stale is the complete rule: daily bars (4 days) and candidate updated_at (26 h) carry their own producer rules inside it.`,
   },
   // ---- reposition ----
   {
@@ -123,7 +123,7 @@ export const READERS: ReaderSpec[] = [
     path: '/api/v2/reentry/decision-desk', timeoutMs: 6000, heavy: true, clock: 'producer',
     unavailableWhen: [],
     asOfAt: 'data.freshness.resistance_generated_at', maxAgeHours: 96,
-    note: `${M}: 629,823 B; up to 2.411 s. computed_at follows the request (with a cache lag), so it is not a clock; resistance_generated_at with the desk's own 96 h rule (cc-deepseek-7 ADDENDUM v2a 0ab2c54a). Page shows freshness.price_age_h_median beside it. Actionable count is its own population.`,
+    note: `${M}: 629,823 B; up to 2.411 s. computed_at follows the request (with a cache lag), so it is not a clock; resistance_generated_at with the desk's own 96 h rule (cc-deepseek-7 ADDENDUM v2a 0ab2c54a). Page shows freshness.price_age_h_median, price_age_h_max and stale_symbol_count beside it (26 h prices with 0 stale symbols is not calm; cc-deepseek-5). No reader threshold is invented for them. Actionable count is its own population.`,
   },
   {
     path: '/api/v2/stops/reentry-watch', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: false, clock: 'none',

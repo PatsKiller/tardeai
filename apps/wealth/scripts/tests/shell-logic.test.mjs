@@ -299,9 +299,40 @@ test('market-risk: producer calls 1.0 h stale; older than 1 h → UNKNOWN', () =
   assert.equal(st.status, 'UNKNOWN'); assert.match(st.reason, /^stale/)
 })
 
-test('market-event: freshness is data.inputs_as_of.market_risk (producer), stale after 1 h', () => {
+test('market-event: freshness is data.inputs_as_of.market_risk (producer), limit 26 h = market_event_api STALE_SNAPSHOT_HOURS', () => {
   const p = '/api/v2/market-event/active', s = specFor(p)
   assert.equal(s.asOfAt, 'data.inputs_as_of.market_risk'); assert.equal(s.clock, 'producer')
-  assert.equal(deriveRenderState({ envelope: env(p, wrap({ stale: false, inputs_as_of: { market_risk: '2026-11-14T21:00:00Z' } })), now: NOW }).status, 'UNKNOWN')
+  assert.equal(s.maxAgeHours, 26, 'a reader stricter than the producer contradicts the payload on its own clock')
+  assert.equal(deriveRenderState({ envelope: env(p, wrap({ stale: false, inputs_as_of: { market_risk: '2026-11-14T21:00:00Z' } })), now: NOW }).status, 'OK', '2.5 h is fresh by the producer rule')
+  assert.equal(deriveRenderState({ envelope: env(p, wrap({ stale: false, inputs_as_of: { market_risk: '2026-11-13T20:00:00Z' } })), now: NOW }).status, 'UNKNOWN', '27.5 h')
   assert.equal(deriveRenderState({ envelope: env(p, wrap({ stale: false, computed_at: '2026-11-14T23:29:59Z' })), now: NOW }).status, 'UNKNOWN', 'computed_at follows the request; not a clock')
+})
+
+// ---- r5: cc-deepseek-7 v2b (dc7bcb5a): producer numbers, strict boundary, SWR cache fields ----
+test('market-risk: age exactly 1.0 h reads fresh (producer compares strictly, age > 1.0)', () => {
+  const st = deriveRenderState({ envelope: env('/api/v2/market-risk/latest', wrap({ state: 'evaluated', stale: false, as_of: '2026-11-14T22:30:00Z' })), now: NOW })
+  assert.equal(st.status, 'OK', st.reason)
+})
+
+test('no row gates on the SWR cache annotations (cache_stale / cache_as_of / cache_age_s are not engine freshness)', () => {
+  for (const r of READERS) {
+    for (const u of r.unavailableWhen) assert.ok(!/cache_(stale|as_of|age_s)/.test(u.at), `${r.path} ${u.at}`)
+    assert.ok(!/cache_(as_of|age_s)/.test(r.asOfAt ?? ''), r.path)
+  }
+})
+
+// ---- r5b: cc-deepseek-5 check: absence of every health field must not read calm ----
+test('a non-producer row whose health fields are all absent from the payload reads Health UNKNOWN, not calm', () => {
+  const missing = deriveRenderState({ envelope: env('/api/v2/recovery', wrap({ rows: [{ id: 1 }] })), now: NOW })
+  assert.equal(missing.status, 'OK')
+  assert.match(missing.healthUnproven ?? '', /no health flag/)
+  const present = deriveRenderState({ envelope: env('/api/v2/recovery', wrap({ ok: true, rows: [{ id: 1 }] })), now: NOW })
+  assert.equal(present.healthUnproven, null, 'data.ok present and healthy: signal exists')
+})
+
+test('an unregistered path (default spec) inherits Health UNKNOWN, never calm by omission', () => {
+  const st = deriveRenderState({ envelope: env('/api/v2/watchpool', wrap({ items: [{ id: 1 }] })), now: NOW })
+  assert.equal(specFor('/api/v2/watchpool').note, 'default')
+  assert.equal(st.status, 'OK')
+  assert.ok(st.healthUnproven, 'no row, no flag, no clock')
 })
