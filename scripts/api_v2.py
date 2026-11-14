@@ -50526,6 +50526,20 @@ def _cio_truth_readers():
     return cio_truth
 
 
+def _cio_holdings_with_evidence():
+    """GET /api/v2/portfolio/holdings — the canonical projection plus the shared broker evidence.
+
+    S2 broker b3: the payload is unchanged; ``attach`` adds ONE ``evidence`` key (portfolio + positions
+    envelopes under a single snapshot_id and the seven clocks) so Portfolio, Risk and Home cite the same
+    value at the same version. The stale window is the ``positions_store`` registry row — the domain the
+    payload's source clock belongs to. No second read, no broker call, no recomputation; ``attach``
+    cannot raise, and a failed build is a named FAILED block inside the payload.
+    """
+    from lib.broker_route_evidence import attach
+
+    return attach(_cio_truth_readers().holdings_payload(portfolio_holdings(), db_query=_db_query))
+
+
 def _market_event_active_api(query=None):
     """GET /api/v2/market-event/active — MarketEvent@v1 (LQ-20261107-333, spec §4.4). Advisory, read-only:
     episode, market gate, top candidates with their gates/state, per-account plan by account LABEL only."""
@@ -50618,9 +50632,7 @@ ROUTES = {
     "/api/v2/atm/profit-capture": lambda: _atm_profit_capture(),
     "/api/v2/atm/advisory-threshold-tuning": lambda: _atm_advisory_threshold_tuning(),
     "/api/v2/overview": lambda: _overview_served(),
-    "/api/v2/portfolio/holdings": lambda: _cio_truth_readers().holdings_payload(
-        portfolio_holdings(), db_query=_db_query
-    ),
+    "/api/v2/portfolio/holdings": _cio_holdings_with_evidence,
     "/api/v2/holdings/share-drift": lambda q=None: _share_drift_list(q),
     "/api/v2/holdings/share-drift/impact": lambda q=None: _share_drift_impact(q),
     "/api/v2/holdings/share-reconciliation/history": lambda q=None: _share_drift_history(q),
