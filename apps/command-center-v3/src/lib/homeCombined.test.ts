@@ -75,7 +75,11 @@ assert.equal(staleOnlyNo({ tradeReady: 'YES', gates: [] } as never, { blockers: 
   const r = run(status)
   const before = r.base.status.find(s => s.id === 'row-schedulers')!
   const after = r.model.status.find(s => s.id === 'row-schedulers')!
-  assert.equal(before.state, 'UNKNOWN', 'precondition: v010 draws a hard-coded UNKNOWN')
+  // 3046 A04: v010 itself now draws the schedulers gate, from the same lane_health_current row as the gate
+  // (it was a hard-coded UNKNOWN before). The combined reconcile must agree with it, not create it.
+  assert.equal(before.state, 'WARN', 'precondition: v010 itself draws the schedulers gate state, not a hard-coded UNKNOWN')
+  assert.equal(before.source, 'lane_health_current', 'precondition: v010 draws it from lane_health_current, the gate row')
+  assert.match(before.cause || '', /34 LATE/, 'precondition: v010 carries the gate cause')
   assert.equal(after.state, 'WARN', 'the row now draws the schedulers gate')
   assert.equal(after.source, 'lane_health_current')
   assert.match(after.cause || '', /34 LATE/)
