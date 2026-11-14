@@ -29,8 +29,10 @@
 .wl2-search input { min-height: 44px; padding: 0 10px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-1); color: var(--text-0); font-size: 14px; min-width: 0; width: 14rem; max-width: 100%; }
 .wl2-tools-note { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
 
-/* WL-10/WL-16/WL-26: the clocks the body carries, side by side; the age is page arithmetic, the stamps are the server's. */
-.wl2-clocks { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; margin: 0.35rem 0 0.6rem; padding: 0.45rem 0.6rem; border-left: 3px solid var(--v010-line, #d0d5dd); }
+/* WL-10/WL-16/WL-26: the clocks the body carries, side by side; the age is page arithmetic, the stamps are the server's.
+   The left rule is a theme token: the old value named a custom property that is defined nowhere, so its light-grey
+   literal fallback was the only colour ever used — including in dark mode. */
+.wl2-clocks { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; margin: 0.35rem 0 0.6rem; padding: 0.45rem 0.6rem; border-left: 3px solid var(--border-color); }
 .wl2-clock { display: flex; flex-direction: column; min-width: 8rem; }
 .wl2-clock dt { font-size: 0.72rem; letter-spacing: 0.02em; text-transform: uppercase; opacity: 0.75; }
 .wl2-clock dd { margin: 0; font-variant-numeric: tabular-nums; }
