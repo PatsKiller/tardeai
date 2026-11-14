@@ -380,6 +380,11 @@ check('the CSV header is served labels only, and the new block is additive', () 
 check('the table states the label and the composite decision', () => {
   const html = renderPage([row({})])
   need(html.includes('Hypothetical downside to stop (verified stop price)'), 'the header/title lost the label')
+  // N1 (review cc-deepseek-4, 19:05Z): pin the COLUMN HEADER CELL itself, not just "the label appears somewhere".
+  // Before this line the row titles satisfied the check above, so a header-only regression (its mutant M8 turned the
+  // cell into "Loss to stop") stayed green. This is the one label the operator reads as the column name.
+  need(/class="risk-h" title="Hypothetical downside to stop \(verified stop price\)">Risk</.test(html),
+    'the Risk column header lost its mandated title or visible name')
   need(html.includes('Composite risk score: no approved methodology'), 'the composite decision is missing')
   need(/not a loss/.test(html), 'the page no longer says the figure is not a loss')
 })
