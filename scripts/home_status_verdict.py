@@ -50,6 +50,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.lib import home_trade_ready as htr  # noqa: E402
+from scripts.lib import protection_policy as _protection_policy  # noqa: E402
 from scripts.lib.home_trade_ready import Item, Reading  # noqa: E402
 
 REGISTRY_PATH = REPO_ROOT / "config" / "home_status_registry.json"
@@ -78,8 +79,10 @@ SYNC_OK_STATUSES = ("complete",)      # measured 2026-11-11: complete | partial
 # LQ-20261107-2962: a mutual fund prices once a day (NAV after the close), so the shared quote_price limit (0.25 h open)
 # would call a good NAV STALE all session. Its limit is 1 trading day: hours with weekends and exchange holidays removed.
 FUND_NAV_MAX_TRADING_HOURS = 24.0
-DATA_EXEMPT_ASSET_TYPES = ("CASH", "MONEY_MARKET", "MONEY_MARKET_FUND", "SWEEP", "SWEEP_VEHICLE")
-DATA_NOT_COUNTED_UNDER_USD = 100.0
+# LQ-20261113-3047 (A05): one owner for both, lib/protection_policy.py; the floor is config/position_count_authority.json
+# min_position_usd ($100), re-read per call by data_not_counted (the constant is the value at import, for display).
+DATA_EXEMPT_ASSET_TYPES = _protection_policy.POLICY_EXEMPT_ASSET_TYPES
+DATA_NOT_COUNTED_UNDER_USD = _protection_policy.count_floor_usd()
 # LQ-20261107-2643 (operator P0 2026-11-12 19:08 ET): a mutual fund strikes ONE NAV a day, after the close, so it
 # has no intraday quote to read. The broker positions row carries that NAV (market value / qty) and the time it was
 # read; a held fund is graded on that row — source named — instead of demanding an intraday quote. A fund with
@@ -409,14 +412,39 @@ def _data_price(row: dict[str, Any]) -> tuple[Any, Optional[str]]:
     return None, None
 
 
-def data_not_counted(row: dict[str, Any]) -> bool:
-    """Under $100: listed, not counted. A missing value cannot prove it is small, so it stays counted."""
-    if row.get("symbol") == VIX_SYMBOL or row.get("market_value") is None:
-        return False
+def _data_value(row: dict[str, Any]) -> Optional[float]:
+    """The row's market value, or None when it is missing or unreadable (NaN included)."""
     try:
-        return abs(float(row["market_value"])) < DATA_NOT_COUNTED_UNDER_USD
-    except (TypeError, ValueError):
+        v = float(row["market_value"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return v if v == v else None
+
+
+def data_not_counted(row: dict[str, Any]) -> bool:
+    """Under the policy floor ($100): listed, not counted.
+
+    Only a known positive value can prove a row is small (LQ-20261113-3068 C1). A missing, unreadable, $0 or negative
+    value is UNVALUED (see data_unvalued): it stays counted, and it is never called "under $100".
+    """
+    if row.get("symbol") == VIX_SYMBOL:
         return False
+    v = _data_value(row)
+    return v is not None and 0 < v < _protection_policy.count_floor_usd()
+
+
+def data_unvalued(row: dict[str, Any]) -> Optional[str]:
+    """Why a held row has no usable value (its own UNKNOWN class, DECISIONS-20261111 I1/I2), or None when it has one."""
+    if row.get("symbol") == VIX_SYMBOL:
+        return None
+    if row.get("market_value") is None:
+        return "market value missing"
+    v = _data_value(row)
+    if v is None:
+        return "market value unreadable"
+    if v <= 0:
+        return "market value <= 0 on a held quantity"
+    return None
 
 
 _DATA_STATE_RANK = {htr.OK: 0, htr.STALE: 1, htr.UNKNOWN: 2}
@@ -453,6 +481,11 @@ def read_data(q: Query, now: datetime) -> Reading:
     exempt = sorted(str(r.get("symbol")) for r in all_rows if data_exempt(r))
     small = sorted(str(r.get("symbol")) for r in all_rows if not data_exempt(r) and data_not_counted(r))
     rows = [r for r in all_rows if not data_exempt(r) and not data_not_counted(r)]
+    # LQ-20261113-3068 C1: a held row with no usable value is listed UNKNOWN with why. It stays counted (its quote is
+    # still graded); it is never in listed_not_counted, because a $0 or missing value does not prove it is small.
+    unvalued = [{"symbol": str(r.get("symbol")), "state": htr.UNKNOWN, "why": why}
+                for r in rows if not data_exempt(r) for why in (data_unvalued(r),) if why]
+    unvalued.sort(key=lambda u: u["symbol"])
     if not any(r.get("symbol") == VIX_SYMBOL for r in rows):
         return htr.unknown(htr.DATA, "no quote rows read", source_id="market_quotes", lane_id="market-quotes",
                            owner="data")
@@ -485,7 +518,8 @@ def read_data(q: Query, now: datetime) -> Reading:
             r = htr.unknown(htr.DATA, f"no daily NAV for {len(missing_nav)} counted mutual fund(s): "
                                       f"{', '.join(missing_nav)}", **kw)
         r.value = {"symbols": len(rows), "missing": missing, "missing_quotes": missing_quotes,
-                   "missing_nav": missing_nav, "listed_not_counted": small, "exempt": exempt}
+                   "missing_nav": missing_nav, "listed_not_counted": small, "unvalued": unvalued,
+                   "exempt": exempt}
         if priced:
             oldest_row, oldest_at, _ = min(priced, key=lambda p: htr.to_utc(p[1]) or now)
             r.value["oldest_symbol"] = oldest_row.get("symbol")
@@ -505,7 +539,8 @@ def read_data(q: Query, now: datetime) -> Reading:
               for row, as_of, src in priced]
     graded_on, r = min(graded, key=lambda g: (-_DATA_STATE_RANK.get(g[1].state, 2), g[1].as_of or ""))
     # oldest_symbol names the symbol this gate's state is graded on: the worst reading, the oldest on a tie.
-    r.value = {"symbols": len(rows), "listed_not_counted": small, "exempt": exempt, "oldest_symbol": graded_on}
+    r.value = {"symbols": len(rows), "listed_not_counted": small, "unvalued": unvalued, "exempt": exempt,
+               "oldest_symbol": graded_on}
     if fund_nav:
         r.value["fund_nav"] = fund_nav
     funds = sorted(str(row.get("symbol")) for row, _as_of, _src in priced if data_is_mutual_fund(row))

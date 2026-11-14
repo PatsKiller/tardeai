@@ -768,11 +768,20 @@ def test_a_missing_equity_quote_is_still_a_missing_source_needing_backend():
 
 def test_data_lines_under_100_dollars_are_listed_not_counted_and_unknown_value_is_counted():
     t = NOW - timedelta(minutes=2)
-    rows = [held("$VIX", "INDEX", t, None), held("ZQA", "EQUITY", t), held("999999ZZ9", "EQUITY", None, 0.0),
+    rows = [held("$VIX", "INDEX", t, None), held("ZQA", "EQUITY", t), held("ZQS", "EQUITY", None, 40.0),
             held("ZQMM", "MONEY_MARKET", None)]
     r = lane.read_data(FakeDB({"WITH held": rows}), NOW)
     assert r.state == htr.OK
-    assert r.value == {"symbols": 2, "listed_not_counted": ["999999ZZ9"], "exempt": ["ZQMM"], "oldest_symbol": "$VIX"}
+    assert r.value == {"symbols": 2, "listed_not_counted": ["ZQS"], "unvalued": [], "exempt": ["ZQMM"],
+                       "oldest_symbol": "$VIX"}
+    # LQ-20261113-3068 C1: a $0 value on a held quantity does not prove the row is small. It is never "under $100":
+    # it is listed UNVALUED (UNKNOWN, with why) and stays counted, so a $0 row with no quote is a missing quote.
+    zero = rows + [held("999999ZZ9", "EQUITY", None, 0.0)]
+    r = lane.read_data(FakeDB({"WITH held": zero}), NOW)
+    assert r.state != htr.OK and r.value["missing"] == ["999999ZZ9"]
+    assert r.value["listed_not_counted"] == ["ZQS"]
+    assert r.value["unvalued"] == [{"symbol": "999999ZZ9", "state": htr.UNKNOWN,
+                                    "why": "market value <= 0 on a held quantity"}]
     rows.append(held("ZQB", "EQUITY", None, None))      # value unknown: cannot prove it is under $100
     assert lane.read_data(FakeDB({"WITH held": rows}), NOW).state == htr.UNKNOWN
     assert lane.read_data(FakeDB({"WITH held": rows[1:2]}), NOW).state == htr.UNKNOWN  # no VIX row
