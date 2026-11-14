@@ -149,7 +149,10 @@ def _systemctl_ok(argv: list[str]) -> bool:
             if argv[2] != "show" or not all(p in SYSTEMCTL_SHOW_PROPERTIES for p in props):
                 return False
             i += 2
-        elif a in _SYSTEMCTL_FLAGS or re.fullmatch(r"--type=(service|timer)", a) or _IDENT.match(a):
+        elif (a in _SYSTEMCTL_FLAGS or re.fullmatch(r"--type=(service|timer)", a) or a == "--state=failed"
+              or _IDENT.match(a)):
+            # ``--state=failed`` is the shared failed-unit adapter's selection (OPS-C1, 2026-11-14): it narrows the
+            # listing and cannot make systemctl write.
             i += 1
         else:
             return False

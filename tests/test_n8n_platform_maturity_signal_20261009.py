@@ -65,7 +65,9 @@ class FakeHost:
             return (0, self.n8n_errors + "\n", "") if self.n8n_errors is not None else (1, "", "psql failed")
         if argv[0] == "journalctl":
             return self.journal_rc, self.journal, ""
-        if argv[:4] == ["systemctl", "--user", "list-units", "--failed"]:
+        if argv[:3] == ["systemctl", "--user", "list-units"]:
+            # OPS-C1 (2026-11-14): the failed-unit query is the shared adapter's argv
+            # (``--all --state=failed --no-legend --plain --no-pager``, no pattern), not a local ``--failed`` call.
             return self.failed_rc, self.failed_units, ""
         return 1, "", "unexpected"
 

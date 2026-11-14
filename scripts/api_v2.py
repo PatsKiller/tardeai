@@ -34531,7 +34531,16 @@ def _queue_control_tower():
 
     # ── Needs attention ──
     failed = [t for t in timers if t.get("last_result") == "failed"]
-    stale = [t for t in timers if t.get("service_state") == "failed"]
+    # Failed units come from ONE shared snapshot, the same one the Platform card renders (OPS-C1, 2026-11-14).
+    # This used to be a second derivation from the per-timer `systemctl --user show` loop above; it named
+    # hermes-deep-research-local and missed tradeai-deploy-on-main while the Platform listed the tradeai units —
+    # two probes, two scopes, no observation time. See scripts/lib/failed_units.py.
+    try:
+        from lib import failed_units as _fu_qct
+    except ImportError:  # pragma: no cover — imported as scripts.<module>
+        from scripts.lib import failed_units as _fu_qct
+    failed_units_view = _fu_qct.select(_fu_qct.snapshot())
+    failed_units_attention = _fu_qct.attention(failed_units_view, skip={t["job_id"] for t in failed})
 
     return {
         "timestamp": _dtqct.now(_tzqct.utc).isoformat(),
@@ -34542,6 +34551,7 @@ def _queue_control_tower():
         "llm_jobs": len(llm_jobs),
         "telegram_capable_jobs": len(telegram_jobs),
         "failed_jobs": len(failed),
+        "failed_units": failed_units_view.get("count") if failed_units_view.get("answered") else None,
         "categories": {k: len(v) for k, v in categories.items()},
         "sections": {
             "24x7_services": [{"name": s["name"], "status": s["status"]} for s in services],
@@ -34571,7 +34581,10 @@ def _queue_control_tower():
             "needs_attention": [
                 {"job_id": t["job_id"], "reason": "last run failed", "last_result": t["last_result"]} for t in failed
             ]
-            + [{"job_id": t["job_id"], "reason": "service failed", "service_state": t["service_state"]} for t in stale],
+            + failed_units_attention,
+            # The queue's own failed-unit view: scope, source and as_of, so a shorter list here than on the
+            # Platform card is an explained difference, not a silent disagreement. answered=false means UNKNOWN.
+            "failed_units": failed_units_view,
             "real_llm_queue": {
                 "source": "high_llm_job_queue",
                 "source_status": "CONNECTED" if real_queue else "EMPTY",

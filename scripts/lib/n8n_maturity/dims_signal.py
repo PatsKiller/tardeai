@@ -398,7 +398,8 @@ def reliability(probe: core.Probe) -> dict:
       in-flight rows are excluded. sub = rate_score(rate, gate_success_rate). No ledger → missing.
     * api_kills = journal lines for ``api_unit`` matching ``api_kill_pattern`` in the window; sub = count_score.
       An empty journal window ("-- No entries --") is missing evidence (None), never a clean 0.
-    * failed_units = ``systemctl --user list-units --failed`` minus ``failed_unit_ignore``; sub = count_score.
+    * failed_units = the ONE shared user-unit failed snapshot (``lib/failed_units.py``: ``list-units --all
+      --state=failed``, no pattern) minus ``failed_unit_ignore``; sub = count_score.
     score = mean of the three; gate = rate ≥ gate_success_rate and 0 kills and 0 failed units; a failed gate
     caps the score at ``gate_cap``.
     """
@@ -452,18 +453,26 @@ def reliability(probe: core.Probe) -> dict:
     else:
         notes.append(f"journal for {unit} unreadable (rc={rc})")
 
-    rc, out, _ = probe.run(["systemctl", "--user", "list-units", "--failed", "--no-legend", "--plain"])
+    # The ONE shared failed-unit snapshot (scripts/lib/failed_units.py, OPS-C1 2026-11-14). This dimension used to
+    # run its own ``list-units --failed`` over an implicit scope; the /ops Platform card and queue used two more
+    # shapes again. One ARGV, one parser, so every surface counts the same units — and this one is still read through
+    # ``probe.run`` so the maturity tests keep driving it hermetically.
+    try:  # imported as lib.n8n_maturity.dims_signal / as scripts.lib.n8n_maturity.dims_signal
+        from .. import failed_units as _failed_units
+    except ImportError:  # pragma: no cover - namespace-package import path
+        from lib import failed_units as _failed_units  # type: ignore[no-redef]
+    rc, out, _ = probe.run(list(_failed_units.ARGV))
     failed: Optional[list[str]] = None
     unit_sub: Optional[float] = None
     if rc == 0:
         ignore = [re.compile(p) for p in _cfg(probe, dim, "failed_unit_ignore")]
-        names = [ln.split()[0] for ln in out.splitlines() if ln.strip() and not ln.startswith("0 ")]
+        names = [u["unit"] for u in _failed_units.parse_failed_units(out)]
         failed = [n for n in names if not any(p.search(n) for p in ignore)]
         unit_sub = count_score(len(failed), zero_at, gs)
-        ev.append(core.evidence("systemctl --user list-units --failed", failed=failed,
-                                ignored=len(names) - len(failed)))
+        ev.append(core.evidence(" ".join(_failed_units.ARGV), failed=failed,
+                                ignored=len(names) - len(failed), scope=_failed_units.SCOPE))
     else:
-        notes.append(f"systemctl --user list-units --failed unreadable (rc={rc})")
+        notes.append(f"systemctl --user list-units --state=failed unreadable (rc={rc})")
 
     parts = [("run_success", run_sub), ("api_sigkills", kill_sub), ("failed_units", unit_sub)]
     score, status, mnotes = core.mean_score(parts)

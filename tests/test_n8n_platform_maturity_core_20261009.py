@@ -38,6 +38,8 @@ _NAMES = '{{range .Config.Env}}{{index (split . "=") 0}}{{"\\n"}}{{end}}'
     ["crontab", "-l"],
     ["/usr/bin/crontab", "-l"],
     ["systemctl", "--user", "list-units", "--failed", "--no-legend", "--plain"],
+    # OPS-C1 (2026-11-14): the shared failed-unit adapter's argv, read by the reliability dimension.
+    ["systemctl", "--user", "list-units", "--all", "--state=failed", "--no-legend", "--plain", "--no-pager"],
     ["systemctl", "--user", "show", "x.service", "-p", "ActiveState", "-p", "ExecStart"],
     ["systemctl", "--user", "list-unit-files", "--type=timer", "--no-legend"],
     ["journalctl", "--user", "-u", "x.service", "--since", "2026-10-09 10:00:00 UTC", "--no-pager", "-o", "short-iso"],
@@ -341,6 +343,8 @@ def test_r2_legit_quoted_columns_still_pass():
     (["systemctl", "--user", "show", "-p", "FragmentPath", "-p", "DropInPaths", "x.service"], True),
     (["systemctl", "--user", "list-units", "-p", "ActiveState"], False),
     (["systemctl", "--user", "list-units", "--failed", "--no-legend", "--plain"], True),
+    # OPS-C1 (2026-11-14): the shared adapter's argv is read-only too.
+    (["systemctl", "--user", "list-units", "--all", "--state=failed", "--no-legend", "--plain", "--no-pager"], True),
     (["gh", "run", "list", "-R", "--hostname"], False),
     (["gh", "run", "list", "-R", "-x"], False),
     (["gh", "run", "list", "--workflow", ".github/x.yml"], False),

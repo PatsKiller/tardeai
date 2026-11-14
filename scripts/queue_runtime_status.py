@@ -4,6 +4,34 @@ import json, subprocess, sys
 from pathlib import Path
 from datetime import datetime, timezone
 
+
+def failed_units_snapshot(run=None, now=None):
+    """The ONE failed-unit view for the /ops queue (OPS-C1, 2026-11-14).
+
+    The queue used to infer "service failed" from a per-timer ``systemctl --user show`` loop (``ActiveState``), while
+    the Platform card ran its own ``list-units --failed tradeai*``. The two lists disagreed — ``hermes-deep-research-
+    local`` appeared here and ``tradeai-deploy-on-main`` did not — because they were two probes over two scopes with
+    no shared observation time. The queue now reads the same snapshot as every other surface and reports its scope
+    and when the snapshot was taken; api_v2 renders it as ``sections.failed_units`` and derives ``needs_attention``
+    entries from it with :func:`failed_units_attention`.
+    """
+    from lib import failed_units as _fu
+
+    return _fu.select(_fu.snapshot(run=run, now=now))
+
+
+def failed_units_attention(view, skip=()):
+    """``needs_attention`` entries for failed units, derived from the shared view (see ``lib.failed_units.attention``).
+
+    An unanswered view yields no entries — the queue's ``sections.failed_units`` carries ``answered: false`` and the
+    reason, and the page must render UNKNOWN rather than an empty "all clear". ``skip`` is the set of job ids already
+    reported as "last run failed" so one timer is not listed twice.
+    """
+    from lib import failed_units as _fu
+
+    return _fu.attention(view, skip)
+
+
 def get_timer_status():
     """Get next/last run for all user timers."""
     timers = {}

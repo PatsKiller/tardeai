@@ -1114,20 +1114,36 @@ def parse_failed_units(text: str) -> list[dict]:
 
 
 def probe_failed_units(run: Optional[Callable[..., Any]] = None) -> dict:
-    """Read-only: list failed tradeai* user units. Raises when systemctl cannot answer."""
+    """Read-only: the shared failed-unit snapshot (scripts/lib/failed_units.py), scoped to tradeai*.
+
+    OPS-C1 (2026-11-14): this reader used to run its own ``systemctl list-units tradeai* --state=failed``, a second
+    probe with its own (unstated) observation time. It now reads the one snapshot every surface shares, keeps its
+    tradeai* scope, and reports the scope, the snapshot's clock and any out-of-scope failed units. Raises when
+    systemctl cannot answer, as before, so the source status machinery still reports the source unavailable.
+    """
     import os
     import subprocess
 
-    env = dict(os.environ)
-    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    from lib import failed_units as _fu
+
     run = run or subprocess.run
-    r = run(
-        ["systemctl", "--user", "list-units", "tradeai*", "--state=failed", "--plain", "--no-legend", "--no-pager"],
-        capture_output=True,
-        text=True,
-        timeout=4,
-        env=env,
-    )
-    if r.returncode != 0:
-        raise SourceUnavailable(f"systemctl exit {r.returncode}: {(r.stderr or '').strip()[:120]}")
-    return {"failed_units": parse_failed_units(r.stdout)}
+
+    def _run(argv, **kw):
+        # systemctl --user needs the user runtime bus when this runs under cron without a login session.
+        env = dict(os.environ)
+        env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+        kw.setdefault("env", env)
+        return run(argv, **kw)
+
+    snap = _fu.snapshot(run=_run, timeout_s=4.0, use_cache=run is None)
+    if not snap.get("answered"):
+        raise SourceUnavailable(snap.get("reason") or "systemctl failed-unit list unavailable")
+    sel = _fu.select(snap, prefixes=("tradeai",), scope_label="failed tradeai* units")
+    return {
+        "failed_units": sel["units"],
+        "scope": sel["scope"],
+        "as_of": snap.get("as_of"),
+        "source": snap.get("source"),
+        "outside_scope": [u.get("unit") for u in sel["outside"]],
+        "reviewed_at": snap.get("as_of"),
+    }

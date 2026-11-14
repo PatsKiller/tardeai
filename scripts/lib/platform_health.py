@@ -43,6 +43,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+try:  # api_v2 imports this as `lib.platform_health`; tooling may import it as `scripts.lib.platform_health`
+    from lib import failed_units as _failed_units
+except ImportError:  # pragma: no cover — only the scripts.lib.* import form
+    from scripts.lib import failed_units as _failed_units
+
 SCHEMA = "PlatformHealth@v1"
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -449,25 +454,51 @@ def probe_units(deps: Deps) -> list[dict]:
     return out
 
 
-FAILED_SPEC = ("unit.failed_tradeai", "services", "failed tradeai* units", "systemctl --user list-units --failed")
+# The row's `source` is the argv every reader now runs (review F3, 2026-11-14T20:44Z): one string on the row and in
+# `detail`, never a second, unrun command.
+FAILED_SPEC = ("unit.failed_tradeai", "services", "failed tradeai* units", _failed_units.SOURCE)
 
 
 def probe_failed_units(deps: Deps) -> list[dict]:
-    as_of = _iso(deps.now())
-    argv = ["systemctl", "--user", "list-units", "--failed", "--no-legend", "--plain", "--no-pager", FAILED_UNIT_PATTERN]
-    try:
-        proc = _run(deps, argv, env=_systemctl_env())
-    except subprocess.TimeoutExpired:
-        return [_unknown(FAILED_SPEC, "systemctl timed out", as_of)]
-    except OSError as exc:
-        return [_unknown(FAILED_SPEC, f"systemctl not runnable: {type(exc).__name__}", as_of)]
-    if getattr(proc, "returncode", 1) != 0:
-        return [_unknown(FAILED_SPEC, f"systemctl exit {proc.returncode}", as_of)]
-    names = [ln.split()[0] for ln in str(proc.stdout or "").splitlines() if ln.strip()]
-    detail = {"units": names}
+    """The failed-unit row from the ONE shared snapshot (scripts/lib/failed_units.py, OPS-C1 2026-11-14).
+
+    This card's scope stays ``tradeai*``; the snapshot is unscoped, so the row can also say how many failed user
+    units sit *outside* the scope (the queue used to show one of those and omit a tradeai one, with no way to tell).
+    ``detail`` carries the scope, the shared observation time and the out-of-scope units.
+
+    Cache (review F2): production (``deps.runner`` is ``subprocess.run``) opts into the adapter's 5 s in-process
+    cache, so this card and the queue in ONE server process read one ``systemctl`` call and state the same
+    ``as_of``. The local wrapper below is not ``subprocess.run``, so the cache choice is passed explicitly; an
+    injected test runner still probes. This row is itself inside a payload cached for ``CACHE_TTL_S`` (30 s) that
+    can serve last-good with ``age_s``, so the operator contract is each surface's own ``as_of`` plus its
+    freshness — not one shared instant across a cached payload.
+    """
+    def run(argv, **kw):  # the shared adapter's runner signature; the env is the usual user-bus injection
+        return _run(deps, argv, env=_systemctl_env())
+
+    snap = _failed_units.snapshot(run=run, timeout_s=deps.probe_timeout_s, now=deps.now,
+                                  use_cache=deps.runner is subprocess.run)
+    as_of = snap.get("as_of") or _iso(deps.now())
+    sel = _failed_units.select(snap, prefixes=(FAILED_UNIT_PATTERN.rstrip("*"),),
+                               scope_label=f"failed {FAILED_UNIT_PATTERN} units")
+    if not sel["answered"]:
+        return [_unknown(FAILED_SPEC, sel["reason"] or "systemctl did not answer", as_of)]
+    names = [u["unit"] for u in sel["units"]]
+    outside = [u["unit"] for u in sel["outside"]]
+    detail = {
+        "units": names,
+        "scope": sel["scope"],
+        "source": sel["source"],
+        "reviewed_at": snap.get("as_of"),
+        "user_units_failed_total": sel["count"] + sel["outside_count"],
+        "outside_scope": outside,
+    }
     if not names:
         return [_item(*FAILED_SPEC, "OK", 0, None, as_of, detail)]
-    return [_item(*FAILED_SPEC, "WARN", len(names), "failed: " + ", ".join(names), as_of, detail)]
+    reason = "failed: " + ", ".join(names)
+    if outside:
+        reason += f" ({len(outside)} more user unit(s) outside this card's scope failed: {', '.join(outside)})"
+    return [_item(*FAILED_SPEC, "WARN", len(names), reason, as_of, detail)]
 
 
 # ── disk / cpu / memory ──────────────────────────────────────────────────────
@@ -569,7 +600,7 @@ def probe_backup_artifact(deps: Deps) -> list[dict]:
     now = deps.now()
     as_of = _iso(now)
     d = Path(deps.backup_dir)
-    spec = ("backup.latest_artifact", "backup", "newest DB backup", f"{d}/{BACKUP_GLOB} mtime")
+    spec = ("backup.latest_artifact", "backup", "newest local DB dump", f"{d}/{BACKUP_GLOB} mtime")
     if not d.is_dir():
         return [_unknown(spec, "backup dir absent", as_of)]
     try:
@@ -581,7 +612,12 @@ def probe_backup_artifact(deps: Deps) -> list[dict]:
     mtime, size, p = max(files)
     age_h = (now.timestamp() - mtime) / 3600.0
     detail = {"file": p.name, "size_bytes": size, "mtime": _iso(datetime.fromtimestamp(mtime, tz=timezone.utc)),
-              "age_h": round(age_h, 1)}
+              "age_h": round(age_h, 1),
+              # OPS-C1 (operator OP-020): the dump's existence proves LOCAL storage only. Nothing here reads an
+              # offsite-copy receipt or a restore receipt, so those two stay UNPROVEN until some lane writes them.
+              "proves": "a local dump exists",
+              "offsite_copy": "UNPROVEN",
+              "restore": "UNPROVEN"}
     value = f"{_fmt_dur(age_h * 3600)} old ({p.name}, {_fmt_bytes(size)})"
     if age_h > BACKUP_CRIT_H:
         return [_item(*spec, "CRIT", value, f"newest backup older than {BACKUP_CRIT_H:.0f}h", as_of, detail)]
@@ -831,26 +867,62 @@ def collect(deps: Optional[Deps] = None, *, total_budget_s: float = TOTAL_BUDGET
 _CACHE: dict = {"at": None, "payload": None}
 _CACHE_LOCK = threading.Lock()
 
+#: A request that already has a usable last-good waits this long for a fresh collection before serving the last-good
+#: with its age (OPS-C1: the card took 2.3 s and still said nothing about how old its numbers were).
+SERVE_WITHIN_S = 1.5
 
-def get_platform_health(db_query: Optional[Callable[..., Any]] = None, *, deps: Optional[Deps] = None,
-                        use_cache: bool = True, clock: Callable[[], float] = time.monotonic) -> dict:
-    """The endpoint body. Never raises; cached CACHE_TTL_S."""
-    with _CACHE_LOCK:
-        at = _CACHE["at"]
-        if use_cache and at is not None and _CACHE["payload"] is not None and clock() - at < CACHE_TTL_S:
-            return dict(_CACHE["payload"], cached=True)
+
+def _collect_into_cache(d: Deps, out: dict, clock: Callable[[], float]) -> None:
     try:
-        d = deps or Deps(db_query=db_query)
-        if d.db_query is None and db_query is not None:
-            d.db_query = db_query
         payload = collect(d)
-    except Exception as exc:
-        return {"schema": SCHEMA, "status": "UNAVAILABLE", "overall": "UNKNOWN", "items": [],
-                "as_of": _iso(datetime.now(timezone.utc)), "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+    except Exception as exc:  # pragma: no cover — collect itself does not raise for probes
+        out["error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+        return
+    out["payload"] = payload
     with _CACHE_LOCK:
         _CACHE["at"] = clock()
         _CACHE["payload"] = payload
-    return dict(payload, cached=False)
+
+
+def get_platform_health(db_query: Optional[Callable[..., Any]] = None, *, deps: Optional[Deps] = None,
+                        use_cache: bool = True, clock: Callable[[], float] = time.monotonic) -> dict:
+    """The endpoint body. Never raises; fresh for CACHE_TTL_S, else fresh-or-last-good-with-age.
+
+    When a last-good payload exists, the request waits at most ``SERVE_WITHIN_S`` for a fresh collection and then
+    serves the last-good marked ``stale`` with ``age_s`` and its own ``as_of`` — the operator's ">2 s probe" now
+    returns promptly, labelled, instead of blocking the whole card. The collection continues on its worker thread and
+    becomes the new cache entry when it finishes.
+    """
+    with _CACHE_LOCK:
+        at = _CACHE["at"]
+        last_good = _CACHE["payload"]
+        if use_cache and at is not None and last_good is not None and clock() - at < CACHE_TTL_S:
+            return dict(last_good, cached=True)
+    d = deps or Deps(db_query=db_query)
+    if d.db_query is None and db_query is not None:
+        d.db_query = db_query
+    out: dict = {}
+    worker = threading.Thread(target=_collect_into_cache, args=(d, out, clock), name="platform-health-collect",
+                              daemon=True)
+    worker.start()
+    # With a last-good in hand, do not make the operator wait for the whole 5 s budget; without one, wait for the
+    # collection's own bounded run so a first paint is still complete.
+    worker.join(SERVE_WITHIN_S if last_good is not None else TOTAL_BUDGET_S + PROBE_TIMEOUT_S)
+    if "payload" in out:
+        return dict(out["payload"], cached=False)
+    if "error" in out:
+        return {"schema": SCHEMA, "status": "UNAVAILABLE", "overall": "UNKNOWN", "items": [],
+                "as_of": _iso(datetime.now(timezone.utc)), "error": out["error"]}
+    with _CACHE_LOCK:
+        at2 = _CACHE["at"]
+        stale_payload = _CACHE["payload"]
+    if stale_payload is not None and at2 is not None:
+        age_s = max(0.0, round(clock() - at2, 1))
+        return dict(stale_payload, cached=True, stale=True, age_s=age_s,
+                    served="last good reading; the fresh collection is still running")
+    return {"schema": SCHEMA, "status": "UNAVAILABLE", "overall": "UNKNOWN", "items": [],
+            "as_of": _iso(datetime.now(timezone.utc)),
+            "error": f"collection exceeded {TOTAL_BUDGET_S:g} s and no last-good reading exists yet"}
 
 
 def _reset_cache() -> None:

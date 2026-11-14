@@ -19,6 +19,7 @@ import TradeAIPanel from '../components/TradeAIPanel'
 import DataSourceHealth from '../components/DataSourceHealth'
 import ExecutionStatePanel from '../components/ExecutionStatePanel'
 import PlatformHealthPanel from '../components/PlatformHealthPanel'
+import { QueueFailedUnitsNote, queueNominalText } from '../components/QueueFailedUnitsNote'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 import { OvernightQueuePanel, DataPlausibilityPanel, PipelineFailuresPanel } from '../components/system/HiddenFailurePanels'
@@ -80,6 +81,7 @@ export default function SystemHub({ onDrill }: Props) {
   const llmJobs = qct?.llm_jobs ?? '—'
   const realQueue = qct?.sections?.real_llm_queue ?? {}
   const needsAttention = qct?.sections?.needs_attention ?? []
+  const failedUnits = qct?.sections?.failed_units ?? null
   const dueNext = qct?.sections?.due_next ?? []
 
   const siemEvents = siem?.events ?? []
@@ -298,13 +300,14 @@ export default function SystemHub({ onDrill }: Props) {
             <div style={{ fontSize: 13, fontWeight: 700, color: needsAttention.length > 0 ? TOKENS.danger : 'var(--text0)', marginBottom: 10 }}>
               Needs Attention ({needsAttention.length})
             </div>
-            {needsAttention.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>All systems nominal</div> :
+            {needsAttention.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>{queueNominalText(failedUnits)}</div> :
             needsAttention.map((a: any, i: number) => (
               <div key={i} onClick={() => onDrill({ title: a.job_id, subtitle: a.reason, endpoint: '/api/v2/system/queue-control-tower', rows: [a] })}
                 style={{ padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, color: TOKENS.danger }}>
                 {a.job_id}: {a.reason}
               </div>
             ))}
+            <QueueFailedUnitsNote section={failedUnits} />
           </div>
 
           {/* LLM Queue */}
