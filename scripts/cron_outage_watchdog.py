@@ -470,6 +470,13 @@ def main() -> int:
                 and report["notification"].get("delivered") is not True):
             report["status"] = "CRIT"
             report["alert_delivery_status"] = "FAILED_OR_UNCONFIRMED"
+        # LQ-20261113-3064: a CRIT also goes through the governed critical hub (text + Telegram + email); gated off in config.
+        # Due-ness is the hook's own state, not the Telegram P1's reminder gate (review 3064 F1); the call is guarded (F3).
+        try:
+            from scripts.lib.watchdog_critical_escalation import escalate_if_due
+            report["critical_escalation"], prior = escalate_if_due(report, cfg, prior, now_iso=iso(now), now_epoch=now.timestamp())
+        except Exception as exc:  # noqa: BLE001 - an escalation fault must never take the watchdog down
+            report["critical_escalation"] = {"status": "ESCALATION_ERROR", "delivered": False, "reason": type(exc).__name__}
     if args.run:
         atomic_json(args.state_root / STATE, prior)
         atomic_json(args.state_root / LATEST, report)
