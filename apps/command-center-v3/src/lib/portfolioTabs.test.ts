@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PORTFOLIO_TABS, resolvePortfolioTab, resolvePortfolioTabParam } from './portfolioTabs.ts'
+import { legacyPortfolioRedirect } from './portfolioDeepLink.ts'
 
 const src = dirname(fileURLToPath(import.meta.url))
 
@@ -35,10 +36,14 @@ assert.deepEqual(resolvePortfolioTabParam('nonsense'), { tab: 'Holdings', known:
 // Mutant guard: a resolver that only lower-cases (no separator folding) fails here.
 assert.equal(resolvePortfolioTab('LOOK_THROUGH'), 'Look-through')
 
-// 5. Route: /v3/portfolio forwards ?tab= to /v3/portfolio-classic with the search string intact.
+// 5. Route: /v3/portfolio forwards ?tab= to /v3/portfolio-classic with the search string intact. Since OBS-P2 the
+// forward is the tested lib/portfolioDeepLink contract, so pin its behaviour for ?tab= and the page's use of it.
+assert.equal(legacyPortfolioRedirect('?tab=returns'), '/portfolio-classic?tab=returns')
+assert.equal(legacyPortfolioRedirect('?tab=Stop%20Management&symbol=X'), '/portfolio-classic?tab=Stop%20Management&symbol=X')
+assert.equal(legacyPortfolioRedirect('?symbol=X'), null)
 const v002 = readFileSync(join(src, '../pages/PortfolioV002.tsx'), 'utf8')
-assert.match(v002, /const LEGACY_PARAMS = \[[^\]]*'tab'/)
-assert.match(v002, /<Navigate to=\{`\/portfolio-classic\$\{location\.search\}`\} replace \/>/)
+assert.match(v002, /const legacyTo = legacyPortfolioRedirect\(location\.search\)/)
+assert.match(v002, /if \(legacyTo\) return <Navigate to=\{legacyTo\} replace \/>/)
 
 // 6. The classic page resolves with the shared resolver and states an unknown tab instead of silently swapping it.
 const hub = readFileSync(join(src, '../pages/PortfolioHub.tsx'), 'utf8')

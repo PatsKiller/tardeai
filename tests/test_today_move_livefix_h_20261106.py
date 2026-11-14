@@ -80,18 +80,30 @@ def test_no_market_day_figure_is_unknown_never_invented():
 
 
 def test_overview_route_and_performance_share_one_overlay():
+    import ast
     import inspect
+    import re
 
     import scripts.api_v2 as api_v2
 
     assert "_market_day_holdings(holdings)" in inspect.getsource(api_v2.portfolio_performance)
     route = inspect.getsource(api_v2._overview_with_today_move)
     assert "_market_day_holdings(" in route and "today_move_payload(" in route
-    # LQ-20261107-1612: the route reads the projection first; its inline fallback, and the lane that
-    # builds the projection, are both this same function, so the overlay still has one path.
+    # LQ-20261107-1612 + S2 item 2 (ACC-CACHE r4): the overlay still has ONE path, but the route no longer
+    # carries it as an inline fallback. The route serves the projection lane's body and passes None as the
+    # compute fallback — a GET never builds — while the lane that builds the projection, build_overview_projection.py,
+    # computes through this same _overview_with_today_move(). Pin both ends of that one path; the old
+    # "the function call appears inside _overview_served" pin is gone because r4 removed exactly that
+    # fallback, and re-adding it is what this test must catch.
+    served = inspect.getsource(api_v2._overview_served)
+    assert "_overview_projection.serve(" in served
+    assert re.search(r"_overview_projection\.serve\(\s*None\s*,", served), served  # no compute fallback
     assert "_overview_served()" in inspect.getsource(api_v2.ROUTES["/api/v2/overview"])
-    assert "_overview_with_today_move," in inspect.getsource(api_v2._overview_served)
     from pathlib import Path
 
-    lane = Path(api_v2.__file__).with_name("build_overview_projection.py").read_text(encoding="utf-8")
-    assert "_overview_with_today_move()" in lane
+    lane_src = Path(api_v2.__file__).with_name("build_overview_projection.py").read_text(encoding="utf-8")
+    # A CALL, parsed — not a substring: the lane's own docstring names this function, so a text grep would stay
+    # green after the call itself was replaced.
+    lane_calls = [n for n in ast.walk(ast.parse(lane_src))
+                  if isinstance(n, ast.Call) and ast.unparse(n.func) == "api_v2._overview_with_today_move"]
+    assert lane_calls, "the projection lane must compute through api_v2._overview_with_today_move()"
