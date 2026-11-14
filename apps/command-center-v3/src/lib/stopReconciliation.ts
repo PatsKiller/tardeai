@@ -41,26 +41,22 @@ export function stopReconciliation(input: {
   const stopsPresent = input.stopsAsOf != null && input.stopsAsOf !== ''
   const pos = ms(input.positionsAsOf)
   const stops = ms(input.stopsAsOf)
-  if (posPresent && pos == null) {
+  // Guard on the parsed values, not on presence, so the comparison below is type-narrowed: a clock that is on
+  // the wire but unreadable and a clock that was never published are different sentences.
+  const posWhy = () => posPresent
+    ? `the positions snapshot clock ${JSON.stringify(input.positionsAsOf)} is not a readable time`
+    : 'the positions snapshot time is not published, so the broker stop read cannot be paired with it'
+  const stopsWhy = () => stopsPresent
+    ? `the stop read clock ${JSON.stringify(input.stopsAsOf)} is not a readable time`
+    : 'no broker stop read is published, so its states cannot be dated against the positions snapshot'
+  if (pos == null && stops == null) {
     return { state: 'unknown', since: null,
-      reason: `the positions snapshot clock ${JSON.stringify(input.positionsAsOf)} is not a readable time` }
+      reason: posPresent || stopsPresent ? [posPresent ? posWhy() : null, stopsPresent ? stopsWhy() : null]
+        .filter(Boolean).join('; ')
+        : 'neither the positions snapshot time nor a broker stop read is published, so the two reads cannot be paired' }
   }
-  if (stopsPresent && stops == null) {
-    return { state: 'unknown', since: null,
-      reason: `the stop read clock ${JSON.stringify(input.stopsAsOf)} is not a readable time` }
-  }
-  if (!posPresent && !stopsPresent) {
-    return { state: 'unknown', since: null,
-      reason: 'neither the positions snapshot time nor a broker stop read is published, so the two reads cannot be paired' }
-  }
-  if (!posPresent) {
-    return { state: 'unknown', since: null,
-      reason: 'the positions snapshot time is not published, so the broker stop read cannot be paired with it' }
-  }
-  if (!stopsPresent) {
-    return { state: 'unknown', since: null,
-      reason: 'no broker stop read is published, so its states cannot be dated against the positions snapshot' }
-  }
+  if (pos == null) return { state: 'unknown', since: null, reason: posWhy() }
+  if (stops == null) return { state: 'unknown', since: null, reason: stopsWhy() }
   if (stops >= pos) {
     return { state: 'reconciled', since: null,
       reason: 'the broker order read is at or after the positions snapshot' }
