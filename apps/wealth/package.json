@@ -6,8 +6,8 @@
   "description": "Trade-AI Wealth: net-new frontend built in parallel with Command Center v3 (operator decision 2026-11-14). Shares the canonical backend; owns only its UI.",
   "scripts": {
     "dev": "vite",
-    "check": "node scripts/check-contracts.mjs",
-    "build": "node scripts/check-contracts.mjs && tsc && vite build"
+    "check": "node scripts/check-contracts.mjs && node scripts/check-design-fidelity.mjs && node --test scripts/tests/shell-logic.test.mjs",
+    "build": "npm run check && tsc && vite build"
   },
   "dependencies": {
     "react": "^18.3.1",
