@@ -197,3 +197,27 @@ def test_command_loading_code_from_release_and_canonical_is_mixed_fail(host):
     u = _svc("tradeai-m.service", f"python {host['cur']}/scripts/m.py --plugin {host['canon']}/scripts/p.py")
     e = _one(_build(host, [u]), "tradeai-m.service")
     assert e.verdict == rmv.FAIL and "mixed code roots" in e.evidence
+
+
+def test_code_root_that_does_not_exist_is_dead_on_start_fail(host, tmp_path):
+    gone = tmp_path / "tradeai-wt-gone"  # never created: the worktree was removed
+    u = _svc("tradeai-g.service", f"python {gone}/scripts/g.py", wd=str(gone))
+    e = _one(_build(host, [u]), "tradeai-g.service")
+    assert e.verdict == rmv.FAIL and "dead on start" in e.evidence
+    tab = f"0 3 * * * cd {gone} && python scripts/g.py\n"
+    c = [x for x in _build(host, [], crontab=tab) if x.kind == "cron"]
+    assert [x.verdict for x in c] == [rmv.FAIL] and "dead on start" in c[0].evidence
+
+
+def test_existing_worktree_root_stays_not_release(host, tmp_path):
+    live = tmp_path / "tradeai-wt-live"
+    live.mkdir()
+    u = _svc("tradeai-l.service", f"python {live}/scripts/l.py", wd=str(live))
+    assert _one(_build(host, [u]), "tradeai-l.service").verdict == rmv.NOT_RELEASE
+
+
+def test_shell_variables_and_systemd_wd_prefixes_are_not_dead(host):
+    assert rmv.missing_roots({"CURRENT"}, '"$CUR"', str(host["base"]), host["canon"]) == []
+    assert rmv.missing_roots(set(), "!~", str(host["base"]), host["canon"], dir_exists=lambda d: d != "!~") == []
+    assert rmv.missing_roots(set(), "-/nowhere/x", str(host["base"]), host["canon"]) == []
+    assert rmv.missing_roots(set(), "/nowhere/x", str(host["base"]), host["canon"]) == ["/nowhere/x"]

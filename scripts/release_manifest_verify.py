@@ -121,6 +121,30 @@ def resolve_candidate_loop(text: str, exists: Callable[[str], bool] = os.path.is
     return "", f"candidate loop: none of {len(cands)} candidates holds {rel}"
 
 
+def missing_roots(roots: set[str], wd: str, releases_base: str, canonical: str,
+                  dir_exists: Callable[[str], bool] = os.path.isdir) -> list[str]:
+    """Directories the next run needs that do not exist (WorkingDirectory, a release, the checkout, a worktree).
+    A unit or cron line whose code root is gone cannot load code: it is dead on start, not merely NOT_RELEASE."""
+    wd = (wd or "").strip("'\"")
+    if wd.startswith("-"):   # systemd: "-" = missing directory is ignored
+        wd = ""
+    wd = wd.lstrip("!")      # systemctl show prints "!" before a home-relative/unchecked value
+    if wd == "~" or wd.startswith("~/"):
+        wd = os.path.expanduser(wd)
+    need = [wd] if wd else []
+    for r in sorted(roots):
+        if r == "CURRENT":
+            need.append(f"{releases_base.rstrip('/')}/CURRENT")
+        elif r.startswith("REL:"):
+            need.append(f"{releases_base.rstrip('/')}/{r[4:]}")
+        elif r == "CANONICAL" and canonical:
+            need.append(canonical)
+        elif r.startswith("WORKTREE:"):
+            need.append(r[len("WORKTREE:"):])
+    need = [d.strip("'\"") for d in need]
+    return [d for d in dict.fromkeys(need) if d and "$" not in d and not dir_exists(d)]
+
+
 def next_run_verdict(roots: set[str], current_real_name: str) -> tuple[str, str]:
     """Verdict for an entry that will (re)load code at its next start."""
     if "NO_CANDIDATE" in roots:
@@ -286,7 +310,7 @@ def _argv_text(exec_start: str) -> str:
 
 
 def build(current_link: Path, activated_at: datetime, canonical: str, *, run=_run, proc_cwd=_proc_cwd,
-          proc_start=_proc_start, proc_cmdline=_proc_cmdline, exists=os.path.isfile, crontab_text: Optional[str] = None,
+          proc_start=_proc_start, proc_cmdline=_proc_cmdline, exists=os.path.isfile, dir_exists=os.path.isdir, crontab_text: Optional[str] = None,
           lane_rows: Optional[list] = None) -> list[Entry]:
     current_real = os.path.realpath(str(current_link))
     cur_name = Path(current_real).name
@@ -319,6 +343,9 @@ def build(current_link: Path, activated_at: datetime, canonical: str, *, run=_ru
                 executor, executor_override = e, "--code-root" in argv_live
         else:
             verdict, why = next_run_verdict(roots, cur_name)
+            gone = missing_roots(roots, wd, base, canonical, dir_exists)
+            if gone:
+                verdict, why = FAIL, f"dead on start: {', '.join(gone)} does not exist; {why}"
             state = u.get("ActiveState", "?")
             simple = u.get("Type") in ("simple", "exec", "notify") and not (u.get("TriggeredBy") or "").strip()
             if simple and verdict == PASS:
@@ -337,6 +364,10 @@ def build(current_link: Path, activated_at: datetime, canonical: str, *, run=_ru
         if not roots:
             continue
         verdict, why = next_run_verdict(roots, cur_name)
+        cd = re.search(r"\bcd\s+([^\s;&|]+)", rest)
+        gone = missing_roots(roots, cd.group(1) if cd else "", base, canonical, dir_exists)
+        if gone:
+            verdict, why = FAIL, f"dead on start: {', '.join(gone)} does not exist; {why}"
         note = (f"; {loop[1]}" if loop else "") + (f"; interpreter {interps[0]}" if interps else "")
         entries.append(Entry(cron_name(line_no, cmd), "cron", cur_name, ",".join(sorted(roots)),
                              f"'{sched}'; {why}{note}", verdict, "cron (no restart; next run)"))
