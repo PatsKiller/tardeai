@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq3151_volume_guard",
+  "files": [
+    "tests/test_tradeai_volume_3151.py"
+  ],
+  "anchor": "LQ3151_VOLUME_GUARD",
+  "comment": [
+    "ANCHOR: LQ3151_VOLUME_GUARD — heavy writes (worktrees, agent temp, test output, caches, scratch) live on the",
+    "verified /data volume, and they fail clearly when it is not mounted. The guard proves the mount point, the",
+    "filesystem UUID, the sentinel and a different st_dev from /, per path; scripts/new-worktree.sh refuses before",
+    "git runs and never falls back to root. Synthetic temp roots only: the real /data is never written."
+  ]
+}
