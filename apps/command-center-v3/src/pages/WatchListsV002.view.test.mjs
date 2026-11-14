@@ -144,9 +144,12 @@ assert.ok(!html(base({ tab: 'suggests', loading: true, grade: null, rows: [], di
 assert.ok(!html(base({ tab: 'suggests', dismissedStatus: 'absent' })).includes('watch-dismissed-unknown'))
 assert.ok(/dismissedStatus=\{body\?\.suggests \? dis\.status : 'absent'\}/.test(listsSrc), 'page marks a missing suggests section absent')
 assert.ok(/<WatchListsTab key=\{tab\}/.test(listsSrc), 'a tab switch remounts the list (useApi keeps the last body)')
-// 14. N1/N3: the re-entry banner follows /watch-classic; the flagged-names link lands on /watch-classic
+// 14. N1/N3 (release-3 ruling 2026-11-14T10:18Z reverses N1 for the bare path): the re-entry banner mounts on bare /watch
+// again (UI removal needs an approved mockup; tests/test_reentry_cross_surface_v6.py pins it) and still follows
+// /watch-classic and /watch/*; the flagged-names link lands on /watch-classic
 const bridge = src('components/SharedIntelligenceBridge.tsx')
-assert.ok(/showWatch = [^\n]*'\/watch-classic'/.test(bridge) && !/pathname === '\/watch'(?!-)/.test(bridge), 'bridge matches /watch-classic, not bare /watch')
+assert.ok(/showWatch = location\.pathname === '\/watch' \|\|/.test(bridge), 'bridge mounts on bare /watch')
+assert.ok(/showWatch = [^\n]*'\/watch-classic'/.test(bridge) && /startsWith\('\/watch\/'\)/.test(bridge), 'bridge also follows /watch-classic and /watch/*')
 assert.ok(/to="\/watch-classic">See flagged names on Watch/.test(src('pages/ConflictRules.tsx')), 'flagged-names link goes to /watch-classic')
 // 15. A3: the /watch -> /watch-classic redirect replaces history, so Back does not bounce
 assert.ok(/<Navigate replace to=|<Navigate to=\{[^}]*\} replace|<Navigate[^>]*\breplace\b/.test(src('pages/WatchV002.tsx')), 'redirect uses replace')
