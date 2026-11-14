@@ -338,7 +338,7 @@ check('the CSV carries the same values, states and formula', () => {
     need(r.downside_uncovered_state === (d.uncoveredState ?? ''), `${p.symbol}: csv uncovered state ${r.downside_uncovered_state}`)
     need(r.downside_formula === d.formula, `${p.symbol}: csv formula differs`)
     need(r.downside_reason === d.reason, `${p.symbol}: csv reason differs`)
-    if (d.usd != null) need(Number(r.hypothetical_downside_to_stop_pct) === Number(d.pct.toFixed(2)), `${p.symbol}: csv pct ${r.hypothetical_downside_to_stop_pct}`)
+    if (d.usd != null) need(Number(r.hypothetical_downside_to_stop_pct_of_mark) === Number(d.pct.toFixed(2)), `${p.symbol}: csv pct ${r.hypothetical_downside_to_stop_pct_of_mark}`)
   }
   // The unknown-basis row keeps its measure AND withholds the P&L (amendment 3), in the file itself.
   const d4 = csv.find(x => x.symbol === 'SYND')
@@ -347,7 +347,7 @@ check('the CSV carries the same values, states and formula', () => {
   need(d4.basis_status === 'UNKNOWN', `SYND basis ${d4.basis_status}`)
   // The uncovered row has no figure anywhere.
   const c3 = csv.find(x => x.symbol === 'SYNC')
-  need(c3.hypothetical_downside_to_stop_usd === '' && c3.hypothetical_downside_to_stop_pct === '', 'SYNC exported a figure')
+  need(c3.hypothetical_downside_to_stop_usd === '' && c3.hypothetical_downside_to_stop_pct_of_mark === '', 'SYNC exported a figure')
   need(c3.downside_uncovered_state === 'uncovered: no stop', `SYNC uncovered state ${c3.downside_uncovered_state}`)
 })
 
@@ -369,7 +369,7 @@ check('the three surfaces agree row-for-row', () => {
 check('the CSV header is served labels only, and the new block is additive', () => {
   const head = holdingsCsv([], null, NOW).split('\r\n')[0].split(',')
   for (const c of ['symbol', 'coverage', 'protection', 'stop_price', 'verified_at',
-    'hypothetical_downside_to_stop_usd', 'hypothetical_downside_to_stop_pct', 'downside_state',
+    'hypothetical_downside_to_stop_usd', 'hypothetical_downside_to_stop_pct_of_mark', 'downside_state', 'downside_coverage',
     'downside_covered_qty', 'downside_uncovered_qty', 'downside_uncovered_state', 'downside_reason', 'downside_formula']) {
     need(head.includes(c), `missing CSV column ${c}`)
   }
@@ -387,6 +387,168 @@ check('the table states the label and the composite decision', () => {
     'the Risk column header lost its mandated title or visible name')
   need(html.includes('Composite risk score: no approved methodology'), 'the composite decision is missing')
   need(/not a loss/.test(html), 'the page no longer says the figure is not a loss')
+})
+
+// ── 10. DRAWER-CSV-RISK-PARITY (operator on R8b 331b658c1, 2026-11-14 20:59Z assignment) ─────────────
+// The row drew the measured downside while the position DRAWER (positionFields → PositionSheet) printed only
+// "PENDING DECISION / G7". The drawer now draws the SAME `downsideToStop` derivation at the SAME clock, and the CSV
+// states the coverage word beside it. The composite score keeps its exact undecided statement in its own field.
+// Synthetic fixtures only (the repository is public).
+const S_COVERED = row({ symbol: 'SYNP' })                                          // stop for all 10 shares
+const S_PARTIAL = row({ symbol: 'SYNQ', shares: 10, stop_qty: 4 })                 // stop for 4 of 10
+const S_UNCOVERED = row({ symbol: 'SYNR', stop_price: null, stop_qty: null, stop_captured_at: null,
+  protection_state: 'GAP', protection: { state: 'GAP', source: 'broker_resting', as_of: AT, counted: true } })
+const S_STATED = row({ symbol: 'SYNS', stop_price: null })                          // PROTECTED, no verified stop price
+// F1 (REVIEW 2148Z): a resting quantity for 4 of 10 shares with the stop price unverified. The measure withholds the
+// split there, so the drawer must not read it as full coverage — this is the state the operator's drawer opens on.
+const S_PARTSTALE = row({ symbol: 'SYNV', shares: 10, stop_qty: 4, stop_price: null })
+const S_UNVERIF = row({ symbol: 'SYNT', protection_state: 'UNKNOWN',
+  protection: { state: 'UNKNOWN', cause: 'No Stop Read', source: 'stop store', as_of: null, counted: true } })
+const S_ATBELOW = row({ symbol: 'SYNU', price: 90, stop_price: 95 })                 // mark at/below the stop
+const PARITY = [S_COVERED, S_PARTIAL, S_UNCOVERED, S_STATED, S_PARTSTALE, S_UNVERIF, S_ATBELOW]
+
+function positionDrawer(p, rows) {
+  return renderToStaticMarkup(React.createElement(MemoryRouter, null,
+    React.createElement(sheets.PositionSheet, { pos: p, onClose: noop, holdings: wire(rows), nowIso: new Date(NOW).toISOString() })))
+}
+const riskField = (p, rows) => lib.positionFields(p, wire(rows), NOW).find(f => f.field === 'Risk')
+const drawerValue = d => (d.usd != null ? `${fmtUsd(d.usd)} · ${d.pct.toFixed(1)}% below the mark` : d.cell)
+
+check('the position drawer draws the row\'s measured figure, and the composite stays undecided', () => {
+  need(typeof lib.positionFields === 'function', 'positionFields is not exported')
+  const positions = positionsOf(BOOK)
+  for (const p of positions) {
+    const d = downsideToStop(p, { nowMs: NOW })
+    const fields = lib.positionFields(p, wire(BOOK), NOW)
+    const f = fields.find(x => x.field === 'Risk')
+    // The mutant that DROPS the drawer field dies here (and again in the rendered assertion below).
+    need(f, `${p.symbol}: the drawer has no Risk field`)
+    need(f.value === drawerValue(d), `${p.symbol}: drawer Risk "${f.value}" vs the row's "${drawerValue(d)}"`)
+    need(f.provenance.startsWith(`${downsideLine(d)}.`), `${p.symbol}: drawer provenance does not open with the row's facts line: ${f.provenance}`)
+    const comp = fields.find(x => x.field === 'Composite risk score')
+    need(comp, `${p.symbol}: the composite field disappeared`)
+    need(comp.value === 'PENDING DECISION', `${p.symbol}: the composite changed to "${comp.value}"`)
+    need(comp.provenance === 'no approved risk-score definition (G7); nothing is scored here', `${p.symbol}: the composite provenance changed`)
+  }
+  // Rendered: the drawer markup itself carries the figure, and the composite sentinel appears exactly once.
+  const p0 = positions[0]
+  const d0 = downsideToStop(p0, { nowMs: NOW })
+  const html = positionDrawer(p0, BOOK)
+  need(html.includes(`<span class="f">Risk</span><span class="v">${escapeHtml(drawerValue(d0))}</span>`),
+    `the rendered drawer does not print Risk "${drawerValue(d0)}"`)
+  need(html.includes('<span class="f">Composite risk score</span><span class="v">PENDING DECISION</span>'),
+    'the rendered drawer lost the composite statement')
+  need((html.match(/PENDING DECISION/g) || []).length === 1, 'the drawer prints the composite sentinel more than once')
+})
+
+check('row, drawer and CSV agree on a covered, a partial, an uncovered and a stated row', () => {
+  need(dts, 'downsideToStop is not exported')
+  const expect = { SYNP: 'covered', SYNQ: 'partial', SYNR: 'uncovered', SYNS: 'unknown', SYNV: 'unknown', SYNT: 'unknown', SYNU: 'covered' }
+  const html = renderPage(PARITY)
+  const positions = positionsOf(PARITY)
+  const csv = csvRows(holdingsCsv(positions, SNAP, NOW))
+  need(positions.length === PARITY.length, `positions ${positions.length} of ${PARITY.length}`)
+  for (const p of positions) {
+    const d = downsideToStop(p, { nowMs: NOW })
+    const cov = lib.downsideCoverage(d)
+    need(cov === expect[p.symbol], `${p.symbol}: coverage "${cov}", expected "${expect[p.symbol]}" (state ${d.state})`)
+    // ROW: the facts line the row draws is the one derived here.
+    need(html.includes(escapeHtml(downsideLine(d))), `${p.symbol}: the row does not draw "${downsideLine(d)}"`)
+    // DRAWER: the same figure, never a recomputed one.
+    const f = riskField(p, PARITY)
+    need(f, `${p.symbol}: the drawer has no Risk field`)
+    need(f.value === drawerValue(d), `${p.symbol}: drawer "${f.value}" vs row "${drawerValue(d)}"`)
+    // F2 (REVIEW 2148Z): the composed sentence must not end a sentence twice ("…held shares.. No figure is drawn.").
+    need(!f.provenance.includes('..'), `${p.symbol}: doubled full stop in the drawer provenance: ${f.provenance}`)
+    // CSV: the same figure, the same state and the same coverage word.
+    const r = csv.find(x => x.symbol === p.symbol)
+    need(r, `${p.symbol}: missing from the CSV`)
+    need(r.downside_coverage === cov, `${p.symbol}: csv coverage "${r.downside_coverage}" vs "${cov}"`)
+    need(r.downside_state === d.state, `${p.symbol}: csv state "${r.downside_state}" vs "${d.state}"`)
+    need((r.hypothetical_downside_to_stop_usd || '') === (d.usd == null ? '' : String(d.usd)), `${p.symbol}: csv usd "${r.hypothetical_downside_to_stop_usd}" vs ${d.usd}`)
+    need((r.hypothetical_downside_to_stop_pct_of_mark || '') === (d.pct == null ? '' : String(Number(d.pct.toFixed(2)))), `${p.symbol}: csv pct "${r.hypothetical_downside_to_stop_pct_of_mark}" vs ${d.pct}`)
+  }
+  // PARTIAL: 4 of 10 covered — the uncovered leg is named in words in the drawer and as its own state in the CSV.
+  const q = positions.find(p => p.symbol === 'SYNQ')
+  const dq = downsideToStop(q, { nowMs: NOW })
+  need(dq.state === 'PARTIAL' && dq.coveredQty === 4 && dq.uncoveredQty === 6, `partial ${dq.state} ${dq.coveredQty}/${dq.uncoveredQty}`)
+  const fq = riskField(q, PARITY)
+  need(/The resting stop covers 4 of 10 held shares; 6 carry no resting order \(uncovered: no stop\)\./.test(fq.provenance),
+    `the partial row's drawer does not name the uncovered leg: ${fq.provenance}`)
+  const rq = csv.find(x => x.symbol === 'SYNQ')
+  need(rq.downside_uncovered_qty === '6' && rq.downside_uncovered_state === 'uncovered: no stop', `partial csv uncovered "${rq.downside_uncovered_qty}" / "${rq.downside_uncovered_state}"`)
+  // UNCOVERED: no figure anywhere — row state, drawer state, CSV state.
+  const u = positions.find(p => p.symbol === 'SYNR')
+  const du = downsideToStop(u, { nowMs: NOW })
+  need(du.usd == null && du.state === 'UNCOVERED', `uncovered state ${du.state} usd ${du.usd}`)
+  const fu = riskField(u, PARITY)
+  need(fu.value === du.cell && !fu.value.includes('$'), `the uncovered drawer prints a figure: "${fu.value}"`)
+  need(/No resting order covers this position \(uncovered: no stop\)\./.test(fu.provenance), `the uncovered drawer lost its words: ${fu.provenance}`)
+  const ru = csv.find(x => x.symbol === 'SYNR')
+  need(ru.hypothetical_downside_to_stop_usd === '' && ru.hypothetical_downside_to_stop_pct_of_mark === '', 'the uncovered CSV row exported a figure')
+  // STATED (PROTECTED, no verified stop price): the drawer states the state, never a number or a zero.
+  const s = positions.find(p => p.symbol === 'SYNS')
+  const ds = downsideToStop(s, { nowMs: NOW })
+  need(ds.state === 'STOP_PRICE_MISSING', `stated state ${ds.state}`)
+  const fs_ = riskField(s, PARITY)
+  need(fs_.value === ds.cell && !fs_.value.includes('$'), `the stated drawer prints a figure: "${fs_.value}"`)
+  need(fs_.needsBackend === true, 'the stated drawer does not ask for the missing backend input')
+  need(!/covers all/i.test(fs_.provenance), `the stated drawer (unverified stop level) claims full coverage: ${fs_.provenance}`)
+  // UNVERIFIABLE: a failed read establishes nothing — not the distance, not the coverage. It must never claim
+  // "N shares uncovered: no stop" (that is a statement about a book the read could not open), and the coverage
+  // word must be unknown, not partial.
+  const t = positions.find(p => p.symbol === 'SYNT')
+  const dt = downsideToStop(t, { nowMs: NOW })
+  need(dt.state === 'UNVERIFIABLE' && dt.usd == null, `unread book ${dt.state} usd ${dt.usd}`)
+  need(dt.uncoveredQty == null && dt.uncoveredState == null, `an unread book published an uncovered claim: ${dt.uncoveredQty} / ${dt.uncoveredState}`)
+  need(lib.downsideCoverage(dt) === 'unknown', `unread book coverage "${lib.downsideCoverage(dt)}"`)
+  const ft = riskField(t, PARITY)
+  need(ft.value === dt.cell, `unread book drawer "${ft.value}" vs "${dt.cell}"`)
+  need(/Coverage cannot be established from this read/.test(ft.provenance), `unread book drawer lost its words: ${ft.provenance}`)
+  const rt = csv.find(x => x.symbol === 'SYNT')
+  need(rt.downside_coverage === 'unknown' && rt.downside_uncovered_qty === '' && rt.downside_uncovered_state === '', `unread book csv "${rt.downside_coverage}" / "${rt.downside_uncovered_qty}" / "${rt.downside_uncovered_state}"`)
+  // AT/BELOW THE STOP: both quantities ARE published, so the coverage word is established even with no distance.
+  const a = positions.find(p => p.symbol === 'SYNU')
+  const da = downsideToStop(a, { nowMs: NOW })
+  need(da.state === 'AT_OR_BELOW_STOP' && da.coveredQty === 10 && da.uncoveredQty === 0, `at/below ${da.state} ${da.coveredQty}/${da.uncoveredQty}`)
+  need(riskField(a, PARITY).value === da.cell, 'the at/below drawer draws something other than its state')
+  need(csv.find(x => x.symbol === 'SYNU').downside_coverage === 'covered', 'the at/below CSV row lost its coverage word')
+})
+
+check('a partial resting quantity with an unverified stop never reads as full coverage (F1)', () => {
+  // 10 held, a resting order recorded for 4, no verified stop price. The measure withholds the split (uncoveredQty
+  // null) and the CSV word is therefore `unknown`; the drawer's sentence must agree and must never say "all".
+  const p = positionsOf([S_PARTSTALE])[0]
+  const d = downsideToStop(p, { nowMs: NOW })
+  need(d.state === 'STOP_PRICE_MISSING', `fixture state ${d.state}`)
+  need(d.coveredQty === 4 && d.uncoveredQty == null, `fixture covered ${d.coveredQty} uncovered ${d.uncoveredQty}`)
+  const f = riskField(p, [S_PARTSTALE])
+  need(f, 'the drawer has no Risk field')
+  need(!/covers all/i.test(f.provenance), `the drawer claims full coverage for a 4-of-10 position: ${f.provenance}`)
+  need(/recorded against 4 of 10 held shares/.test(f.provenance), `the drawer does not name the recorded quantity: ${f.provenance}`)
+  need(/6 carry no resting order recorded/.test(f.provenance), `the drawer does not name the uncovered quantity: ${f.provenance}`)
+  need(f.provenance.includes('coverage is not established (unknown)'), `the drawer does not carry the coverage word: ${f.provenance}`)
+  need(!f.provenance.includes('..'), `doubled full stop: ${f.provenance}`)
+  const r = csvRows(holdingsCsv(positionsOf([S_PARTSTALE]), SNAP, NOW)).find(x => x.symbol === 'SYNV')
+  need(r, 'the row is missing from the CSV')
+  need(r.downside_coverage === lib.downsideCoverage(d), `drawer word vs csv word: "${r.downside_coverage}"`)
+  need(r.downside_coverage === 'unknown', `csv coverage "${r.downside_coverage}"`)
+  need(r.downside_uncovered_qty === '' && r.downside_uncovered_state === '', `the withheld split leaked into the CSV: "${r.downside_uncovered_qty}" / "${r.downside_uncovered_state}"`)
+})
+
+check('the drawer Risk field is unique and the CSV header states its units', () => {
+  for (const p of positionsOf(BOOK)) {
+    const names = lib.positionFields(p, wire(BOOK), NOW).map(f => f.field)
+    need(new Set(names).size === names.length, `duplicate drawer field names (React keys): ${names.join(' / ')}`)
+    const sentinels = lib.positionFields(p, wire(BOOK), NOW).filter(f => f.value === 'PENDING DECISION')
+    need(sentinels.length === 1 && sentinels[0].field === 'Composite risk score',
+      `${p.symbol}: the composite sentinel ${sentinels.length === 1 ? `sits on "${sentinels[0].field}"` : `appears ${sentinels.length}×`}`)
+  }
+  const head = holdingsCsv([], null, NOW).split('\r\n')[0].split(',')
+  need(head.includes('hypothetical_downside_to_stop_usd'), 'the dollar column does not state its unit')
+  need(head.includes('hypothetical_downside_to_stop_pct_of_mark'), 'the percent column does not state its unit (of the mark)')
+  need(!head.includes('hypothetical_downside_to_stop_pct'), 'the unitless percent header survived')
+  need(head.includes('downside_coverage'), 'the coverage column is missing')
 })
 
 function escapeHtml(s) {

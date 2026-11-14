@@ -513,15 +513,17 @@ export function downsideToStop(p: PositionModel, ctx: { nowMs: number; sessionOp
   const uncoveredQty = held != null && coveredQty != null ? Math.round((held - coveredQty) * 1e6) / 1e6 : null
   const mk = (state: DownsideState, cell: string, reason: string, extra: Partial<DownsideMeasure> = {}): DownsideMeasure => ({
     state, usd: null, pct: null, coveredQty: null, uncoveredQty: null, uncoveredState: null,
-    mark, stop, cell, reason, formula: 'no figure is drawn', basis, ...extra,
+    mark, stop, cell, reason, formula: 'No figure is drawn', basis, ...extra,
   })
   const noStop = (state: DownsideState, cell: string, reason: string) =>
     mk(state, cell, reason, { uncoveredQty: held, uncoveredState: held != null ? 'uncovered: no stop' : null })
 
   if (p.isCash || p.coverage.category === 'EXEMPT')
     return mk('EXEMPT', 'cash', 'Cash / money-market / sweep rows are exempt from stop coverage by policy; there is no stop to measure to.')
+  // A failed read establishes NOTHING about the order — not the distance, not the coverage. `noStop` would assert
+  // "N shares uncovered: no stop" from a book this read could not open (found by the surviving-coverage mutant).
   if (p.coverage.category === 'UNVERIFIABLE' || p.protection === 'UNKNOWN')
-    return noStop('UNVERIFIABLE', 'unknown', `${p.reason}. A level in an unread book is last known, not a verified stop price, so no distance is drawn.`)
+    return mk('UNVERIFIABLE', 'unknown', `${p.reason}. A level in an unread book is last known, not a verified stop price, so no distance is drawn.`)
   if (p.coverage.category === 'PLANNED_ONLY')
     return noStop('PLANNED_ONLY', 'planned', 'The level exists only as a plan at the broker; a plan is not a resting order and protects nothing, so there is no verified stop price to measure to.')
   if (p.protection === 'WARN')
@@ -567,6 +569,47 @@ export function downsideLine(m: DownsideMeasure): string {
     return m.uncoveredState ? `${head} · ${fmtShares(m.uncoveredQty!)} uncovered: no stop` : head
   }
   return `hypothetical downside to stop: ${m.state === 'EXEMPT' ? 'cash row · no stop expected' : m.cell}`
+}
+
+/** The coverage word the row's drawer and the CSV export share (DRAWER-CSV-RISK-PARITY, 2026-11-14, operator on
+ *  R8b 331b658c1). Derived from the measure's OWN state and published quantities, never re-read from
+ *  `coverage.category`, so the word cannot disagree with the figure beside it: a stale stop is not "covered"
+ *  (unknown), a planned level or an expired stop is not coverage (uncovered — nothing rests at the broker), and a
+ *  book this read could not open is unknown, never "uncovered". `exempt` is a cash row; `covered`/`partial` are
+ *  claimed only where the measure published BOTH quantities (a measured row, or a mark at/below the stop). */
+export type DownsideCoverage = 'covered' | 'partial' | 'uncovered' | 'exempt' | 'unknown'
+export function downsideCoverage(m: DownsideMeasure): DownsideCoverage {
+  if (m.state === 'EXEMPT') return 'exempt'
+  if (m.state === 'MEASURED') return 'covered'
+  if (m.state === 'PARTIAL') return 'partial'
+  if (m.state === 'UNCOVERED' || m.state === 'PLANNED_ONLY' || m.state === 'EXPIRED') return 'uncovered'
+  // The split is established only when the measure publishes both quantities (AT_OR_BELOW_STOP with a known
+  // resting qty). Anything withheld — stale, undated, missing price/qty/mark, unread book — is unknown.
+  if (m.coveredQty != null && m.uncoveredQty != null) return m.uncoveredQty > 0 ? 'partial' : 'covered'
+  return 'unknown'
+}
+
+/** Words for the drawer's covered/uncovered sentence — which quantity the resting order covers, which carries no order. */
+function coverageWords(m: DownsideMeasure, held: number | null): string {
+  // Always composed after the reason's full stop, so every sentence opens capitalized.
+  if (m.state === 'EXEMPT') return 'A cash row has no position for a stop to cover.'
+  if (m.state === 'UNCOVERED' || m.state === 'PLANNED_ONLY' || m.state === 'EXPIRED')
+    return 'No resting order covers this position (uncovered: no stop).'
+  if (m.state === 'UNVERIFIABLE')
+    return 'Coverage cannot be established from this read, so no quantity is named as covered.'
+  if (m.coveredQty == null) return 'The covered quantity is not published for this read.'
+  if (m.uncoveredQty != null && m.uncoveredQty > 0)
+    return `The resting stop covers ${fmtShares(m.coveredQty)} of ${fmtShares(held ?? m.coveredQty + m.uncoveredQty)} held shares; ${fmtShares(m.uncoveredQty)} carry no resting order (uncovered: no stop).`
+  if (m.uncoveredQty != null) return `The resting stop covers all ${fmtShares(m.coveredQty)} held shares.`
+  // The split was withheld: the distance is not drawn because the stop read is unverified (missing/stale stop price,
+  // undated stop, stale or missing mark), so protection is NOT established — and this sentence must not claim it.
+  // F1 (REVIEW-DRAWER-CSV-RISK-PARITY-cc-deepseek-5, 2148Z): "covers all 4 held shares" on a 10-share position
+  // overstated protection by 6 shares while the CSV's word for the same row was `unknown`.
+  const total = held != null && held > 0 ? held : null
+  const recorded = total != null && total > m.coveredQty
+    ? `The resting order is recorded against ${fmtShares(m.coveredQty)} of ${fmtShares(total)} held shares, so ${fmtShares(total - m.coveredQty)} carry no resting order recorded.`
+    : `The resting order is recorded against ${fmtShares(m.coveredQty)} held shares.`
+  return `${recorded} The stop level is not verified in this read, so coverage is not established (unknown).`
 }
 
 export function positionsFrom(w: HoldingsWire | null, nowMs: number = Date.now()): PositionModel[] {
@@ -1088,7 +1131,7 @@ export const CSV_COLUMNS = ['symbol', 'account', 'broker', 'held_shares', 'resti
   'price_usd', 'price_source', 'price_as_of', 'price_stale', 'value_usd', 'weight_pct', 'weight_basis',
   'move_today_usd', 'move_today_pct', 'basis_status', 'cost_basis_usd', 'avg_entry_usd', 'unrealized_pnl_usd', 'unrealized_pnl_pct',
   'basis_reason', 'basis_source', 'stop_price', 'stop_source', 'stop_order_id', 'verified_at', 'reason',
-  'hypothetical_downside_to_stop_usd', 'hypothetical_downside_to_stop_pct', 'downside_state',
+  'hypothetical_downside_to_stop_usd', 'hypothetical_downside_to_stop_pct_of_mark', 'downside_state', 'downside_coverage',
   'downside_covered_qty', 'downside_uncovered_qty', 'downside_uncovered_state', 'downside_reason', 'downside_formula',
   'snapshot_id', 'positions_as_of'] as const
 function csvCell(v: unknown): string {
@@ -1109,7 +1152,7 @@ export function holdingsCsv(ps: PositionModel[], snap?: Pick<SnapshotFacts, 'sna
       b.status, b.usd, p.avgEntry, b.pnlUsd, b.pnlPct, b.status === 'UNKNOWN' ? b.reason : null, b.source,
       p.stopPrice, p.raw.stop_source ?? p.source, p.raw.stop_order_id ?? p.raw.order_id ?? null,
       p.verifiedAt, p.reason,
-      d.usd, d.pct == null ? null : Number(d.pct.toFixed(2)), d.state,
+      d.usd, d.pct == null ? null : Number(d.pct.toFixed(2)), d.state, downsideCoverage(d),
       d.coveredQty, d.uncoveredQty, d.uncoveredState, d.reason, d.formula,
       snap?.snapshotId ?? null, snap?.observedAt ?? null,
     ].map(csvCell).join(','))
@@ -1349,7 +1392,21 @@ export function positionFields(p: PositionModel, w: HoldingsWire | null, nowMs: 
       provenance: `Positions read ${w?.positions_as_of ? `${fmtET(w.positions_as_of, true)} ET` : 'clock not published'} — the same identity the header and the CSV carry` },
     { field: 'Stop', value: p.protection === 'PROTECTED' ? p.chip : p.protection === 'UNKNOWN' ? 'UNKNOWN' : p.protection === 'EXEMPT' ? 'exempt' : cov.chip,
       age: fmtAge(ageMs(p.verifiedAt, nowMs)), provenance: `Source: ${p.source} · Writer: stop read lane · ${p.reason}` },
-    { field: 'Risk', value: 'PENDING DECISION', age: '—', provenance: 'no approved risk-score definition (G7); nothing is scored here', needsBackend: true },
+    // DRAWER-CSV-RISK-PARITY (2026-11-14, operator on R8b 331b658c1): the drawer printed only "PENDING DECISION"
+    // while the row's Risk column drew the measured downside. This field is the SAME derivation at the SAME clock
+    // (`downsideToStop` / `downsideLine`) — one source, no recomputation — with the covered/uncovered quantities in
+    // words. The composite score keeps its exact undecided statement in the field below; it is never turned into a
+    // number, and this field is a measurement, not a score.
+    (() => {
+      const dm = downsideToStop(p, { nowMs })
+      return { field: 'Risk',
+        value: dm.usd != null ? `${fmtUsd(dm.usd)} · ${dm.pct!.toFixed(1)}% below the mark` : dm.cell,
+        age: fmtAge(ageMs(dm.stop.asOf, nowMs)),
+        provenance: `${downsideLine(dm)}. ${dm.reason} Mark ${dm.mark.value == null ? 'not published' : fmtUsd(dm.mark.value)} (${dm.mark.source || 'source not named'}${dm.mark.asOf ? `, ${fmtET(dm.mark.asOf, true)} ET` : ', clock not published'}); stop ${dm.stop.value == null ? 'not published' : fmtUsd(dm.stop.value)} (${dm.stop.source || 'source not named'}${dm.stop.asOf ? `, ${fmtET(dm.stop.asOf, true)} ET` : ', clock not published'}). ${coverageWords(dm, p.shares)} ${dm.formula}.`,
+        needsBackend: dm.usd == null && (dm.state === 'STOP_PRICE_MISSING' || dm.state === 'STOP_QTY_MISSING'
+          || dm.state === 'STOP_UNDATED' || dm.state === 'MARK_MISSING') }
+    })(),
+    { field: 'Composite risk score', value: 'PENDING DECISION', age: '—', provenance: 'no approved risk-score definition (G7); nothing is scored here', needsBackend: true },
   ]
 }
 
