@@ -306,9 +306,11 @@ function Shell() {
             <Route path="defense/classic" element={<RouteErrorBoundary route="/v3/defense/classic"><DefenseHub /></RouteErrorBoundary>} />
             {/* Legacy watchlist/screener nav → primary Intelligence (not the old card wall) */}
             <Route path="watchlist" element={<RouteErrorBoundary route="/v3/watchlist"><Navigate to="/watch?tab=intelligence&view=top_ideas" replace /></RouteErrorBoundary>} />
-            <Route path="watchpool" element={<RouteErrorBoundary route="/v3/watchpool"><Navigate to="/watch?tab=watchpool" replace /></RouteErrorBoundary>} />
-            <Route path="sectors" element={<RouteErrorBoundary route="/v3/sectors"><Navigate to="/watch?tab=sectors" replace /></RouteErrorBoundary>} />
-            <Route path="pullback-macd" element={<RouteErrorBoundary route="/v3/pullback-macd"><Navigate to="/watch?tab=pullback-macd" replace /></RouteErrorBoundary>} />
+            {/* Old hub tab URLs → their own v002 views. A /watch?tab=… URL is an old-hub deep link that the v002 Overview
+                hands to /watch-classic (REVIEW-2993r R1); the alias must not take that hop once the tab has a v002 view. */}
+            <Route path="watchpool" element={<RouteErrorBoundary route="/v3/watchpool"><Navigate to="/watch-setups" replace /></RouteErrorBoundary>} />
+            <Route path="sectors" element={<RouteErrorBoundary route="/v3/sectors"><Navigate to="/watch-setups?tab=sectors" replace /></RouteErrorBoundary>} />
+            <Route path="pullback-macd" element={<RouteErrorBoundary route="/v3/pullback-macd"><Navigate to="/watch-setups?tab=pullback" replace /></RouteErrorBoundary>} />
             <Route path="reports" element={<RouteErrorBoundary route="/v3/reports"><ReportsHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="rotation" element={<RouteErrorBoundary route="/v3/rotation"><RotationIntelligence /></RouteErrorBoundary>} />
             <Route path="redeploy" element={<RouteErrorBoundary route="/v3/redeploy"><RedeployDeskIntegrated /></RouteErrorBoundary>} />
