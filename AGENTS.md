@@ -1210,9 +1210,36 @@ sha256 `9bafaac1c883fb554143aa6531eaa06df035fa454cb1431afd9f98d1154a943a`). It i
   stays backward-compatible with /v3.
 - **Separate identity and rollback.** The app has its own `build-meta.json` (`app: "wealth"`) and its own deploy root,
   swapped atomically. Rolling it back never touches the /v3 bundle or the server release.
-- **Design fidelity.** Build only from the accepted reference once it is on the server and checksum-verified. Do not
-  improvise a visual design. Colour cues (GREEN/AMBER/RED) always carry a text label, an icon and a tooltip; key values
-  and exceptions are bold; qualified, source and context text is italic.
+- **Design fidelity: v02 is the specification (operator clarification 2026-11-14 ~18:09 ET).** The approved source is
+  `docs/wealth/design-reference/TradeAI_Wealth_Management_Mockups_v02.html` (sha256
+  `23f96d84199c5a7cabb3837a7bd94fab87d68eed15d3d5bbfb5d07e6f8dde7aa`; v01 `9bafaac1…` is immutable history). Treat it as
+  the implementation specification, not inspiration.
+  - **Port** its HTML structure, CSS tokens, typography, spacing, charts, responsive layouts, navigation, drawers and
+    semantic valuation treatment into `apps/wealth`. Split it into components without losing fidelity.
+  - Never reinvent the design. Never put old pages behind the new navigation.
+  - Replace **only** its fictional data, with canonical broker and read-model data. Keep the real source clocks, session
+    labels, account and security ids, CIO history and memory.
+  - Never ship fictional holdings, scores, returns or source times.
+  - Wire the existing supported actions and keep financial approvals and authentication.
+  - Where live data forces a layout change, use the smallest faithful treatment and record why.
+  - A slice is "implemented" only with reference-vs-build screenshots at desktop and phone widths and real tab and
+    drawer interaction checks.
+  - Colour cues (GREEN/AMBER/RED) always carry a text label, an icon and a tooltip. Key values and exceptions are bold;
+    qualified, source and context text is italic.
+- **Design preview.** The reference is served, bannered "Approved design preview — fictional sample data, not your
+  portfolio", at `/wealth/design-reference/index.html`.
+  - Its network is disabled. Its review state stays local to the browser and isolated from real approvals.
+  - Publishing it is not functional or financial acceptance.
+  - `/wealth/` stays the real app entry.
+- **Functionality map.** Every page-family owner edits the new code and keeps `docs/wealth/FUNCTIONALITY-MAP.md` and
+  `docs/wealth/functionality-register.json` current.
+  - One row per page, tab, drawer and action, with: reference anchor; existing route, endpoint and reader/producer;
+    canonical account/security/session/metric/source-clock contract; functionality observed working; evidence; gaps and
+    the required adapter or backend; author and reviewer; next step.
+  - Status is one of VERIFIED_WORKING / EXISTS_UNVERIFIED / PARTIAL / MISSING / NOT_APPLICABLE.
+  - Existing code is not proof. No fake buttons and no silent empty success.
+  - Annotate source only at component and adapter boundaries: metric semantics, provenance, clock and coverage, action
+    constraints.
 - **Valuation contract `valuation-assessment@1`.** It is centralized and versioned, and carries evidence, benchmark,
   coverage, as-of and reason. Trailing and forward P/E are separate, with earnings period and basis, compared against
   sector and industry peers and the security's own history.
@@ -1224,11 +1251,23 @@ sha256 `9bafaac1c883fb554143aa6531eaa06df035fa454cb1431afd9f98d1154a943a`). It i
 - **No mock data and no permanent NEEDS BACKEND.** A missing reader is owned backend work.
 - **Releases.** Run gates on the exact candidate. Check every release at +15, +30 and +60 minutes on desktop and mobile,
   covering tabs, details, rows and CSV. A scaffold, screenshot or assignment is not "live".
+- **Scheduling: n8n only for application and business work (John ruling 2026-11-14 ~18:09 ET).**
+  - No new cron or systemd business jobs. systemd may supervise long-lived services; that is not permission to schedule
+    business computations outside n8n.
+  - A genuinely unavoidable host, bootstrap or recovery exception is decided by the lead and recorded in the versioned
+    `SCHEDULER-EXCEPTION-REGISTER.md` (handoff folder). Each entry gives: the exact task; the technical reason n8n cannot
+    own it; the narrow command and scope; the owner; monitoring; and the review or retirement condition. A blanket
+    exemption is never inferred.
+  - Register every application producer with: input and output schema, source clocks, scope, cadence,
+    overlap/deadline/cost limits, idempotency, bounded retry, missed-run detection, escalation, real success and
+    failure receipts, and recovery proof.
+  - Delete no existing cron, timer or source writer until its replacement cutover is proven. Fence and drain each
+    single-owner transition and keep rollback.
 - **Decommissioning is a separate final phase.** It comes only after replacement parity, deployed verification, new-site
   acceptance and rollback readiness. Never delete data, history or jobs silently.
 
-Decision records: `coordination/coordinator/campaign-8h2-20261114/handoff/DECISION-WEALTH-NEW-SITE-20261114T225159Z.md` and
-`DECISION-WEALTH-SCOPE-OLD-SITE-FROZEN-20261114T2256Z.md` (same folder); ownership in `WEALTH-PROGRAM-20261114T2259Z.md`.
+Decision records: `coordination/coordinator/campaign-8h2-20261114/handoff/DECISION-WEALTH-NEW-SITE-20261114T225159Z.md`,
+`DECISION-WEALTH-SCOPE-OLD-SITE-FROZEN-20261114T2256Z.md` and `DECISION-WEALTH-V02-SPEC-PREVIEW-SCHEDULER-20261114T2315Z.md` (same folder); ownership in `WEALTH-PROGRAM-20261114T2259Z.md`.
 
 ---
 
@@ -2793,7 +2832,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 32.3.0 | 2026-11-14 | ACTIVE | MINOR | Supersedes 32.2.0. Adds §9.6.1 Wealth site: net-new `apps/wealth` frontend at `/wealth/` built in parallel with /v3 (untouched, frozen for discretionary upgrades per the 17:56 ET scope update; measured re-architecture authorized), shared canonical backend, separate build identity and rollback, design fidelity to the accepted reference, colour-never-alone cues, versioned `valuation-assessment@1` contract, decommissioning as a separate final phase. Product and delivery duties only: no rail lifted, no grant, §0/§2/§17 and adapters unchanged. | Operator directive 2026-11-14 17:50 ET (John approved the wealth-management design direction; build as a net-new site in parallel), relayed in-session to the lead; local commit only while git pushes are suspended. |
+| 32.3.0 | 2026-11-14 | ACTIVE | MINOR | Supersedes 32.2.0. Adds §9.6.1 Wealth site: net-new `apps/wealth` frontend at `/wealth/` built in parallel with /v3 (untouched, frozen for discretionary upgrades per the 17:56 ET scope update; measured re-architecture authorized), shared canonical backend, separate build identity and rollback, design fidelity (v02 sha 23f96d84… is the implementation spec; bannered network-off preview at /wealth/design-reference/; FUNCTIONALITY-MAP per owner), n8n-only application scheduling with a versioned exception register, colour-never-alone cues, versioned `valuation-assessment@1` contract, decommissioning as a separate final phase. Product and delivery duties only: no rail lifted, no grant, §0/§2/§17 and adapters unchanged. | Operator directive 2026-11-14 17:50 ET (John approved the wealth-management design direction; build as a net-new site in parallel), relayed in-session to the lead; local commit only while git pushes are suspended. |
 | 32.2.0 | 2026-11-14 | SUPERSEDED | MINOR | Supersedes 32.1.0. Adds §9.6 Wealth Management 501 product and delivery contract and the canonical guide `docs/design/WEALTH_MANAGEMENT_501.md` (v1.0) + `docs/design/WEALTH_MANAGEMENT_501_ADDENDUM_V1_1.md` (v1.1): all-horizon investment desk, inventory-before-build, deterministic accounting vs governed CIO synthesis, n8n-owned 24/7 overview refresh, route migration/retirement register, live acceptance. Product and evidence duties only: no rail lifted, no grant, §0/§2/§17 and adapters unchanged. | Operator directive 2026-11-14 ~15:00-15:10 ET (actual-project persistence + AGENTS.md update, "already authorized, no new grant"), relayed in-session to the lead; local commit only while git pushes are suspended. |
 | 32.1.0 | 2026-11-10 | ACTIVE | MINOR | Supersedes 32.0.0. Adopts the operator's Engineering Constitution v1.1 (`docs/governance/ENGINEERING_CONSTITUTION.md`) as foundational doctrine; summary added under §8 "What counts as verified". Evidence duties only: no rail lifted, no grant, §0/§2/§17 and adapters unchanged. | Operator directive 2026-11-10 ~11:55 ET ("make these golden rules for all agents … These should appear in: Agent.md, Runbooks, …"), relayed in-session to the lead; local commit only, pending operator ratification on the next push window. |
 | 32.0.0 | 2026-11-09 | ACTIVE | MAJOR | Supersedes 31.0.0. §23.20a: ONE named exception for one broker market-data quote lane on the n8n dispatcher — `vix-index-quotes-schwab` (R1 `ingest`, `$VIX`/`$VIX9D`/`$VIX3M` into `market_quotes`) may carry the `schwab` token and reach `schwab_token_manager` only, in a code-pinned shape (`lane_dispatch.SCHWAB_QUOTE_READ_*`); no trade context, account read, send or credential in n8n. §0, §2, §2A, §7A, §17, §23.14 and §27.1 unchanged. | `APPROVE_AGENTS_POLICY_32_0_0 <pr> <head_sha>` |
