@@ -199,7 +199,9 @@ def project_pages(truth: dict, **lookthrough_inputs) -> dict:
                     # quantity it used and what the holding leaves uncovered.
                     "counted", "stop_category", "resting_stop_distance_pct", "loss_at_resting_stop_usd",
                     "resting_loss_qty", "resting_coverage_shortfall_qty", "stop_qty",
-                    "planned_stop_distance_pct"}
+                    "planned_stop_distance_pct",
+                    # Retain canonical applicability/verdict; downstream surfaces never rebuild its classifier.
+                    "protection_state", "protection"}
     result["positions"] = {**result["positions"], "rows": [
         {k: v for k, v in row.items() if k in display_keys} for row in result["positions"].get("rows") or []]}
     return result
