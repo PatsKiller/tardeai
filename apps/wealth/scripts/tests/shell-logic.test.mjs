@@ -14,6 +14,7 @@ import { specFor, READERS } from '../../src/api/readers.ts'
 import { deriveRenderState, statusCue } from '../../src/components/renderState.ts'
 import { price, money, moneyTone, signedMoney, toneClass, unavailable, lastKnownSentence, servedFreshnessLine } from '../../src/pages/portfolio/format.ts'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { createElement } from 'react'
 import { barStatus, isBookRoute } from '../../src/pages/portfolio/bookView.ts'
 import { accountDisplayLabel } from '../../src/pages/portfolio/accountLabel.ts'
 import { ledgerLine } from '../../src/pages/portfolio/clockLedger.ts'
@@ -485,6 +486,9 @@ function compileGateModules() {
     path.join(APP, 'src/pages/portfolio/analyticsAdapter.ts'),
     path.join(APP, 'src/pages/portfolio/presets.ts'),
     path.join(APP, 'src/pages/portfolio/AnalyticsPanel.tsx'),
+    // RC3: the Allocation page renders its status strip in the panel's own vocabulary; it is compiled here so
+    // that the render test executes the real page, not a copy of its string.
+    path.join(APP, 'src/pages/allocation/AllocationPage.tsx'),
     cssDecl,
   ]
   const r = spawnSync(process.execPath, [tsc, ...args], { encoding: 'utf8' })
@@ -498,6 +502,16 @@ function compileGateModules() {
   const cssOut = path.join(out, 'pages/portfolio/analytics')
   fs.mkdirSync(cssOut, { recursive: true })
   fs.writeFileSync(path.join(cssOut, 'analytics.css'), '')
+  // AllocationPage's own stylesheet, same loader fact.
+  const allocOut = path.join(out, 'pages/allocation')
+  fs.mkdirSync(allocOut, { recursive: true })
+  fs.writeFileSync(path.join(allocOut, 'allocation.css'), '')
+  // AllocationPage -> allocationView -> the approved selector, which is a `.mjs` the tsc emit does not copy.
+  // Copy the SOURCE file to the path the emitted require names: still the repo's file, not a re-typed copy.
+  fs.copyFileSync(
+    path.join(APP, 'src/pages/portfolio/analytics/portfolio-analytics.mjs'),
+    path.join(cssOut, 'portfolio-analytics.mjs'),
+  )
   const load = createRequire(import.meta.url)
   // The stylesheet is a text asset: requiring it must not execute anything, and the panel's render is what is
   // under test. This stub is a loader fact, not a code path the page has.
@@ -510,6 +524,7 @@ function compileGateModules() {
     analyticsAdapter: load(path.join(out, 'pages/portfolio/analyticsAdapter.js')),
     presets: load(path.join(out, 'pages/portfolio/presets.js')),
     panel: load(path.join(out, 'pages/portfolio/AnalyticsPanel.js')),
+    allocationPage: load(path.join(out, 'pages/allocation/AllocationPage.js')),
   }
   return gateModules
 }
@@ -1304,4 +1319,52 @@ test('C/RC1: a PROTECTED row served without a stop price never claims a stop "is
   // The state sentence is the price alone; the producer's own reason is still echoed beside it, but the
   // pending-activation STOP SENTENCE (the no-price wording) is gone.
   assert.doesNotMatch(strip(pricedMarkup), /pending activation — stop price not served/)
+})
+
+/**
+ * RC3 (lead route 2026-11-15T1754Z; reviewer 1805Z §3): the Allocation page's status strip printed
+ * `view.snapshot.status · view.snapshot.reason` — on a non-current read without a receipt that was literally
+ * `unverified · freshness unverified`, and the page never said "Last available snapshot". The strip now renders
+ * `freshnessCopy(snapshot).line`, the same receipt-gated function the panel uses: without a validated receipt it
+ * reads exactly `Last available snapshot · freshness unverified`, and `Last known good <at> · <source>` only ever
+ * comes from a receipt object. This renders the REAL AllocationPage on a stale synthetic book built by the REAL
+ * adapter; restoring the status/reason interpolation must fail it.
+ */
+test('RC3: the Allocation strip says "Last available snapshot · freshness unverified" with no receipt', () => {
+  const { adapter, allocationPage } = compileGateModules()
+  const row = (symbol, mv, basis, price) => ({
+    symbol, name: `Synthetic ${symbol}`, account: 'acct_a', account_key: 'acct_a', account_label: 'Synthetic A',
+    is_cash: false, asset_type: 'EQUITY', market_session: 'REGULAR',
+    shares: 10, price, price_as_of: '2026-11-15T12:00:00Z', market_value: mv, portfolio_pct: 50,
+    avg_cost: basis / 10, cost_basis_source: 'broker_avg_price', cost_basis_total: basis,
+    gain_loss: mv - basis, gain_loss_pct: ((mv - basis) / basis) * 100,
+    protection_state: 'GAP',
+  })
+  const body = {
+    ok: true,
+    // A stale response: no produced verdict, no receipt — the fail-closed case the strip must voice honestly.
+    _swr: { stale: true, age_s: 3600 },
+    data: {
+      count: 2,
+      holdings: [row('SYNAA', 12500, 10000, 125), row('SYNBB', 7500, 5000, 75)],
+      truth: { source: 'synthetic', as_of: '2026-11-15T12:00:00-05:00', stale: true, gap: null },
+      scope_coverage: { min_position_usd: 100, scopes: { 'holdings.all_rows': 2, 'holdings.non_cash': 2, 'holdings.cash': 0 } },
+    },
+  }
+  const res = adapter.adaptHoldings(body)
+  assert.ok(res.book !== null, `the synthetic stale body must adapt: ${res.error ?? ''}`)
+
+  // AllocationPage holds state (filter selects), so it must be rendered as an ELEMENT: calling the component
+  // directly would run its hooks outside a renderer.
+  const html = renderToStaticMarkup(createElement(allocationPage.AllocationPage, { book: res.book, loading: false, error: null, notice: null }))
+  const strip = html.replace(/&amp;/g, '&')
+
+  // The literal, as its own rendered span — not a substring of a longer sentence.
+  assert.match(strip, /<span class="wm-pa-warning">Last available snapshot · freshness unverified<\/span>/)
+  // No receipt exists anywhere in this render, so no spelling of last-known-good may appear.
+  assert.doesNotMatch(strip, /last[- ]known[- ]good/i, 'an unverified read must never be dressed as last-known-good')
+  assert.doesNotMatch(strip, /Last known good/i)
+  // The overall verdict and the data's as-of stay beside the line (the header clock), as the panel prints them.
+  assert.match(strip, /Data as of /)
+  assert.match(strip, /freshness (COMPLETE|PARTIAL)/)
 })

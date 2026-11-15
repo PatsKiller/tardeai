@@ -28,6 +28,7 @@ import {
   accountOptions,
   coverageText,
   displaySectorKey,
+  freshnessCopy,
   moneyText,
   normalizeBook,
   percentText,
@@ -223,10 +224,13 @@ export function AllocationPage({
   const bookView = model.bookView
   const view = model.view
   const currency = view.scope.currency
-  const warning =
-    view.snapshot.status === 'fresh'
-      ? null
-      : `${view.snapshot.status ?? 'Unknown freshness'}${view.snapshot.reason ? ` · ${view.snapshot.reason}` : ''}`
+  // RC3 (lead route 2026-11-15T1754Z): the strip speaks the panel's OWN freshness vocabulary instead of
+  // echoing `snapshot.status` + `snapshot.reason`. `freshnessCopy` gates the "Last known good …" copy on a
+  // validated receipt OBJECT and otherwise says "Last available snapshot · freshness unverified", so an
+  // unverified read can never be dressed as a good one here. The overall verdict and the data's as-of stay
+  // beside it (the header clock), as the reviewed panel prints them.
+  const fresh = freshnessCopy(view.snapshot)
+  const warning = fresh.line === '' ? null : fresh.line
   const accountLabel = scope === 'ALL' ? 'all accounts' : (accounts.find(a => a.key === scope)?.label ?? scope)
   const bookAccountCount = accounts.length
 
@@ -238,7 +242,7 @@ export function AllocationPage({
           <h2>Where the book is allocated</h2>
         </div>
         <span className="wm-pa-clock">
-          {view.snapshot.session ?? 'Session unknown'} · {view.snapshot.observedAt ?? 'Source time unknown'}
+          {view.snapshot.session ?? 'Session unknown'} · Data as of {fresh.dataAsOf} · freshness {fresh.overall}
         </span>
       </header>
 
