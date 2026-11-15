@@ -489,6 +489,9 @@ function compileGateModules() {
     // RC3: the Allocation page renders its status strip in the panel's own vocabulary; it is compiled here so
     // that the render test executes the real page, not a copy of its string.
     path.join(APP, 'src/pages/allocation/AllocationPage.tsx'),
+    // The phone card is a second surface that names the gain/loss measure; compiled here so the render test
+    // below executes the real card, not a copy of its caption.
+    path.join(APP, 'src/pages/portfolio/PositionCards.tsx'),
     cssDecl,
   ]
   const r = spawnSync(process.execPath, [tsc, ...args], { encoding: 'utf8' })
@@ -525,6 +528,7 @@ function compileGateModules() {
     presets: load(path.join(out, 'pages/portfolio/presets.js')),
     panel: load(path.join(out, 'pages/portfolio/AnalyticsPanel.js')),
     allocationPage: load(path.join(out, 'pages/allocation/AllocationPage.js')),
+    positionCards: load(path.join(out, 'pages/portfolio/PositionCards.js')),
   }
   return gateModules
 }
@@ -1423,4 +1427,43 @@ test('W1/KPI: the Allocation gain/loss KPI says the SHARED §L label, "— parti
   const completeHtml = render([row('SYNAA', 12500, 125, 10000), row('SYNBB', 7500, 75, 5000)])
   assert.equal(kpiLabel(completeHtml), 'Open-position gain/loss vs. cost')
   assert.equal(kpiLabel(completeHtml), analyticsAdapter.gainLossMeasureLabel(false))
+})
+
+test('CARD: the Holdings phone card names the SHARED §L measure on every row that has one', () => {
+  const { adapter, positionCards, analyticsAdapter } = compileGateModules()
+  // Two priced positions with basis + one cash row, adapted through the REAL adapter (the card reads HoldingsRow).
+  const row = (symbol, mv, basis) => ({
+    symbol, name: `Synthetic ${symbol}`, account: 'acct_a', account_key: 'acct_a', account_label: 'Synthetic A',
+    is_cash: false, asset_type: 'EQUITY', market_session: 'REGULAR',
+    shares: 10, price: mv / 10, price_as_of: '2026-11-15T12:00:00Z', market_value: mv, portfolio_pct: 50,
+    avg_cost: basis / 10, cost_basis_source: 'broker_avg_price', cost_basis_total: basis,
+    gain_loss: mv - basis, gain_loss_pct: ((mv - basis) / basis) * 100,
+    protection_state: 'GAP',
+  })
+  const cash = {
+    symbol: 'CASHA', name: 'Synthetic cash', account: 'acct_a', account_key: 'acct_a', account_label: 'Synthetic A',
+    is_cash: true, asset_type: 'CASH', shares: 1, market_value: 5000, portfolio_pct: 20,
+  }
+  const res = adapter.adaptHoldings({
+    ok: true,
+    data: {
+      count: 3,
+      holdings: [row('SYNAA', 12500, 10000), row('SYNBB', 7500, 5000), cash],
+      truth: { source: 'synthetic', as_of: '2026-11-15T12:00:00-05:00', stale: false, gap: null },
+      scope_coverage: { min_position_usd: 100, scopes: { 'holdings.all_rows': 3, 'holdings.non_cash': 2, 'holdings.cash': 1 } },
+    },
+  })
+  assert.ok(res.book !== null, `the synthetic body must adapt: ${res.error ?? ''}`)
+
+  const html = renderToStaticMarkup(createElement(positionCards.PositionCards, { rows: res.book.rows }))
+  const shared = analyticsAdapter.gainLossMeasureLabel(false)
+  // The caption is the shared label, once per non-cash card — not a second wording and not a per-row "partial".
+  assert.equal(shared, 'Open-position gain/loss vs. cost')
+  const captions = [...html.matchAll(/<small>([^<]*)<\/small>/g)].map(m => m[1]).filter(t => /gain\/loss/i.test(t))
+  assert.equal(captions.length, 2, `one caption per non-cash card, got ${JSON.stringify(captions)}`)
+  assert.deepEqual([...new Set(captions)], [shared])
+  // The old card-local wording is gone from the rendered cards.
+  assert.doesNotMatch(html, /Unrealized gain \/ loss/)
+  // The cash card keeps its own single-line treatment and carries no gain/loss caption.
+  assert.match(html, /Cash &amp; sweep · Synthetic A/)
 })

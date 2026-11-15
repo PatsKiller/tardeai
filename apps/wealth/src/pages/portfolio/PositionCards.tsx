@@ -9,6 +9,7 @@
 import type { ReactNode } from 'react'
 import { Tag, type Tone } from '../../components/primitives'
 import { CashMark } from './HoldingsTable'
+import { gainLossMeasureLabel } from './analyticsAdapter'
 import type { HoldingsRow, Protection } from './contract'
 import { money, moneyTone, pct, price, shares, signedMoney, signedPct, toneClass, unavailable } from './format'
 
@@ -73,7 +74,9 @@ function PositionCard({ row, onOpen }: { row: HoldingsRow; onOpen?: (row: Holdin
           <b>{row.marketValue === null ? unavailable('unpriced — no price served') : money(row.marketValue)}</b>
         </div>
         <div>
-          <small>Unrealized gain / loss</small>
+          {/* The per-row change is the open position against its cost (the card states that cost beside it), so
+              the card names the shared §L measure — one wording for one measure, on every surface. */}
+          <small>{gainLossMeasureLabel(false)}</small>
           <b>{unrealized(row)}</b>
         </div>
       </div>
