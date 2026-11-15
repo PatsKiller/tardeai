@@ -49,13 +49,31 @@ const PROTECTION_CUE: Record<Protection['state'], { level: CueLevel; label: stri
   UNKNOWN: { level: 'NEUTRAL', label: 'Unknown', icon: 'unassessed' },
 }
 
+/**
+ * C (lead route 2026-11-15T1722Z): the stop sentence follows the row's STATE, never the stop's absence alone.
+ * A PROTECTED row whose resting GTC stop has no served price is exactly that; "no resting stop" is true only of
+ * a GAP, and an UNKNOWN read is not an absence either. Two cells print this sentence — the protection chip's
+ * tooltip and the Stop column — so it is built once here and never contradicted by the other.
+ */
+function stopSentence(p: Protection): string {
+  const stale = p.stale === true ? ' (stale)' : ''
+  if (p.stop !== null) return `stop ${price(p.stop)}${stale}`
+  if (p.state === 'PROTECTED') return `resting GTC stop, pending activation — stop price not served${stale}`
+  if (p.state === 'GAP') return `no resting stop${stale}`
+  return `stop state unknown: this row has no stop read${stale}`
+}
+
 function protectionCue(row: HoldingsRow): Cue | null {
   const p = row.protection
   if (!p) return null
   const meta = PROTECTION_CUE[p.state]
-  const stopText = p.stop === null ? 'no resting stop' : `stop ${price(p.stop)}`
+  const stopText = stopSentence(p)
   const readText = p.asOf === null ? 'read clock absent' : `read ${p.asOf}${p.stale === true ? ' (stale)' : ''}`
-  return cue(meta.level, meta.label, meta.icon, `${p.reason}; ${stopText}; ${readText}; ${p.nextStep}`)
+  // One sentence per fact: when the producer's own reason is already contained in the sentence that states it, it
+  // is not echoed beside it (the live PROTECTED row's reason reads "Resting GTC stop, pending activation").
+  const reasonText = stopText.toLowerCase().includes(p.reason.trim().toLowerCase()) ? '' : p.reason
+  const tooltip = [reasonText, stopText, readText, p.nextStep].filter(s => s.trim() !== '').join('; ')
+  return cue(meta.level, meta.label, meta.icon, tooltip)
 }
 
 // A real book's names are long (measured 2026-11-15 on the live payload: the unbounded identity cell was 516 px and
@@ -232,7 +250,7 @@ function cell(row: HoldingsRow, key: string): ReactNode {
       return shares(row.shares)
     case 'stop':
       if (!row.protection) return compactMissing('protection does not apply to a cash row')
-      return row.protection.stop === null ? compactMissing('no resting stop is on file for this account') : price(row.protection.stop)
+      return row.protection.stop === null ? compactMissing(stopSentence(row.protection)) : price(row.protection.stop)
     case 'downsideToStop':
       // v04 draws this column; the route serves no such field and the page never computes one.
       return compactMissing('downside to stop is not served; computing it would be a calculated field')

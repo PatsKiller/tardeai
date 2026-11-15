@@ -1186,3 +1186,54 @@ test('CSV: a protection chip exports its label — the same text the table print
   }
   assert.equal(holdingsTable.csvFor([gap], preset), 'Protection\r\nGap\r\n')
 })
+
+/**
+ * C (lead route 2026-11-15T1722Z): the operator saw a PROTECTED row's tooltip say "Resting GTC stop, pending
+ * activation" AND "no resting stop" AND "a resting stop is served". The stop sentence is now derived from the
+ * STATE: pending-GTC-with-no-served-price says exactly that, "no resting stop" is true only of a GAP, and an
+ * UNKNOWN read is neither. Both cells (the chip's tooltip and the Stop column) print the one sentence.
+ */
+test('C: a PROTECTED row with no served stop price never says "no resting stop"', () => {
+  const { fixtures, holdingsTable } = compileGateModules()
+  const preset = {
+    id: 'holdings', label: 'protection', methodNote: '', limits: [],
+    columns: [{ key: 'protection', header: 'Protection' }, { key: 'stop', header: 'Stop' }],
+  }
+  const base = fixtures.FIXTURE_BOOK.rows[0]
+  const render = protection => renderToStaticMarkup(
+    holdingsTable.HoldingsTable({ rows: [{ ...base, protection }], preset, onRowOpen: () => {} }),
+  )
+  const strip = (s) => s.replace(/&amp;/g, '&')
+  const count = (hay, needle) => (hay.match(new RegExp(needle, 'gi')) || []).length
+
+  // PROTECTED, the wire states a resting GTC stop, no price served. The row is stale in its own right.
+  const pending = render({
+    state: 'PROTECTED', stop: null, basis: 'resting broker stop (GTC)', asOf: '2026-11-15T12:00:00Z', stale: true,
+    reason: 'Resting GTC stop, pending activation', nextStep: 'None — protection is in place.',
+  })
+  assert.match(strip(pending), /resting GTC stop, pending activation — stop price not served \(stale\)/)
+  assert.doesNotMatch(strip(pending), /no resting stop/i, 'a protected row is not an unprotected one')
+  assert.equal(
+    count(strip(pending), 'resting GTC stop, pending activation'),
+    count(strip(pending), 'stop price not served'),
+    "the producer's own reason is not echoed beside the sentence that repeats it",
+  )
+
+  // PROTECTED with a served price keeps the price, and claims no pending activation.
+  const priced = render({ state: 'PROTECTED', stop: 68.0, basis: 'resting broker stop (GTC)', asOf: '2026-11-15T12:00:00Z', stale: false,
+    reason: 'a resting stop is recorded for this position', nextStep: 'None — protection is in place.' })
+  assert.match(strip(priced), /stop \$68\.00/)
+  assert.doesNotMatch(strip(priced), /pending activation/i)
+
+  // A GAP is the only state that says there is no resting stop.
+  const gap = render({ state: 'GAP', stop: null, basis: null, asOf: null, stale: null,
+    reason: 'no resting stop and no recorded decision to hold unprotected', nextStep: 'Set a protective stop.' })
+  assert.match(strip(gap), /no resting stop/)
+  assert.doesNotMatch(strip(gap), /pending activation/i)
+
+  // An UNKNOWN read is neither "none" nor "pending": it says the row was not read.
+  const unknown = render({ state: 'UNKNOWN', stop: null, basis: null, asOf: null, stale: null,
+    reason: 'no broker stop read for a delisted zero-value identifier', nextStep: 'Record the write-off decision.' })
+  assert.match(strip(unknown), /stop state unknown: this row has no stop read/)
+  assert.doesNotMatch(strip(unknown), /no resting stop/i)
+})
