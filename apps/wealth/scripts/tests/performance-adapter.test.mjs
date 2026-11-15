@@ -47,7 +47,7 @@ function compiled() {
   load.extensions['.css'] = () => {}
   process.once('exit', () => fs.rmSync(out, { recursive: true, force: true }))
   modules = { page: load(path.join(out, 'pages/portfolio/PerformancePage.js')).PerformancePage,
-    live: load(path.join(out, 'pages/portfolio/PerformanceLive.js')).PerformanceLive, client: load(path.join(out, 'api/client.js')) }
+    live: load(path.join(out, 'pages/portfolio/PerformanceLive.js')).PerformanceLive, select: load(path.join(out, 'pages/portfolio/performanceScope.js')).PerformanceAccountSelect, client: load(path.join(out, 'api/client.js')) }
   return modules
 }
 const render = p => renderToStaticMarkup(React.createElement(compiled().page, p))
@@ -158,23 +158,32 @@ named('adapter never throws on malformed shapes and never mutates source data', 
 })
 named('raw account keys never render; coverage comes only from an explicit served count contract', () => {
   const b = body(); delete b.accounts['synthetic-account-a'].account_label; b.periods['1W'].coverage = { included: 2, total: 3 }
-  const p = adapt(b), html = render(p); assert.match(html, /Account label not served/); assert.doesNotMatch(html, /synthetic-account-a|synthetic-account-b/)
+  const p = adapt(b), html = render(p); assert.match(html, /Account 1 · label not served/); assert.doesNotMatch(html, /synthetic-account-a|synthetic-account-b/)
   assert.match(household(html), /Coverage: 2 of 3 accounts/); assert.deepEqual(p.household['1M'].observation.coverage, { included: null, total: null })
 })
 
 // Drive the actual compiled wrapper with stubbed React hooks/client. No renderer server or network.
-async function liveHarness(result, reject = false) {
+async function liveHarness(result, reject = false, overview = env({ ok: true, data: {} })) {
   const { live, client } = compiled(), saved = { useState: React.useState, useMemo: React.useMemo, useEffect: React.useEffect, useContext: React.useContext, useSearchParams: router.useSearchParams, getJson: client.getJson, now: Date.now }
-  const state = [], effects = []; let cursor = 0, calls = 0, signal
+  const state = [], effects = [], calls = [], signals = []; let cursor = 0
+  const publication = { accounts: null, reason: null, publish(accounts, reason) { this.accounts = accounts; this.reason = reason } }
+  publication.publish = publication.publish.bind(publication)
   React.useState = initial => { const i = cursor++; if (!(i in state)) state[i] = typeof initial === 'function' ? initial() : initial; return [state[i], v => { state[i] = v }] }
-  React.useContext = () => null; router.useSearchParams = () => [new URLSearchParams(), () => {}]
+  React.useContext = () => publication; router.useSearchParams = () => [new URLSearchParams(), () => {}]
   React.useMemo = fn => fn(); React.useEffect = fn => { effects.push(fn) }; Date.now = () => NOW
-  client.getJson = (url, s) => { calls++; assert.equal(url, '/api/v2/portfolio/performance'); signal = s; return reject ? Promise.reject(new Error('synthetic offline')) : Promise.resolve(result) }
+  client.getJson = (url, s) => {
+    calls.push(url); signals.push(s)
+    if (url === PERFORMANCE_PATH) return reject ? Promise.reject(new Error('synthetic offline')) : Promise.resolve(result)
+    assert.equal(url, '/api/v2/overview')
+    return overview instanceof Error ? Promise.reject(overview) : Promise.resolve(overview)
+  }
   try {
     cursor = 0; const initial = renderToStaticMarkup(live()), cleanup = effects[0]()
     await new Promise(resolve => setImmediate(resolve))
-    cursor = 0; const final = renderToStaticMarkup(live()); assert.equal(calls, 1); cleanup(); assert.equal(signal.aborted, true)
-    return { initial, final }
+    cursor = 0; const final = renderToStaticMarkup(live()); effects[effects.length - 2]()
+    const picker = renderToStaticMarkup(React.createElement(compiled().select))
+    assert.deepEqual(calls.sort(), ['/api/v2/overview', PERFORMANCE_PATH].sort()); cleanup(); assert.ok(signals.every(s => s.aborted))
+    return { initial, final, picker }
   } finally { Object.assign(React, { useState: saved.useState, useMemo: saved.useMemo, useEffect: saved.useEffect, useContext: saved.useContext }); router.useSearchParams = saved.useSearchParams; client.getJson = saved.getJson; Date.now = saved.now }
 }
 named('live wrapper reads once, renders adapted data, and aborts on unmount', async () => {
@@ -196,7 +205,7 @@ named('legacy shape has no account eligibility, display labels, coverage or unif
   assert.equal(p.household['1W'].observation.amount.value, 100)
   assert.equal(p.household['1W'].observation.clocks[0].ageSeconds, null)
   assert.deepEqual(p.household['1W'].observation.coverage, { included: null, total: null })
-  assert.match(render(p), /Account label not served|Source clock/)
+  assert.match(render(p), /Account 1 · label not served/)
 })
 named('clock OK alone is not freshness; invalid calendar dates never become source instants', () => {
   const b = body()
@@ -275,4 +284,38 @@ named('C-PERF-B selected account status does not count a suppressed household as
   const b = body(); b.accounts['synthetic-account-a'].periods['1W'] = cell({coverage:{included:1,total:1},observation_clock:{as_of:OLD,freshness:'fresh'}})
   const selected = selectPerformance(adapt(b), 'synthetic-account-a', '1W')
   assert.match(render(selected.props), /data-performance-state="available"/)
+})
+
+const fiveUnlabeled = () => {
+  const b = body()
+  b.accounts = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`synthetic-key-${i}`, { periods: { '1W': cell() } }]))
+  return b
+}
+const optionTexts = html => Array.from(html.matchAll(/<option[^>]*>(.*?)<\/option>/g), m => m[1]).slice(1)
+named('C-PERF-B labels: five missing labels have distinct safe text and stable filtered identity', async () => {
+  const b = fiveUnlabeled(), { final, picker } = await liveHarness(env({ ok: true, data: b }))
+  assert.deepEqual(optionTexts(picker), Array.from({ length: 5 }, (_, i) => `Account ${i + 1} · label not served`))
+  assert.doesNotMatch(optionTexts(picker).join(' '), /synthetic-key/)
+  assert.doesNotMatch(final, /synthetic-key/)
+  assert.match(render(adaptPerformance(b, NOW, 'synthetic-key-3').props), /Account 4 · label not served/)
+})
+named('C-PERF-B labels: actual wrapper joins both canonical overview label shapes without money or clock inference', async () => {
+  const b = fiveUnlabeled()
+  const labels = { account_labels: Object.fromEntries([0, 1, 2].map(i => [`synthetic-key-${i}`, `Canonical synthetic ${i + 1}`])),
+    portfolio_aggregate: { accounts: [3, 4].map(i => ({ account_id: `synthetic-key-${i}`, account_label: `Canonical synthetic ${i + 1}` })) },
+    clock_provenance: { quote: { as_of: new Date(NOW).toISOString(), freshness: 'fresh' } } }
+  const { final, picker } = await liveHarness(env({ ok: true, data: b }), false, env({ ok: true, data: labels }))
+  assert.deepEqual(optionTexts(picker), Array.from({ length: 5 }, (_, i) => `Canonical synthetic ${i + 1}`))
+  assert.doesNotMatch(final, /label not served/)
+  assert.match(final, /eligibility unknown/); assert.match(final, /3\.0 d old/)
+  assert.doesNotMatch(accounts(final), /\+\$100\.00|\+1\.00%/)
+})
+named('C-PERF-B labels: label failures preserve Performance values, old clocks and safe placeholders', async () => {
+  for (const overview of [new Error('synthetic label offline'), env(null, { ok: false, status: 503 }), env({ ok: false, error: 'synthetic nested failure', data: { account_labels: { 'synthetic-key-0': 'Rejected label' } } })]) {
+    const { final, picker } = await liveHarness(env({ ok: true, data: fiveUnlabeled() }), false, overview)
+    assert.equal(new Set(optionTexts(picker)).size, 5)
+    assert.match(final, /Account labels unavailable/); assert.match(final, /3\.0 d old/)
+    assert.match(household(final), /\+\$100\.00/)
+    assert.doesNotMatch(final, /Rejected label/)
+  }
 })

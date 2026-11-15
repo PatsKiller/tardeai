@@ -56,6 +56,8 @@ export interface PerformanceHouseholdPeriod {
 
 export interface PerformanceAccount {
   key: string
+  /** Position in this source response, retained when scoped; display placeholder only. */
+  sourceOrdinal?: number
   availablePeriods?: readonly PerformanceWindow[]
   label: string | null
   /** Caller supplies the actual membership/eligibility qualification; never inferred from keys. */
@@ -78,7 +80,9 @@ export interface PerformancePageProps {
 
 export function performanceAccountLabel(account: PerformanceAccount): string {
   const label = accountDisplayLabel(account.key, account.label, null)
-  return label === account.key || label.trim() === '' ? 'Account label not served' : label
+  if (label !== account.key && label.trim() !== '') return label
+  const ordinal = account.sourceOrdinal ?? 0
+  return Number.isSafeInteger(ordinal) && ordinal > 0 ? `Account ${ordinal} · label not served` : 'Account label not served'
 }
 
 export function numberIsKnown(number: PerformanceNumber): boolean {
