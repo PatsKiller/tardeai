@@ -1195,8 +1195,8 @@
    "contract_account_security_session_metric_clock": "",
    "observed_working": "nav click -> URL, h1, active, aria-current, title; tab click -> active tab, aria-current=page; unknown address -> bad note",
    "evidence": "local vite preview (loopback) of wt/wealth-shell-20261114@576adbe36, 2026-11-14 18:29 ET; s2/wealth-shell/shots/*.png, shots.json, drawer.json (NOT served on /wealth/)",
-   "gaps_adapter_backend": "App.tsx routes only family paths: v02 addresses land on \"*\" until ROUTE-PATCH-App-v02-addresses.patch (claude-lead) folds",
-   "next_step": "lead folds route patch; screenshot on served /wealth/"
+   "gaps_adapter_backend": "view slices not built: every v02 address now resolves to the family's or the group's *Not built yet* page (route patch folded fa97dd624); the ten legacy family routes whose id is not a NAV group do not render behind the shell's known-address gate (carried, shell owner)",
+   "next_step": "screenshot on served /wealth/ after release"
   },
   {
    "kind": "shell",
