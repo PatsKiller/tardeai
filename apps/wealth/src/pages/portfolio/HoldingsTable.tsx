@@ -17,6 +17,7 @@ import { cue } from '../../contracts/cue'
 import { Tag, type Tone } from '../../components/primitives'
 import { assessmentSummary, peCellText } from './cells'
 import type { HoldingsRow, Protection } from './contract'
+import { displayOf, identitySecondLine, identityShowsName } from './displayIdentity'
 import { age, marketCapText, money, moneyTone, multiple, pct, price, shares, signedMoney, signedPct, toneClass, unavailable } from './format'
 import type { Preset } from './presets'
 
@@ -160,6 +161,27 @@ export function CashMark() {
 }
 
 
+/**
+ * The row's second line, rendered identically by the table and the phone card (spec T6 parity): the resolved
+ * identity's name, R4's exact label after it when the name is company-sourced, then the account label. R4b: when
+ * the resolved name IS the ticker, the line is the account label alone — `AMANX · AMANX` is never printed.
+ */
+export function IdentityLine({ row }: { row: HoldingsRow }) {
+  const identity = displayOf(row)
+  return (
+    <>
+      {identityShowsName(identity, row.symbol) ? (
+        <>
+          <span className="ticker-name">{identity.nameText}</span>
+          {identity.label === null ? null : ` · ${identity.label}`}
+          {' · '}
+        </>
+      ) : null}
+      {row.accountLabel}
+    </>
+  )
+}
+
 function cell(row: HoldingsRow, key: string): ReactNode {
   // A cash row is not a security: most columns do not apply. v04 prints `N/A` / `—` here; the reason rides the
   // title, and the row drawer states it per field.
@@ -174,14 +196,22 @@ function cell(row: HoldingsRow, key: string): ReactNode {
       // security carries its symbol, set as the row's handle, and its name in readable type. No logo is
       // fetched and no brand is implied. The internal account key is NOT printed in the cell (it identifies
       // the broker record, not the account); it is on the title and in the drawer.
+      //
+      // The second line is the RESOLVED identity (SPCX display-identity spec R1-R4b), not `row.name`: one name
+      // per symbol, so two rows of one instrument cannot print two identities. The title is built by the same
+      // function, so the visible line and the accessible name cannot drift.
+      const identity = displayOf(row)
       return (
         <span className="ticker">
           {row.kind === 'CASH' && <CashMark />}
           <span>
             <strong className="ticker-symbol">{row.symbol}</strong>
             <br />
-            <small style={TRUNCATE} title={`${row.name} · ${row.accountLabel} · account ${row.accountKey}`}>
-              <span className="ticker-name">{row.name}</span> · {row.accountLabel}
+            <small
+              style={TRUNCATE}
+              title={`${identitySecondLine(identity, row.symbol, row.accountLabel)} · account ${row.accountKey}`}
+            >
+              <IdentityLine row={row} />
             </small>
           </span>
         </span>

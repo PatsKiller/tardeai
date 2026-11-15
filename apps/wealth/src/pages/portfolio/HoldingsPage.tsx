@@ -56,6 +56,7 @@ import { PRESETS, preset, type PresetId } from './presets'
 import { lastKnownSentence, money, moneyTone, notCurrent, servedFreshnessLine, toneClass } from './format'
 import { detailSections, detailHeading } from './detail'
 import { rowsInScope, scopeLabel, scopedMeasure } from './scope'
+import { rowMatchesQuery } from './search'
 import { useBookScope } from './snapshot'
 
 export interface HoldingsPageProps {
@@ -279,16 +280,15 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
   }
 
   const active = preset(presetId)
-  const needle = query.trim().toLowerCase()
   // The scope narrows the rows; the search narrows them again. Neither changes a served value.
   const inScope = rowsInScope(book, scope)
   // The v0.5 view is the ONE filter pass when it can be derived: account, sector, search and currency narrow the
   // same population, so the KPI strip, the charts, the table and the CSV cannot disagree about which rows they
   // describe. When the selector rejects the book's identity the page falls back to scope + search and says why.
   const view = analytics.view
-  const fallbackRows = needle
-    ? inScope.filter(r => `${r.symbol} ${r.name} ${r.accountLabel} ${r.accountKey}`.toLowerCase().includes(needle))
-    : inScope
+  // The predicate lives in search.ts so the gate exercises the real matcher (SPCX spec T9); its results are
+  // unchanged (R7) — it still reads `name`, never the display identity.
+  const fallbackRows = query.trim() === '' ? inScope : inScope.filter(r => rowMatchesQuery(r, query))
   const rows = view === null ? fallbackRows : view.rows.map(r => r.holding)
 
   const openRow = (row: HoldingsRow, origin?: HTMLElement) => {

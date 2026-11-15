@@ -29,6 +29,7 @@ import type {
   ServedFreshness,
 } from './contract'
 import { PORTFOLIO_HOLDINGS_CONTRACT_VERSION } from './contract'
+import { attachDisplayIdentity } from './displayIdentity'
 
 const SYNTHETIC_REASON = 'synthetic fixture: no approved valuation methodology wired'
 
@@ -119,9 +120,13 @@ function ladder(high: number, low: number, prices: number[], nearest: number, fr
   }
 }
 
-const ROWS: HoldingsRow[] = [
+// The authored rows state their own raw identity sources (spec R2): the synthetic names are carried, and the
+// one row whose name IS its ticker (the cash row) is the ladder's symbol branch. `identity` is attached below by
+// the same resolver the live adapter runs, so the fixture book renders exactly what a served book would.
+const ROWS: Omit<HoldingsRow, 'identity'>[] = [
   {
     accountKey: 'SYN_TAX', accountLabel: 'Synthetic taxable', symbol: 'QZTA', name: 'Qzeta Alpha Corp',
+    nameRaw: 'Qzeta Alpha Corp', companyName: null, nameSource: 'carried',
     kind: 'SECURITY', shares: 200, price: 75.0, priceAsOf: '2026-11-14T21:00:00Z', avgCost: 60.0,
     marketValue: 15000.0, gainLoss: 3000.0, gainLossPct: 25.0, portfolioPct: 15.0,
     dayChange: 240.58, dayChangePct: 1.63, marketCapB: 41200.0, yieldPct: 1.8,
@@ -135,6 +140,7 @@ const ROWS: HoldingsRow[] = [
   },
   {
     accountKey: 'SYN_TAX', accountLabel: 'Synthetic taxable', symbol: 'QZBR', name: 'Qzeta Beta Holdings',
+    nameRaw: 'Qzeta Beta Holdings', companyName: null, nameSource: 'carried',
     kind: 'SECURITY', shares: 150, price: 40.0, priceAsOf: '2026-11-14T21:00:00Z', avgCost: 44.0,
     marketValue: 6000.0, gainLoss: -600.0, gainLossPct: -9.09, portfolioPct: 6.0,
     dayChange: -60.0, dayChangePct: -0.99, marketCapB: 1850.0, yieldPct: null,
@@ -148,6 +154,7 @@ const ROWS: HoldingsRow[] = [
   },
   {
     accountKey: 'SYN_ROTH', accountLabel: 'Synthetic retirement', symbol: 'QZGA', name: 'Qzeta Gamma Industries',
+    nameRaw: 'Qzeta Gamma Industries', companyName: null, nameSource: 'carried',
     kind: 'SECURITY', shares: 80, price: 120.0, priceAsOf: '2026-11-14T21:00:00Z', avgCost: 100.0,
     marketValue: 9600.0, gainLoss: 1600.0, gainLossPct: 20.0, portfolioPct: 9.6,
     dayChange: 63.9, dayChangePct: 0.67, marketCapB: 96400.0, yieldPct: 2.4,
@@ -161,6 +168,7 @@ const ROWS: HoldingsRow[] = [
   },
   {
     accountKey: 'SYN_ROTH', accountLabel: 'Synthetic retirement', symbol: 'QZDL', name: 'Qzeta Delta Systems',
+    nameRaw: 'Qzeta Delta Systems', companyName: null, nameSource: 'carried',
     kind: 'SECURITY', shares: 300, price: 12.5, priceAsOf: '2026-11-14T21:00:00Z', avgCost: 15.0,
     marketValue: 3750.0, gainLoss: -750.0, gainLossPct: -16.67, portfolioPct: 3.75,
     dayChange: 0.0, dayChangePct: 0.0, marketCapB: 640.0, yieldPct: null,
@@ -175,6 +183,7 @@ const ROWS: HoldingsRow[] = [
   },
   {
     accountKey: 'SYN_ROLL', accountLabel: 'Synthetic rollover', symbol: 'QZEP', name: 'Qzeta Epsilon Group',
+    nameRaw: 'Qzeta Epsilon Group', companyName: null, nameSource: 'carried',
     kind: 'SECURITY', shares: 60, price: 210.0, priceAsOf: '2026-11-14T21:00:00Z', avgCost: 195.0,
     marketValue: 12600.0, gainLoss: 900.0, gainLossPct: 7.69, portfolioPct: 12.6,
     dayChange: 126.0, dayChangePct: 1.01, marketCapB: 230500.0, yieldPct: 0.9,
@@ -188,6 +197,7 @@ const ROWS: HoldingsRow[] = [
   },
   {
     accountKey: 'SYN_ROLL', accountLabel: 'Synthetic rollover', symbol: 'QZFD', name: 'Qzeta Income Fund',
+    nameRaw: 'Qzeta Income Fund', companyName: null, nameSource: 'carried',
     kind: 'SECURITY', shares: 400, price: 25.0, priceAsOf: '2026-11-14T21:00:00Z', avgCost: 24.5,
     marketValue: 10000.0, gainLoss: 200.0, gainLossPct: 2.04, portfolioPct: 10.0,
     dayChange: -20.04, dayChangePct: -0.2, marketCapB: null, yieldPct: 5.6,
@@ -208,6 +218,7 @@ const ROWS: HoldingsRow[] = [
     // A worthless, delisted identifier the producer keeps at zero: a FACT, not a missing value. It renders
     // "$0.00 · worthless" — never as an unpriced row, and never silently dropped from a count that includes it.
     accountKey: 'SYN_TAX', accountLabel: 'Synthetic taxable', symbol: 'QZDX', name: 'Qzeta Delta Delisted',
+    nameRaw: 'Qzeta Delta Delisted', companyName: null, nameSource: 'carried',
     kind: 'SECURITY', shares: 40, price: null, priceAsOf: null, avgCost: 12.5,
     marketValue: 0.0, gainLoss: null, gainLossPct: null, portfolioPct: 0,
     dayChange: null, dayChangePct: null, marketCapB: null, yieldPct: null,
@@ -224,6 +235,7 @@ const ROWS: HoldingsRow[] = [
     // An unpriced holding: no price served, so the value is UNKNOWN — never $0.00, and never under the floor:
     // the mark is derived only from a served value, so an unknown value cannot be "below".
     accountKey: 'SYN_ROLL', accountLabel: 'Synthetic rollover', symbol: 'QZNV', name: 'Qzeta Nova Materials',
+    nameRaw: 'Qzeta Nova Materials', companyName: null, nameSource: 'carried',
     kind: 'SECURITY', shares: 25, price: null, priceAsOf: null, avgCost: 88.0,
     marketValue: null, gainLoss: null, gainLossPct: null, portfolioPct: 0,
     dayChange: null, dayChangePct: null, marketCapB: null, yieldPct: null,
@@ -237,6 +249,7 @@ const ROWS: HoldingsRow[] = [
   },
   {
     accountKey: 'SYN_TAX', accountLabel: 'Synthetic taxable', symbol: 'CASH', name: 'Cash',
+    nameRaw: 'Cash', companyName: null, nameSource: 'symbol',
     kind: 'CASH', shares: 43050.0, price: 1.0, priceAsOf: null, avgCost: null,
     marketValue: 43050.0, gainLoss: null, gainLossPct: null, portfolioPct: 43.05,
     dayChange: 0.0, dayChangePct: 0.0, marketCapB: null, yieldPct: null,
@@ -248,6 +261,7 @@ const ROWS: HoldingsRow[] = [
     ...profiled('CASH'),
   },
 ]
+const IDENTIFIED_ROWS = attachDisplayIdentity(ROWS)
 
 const DAY_PNL: DeclaredClock = {
   status: 'UNKNOWN',
@@ -324,7 +338,7 @@ export const FIXTURE_BOOK: HoldingsBook = {
   // is an aggregate across rows (the wire marks it mixed) and is not the clock a marks line is drawn from.
   asOfClock: 'QUOTE',
   clocks: CLOCKS,
-  rows: ROWS,
+  rows: IDENTIFIED_ROWS,
   counts: {
     allRows: 9,
     nonCash: 8,
@@ -420,12 +434,15 @@ export const FIXTURE_BOOK_VALUATION_CLOCK: HoldingsBook = {
  */
 export const FIXTURE_BOOK_LEGACY_PUBLISHED: HoldingsBook = {
   ...FIXTURE_BOOK,
-  rows: [
+  // Re-resolved, not inherited: the appended row is spread from row 0 and overrides its symbol, so it must state
+  // its own raw name (a spread would otherwise carry QZTA's identity onto a different instrument).
+  rows: attachDisplayIdentity([
     ...FIXTURE_BOOK.rows,
     {
       ...FIXTURE_BOOK.rows[0],
       accountKey: 'SYN_ROLL', accountLabel: 'Synthetic rollover', symbol: 'QZLGC',
       name: 'Qzeta Legacy Delisted (zero value, published loss)',
+      nameRaw: 'Qzeta Legacy Delisted (zero value, published loss)', companyName: null, nameSource: 'carried',
       shares: 40, price: null, priceAsOf: null, avgCost: 12.5,
       marketValue: 0.0, gainLoss: -500.0, gainLossPct: -100.0,
       dayChange: null, dayChangePct: null, marketCapB: null, yieldPct: null,
@@ -436,7 +453,7 @@ export const FIXTURE_BOOK_LEGACY_PUBLISHED: HoldingsBook = {
         nextStep: 'Record the write-off decision; there is nothing left to protect.' }),
       ...profiled('EQUITY'),
     },
-  ],
+  ]),
   // The extra row is rendered and counted, priced at zero, under the $100 floor and omitted from no population.
   // The two produced counts and the listed-not-counted block move with it; nothing else does (a zero market
   // value changes no account total, no weight and no account-value measure).

@@ -22,10 +22,11 @@
 import type {
   AccountTotal, BookMeasure, BookSource, ClockProvenance, ClockRole, DeclaredClock, FibLadder, HoldingsBook,
   HoldingsCounts, HoldingsFreshness, HoldingsRow, HoldingsSession, ListedNotCounted, Population,
-  PopulationExclusion, Protection, ProtectionState, RowFundamentals, RowKind, ServedFreshness,
+  PopulationExclusion, Protection, ProtectionState, RowFundamentals, RowKind, ServedFreshness, ServedIdentity,
 } from './contract'
 import { PORTFOLIO_HOLDINGS_CONTRACT_VERSION } from './contract'
 import { accountDisplayLabel } from './accountLabel'
+import { attachDisplayIdentity, nameSourceFrom } from './displayIdentity'
 
 export interface AdaptResult {
   book: HoldingsBook | null
@@ -156,6 +157,23 @@ function fundamentalsFrom(wire: Json, kind: RowKind): RowFundamentals | null {
   return Object.values(f).every(v => v === null) ? null : f
 }
 
+/**
+ * The wire's `identity` block, passed through (spec R5). No route serves one today; when one does, the server has
+ * already resolved it, and the client only reads the verdict. Only the shape R5 defines is accepted — status
+ * `CONFIRMED` is the sole admitting value and `cusip` the sole basis — so an unreadable block is `null`, and a
+ * `CONFIRMED` verdict still has to survive the resolver's identifier-length check before it names anything (R8).
+ */
+function servedIdentityFrom(v: unknown): ServedIdentity | null {
+  if (!isObj(v)) return null
+  if (str(v.basis) !== 'cusip') return null
+  return {
+    status: str(v.status) === 'CONFIRMED' ? 'CONFIRMED' : 'UNVERIFIED',
+    name: str(v.name),
+    basis: 'cusip',
+    identifier: str(v.identifier),
+  }
+}
+
 function rowFrom(wire: Json, floorUsd: number | null): HoldingsRow | null {
   const symbol = str(wire.symbol)
   if (symbol === null) return null
@@ -180,6 +198,14 @@ function rowFrom(wire: Json, floorUsd: number | null): HoldingsRow | null {
     accountLabel: str(wire.account_label) ?? str(wire.account) ?? accountKey,
     symbol,
     name: str(wire.name) ?? str(wire.company) ?? symbol,
+    // The identity inputs beside the unchanged `name` (spec R2/R5, additive): the two raw sources, the ladder
+    // branch `name` came from, and the server-resolved verdict when a route serves one. `name` itself stays byte-
+    // identical so Holdings search and the selector's consumers keep today's results (R7); display reads
+    // `identity`, attached once per symbol after the rows are built.
+    nameRaw: str(wire.name),
+    companyName: str(wire.company),
+    nameSource: nameSourceFrom(str(wire.name), str(wire.company), symbol),
+    servedIdentity: servedIdentityFrom(wire.identity),
     kind,
     shares,
     price: num(wire.price) ?? num(wire.current_price),
@@ -422,8 +448,11 @@ export function adaptHoldings(body: unknown): AdaptResult {
     else rows.push(row)
   }
   if (malformed > 0) coverage.push(`${malformed} listed row(s) carried no symbol and are not shown`)
-  const population = populationFrom(wire, rows.length, coverage)
-  const counts = countsFrom(wire, rows, coverage)
+  // One display identity per symbol, resolved once over the whole book (spec R1/R2): every row of a symbol then
+  // renders the same name and the same status. Attaching copies the rows, so no later reader can hold one without.
+  const identified = attachDisplayIdentity(rows)
+  const population = populationFrom(wire, identified.length, coverage)
+  const counts = countsFrom(wire, identified, coverage)
   const positions = asObj(asObj(wire.clock_provenance).positions)
   // F-1 (ledger 2026-11-15T0325Z): the book's as-of is the QUOTE clock when `truth.as_of` carries it. The page
   // used to print the literal role 'POSITIONS' over it, which read a quote instant as the positions aggregate.
@@ -457,7 +486,7 @@ export function adaptHoldings(body: unknown): AdaptResult {
   if (!isObj(root._swr)) coverage.push('the response carries no _swr block: freshness is treated as stale')
 
   const note = [
-    `${rows.length} rows as served: ${counts.cash} cash and ${counts.nonCash} non-cash.`,
+    `${identified.length} rows as served: ${counts.cash} cash and ${counts.nonCash} non-cash.`,
     `The producer counts ${counts.nonCashOverFloor} non-cash rows at or above the ${population.floorUsd ?? 'unstated'} floor and ${counts.heldUnderFloor} below it; the rows below the floor are listed and outside the counted scope, not omitted.`,
     ...coverage,
   ].join(' ')
@@ -468,7 +497,7 @@ export function adaptHoldings(body: unknown): AdaptResult {
     asOf,
     asOfClock,
     clocks,
-    rows,
+    rows: identified,
     counts,
     population,
     accounts: accountsFrom(wire),

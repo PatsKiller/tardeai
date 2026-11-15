@@ -8,7 +8,7 @@
 
 import type { ReactNode } from 'react'
 import { Tag, type Tone } from '../../components/primitives'
-import { CashMark } from './HoldingsTable'
+import { CashMark, IdentityLine } from './HoldingsTable'
 import { gainLossMeasureLabel } from './analyticsAdapter'
 import type { HoldingsRow, Protection } from './contract'
 import { money, moneyTone, pct, price, shares, signedMoney, signedPct, toneClass, unavailable } from './format'
@@ -55,8 +55,10 @@ function PositionCard({ row, onOpen }: { row: HoldingsRow; onOpen?: (row: Holdin
     <article className="position-card">
       <div className="row-between">
         <b className="ticker-symbol">{row.symbol}</b>
+        {/* The same resolved identity as the table's security cell, from the same component (spec T6): one name
+            per symbol, R4's label when it is company-sourced, R4b's suppression when it is the ticker. */}
         <small className="muted">
-          <span className="ticker-name">{row.name}</span> · {row.accountLabel}
+          <IdentityLine row={row} />
         </small>
         {tag ? <Tag tone={tag.tone} title={row.protection?.reason}>{tag.label}</Tag> : null}
       </div>

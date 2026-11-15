@@ -112,12 +112,60 @@ export interface FibLadder {
   window: { high: number; low: number; asOf: string }
 }
 
+/**
+ * Which raw source the ladder put a name on (SPCX display-identity spec R2): a broker-carried `name` that is not
+ * just the ticker, the enrichment's `company`, or — when neither exists — the symbol alone.
+ */
+export type IdentitySource = 'carried' | 'company' | 'symbol'
+
+/**
+ * The server-resolved instrument identity a route MAY serve on a row (spec R5). The client reads this verdict and
+ * nothing else: it performs no registry read, no matching and no check-digit arithmetic. `security_guid` is NOT
+ * this field — it is symbol-keyed enrichment plumbing, never an identity basis.
+ */
+export interface ServedIdentity {
+  status: 'CONFIRMED' | 'UNVERIFIED'
+  name: string | null
+  basis: 'cusip'
+  identifier: string | null
+}
+
+/**
+ * The identity ONE instrument is displayed under, resolved once per symbol at read time (spec R2/R4/R4b/R8).
+ * `label` is R4's exact caveat string when the name is company-sourced, otherwise null; a `symbol`-sourced
+ * resolution means the second line carries the account label alone (R4b).
+ */
+export interface ResolvedIdentity {
+  nameText: string
+  status: 'CONFIRMED' | 'UNVERIFIED'
+  label: string | null
+  source: IdentitySource
+}
+
 export interface HoldingsRow {
   /** Stable key: `${accountKey}:${symbol}` — the same key valuation-assessment@1 uses. */
   accountKey: string
   accountLabel: string
   symbol: string
+  /** Today's `str(name) ?? str(company) ?? symbol` — UNCHANGED by the identity work: search and the selector's
+   *  consumers read it and must keep their results (spec R7). Surfaces display `identity` instead. */
   name: string
+  /**
+   * ADDITIVE read-time identity inputs (spec R2/R5), filled by the adapter beside `name`:
+   *   * `nameRaw` — the wire's `name` exactly as served (`str`: empty is null);
+   *   * `companyName` — the wire's `company`;
+   *   * `nameSource` — which ladder branch `name` came from, computed by the same helper the resolver uses;
+   *   * `servedIdentity` — a server-resolved `identity` block passed through untouched (null when none).
+   * Optional because hand-authored rows (the synthetic book) may omit them; a row without them resolves
+   * fail-closed to its symbol (R8), never to its `name`.
+   */
+  nameRaw?: string | null
+  companyName?: string | null
+  nameSource?: IdentitySource
+  servedIdentity?: ServedIdentity | null
+  /** RESOLVED once per symbol by `resolveDisplayIdentity` (read time); the only identity field a surface renders.
+   *  Absent on a row that never passed through the resolver — `displayOf` then renders the symbol alone (R8). */
+  identity?: ResolvedIdentity
   kind: RowKind
   shares: number
   price: number | null

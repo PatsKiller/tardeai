@@ -15,6 +15,7 @@
 
 import type { HoldingsRow } from './contract'
 import { sectorDisplayLabel, sectorSource } from './analyticsAdapter'
+import { displayOf, identitySecondLine } from './displayIdentity'
 import { decimal, marketCapText, money, multiple, pct, price, shares, signedMoney, signedPct, unavailable } from './format'
 
 export interface DetailField {
@@ -25,9 +26,12 @@ export interface DetailField {
 }
 
 export function detailHeading(row: HoldingsRow): { title: string; eyebrow: string } {
+  // The eyebrow is the table cell's own second line plus the account key (spec T6 parity): the resolved identity,
+  // never the per-row `name`, so the drawer cannot name an instrument differently from the row that opened it.
+  const identity = displayOf(row)
   return {
     title: row.symbol,
-    eyebrow: `${row.name} · ${row.accountLabel} · ${row.accountKey}`,
+    eyebrow: `${identitySecondLine(identity, row.symbol, row.accountLabel)} · ${row.accountKey}`,
   }
 }
 

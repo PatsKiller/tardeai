@@ -6,6 +6,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -492,6 +493,10 @@ function compileGateModules() {
     // The phone card is a second surface that names the gain/loss measure; compiled here so the render test
     // below executes the real card, not a copy of its caption.
     path.join(APP, 'src/pages/portfolio/PositionCards.tsx'),
+    // SPCX display-identity spec: the drawer eyebrow and the search predicate are two of the spec's surfaces, so
+    // they are compiled here and driven by the tests below — the real functions, not copies of them.
+    path.join(APP, 'src/pages/portfolio/detail.ts'),
+    path.join(APP, 'src/pages/portfolio/search.ts'),
     cssDecl,
   ]
   const r = spawnSync(process.execPath, [tsc, ...args], { encoding: 'utf8' })
@@ -529,6 +534,9 @@ function compileGateModules() {
     panel: load(path.join(out, 'pages/portfolio/AnalyticsPanel.js')),
     allocationPage: load(path.join(out, 'pages/allocation/AllocationPage.js')),
     positionCards: load(path.join(out, 'pages/portfolio/PositionCards.js')),
+    displayIdentity: load(path.join(out, 'pages/portfolio/displayIdentity.js')),
+    detail: load(path.join(out, 'pages/portfolio/detail.js')),
+    search: load(path.join(out, 'pages/portfolio/search.js')),
   }
   return gateModules
 }
@@ -1466,4 +1474,209 @@ test('CARD: the Holdings phone card names the SHARED §L measure on every row th
   assert.doesNotMatch(html, /Unrealized gain \/ loss/)
   // The cash card keeps its own single-line treatment and carries no gain/loss caption.
   assert.match(html, /Cash &amp; sweep · Synthetic A/)
+})
+
+
+// ---------------------------------------------------------------------------------------------------------------
+// SPCX display-identity spec Rev 3 (inbox/claude-lead/READY-SPEC-SPCX-DISPLAY-IDENTITY-R3-cc-deepseek-5-...).
+// Synthetic symbols (QZ*) and a synthetic identifier only: no real issuer, ticker, CUSIP or account appears here.
+// The measured defect these tests pin: one symbol held in two accounts printed two identities, because the second
+// line read the per-row `name` (one row's name is the ticker, the other's is empty).
+
+// A synthetic wire row: `name` and `company` are the two raw sources the ladder reads; `identity` is the
+// server-resolved block a route MAY serve (spec R5). `spcxBody` wraps rows in the envelope the adapter reads.
+const spcxRow = (over = {}) => ({
+  symbol: 'QZSP', name: '', company: null, account: 'acct_a', account_key: 'acct_a',
+  account_label: 'Synthetic A', is_cash: false, asset_type: 'EQUITY', market_session: 'REGULAR',
+  shares: 10, price: 100, price_as_of: '2026-11-15T12:00:00Z', market_value: 1000, portfolio_pct: 50,
+  avg_cost: 80, cost_basis_source: 'broker_avg_price', cost_basis_total: 800,
+  gain_loss: 200, gain_loss_pct: 25, protection_state: 'GAP',
+  ...over,
+})
+const spcxBody = rows => ({
+  ok: true,
+  data: {
+    count: rows.length,
+    holdings: rows,
+    truth: { source: 'synthetic', as_of: '2026-11-15T12:00:00-05:00', stale: false, gap: null },
+    scope_coverage: {
+      min_position_usd: 100,
+      scopes: { 'holdings.all_rows': rows.length, 'holdings.non_cash': rows.length, 'holdings.cash': 0 },
+    },
+  },
+})
+const spcxAdapt = (adapter, rows) => {
+  const res = adapter.adaptHoldings(spcxBody(rows))
+  assert.ok(res.book !== null, `the synthetic body must adapt: ${res.error ?? ''}`)
+  return res.book
+}
+const SECURITY_PRESET = { id: 'spcx', label: 'identity', methodNote: '', limits: [], columns: [{ key: 'security', header: 'Security' }] }
+const decode = s => s.replace(/&amp;/g, '&').replace(/&#x27;/g, "'").replace(/&quot;/g, '"')
+const securityCells = markup => {
+  const cells = [...decode(markup).matchAll(/<small style="[^"]*" title="([^"]*)">([\s\S]*?)<\/small>/g)]
+  return cells.map(m => ({ title: m[1], text: m[2].replace(/<[^>]+>/g, '') }))
+}
+const securityCellText = book => securityCells(
+  renderToStaticMarkup(compileGateModules().holdingsTable.HoldingsTable({ rows: book.rows, preset: SECURITY_PRESET, onRowOpen: () => {} })),
+)
+
+test('SPCX/T1+T2: one symbol prints ONE name and ONE label, in the cell text AND its title', () => {
+  const { adapter, holdingsTable, displayIdentity } = compileGateModules()
+  const LABEL = displayIdentity.IDENTITY_UNVERIFIED_LABEL
+  assert.equal(LABEL, 'identity unverified (ticker-keyed)')
+  // The measured live shape, synthetic: row A's `name` IS the ticker, row B's is empty, both carry the same
+  // enrichment company.
+  const book = spcxAdapt(adapter, [
+    spcxRow({ name: 'QZSP', company: 'Qzeta Space Holdings' }),
+    spcxRow({ name: '', company: 'Qzeta Space Holdings', account: 'acct_b', account_key: 'acct_b', account_label: 'Synthetic B' }),
+  ])
+  assert.equal(book.rows.length, 2)
+  // R7: today's per-row name is untouched — search still reads exactly these values.
+  assert.equal(book.rows[0].name, 'QZSP')
+  assert.equal(book.rows[1].name, 'Qzeta Space Holdings')
+  // A ticker-as-name row is NOT 'carried': the ladder rejects it and both rows land on the company source.
+  assert.equal(book.rows[0].nameSource, 'company')
+  assert.equal(book.rows[1].nameSource, 'company')
+  // T1: one resolution per symbol, identical on both rows.
+  assert.deepEqual(book.rows[0].identity, {
+    nameText: 'Qzeta Space Holdings', status: 'UNVERIFIED', label: LABEL, source: 'company',
+  })
+  assert.deepEqual(book.rows[1].identity, book.rows[0].identity)
+  // ...rendered per row, asserted as the EXACT cell string, not an enum token.
+  const cells = securityCells(
+    renderToStaticMarkup(holdingsTable.HoldingsTable({ rows: book.rows, preset: SECURITY_PRESET, onRowOpen: () => {} })),
+  )
+  assert.deepEqual(cells.map(c => c.text), [
+    `Qzeta Space Holdings · ${LABEL} · Synthetic A`,
+    `Qzeta Space Holdings · ${LABEL} · Synthetic B`,
+  ])
+  // T2: the title carries the same string — the accessible name may not drop the caveat the visible line prints.
+  assert.equal(cells[0].title, `Qzeta Space Holdings · ${LABEL} · Synthetic A · account acct_a`)
+  assert.equal(cells[1].title, `Qzeta Space Holdings · ${LABEL} · Synthetic B · account acct_b`)
+})
+
+test('SPCX/T3: a ticker-as-name never wins, a carried name carries no label, and R4b never prints the ticker twice', () => {
+  const { adapter, displayIdentity } = compileGateModules()
+  const LABEL = displayIdentity.IDENTITY_UNVERIFIED_LABEL
+  const book = spcxAdapt(adapter, [
+    // A carried broker name wins over the enrichment company, and carries NO caveat label.
+    spcxRow({ symbol: 'QZCA', name: 'Qzeta Carried Corp', company: 'Qzeta Fallback Co' }),
+    // The ticker written as the name never wins the ladder...
+    spcxRow({ symbol: 'QZTT', name: 'QZTT', company: 'Qzeta Ticker Co', account: 'acct_b', account_key: 'acct_b', account_label: 'Synthetic B' }),
+    // ...and with no other source the row resolves to its symbol alone (R8).
+    spcxRow({ symbol: 'QZSL', name: '', company: null, account: 'acct_c', account_key: 'acct_c', account_label: 'Synthetic C' }),
+  ])
+  const bySym = s => book.rows.find(r => r.symbol === s)
+  assert.deepEqual(bySym('QZCA').identity, {
+    nameText: 'Qzeta Carried Corp', status: 'UNVERIFIED', label: null, source: 'carried',
+  })
+  assert.deepEqual(bySym('QZTT').identity, {
+    nameText: 'Qzeta Ticker Co', status: 'UNVERIFIED', label: LABEL, source: 'company',
+  })
+  assert.deepEqual(bySym('QZSL').identity, {
+    nameText: 'QZSL', status: 'UNVERIFIED', label: null, source: 'symbol',
+  })
+  const cells = securityCellText(book)
+  // The carried row: its own name, no label, in text and title alike.
+  assert.equal(cells[0].text, 'Qzeta Carried Corp · Synthetic A')
+  assert.equal(cells[0].title, 'Qzeta Carried Corp · Synthetic A · account acct_a')
+  assert.doesNotMatch(cells[0].text + cells[0].title, /identity unverified/)
+  // R4b: the symbol-only row carries the account label ALONE — no second ticker, no dangling separator.
+  assert.equal(cells[2].text, 'Synthetic C')
+  assert.equal(cells[2].title, 'Synthetic C · account acct_c')
+  assert.doesNotMatch(cells[2].text, /QZSL/)
+})
+
+test('SPCX/T4: only a well-formed SERVER-RESOLVED identity opens the confirmed branch; nothing is matched here', () => {
+  const { adapter, holdingsTable, displayIdentity } = compileGateModules()
+  const LABEL = displayIdentity.IDENTITY_UNVERIFIED_LABEL
+  const served = (over = {}) => ({
+    status: 'CONFIRMED', name: 'Qzeta Confirmed Instruments', basis: 'cusip', identifier: 'QZ1234567', ...over,
+  })
+  const one = extra => spcxAdapt(adapter, [
+    spcxRow({ symbol: 'QZCF', name: 'QZCF', company: 'Qzeta Confirmed Co', ...extra }),
+  ]).rows[0]
+  // The server's verdict is read, not re-derived: a confirmed, cusip-basis block with a name and a 9-character
+  // identifier names the instrument, with no unverified label anywhere.
+  const confirmed = one({ identity: served() })
+  assert.deepEqual(confirmed.identity, {
+    nameText: 'Qzeta Confirmed Instruments', status: 'CONFIRMED', label: null, source: 'carried',
+  })
+  const confirmedHtml = decode(renderToStaticMarkup(
+    holdingsTable.HoldingsTable({ rows: [confirmed], preset: SECURITY_PRESET, onRowOpen: () => {} }),
+  ))
+  assert.doesNotMatch(confirmedHtml, /identity unverified/)
+  assert.match(confirmedHtml, /Qzeta Confirmed Instruments/)
+  // Everything else renders R4's label: malformed is not confirmed, and the client performs no match to change it.
+  const cases = [
+    ['UNVERIFIED', { identity: served({ status: 'UNVERIFIED' }) }],
+    ['a malformed identifier (8 chars — no CUSIP shape)', { identity: served({ identifier: 'QZ123456' }) }],
+    ['a served name with no identifier', { identity: served({ identifier: null }) }],
+    ['no identity field at all', {}],
+    ['a symbol-keyed security_guid only', {
+      security_guid: 'qzeta-synthetic-guid', security_guid_source: 'CIO InstrumentRecord company_facts',
+    }],
+  ]
+  for (const [why, extra] of cases) {
+    const row = one(extra)
+    assert.equal(row.identity.label, LABEL, why)
+    assert.equal(row.identity.nameText, 'Qzeta Confirmed Co', why)
+    assert.equal(row.identity.status, 'UNVERIFIED', why)
+    // A symbol-keyed guid is not an identity basis and the adapter does not carry it (R5).
+    assert.ok(!('security_guid' in row), `${why}: the adapter carries no security_guid`)
+  }
+})
+
+test('SPCX/T5+T6: identity is read-time only (fixture source unchanged), and table, card and drawer agree', () => {
+  const { adapter, fixtures, holdingsTable, positionCards, detail, displayIdentity } = compileGateModules()
+  const FIXTURE_SRC = path.join(APP, 'src/pages/portfolio/fixtures.ts')
+  const sha = () => createHash('sha256').update(fs.readFileSync(FIXTURE_SRC)).digest('hex')
+  const before = sha()
+
+  // T6: one synthetic company-sourced row, rendered through the three surfaces the spec names.
+  const book = spcxAdapt(adapter, [spcxRow({ symbol: 'QZPR', name: 'QZPR', company: 'Qzeta Parity Holdings' })])
+  const row = book.rows[0]
+  const line = displayIdentity.identitySecondLine(row.identity, row.symbol, row.accountLabel)
+  assert.equal(line, `Qzeta Parity Holdings · ${displayIdentity.IDENTITY_UNVERIFIED_LABEL} · Synthetic A`)
+  const cellText = securityCells(
+    renderToStaticMarkup(holdingsTable.HoldingsTable({ rows: [row], preset: SECURITY_PRESET, onRowOpen: () => {} })),
+  )[0].text
+  assert.equal(cellText, line)
+  const cardHtml = decode(renderToStaticMarkup(createElement(positionCards.PositionCards, { rows: [row] })))
+  const cardLine = cardHtml.match(/<small class="muted">([\s\S]*?)<\/small>/)
+  assert.ok(cardLine !== null, 'the card must render its identity line')
+  assert.equal(cardLine[1].replace(/<[^>]+>/g, ''), line)
+  assert.equal(detail.detailHeading(row).eyebrow, `${line} · ${row.accountKey}`)
+
+  // The fixture book is authored to the same shape, so its names still render (never a symbol-only book).
+  assert.ok(fixtures.FIXTURE_BOOK.rows.every(r => r.identity), 'every fixture row carries a resolved identity')
+  assert.equal(fixtures.FIXTURE_BOOK.rows.find(r => r.symbol === 'QZTA').identity.nameText, 'Qzeta Alpha Corp')
+  renderToStaticMarkup(createElement(positionCards.PositionCards, { rows: fixtures.FIXTURE_BOOK.rows }))
+  renderToStaticMarkup(holdingsTable.HoldingsTable({ rows: fixtures.FIXTURE_BOOK.rows, preset: SECURITY_PRESET, onRowOpen: () => {} }))
+
+  // T5: a full render writes nothing — the fixture source is byte-identical afterwards.
+  assert.equal(sha(), before, 'the fixture source changed across a render: identity must be read-time only')
+})
+
+test('SPCX/T9: search keeps today results — company-only found by company, ticker-as-name by ticker ONLY', () => {
+  const { adapter, search } = compileGateModules()
+  const wires = [
+    spcxRow({ symbol: 'QZCN', name: '', company: 'Qzeta Naming Corp' }),
+    spcxRow({ symbol: 'QZTN', name: 'QZTN', company: 'Qzeta Ticker Name Co', account: 'acct_b', account_key: 'acct_b', account_label: 'Synthetic B' }),
+  ]
+  const book = spcxAdapt(adapter, wires)
+  // R7 parity: `row.name` is byte-equal to today's `str(name) ?? str(company) ?? symbol` on every row.
+  for (const [i, wire] of wires.entries()) {
+    const expected = wire.name !== '' ? wire.name : wire.company !== null ? wire.company : wire.symbol
+    assert.equal(book.rows[i].name, expected)
+  }
+  const find = q => book.rows.filter(r => search.rowMatchesQuery(r, q)).map(r => r.symbol)
+  assert.deepEqual(find('Qzeta Naming Corp'), ['QZCN']) // (i) a company-only row is found by its company name
+  assert.deepEqual(find('qztn'), ['QZTN']) // (ii) a ticker-as-name row is found by its ticker (case-insensitive)
+  // (iii) ...and NOT by its company name. This is today's limitation, asserted so a future change to search is a
+  // decision rather than an accident — R7 forbids fixing it by changing search's results.
+  assert.deepEqual(find('Qzeta Ticker Name Co'), [])
+  assert.deepEqual(find('   '), ['QZCN', 'QZTN']) // an empty query narrows nothing
+  // The display identity does not enter search: the resolved company name is not a match field.
+  assert.equal(book.rows[1].identity.nameText, 'Qzeta Ticker Name Co')
 })
