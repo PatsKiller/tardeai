@@ -21,6 +21,12 @@
 //     1280 (the live gate that rolled candidate 2 back, 2026-11-15T05:07Z). Measurement does not pin
 //     this: a tidy of the className passes every other check, so the class is asserted here, keyed by
 //     the caption's text.
+//  8. The declared-clock ledger's withheld-datum line is built by `ledgerLine`, and the <dd> under the
+//     "Declared clocks" heading CALLS it. The name is resolved through the page's own import binding
+//     (an aliased or missing import fails closed, naming what it saw), never trusted by spelling, and
+//     the <dd> may not build the sentence inline: cc-deepseek-3's rev-6 verdict (F1) found that deleting
+//     the fragment left the shell suite and this gate green. A helper-only test pins the sentence, not
+//     the call site — the same shape as the M-B mutant pinned at 815652ac9.
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
@@ -152,6 +158,112 @@ if (evidenceTables === 0) {
   fail.push(`rule 7: no table carries the caption "${EVIDENCE_CAPTION}…", so the matrix pin would cover ` +
     `nothing. If the table was renamed or removed, update this rule deliberately rather than dropping it.`)
 }
+// Rule 8: the withheld-datum ledger line is a call to `ledgerLine`, resolved through the import binding.
+const CLOCKS_HEADING = 'Declared clocks'
+let clockLedgerPins = 0
+for (const f of walk(path.join(root, 'src'))) {
+  if (!/\.tsx$/.test(f)) continue
+  const rel = path.relative(root, f)
+  const sf0 = ts.createSourceFile(f, fs.readFileSync(f, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  const lineOf = n => sf0.getLineAndCharacterOfPosition(n.getStart(sf0)).line + 1
+  const headings = []
+  const findHeadings = node => {
+    if (ts.isJsxElement(node) && node.openingElement.tagName.getText(sf0) === 'h4') {
+      const text = node.children.filter(c => ts.isJsxText(c)).map(c => c.getText(sf0)).join('').trim()
+      if (text === CLOCKS_HEADING) headings.push(node)
+    }
+    node.forEachChild(findHeadings)
+  }
+  findHeadings(sf0)
+  if (headings.length === 0) continue
+  if (headings.length > 1) {
+    fail.push(`${rel}: ${headings.length} "${CLOCKS_HEADING}" headings — rule 8 cannot tell which ledger it pins`)
+    continue
+  }
+  const h4 = headings[0]
+  const h4Line = lineOf(h4)
+  const siblings = h4.parent.children ?? []
+  let dl = null
+  for (let k = siblings.indexOf(h4) + 1; k < siblings.length && !dl; k++) {
+    const kid = siblings[k]
+    if (ts.isJsxElement(kid)) dl = kid.openingElement.tagName.getText(sf0) === 'dl' ? kid : 'blocked'
+    else if (ts.isJsxSelfClosingElement(kid)) dl = 'blocked'
+  }
+  if (dl === null || dl === 'blocked') {
+    fail.push(`${rel}:${h4Line}: no <dl> directly follows the "${CLOCKS_HEADING}" heading — rule 8 pins the ` +
+      `ledger line there and fails closed rather than pinning nothing`)
+    continue
+  }
+  const dds = []
+  const findDds = node => {
+    if (ts.isJsxElement(node) && node.openingElement.tagName.getText(sf0) === 'dd') dds.push(node)
+    node.forEachChild(findDds)
+  }
+  findDds(dl)
+  if (dds.length === 0) {
+    fail.push(`${rel}:${h4Line}: the "${CLOCKS_HEADING}" <dl> holds no <dd> — rule 8 would pin nothing`)
+    continue
+  }
+  // Counted here, not after the checks: a ledger found but broken must not ALSO report as a missing ledger,
+  // which would send the reader looking for a renamed heading that is right there.
+  clockLedgerPins += 1
+  // Resolve `ledgerLine` through the page's import binding. An alias is refused, not followed: the rule's
+  // whole point is that a rename of the call site is a change to review, not a spelling the gate absorbs.
+  const importers = []
+  let local = null
+  for (const st of sf0.statements) {
+    if (!ts.isImportDeclaration(st) || !st.importClause?.namedBindings) continue
+    const spec = st.moduleSpecifier.getText(sf0).replace(/^['"]|['"]$/g, '')
+    if (!/(^|\/)clockLedger(\.ts)?$/.test(spec)) continue
+    const bindings = st.importClause.namedBindings
+    if (ts.isNamespaceImport(bindings)) {
+      fail.push(`${rel}: clockLedger is imported as a namespace (${bindings.name.getText(sf0)}); rule 8 ` +
+        `resolves the ledger's binding and cannot follow a namespace member`)
+      continue
+    }
+    for (const el of bindings.elements) {
+      if ((el.propertyName ?? el.name).getText(sf0) !== 'ledgerLine') continue
+      importers.push(lineOf(el))
+      if (el.propertyName) {
+        fail.push(`${rel}:${lineOf(el)}: ledgerLine is imported under the alias \`${el.name.getText(sf0)}\`; ` +
+          `rule 8 resolves the import binding, so an alias fails closed rather than being guessed at`)
+      } else local = el.name.getText(sf0)
+    }
+  }
+  if (importers.length === 0) {
+    fail.push(`${rel}: no \`ledgerLine\` import from clockLedger — the "${CLOCKS_HEADING}" ledger line must ` +
+      `be built by that function, not by the page`)
+    continue
+  }
+  if (local === null) continue
+  for (const dd of dds) {
+    const at = lineOf(dd)
+    const exprs = dd.children.filter(c => ts.isJsxExpression(c) && c.expression)
+    let calls = 0
+    for (const e of exprs) {
+      const text = e.getText(sf0)
+      if (/withheldAsOf/.test(text) || /last stop read/.test(text)) {
+        fail.push(`${rel}:${at}: the declared-clock <dd> builds the withheld line inline (reads ` +
+          `\`withheldAsOf\` or prints "last stop read"); it must be \`{${local}(…)}\` so both of its ` +
+          `conditions stay testable in one place`)
+      }
+      const countCalls = n => {
+        if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.getText(sf0) === local) calls += 1
+        n.forEachChild(countCalls)
+      }
+      countCalls(e.expression)
+    }
+    if (calls !== 1) {
+      fail.push(`${rel}:${at}: the declared-clock <dd> must call \`${local}\` exactly once (found ${calls}) — ` +
+        `without the call the withheld datum's line has no test that fails when it is lost (rev-6 F1)`)
+    }
+  }
+}
+if (clockLedgerPins === 0) {
+  fail.push(`rule 8: no "${CLOCKS_HEADING}" heading with a following <dl> under src/ — the ledger-line pin ` +
+    `would cover nothing. If the heading was renamed or removed, update this rule deliberately.`)
+}
 if (fail.length) { console.error('check-design-fidelity FAIL\n- ' + fail.join('\n- ')); process.exit(1) }
 console.log('check-design-fidelity PASS (v02.css == reference <style>, v04.css == reference <style> and a superset of ' +
-  'v02, both shas ok, no stray hex, no shell timers, every table in a .table-wrap, the evidence table `matrix`)')
+  'v02, both shas ok, no stray hex, no shell timers, every table in a .table-wrap, the evidence table `matrix`, ' +
+  'the declared-clock ledger calls `ledgerLine`)')

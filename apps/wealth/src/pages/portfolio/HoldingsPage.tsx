@@ -39,6 +39,7 @@ import type { CSSProperties } from 'react'
 import { useDrawer } from '../../components/Drawer'
 import { ActionCard, Metric, MetricGrid, Note, Panel, Tag } from '../../components/primitives'
 import type { HoldingsBook, HoldingsRow } from './contract'
+import { ledgerLine } from './clockLedger'
 import { FIXTURE_BOOK } from './fixtures'
 import { HoldingsTable, freshnessLine } from './HoldingsTable'
 import { PositionCards } from './PositionCards'
@@ -523,11 +524,9 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
                 {c.at ?? 'UNKNOWN'} · {c.source}
                 {c.isBuildClock && ' · document build clock — the positions clock is the one that ages the book'}
                 {/* A withheld datum is printed as what it is. It is NOT the clock: the book is not aged from it,
-                    and it never fills the `at` slot above (review 2026-11-15T0509Z §5.3). */}
-                {c.withheldAsOf !== undefined && c.withheldAsOf !== null && (
-                  <> · last {c.role === 'STOPS' ? 'stop' : c.role.toLowerCase()} read {c.withheldAsOf} — not the
-                  book's clock</>
-                )}
+                    and it never fills the `at` slot above (review 2026-11-15T0509Z §5.3). The sentence and both
+                    of its conditions live in `ledgerLine`, which design-gate rule 8 pins this <dd> to call. */}
+                {ledgerLine(c)}
               </dd>
             </div>
           ))}

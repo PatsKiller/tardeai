@@ -15,6 +15,7 @@ import { deriveRenderState, statusCue } from '../../src/components/renderState.t
 import { price, money, unavailable } from '../../src/pages/portfolio/format.ts'
 import { barStatus, isBookRoute } from '../../src/pages/portfolio/bookView.ts'
 import { accountDisplayLabel } from '../../src/pages/portfolio/accountLabel.ts'
+import { ledgerLine } from '../../src/pages/portfolio/clockLedger.ts'
 
 const NOW = Date.parse('2026-11-14T23:30:00Z')
 
@@ -626,4 +627,30 @@ test('accountLabel: through the adapter, nothing served anywhere still renders t
     holdings: [{ account: 'moomoo_taxable_live', account_key: 'moomoo_taxable_live', symbol: 'VTI' }],
   })
   assert.equal(out[0].accountLabel, 'moomoo_taxable_live')
+})
+
+// --- The withheld-datum ledger line (cc-deepseek-3 rev-6 verdict, F1) -------------------------------
+// The line is rendered-proven (§5.3 on a synthetic payload) but was not pinned: deleting the fragment left
+// 64/64 and the design gate green. The sentence now has ONE source, `ledgerLine`, and BOTH of its conditions
+// are decided there — so both directions fail a named test when lost. Design-gate rule 8 pins the call site.
+
+const STOP_CLOCK = { role: 'STOPS', at: null, source: 'stops_clock', isBuildClock: false }
+
+test('clockLedger: a withheld datum with no standing clock prints under its own label, byte-exact', () => {
+  assert.equal(
+    ledgerLine({ ...STOP_CLOCK, withheldAsOf: '2026-11-15T00:29:00Z' }),
+    " · last stop read 2026-11-15T00:29:00Z — not the book's clock",
+    'the leading space belongs to the line (it renders after the source); the §5.3 sentence is byte-pinned here',
+  )
+})
+
+test('clockLedger: when the clock stands the withheld datum prints NOTHING — diagnosis never displaces a clock', () => {
+  assert.equal(ledgerLine({ ...STOP_CLOCK, at: '2026-11-14T01:55:11.096798+00:00', withheldAsOf: '2026-11-15T00:29:00Z' }), null)
+  assert.equal(ledgerLine({ role: 'POSITIONS', at: '2026-11-15T03:30:06.529835Z', source: 'positions', isBuildClock: false, withheldAsOf: '2026-11-15T00:29:00Z' }), null)
+})
+
+test('clockLedger: nothing withheld, or a blank datum, prints nothing — blank is not a timestamp', () => {
+  assert.equal(ledgerLine(STOP_CLOCK), null)
+  assert.equal(ledgerLine({ ...STOP_CLOCK, withheldAsOf: null }), null)
+  assert.equal(ledgerLine({ ...STOP_CLOCK, withheldAsOf: '   ' }), null)
 })
