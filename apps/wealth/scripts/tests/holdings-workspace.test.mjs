@@ -75,7 +75,7 @@ test('protection icons distinguish protected, gap, partial, pending, stale, unkn
  for(const changes of [{stale:true},{stale:null},{stop:null},{asOf:null},{asOf:'invalid'},{reason:'pending activation'}]){
   const r=row();Object.assign(r.protection,changes);const p=a.protectionSummary([r]);assert.equal(p.icon,'unlocked');assert.doesNotMatch(p.label,/^Protected/)
  }
- assert.equal(a.protectionSummary([row({protection:null})]).icon,'warning')
+ assert.equal(a.protectionSummary([row({protection:null})]).icon,'na')
  assert.equal(a.protectionSummary([row({kind:'CASH'})]).icon,'na')
  assert.equal(a.protectionSummary([row({assetType:'MUTUAL_FUND'})]).icon,'na')
  assert.equal(view([row({marketValue:99,protection:{state:'GAP'}})]).gaps.length,0)
@@ -89,4 +89,40 @@ test('functional SVGs preserve approved paths and supply no icon-only financial 
 test('CSV quotes unsafe labels and retains unknown independently from zero',()=>{
  const v=view([row({symbol:'QZ"AA',marketValue:null,gainLoss:0})],{period:'purchase'}),csv=a.exportCsv(v,{...a.DEFAULT,period:'purchase'})
  assert.match(csv,/QZ""AA/);assert.match(csv,/"not served"/);assert.match(csv,/"0"/)
+})
+
+test('security grouping precedes the small-position floor and keeps partial value visible',()=>{
+ const v=view([row({marketValue:70}),row({marketValue:70,accountKey:'SYN_B'})])
+ assert.equal(v.groups.length,1);assert.equal(v.groups[0].kind,'security');assert.equal(v.groups[0].value.value,140)
+ const partial=view([row({marketValue:20}),row({marketValue:null,accountKey:'SYN_B'})]).groups[0]
+ assert.equal(partial.kind,'security');assert.equal(partial.value.n,1);assert.equal(partial.value.m,2)
+ const pinned=view([row({marketValue:20,gainLoss:-60}),row({marketValue:20,gainLoss:-60,accountKey:'SYN_B'})]).groups[0]
+ assert.equal(pinned.kind,'security');assert.equal(pinned.unrealized.value,-120)
+})
+test('collapsed small securities still rank as movers and account movers name their account',()=>{
+ const rs=[row({symbol:'QZSM',marketValue:50,dayChange:100}),row({symbol:'QZLG',marketValue:1000,dayChange:1})]
+ const v=view(rs);assert.equal(v.groups.find(g=>g.kind==='small').rows[0].symbol,'QZSM')
+ assert.equal(v.contributors[0].label,'QZSM');assert.equal(v.contributors[0].pnl.value,100)
+ const flat=view(rs,{group:'account'});assert.equal(flat.contributors[0].moverLabel,'QZSM · Synthetic A')
+ assert.equal([...v.contributors,...v.detractors].reduce((n,g)=>n+g.pnl.value,0)+(v.other.value??0),101)
+})
+test('expanded accounts retain filtered weights and cash never receives an invested percentage',()=>{
+ const rs=[row(),row({accountKey:'SYN_B',accountLabel:'Synthetic B',marketValue:300}),row({symbol:'QZC',kind:'CASH',assetType:'CASH',marketValue:500})]
+ const v=view(rs),g=v.groups.find(g=>g.kind==='security'),cash=v.groups.find(g=>g.kind==='cash')
+ assert.deepEqual(g.children.map(c=>c.weight),[20,30]);assert.deepEqual(g.children.map(c=>c.investedWeight),[40,60])
+ assert.equal(cash.cash,true);assert.equal(cash.children[0].cash,true);assert.equal(cash.children[0].investedWeight,null)
+ const flat=view(rs,{group:'account'}).groups[2];assert.equal(flat.cash,true);assert.equal(flat.investedWeight,null);assert.equal(flat.pnl.value,null)
+ const partial=view([row(),row({symbol:'QZU',marketValue:null})]).groups[0]
+ assert.equal(partial.children[0].weight,null);assert.equal(partial.children[0].investedWeight,null)
+})
+test('partial protection uses a closed amber lock; only material served gaps use red',()=>{
+ const partial=a.protectionSummary([row(),row({protection:{state:'GAP'},accountLabel:'Synthetic B'})])
+ assert.equal(partial.icon,'locked');assert.equal(partial.tone,'partial');assert.match(partial.detail,/Synthetic B/)
+ const small=a.protectionSummary([row({marketValue:99,protection:{state:'GAP'}})])
+ assert.equal(small.icon,'unlocked');assert.equal(small.tone,'unknown')
+ const unknown=a.protectionSummary([row({marketValue:null,protection:{state:'GAP'}})])
+ assert.equal(unknown.tone,'unknown');assert.match(unknown.label,/value unknown/)
+ assert.equal(a.protectionSummary([row({marketValue:100,protection:{state:'GAP'}})]).tone,'loss')
+ const pending=row();pending.protection.reason='Recorded, pending activation'
+ assert.equal(a.protectionSummary([pending]).icon,'unlocked');assert.match(a.protectionSummary([pending]).detail,/pending activation/)
 })

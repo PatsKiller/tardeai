@@ -25,10 +25,12 @@
 .holdings-v2 .hv-table th:first-child{width:27%;text-align:left}
 .holdings-v2 .hv-table tbody th{font-weight:400}
 .holdings-v2 .hv-security{display:flex;gap:7px;align-items:flex-start;min-width:0}
-.holdings-v2 .hv-security>div{min-width:0}.holdings-v2 .hv-expand{flex:none;width:28px;min-height:32px;padding:0}
+.holdings-v2 .hv-security>div{min-width:0}.holdings-v2 .hv-expand{flex:none;width:44px;min-height:44px;padding:0}
 .holdings-v2 .hv-child td,.holdings-v2 .hv-child th{background:var(--panel2);font-size:12px}
 .holdings-v2 .hv-child th{padding-left:28px}
-.holdings-v2 .hv-status{display:block;font-size:11px}
+.holdings-v2 .hv-status{display:block;font-size:11px;position:relative;outline-offset:3px}
+.holdings-v2 .hv-status-evidence{display:none;position:absolute;z-index:30;right:0;bottom:100%;width:260px;max-width:70vw;padding:10px;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px #0008;overflow-wrap:anywhere}
+.holdings-v2 .hv-status:hover .hv-status-evidence,.holdings-v2 .hv-status:focus .hv-status-evidence{display:block}
 .holdings-v2 .hv-link{border:0;background:transparent;padding:0;min-height:44px;text-align:left;text-decoration:underline}
 .holdings-v2 .gain{color:var(--green)}.holdings-v2 .loss{color:var(--red)}.holdings-v2 .unknown,.holdings-v2 .neutral{color:var(--muted)}
 .holdings-v2 .hv-evidence{min-width:0;overflow-wrap:anywhere}
@@ -53,3 +55,6 @@
 .holdings-v2 .hv-icon{vertical-align:middle;flex:none;display:inline-block;margin-right:4px}
 .holdings-v2 .partial{color:var(--gold)}
 .holdings-v2 .hv-status{line-height:1.5}
+
+.holdings-v2 .hv-panels>article{max-height:420px;overflow-y:auto;overflow-wrap:anywhere}
+.holdings-v2 .hv-panels a{overflow-wrap:anywhere}

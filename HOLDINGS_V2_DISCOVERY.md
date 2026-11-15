@@ -269,3 +269,18 @@ Capture file mtime UTC: 2026-11-15T20:03:58.615163Z; rows: 30.
 | valuation_as_of | str | shown (rows/evidence) |
 | verified_daily_pnl | NoneType | not shown |
 | verified_daily_pnl_status | str | not shown |
+
+
+## Parallel completion tranche — 2026-11-15
+
+User prioritized Holdings live and explicitly authorized subagents. Worktree /data/worktrees/tradeai-wt-codex-holdings-v2, branch wt/codex-holdings-v2. Fundamentals six-column implementation is preserved separately at c1ccb0ad3, outside this Holdings release.
+
+- [VERIFIED] node --test scripts/tests/holdings-workspace.test.mjs: 15 tests pass. Independent cases cover grouping before the size floor, small securities in mover rankings, expanded-account weights, and cash applicability in account mode.
+- [CODE] Served sub-cent marks use format::price. Nonzero marks do not round to zero. Mixed-security summary prices and average costs are not applicable; account fields remain intact.
+- [CODE] Focusable protection status preserves reason, next step, read clock and reported freshness. Pending/stale records never become active. Partial current coverage uses a closed amber lock; unknown uses the neutral dash-circle.
+- [CODE] News: existing ingestion -> Postgres news_articles -> api_v2::_symbol_headlines stored SELECT -> StoredNews::decodeStoredNews -> exact title/source/link/publication clock. Explicit user reads, max four concurrent; filter changes abort and fence older results.
+- [VERIFIED] Independent BEFORE browser reproduced sub-cent rounding and account-cash applicability defects at all four widths. Private evidence /tmp/codex-holdings-browser-before.json.
+- [DOC-CLAIM] Sourced yield contract 9a48fe4b7 prepared but not activated. Existing n8n lane remains owner; no duplicate. Static schedule does not establish current book yield.
+- [CODE] Authorized stored holdings response has no per-row stop price. No live-stops or broker call; absent price remains unserved.
+
+Next: integrate actual current live release; run checks and clean build; independently inspect production bundle at 390/412/1280/1440; package rollback-ready release; activation dry-run then serialize activation; verify served SHA and every affected live view. Deployment is not complete from this checkpoint.
