@@ -1,10 +1,10 @@
-// C-PERF-A: props-only rendering. Reader/adapter, selection and route integration are separate work.
+// Performance presenter: source-owned values and intervals, optional page-owned selection callbacks.
 // The source owns every number, actual interval, membership fact and clock; no financial derivation here.
 import { AsOf } from '../../components/StateView'
 import { Note, Panel, Tag } from '../../components/primitives'
 import {
   PERFORMANCE_WINDOWS, clockHasEvidence, coverageText, measureWarnings, methodText, missingMeasure,
-  numberClass, numberText, pageState, performanceAccountLabel,
+  numberClass, numberIsKnown, numberText, pageState, performanceAccountLabel,
 } from './performanceView'
 import type { PerformanceMeasure, PerformancePageProps, PerformanceWindow } from './performanceView'
 import './semantic.css'
@@ -17,6 +17,7 @@ const LAYOUT = `
 .performance-page .performance-window { min-width:0; padding:12px; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
 .performance-page .performance-window h3 { margin-bottom:10px; }
 .performance-page .performance-measure + .performance-measure { border-top:1px solid var(--line); margin-top:12px; padding-top:12px; }
+.performance-page .performance-measure > p.money-unknown { font-size:11px; }
 .performance-page .performance-method { font-size:12px; margin:0 0 7px; }
 .performance-page .performance-values { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:8px 0; }
 .performance-page .performance-values dt { color:var(--muted); font-size:11px; }
@@ -43,14 +44,17 @@ function Measure({ measure, window, scope, allowHouseholdEstimate = false }: {
     return <p className="money-unknown">Unknown — account measure not served — owner: {measure.owner}</p>
   }
   const warnings = measureWarnings(measure)
+  const reasons = [...new Set([measure.amount, measure.percent].filter(number => !numberIsKnown(number))
+    .map(number => numberText(number, 'amount', measure.owner)))]
   return <div className="performance-measure" data-method={measure.method}>
     <p className="performance-method"><strong>{methodText(measure)}</strong></p>
     {warnings.length > 0 && <Tag tone="warn" title={warnings.join(' · ')}>! {warnings.join(' · ')}</Tag>}
     <dl className="performance-values">
-      <div><dt>Change (USD)</dt><dd className={numberClass(measure.amount, measure)}>{numberText(measure.amount, 'amount', measure.owner)}</dd></div>
-      <div><dt>Change (%)</dt><dd className={numberClass(measure.percent, measure)}>{numberText(measure.percent, 'percent', measure.owner)}</dd></div>
+      <div><dt>Change (USD)</dt><dd className={numberClass(measure.amount, measure)}>{numberIsKnown(measure.amount) ? numberText(measure.amount, 'amount', measure.owner) : 'Unknown'}</dd></div>
+      <div><dt>Change (%)</dt><dd className={numberClass(measure.percent, measure)}>{numberIsKnown(measure.percent) ? numberText(measure.percent, 'percent', measure.owner) : 'Unknown'}</dd></div>
     </dl>
-    <div className="performance-provenance" aria-label="Measure provenance">
+    {reasons.length > 0 && <p className="money-unknown">{reasons.join(' · ')}</p>}
+    <details><summary>Method &amp; interval details</summary><div className="performance-provenance" aria-label="Measure provenance">
       <div>Scope: {scope} · Coverage: {coverageText(measure)}</div>
       <div>Source: {measure.source || 'not served'} · owner: {measure.owner}</div>
       {measure.clocks.length === 0 ? <div>Source clock and age unknown — owner: {measure.owner}</div> : measure.clocks.map((clock, index) =>
@@ -63,7 +67,6 @@ function Measure({ measure, window, scope, allowHouseholdEstimate = false }: {
       {window === 'Latest session' && <div>{measure.attributedSession
         ? `Attributed session: ${measure.attributedSession}` : 'Attributed session unknown'}</div>}
     </div>
-    <details><summary>Method &amp; interval details</summary>
       <p>{window === 'YTD' ? 'Calendar year to date; pin clock/source shown above when supplied.'
         : window === 'Latest session' ? 'Holdings price movement is an estimate, not reconciled investment profit.'
           : 'Rolling window; actual snapshot bounds may cover a shorter interval.'}</p>
@@ -76,21 +79,26 @@ function Measure({ measure, window, scope, allowHouseholdEstimate = false }: {
 
 export function PerformancePage(props: PerformancePageProps) {
   const state = pageState(props)
+  const windows = props.selectedPeriod === undefined ? PERFORMANCE_WINDOWS : props.selectedPeriod === null ? [] : [props.selectedPeriod]
   return <div className="performance-page" data-performance-state={state}>
     <style>{LAYOUT}</style>
-    <header className="page-heading"><div>
-      <div className="eyebrow">Wealth &amp; returns</div><h1>Performance</h1>
-      <p>Compare supplied value changes with their method, account scope and history coverage.</p>
-    </div></header>
+    <div className="row-between" style={{ flexWrap: 'wrap', gap: 10 }}>
+      <h2 style={{ fontSize: 16 }}>Performance evidence</h2>
+      {props.selectedPeriod !== undefined && <label>Period <select aria-label="Performance period"
+        value={props.selectedPeriod ?? ''} disabled={!props.availablePeriods?.length}
+        onChange={e => props.onPeriodChange?.(e.target.value as PerformanceWindow)}>
+        {!props.availablePeriods?.length && <option value="">No periods served</option>}
+        {props.availablePeriods?.map(period => <option key={period} value={period}>{period}</option>)}
+      </select></label>}
+    </div>
     {state === 'empty' ? <Note>No accounts in this view. Choose an account scope with available history.
       No household total is substituted for an empty account selection.</Note> : <>
-      {state === 'unknown' ? <Note>All performance measures are unknown. Account history or source evidence is missing;
-        each window names the gap. Request the missing history from {props.gapOwner}.</Note>
+      {state === 'unknown' ? <Note>All performance measures are unknown. Read the source gap below; {props.gapOwner} owns missing evidence.</Note>
         : state === 'partial' ? <div className="note warn">! Partial performance view — some measures are estimated, stale or unavailable.
-          Read each method and source clock before comparing; {props.gapOwner} owns missing history.</div>
+          Open evidence for the source gap and actual interval.</div>
           : <Note>Supplied measures are shown below. Compare actual intervals and flow treatment before interpreting a change as investment performance.</Note>}
-      <Panel title="Household" sub="Supplied household scope; account membership is defined by the source, not inferred from displayed rows.">
-        <div className="performance-grid">{PERFORMANCE_WINDOWS.map(window => {
+      {props.showHousehold !== false && <Panel title="Household" sub="Source-supplied scope; membership is not inferred from these rows.">
+        <div className="performance-grid">{windows.map(window => {
           const period = props.household[window]
           return <article className="performance-window" key={window}>
             <h3>{window}</h3>
@@ -98,12 +106,12 @@ export function PerformancePage(props: PerformancePageProps) {
             {period?.estimate && <Measure window={window} scope="Household only" measure={period.estimate} allowHouseholdEstimate />}
           </article>
         })}</div>
-      </Panel>
+      </Panel>}
       <div data-performance-accounts="true">{props.accounts.map((account, index) => {
         const label = performanceAccountLabel(account)
         return <div key={account.key} data-performance-account={index}>
           <Panel title={label} sub={account.scopeNote}>
-            <div className="performance-grid">{PERFORMANCE_WINDOWS.map(window =>
+            <div className="performance-grid">{windows.map(window =>
               <article className="performance-window" key={window}>
                 <h3>{window}</h3>
                 <Measure window={window} scope={label} measure={account.periods[window] ?? missingMeasure(window, props.gapOwner)} />

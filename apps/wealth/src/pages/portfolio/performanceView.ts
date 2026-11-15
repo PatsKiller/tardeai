@@ -56,6 +56,7 @@ export interface PerformanceHouseholdPeriod {
 
 export interface PerformanceAccount {
   key: string
+  availablePeriods?: readonly PerformanceWindow[]
   label: string | null
   /** Caller supplies the actual membership/eligibility qualification; never inferred from keys. */
   scopeNote: string
@@ -67,6 +68,12 @@ export interface PerformancePageProps {
   accounts: readonly PerformanceAccount[]
   household: Partial<Record<PerformanceWindow, PerformanceHouseholdPeriod>>
   gapOwner: string
+  /** Literal windows present in the response, supplied by the adapter. */
+  availablePeriods?: readonly PerformanceWindow[]
+  /** Undefined permits fixture comparison; live always supplies a selected period or null. */
+  selectedPeriod?: PerformanceWindow | null
+  onPeriodChange?: (period: PerformanceWindow) => void
+  showHousehold?: boolean
 }
 
 export function performanceAccountLabel(account: PerformanceAccount): string {
@@ -135,11 +142,11 @@ export function missingMeasure(window: PerformanceWindow, owner: string): Perfor
 
 export function pageState(props: PerformancePageProps): 'empty' | 'unknown' | 'partial' | 'available' {
   if (props.accounts.length === 0) return 'empty'
-  const measures: (PerformanceMeasure | undefined | null)[] = PERFORMANCE_WINDOWS.flatMap(window => [
-    props.household[window]?.observation,
+  const measures: (PerformanceMeasure | undefined | null)[] = (props.selectedPeriod === undefined ? PERFORMANCE_WINDOWS : props.selectedPeriod === null ? [] : [props.selectedPeriod]).flatMap(window => [
+    ...(props.showHousehold === false ? [] : [props.household[window]?.observation]),
     ...props.accounts.map(account => account.periods[window]),
   ])
-  const estimates = PERFORMANCE_WINDOWS.map(window => props.household[window]?.estimate).filter(m => m != null)
+  const estimates = (props.selectedPeriod === undefined ? PERFORMANCE_WINDOWS : props.selectedPeriod === null ? [] : [props.selectedPeriod]).map(window => props.showHousehold === false ? null : props.household[window]?.estimate).filter(m => m != null)
   const known = (m: PerformanceMeasure | undefined | null) => !!m && (numberIsKnown(m.amount) || numberIsKnown(m.percent))
   if (![...measures, ...estimates].some(known)) return 'unknown'
   if (measures.some(m => !m || !numberIsKnown(m.amount) || !numberIsKnown(m.percent) || measureWarnings(m).length > 0)
