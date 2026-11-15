@@ -6,8 +6,8 @@
 .holdings-v2 .hv-filters,.holdings-v2 .hv-book,.holdings-v2 .hv-movers,.holdings-v2 .hv-panels>article,.holdings-v2 .hv-tiles>article{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;min-width:0}
 .holdings-v2 .hv-filterline{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .holdings-v2 .hv-filterline b{font-size:11px;color:var(--muted);min-width:84px;text-transform:uppercase}
-.holdings-v2 button,.holdings-v2 select,.holdings-v2 input{min-height:44px;max-width:100%;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text);padding:7px 10px}
-.holdings-v2 button[aria-pressed=true]{border-color:var(--gold);background:var(--panel2)}
+.holdings-v2 button,.holdings-v2 select,.holdings-v2 input{min-height:44px;max-width:100%;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text);padding:7px 10px}
+.holdings-v2 button[aria-pressed=true]{border-color:var(--accent);background:var(--accent-fill);color:var(--text)}
 .holdings-v2 button:disabled{border-style:dashed;color:var(--muted);cursor:not-allowed}
 .holdings-v2 label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:4px;min-width:0}
 .holdings-v2 input{width:180px}
@@ -54,8 +54,29 @@
 }
 
 .holdings-v2 .hv-icon{vertical-align:middle;flex:none;display:inline-block;margin-right:4px}
-.holdings-v2 .partial{color:var(--gold)}
+.holdings-v2 .partial{color:var(--status-amber)}
 .holdings-v2 .hv-status{line-height:1.5}
 
 .holdings-v2 .hv-panels>article{max-height:420px;overflow-y:auto;overflow-wrap:anywhere}
 .holdings-v2 .hv-panels a{overflow-wrap:anywhere}
+
+/* Shared semantic tokens keep stale warnings separate from the signs of served values. */
+.holdings-v2{color:var(--text);font-family:Inter,system-ui,sans-serif}
+.holdings-v2 a,.holdings-v2 .hv-link{color:var(--accent-text)}
+.holdings-v2 .hv-fresh{color:var(--status-amber);border-color:var(--amber-border);background:var(--panel-inset)}
+.holdings-v2 .hv-legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12px;line-height:1.6}
+.holdings-v2 .hv-ticker{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:34px;height:34px;vertical-align:middle;margin:0 8px 4px 0;border:1px solid var(--border);border-radius:8px;background:var(--accent-fill);color:var(--accent-text);font-size:12px;font-weight:600}
+.holdings-v2 .hv-tag{display:inline-block;margin-left:6px;padding:0 5px;border:1px solid var(--border);border-radius:3px;color:var(--text-muted);font-size:10px;font-weight:400}
+.holdings-v2 .hv-table tbody tr:hover>th,.holdings-v2 .hv-table tbody tr:hover>td{background:var(--row-hover)}
+.holdings-v2 .hv-status.wealth-status{display:inline-flex;text-align:left;justify-content:flex-start;font-size:11px;gap:4px}
+.holdings-v2 .hv-status small{width:100%}
+.holdings-v2 .hv-status .wealth-tooltip{font-size:12px;line-height:1.5}
+.holdings-v2 .hv-waiting{border:1px dashed var(--border);border-radius:6px;padding:8px;margin:8px 0}
+.holdings-v2 .hv-coverage-partial{color:var(--status-amber)}
+.holdings-v2 :focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.holdings-v2 .hv-composition-bar{height:8px;display:flex;overflow:hidden;border-radius:4px;background:var(--chart-2)}
+.holdings-v2 .hv-composition-bar>span{display:block;background:var(--chart-1);height:100%}
+.holdings-v2 .hv-composition p{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;font-size:11px;color:var(--text-muted)}
+
+.holdings-v2 .hv-panels>article{overflow:visible;max-height:none}
+.holdings-v2 .hv-table tbody th{text-transform:none;letter-spacing:normal;font-size:13.5px}

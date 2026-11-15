@@ -1,0 +1,27 @@
+/* Approved Wealth workspace palette, shared by all routes. Legacy sheets remain intact. */
+:root:root {
+ --status-green:#34d399; --status-amber:#fbbf24; --status-red:#f87171; --status-grey:#93a1bb;
+ --ground:#0a111e; --panel:#101a2c; --panel-inset:#0d1626; --row-hover:#132038;
+ --line:#1c2940; --border:#2a3a57; --text:#e7edf7; --text-muted:#93a1bb; --amber-border:#5a4630;
+ --accent:#6aa8ff; --accent-fill:#16294a; --accent-text:#8fbcff;
+ --chart-1:#33415c; --chart-2:#6aa8ff; --chart-3:#8f8cf5; --chart-4:#4cc3d9;
+ --chart-5:#b48cf2; --chart-6:#5b8def; --chart-7:#7fb3d5; --chart-8:#56627a;
+ --amber:var(--status-amber); --green:var(--status-green); --gold:var(--status-amber); --red:var(--status-red);
+ --muted:var(--status-grey); --ink:var(--text); --bg:var(--ground); --panel2:var(--panel-inset); --blue:var(--accent-text);
+}
+.wealth-status { position:relative;display:inline-flex;align-items:center;gap:6px;max-width:100%;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.5; }
+.wealth-status svg { flex:none;vertical-align:middle; }
+.wealth-status[data-tone="green"],.wealth-sign[data-tone="green"] { color:var(--status-green); }
+.wealth-status[data-tone="amber"],.wealth-sign[data-tone="amber"] { color:var(--status-amber); }
+.wealth-status[data-tone="red"],.wealth-sign[data-tone="red"] { color:var(--status-red); }
+.wealth-status[data-tone="grey"],.wealth-sign[data-tone="grey"] { color:var(--status-grey); }
+.wealth-status:focus-visible { outline:2px solid var(--accent);outline-offset:4px; }
+.wealth-status .wealth-tooltip { display:none;position:absolute;z-index:30;inset-block-end:calc(100% + 8px);inset-inline-end:0;width:230px;max-width:75vw;background:var(--ground);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:12px;white-space:normal;overflow-wrap:anywhere;text-align:left; }
+.wealth-status:hover .wealth-tooltip,.wealth-status:focus .wealth-tooltip { display:block; }
+
+.wealth-status small{flex-basis:100%;font-weight:400}
+.wealth-status{flex-wrap:wrap}
+.wealth-status[data-tone="amber"]{border-color:var(--amber-border)}
+.wealth-sign{font-variant-numeric:tabular-nums}
+.wealth-status svg{display:inline-block;width:16px;height:16px;min-width:16px;stroke:currentColor;fill:none}
+.wealth-status[data-tone="grey"][data-waiting="true"]{border:1px dashed var(--border)}

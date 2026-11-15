@@ -9,7 +9,7 @@ import {renderToStaticMarkup} from 'react-dom/server'
 import {MemoryRouter} from 'react-router-dom'
 const APP=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..'),require=createRequire(import.meta.url)
 const {buildSync}=require('esbuild')
-const code=buildSync({stdin:{contents:"export * from './src/pages/portfolio/workspaceV2/adapter'; export * from './src/pages/portfolio/workspaceV2/Workspace'; export * from './src/pages/portfolio/workspaceV2/icons'; export * from './src/pages/portfolio/fixtures'",resolveDir:APP,loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',jsx:'automatic',external:['react','react-dom','react-router-dom','react/jsx-runtime'],loader:{'.css':'empty'},logLevel:'silent'}).outputFiles[0].text
+const code=buildSync({stdin:{contents:"export * from './src/pages/portfolio/workspaceV2/adapter'; export * from './src/pages/portfolio/workspaceV2/Workspace'; export * from './src/pages/portfolio/workspaceV2/icons'; export * from './src/components/WealthStatus'; export * from './src/pages/portfolio/fixtures'",resolveDir:APP,loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',jsx:'automatic',external:['react','react-dom','react-router-dom','react/jsx-runtime'],loader:{'.css':'empty'},logLevel:'silent'}).outputFiles[0].text
 const filename=path.join(APP,'holdings-acceptance.cjs'),module=new Module(filename);module.filename=filename;module.paths=Module._nodeModulePaths(APP);module._compile(code,filename)
 const a=module.exports
 const row=(changes={})=>({...structuredClone(a.FIXTURE_BOOK.rows.find(r=>r.kind==='SECURITY')),symbol:'QZAA',accountKey:'SYN_A',accountLabel:'Synthetic A',assetType:'EQUITY',kind:'SECURITY',profileSource:'synthetic',marketValue:200,shares:2,avgCost:80,price:100,gainLoss:40,gainLossPct:25,dayChange:4,fundamentals:{sector:'Technology'},protection:{state:'PROTECTED',stop:90,basis:'synthetic',asOf:'2040-01-01T12:00:00Z',stale:false,nextStep:'Inspect recorded stop',reason:'Synthetic recorded resting stop'},...changes})
@@ -125,4 +125,18 @@ test('partial protection uses a closed amber lock; only material served gaps use
  assert.equal(a.protectionSummary([row({marketValue:100,protection:{state:'GAP'}})]).tone,'loss')
  const pending=row();pending.protection.reason='Recorded, pending activation'
  assert.equal(a.protectionSummary([pending]).icon,'unlocked');assert.match(a.protectionSummary([pending]).detail,/pending activation/)
+})
+
+test('shared signed readings preserve unknown and zero and identify both signs without relying on colour',()=>{
+ const read=(value,text)=>renderToStaticMarkup(React.createElement(a.SignedValue,{value},text))
+ assert.match(read(12,'$12.00'),/data-tone="green".*▲ \+/)
+ assert.match(read(-12,'-$12.00'),/data-tone="red".*▼ .*−\$12.00/)
+ for(const [v,label]of [[0,'$0.00'],[null,'not served']]){const html=read(v,label);assert.match(html,/data-tone="grey"/);assert.doesNotMatch(html,/▲|▼/);assert.ok(html.includes(label))}
+})
+test('shared statuses connect mouse and keyboard tooltips to state, reason and source clock',()=>{
+ for(const [icon,tone,label]of [['closed','green','Protected'],['closed','amber','Partial'],['open','amber','Planned only'],['open','red','Gap'],['open','grey','Below floor'],['na','grey','Unknown'],['plug','grey','Waiting on a producer']]){
+  const html=renderToStaticMarkup(React.createElement(a.WealthStatus,{icon,tone,label,detail:'Synthetic reason; read 2040-01-01T12:00:00Z'}))
+  assert.match(html,/tabindex="0"/);assert.match(html,/aria-describedby="[^"]+"/);assert.match(html,/role="tooltip"/);assert.ok(html.includes(label));assert.ok(html.includes('Synthetic reason; read 2040-01-01T12:00:00Z'))
+ }
+ const plug=renderToStaticMarkup(React.createElement(a.WorkspaceIcon,{name:'plug'}));assert.match(plug,/M9 3v5M15 3v5M7 8h10v4a5 5 0 0 1-10 0V8zM12 17v4/)
 })
