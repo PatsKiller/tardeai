@@ -62,10 +62,11 @@ export const PRESETS: Preset[] = [
       { key: 'evidence', header: 'Evidence' },
     ],
     methodNote:
-      'P/E cells are valuation-assessment@1 assessments rendered as served: a multiple only when the status is ASSESSED or UNASSESSED with a value, otherwise the contract status word. There is no universal cutoff and no cheap/buy verdict. Market cap is the wire value in millions.',
+      'Trailing and forward P/E print the SERVED provider multiple (wire pe / forward_pe), with the field named on hover. They are not valuation-assessment@1 assessments: the Evidence column states that contract’s own status, separately, and no cutoff, ranking or good/bad verdict is applied to any multiple.',
     limits: [
       'Peer TTM median has no reader on any served route; the column states that rather than showing a guess.',
-      'Funds and cash carry FUND_METRIC / N/A; a company P/E is not applicable to them.',
+      'EPS, PEG, beta, sector, industry, performance and ownership are served per row and shown in the row detail, which is why they are not extra columns here: the approved preset has these eight.',
+      'Funds and cash carry N/A; a company P/E is not applicable to them.',
     ],
   },
   {
@@ -100,12 +101,17 @@ export const PRESETS: Preset[] = [
       { key: 'method', header: 'Method' },
       { key: 'nextReview', header: 'Next review' },
     ],
+    // Two served sets exist for this preset and only one of them is v04's column list. The columns are v04's
+    // (verdict 2026-11-15T0342Z B2); the served provider technicals — RSI, the three SMA distances, the 52-week-high
+    // distance and the Fibonacci ladder — are in the row drawer's Levels section instead, so the preset stays seven
+    // columns wide and none of the served numbers is lost.
     methodNote:
-      'The v04 column set. Of these value columns only Price is served on this route today: the levels read (support, resistance, timeframe, next review) has no producer, and the wire’s Fibonacci block carries no clock, so Method cannot be dated either. The wire does serve RSI and moving-average distances, but this page does not bind them and they are not v04 Levels columns. Each empty cell names its own gap on hover, and none borrows a served number for a claim nothing supports.',
+      'The v04 column set. Of these value columns only Price is served on this route today: the levels read (support, resistance, timeframe, next review) has no producer, and the wire’s Fibonacci block carries no clock, so Method cannot be dated either. Each empty cell names its own gap on hover. The served technicals — RSI, the SMA distances and the 52-week-high distance — are in the row drawer’s Levels section, printed as served with no threshold applied.',
     limits: [
       'Support, Resistance, Timeframe and Next review have no producer on this route: they are drawn as N/A columns rather than replaced by a different label.',
-      'The wire serves a Fibonacci ladder but no clock for it; Method therefore prints N/A — a ladder that cannot be dated is not shown as if it were current.',
+      'The wire serves a Fibonacci ladder but no clock for it; a ladder that cannot be dated is not shown as if it were current. The ladder itself, as a retracement of the stored 52-week range, is in the drawer.',
       'No pivot, support or resistance field exists on the row, so no support/resistance claim is made anywhere on this page.',
+      'RSI and the moving averages are served numbers, not a signal: no overbought/oversold or crossover claim is made and no cutoff is applied to them.',
     ],
   },
 ]

@@ -5,7 +5,9 @@
 // Differences from the reference, each deliberate:
 //  * The ribbon states this build's real identity (version, source sha, accepted or not), not
 //    "fictional data".
-//  * Top-bar values have no bound reader yet: they render UNKNOWN with the reason, never a number.
+//  * Top-bar values have no bound reader of their own: the shell may not originate the heavy holdings reader, so
+//    it renders the snapshot the Holdings page publishes. Where nothing is published it says the book is not read
+//    on that route; it never shows a number it did not receive and never an UNKNOWN without a reason.
 //  * Prototype-only controls are not ported: review dock, "Approve direction", phone preview,
 //    review guide, design-review nav group, the demo account selector and the avatar initials.
 //  * The shell polls nothing and fetches nothing heavy. Pages own their reads (api/readers.ts).
@@ -18,18 +20,21 @@ import './v02.css'
 import './v04.css'
 import { Icon } from '../components/Icon'
 import { DrawerProvider, useDrawer } from '../components/Drawer'
-import { CueBadge } from '../components/primitives'
+import { PortfolioTopBar } from '../pages/portfolio/TopBar'
+import { BookSnapshotProvider } from '../pages/portfolio/snapshot'
 import { NAV, groupPath, resolve, viewPath } from './nav'
 
 const SOURCE = __WEALTH_SOURCE_SHA__ ? __WEALTH_SOURCE_SHA__.slice(0, 9) : 'unknown'
 
-const UNBOUND = {
-  level: 'NEUTRAL' as const, label: 'UNKNOWN', icon: 'unassessed' as const,
-  tooltip: 'No canonical reader is bound to the top bar yet (portfolio owner). Shown as UNKNOWN, never as a number.',
-}
-
 export function Shell() {
-  return <DrawerProvider><ShellFrame /></DrawerProvider>
+  // The snapshot sits inside the drawer host so both the top bar and any page can read the one published book.
+  return (
+    <DrawerProvider>
+      <BookSnapshotProvider>
+        <ShellFrame />
+      </BookSnapshotProvider>
+    </DrawerProvider>
+  )
 }
 
 // The reference's "Page intent" drawer: process text from v02, with this build's identity. No data.
@@ -84,13 +89,7 @@ function ShellFrame() {
         </aside>
         <div className="workspace">
           <header className="topbar">
-            <div className="scope">
-              <button className="mobile-menu quiet" aria-label="Open navigation" onClick={() => document.body.classList.toggle('menu-open')}>☰</button>
-              <div className="top-values">
-                <div><span className="muted">Account value</span><strong><CueBadge cue={UNBOUND} /></strong></div>
-                <div><span className="muted">Regular-session move</span><strong><CueBadge cue={UNBOUND} /></strong></div>
-              </div>
-            </div>
+            <PortfolioTopBar />
             <div className="top-actions" />
           </header>
           <main className="page" id="main">

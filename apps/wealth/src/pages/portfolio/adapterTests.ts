@@ -11,7 +11,7 @@ import type { Envelope } from '../../api/client'
 import { READERS, specFor } from '../../api/readers'
 import { adaptHoldings } from './adapter'
 import type { HoldingsBook } from './contract'
-import { detailFields, detailHeading } from './detail'
+import { detailFields, detailHeading, detailSections } from './detail'
 import { HOLDINGS_PATH, holdingsProps } from './liveProps'
 
 const NOW = Date.parse('2026-11-15T00:30:00Z')
@@ -95,6 +95,10 @@ function row(over: Record<string, unknown>): Record<string, unknown> {
     market_value: 15_000.0, portfolio_pct: 1.5, avg_cost: 120.0, cost_basis_source: 'broker_avg_price',
     cost_basis_total: 12_000.0, gain_loss: 3_000.0, gain_loss_pct: 25.0, day_change: 12.0, day_change_pct: 0.08,
     market_cap_b: 2_500.0, yield_pct: null, market_session: null, protection_state: 'GAP', protection: { state: 'GAP', source: 'stops', as_of: '2026-11-14T01:55:11Z', cause: 'Not Protected', reason: 'no resting stop', counted: false },
+    pe: 18.5, forward_pe: 16.2, eps_ttm: 8.1, eps_next_y: 9.3, peg: 1.4, beta: 1.15,
+    sector: 'Synthetic tech', industry: 'Synthetic widgets', perf_ytd_pct: 12.3, rsi: 58.4,
+    sma20_pct: 1.7, sma50_pct: 3.1, sma200_pct: 9.9, week52_high_pct: 4.4,
+    short_float_pct: 2.2, insider_own_pct: 1.1, inst_own_pct: 77.7, analyst_rating: 'buy',
     ...over,
   }
 }
@@ -206,13 +210,55 @@ function book(dataOver: Record<string, unknown> = {}, rootOver: Record<string, u
   const pos = b.clocks.find(c => c.role === 'POSITIONS')!
   eq('A2 the positions clock carries mixed', pos.mixed, true)
   eq('A2 the positions clock carries unknown rows', pos.unknownRows, 0)
-  // The book's as-of is the POSITIONS clock, not the build clock, not the request time.
-  eq('A2 book asOf is the positions clock', b.asOf, '2026-11-14T19:45:01-05:00')
-  eq('A2 book asOfClock is named', b.asOfClock, 'POSITIONS')
+  // The book's as-of is `truth.as_of`, and on this wire that instant is the QUOTE clock (F-1): the label follows
+  // the field that won, not a literal role printed over whichever field happened to be readable.
+  eq('A2 book asOf is truth.as_of', b.asOf, '2026-11-14T19:45:01-05:00')
+  eq('A2 book asOfClock names the quote clock', b.asOfClock, 'QUOTE')
   // Day change is a declared UNKNOWN clock whose reason is the producer's.
   eq('A2 day-change clock stays UNKNOWN', b.dayPnl.status, 'UNKNOWN')
   eq('A2 day-change clock has no invented instant', b.dayPnl.at, null)
   check('A2 day-change reason is the producer’s', /day_change/.test(b.dayPnl.reason))
+}
+
+// ---- F-1: the clock label follows the field, and the served fundamentals are carried -------------------------
+{
+  // Without truth.as_of the positions aggregate is named as such — the fallback is labelled, never silent.
+  const noTruth = book({ truth: { source: 'synthetic', stale: false, gap: null } })
+  eq('F-1 no truth.as_of → POSITIONS', noTruth.asOfClock, 'POSITIONS')
+  eq('F-1 positions as_of is the declared aggregate', noTruth.asOf, '2026-11-15T00:30:04.728689Z')
+  // With no clock provenance at all the role is UNDECLARED, not a guess.
+  const bare = adaptHoldings({ data: { holdings: [row({})], as_of: '2026-11-14T19:45:01-05:00' } })
+  eq('F-1 an unlabelled as_of is UNDECLARED', bare.book?.asOfClock, 'UNDECLARED')
+
+  const r = book().rows[0]
+  const f = r.fundamentals
+  eq('fund trailing P/E is the wire pe', f?.peTrailing, 18.5)
+  eq('fund forward P/E is the wire forward_pe', f?.peForward, 16.2)
+  eq('fund EPS TTM as served', f?.epsTtm, 8.1)
+  eq('fund EPS next year as served', f?.epsNextY, 9.3)
+  eq('fund PEG as served', f?.peg, 1.4)
+  eq('fund beta as served', f?.beta, 1.15)
+  eq('fund sector as served', f?.sector, 'Synthetic tech')
+  eq('fund industry as served', f?.industry, 'Synthetic widgets')
+  eq('fund YTD as served', f?.perfYtdPct, 12.3)
+  eq('fund RSI as served', f?.rsi, 58.4)
+  eq('fund SMA20 as served', f?.sma20Pct, 1.7)
+  eq('fund SMA50 as served', f?.sma50Pct, 3.1)
+  eq('fund SMA200 as served', f?.sma200Pct, 9.9)
+  eq('fund 52-week high distance as served', f?.week52HighPct, 4.4)
+  eq('fund short float as served', f?.shortFloatPct, 2.2)
+  eq('fund insider ownership as served', f?.insiderOwnPct, 1.1)
+  eq('fund institutional ownership as served', f?.instOwnPct, 77.7)
+  eq('fund analyst rating as served', f?.analystRating, 'buy')
+  // A block the enrichment never reached is null, not a row of zeroes the page would have to disbelieve.
+  const nulls = {
+    pe: null, forward_pe: null, eps_ttm: null, eps_next_y: null, peg: null, beta: null, sector: null, industry: null,
+    perf_ytd_pct: null, rsi: null, sma20_pct: null, sma50_pct: null, sma200_pct: null, week52_high_pct: null,
+    short_float_pct: null, insider_own_pct: null, inst_own_pct: null, analyst_rating: null,
+  }
+  eq('fund an all-null block is null', book({ holdings: [row({ symbol: 'BARE', ...nulls })] }).rows[0]?.fundamentals, null)
+  // A served zero stays a served zero: it is a value, not an absence.
+  eq('fund a served 0 PEG stays 0', book({ holdings: [row({ symbol: 'ZPEG', peg: 0, sector: null, industry: null, pe: null, forward_pe: null, eps_ttm: null, eps_next_y: null, beta: null, perf_ytd_pct: null, rsi: null, sma20_pct: null, sma50_pct: null, sma200_pct: null, week52_high_pct: null, short_float_pct: null, insider_own_pct: null, inst_own_pct: null, analyst_rating: null })] }).rows[0]?.fundamentals?.peg, 0)
 }
 
 // ---- Session: one row's label is not the book's session ------------------------------------------------------
@@ -421,19 +467,30 @@ function book(dataOver: Record<string, unknown> = {}, rootOver: Record<string, u
 {
   const b = book()
   const r = b.rows[0]
-  const fields = detailFields(r)
+  // r2 shape: detailSections returns the tabs plus the panes it cannot fill; the flat list is `fields`.
+  const sections = detailSections(r).sections
+  const fields = sections.flatMap(s => s.fields)
   const text = fields.map(f => `${f.label} ${f.value} ${f.source}`).join(' | ')
   const head = detailHeading(r)
   check('the drawer leads with the row its own identity', head.title === r.symbol && head.eyebrow.includes(r.accountKey), `${head.title} / ${head.eyebrow}`)
   check('the drawer names the floor flag as adapter-derived', fields.some(f => f.label.startsWith('Below the notional floor') && /ADAPTER-DERIVED/.test(f.source)))
   check('the drawer reports the ladder absent rather than clocking it', /no clock/.test(text), text)
   check('the drawer reports valuation unassessed', /UNASSESSED/.test(text), text)
+  // Every served fundamental reaches the drawer, and a bare multiple is named as one rather than as an assessment.
+  for (const label of ['Trailing P/E', 'Forward P/E', 'EPS (TTM)', 'EPS, next year (estimate)', 'PEG', 'Beta', 'Sector', 'Industry', 'Performance, year to date', 'Short interest (float)', 'Insider ownership', 'Institutional ownership', 'Analyst rating'])
+    check(`the drawer shows ${label}`, fields.some(f => f.label === label), label)
+  check('a served P/E is labelled a provider multiple, not an assessment', fields.some(f => f.label === 'Trailing P/E' && /not a valuation assessment/.test(f.source)))
+  check('the P/E cell carries the served multiple', fields.some(f => f.label === 'Trailing P/E' && /18\.5x/.test(f.value)), text)
+  check('the drawer keeps the served technicals', ['RSI (14)', 'SMA20', 'SMA50', 'SMA200', 'From the 52-week high'].every(l => fields.some(f => f.label === l)))
+  check('the drawer never derives a peer median', fields.some(f => f.label === 'Industry / own-history TTM median' && /never|no reader/.test(f.source + f.value)), text)
   const others = b.rows.slice(1).map(x => x.symbol)
   check('no other row of the book appears in the drawer', others.every(s => !text.includes(s)), others.join(','))
 
   const cashRow = b.rows.find(x => x.kind === 'CASH')
   const cashProt = cashRow ? detailFields(cashRow).find(f => f.label === 'Protection') : undefined
   check('a cash row says protection does not apply', cashProt !== undefined && /not applicable/.test(cashProt.value), cashProt?.value)
+  const cashFund = cashRow ? detailSections(cashRow).sections.find(s => s.title === 'Fundamentals') : undefined
+  check('a cash row carries no fundamentals block', cashFund !== undefined && /not applicable/.test(cashFund.fields[0]?.value ?? ''), cashFund?.fields[0]?.value)
 
   const unp = b.rows.find(x => x.symbol === 'UNPRICED')
   const below = unp ? detailFields(unp).find(f => f.label.startsWith('Below the notional floor')) : undefined

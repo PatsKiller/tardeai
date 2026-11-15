@@ -14,7 +14,7 @@
 // Pure: no React, no DOM — the invariants can pin it.
 
 import type { HoldingsRow } from './contract'
-import { marketCapText, money, pct, price, shares, signedMoney, signedPct, unavailable } from './format'
+import { decimal, marketCapText, money, multiple, pct, price, shares, signedMoney, signedPct, unavailable } from './format'
 
 export interface DetailField {
   label: string
@@ -78,85 +78,88 @@ export function positionFields(row: HoldingsRow): DetailField[] {
   ]
 }
 
-/**
- * Fundamentals: v04's pane, field by field.
- *
- * The wire DOES serve most of this pane (measured on the captured live body, 30 rows: sector 30/30, industry 30/30,
- * beta 22/30, perf_ytd_pct 23/30, short_float_pct 14/30, inst_own_pct 14/30, insider_own_pct 12/30, pe 12/30,
- * forward_pe 12/30, peg 9/30, eps_ttm / eps_next_y / analyst_rating null on every row). What is missing is this
- * page's binding: the row contract here (`contract.ts`) carries none of those fields, so the pane cannot render
- * them. A field that says "not served" would therefore be false (peer finding, 2026-11-15) — each absent field
- * says it is served-but-unbound instead. Binding them is candidate 2's work, not this correction's.
- */
+// ---- Fundamentals: every field the wire serves on the row, as served ------------------------------------------
+//
+// The drawer is where the complete set lives (the approved preset carries eight columns; these are the rest of
+// what the read actually serves). Nothing is derived: no EPS from price/PE, no growth from two EPS values, no
+// score from PEG or beta. `peTrailing` / `peForward` are named as provider multiples because they are not
+// valuation-assessment@1 assessments, and the Assessment entry says so in the contract's own words.
+const missing = (what: string) => unavailable(`no ${what} served for this instrument`)
+
+/** Fundamentals: every field the wire serves on the row, as served. */
 export function fundamentalsFields(row: HoldingsRow): DetailField[] {
   if (row.kind === 'CASH') {
-    return [{ label: 'Fundamentals', value: 'not applicable — a cash row has no issuer', source: 'cash rows carry no fundamentals' }]
+    return [{ label: 'Fundamentals', value: 'not applicable — a cash row has none', source: 'cash rows carry no enrichment block' }]
+  }
+  const f = row.fundamentals
+  if (f === null) {
+    return [
+      {
+        label: 'Fundamentals',
+        value: unavailable('the enrichment never reached this row'),
+        source: 'every wire fundamental field is null or absent; they are reported absent, never as zero',
+      },
+    ]
   }
   return [
-    { label: 'Market cap', value: marketCapText(row.marketCapB), source: 'served in millions' },
+    { label: 'Trailing P/E', value: f.peTrailing === null ? missing('trailing P/E') : multiple(f.peTrailing), source: 'wire pe · served provider multiple, not a valuation assessment' },
+    { label: 'Forward P/E', value: f.peForward === null ? missing('forward P/E') : multiple(f.peForward), source: 'wire forward_pe · served provider multiple, not a valuation assessment' },
+    { label: 'EPS (TTM)', value: f.epsTtm === null ? missing('TTM EPS') : money(f.epsTtm), source: 'wire eps_ttm · dollars per share as published' },
+    { label: 'EPS, next year (estimate)', value: f.epsNextY === null ? missing('next-year EPS') : money(f.epsNextY), source: 'wire eps_next_y · the provider’s estimate, not a measurement' },
+    { label: 'PEG', value: f.peg === null ? missing('PEG') : decimal(f.peg), source: 'wire peg · served ratio, no threshold applied' },
+    { label: 'Beta', value: f.beta === null ? missing('beta') : decimal(f.beta), source: 'wire beta · served ratio, no interpretation added' },
+    { label: 'Sector', value: f.sector ?? missing('sector'), source: 'wire sector' },
+    { label: 'Industry', value: f.industry ?? missing('industry'), source: 'wire industry' },
+    { label: 'Performance, year to date', value: f.perfYtdPct === null ? missing('YTD performance') : pct(f.perfYtdPct), source: 'wire perf_ytd_pct · percent as published' },
+    { label: 'Short interest (float)', value: f.shortFloatPct === null ? missing('short float') : pct(f.shortFloatPct), source: 'wire short_float_pct · percent of float as published' },
+    { label: 'Insider ownership', value: f.insiderOwnPct === null ? missing('insider ownership') : pct(f.insiderOwnPct), source: 'wire insider_own_pct · percent as published' },
+    { label: 'Institutional ownership', value: f.instOwnPct === null ? missing('institutional ownership') : pct(f.instOwnPct), source: 'wire inst_own_pct · percent as published' },
+    { label: 'Analyst rating', value: f.analystRating ?? missing('analyst rating'), source: 'wire analyst_rating · the provider’s own label, shown as text with no colour verdict' },
     {
-      label: 'Yield',
-      value: row.yieldPct === null ? unavailable('not published for this instrument') : pct(row.yieldPct),
-      source: 'served yield percent',
+      label: 'Assessment',
+      value: row.valuation === null ? unavailable('UNASSESSED: valuation-assessment@1 is not wired on this route') : `${row.valuation.status} · ${row.valuation.reason}`,
+      source: 'a bare served P/E is not a valuation-assessment@1 assessment; the two are shown apart',
     },
     {
-      label: 'Trailing / forward P/E',
-      value: unavailable('served on the read; this page does not bind it yet'),
-      source:
-        'the read serves pe and forward_pe on 12 of 30 rows; the row contract here carries neither, and valuation-assessment@1 is not wired',
-    },
-    {
-      label: 'EPS · PEG · Beta',
-      value: unavailable('served on the read; this page does not bind it yet'),
-      source:
-        'the read serves peg (9/30), beta (22/30) and other enrichment, with eps_ttm and eps_next_y null on every row; the row contract here carries none of them',
-    },
-    {
-      label: 'Sector / industry',
-      value: unavailable('served on the read; this page does not bind it yet'),
-      source: 'the read serves sector and industry on every row (30/30); the row contract here carries neither',
-    },
-    {
-      label: 'Valuation',
-      value: unavailable('UNASSESSED: valuation-assessment@1 is not wired on this route'),
-      source: 'a bare served P/E would not be an assessment, and valuation-assessment@1 is not wired here',
+      label: 'Industry / own-history TTM median',
+      value: unavailable('no reader serves a peer or history median'),
+      source: 'the approved drawer shows both; neither is on any served route, so neither is guessed',
     },
   ]
 }
 
-/** Levels: v04's pane. The wire's Fibonacci block has no clock, so nothing here is dated. */
+// ---- Levels: the served technicals plus the stored fib ladder ------------------------------------------------
 export function levelsFields(row: HoldingsRow): DetailField[] {
   if (row.kind === 'CASH') {
     return [{ label: 'Levels', value: 'not applicable — a cash row has none', source: 'cash rows carry no price levels' }]
   }
-  return [
-    {
-      label: 'Price',
-      value: row.worthless ? unavailable('no price served for a worthless identifier') : price(row.price),
-      source: 'served price for this row',
-    },
+  const f = row.fundamentals
+  const out: DetailField[] = [
+    { label: 'RSI (14)', value: f?.rsi == null ? missing('RSI') : f.rsi.toFixed(1), source: 'wire rsi · served value, no overbought/oversold threshold applied' },
+    { label: 'SMA20', value: f?.sma20Pct == null ? missing('SMA20') : `${pct(f.sma20Pct)} vs SMA20`, source: 'wire sma20_pct · percent distance from the 20-day average, as served' },
+    { label: 'SMA50', value: f?.sma50Pct == null ? missing('SMA50') : `${pct(f.sma50Pct)} vs SMA50`, source: 'wire sma50_pct · percent distance from the 50-day average, as served' },
+    { label: 'SMA200', value: f?.sma200Pct == null ? missing('SMA200') : `${pct(f.sma200Pct)} vs SMA200`, source: 'wire sma200_pct · percent distance from the 200-day average, as served' },
+    { label: 'From the 52-week high', value: f?.week52HighPct == null ? missing('52-week high distance') : pct(f.week52HighPct), source: 'wire week52_high_pct · percent below the provider’s 52-week high, as served' },
+  ]
+  const fib = row.fib
+  out.push({
+    label: 'Fib ladder',
+    value: fib === null ? unavailable('a ladder is served without a clock, so it is not dated here') : fib.levels.map(l => `${Math.round(l.ratio * 1000) / 10}% ${price(l.price)}`).join(' · '),
+    source: fib === null ? 'the wire serves a fib block but no clock for it; the row reports it absent rather than date it with the quote clock' : `retracement of the stored 52-week range, ${price(fib.window.low)} – ${price(fib.window.high)}, as of ${fib.window.asOf}`,
+  })
+  out.push(
     {
       label: 'Support / resistance',
       value: unavailable('no levels reader serves this route'),
       source: 'the wire carries no support, resistance, pivot or timeframe field',
     },
     {
-      label: 'RSI · moving averages',
-      value: unavailable('served on the read; this page does not bind it yet'),
-      source:
-        'the read serves rsi (24/30, an index), sma20_pct / sma50_pct / sma200_pct (24/30) and week52_high_pct (23/30) as percent distances, and atr (23/30) in price units; the row contract here carries none of them',
-    },
-    {
       label: 'Next review',
       value: unavailable('no next-review field is served on this route'),
       source: 'nothing on the read states when the row is next reviewed',
     },
-    {
-      label: 'Fib ladder',
-      value: unavailable('a ladder is served without a clock, so it is not dated here'),
-      source: 'reported absent rather than labelled with the quote clock',
-    },
-  ]
+  )
+  return out
 }
 
 /** Protection: the stops read, in its own words, with the clock it published. */

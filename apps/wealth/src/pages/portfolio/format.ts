@@ -74,3 +74,8 @@ export function age(seconds: number): string {
 export function multiple(value: number | null): string {
   return value === null ? unavailable('no multiple served') : `${PCT1.format(value)}x`
 }
+
+/** A served ratio (PEG, beta). Printed as served, two decimals; no threshold and no verdict is derived from it. */
+export function decimal(value: number | null): string {
+  return value === null ? unavailable('not published for this instrument') : PCT2.format(value)
+}

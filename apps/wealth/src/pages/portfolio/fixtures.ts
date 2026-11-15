@@ -115,6 +115,7 @@ const ROWS: HoldingsRow[] = [
     marketValue: 15000.0, gainLoss: 3000.0, gainLossPct: 25.0, portfolioPct: 15.0,
     dayChange: 240.58, dayChangePct: 1.63, marketCapB: 41200.0, yieldPct: 1.8,
     belowFloor: false, worthless: false,
+    fundamentals: { sector: 'Information technology', industry: 'Systems software', peTrailing: 21.4, peForward: 18.9, epsTtm: 3.5, epsNextY: 3.97, peg: 1.62, beta: 1.1, perfYtdPct: 18.2, rsi: 61.3, sma20Pct: 2.4, sma50Pct: 5.1, sma200Pct: 12.7, week52HighPct: 6.8, shortFloatPct: 1.9, insiderOwnPct: 0.6, instOwnPct: 84.2, analystRating: 'buy' },
     protection: protection({ state: 'PROTECTED', stop: 68.0, basis: 'resting broker stop (GTC)',
       reason: 'a resting stop is recorded for this position', nextStep: 'None — protection is in place.' }),
     fib: ladder(82.5, 58.0, [82.5, 76.72, 73.14, 70.25, 67.36, 63.24, 58.0], 76.72, 30.61),
@@ -126,6 +127,7 @@ const ROWS: HoldingsRow[] = [
     marketValue: 6000.0, gainLoss: -600.0, gainLossPct: -9.09, portfolioPct: 6.0,
     dayChange: -60.0, dayChangePct: -0.99, marketCapB: 1850.0, yieldPct: null,
     belowFloor: false, worthless: false,
+    fundamentals: { sector: 'Industrials', industry: 'Diversified holdings', peTrailing: 12.8, peForward: 13.4, epsTtm: 3.13, epsNextY: 2.99, peg: 2.1, beta: 0.9, perfYtdPct: -8.4, rsi: 42.1, sma20Pct: -3.2, sma50Pct: -5.6, sma200Pct: -1.1, week52HighPct: 24.6, shortFloatPct: 4.4, insiderOwnPct: 2.1, instOwnPct: 71.5, analystRating: 'hold' },
     protection: protection({ state: 'GAP', reason: 'no resting stop and no recorded decision to hold unprotected',
       nextStep: 'Set a protective stop or record the decision to hold unprotected.' }),
     fib: null,
@@ -137,6 +139,7 @@ const ROWS: HoldingsRow[] = [
     marketValue: 9600.0, gainLoss: 1600.0, gainLossPct: 20.0, portfolioPct: 9.6,
     dayChange: 63.9, dayChangePct: 0.67, marketCapB: 96400.0, yieldPct: 2.4,
     belowFloor: false, worthless: false,
+    fundamentals: { sector: 'Health care', industry: 'Medical devices', peTrailing: 27.6, peForward: 23.1, epsTtm: 4.35, epsNextY: 5.19, peg: 1.9, beta: 0.78, perfYtdPct: 9.6, rsi: 55.8, sma20Pct: 1.2, sma50Pct: 3.9, sma200Pct: 8.4, week52HighPct: 11.2, shortFloatPct: 2.3, insiderOwnPct: 1.4, instOwnPct: 88.9, analystRating: 'buy' },
     protection: protection({ state: 'PROTECTED', stop: 108.0, basis: 'resting broker stop (GTC)',
       reason: 'a resting stop is recorded for this position', nextStep: 'None — protection is in place.' }),
     fib: ladder(132.0, 96.0, [132.0, 123.5, 118.25, 114.0, 109.75, 103.7, 96.0], 118.25, 33.33),
@@ -148,6 +151,7 @@ const ROWS: HoldingsRow[] = [
     marketValue: 3750.0, gainLoss: -750.0, gainLossPct: -16.67, portfolioPct: 3.75,
     dayChange: 0.0, dayChangePct: 0.0, marketCapB: 640.0, yieldPct: null,
     belowFloor: false, worthless: false,
+    fundamentals: { sector: 'Communication services', industry: 'Interactive media', peTrailing: 34.2, peForward: 28.7, epsTtm: 0.37, epsNextY: 0.44, peg: 2.6, beta: 1.42, perfYtdPct: -21.3, rsi: 31.7, sma20Pct: -6.1, sma50Pct: -11.4, sma200Pct: -19.8, week52HighPct: 42.1, shortFloatPct: 7.8, insiderOwnPct: 0.3, instOwnPct: 62.4, analystRating: 'hold' },
     protection: protection({ state: 'UNKNOWN', asOf: null,
       reason: 'the broker stop read did not cover this account',
       nextStep: 'Re-read the protection state for this account.' }),
@@ -160,6 +164,7 @@ const ROWS: HoldingsRow[] = [
     marketValue: 12600.0, gainLoss: 900.0, gainLossPct: 7.69, portfolioPct: 12.6,
     dayChange: 126.0, dayChangePct: 1.01, marketCapB: 230500.0, yieldPct: 0.9,
     belowFloor: false, worthless: false,
+    fundamentals: { sector: 'Energy', industry: 'Integrated oil & gas', peTrailing: 10.4, peForward: 11.2, epsTtm: 20.19, epsNextY: 18.75, peg: 1.3, beta: 0.95, perfYtdPct: 4.7, rsi: 48.9, sma20Pct: 0.6, sma50Pct: -1.8, sma200Pct: 2.9, week52HighPct: 9.1, shortFloatPct: 1.2, insiderOwnPct: 4.8, instOwnPct: 66.1, analystRating: 'buy' },
     protection: protection({ state: 'PROTECTED', stop: 190.0, basis: 'resting broker stop (GTC)',
       reason: 'a resting stop is recorded for this position', nextStep: 'None — protection is in place.' }),
     fib: null,
@@ -171,6 +176,7 @@ const ROWS: HoldingsRow[] = [
     marketValue: 10000.0, gainLoss: 200.0, gainLossPct: 2.04, portfolioPct: 10.0,
     dayChange: -20.04, dayChangePct: -0.2, marketCapB: null, yieldPct: 5.6,
     belowFloor: false, worthless: false,
+    fundamentals: { sector: null, industry: null, peTrailing: null, peForward: null, epsTtm: null, epsNextY: null, peg: null, beta: 0.64, perfYtdPct: 3.1, rsi: null, sma20Pct: 0.4, sma50Pct: 1.1, sma200Pct: null, week52HighPct: 4.2, shortFloatPct: null, insiderOwnPct: null, instOwnPct: null, analystRating: null },
     protection: protection({ state: 'PROTECTED', stop: 23.5, basis: 'resting broker stop (GTC)',
       reason: 'a resting stop is recorded for this position', nextStep: 'None — protection is in place.' }),
     // A fund's ladder carries the nearest level and the retracement only — the wire's `fib` shape for funds.
@@ -188,6 +194,7 @@ const ROWS: HoldingsRow[] = [
     marketValue: 0.0, gainLoss: null, gainLossPct: null, portfolioPct: 0,
     dayChange: null, dayChangePct: null, marketCapB: null, yieldPct: null,
     belowFloor: true, worthless: true,
+    fundamentals: null,
     protection: protection({ state: 'UNKNOWN', asOf: null,
       reason: 'no broker stop read for a delisted zero-value identifier',
       nextStep: 'Record the write-off decision; there is nothing left to protect.' }),
@@ -202,6 +209,7 @@ const ROWS: HoldingsRow[] = [
     marketValue: null, gainLoss: null, gainLossPct: null, portfolioPct: 0,
     dayChange: null, dayChangePct: null, marketCapB: null, yieldPct: null,
     belowFloor: false, worthless: false,
+    fundamentals: null,
     protection: protection({ state: 'GAP', reason: 'no resting stop and no recorded decision to hold unprotected',
       nextStep: 'Set a protective stop once a price is served, or record the decision.' }),
     fib: null,
@@ -213,6 +221,7 @@ const ROWS: HoldingsRow[] = [
     marketValue: 43050.0, gainLoss: null, gainLossPct: null, portfolioPct: 43.05,
     dayChange: 0.0, dayChangePct: 0.0, marketCapB: null, yieldPct: null,
     belowFloor: false, worthless: false,
+    fundamentals: null,
     protection: null,
     fib: null,
     valuation: cashValuation('SYN_TAX:CASH'),
@@ -235,7 +244,7 @@ const SESSION: HoldingsBook['session'] = {
 }
 
 const CLOCKS: ClockProvenance[] = [
-  { role: 'POSITIONS', at: '2026-11-14T21:00:00Z', source: 'broker position clock', isBuildClock: false },
+  { role: 'POSITIONS', at: '2026-11-14T21:00:00Z', source: 'broker position clock', isBuildClock: false, mixed: true, unknownRows: 0 },
   { role: 'QUOTE', at: '2026-11-14T21:00:00Z', source: 'last repriced quote', isBuildClock: false },
   // The trap this contract exists to surface: the document build clock is a day older than the positions clock.
   { role: 'BUILD', at: '2026-11-13T21:00:00Z', source: 'position list document build', isBuildClock: true },
@@ -278,7 +287,9 @@ export const FIXTURE_BOOK: HoldingsBook = {
   contract: PORTFOLIO_HOLDINGS_CONTRACT_VERSION,
   source: 'FIXTURE',
   asOf: '2026-11-14T21:00:00Z',
-  asOfClock: 'POSITIONS',
+  // F-1: the book's as-of is the QUOTE instant the producer puts in truth.as_of, so it is labelled QUOTE. POSITIONS
+  // is an aggregate across rows (the wire marks it mixed) and is not the clock a marks line is drawn from.
+  asOfClock: 'QUOTE',
   clocks: CLOCKS,
   rows: ROWS,
   counts: {

@@ -28,7 +28,11 @@
 //   * a day-change column with no declared clock is labelled as such, not given one;
 //   * loading, error and empty are three different states, and empty is never a table of zeros;
 //   * the three v04 summary cards with no canonical source (unrealized total, YTD profit, cash total) print
-//     Unknown and the reason, because this page never sums rows to fill a card.
+//     Unknown and the reason, because this page never sums rows to fill a card;
+//   * the account scope is a FILTER over served rows and nothing else (scope.ts): "All accounts" is the served
+//     book, and under one account every book-level measure says "not served per account" — the page never sums
+//     rows into a per-account total. The selection itself lives in the top bar (TopBar.tsx), one selection for
+//     both surfaces.
 
 import { useState } from 'react'
 import type { CSSProperties } from 'react'
@@ -40,7 +44,9 @@ import { HoldingsTable, freshnessLine } from './HoldingsTable'
 import { PositionCards } from './PositionCards'
 import { PRESETS, preset, type PresetId } from './presets'
 import { age, money, pct } from './format'
-import { detailHeading, detailSections } from './detail'
+import { detailSections, detailHeading } from './detail'
+import { rowsInScope, scopeLabel, scopedMeasure } from './scope'
+import { useBookScope } from './snapshot'
 
 export interface HoldingsPageProps {
   /**
@@ -142,6 +148,9 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
   const [presetId, setPresetId] = useState<PresetId>('holdings')
   const [query, setQuery] = useState('')
   const drawer = useDrawer()
+  // One scope for the page and the top bar. Outside the shell's provider this is local state, so a unit render
+  // still filters; inside it, the top bar's select drives this page.
+  const { scope } = useBookScope()
 
   if (error !== null) {
     return (
@@ -163,17 +172,18 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
 
   const active = preset(presetId)
   const needle = query.trim().toLowerCase()
+  // The scope narrows the rows; the search narrows them again. Neither changes a served value.
+  const inScope = rowsInScope(book, scope)
   const rows = needle
-    ? book.rows.filter(r => `${r.symbol} ${r.name} ${r.accountLabel} ${r.accountKey}`.toLowerCase().includes(needle))
-    : book.rows
+    ? inScope.filter(r => `${r.symbol} ${r.name} ${r.accountLabel} ${r.accountKey}`.toLowerCase().includes(needle))
+    : inScope
 
   const openRow = (row: HoldingsRow, origin?: HTMLElement) => {
     const h = detailHeading(row)
     drawer.open({ title: h.title, eyebrow: h.eyebrow, body: <DetailBody row={row} />, origin: origin ?? null })
   }
 
-  const accountKeys = [...new Set(book.rows.map(r => r.accountKey))]
-  const scopeText = `all accounts${accountKeys.length > 0 ? ` (${accountKeys.length})` : ''}`
+  const scopeText = scopeLabel(book, scope)
 
   const sessionText =
     book.session.status === 'KNOWN'
@@ -187,26 +197,30 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
       ? 'none omitted'
       : book.population.excluded.map(e => `${e.count} ${e.label}`).join(' · ')
 
-  // The one account-value card v04 draws from a canonical value. Everything else on the strip has no served
-  // source and says so: the page never derives a total from the rows below it.
-  const accountValue = book.measures.find(m => m.id === 'account_value') ?? null
-  const accountValueCard =
-    accountValue !== null && accountValue.status === 'MEASURED' && accountValue.valueUsd !== null
-      ? {
-          value: money(accountValue.valueUsd),
-          sub: `${
-            accountValue.verified
-              ? `Verified, receipt ${accountValue.receiptId ?? 'missing'}`
-              : 'Measured, not verified — the ledger publishes no receipt'
-          } · as of ${accountValue.asOf ?? 'clock not served'}`,
-        }
-      : { value: 'Unknown', sub: accountValue === null ? 'No account-value measure is served.' : accountValue.reason }
+  // Named here so the disclosure can quote the served instant instead of describing the role in the abstract.
+  const valuationClock = book.clocks.find(c => c.role === 'VALUATION') ?? null
 
-  const priceMove = book.measures.find(m => m.id === 'price_move_estimate') ?? null
+  // The one account-value card v04 draws from a canonical value. Everything else on the strip has no served
+  // source and says so: the page never derives a total from the rows below it. Under a single-account scope the
+  // served measure is the book's, so the card states that the read serves no per-account split.
+  const accountValue = scopedMeasure(book, 'account_value', scope)
+  const accountValueMeasure = accountValue.measure
+  const accountValueCard = accountValue.available
+    ? {
+        value: money(accountValue.valueUsd),
+        sub: `${
+          accountValueMeasure?.verified
+            ? `Verified, receipt ${accountValueMeasure.receiptId ?? 'missing'}`
+            : 'Measured, not verified — the ledger publishes no receipt'
+        } · as of ${accountValueMeasure?.asOf ?? 'clock not served'}`,
+      }
+    : { value: 'Unknown', sub: accountValue.reason }
+
+  const priceMove = scopedMeasure(book, 'price_move_estimate', scope)
 
   // Protection gaps, quoted from the stops read. Not a recommendation: the card says what the producer
   // already reports, in the producer's own words, and opens the row it is about.
-  const gaps = book.rows.filter(r => r.protection !== null && r.protection.state === 'GAP')
+  const gaps = inScope.filter(r => r.protection !== null && r.protection.state === 'GAP')
 
   const weightTotal = book.rows.reduce((sum, r) => sum + r.portfolioPct, 0)
   // This sum is a COMPLETENESS CHECK, not a displayed quantity: it decides only whether the ring closes.
@@ -260,15 +274,18 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
         <div className="session-controls">
           <span className="muted">Estimated price movement</span>
           <br />
-          {priceMove !== null && priceMove.status === 'MEASURED' && priceMove.valueUsd !== null ? (
+          {priceMove.available ? (
             <>
               <strong>{money(priceMove.valueUsd)}</strong>{' '}
               <small className="muted">
-                {priceMove.verified ? 'verified' : 'measured, not verified'} · as of {priceMove.asOf ?? 'clock not served'}
+                {priceMove.measure?.verified ? 'verified' : 'measured, not verified'} · as of{' '}
+                {priceMove.measure?.asOf ?? 'clock not served'}
               </small>
             </>
           ) : (
-            <strong>Unknown</strong>
+            <>
+              <strong>Unknown</strong> <small className="muted">{priceMove.reason}</small>
+            </>
           )}
         </div>
       </div>
@@ -281,13 +298,14 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
       </MetricGrid>
 
       <Note tone="blue">
-        Same account, security, session and snapshot in the row and the detail. Select a holding to review its cost,
+        Scope: {scopeText} — chosen in the top bar. It filters the rows and never changes a served value. Same
+        account, security, session and snapshot in the row and the detail. Select a holding to review its cost,
         levels and protection.
       </Note>
 
       <Panel
         title="Holdings workspace"
-        sub={`${book.counts.nonCash} securities · cash listed per account · book scope: ${scopeText} · ${
+        sub={`${inScope.length} rows in scope · ${inScope.filter(r => r.kind === 'CASH').length} cash · scope: ${scopeText} · ${
           book.source === 'FIXTURE' ? 'synthetic fixture' : 'served book'
         }`}
         right={
@@ -346,11 +364,14 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
       </Panel>
 
       <div className="grid-equal">
-        <Panel title="Protection gaps in this book" sub="Quoted from the stops read. Evidence precedes an investment proposal.">
+        <Panel
+          title={`Protection gaps in ${scope === 'ALL' ? 'this book' : 'this account'}`}
+          sub="Quoted from the stops read. Evidence precedes an investment proposal."
+        >
           {gaps.length === 0 ? (
             <p className="muted">
-              No row in this book is reported as a protection gap by the stops read. That is not a claim that every
-              holding is covered — an UNKNOWN protection state is not a covered one.
+              No row {scope === 'ALL' ? 'in this book' : 'in this scope'} is reported as a protection gap by the stops
+              read. That is not a claim that every holding is covered — an UNKNOWN protection state is not a covered one.
             </p>
           ) : (
             <>
@@ -379,27 +400,41 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
           )}
         </Panel>
 
-        <Panel title="Where capital is allocated" sub="Book scope; each band is one row's served percent of the cash-inclusive book.">
+        <Panel
+          title="Where capital is allocated"
+          sub={
+            scope === 'ALL'
+              ? 'Book scope; each band is one row’s served percent of the cash-inclusive book.'
+              : `${scopeText}; each band is the row’s served percent of the WHOLE cash-inclusive book, so these bands do not sum to 100.`
+          }
+        >
           {book.rows.length === 0 ? (
             <p className="muted">No rows are served, so there is no allocation to draw.</p>
           ) : (
             <div className="donut-row">
-              {ringCloses ? (
-                <div className="donut" role="img" aria-label="Served allocation of the book, including cash" style={{ background: `conic-gradient(${stops})` }}>
-                  <span>
-                    <strong>{book.counts.nonCash}</strong>securities
-                    <br />
-                    {book.counts.cash} cash
-                  </span>
-                </div>
+              {scope === 'ALL' ? (
+                ringCloses ? (
+                  <div className="donut" role="img" aria-label="Served allocation of the book, including cash" style={{ background: `conic-gradient(${stops})` }}>
+                    <span>
+                      <strong>{book.counts.nonCash}</strong>securities
+                      <br />
+                      {book.counts.cash} cash
+                    </span>
+                  </div>
+                ) : (
+                  <p className="muted">
+                    The served weights total {pct(weightTotal, 1)}, not 100%, so the ring is not drawn: a closed ring
+                    would misstate every band after the gap. The served weights are listed beside it.
+                  </p>
+                )
               ) : (
                 <p className="muted">
-                  The served weights total {pct(weightTotal, 1)}, not 100%, so the ring is not drawn: a closed ring
-                  would misstate every band after the gap. The served weights are listed beside it.
+                  The ring shows the whole book and is not drawn for one account: a single account’s bands would not
+                  close. The served weights, which are percent of the whole book, are listed beside it.
                 </p>
               )}
               <div className="bar-list">
-                {book.rows.map((r, i) => (
+                {inScope.map((r, i) => (
                   <div className="bar-row" key={`${r.accountKey}:${r.symbol}`}>
                     <div className="row-between">
                       <span>{r.kind === 'CASH' ? `Cash · ${r.accountLabel}` : r.symbol}</span>
@@ -510,6 +545,106 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
             </div>
           ))}
         </dl>
+
+        {/* The ledger's frontend disclosures (HOLDINGS-CLOCK-FINDINGS-LEDGER-2026-11-15T0325Z): each is a fact
+            about what a clock on this page does NOT say. They are stated here rather than left to inference. */}
+        <h4>What these clocks do and do not say</h4>
+        <dl>
+          <div>
+            <dt>Marks clock (F-1)</dt>
+            <dd>
+              The marks on this page are stamped {book.asOf} by the {book.asOfClock} clock — the field the producer
+              put in <code>truth.as_of</code>. QUOTE is the last repriced quote; POSITIONS is an aggregate across
+              rows (the wire marks it <code>mixed</code>) and can be older than any one quote. The label follows the
+              clock that actually won, so it is never a fixed word printed over a different instant.
+            </dd>
+          </div>
+          <div>
+            <dt>Body age is not data age (F-3)</dt>
+            <dd>
+              {freshnessLine(book.freshness.ageSeconds, book.freshness.staleAfterSeconds, book.freshness.stale)} That
+              age is of this response as the reader computed it; a recompute re-stamps it. It is not the age of the
+              prices or positions inside, which carry their own clocks above and can differ from it by a day.
+            </dd>
+          </div>
+          <div>
+            <dt>VALUATION is stamped by the read (F-4)</dt>
+            <dd>
+              The VALUATION clock is {valuationClock?.at ?? 'not declared'}, the document’s <code>generated_at</code>,
+              written when this response was built. It says when the document was generated, not when the valuation
+              inputs were observed.
+            </dd>
+          </div>
+          <div>
+            <dt>A protection gap does not age (F-6)</dt>
+            <dd>
+              GAP means the stops read reports no resting stop for that row. A gap carries no age of its own on this
+              route, so one recorded weeks ago and one recorded today render identically; the per-row stop-read clock
+              is the only date attached to it.
+            </dd>
+          </div>
+          <div>
+            <dt>BUILD is not a freshness clock (F-9)</dt>
+            <dd>
+              BUILD is the position-list document build, declared so it cannot be mistaken for the book’s age. It
+              ages nothing on this page.
+            </dd>
+          </div>
+          <div>
+            <dt>Day change has no declared clock</dt>
+            <dd>
+              The producer declares the per-row day-change clock UNKNOWN (<code>day_pnl</code>), so a day-change
+              figure is not dated here and is not called a regular-session move.
+            </dd>
+          </div>
+        </dl>
+
+        <h4>Backend work to fulfill the cards this page shows as Unknown</h4>
+        {/* No number on this page waits for a renderer: each Unknown above waits for a producer. The owner is a
+            proposal, not an assignment — the operator decides who builds it. */}
+        <div className="table-wrap"><table>
+          <caption>Fields with no producer on this read, and the work that would fill them</caption>
+          <thead>
+            <tr>
+              <th scope="col">Field</th>
+              <th scope="col">Producer needed</th>
+              <th scope="col">Store</th>
+              <th scope="col">Owner to be</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Unrealized gain (book)</th>
+              <td>A book-level unrealized total, with its own clock</td>
+              <td>broker positions store, computed by the producer</td>
+              <td>holdings reader repair (unassigned)</td>
+            </tr>
+            <tr>
+              <th scope="row">YTD investment profit</th>
+              <td>A YTD profit measure with a declared period start and clock</td>
+              <td>performance history store</td>
+              <td>performance producer (unassigned)</td>
+            </tr>
+            <tr>
+              <th scope="row">Cash / book weight</th>
+              <td>A served cash total per book and per account, with a clock</td>
+              <td>broker positions store (cash rows are served; the total is not)</td>
+              <td>holdings reader repair (unassigned)</td>
+            </tr>
+            <tr>
+              <th scope="row">Per-account book measures</th>
+              <td>A per-account split of account value and the price-move estimate</td>
+              <td>measures block keyed by account</td>
+              <td>measures producer (unassigned)</td>
+            </tr>
+            <tr>
+              <th scope="row">Regular-session move</th>
+              <td>A session-labelled move with a declared day-change clock</td>
+              <td>session and quote store</td>
+              <td>n8n 24/7 producer (P-1, unassigned)</td>
+            </tr>
+          </tbody>
+        </table></div>
       </details>
 
       <details id="holdings-accounts">

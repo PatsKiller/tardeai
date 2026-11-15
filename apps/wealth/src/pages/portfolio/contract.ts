@@ -52,7 +52,7 @@ export interface DeclaredClock {
  * (its documented rule: the oldest known row, unknown if any row lacks a declared instant), and the disclosure
  * is carried alongside rather than flattened away.
  */
-export type ClockRole = 'POSITIONS' | 'BUILD' | 'QUOTE' | 'VALUATION' | 'REQUEST'
+export type ClockRole = 'POSITIONS' | 'BUILD' | 'QUOTE' | 'VALUATION' | 'REQUEST' | 'UNDECLARED'
 
 export interface ClockProvenance {
   role: ClockRole
@@ -132,8 +132,52 @@ export interface HoldingsRow {
   worthless: boolean
   /** Null only for rows where protection does not apply (cash). */
   protection: Protection | null
+  /** Null for a cash row, and for a security the enrichment never reached. Every field served or null. */
+  fundamentals: RowFundamentals | null
   fib: FibLadder | null
   valuation: ValuationAssessment | null
+}
+
+/**
+ * The fundamentals the wire actually serves on each row, carried as served.
+ *
+ * Two rules this shape keeps:
+ *   * `peTrailing` / `peForward` are the wire's bare `pe` / `forward_pe` MULTIPLES. They are NOT a
+ *     valuation-assessment@1 assessment, so they carry no status and claim none: a cell prints the multiple
+ *     and says it is a served multiple, not an assessment. Turning a bare number into ASSESSED would be the
+ *     claim that contract forbids.
+ *   * Nothing here is derived. A field the wire omits is `null` and renders "N/A — <reason>"; no EPS is
+ *     computed from price / pe, no growth rate from two EPS values.
+ *
+ * `marketCapB` and `yieldPct` stay on the row (the table already renders them); they are deliberately NOT
+ * duplicated here.
+ */
+export interface RowFundamentals {
+  sector: string | null
+  industry: string | null
+  /** Wire `pe` — a served multiple, not an assessment. */
+  peTrailing: number | null
+  /** Wire `forward_pe` — a served multiple, not an assessment. */
+  peForward: number | null
+  /** Wire `eps_ttm`, in dollars per share as published. */
+  epsTtm: number | null
+  /** Wire `eps_next_y` — the provider's next-year estimate, not a measurement. */
+  epsNextY: number | null
+  peg: number | null
+  beta: number | null
+  /** Wire `perf_ytd_pct` — percent, as the provider publishes it. */
+  perfYtdPct: number | null
+  rsi: number | null
+  sma20Pct: number | null
+  sma50Pct: number | null
+  sma200Pct: number | null
+  /** Wire `week52_high_pct` — percent below the 52-week high, as served. Not support/resistance. */
+  week52HighPct: number | null
+  shortFloatPct: number | null
+  insiderOwnPct: number | null
+  instOwnPct: number | null
+  /** Wire `analyst_rating`; a provider label, rendered as text with no colour verdict. */
+  analystRating: string | null
 }
 
 export interface HoldingsCounts {

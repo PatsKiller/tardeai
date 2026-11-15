@@ -20,9 +20,9 @@
 //      Taking rows_read renders a 0-row gap for a book that read 33 and rendered 30.
 
 import type {
-  AccountTotal, BookMeasure, BookSource, ClockProvenance, DeclaredClock, FibLadder, HoldingsBook,
+  AccountTotal, BookMeasure, BookSource, ClockProvenance, ClockRole, DeclaredClock, FibLadder, HoldingsBook,
   HoldingsCounts, HoldingsFreshness, HoldingsRow, HoldingsSession, ListedNotCounted, Population,
-  PopulationExclusion, Protection, ProtectionState, RowKind,
+  PopulationExclusion, Protection, ProtectionState, RowFundamentals, RowKind,
 } from './contract'
 import { PORTFOLIO_HOLDINGS_CONTRACT_VERSION } from './contract'
 
@@ -96,6 +96,41 @@ function protectionFrom(wire: Json, state: string | null): Protection | null {
   }
 }
 
+/** Wire `analyst_rating` is either a label or a number; carry it as text and claim no verdict. */
+const ratingText = (v: unknown): string | null =>
+  typeof v === 'string' && v.length > 0 ? v : typeof v === 'number' && Number.isFinite(v) ? String(v) : null
+
+/**
+ * The served fundamentals, as served. A cash row has none (there is no issuer behind a cash sweep), and a
+ * security whose enrichment never ran carries all-null rather than zeros — an absent P/E is not a P/E of 0.
+ */
+function fundamentalsFrom(wire: Json, kind: RowKind): RowFundamentals | null {
+  if (kind === 'CASH') return null
+  const f: RowFundamentals = {
+    sector: str(wire.sector),
+    industry: str(wire.industry),
+    peTrailing: num(wire.pe),
+    peForward: num(wire.forward_pe),
+    epsTtm: num(wire.eps_ttm),
+    epsNextY: num(wire.eps_next_y),
+    peg: num(wire.peg),
+    beta: num(wire.beta),
+    perfYtdPct: num(wire.perf_ytd_pct),
+    rsi: num(wire.rsi),
+    sma20Pct: num(wire.sma20_pct),
+    sma50Pct: num(wire.sma50_pct),
+    sma200Pct: num(wire.sma200_pct),
+    week52HighPct: num(wire.week52_high_pct),
+    shortFloatPct: num(wire.short_float_pct),
+    insiderOwnPct: num(wire.insider_own_pct),
+    instOwnPct: num(wire.inst_own_pct),
+    analystRating: ratingText(wire.analyst_rating),
+  }
+  // All-null is the honest "the enrichment never reached this row": keep it as a stated absence, not a block
+  // of zeroes the page would have to disbelieve field by field.
+  return Object.values(f).every(v => v === null) ? null : f
+}
+
 function rowFrom(wire: Json, floorUsd: number | null): HoldingsRow | null {
   const symbol = str(wire.symbol)
   if (symbol === null) return null
@@ -139,6 +174,7 @@ function rowFrom(wire: Json, floorUsd: number | null): HoldingsRow | null {
     belowFloor: marketValue !== null && floorUsd !== null && marketValue < floorUsd,
     worthless: kind === 'SECURITY' && marketValue === 0,
     protection: kind === 'CASH' ? null : protectionFrom(wire, str(wire.protection_state)),
+    fundamentals: fundamentalsFrom(wire, kind),
     // Served but clockless (README §Adapter gaps): reported absent rather than given a clock it does not have.
     fib: null as FibLadder | null,
     valuation: null,
@@ -292,8 +328,15 @@ export function adaptHoldings(body: unknown): AdaptResult {
   const population = populationFrom(wire, rows.length, coverage)
   const counts = countsFrom(wire, rows, coverage)
   const positions = asObj(asObj(wire.clock_provenance).positions)
-  const asOf = str(asObj(wire.truth).as_of) ?? str(positions.as_of) ?? str(wire.as_of)
+  // F-1 (ledger 2026-11-15T0325Z): the book's as-of is the QUOTE clock when `truth.as_of` carries it. The page
+  // used to print the literal role 'POSITIONS' over it, which read a quote instant as the positions aggregate.
+  // The role now follows the field that actually won, and an unlabelled `as_of` is called undeclared, not named.
+  const truthAsOf = str(asObj(wire.truth).as_of)
+  const positionsAsOf = str(positions.as_of)
+  const asOf = truthAsOf ?? positionsAsOf ?? str(wire.as_of)
   if (asOf === null) return { book: null, error: 'the payload declares no readable as_of' }
+  const asOfClock: ClockRole = truthAsOf !== null ? 'QUOTE' : positionsAsOf !== null ? 'POSITIONS' : 'UNDECLARED'
+  if (asOfClock === 'UNDECLARED') coverage.push('the payload’s as_of names no clock role: it is shown as undeclared')
   const swr = asObj(root._swr)
   const staleAfterHours = num(asObj(asObj(asObj(wire.evidence).portfolio).clocks).stale_after_hours)
   const freshness: HoldingsFreshness = {
@@ -319,7 +362,7 @@ export function adaptHoldings(body: unknown): AdaptResult {
     contract: PORTFOLIO_HOLDINGS_CONTRACT_VERSION,
     source,
     asOf,
-    asOfClock: 'POSITIONS',
+    asOfClock,
     clocks: clocksFrom(wire),
     rows,
     counts,

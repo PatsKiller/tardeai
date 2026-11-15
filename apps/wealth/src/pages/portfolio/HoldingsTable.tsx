@@ -16,7 +16,7 @@ import { cue } from '../../contracts/cue'
 import { Tag, type Tone } from '../../components/primitives'
 import { assessmentSummary, peCellText } from './cells'
 import type { HoldingsRow, Protection } from './contract'
-import { age, marketCapText, money, pct, price, shares, signedMoney, signedPct, unavailable } from './format'
+import { age, marketCapText, money, multiple, pct, price, shares, signedMoney, signedPct, unavailable } from './format'
 import type { Preset } from './presets'
 
 /**
@@ -96,6 +96,31 @@ function valueCell(row: HoldingsRow): ReactNode {
   return row.worthless ? `${money(row.marketValue)} · worthless` : money(row.marketValue)
 }
 
+/**
+ * A P/E cell: the SERVED provider multiple when the row carries one (wire `pe` / `forward_pe`), otherwise the
+ * valuation-assessment@1 status word from `peCellText`. The two are different instruments of evidence, so the
+ * cell names which one it is printing on hover instead of letting a bare multiple pass as an assessment.
+ */
+function peServed(row: HoldingsRow, which: 'peTrailing' | 'peForward'): ReactNode {
+  const value = row.fundamentals?.[which] ?? null
+  const wire = which === 'peTrailing' ? 'pe' : 'forward_pe'
+  if (value !== null) {
+    return (
+      <span title={`served provider multiple · wire ${wire} · not a valuation-assessment@1 assessment`}>
+        {multiple(value)}
+      </span>
+    )
+  }
+  if (row.valuation === null) return compactMissing(`no served ${wire} multiple and no assessment for this row`)
+  return peCellText(row.valuation, which === 'peTrailing' ? 'trailing' : 'forward')
+}
+
+/** A served technical cell. Missing is "N/A — <reason>"; nothing here is compared to a threshold. */
+function technical(value: number | null, fmt: (v: number) => string, why: string): ReactNode {
+  return value === null ? unavailable(why) : fmt(value)
+}
+
+
 function cell(row: HoldingsRow, key: string): ReactNode {
   // A cash row is not a security: most columns do not apply. v04 prints `N/A` / `—` here; the reason rides the
   // title, and the row drawer states it per field.
@@ -159,9 +184,19 @@ function cell(row: HoldingsRow, key: string): ReactNode {
       return <ProtectionTag row={row} />
     }
     case 'peTrailing':
-      return compactCell(peCellText(row.valuation, 'trailing'))
+      return peServed(row, 'peTrailing')
     case 'peForward':
-      return compactCell(peCellText(row.valuation, 'forward'))
+      return peServed(row, 'peForward')
+    case 'rsi':
+      return technical(row.fundamentals?.rsi ?? null, v => v.toFixed(1), 'no RSI served for this row')
+    case 'sma20':
+      return technical(row.fundamentals?.sma20Pct ?? null, v => pct(v), 'no SMA20 served for this row')
+    case 'sma50':
+      return technical(row.fundamentals?.sma50Pct ?? null, v => pct(v), 'no SMA50 served for this row')
+    case 'sma200':
+      return technical(row.fundamentals?.sma200Pct ?? null, v => pct(v), 'no SMA200 served for this row')
+    case 'week52':
+      return technical(row.fundamentals?.week52HighPct ?? null, v => pct(v), 'no 52-week high served for this row')
     case 'peerMedian':
       return compactMissing('no reader serves a peer median on any route')
     case 'marketCap':
