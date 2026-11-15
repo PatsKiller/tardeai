@@ -67,3 +67,45 @@ test('news contextual reader uses the actual source_url field and rejects unsafe
   const m = snapshotModel({snapshot:{feed:[{source_url:'https://example.com/research'},{source_url:'javascript:alert(1)'}]}},new Map())
   assert.equal(m.feed[0].url,'https://example.com/research');assert.equal(m.feed[1].url,null)
 })
+
+test('R1 ordinary uppercase words and numeric prose are preserved; genuine identifier shapes are withheld', async()=>{
+ const {safeText}=await import('../../src/pages/home/homeAdapter.ts')
+ assert.equal(safeText('QUARTERLY DIVIDEND DECLARED 12345678'),'QUARTERLY DIVIDEND DECLARED 12345678')
+ assert.equal(safeText('Z123456789'),'[account withheld]')
+ assert.equal(safeText('synthetic-key',new Map([['synthetic-key','Example account']])),'Example account')
+})
+test('R2 scanner watch:true maps to Watch without inventing scope for unmarked rows',async()=>{
+ const {marketMoversModel}=await import('../../src/pages/home/homeAdapter.ts')
+ const m=marketMoversModel({signals:{sample:{rows:[{symbol:'HELD',held:true},{symbol:'WATCH',watch:true},{symbol:'UNKNOWN'}]}}})
+ assert.deepEqual(m.map(x=>x.held),[true,false,null])
+})
+test('R3 stored CIO summary object text and its own source clock survive; mixed-run text supersedes it',()=>{
+ const m=snapshotModel({snapshot:{cio_brief:{summary:{text:'Stored historical summary',source:'llm'},as_of:'2026-11-01T01:00:00Z'},quotes_as_of:'different-quote-clock'}},new Map())
+ assert.equal(m.brief,'Stored historical summary');assert.equal(m.briefAt,'2026-11-01T01:00:00Z');assert.equal(m.briefSource,'llm')
+ assert.equal(snapshotModel({snapshot:{cio_brief:{summary:{text:'Must not display'},run:{same_run:false,text:'Brief pieces disagree'}}}},new Map()).brief,'Brief pieces disagree')
+})
+test('R4 producer week.events, ET event time, window and no-feed statement are retained',()=>{
+ const m=snapshotModel({snapshot:{week_ahead:{from:'2026-11-15',to:'2026-11-23',fed_speakers:'no feed — not listed',events:[{date:'2026-11-18',label:'Synthetic event',time_et:'14:00',kind:'macro'}]}}},new Map())
+ assert.equal(m.week[0].title,'Synthetic event');assert.equal(m.week[0].time,'14:00');assert.equal(m.weekFrom,'2026-11-15');assert.equal(m.fedSpeakers,'no feed — not listed')
+})
+test('S1/S2 macro and extended prints retain separate price, reference and source time, with no invented comparable change',()=>{
+ const m=snapshotModel({snapshot:{moves:[{symbol:'TEST',price:10,change_pct:1,extended:{state:'level_only',session_label:'After hours',price:11,change_pct:99,printed_at:'2026-11-15T18:00:00Z',reference_date:'2026-11-13'}}],macro:{headlines:[{title:'Synthetic macro',url:'https://example.org/macro'}],futures:{status:'available',quotes:[{label:'Synthetic index',level:123,change_pct:99,level_only:true,printed_at:'2026-11-15T18:01:00Z'}]},now:{overseas:{label:'No direct overseas feed'}}}}},new Map())
+ assert.equal(m.moves[0].price,10);assert.equal(m.moves[0].ext.price,11);assert.equal(m.moves[0].ext.change,null)
+ assert.equal(m.moves[0].ext.at,'2026-11-15T18:00:00Z');assert.equal(m.macro.quotes[0].change,null);assert.equal(m.macro.headlines[0].url,'https://example.org/macro')
+})
+test('S3/S4 actual note.topic and account position times are used; raw account key never becomes a heading',async()=>{
+ const {cioContextModel}=await import('../../src/pages/home/homeAdapter.ts')
+ const labels=new Map([['synthetic-key','Example account']])
+ const c=cioContextModel({advisory_only:true,advice:{ok:true},card:{posture:{value:'Stored posture',as_of:'2026-11-01T01:00:00Z'}},notes:[{topic:'Comparison',text:'synthetic-key',as_of:'2026-11-02T01:00:00Z'}]},labels)
+ assert.equal(c.notes[0].title,'Comparison');assert.equal(c.notes[0].text,'Example account')
+ assert.equal(c.facts[0].at,'2026-11-01T01:00:00Z')
+ assert.equal(cioContextModel({advice:{ok:true},card:{posture:{value:'Hidden'}}},labels).facts.length,0)
+ const o=overviewModel({data_as_of:'2026-11-01',data_as_of_account:'synthetic-key',account_labels:{'synthetic-key':'Example account'},portfolio_aggregate:{accounts:[{account:'synthetic-key',total_value:27,position_observation_time:'2026-11-01T01:00:00Z'}]}})
+ assert.equal(o.accounts[0].value,27);assert.equal(o.accounts[0].source,'2026-11-01T01:00:00Z');assert.equal(o.oldestAccount,'Example account');assert.doesNotMatch(JSON.stringify(o),/synthetic-key/)
+})
+test('R5/S5 rendered source labels distinguish deterministic context and CIO prose, using an existing hero class',async()=>{
+ const fs=await import('node:fs')
+ const page=fs.readFileSync(new URL('../../src/pages/home/HomeTodayPage.tsx',import.meta.url),'utf8')
+ assert.match(page,/Desk context built from stored numbers/);assert.doesNotMatch(page,/CIO interpretation:|className="page-title"/)
+ assert.match(page,/className="hero"/)
+})

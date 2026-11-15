@@ -68,36 +68,50 @@ export function safeText(value: unknown, labels: Map<string, string> = new Map()
   let s = text(value)
   for (const [key, label] of [...labels].sort((a, b) => b[0].length - a[0].length)) if (key) s = s.split(key).join(label)
   // Opaque broker identifiers are never a display fallback.
-  return s.replace(/\b(?:[A-Z0-9]{8,}|\d{6,}|[a-z]+_[a-z]+_[0-9a-f]{6,})\b/g, '[account withheld]')
+  return s.replace(/\b(?:[A-Z]{1,3}\d{6,}|[a-z]+_[a-z]+_[0-9a-f]{6,})\b/g, '[account withheld]')
 }
 export function safeUrl(value: unknown): string | null {
   try { const u = new URL(text(value)); return u.protocol === 'https:' && !u.username && !u.password ? u.href : null } catch { return null }
 }
 
-export interface Mover { symbol: string; held: boolean | null; price: number | null; change: number | null; impact: number | null; close: string; extended: string }
+export interface Mover { symbol: string; held: boolean | null; price: number | null; change: number | null; impact: number | null; close: string; extended: string; ext?: { price: number | null; change: number | null; at: string; reference: string; state: string } }
 export interface Story { title: string; publisher: string; published: string; url: string | null; why: string; kind: string }
 export interface Priority { title: string; why: string; kind: string; since: string; owner: string }
-export interface Overview { value: number | null; source: string; build: string; session: string; accounts: { label: string; value: number | null; source: string }[] }
-export interface Snapshot { moves: Mover[]; feed: Story[]; brief: string; quoteClock: string; build: string; macro: { label: string; value: string }[]; week: { title: string; when: string }[] }
+export interface Overview { value: number | null; source: string; build: string; session: string; dataAsOf: string; oldestAccount: string; accounts: { label: string; value: number | null; source: string }[] }
+export interface Snapshot {
+ moves: Mover[]; feed: Story[]; brief: string; briefAt: string; briefSource: string; quoteClock: string; build: string
+ macro: { headlines: Story[]; quotes: { label: string; level: number | null; change: number | null; at: string; session: string; reference: string }[]; status: string; overseas: string }
+ week: { title: string; when: string; time: string; kind: string }[]; weekFrom: string; weekTo: string; fedSpeakers: string
+}
 export const snapshot = (r: Row): Row => r.snapshot !== undefined ? record(r.snapshot) : r
 export function overviewModel(r: Row): Overview {
-  const total = record(r.portfolio_total), agg = record(r.portfolio_aggregate), session = record(r.market_session)
+  const total = record(r.portfolio_total), agg = record(r.portfolio_aggregate), session = record(r.market_session), labels = accountMap(r)
   return {
     value: number(total.value), source: text(record(record(r.clock_provenance).quote).as_of), build: text(total.as_of),
-    session: text(session.latest_open_session) || text(session.status),
-    accounts: rows(agg.accounts).map(a => ({ label: text(a.account_label) && a.account_label !== a.account_id && a.account_label !== a.account ? text(a.account_label) : 'Account label unavailable', value: number(a.total_usd), source: text(a.as_of) })),
+    session: text(r.market_session) || text(session.latest_open_session) || text(session.status),
+    dataAsOf: text(r.data_as_of), oldestAccount: labels.get(text(r.data_as_of_account)) || (r.data_as_of_account ? 'Account label unavailable' : ''),
+    accounts: rows(agg.accounts).map(a => ({ label: labels.get(text(a.account || a.account_id)) || 'Account label unavailable', value: number(a.total_value), source: text(a.position_observation_time) })),
   }
 }
 export function snapshotModel(r: Row, labels: Map<string, string>): Snapshot {
-  const s = snapshot(r)
-  return {
-    moves: rows(s.moves).map(m => ({ symbol: text(m.symbol), held: typeof m.held === 'boolean' ? m.held : null, price: number(m.price), change: number(m.change_pct), impact: number(m.dollar_impact), close: safeText(m.close_tag, labels), extended: text(record(m.extended).label) })),
-    feed: rows(s.feed).map(f => ({ title: safeText(f.title, labels), publisher: safeText(f.source, labels), published: text(f.published_at), url: safeUrl(f.source_url || f.url), why: safeText(f.so_what, labels), kind: text(f.kind) })),
-    brief: safeText(record(s.cio_brief).summary || record(s.cio_brief).headline, labels),
-    quoteClock: text(s.quotes_as_of), build: text(s.generated_at),
-    macro: rows(s.macro).map(m => ({ label: safeText(m.label || m.name, labels), value: safeText(m.value, labels) })),
-    week: rows(s.week_ahead).map(w => ({ title: safeText(w.title || w.event, labels), when: text(w.date || w.when) })),
-  }
+ const s = snapshot(r), brief = record(s.cio_brief), summary = record(brief.summary), run = record(brief.run)
+ const macro = record(s.macro), futures = record(macro.futures), current = record(macro.now), week = record(s.week_ahead)
+ const story = (f: Row): Story => ({title:safeText(f.title,labels),publisher:safeText(f.source,labels),published:text(f.published_at),url:safeUrl(f.source_url || f.url),why:safeText(f.so_what,labels),kind:text(f.kind)})
+ return {
+  moves:rows(s.moves).map(m => {
+   const ext = record(m.extended)
+   return {symbol:text(m.symbol),held:typeof m.held === 'boolean' ? m.held : null,price:number(m.price),change:number(m.change_pct),impact:number(m.dollar_impact),close:safeText(m.close_tag,labels),extended:text(ext.session_label),
+    ext:m.extended ? {price:number(ext.price),change:ext.state === 'print' ? number(ext.change_pct) : null,at:text(ext.printed_at),reference:text(ext.reference_date),state:text(ext.state)} : undefined}
+  }),
+  feed:rows(s.feed).map(story),
+  brief:safeText(run.same_run === false ? run.text : summary.text || brief.summary || brief.headline,labels),
+  briefAt:text(brief.as_of),briefSource:text(summary.source),
+  quoteClock:text(s.quotes_as_of),build:text(s.generated_at),
+  macro:{headlines:rows(macro.headlines).map(story),status:text(futures.status),overseas:safeText(record(current.overseas).label,labels),
+   quotes:rows(futures.quotes).map(q=>({label:safeText(q.label || q.symbol,labels),level:number(q.level),change:q.level_only === true ? null : number(q.change_pct),at:text(q.printed_at),session:text(q.session_label),reference:text(q.reference_date)}))},
+  week:rows(week.events).map(w=>({title:safeText(w.label,labels),when:text(w.date),time:text(w.time_et),kind:text(w.kind)})),
+  weekFrom:text(week.from),weekTo:text(week.to),fedSpeakers:safeText(week.fed_speakers,labels),
+ }
 }
 export function prioritiesModel(r: Row, labels: Map<string, string>): Priority[] {
   return rows(r.items).map((p, i) => ({
@@ -108,7 +122,7 @@ export function prioritiesModel(r: Row, labels: Map<string, string>): Priority[]
 }
 export function marketMoversModel(r: Row): Mover[] {
   return Object.values(record(r.signals)).flatMap(s => rows(record(s).rows)).map(m => ({
-    symbol: text(m.symbol), held: typeof m.held === 'boolean' ? m.held : null, price: number(m.last), change: number(m.change_pct), impact: null, close: '', extended: '',
+    symbol: text(m.symbol), held: m.held === true ? true : m.watch === true ? false : null, price: number(m.last), change: number(m.change_pct), impact: null, close: '', extended: '',
   })).filter((m, i, all) => all.findIndex(x => x.symbol === m.symbol) === i)
 }
 export function homeToday(reads: Record<string, Read>, now: number) {
@@ -174,4 +188,17 @@ export function marketState(read: Read, now: number): RenderState<Market> {
     }
   }
   return state(read, marketModel, now, r => r.as_of)
+}
+
+export function cioContextModel(r: Row, labels: Map<string,string>) {
+ const advice=record(r.advice), card=record(r.card), eligible=advice.ok===true && r.advisory_only===true
+ return {
+  built:text(r.generated_at),eligible,reason:safeText(advice.reason,labels),
+  facts:eligible ? ['posture','tier','score','buys_line'].flatMap(key=>{
+   const f=record(card[key]),value=typeof f.value==='number' ? String(f.value) : safeText(f.value,labels)
+   return value ? [{label:key.replace(/_/g,' '),value,at:text(f.as_of)}] : []
+  }) : [],
+  inputs:Object.entries(record(r.inputs)).map(([name,v])=>({name:name.replace(/_/g,' '),at:text(record(v).as_of),present:record(v).present===true,stale:record(v).stale===true,role:safeText(record(v).role,labels)})),
+  notes:rows(r.notes).map(n=>({title:safeText(n.topic,labels),text:safeText(n.text,labels),at:text(n.as_of)})),
+ }
 }
