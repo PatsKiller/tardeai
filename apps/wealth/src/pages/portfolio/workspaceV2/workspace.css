@@ -50,6 +50,7 @@
 .holdings-v2 .hv-evidence .table-wrap{overflow:visible}
 .holdings-v2 .hv-evidence table,.holdings-v2 .hv-evidence tbody,.holdings-v2 .hv-evidence tr,.holdings-v2 .hv-evidence td,.holdings-v2 .hv-evidence th{display:block;width:auto}
 .holdings-v2 .hv-evidence thead{display:none}
+.holdings-v2 .hv-evidence caption{display:block;box-sizing:border-box;width:100%;text-align:left;overflow-wrap:anywhere}
 }
 
 .holdings-v2 .hv-icon{vertical-align:middle;flex:none;display:inline-block;margin-right:4px}
