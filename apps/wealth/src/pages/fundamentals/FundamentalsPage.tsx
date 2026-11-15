@@ -8,7 +8,9 @@
 // What the route fixes (LEAD-ROUTE-FUNDAMENTALS-NAV-WIRING-20261115T1613Z):
 //   * the eight preset columns, and the same P/E, forward P/E and market-cap readings the preset shows;
 //   * Peer TTM median and Evidence print `not wired — valuation-assessment@1`; no assessment status is derived
-//     or displayed, on live data or on the synthetic fixture;
+//     for, or printed into, those two columns. A status a row DOES serve appears in exactly two places the
+//     approved preset owns: the P/E cell when the wire serves no company multiple (a fund prints its fund
+//     metric), and the reviewed row drawer ("UNASSESSED · …"). The page's own foot says so;
 //   * market cap carries its provenance: the row's profile record source and clock (the only clock the row has);
 //   * the page states what it is not: no peer median reader, no valuation assessment, no derived status.
 //
@@ -162,7 +164,11 @@ export function FundamentalsPage({ book = FIXTURE_BOOK, loading = false, error =
             Marks: {book.asOf} ({book.asOfClock} clock) · market cap provenance: each row’s profile record
             {' '}(source and record clock, under the cap) · USD · day change: no declared per-row clock
           </span>
-          <span>Every P/E is a served provider multiple, not an assessment.</span>
+          <span>
+            A P/E is a served provider multiple where the read serves one; where it serves none the cell prints
+            the row’s own valuation status instead — a fund’s fund metric, or a last-known value marked
+            Unassessed — and the hover names which.
+          </span>
         </div>
         <p className="small muted">{book.coverageNote}</p>
         <p className="small muted">{SCOPE_NOTE}</p>

@@ -43,7 +43,7 @@ export function assessmentText(): string {
 }
 
 export function assessmentNote(): string {
-  return 'valuation-assessment@1 is not wired on this route; this page prints no assessment status and derives none'
+  return 'valuation-assessment@1 is not wired on this route; this cell prints no assessment status and derives none'
 }
 
 /** The served price, unchanged; a worthless identifier has no price by definition (the preset's own rule). */

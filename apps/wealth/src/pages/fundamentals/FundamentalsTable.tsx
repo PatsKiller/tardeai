@@ -211,6 +211,15 @@ export function FundamentalsTable({ rows, preset, onRowOpen }: {
               the table's minimum width from its longest sentence (the reviewed table's measured defect). */}
           <td colSpan={preset.columns.length} style={{ whiteSpace: 'normal' }}>
             <p>{preset.methodNote}</p>
+            {/* The preset's methodNote describes the REVIEWED Evidence column; this route
+                (LEAD-ROUTE-FUNDAMENTALS-NAV-WIRING-20261115T1613Z) fixes that column to a literal instead, so the
+                note would otherwise read as a description of the cells one line above it. State the override next
+                to the note rather than editing the preset. */}
+            <p className="small muted">
+              On this page the Evidence column prints the route’s literal instead of that contract status. A status
+              a row does serve is shown in its row drawer, and — where the read serves no company multiple — in
+              the P/E cell itself: a fund prints its fund metric there.
+            </p>
             {preset.limits.length > 0 && (
               <ul>
                 {preset.limits.map(l => (

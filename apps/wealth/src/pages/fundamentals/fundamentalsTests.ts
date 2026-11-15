@@ -17,7 +17,8 @@
 //        profile record — the cell cannot print a cap with no provenance;
 //   T-5  the eight preset columns and their headers are the approved preset's, in its order;
 //   T-6  every table sits in a .table-wrap, and every row's cells are the preset's own decisions on cash;
-//   T-7  the rendered table carries no valuation-assessment status word even though the fixture rows do.
+//   T-7  the two route-fixed cells are the literal on EVERY row, read cell by cell — and the P/E columns keep
+//        the preset's own text, which for a fund IS a served status word (the page's foot says so).
 
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -155,10 +156,52 @@ check(
   'T-6 a cash row takes the preset cash rule, not the security columns',
   html.includes('aria-label="N/A — this column does not apply to a cash row"'),
 )
+// ---- T-7: the two route-fixed columns, cell by cell -----------------------------------------------------
+//
+// The fixture rows DO carry valuation-assessment@1 statuses (UNASSESSED on QZTA, FUND_METRIC on QZFD) and the
+// table DOES render one of those statuses — as the preset's own P/E text ("17.4x · fund metric"). A whole-table
+// regex for the raw enum names therefore proves nothing: it passes while a status word is on screen. The route
+// fixes exactly two columns, so the assertion is per cell: those two cells are the literal on every row, while
+// the P/E columns keep the preset's text and are allowed to say what they are.
+
+// Indices come from the preset, not from a literal: if the approved order ever changes, T-5 fails and these
+// assertions read the columns the preset actually declares.
+const colIndex = (key: string): number => PRESET.columns.findIndex(c => c.key === key)
+const COL = {
+  peTrailing: colIndex('peTrailing'),
+  peForward: colIndex('peForward'),
+  peerMedian: colIndex('peerMedian'),
+  evidence: colIndex('evidence'),
+} as const
 check(
-  'T-7 the fixture rows carry assessments but the table renders no status word',
-  !/UNASSESSED|FUND_METRIC/.test(html),
-  (html.match(/UNASSESSED|FUND_METRIC/g) ?? []).join(','),
+  'T-7 all four asserted columns exist in the preset',
+  [COL.peTrailing, COL.peForward, COL.peerMedian, COL.evidence].every(i => i >= 0),
+  JSON.stringify(COL),
+)
+const cellsOf = (tr: string): string[] =>
+  (tr.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/g) ?? []).map(c =>
+    c.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
+  )
+const allRows = (html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) ?? []).map(cellsOf)
+const bodyRows = allRows.filter(c => c.length === PRESET.columns.length && c !== allRows[0])
+eq('T-7 every fixture row is parsed out of the rendered table, eight cells each', bodyRows.length, ROWS.length)
+for (const [i, cells] of bodyRows.entries()) {
+  // A cash row takes the preset's own cash rule in every column except identity and price (§3 of the READY,
+  // pinned by the aria-label assertion in T-6); every security row carries the literal.
+  const want = ROWS[i].kind === 'CASH' ? 'N/A' : NOT_WIRED
+  eq(`T-7 ${ROWS[i].symbol}: peer median cell is ${want === NOT_WIRED ? 'the literal' : 'the cash rule'}`, cells[COL.peerMedian], want)
+  eq(`T-7 ${ROWS[i].symbol}: evidence cell is ${want === NOT_WIRED ? 'the literal' : 'the cash rule'}`, cells[COL.evidence], want)
+}
+check(
+  'T-7 no status word reaches the two route-fixed columns on any row',
+  bodyRows.every(c => !/assessed|fund metric|n\/m/i.test(c[COL.peerMedian]) && !/assessed|fund metric|n\/m/i.test(c[COL.evidence])),
+  bodyRows.map(c => `${c[0]}: ${c[COL.peerMedian]} | ${c[COL.evidence]}`).join(' ; '),
+)
+const qzfdCells = bodyRows[ROWS.findIndex(r => r.symbol === 'QZFD')]
+eq(
+  'T-7 a fund row prints the preset’s fund metric in BOTH P/E columns — a served status, in the P/E column only',
+  `${qzfdCells[COL.peTrailing]} | ${qzfdCells[COL.peForward]}`,
+  '17.4x · fund metric | 17.4x · fund metric',
 )
 const capRows = ROWS.filter(r => r.marketCapB !== null).length
 eq(
