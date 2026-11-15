@@ -1,0 +1,24 @@
+/* Portfolio › Allocation — the one layout rule this page owns.
+ *
+ * Why it exists (measured on the rendered page, synthetic 7-row book, 2026-11-15T1629Z fold dist):
+ * the sleeves table is 720 px wide at its natural size — five column headers, and ledger row D requires
+ * both denominators to be readable. Inside `.grid-equal` it got HALF the content width,
+ * 550 px at a 1440 viewport and 476 px at 1280, so the fifth column ("Weight of selected view") was
+ * clipped: 170 px hidden at 1440, 244 px at 1280. `.table-wrap` scrolls (overflow-x:auto), but an overlay
+ * scrollbar is invisible, so the column was reachable only by a gesture nothing advertised — and the reader
+ * who did not know it was there would read "Selected amount" as the last column. That is exactly the
+ * row D failure the page exists to fix, so the pair must stack before it clips.
+ *
+ * minmax(min(760px, 100%), 1fr) with auto-fit: two columns only when each can be at least 760 px (the
+ * table's 720 px plus the panel's padding), one full-width column otherwise. The `min()` is load-bearing:
+ * a bare 760 px minimum cannot fit the 382 px content box at a 412 viewport, auto-fit never shrinks a track
+ * below its minimum, so the track stayed 760 px and the DOCUMENT scrolled sideways — 775 vs 412 at 412 and
+ * 390 at 390, with every denominator sentence running off the right edge (measured 2026-11-15T1648Z). With
+ * `min(760px, 100%)` the floor is 760 px only where 760 px exists; below that the track is 100% and the
+ * sleeves table scrolls inside `.table-wrap` as designed. No hex, no colour, no new token — layout only.
+ */
+.alloc-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(760px, 100%), 1fr));
+  gap: 18px;
+}
