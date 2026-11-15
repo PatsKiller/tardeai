@@ -5,19 +5,22 @@
 // approved `fundamentals` preset in `presets.ts`. Nothing here computes a value, applies a threshold, ranks,
 // colours or judges: the cells are words about served fields.
 //
-// What the route fixes (LEAD-ROUTE-FUNDAMENTALS-NAV-WIRING-20261115T1613Z):
+// What the route fixes (LEAD-ROUTE-FUNDAMENTALS-NAV-WIRING-20261115T1613Z, then G1/G2 in
+// LEAD-ASSIGN-FUNDAMENTALS-COMPACT-SCOPE-20261115T1919Z):
 //   * the eight preset columns, and the same P/E, forward P/E and market-cap readings the preset shows;
-//   * Peer TTM median and Evidence print `not wired — valuation-assessment@1`; no assessment status is derived
-//     for, or printed into, those two columns. A status a row DOES serve appears in exactly two places the
-//     approved preset owns: the P/E cell when the wire serves no company multiple (a fund prints its fund
-//     metric), and the reviewed row drawer ("UNASSESSED · …"). The page's own foot says so;
+//   * Peer TTM median and Evidence print a short truthful `Not available`; the contract that would serve them
+//     (valuation-assessment@1) is named in the row drawer's evidence and in this page's disclosure, not spelled
+//     out in every cell. No assessment status is derived for, or printed into, those two columns;
 //   * market cap carries its provenance: the row's profile record source and clock (the only clock the row has);
-//   * the page states what it is not: no peer median reader, no valuation assessment, no derived status.
+//   * one compact evidence line above the table, and a disclosure that carries the technical text — the served
+//     numbers, the truthful unknowns and the peer/valuation gaps are unchanged.
 //
-// Scope: this page shows every served row. The shell's portfolio scope control is bound to the Holdings route
-// (`bookView.isBookRoute`), so it is stated here rather than left to look like an active filter — a selection is
-// never applied invisibly. Wiring the bar to this route is a change to files this route does not own.
+// Scope (G1): the account control is the SHELL's one selection (`useBookScope`); sector and search are filters
+// over these same rows, applied by the approved selector (`filter.ts` → `derivePortfolioView`). No second book,
+// no second read: `filterFundamentals` only decides which served rows remain, and returns the original row
+// objects. The workspace header states the filter, so the page never looks like an unfiltered book.
 
+import { useEffect, useMemo, useState } from 'react'
 import { useDrawer } from '../../components/Drawer'
 import { Panel } from '../../components/primitives'
 import type { HoldingsBook, HoldingsRow } from '../portfolio/contract'
@@ -26,8 +29,21 @@ import { FIXTURE_BOOK } from '../portfolio/fixtures'
 import { lastKnownSentence, notCurrent, servedFreshnessLine } from '../portfolio/format'
 import { freshnessLine } from '../portfolio/HoldingsTable'
 import { preset } from '../portfolio/presets'
+import { displaySectorKey, freshnessCopy, snapshotFor } from '../portfolio/analyticsAdapter'
+import { scopeLabel } from '../portfolio/scope'
+import { useBookScope } from '../portfolio/snapshot'
 import { FundamentalsTable } from './FundamentalsTable'
-import { assessmentText, peerMedianText } from './evidence'
+import {
+  MARKET_CAP_PROVENANCE_NOTE,
+  assessmentNote,
+  assessmentText,
+  evidenceCopy,
+  peerMedianNote,
+  peerMedianText,
+} from './evidence'
+import { EMPTY_NO_MATCH, filterFundamentals } from './filter'
+import type { FundamentalsView } from './filter'
+import '../portfolio/analytics/analytics.css'
 
 export interface FundamentalsPageProps {
   /** Fixture today; the live route always passes an explicit book, so a wiring mistake cannot fall through to it. */
@@ -40,9 +56,11 @@ export interface FundamentalsPageProps {
   nowMs?: number | null
 }
 
+/** One sentence, where the filter is: the account control IS the shell's selection, not a page-local copy. */
 const SCOPE_NOTE =
-  'The top bar’s portfolio scope control is bound to the Holdings route; it is not applied here. ' +
-  'This page shows every row the read served.'
+  'The account control is the top bar’s portfolio scope — this page renders no second one; sector and search ' +
+  'filter these same served rows. No second read and no second book: every value below is a field of the one ' +
+  'book this page read.'
 
 /** The row drawer: the same served fields the Holdings page's drawer shows, nothing recomputed. */
 function DetailBody({ row }: { row: HoldingsRow }) {
@@ -75,8 +93,34 @@ function DetailBody({ row }: { row: HoldingsRow }) {
   )
 }
 
-export function FundamentalsPage({ book = FIXTURE_BOOK, loading = false, error = null, notice = null }: FundamentalsPageProps) {
+export function FundamentalsPage({
+  book = FIXTURE_BOOK,
+  loading = false,
+  error = null,
+  notice = null,
+}: FundamentalsPageProps) {
   const drawer = useDrawer()
+  const { scope } = useBookScope()
+  const [sector, setSector] = useState('')
+  const [query, setQuery] = useState('')
+  const [announcement, setAnnouncement] = useState('')
+
+  // Every hook above the early returns, unconditionally: the view is computed only for a book that exists.
+  const filtered = useMemo<FundamentalsView | null>(
+    () => (book === null ? null : filterFundamentals(book, { scope, sector, query })),
+    [book, scope, sector, query],
+  )
+
+  // A sector that the selected account no longer contains is reset AND announced — the population must not
+  // change silently (the Holdings page's rule, kept here because this page has the same filter).
+  const sectorOptions = filtered?.sectorOptions ?? null
+  useEffect(() => {
+    if (sectorOptions === null || sector === '') return
+    if (!sectorOptions.includes(sector)) {
+      setSector('')
+      setAnnouncement(`Sector reset because ${displaySectorKey(sector)} is not present in this account.`)
+    }
+  }, [sectorOptions, sector])
 
   if (error !== null) {
     return (
@@ -97,8 +141,14 @@ export function FundamentalsPage({ book = FIXTURE_BOOK, loading = false, error =
   }
 
   const active = preset('fundamentals')
-  const rows = book.rows
-  const accounts = new Set(book.rows.map(r => r.accountKey).filter(k => k !== '')).size
+  const view: FundamentalsView = filtered ?? filterFundamentals(book, { scope, sector, query })
+  const rows = view.rows
+  const snapshot = snapshotFor(book)
+  const fresh = freshnessCopy(snapshot)
+  const readState = evidenceCopy(notice, snapshot, fresh.line)
+  const filterText = `${scopeLabel(book, scope)}${sector !== '' ? ` · ${displaySectorKey(sector)}` : ''}${
+    query.trim() !== '' ? ` · matching “${query.trim()}”` : ''
+  }`
 
   const openRow = (row: HoldingsRow, origin?: HTMLElement) => {
     const h = detailHeading(row)
@@ -116,44 +166,91 @@ export function FundamentalsPage({ book = FIXTURE_BOOK, loading = false, error =
         </div>
       )}
 
-      {notice !== null && (
-        <div className="note blue" role="status">
-          <strong>Read status.</strong> {notice}
-        </div>
-      )}
-
+      {/* G2: the session strip is ONE line of served state. The session's own reason and the freshness sentence
+          are facts about this read, not decoration — they move to the disclosure below, where they stay reachable,
+          instead of taking four lines above the table on a phone. */}
       <div className="session">
         <div>
           <strong>{book.session.status === 'KNOWN' ? (book.session.phase ?? 'Session known') : 'Session UNKNOWN'}</strong>
           {' · '}
-          {book.session.status === 'KNOWN'
-            ? `last completed regular session ${book.session.latestOpenSession ?? 'not stated'}${
-                book.session.source ? ` · source: ${book.session.source}` : ''
-              }`
-            : book.session.reason}
-          <br />
           <span className="muted">
-            {book.freshness.served === null
-              ? freshnessLine(book.freshness.ageSeconds, book.freshness.staleAfterSeconds, book.freshness.stale)
-              : servedFreshnessLine(book.freshness.served)} · Marks as of {book.asOf} ({book.asOfClock} clock)
+            Marks as of {book.asOf} ({book.asOfClock} clock)
           </span>
         </div>
       </div>
 
-      <Panel
-        title="Fundamentals workspace"
-        sub={`${rows.length} rows · all accounts (${accounts}) · ${sourceText}`}
-      >
-        <p className="small muted">
-          The approved Fundamentals preset over the same holdings read: price, trailing P/E, forward P/E, market
-          cap and yield are served fields, printed as served. Peer TTM median prints “{peerMedianText()}” — no
-          reader serves one on any route — and Evidence prints “{assessmentText()}” — no assessment status is
-          derived, ranked or coloured here.
-        </p>
+      {/* G1/G2: the shared filterbar, and ONE compact evidence line. The long producer text is behind the
+          disclosure below, not repeated here. */}
+      <div className="wm-pa">
+        <div className="wm-pa-filterbar">
+          {/* The account scope is the SHELL's one control (the top bar's #account, live on this route because
+              bookView.isBookRoute admits it). The page states the selection and does not render a second one. */}
+          <span className="wm-pa-scope">
+            Account: <b>{scopeLabel(book, scope)}</b> <small className="muted">— chosen in the top bar</small>
+          </span>
+          <label>
+            Sector
+            <select
+              value={sector}
+              onChange={e => {
+                setSector(e.target.value)
+                setAnnouncement('') // the reader's own next action withdraws the previous announcement
+              }}
+            >
+              <option value="">All sectors</option>
+              {view.sectorOptions.map(s => (
+                <option key={s} value={s}>
+                  {displaySectorKey(s)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="wm-pa-search">
+            Find a holding
+            <input
+              type="search"
+              value={query}
+              onChange={e => {
+                setQuery(e.target.value)
+                setAnnouncement('')
+              }}
+              placeholder="Symbol, name or account"
+              autoComplete="off"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              setSector('')
+              setQuery('')
+              setAnnouncement('Filters reset: all sectors. The account scope is the top bar’s.')
+            }}
+          >
+            Reset filters
+          </button>
+        </div>
+        <div className="wm-pa-status" aria-live="polite">
+          <span>
+            {rows.length} of {view.bookRows} rows · {filterText}
+          </span>
+          {readState.line !== null && <span className="wm-pa-warning">{readState.line}</span>}
+          {announcement !== '' && <span>· {announcement}</span>}
+        </div>
+      </div>
 
-        {rows.length === 0 ? (
+      <Panel title="Fundamentals workspace" sub={`${rows.length} of ${book.rows.length} rows · ${filterText} · ${sourceText}`}>
+        {book.rows.length === 0 ? (
           <p>
             <strong>No positions.</strong> {book.coverageNote}
+          </p>
+        ) : rows.length === 0 ? (
+          <p>
+            <strong>{EMPTY_NO_MATCH}</strong>
+          </p>
+        ) : view.refused !== null ? (
+          <p>
+            <strong>This view cannot be filtered as asked.</strong> {view.refused} No row is printed over a
+            selection the page cannot keep.
           </p>
         ) : (
           <FundamentalsTable rows={rows} preset={active} onRowOpen={openRow} />
@@ -171,18 +268,11 @@ export function FundamentalsPage({ book = FIXTURE_BOOK, loading = false, error =
           </span>
         </div>
         <p className="small muted">{book.coverageNote}</p>
-        <p className="small muted">{SCOPE_NOTE}</p>
       </Panel>
-
-      {notCurrent(book.freshness) && (
-        <div className="note bad" role="alert">
-          <strong>Not current.</strong> {lastKnownSentence(book.freshness)}
-        </div>
-      )}
 
       <details>
         <summary>
-          <b>How this page is wired</b> — source, reuse and the two cells that are not wired
+          <b>How this page is wired</b> — source, scope, this read’s session and status, and the two gaps
         </summary>
         <ul>
           <li>
@@ -190,19 +280,39 @@ export function FundamentalsPage({ book = FIXTURE_BOOK, loading = false, error =
             adapter turns the envelope into this book. No second source, no derived column, no row arithmetic.
           </li>
           <li>
-            Columns, headers, method note and limits are the approved preset’s own (<code>presets.ts</code>) — this
-            page renders that preset, it does not restate it.
-          </li>
-          <li>
-            Peer TTM median: “{peerMedianText()}”. Evidence: “{assessmentText()}”. Neither cell carries a status
-            word, a cutoff, a ranking or a colour; the assessment contract is named, not approximated.
-          </li>
-          <li>
-            Market cap is the served field (the wire is in millions, divided once for display). The provenance
-            line under it is the row’s profile record — source and clock — because the row serves no
-            market-cap-specific clock; that record clock is not a price clock.
+            <b>This read’s session.</b>{' '}
+            {book.session.status === 'KNOWN'
+              ? `last completed regular session ${book.session.latestOpenSession ?? 'not stated'}${
+                  book.session.source ? ` · source: ${book.session.source}` : ''
+                }`
+              : book.session.reason}{' '}
+            <b>Freshness.</b>{' '}
+            {book.freshness.served === null
+              ? freshnessLine(book.freshness.ageSeconds, book.freshness.staleAfterSeconds, book.freshness.stale)
+              : servedFreshnessLine(book.freshness.served)}
           </li>
           <li>{SCOPE_NOTE}</li>
+          <li>
+            Columns, headers, method note and limits are the approved preset’s own (<code>presets.ts</code>) — this
+            page renders that preset, it does not restate it. On this page the Evidence column prints “Not
+            available” instead of a contract status; a status a row DOES serve is shown in its row drawer, and —
+            where the read serves no company multiple — in the P/E cell itself: a fund prints its fund metric
+            there.
+          </li>
+          <li>
+            Peer TTM median: “{peerMedianText()}” — {peerMedianNote()}. Evidence: “{assessmentText()}” —{' '}
+            {assessmentNote()}. Neither cell carries a status word, a cutoff, a ranking or a colour.
+          </li>
+          <li>
+            Market cap is the served field (the wire is in millions, divided once for display).{' '}
+            {MARKET_CAP_PROVENANCE_NOTE}
+          </li>
+          {readState.detail !== null && (
+            <li>
+              <b>This read’s status.</b> {readState.detail}
+            </li>
+          )}
+          {notCurrent(book.freshness) && <li>{lastKnownSentence(book.freshness)}</li>}
         </ul>
       </details>
     </section>

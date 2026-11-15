@@ -24,11 +24,18 @@ export const HOLDINGS_ROUTE = '/portfolio/holdings'
  * does not originate the read must keep saying "not read here".
  */
 export const ALLOCATION_ROUTE = '/portfolio/allocation'
+/**
+ * The fundamentals view reads the same book through the same page-side reader (`FundamentalsLive`, one GET), so
+ * it publishes into the snapshot too and the bar may show what that page read (LEAD-RULING-G1-BOOKVIEW-OPTION-A-
+ * 20261115T1922Z; the same shape as the allocation line). No other route joins this list: a route that does not
+ * originate the read must keep saying "not read here".
+ */
+export const FUNDAMENTALS_ROUTE = '/portfolio/fundamentals'
 
 /** True only for a route whose page performs the heavy read. A trailing slash is tolerated; nothing else is. */
 export function isBookRoute(pathname: string): boolean {
   const p = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
-  return p === HOLDINGS_ROUTE || p === ALLOCATION_ROUTE
+  return p === HOLDINGS_ROUTE || p === ALLOCATION_ROUTE || p === FUNDAMENTALS_ROUTE
 }
 
 export type BarStatus =
