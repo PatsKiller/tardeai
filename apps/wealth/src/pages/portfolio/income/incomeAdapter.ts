@@ -1,6 +1,6 @@
 import type { RenderState } from '../../../components/renderState.ts'
 import { accountDisplayLabel } from '../accountLabel.ts'
-import { body, record, rows, text, number, safeText, state } from '../../home/homeAdapter.ts'
+import { record, rows, text, number, safeText, state } from '../../home/homeAdapter.ts'
 import type { Read, Row } from '../../home/homeAdapter.ts'
 export const INCOME_PATH = '/api/v2/dividends'
 export interface IncomeLeg { ref: string; scope: string; account: string; symbol: string; yield: number | null; annual: number | null; monthly: number | null; frequency: string; tax: string; safety: string }
@@ -41,12 +41,13 @@ export function incomeScope(model: Income, scope: string) {
  const household = scope === 'household', account = model.accounts.find(a => a.ref === scope)
  const legs = household ? model.legs : model.legs.filter(p => p.scope === scope)
  const annual = sum(legs,'annual'), monthly = sum(legs,'monthly')
+ const roundedDifference = household && model.annual !== null && annual !== null ? Math.round((model.annual - annual) * 100) / 100 : null
  return { household, label:household ? 'Household' : account?.label || 'Selected account unavailable', legs,
   annual:household ? model.annual : annual, monthly:household ? model.monthly : monthly,
   emittedAnnual:annual, emittedMonthly:monthly,
   // The published monthly pattern and alert amounts have no account contract.
   months:household ? model.months : [], dates:household ? model.dates : [],
-  difference:household && model.annual !== null && annual !== null ? Math.round((model.annual - annual) * 100) / 100 : null,
+  difference:roundedDifference === 0 ? 0 : roundedDifference,
  }
 }
 export function allocationLabel(method: string): string {

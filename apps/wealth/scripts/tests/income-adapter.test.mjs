@@ -31,6 +31,8 @@ test('7B5 account misses do not fall back to household or zero; rounding discrep
  const m=incomeModel({has_data:true,total_annual:120.01,monthly_average:10,payers:[payer],monthly_summary:[{month:1,month_name:'Jan',total:10}],ex_div_alerts:[{symbol:'TEST',total_income:10}]})
  const miss=incomeScope(m,'missing');assert.equal(miss.legs.length,0);assert.equal(miss.annual,null);assert.equal(miss.months.length,0);assert.equal(miss.dates.length,0)
  assert.equal(incomeScope(m,'household').difference,0.01)
+ const residue=incomeModel({has_data:true,total_annual:120,payers:[{...payer,annual_income:40.00000000000003},{...payer,annual_income:80}]})
+ assert.ok(Object.is(incomeScope(residue,'household').difference,0),'sub-cent float residue must display positive zero')
  const acct=incomeScope(m,'unassigned');assert.equal(acct.months.length,0);assert.equal(acct.dates.length,0)
 })
 test('7B6 unzoned build time stays literal, never parsed into source or receipt freshness',()=>{
