@@ -216,7 +216,9 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
       {book.accounts !== null && (
         <>
           <h2>Per account</h2>
-          <table>
+          {/* v02 gives table min-width:720px and nowrap cells; without this scroll container the
+              table's intrinsic width widens the whole document at narrow viewports. */}
+          <div className="table-wrap"><table>
             <caption>
               Totals as published by the producer. They are not summed from the rows below.
             </caption>
@@ -240,7 +242,7 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </>
       )}
 

@@ -154,8 +154,10 @@ export function HoldingsTable({ rows, preset, onRowOpen }: {
   /** Opens the row's detail drawer. Absent (fixture invariants): the identity cell is plain text. */
   onRowOpen?: (row: HoldingsRow) => void
 }) {
+  // The table keeps its intrinsic width (v02: min-width 720, nowrap cells); this scroll container
+  // is what stops that width from widening the page, so every caller inherits containment.
   return (
-    <table>
+    <div className="table-wrap"><table>
       <caption>
         {preset.label} preset · {rows.length} row{rows.length === 1 ? '' : 's'}
       </caption>
@@ -203,7 +205,7 @@ export function HoldingsTable({ rows, preset, onRowOpen }: {
           </td>
         </tr>
       </tfoot>
-    </table>
+    </table></div>
   )
 }
 

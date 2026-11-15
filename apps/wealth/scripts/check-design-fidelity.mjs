@@ -5,9 +5,14 @@
 //  2. The reference file in the tree must carry the approved sha256.
 //  3. No hex colour literal in src/shell or src/components outside v02.css (use var(--token)).
 //  4. The shell polls nothing: no setInterval / setTimeout / refetchInterval under src/shell.
+//  5. Every <table> under src/ sits inside a .table-wrap scroll container. v02 gives table
+//     min-width:720px and nowrap cells, so a table with no scroll container widens the whole
+//     document at narrow viewports (measured 2026-11-15: 412px viewport, scrollWidth 1731).
+//     Parsed as JSX with the TypeScript AST, so formatting cannot fool it.
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
+import ts from 'typescript'
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 const repo = path.resolve(root, '../..')
 const REF = 'docs/wealth/design-reference/TradeAI_Wealth_Management_Mockups_v02.html'
@@ -42,5 +47,50 @@ for (const dir of ['src/shell', 'src/components']) {
     if (dir === 'src/shell' && /\b(setInterval|setTimeout|refetchInterval)\b/.test(body)) fail.push(`${rel}: shell must not poll or schedule reads`)
   }
 }
+// Rule 5: a <table> is contained only if a non-table ancestor JSX element carries a literal
+// className token `table-wrap` — the class v02 defines as `overflow:auto`. The class on the table
+// itself does not count: that is the element whose width is the problem.
+const TABLE_PARTS = new Set(['table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'caption'])
+const wrapClassOf = open => {
+  for (const a of open.attributes?.properties ?? []) {
+    if (!ts.isJsxAttribute(a) || a.name.getText() !== 'className' || !a.initializer) continue
+    if (ts.isStringLiteral(a.initializer)) return a.initializer.text
+    if (ts.isJsxExpression(a.initializer) && a.initializer.expression && ts.isStringLiteral(a.initializer.expression)) {
+      return a.initializer.expression.text
+    }
+  }
+  return null
+}
+const insideWrap = node => {
+  for (let p = node.parent; p; p = p.parent) {
+    if (ts.isJsxElement(p) || ts.isJsxSelfClosingElement(p)) {
+      const open = ts.isJsxElement(p) ? p.openingElement : p
+      if (TABLE_PARTS.has(open.tagName.getText())) continue
+      const cls = wrapClassOf(open)
+      if (cls !== null && /(^|\s)table-wrap(\s|$)/.test(cls)) return true
+    }
+  }
+  return false
+}
+for (const f of walk(path.join(root, 'src'))) {
+  if (!/\.tsx$/.test(f)) continue
+  const sf = ts.createSourceFile(f, fs.readFileSync(f, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  const seen = []
+  const visit = node => {
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const open = ts.isJsxElement(node) ? node.openingElement : node
+      if (open.tagName.getText(sf) === 'table' && !insideWrap(node)) {
+        seen.push(sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1)
+      }
+    }
+    node.forEachChild(visit)
+  }
+  visit(sf)
+  for (const line of seen) {
+    fail.push(`${path.relative(root, f)}:${line}: <table> is not inside a .table-wrap scroll container ` +
+      `(v02 table min-width 720px + nowrap cells would widen the page at narrow viewports)`)
+  }
+}
 if (fail.length) { console.error('check-design-fidelity FAIL\n- ' + fail.join('\n- ')); process.exit(1) }
-console.log('check-design-fidelity PASS (v02.css == reference <style>, sha ok, no stray hex, no shell timers)')
+console.log('check-design-fidelity PASS (v02.css == reference <style>, sha ok, no stray hex, no shell timers, ' +
+  'every table in a .table-wrap)')
