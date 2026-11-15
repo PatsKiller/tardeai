@@ -1,69 +1,87 @@
-// Fundamentals page tests — plain node, no framework. The page's presentation rules are pure text decisions
-// (`evidence.ts`), one pure filter (`filter.ts`) and JSX, so the table AND the whole page are asserted without a
-// browser and without a fixture server. Every payload here is SYNTHETIC (fixtures.ts: QZ… symbols, SYN_… accounts).
+// Fundamentals workspace tests — WB-1. Plain node, no framework, no browser: the view model is pure
+// (`workspace.ts`), the presentation rules are pure text (`evidence.ts`), and the whole page is SSR-able.
+// Every payload here is SYNTHETIC (fixtures.ts: QZ… symbols, SYN_… accounts) — the repository is public.
 //
 // Run (from apps/wealth; the outdir must be outside the shared, symlinked node_modules):
 //
-//   OUT=/tmp/fundamentals-tests
+//   OUT=/tmp/fundamentals-wb1
 //   node node_modules/typescript/bin/tsc --target ES2020 --module commonjs --moduleResolution node --strict \
 //     --skipLibCheck --allowImportingTsExtensions --rewriteRelativeImportExtensions --jsx react-jsx \
 //     --typeRoots node_modules/@types --types node --outDir "$OUT" \
-//     src/pages/fundamentals/fundamentalsTests.ts
+//     src/pages/fundamentals/fundamentalsTests.ts \
+//     src/pages/fundamentals/workspace.ts src/pages/fundamentals/FundamentalsPage.tsx
+//     # ^ the page and its model are rooted explicitly: this file reaches them through `require`, so tsc would
+//     #   otherwise emit nothing for them. (A static import would fail to compile on the base tree.)
 //   echo '{"type":"commonjs"}' > "$OUT/package.json"
 //   ln -s "$PWD/node_modules" "$OUT/node_modules"
 //   mkdir -p "$OUT/pages/portfolio/analytics"
 //   cp src/pages/portfolio/analytics/*.mjs "$OUT/pages/portfolio/analytics/"   # the shared selector, plain JS
-//   : > "$OUT/pages/portfolio/analytics/analytics.css"                        # the page's stylesheet stub
+//   : > "$OUT/pages/portfolio/analytics/analytics.css"                        # the page's stylesheet stubs
+//   : > "$OUT/pages/fundamentals/workspace.css"
 //   node "$OUT/pages/fundamentals/fundamentalsTests.js"
 //
-// This file is written to RUN UNCHANGED on both trees: on 399aa8298 (before G1/G2) it compiles and fails on
-// assertions, and on the G1/G2 head it passes. The two names that do not exist before the change (`filter.ts`,
-// `evidenceCopy`, `NOT_AVAILABLE`) are reached through the module object so that a missing export is a pushed-back
-// check, not a compile error — a base run must fail on what the page SAYS, not on an unresolved import.
+// This file compiles UNCHANGED on the base tree too (399aa8298, and d8ddb2f18’s predecessor): `workspace.ts` and
+// the WB-1 page exports are reached through `require` so a missing module is a pushed-back assertion, never a
+// compile error. A base run must fail on what the page SAYS, not on an unresolved import.
 //
 // What is pinned, and why each pin can fail:
-//   T-1  the two route-fixed cells print the short truthful phrase, and no table cell carries the contract id;
-//   T-2  those cells take no row, so a served valuation cannot leak a status word into them (no derived status);
-//   T-3  a served provider multiple prints as the same multiple the Holdings preset prints, with wire named;
-//   T-4  market cap prints the served field in its own unit (MILLIONS) with source AND clock of the row's
-//        profile record — the cell cannot print a cap with no provenance;
-//   T-5  the eight preset columns and their headers are the approved preset's, in its order;
-//   T-6  every table sits in a .table-wrap, and every row's cells are the preset's own decisions on cash;
-//   T-7  the two route-fixed cells are the short phrase on EVERY security row, cell by cell — and the P/E columns
-//        keep the preset's own text, which for a fund IS a served status word (the page's foot says so);
-//   G1   the page's account/sector/search controls are the shell's ONE selection and the approved selector, the
-//        header states the filter, and no row is a re-derived copy (`===` the served row);
-//   G2   one compact evidence line with the full notice behind the disclosure, the contract id reachable exactly
-//        once per gap, no initials badge, and no two-letter badge / repeated per-row warning anywhere.
+//   WB-1a the reference's five cards, in its order, and the yield card stays in place printing Unknown with its
+//         missing source — an absent card, a moved card or a calm zero fails;
+//   WB-1b the three Tier 2 cards print Unknown in WB-1 (their formulas belong to WB-2, with tests);
+//   WB-1c the reference's Equity columns, in its order and wording, and the fund table carries fund columns with
+//         no empty P/E cell;
+//   WB-1d a security held in two accounts is ONE display row with account sublines, each carrying its own served
+//         weight — and NO summed percentage is printed anywhere;
+//   WB-1e grouping/ordering is the model's: largest served weight first, one group per row in Account mode;
+//   WB-1f the ▲ mark is D7 only: record clock older than quote clock, both served; no clock, no mark;
+//   WB-1g the derived tags sit on the two value-share marks, with a pinned denominator, and no Tier 2 formula
+//         value (e.g. the implied-EPS line) appears anywhere in WB-1;
+//   WB-1h every table sits inside a .table-wrap (the design gate's rule 5), and the cash line is a collapsed
+//         <details> with its count and share on the face of it;
+//   WB-1i the served cells: P/E both ways, PEG, YTD, trend with RSI, beta, yield, gain with cost, protection with
+//         its served stop and read clock (a recorded stop with no served price states pending activation, never
+//         active protection) — and a missing field is the muted N/A with its reason, never 0;
+//   WB-1j the disclosure states the grouping rule, the derived marks and the Tier 2 deferral — the page cannot
+//         claim a formula it does not have;
+//   WB-1k the elements the reference does not draw stay undrawn (no bar on a fund, no share count on a fund
+//         subline, no count in the Funds header), and the cash share and the Coverage card each name the
+//         population they divided by (a filtered numerator never sits over a book denominator).
+//
+// G1's shell-scope wiring (bookView) is re-pinned at the end: WB-1 keeps the top bar's selection live.
 
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { HoldingsBook, HoldingsRow } from '../portfolio/contract'
-import { FIXTURE_BOOK, staleTrailingPe } from '../portfolio/fixtures'
-import { preset } from '../portfolio/presets'
-import { normalizeBook } from '../portfolio/analyticsAdapter'
+import { FIXTURE_BOOK } from '../portfolio/fixtures'
 import * as bookView from '../portfolio/bookView'
 
 // The route string is a literal here, not an import: `FUNDAMENTALS_ROUTE` does not exist on 399aa8298, and this
 // file must compile there so the base run fails on what the shell SAYS, not on an unresolved export.
 const FUNDAMENTALS_ROUTE = '/portfolio/fundamentals'
-const { ALLOCATION_ROUTE, HOLDINGS_ROUTE, barStatus, isBookRoute } = bookView
+const { HOLDINGS_ROUTE, barStatus, isBookRoute } = bookView
 import { DrawerProvider } from '../../components/Drawer'
 import * as evidenceModule from './evidence'
-import { FundamentalsTable } from './FundamentalsTable'
 
-// The page imports its stylesheet (`analytics.css`, the shared `.wm-pa` classes). Under node there is no CSS
-// loader, so register a no-op for `.css` and require the page AFTER it — the page is otherwise pure SSR.
+// The page and its view model import stylesheets; under node there is no CSS loader, so register a no-op for
+// `.css` and require them AFTER it (ES imports hoist, so the modules are reached through require on purpose).
 ;(require as unknown as { extensions: Record<string, (m: unknown, f: string) => unknown> }).extensions['.css'] = () => ({})
-const { FundamentalsPage } = require('./FundamentalsPage') as typeof import('./FundamentalsPage')
 
-// Names that exist only after G1/G2. `any` here on purpose: see the header — a base run must fail on assertions.
-const ev: any = evidenceModule
-const NOT_AVAILABLE: string | null = typeof ev.NOT_AVAILABLE === 'string' ? (ev.NOT_AVAILABLE as string) : null
-const evidenceCopy: ((notice: string | null | undefined, snapshot: any, line: string | null | undefined) => {
-  line: string | null
-  detail: string | null
-}) | null = typeof ev.evidenceCopy === 'function' ? ev.evidenceCopy : null
+function safeRequire(id: string): any {
+  try {
+    return require(id)
+  } catch {
+    return null
+  }
+}
+
+// Present means "carries the model", not "some file answered the require": on a tree without `workspace.ts` the
+// extensionless require can be satisfied by this harness's own zero-byte `workspace.css` stub (the `.css` handler
+// is registered above), which returns `{}` — so a null-only guard would crash on a stub instead of failing.
+const workspaceRaw: any = safeRequire('./workspace')
+const workspaceModule: any = workspaceRaw !== null && typeof workspaceRaw.buildWorkspace === 'function' ? workspaceRaw : null
+const pageModule: any = safeRequire('./FundamentalsPage')
+const FundamentalsPage: any =
+  pageModule !== null && typeof pageModule.FundamentalsPage === 'function' ? pageModule.FundamentalsPage : null
 
 let failures = 0
 const fails: string[] = []
@@ -79,439 +97,419 @@ function eq<T>(name: string, got: T, want: T): void {
   check(name, Object.is(got, want), `got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`)
 }
 
-const PRESET = preset('fundamentals')
-const ROWS = FIXTURE_BOOK.rows
+const stripTags = (h: string): string =>
+  h
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&#x27;|&#39;/g, '’')
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const count = (hay: string, needle: string): number => hay.split(needle).length - 1
+
+const ROWS: HoldingsRow[] = FIXTURE_BOOK.rows
 const bySymbol = (s: string): HoldingsRow => {
   const r = ROWS.find(x => x.symbol === s)
   if (!r) throw new Error(`fixture row missing: ${s}`)
   return r
 }
 
-const stripTags = (h: string): string =>
-  h.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
-
-// ---- T-1 / T-2: the short phrase in the cells, the contract id in the disclosure ------------------------
-//
-// G2 moved the long literal OUT of the cells. It stays the page disclosure's text (and each cell's title), so the
-// contract is still named in one reachable place; the cells print the short, truthful phrase.
-
-eq('T-1 the contract id is the route string, character for character', evidenceModule.NOT_WIRED, 'not wired — valuation-assessment@1')
-check(
-  'T-1 the cells print the short truthful phrase instead of the contract id',
-  NOT_AVAILABLE === 'Not available',
-  `got ${JSON.stringify(NOT_AVAILABLE)}, want "Not available"`,
-)
-eq('T-1 peer median text (the disclosure’s) is the contract id', evidenceModule.peerMedianText(), evidenceModule.NOT_WIRED)
-eq('T-1 the valuation-evidence text (the disclosure’s) is the contract id', evidenceModule.assessmentText(), evidenceModule.NOT_WIRED)
-eq('T-2 peerMedianText takes no row', evidenceModule.peerMedianText.length, 0)
-eq('T-2 assessmentText takes no row, so a served assessment cannot leak', evidenceModule.assessmentText.length, 0)
-check(
-  'T-2 the literal names the contract version',
-  /valuation-assessment@1/.test(evidenceModule.assessmentText()),
-  evidenceModule.assessmentText(),
-)
-
-// ---- T-3: served provider multiples, and the assessment fallback when no multiple is served ------------
-
-eq('T-3 a served trailing P/E prints as the preset prints it', evidenceModule.peText(bySymbol('QZTA'), 'peTrailing'), '21.4x')
-eq('T-3 a served forward P/E prints as the preset prints it', evidenceModule.peText(bySymbol('QZTA'), 'peForward'), '18.9x')
-const lastKnown = bySymbol('QZDX')
-const unassessedWithValue: HoldingsRow = { ...lastKnown, valuation: staleTrailingPe('SYN_TAX:QZDX'), fundamentals: null }
-eq(
-  'T-3 a null multiple with an UNASSESSED assessment keeps the last-known value and its status',
-  evidenceModule.peText(unassessedWithValue, 'peTrailing'),
-  '18.8x · Unassessed (last known)',
-)
-eq('T-3 an assessment with no trailing measure prints N/A, not a word', evidenceModule.peText(lastKnown, 'peTrailing'), 'N/A')
-eq('T-3 a fund with no company multiple keeps the fund metric', evidenceModule.peText(bySymbol('QZFD'), 'peTrailing'), '17.4x · fund metric')
-const noPe = { ...bySymbol('QZTA'), fundamentals: { ...(bySymbol('QZTA').fundamentals as NonNullable<HoldingsRow['fundamentals']>), peTrailing: null }, valuation: null }
-check(
-  'T-3 a row with neither a multiple nor an assessment states both reasons',
-  evidenceModule.peText(noPe, 'peTrailing').startsWith('N/A — ') && /no served pe multiple/.test(evidenceModule.peText(noPe, 'peTrailing')),
-  evidenceModule.peText(noPe, 'peTrailing'),
-)
-
-// ---- T-4: market cap in its own unit, with the profile record's source AND clock -----------------------
-
-eq('T-4 millions are divided once: 41200 -> $41.2B', evidenceModule.marketCapText(bySymbol('QZTA')), '$41.2B')
-eq('T-4 230500 -> $230.5B', evidenceModule.marketCapText(bySymbol('QZEP')), '$230.5B')
-eq('T-4 a sub-billion cap stays in millions', evidenceModule.marketCapText(bySymbol('QZDL')), '$640M')
-eq('T-4 an unpublished cap is a reason, not zero', evidenceModule.marketCapText(bySymbol('QZNV')), 'N/A — not published for this instrument')
-eq('T-4 cash has no market cap', evidenceModule.marketCapText(bySymbol('CASH')), 'N/A — cash has no market cap')
-eq('T-4 source is the row profile record', evidenceModule.marketCapSource(bySymbol('QZTA')), 'fixture')
-eq('T-4 clock is the row profile clock', evidenceModule.marketCapClock(bySymbol('QZTA')), '2026-11-14T13:00:00Z')
-eq(
-  'T-4 provenance prints source and clock together',
-  evidenceModule.marketCapProvenance(bySymbol('QZTA')),
-  'source fixture · record 2026-11-14T13:00:00Z',
-)
-const unprofiled: HoldingsRow = { ...bySymbol('QZTA'), profileSource: null, profileUpdatedAt: null }
-eq(
-  'T-4 an unserved provenance says so instead of inventing one',
-  evidenceModule.marketCapProvenance(unprofiled),
-  'source not served · record clock not served',
-)
-
-// ---- unit traps the page inherits from the wire -------------------------------------------------------
-
-eq('T-3 a percent yield is printed once, not multiplied', evidenceModule.yieldText(bySymbol('QZTA')), '1.80%')
-eq('T-3 an unpublished yield is a reason, not zero', evidenceModule.yieldText(bySymbol('QZDL')), 'N/A — not published for this instrument')
-eq('T-3 a served price keeps its cents', evidenceModule.priceText(bySymbol('QZTA')), '$75.00')
-eq('T-3 a worthless identifier has no price to print', evidenceModule.priceText(bySymbol('QZDX')), 'N/A — no price served for a worthless identifier')
-
-// ---- T-5 / T-6 / T-7: the rendered table --------------------------------------------------------------
-
-const html = renderToStaticMarkup(createElement(FundamentalsTable, { rows: ROWS, preset: PRESET }))
-// What the reader sees, as text: SSR inserts comment separators between adjacent text nodes (`{head}{' '}` and
-// the token), so the literal is asserted on the rendered TEXT, not on the markup string.
-const text = stripTags(html)
-
-eq(
-  'T-5 the preset columns are the approved eight, in order',
-  PRESET.columns.map(c => c.key).join('|'),
-  'security|price|peTrailing|peForward|peerMedian|marketCap|yield|evidence',
-)
-for (const c of PRESET.columns) {
-  check(`T-5 header "${c.header}" renders`, html.includes(`<th scope="col">${c.header}</th>`), c.header)
+/** The same security in a second account: the ONE case the reference does not draw and the ruling legislates. */
+const TWIN: HoldingsRow = {
+  ...bySymbol('QZTA'),
+  accountKey: 'SYN_ROTH',
+  accountLabel: 'Synthetic retirement',
+  shares: 100,
+  marketValue: 7500,
+  gainLoss: 1500,
+  gainLossPct: 20,
+  portfolioPct: 5,
 }
-check('T-6 the table sits inside the .table-wrap scroll container', html.startsWith('<div class="table-wrap"><table>'))
-check(
-  'T-6 the preset method note is under the table',
-  html.includes('Trailing and forward P/E print the SERVED provider multiple'),
-)
-for (const l of PRESET.limits) {
-  check('T-6 the preset limit is under the table', html.includes(l.slice(0, 60)), l)
+const TWO_BOOK: HoldingsBook = { ...FIXTURE_BOOK, rows: [...ROWS, TWIN] }
+
+function renderPage(book: HoldingsBook): string | null {
+  if (FundamentalsPage === null) return null
+  return renderToStaticMarkup(
+    createElement(DrawerProvider, null, createElement(FundamentalsPage, { book, nowMs: Date.parse('2026-11-15T00:00:00Z') })),
+  )
 }
-const securityRows = ROWS.filter(r => r.kind !== 'CASH').length
 
-// G2: the phrase is in the cells; the contract id is NOT.
-const phraseCount = text.split('Not available').length - 1
-eq('G2 every security row carries the short phrase twice (peer median + evidence)', phraseCount, securityRows * 2)
-eq(
-  'G2 no table cell carries the contract id any more',
-  text.split(evidenceModule.NOT_WIRED).length - 1,
-  0,
-)
-check(
-  'G2 the contract id is on each cell’s accessible name, once per cell',
-  html.split('aria-label="Not available — ').length - 1 === securityRows * 2,
-  `${html.split('aria-label="Not available — ').length - 1} of ${securityRows * 2}`,
-)
-check('G2 no initials badge in the identity cell', !html.includes('ticker-icon'), 'ticker-icon survives')
-check(
-  'G2 the table foot no longer repeats the contract id',
-  !/<tfoot>[\s\S]*not wired/.test(html),
-)
-check(
-  'T-6 a cash row takes the preset cash rule, not the security columns',
-  html.includes('aria-label="N/A — this column does not apply to a cash row"'),
-)
+// ---- G8-style evidence copy (unchanged by WB-1) -------------------------------------------------------
 
-// ---- T-7: the two route-fixed columns, cell by cell -----------------------------------------------------
-//
-// The fixture rows DO carry valuation-assessment@1 statuses (UNASSESSED on QZTA, FUND_METRIC on QZFD) and the
-// table DOES render one of those statuses — as the preset's own P/E text ("17.4x · fund metric"). A whole-table
-// regex for the raw enum names therefore proves nothing: it passes while a status word is on screen. The route
-// fixes exactly two columns, so the assertion is per cell: those two cells are the short phrase on every security
-// row, while the P/E columns keep the preset's text and are allowed to say what they are.
-
-// Indices come from the preset, not from a literal: if the approved order ever changes, T-5 fails and these
-// assertions read the columns the preset actually declares.
-const colIndex = (key: string): number => PRESET.columns.findIndex(c => c.key === key)
-const COL = {
-  peTrailing: colIndex('peTrailing'),
-  peForward: colIndex('peForward'),
-  peerMedian: colIndex('peerMedian'),
-  evidence: colIndex('evidence'),
-} as const
+const ev: any = evidenceModule
+eq('the contract id is still the disclosure’s text, character for character', ev.NOT_WIRED, 'not wired — valuation-assessment@1')
 check(
-  'T-7 all four asserted columns exist in the preset',
-  [COL.peTrailing, COL.peForward, COL.peerMedian, COL.evidence].every(i => i >= 0),
-  JSON.stringify(COL),
+  'the cells’ short phrase is still "Not available"-free: WB-1 prints N/A, this constant survives for its own callers',
+  typeof ev.NOT_AVAILABLE === 'string',
 )
-const cellsOf = (tr: string): string[] =>
-  (tr.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/g) ?? []).map(stripTags)
-const allRows = (html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) ?? []).map(cellsOf)
-const bodyRows = allRows.filter(c => c.length === PRESET.columns.length && c !== allRows[0])
-eq('T-7 every fixture row is parsed out of the rendered table, eight cells each', bodyRows.length, ROWS.length)
-for (const [i, cells] of bodyRows.entries()) {
-  // A cash row takes the preset's own cash rule in every column except identity and price (§3 of the READY,
-  // pinned by the aria-label assertion in T-6); every security row carries the short phrase.
-  const want = ROWS[i].kind === 'CASH' ? 'N/A' : 'Not available'
-  eq(`T-7 ${ROWS[i].symbol}: peer median cell is ${want === 'Not available' ? 'the short phrase' : 'the cash rule'}`, cells[COL.peerMedian], want)
-  eq(`T-7 ${ROWS[i].symbol}: evidence cell is ${want === 'Not available' ? 'the short phrase' : 'the cash rule'}`, cells[COL.evidence], want)
+if (typeof ev.evidenceCopy === 'function') {
+  const copy = ev.evidenceCopy('freshness unproven', { reason: 'r', session: 'REGULAR', observedAt: 'T' }, null)
+  eq('evidenceCopy falls back to the notice’s lead clause when the adapter line is empty', copy.line, 'freshness unproven')
+  const verbatim = ev.evidenceCopy(null, { reason: 'r', session: 'REGULAR', observedAt: 'T' }, 'exact line')
+  eq('evidenceCopy prints the adapter’s line verbatim when it is non-empty', verbatim.line, 'exact line')
+} else {
+  check('evidenceCopy is present', false, 'evidence.ts lost evidenceCopy')
 }
-check(
-  'T-7 no status word reaches the two route-fixed columns on any row',
-  bodyRows.every(c => !/assessed|fund metric|n\/m/i.test(c[COL.peerMedian]) && !/assessed|fund metric|n\/m/i.test(c[COL.evidence])),
-  bodyRows.map(c => `${c[0]}: ${c[COL.peerMedian]} | ${c[COL.evidence]}`).join(' ; '),
-)
-const qzfdCells = bodyRows[ROWS.findIndex(r => r.symbol === 'QZFD')]
-eq(
-  'T-7 a fund row prints the preset’s fund metric in BOTH P/E columns — a served status, in the P/E column only',
-  `${qzfdCells[COL.peTrailing]} | ${qzfdCells[COL.peForward]}`,
-  '17.4x · fund metric | 17.4x · fund metric',
-)
-const capRows = ROWS.filter(r => r.marketCapB !== null).length
-eq(
-  'T-4 every served cap carries its source+clock line',
-  html.split('>source fixture · record 2026-11-14T13:00:00Z<').length - 1,
-  capRows,
-)
-check('T-4 the cap cell prints the formatted cap', html.includes('$41.2B'))
-check('T-3 the P/E cells print served multiples', html.includes('21.4x') && html.includes('18.9x'))
 
-// ---- G2: one compact evidence line, and the long text behind the disclosure -----------------------------
-//
-// The line is the adapter's sentence verbatim when it has one; when it does not (a current read whose payload has
-// no health flag and no producer clock — `holdingsProps` still sets `notice`), the notice's own lead clause is the
-// line. Everything the line truncated goes behind the disclosure. Each case below can fail on a plain-string
-// change, and the whole block is skipped only on the pre-G2 tree, where `evidenceCopy` does not exist.
+// ---- WB-1 model: grouping, ordering, D7, shares, columns ----------------------------------------------
 
-check('G2 the page has a compact-line helper (evidenceCopy)', evidenceCopy !== null)
-if (evidenceCopy !== null) {
-  const clock = 'Session weekend · read 2026-11-14T21:00:00Z.'
-  const current = { reason: undefined as string | undefined, session: 'weekend', observedAt: '2026-11-14T21:00:00Z' }
+if (workspaceModule === null) {
+  check('WB-1 the view model (workspace.ts) is present', false, 'no module exporting buildWorkspace — this tree predates WB-1')
+} else {
+  const ws = workspaceModule
+  const w = ws.buildWorkspace([...ROWS, TWIN], 'security')
+  const qzta = w.equities.groups.find((g: any) => g.symbol === 'QZTA')
 
-  const quiet = evidenceCopy(null, current, '')
-  eq('G2 a current read with no notice prints no line and no detail', `${quiet.line}|${quiet.detail}`, 'null|null')
-
-  const adapterLine = 'Last available snapshot · freshness unverified'
-  const withLine = evidenceCopy(null, { ...current, reason: 'freshness unverified' }, adapterLine)
-  eq('G2 the adapter’s sentence is the line, verbatim', withLine.line, adapterLine)
+  check('WB-1a one security in two accounts is ONE display row', qzta !== undefined && qzta.rows.length === 2, JSON.stringify(qzta?.rows.length))
+  eq('WB-1a the merged group prints NO weight of its own (never a sum of percentages)', qzta?.weightPct, null)
+  eq('WB-1a its order weight is the largest served row weight (a selection, not a sum)', qzta?.sortWeight, 15)
   eq(
-    'G2 a reason the line already carries is not repeated, and the clock is behind it',
-    withLine.detail,
-    clock,
+    'WB-1a each account keeps its own served weight inside the group',
+    JSON.stringify(qzta?.lines.map((l: any) => l.weightPct)),
+    JSON.stringify([15, 5]),
+  )
+  check(
+    'WB-1a no line anywhere carries the summed 20% the ruling forbids',
+    JSON.stringify(qzta?.lines.map((l: any) => l.weightPct)) !== JSON.stringify([20]),
+  )
+  eq('WB-1a the ratio cells come from the largest-weight row (QZTA taxable)', qzta?.lead.accountKey, 'SYN_TAX')
+
+  const sorts = w.equities.groups.map((g: any) => g.sortWeight)
+  check(
+    'WB-1e equity groups are ordered by served weight, largest first',
+    sorts.every((v: number, i: number) => i === 0 || sorts[i - 1] >= v),
+    JSON.stringify(sorts),
+  )
+  eq('WB-1e the largest equity position leads the table', w.equities.groups[0].symbol, 'QZTA')
+
+  const accountMode = ws.buildWorkspace(ROWS, 'account')
+  eq('WB-1e Account mode groups one row per served row', accountMode.equities.groups.length, ROWS.filter((r: HoldingsRow) => r.kind !== 'CASH' && r.assetType !== 'MUTUAL_FUND').length)
+  check(
+    'WB-1e Account mode never merges two accounts',
+    accountMode.equities.groups.every((g: any) => g.rows.length === 1),
   )
 
-  const notice =
-    'Holdings read is unverified: the producer served no health flag and no producer clock for this read ' +
-    '(the payload carried no freshness block), so this page cannot claim the values are current.'
-  const lead = 'Holdings read is unverified: the producer served no health flag and no producer clock for this read'
-  const unproven = evidenceCopy(notice, current, '')
-  eq('G2 a current read with an unproven notice still prints its lead clause, not a calm strip', unproven.line, lead)
+  eq('WB-1d funds are their own section, never equities and never cash', JSON.stringify(w.funds.groups.map((g: any) => g.symbol)), JSON.stringify(['QZFD']))
+  eq('WB-1d cash is its own line, one row on this fixture', w.cash.rows.length, 1)
+  check(
+    'WB-1d every group is filed once: equities + funds + cash rows = the rows in view',
+    w.equities.rowCount + w.funds.rowCount + w.cash.rows.length === ROWS.length + 1,
+  )
+
+  eq('WB-1f record older than quote is marked', ws.recordOlderThanQuote(bySymbol('QZTA')), true)
+  eq('WB-1f a row with no quote clock is not marked', ws.recordOlderThanQuote(bySymbol('CASH')), false)
   eq(
-    'G2 the whole notice goes behind the disclosure, with the clock',
-    unproven.detail,
-    `Full notice: ${notice} ${clock}`,
+    'WB-1f a record NEWER than the quote is not marked',
+    ws.recordOlderThanQuote({ ...bySymbol('QZTA'), profileUpdatedAt: '2026-11-15T00:00:00Z' }),
+    false,
   )
+  eq('WB-1f the mark carries the record’s own date (UTC MM-DD)', ws.shortStamp(bySymbol('QZTA').profileUpdatedAt), '11-14')
+  eq('WB-1f no clock, no date', ws.shortStamp(null), null)
 
-  const short = evidenceCopy('Read is unverified', current, '')
-  eq('G2 a short notice is the whole line', short.line, 'Read is unverified')
-  eq('G2 a short notice adds only the clock behind it', short.detail, clock)
+  eq('WB-1g the weight bar is proportional to the largest weight in the section', ws.barWidth(15, 15), 44)
+  eq('WB-1g a held but small weight keeps a visible bar', ws.barWidth(0, 15), 2)
 
-  const doubled = evidenceCopy('unverified', { ...current, session: 'Session unknown' }, '')
-  eq('G2 the clock never doubles the word Session', doubled.detail, 'Session unknown · read 2026-11-14T21:00:00Z.')
-
-  const reasonOnly = evidenceCopy(null, { ...current, reason: 'no producer clock' }, '')
-  eq('G2 a reason with no line is disclosed, not printed as a top line', `${reasonOnly.line}|${reasonOnly.detail}`, `null|no producer clock ${clock}`)
-}
-
-// ---- G1: the pure filter is the approved selector over the ONE book -------------------------------------
-//
-// Loaded through the module object so this block is a pushed-back check on 399aa8298 (where `./filter` does not
-// exist) and full-strength on the head. Every assertion is about which SERVED rows remain — never about a value.
-
-interface FilterViewShape {
-  rows: HoldingsRow[]
-  sectorOptions: string[]
-  accounts: { key: string; label: string }[]
-  bookRows: number
-  refused: string | null
-}
-type FilterApi = {
-  filterFundamentals: (book: HoldingsBook, f: { scope: string; sector: string; query: string }) => FilterViewShape
-  EMPTY_NO_MATCH: string
-}
-let filterApi: FilterApi | null = null
-try {
-  filterApi = require('./filter') as FilterApi
-} catch {
-  filterApi = null
-}
-check('G1 the page filters through its own module (filter.ts), reusing the approved selector', filterApi !== null)
-if (filterApi !== null) {
-  const F = filterApi.filterFundamentals
-  const all = F(FIXTURE_BOOK, { scope: 'ALL', sector: '', query: '' })
-  eq('G1 no filter keeps every served row', all.rows.length, ROWS.length)
-  eq('G1 the denominator is the whole book, stated beside the filtered count', all.bookRows, ROWS.length)
-  check(
-    'G1 the kept rows are the served row OBJECTS, not re-derived copies',
-    all.rows.length === ROWS.length && all.rows.every((r, i) => r === ROWS[i]),
-  )
-  eq('G1 a valid view states no refusal', all.refused, null)
+  const cov = ws.coverageOf(ROWS)
+  eq('WB-1k Coverage counts the rows it is given', cov.rows, ROWS.length)
   eq(
-    'G1 the empty-view copy is the reviewed selector’s own sentence',
-    filterApi.EMPTY_NO_MATCH,
-    'No holdings match this view. Clear a filter to continue.',
+    'WB-1k … and its “served multiple” is the served TRAILING P/E count, the same field the cell prints',
+    cov.withMultiple,
+    ROWS.filter((r: HoldingsRow) => r.kind !== 'CASH' && r.fundamentals?.peTrailing != null).length,
   )
 
-  // Account: the shell's one selection narrows to that account and nothing else.
-  const account = ROWS[0].accountKey
-  const inAccount = ROWS.filter(r => r.accountKey === account)
-  const byAccount = F(FIXTURE_BOOK, { scope: account, sector: '', query: '' })
-  eq('G1 an account scope keeps exactly that account’s rows', byAccount.rows.length, inAccount.length)
-  check('G1 an account scope keeps no other account’s row', byAccount.rows.every(r => r.accountKey === account))
-  check(
-    'G1 an account scope is a proper subset of the book',
-    byAccount.rows.length > 0 && byAccount.rows.length < ROWS.length,
-  )
-  check('G1 the account options are the book’s served accounts', byAccount.accounts.length >= 2, JSON.stringify(byAccount.accounts.map(a => a.key)))
+  const totals = ws.valueTotal(ROWS)
+  eq('WB-1g a value total counts only the rows whose value IS served', totals.valued, ROWS.filter((r: HoldingsRow) => r.marketValue !== null).length)
+  eq('WB-1g … and prints its denominator with it', totals.rows, ROWS.length)
+  eq('WB-1g a share of nothing is unknown, not 0', ws.shareOfValue({ usd: 0, valued: 0, rows: 1 }, { usd: 0, valued: 0, rows: 1 }), null)
 
-  // An unknown scope yields NO row — never the whole book (the fail-open filter bug).
-  const unknownScope = F(FIXTURE_BOOK, { scope: 'SYN_NOT_A_BOOK_ACCOUNT', sector: '', query: '' })
-  eq('G1 an unknown account scope yields zero rows, not the whole book', unknownScope.rows.length, 0)
-
-  // Sector: the selector's own bucket, matching the bucket `selectorSector` assigns.
-  const sector = all.sectorOptions[0]
-  check('G1 the sector options are served buckets', typeof sector === 'string' && sector !== '', String(sector))
-  const bucketOf = new Map(normalizeBook(FIXTURE_BOOK).map(r => [r.holding, r.sector ?? '']))
-  const expectedSector = all.rows.filter(r => bucketOf.get(r) === sector)
-  const bySector = F(FIXTURE_BOOK, { scope: 'ALL', sector, query: '' })
-  eq(`G1 a sector scope keeps exactly the rows in the "${sector}" bucket`, bySector.rows.length, expectedSector.length)
-  check(
-    'G1 a sector scope keeps only the bucket’s rows',
-    bySector.rows.every(r => bucketOf.get(r) === sector),
-    JSON.stringify(bySector.rows.map(r => r.symbol)),
-  )
-  check(
-    'G1 the selected sector stays in the options it was chosen from',
-    bySector.sectorOptions.includes(sector),
-    JSON.stringify(bySector.sectorOptions),
-  )
-
-  // Search: symbol, name or account, case-insensitive (the selector's rule).
-  const target = ROWS.find(r => r.kind !== 'CASH') ?? ROWS[0]
-  const bySymbolQuery = F(FIXTURE_BOOK, { scope: 'ALL', sector: '', query: target.symbol.toLowerCase() })
-  check(
-    'G1 a search on a lower-cased symbol finds it',
-    bySymbolQuery.rows.some(r => r.symbol === target.symbol),
-    JSON.stringify(bySymbolQuery.rows.map(r => r.symbol)),
-  )
-  const byAccountName = F(FIXTURE_BOOK, { scope: 'ALL', sector: '', query: target.accountLabel.toUpperCase() })
   eq(
-    'G1 a search on an upper-cased account label keeps that account’s rows',
-    byAccountName.rows.length,
-    ROWS.filter(r => r.accountKey === target.accountKey).length,
+    'WB-1c the Valuation lens is the reference’s ten equity columns, in its order',
+    JSON.stringify(ws.equityColumns('valuation')),
+    JSON.stringify(['identity', 'weight', 'pe', 'peg', 'ytd', 'trend', 'beta', 'yield', 'gain', 'protection']),
   )
-  const noMatch = F(FIXTURE_BOOK, { scope: 'ALL', sector: '', query: 'QXQZXQ NO SUCH HOLDING' })
-  eq('G1 a search that matches nothing yields zero rows, not everything', noMatch.rows.length, 0)
-  eq('G1 a zero-row view is empty, not a refusal', noMatch.refused, null)
-
-  // Combined, as the page applies them: the account narrows first, then the sector must exist inside it.
-  const combined = F(FIXTURE_BOOK, { scope: account, sector, query: '' })
+  eq(
+    'WB-1c the fund table is the reference’s eight fund columns',
+    JSON.stringify(ws.fundColumns('valuation')),
+    JSON.stringify(['identity', 'weight', 'yield', 'expense', 'ytd', 'trend', 'gain', 'protection']),
+  )
+  eq('WB-1c the reference’s own header wording is pinned', ws.COLUMN_LABEL.pe, 'P/E trailing → fwd')
+  eq('WB-1c … and the identity header', ws.COLUMN_LABEL.identity, 'Security · account')
   check(
-    'G1 account and sector compose without widening the population',
-    combined.rows.every(r => r.accountKey === account && bucketOf.get(r) === sector),
+    'WB-1c no lens invents a column with no served field',
+    ['valuation', 'income', 'risk'].every((l: string) =>
+      [...ws.equityColumns(l), ...ws.fundColumns(l)].every((k: string) => k in ws.COLUMN_LABEL),
+    ),
   )
 }
 
-// ---- G1 / G2 on the rendered page: the filterbar, ONE line, the disclosure, no badge --------------------
+// ---- WB-1 page: the reference’s layout, rendered --------------------------------------------------------
 
-const NOTICE =
-  'Holdings read is unverified: the producer served no health flag and no producer clock for this read ' +
-  '(the payload carried no freshness block), so this page cannot claim the values are current.'
-const NOTICE_LEAD =
-  'Holdings read is unverified: the producer served no health flag and no producer clock for this read'
+const pageHtml = renderPage(FIXTURE_BOOK)
+const twoHtml = renderPage(TWO_BOOK)
 
+if (pageHtml === null || twoHtml === null) {
+  check('WB-1 the page renders', false, 'no module exporting FundamentalsPage could be required')
+} else {
+  const pageText = stripTags(pageHtml)
 
-// ---- G1: the shell bar admits this route, so its ONE scope control is live here --------------------------
-//
-// The page's account control is the top bar's (bookView + snapshot): `isBookRoute` must accept the route, or
-// `barStatus` keeps the bar on "not read here" and the page would show a book the bar denies. This is the one
-// shared line the lead approved (LEAD-RULING-G1-BOOKVIEW-OPTION-A-20261115T1922Z).
+  // WB-1a: the five cards, in the reference's order and with its wording.
+  const cardLabels = ['Equity sleeve P/E', 'Book beta', 'Book yield · income', 'Largest sector', 'Coverage']
+  const positions = cardLabels.map(l => pageHtml.indexOf(`fw-card-label\">${l}`))
+  check('WB-1a all five rollup cards are rendered', positions.every(i => i >= 0), JSON.stringify(positions))
+  check(
+    'WB-1a the cards keep the reference’s order',
+    positions.every((v, i) => i === 0 || positions[i - 1] < v),
+    JSON.stringify(positions),
+  )
 
-check(`G1 the shell admits ${FUNDAMENTALS_ROUTE} as a book route`, isBookRoute(FUNDAMENTALS_ROUTE))
-check('G1 a trailing slash is tolerated, as for the other book routes', isBookRoute(`${FUNDAMENTALS_ROUTE}/`))
-for (const r of [HOLDINGS_ROUTE, ALLOCATION_ROUTE]) {
-  check(`G1 the existing book route ${r} still qualifies`, isBookRoute(r))
+  const cardsRegion = pageHtml.slice(pageHtml.indexOf('fw-cards'), pageHtml.indexOf('fw-toolbar'))
+  const cardsText = stripTags(cardsRegion)
+  check(
+    'WB-1a the yield card stays in place, in style, printing Unknown with its missing source',
+    cardsText.includes('Book yield · income') && cardsText.includes('needs a yield reader; N/A on every row today'),
+    cardsText.slice(0, 400),
+  )
+  check(
+    'WB-1b the three Tier 2 cards print Unknown in WB-1',
+    count(cardsRegion, 'fw-card-value\">Unknown') >= 3,
+    `${count(cardsRegion, 'fw-card-value\">Unknown')} Unknown values`,
+  )
+  check(
+    'WB-1b each Tier 2 card names the formula it owns',
+    ['weight-harmonic, trailing → forward', 'weight-averaged, cash at 0', 'served sector × served weight'].every(s => cardsText.includes(s)),
+    cardsText.slice(0, 500),
+  )
+  eq(
+    'WB-1a Coverage counts served multiples against the ROWS SERVE, not against a derived total',
+    cardsText.includes(`${FIXTURE_BOOK.rows.filter(r => r.fundamentals?.peTrailing != null).length} of ${FIXTURE_BOOK.rows.length} rows`),
+    true,
+  )
+
+  // Header line: rows · scope · source · the served mark clock.
+  check('WB-1a the header states the row count and the shell scope', pageText.includes(`${FIXTURE_BOOK.rows.length} rows`) && /all accounts \(\d+\)/.test(pageText))
+  check(
+    'WB-1a the header names its source and the served mark clock, not a borrowed one',
+    pageText.includes('synthetic fixture') && pageText.includes('marks as of 2026-11-14T21:00:00Z'),
+  )
+  eq('WB-1a the Not-wired box is printed exactly once', count(pageText, 'Not wired: valuation-assessment@1'), 1)
+
+  // WB-1c: the equity table's columns, in the reference's order.
+  // The section cards are the split points: "Funds" also appears in the sector options, so a text index would
+  // slice the toolbar instead of the tables.
+  const sectionBlocks = pageHtml.split('class="fw-section-head"')
+  const eqTable = sectionBlocks[1] ?? ''
+  const fundTable = sectionBlocks[2] ?? ''
+  check('WB-1c both section cards are rendered', sectionBlocks.length >= 3, `${sectionBlocks.length} blocks`)
+  const eqHeads = [...eqTable.matchAll(/<th scope="col">([^<]*)<\/th>/g)].map(m => m[1])
+  check(
+    'WB-1c the equity header row is the reference’s, column for column',
+    JSON.stringify(eqHeads) ===
+      JSON.stringify([
+        'Security · account',
+        'Weight · value',
+        'P/E trailing → fwd',
+        'PEG',
+        'YTD',
+        'Trend',
+        'Beta',
+        'Yield',
+        'Gain / loss',
+        'Protection',
+      ]),
+    JSON.stringify(eqHeads),
+  )
+  const fundHeads = [...fundTable.matchAll(/<th scope="col">([^<]*)<\/th>/g)].map(m => m[1])
+  check(
+    'WB-1c the fund header row is the reference’s fund set — no empty P/E column on a fund',
+    JSON.stringify(fundHeads) ===
+      JSON.stringify(['Fund · account', 'Weight · value', 'Yield', 'Expense ratio', 'YTD', 'Trend', 'Gain / loss', 'Protection']),
+    JSON.stringify(fundHeads),
+  )
+
+  // WB-1i: the served cells.
+  check('WB-1i a served P/E prints both hundreds ways', pageText.includes('21.4x → 18.9x'), 'missing 21.4x → 18.9x')
+  check('WB-1i PEG prints as served', pageHtml.includes('>1.62<'), 'PEG 1.62 missing')
+  check('WB-1i YTD prints signed', pageText.includes('+18.20%'), 'YTD missing')
+  check('WB-1i the trend cell carries the 200-day line and RSI', pageText.includes('+12.70% vs 200d') && pageText.includes('RSI 61.3'), 'trend cell incomplete')
+  check('WB-1i gain carries the dollar change and the cost basis', pageText.includes('+25.00%') && pageText.includes('+$3,000.00') && pageText.includes('cost $60.00'))
+  check(
+    'WB-1i protection carries the served stop and read clock',
+    pageText.includes('Protected') && pageText.includes('stop $68.00 · read 11-14'),
+    'protection cell incomplete',
+  )
+  // The checklist's stop rule: a recorded-but-not-active stop must not read as active protection. The cell uses the
+  // Holdings page's own sentence (stopSentence), so a PROTECTED row with no served stop price states the pending
+  // activation instead of anything that implies the stop is protecting the position today.
+  const PENDING_BOOK: HoldingsBook = {
+    ...FIXTURE_BOOK,
+    rows: FIXTURE_BOOK.rows.map(r =>
+      r.symbol === 'QZTA' && r.protection !== null
+        ? {
+            ...r,
+            protection: {
+              ...r.protection,
+              stop: null,
+              basis: 'resting broker stop (GTC)',
+              reason: 'Resting GTC stop, pending activation',
+            },
+          }
+        : r,
+    ),
+  }
+  const pendingHtml = renderPage(PENDING_BOOK)
+  const pendingText = pendingHtml === null ? '' : stripTags(pendingHtml)
+  check(
+    'WB-1i a recorded stop with no served price states pending activation in the cell, never active protection',
+    pendingText.includes('pending activation · read 11-14'),
+    'pending-activation subline missing',
+  )
+  check(
+    'WB-1i … and the Holdings page’s full sentence rides on the cell for the pointer',
+    pendingHtml !== null && pendingHtml.includes('resting GTC stop, pending activation — stop price not served'),
+    'the full stop sentence is not on the cell',
+  )
+  check(
+    'WB-1i … and the bare basis never stands in for that sentence',
+    !/resting broker stop \(GTC\) · read/.test(pendingText),
+    'the basis was printed as the protection sentence',
+  )
+  check(
+    'WB-1i the fund row prints the fund columns: expense ratio is the muted N/A with its reason',
+    fundTable.includes('expense ratio is not served by this read'),
+  )
+  check(
+    'WB-1i a missing multiple is N/A, never 0',
+    pageText.includes('N/A') && !/N\/A — no multiple served/.test(pageText),
+    'long N/A text leaked into a cell',
+  )
+  check(
+    'WB-1i an unpriced row prints N/A for price and value, with the reason on the cell',
+    pageHtml.includes('aria-label="N/A — no price served"') && pageHtml.includes('aria-label="N/A — value not served"'),
+  )
+
+  // WB-1d: two accounts, one row, no summed percentage.
+  const twoText = stripTags(twoHtml)
+  check('WB-1d the two-account security is one row stating the account count', twoText.includes('2 accounts'), 'no account-count cell')
+  check(
+    'WB-1d … with each account’s own served weight on its own subline',
+    twoText.includes('Synthetic taxable · 15.00%') && twoText.includes('Synthetic retirement · 5.00%'),
+  )
+  check(
+    'WB-1d the summed 20.00% is printed in no weight cell (the twin’s own +20.00% gain is a different field)',
+    !twoText.includes('· 20.00%'),
+    'a summed percentage reached a weight cell',
+  )
+  eq(
+    'WB-1d the two-account book still renders ONE QZTA identity cell',
+    count(twoHtml, 'data-group="QZTA"'),
+    1,
+  )
+
+  // WB-1f: the D7 mark, counted against the model.
+  const staleRows = FIXTURE_BOOK.rows.filter(r => {
+    const rec = r.profileUpdatedAt === null ? NaN : Date.parse(r.profileUpdatedAt)
+    const q = r.priceAsOf === null ? NaN : Date.parse(r.priceAsOf)
+    return Number.isFinite(rec) && Number.isFinite(q) && rec < q
+  }).length
+  eq('WB-1f the ▲ mark appears only on rows whose record clock is older than the quote clock', count(pageHtml, '▲ record 11-14'), staleRows)
+  check('WB-1f no ▲ mark rides a row with no quote clock', !pageText.includes('▲ record  ·'), 'empty record date printed')
+
+  // WB-1g: the two derived marks carry a pinned denominator; WB-2 values do not appear.
+  check('WB-1g the Equities share is tagged derived', /fw-count[\s\S]{0,200}fw-tag/.test(eqTable), 'no derived tag in the equity header')
+  check(
+    'WB-1g the derived tag names its denominator (valued rows, not all rows)',
+    eqTable.includes('over 8 of 9 rows whose value is served'),
+    'denominator text missing',
+  )
+  check('WB-1g no Tier 2 formula value is printed in WB-1', !pageText.includes('implies EPS'), 'an implied-EPS cell reached WB-1')
+
+  // WB-1h: scroll containers and the collapsed cash line.
+  const tables = [...pageHtml.matchAll(/<table/g)].length
+  const wraps = [...pageHtml.matchAll(/table-wrap/g)].length
+  check('WB-1h every table sits inside a .table-wrap (design gate rule 5)', wraps >= tables && tables >= 2, `${tables} tables / ${wraps} wraps`)
+  check(
+    'WB-1h the cash line is a collapsed <details> with its count, share and total on the face of it',
+    /<details class="fw-cash"><summary>/.test(pageHtml) &&
+      pageText.includes('1 row across accounts, collapsed') &&
+      pageText.includes('43.0% of book') &&
+      pageText.includes('$43,050'),
+    'cash line incomplete',
+  )
+
+  // WB-1j: the disclosure cannot claim a formula the page does not have.
+  check(
+    'WB-1j the disclosure states the grouping rule and the Tier 2 deferral',
+    pageText.includes('No percentage is summed') && pageText.includes('WB-2'),
+  )
+  check(
+    'WB-1j the one Tier 3 sentence is printed, and the reference’s foot rule survives',
+    pageText.includes('Not served by this read: valuation-assessment@1') &&
+      pageText.includes('Printed as served unless tagged derived'),
+  )
+  check(
+    'WB-1j the page prints no placeholder brackets from the design document',
+    !/\[(w|y|er|state|g\/l|ytd|beta|peg|account)[^\]]*\]/.test(pageText),
+    'a bracketed placeholder leaked',
+  )
+
+  // WB-1k: the elements the reference does NOT draw stay undrawn, and the two counts that could disagree with
+  // their own denominator are pinned to one population (review -7 preflight D3/D4/D5/D7/D8).
+  const sectionHeads = (pageHtml.match(/class="fw-section-head"[\s\S]*?<\/div>/g) ?? []).map(stripTags)
+  check(
+    'WB-1k the Funds header is the reference’s sentence alone — no count to pluralise',
+    sectionHeads.length === 2 && !/· \d+ funds?\b/.test(sectionHeads[1] ?? ''),
+    JSON.stringify(sectionHeads),
+  )
+  check(
+    'WB-1k … and it reads exactly the reference’s words',
+    (sectionHeads[1] ?? '').includes('Funds · ETFs and mutual funds get fund columns, not empty P/E cells'),
+    sectionHeads[1],
+  )
+  check('WB-1k the Equities header pluralises its count', /Equities · \d+ positions? ·/.test(sectionHeads[0] ?? ''), sectionHeads[0])
+  eq('WB-1k the funds table draws no weight bar (the reference draws it in Equities only)', count(fundTable, 'fw-bar'), 0)
+  check('WB-1k … and the equities table still draws one per row', count(eqTable, 'fw-bar') >= 2, `${count(eqTable, 'fw-bar')} bars`)
+  eq('WB-1k a fund’s subline carries account and price, never a share count', count(fundTable, ' sh · '), 0)
+  check('WB-1k … while an equity subline carries one', count(eqTable, ' sh · ') > 0)
+
+  // The cash share and the Coverage card must name the population they actually divided by.
+  const tablesMod: any = safeRequire('./WorkspaceTables')
+  if (tablesMod !== null && typeof tablesMod.CashLineRow === 'function' && workspaceModule !== null) {
+    const wv = workspaceModule.buildWorkspace(ROWS, 'security')
+    const viewCash = stripTags(
+      renderToStaticMarkup(createElement(tablesMod.CashLineRow, { section: wv.cash, viewValue: wv.value, shareOf: 'view' })),
+    )
+    check(
+      'WB-1k a filtered view’s cash line says “of view”, never “of book”',
+      viewCash.includes('% of view') && !viewCash.includes('% of book'),
+      viewCash,
+    )
+  } else {
+    check('WB-1k CashLineRow is reachable for the share-label check', false, 'WorkspaceTables not emitted')
+  }
+  const twoCards = stripTags(twoHtml.slice(twoHtml.indexOf('fw-cards'), twoHtml.indexOf('fw-toolbar')))
+  const twoMult = TWO_BOOK.rows.filter(r => r.kind !== 'CASH' && r.fundamentals?.peTrailing != null).length
+  check(
+    'WB-1k the Coverage card counts the book it names — numerator and denominator are the same population',
+    twoCards.includes(`${twoMult} of ${TWO_BOOK.rows.length} rows`),
+    twoCards.slice(0, 300),
+  )
 }
-check('G1 a route that does not read the book still says so', !isBookRoute('/portfolio/performance'))
-check(
-  'G1 the bar shows THIS page’s book on this route',
-  barStatus(FUNDAMENTALS_ROUTE, { book: FIXTURE_BOOK, loading: false, error: null, notice: null } as never).kind === 'book',
-)
-check(
-  'G1 a snapshot published on another route is still refused there',
-  barStatus('/portfolio/performance', { book: FIXTURE_BOOK, loading: false, error: null, notice: null } as never).kind === 'not-read',
-)
 
-const pageHtml = renderToStaticMarkup(
-  createElement(DrawerProvider, null, createElement(FundamentalsPage, { book: FIXTURE_BOOK, notice: NOTICE })),
-)
-const pageText = stripTags(pageHtml)
-const statusMatch = /<div class="wm-pa-status"[^>]*>([\s\S]*?)<\/div>/.exec(pageHtml)
-const statusText = statusMatch === null ? '' : stripTags(statusMatch[1])
-const tableRegion = /<div class="table-wrap"><table>[\s\S]*?<\/table><\/div>/.exec(pageHtml)
-const panelSub = /<h2>Fundamentals workspace<\/h2><p>([\s\S]*?)<\/p>/.exec(pageHtml)
+// ---- G1: the shell’s scope wiring survives WB-1 ---------------------------------------------------------
 
-check('G1 the page renders the shared filterbar', pageHtml.includes('class="wm-pa-filterbar"'), 'no .wm-pa-filterbar')
-// One account control, and it is the shell's: the page states the selection and renders NO second select for it.
-check('G1 the page renders no second account select', !/<select[^>]*id="account"/.test(pageHtml) && !/<label>\s*Account\s*<select/.test(pageHtml), 'a page-local account select is present')
-eq('G1 the filterbar holds exactly one select — the sector control', (pageHtml.match(/<select/g) ?? []).length, 1)
-check('G1 the page states the account scope the top bar holds', pageHtml.includes('Account: <b>all accounts (3)</b>'), 'no account scope statement')
-check('G1 the page says where the account is chosen', pageHtml.includes('— chosen in the top bar'), 'no pointer to the top bar')
-check('G1 the sector control is present and starts at every sector', /<label>Sector<select/.test(pageHtml) && pageHtml.includes('>All sectors</option>'), 'no sector select')
-check('G1 the search control is present', pageHtml.includes('type="search"') && pageHtml.includes('placeholder="Symbol, name or account"'))
-check('G1 a reset control is present', pageHtml.includes('Reset filters'))
-eq('G1 exactly one status line', pageHtml.split('class="wm-pa-status"').length - 1, 1)
-check(
-  'G1 the header states the filter over the whole book',
-  statusText.includes(`${ROWS.length} of ${ROWS.length} rows · all accounts (`),
-  statusText,
-)
-check(
-  'G1 the workspace header states the SAME filter text as the status line',
-  panelSub !== null && panelSub[1].includes('rows · all accounts (') && /synthetic fixture/.test(panelSub[1]),
-  panelSub === null ? 'no panel sub' : stripTags(panelSub[1]),
-)
-check(
-  'G1 the page says the account control is the shell’s one scope, not a second book',
-  pageText.includes('The account control is the top bar’s portfolio scope'),
-)
-check(
-  'G1 no second book is read: the page states one read of the one book',
-  pageText.includes('No second read and no second book'),
-)
-
-check('G2 the page prints the notice’s lead clause as the one evidence line', statusText.includes(NOTICE_LEAD), statusText)
-check(
-  'G2 the status line does NOT print the whole notice',
-  !statusText.includes('the payload carried no freshness block') && statusText.length < 260,
-  `${statusText.length} chars: ${statusText}`,
-)
-check(
-  'G2 the full notice is behind the disclosure, with the clock',
-  pageHtml.includes(`Full notice: ${NOTICE}`) && pageHtml.includes('Session weekend · read 2026-11-14T21:00:00Z.'),
-)
-check('G2 the disclosure is a collapsed <details> with a summary', /<details>\s*<summary>[\s\S]*?<\/summary>/.test(pageHtml))
-check('G2 the disclosure summary names the two gaps', pageText.includes('the two gaps'))
-eq(
-  'G2 the contract id appears exactly twice on the page — once per gap, in the disclosure',
-  pageText.split(evidenceModule.NOT_WIRED).length - 1,
-  2,
-)
-check('G2 no table wraps a cell in a per-row warning about the unwired contract', tableRegion !== null && !tableRegion[0].includes(evidenceModule.NOT_WIRED))
-check('G2 no initials badge is rendered anywhere on the page', !pageHtml.includes('ticker-icon'), 'ticker-icon survives')
-check(
-  'G2 no two-letter badge markup: no .ticker-icon and no aria-hidden initials span',
-  !/aria-hidden="true"><span>[A-Z]{2}<\/span>/.test(pageHtml),
-)
-check('G2 the page does not print a second, page-level warning line', pageHtml.split('wm-pa-warning').length - 1 === 1, `${pageHtml.split('wm-pa-warning').length - 1} warnings`)
-
-// A current read with nothing withheld: no line at all — and no invented one.
-const quietHtml = renderToStaticMarkup(
-  createElement(DrawerProvider, null, createElement(FundamentalsPage, { book: FIXTURE_BOOK })),
-)
-check(
-  'G2 a current read with nothing withheld prints no warning line',
-  !quietHtml.includes('wm-pa-warning') && !stripTags(quietHtml).includes('freshness unverified'),
-)
+eq('G1 the fundamentals route is a book route', isBookRoute(FUNDAMENTALS_ROUTE), true)
+eq('G1 the holdings route is still a book route', isBookRoute(HOLDINGS_ROUTE), true)
+const bar = barStatus(FUNDAMENTALS_ROUTE, { book: FIXTURE_BOOK, loading: false, error: null, notice: null })
+eq('G1 on this route the top bar may show the book this page read', bar.kind, 'book')
 
 if (failures > 0) {
   console.error(`FAIL — ${failures} assertion(s):`)
   for (const f of fails) console.error(`  ✗ ${f}`)
   process.exit(1)
 }
-console.log(`PASS — ${ROWS.length} synthetic rows, ${securityRows * 2} short-phrase cells, G1 filter + G2 disclosure green`)
+console.log(`PASS — ${ROWS.length} synthetic rows (+1 twin), WB-1 layout, grouping, D7 mark and derived tags green`)

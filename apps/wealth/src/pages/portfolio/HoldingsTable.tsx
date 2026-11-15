@@ -52,10 +52,11 @@ const PROTECTION_CUE: Record<Protection['state'], { level: CueLevel; label: stri
 /**
  * C (lead route 2026-11-15T1722Z): the stop sentence follows the row's STATE, never the stop's absence alone.
  * A PROTECTED row whose resting GTC stop has no served price is exactly that; "no resting stop" is true only of
- * a GAP, and an UNKNOWN read is not an absence either. Two cells print this sentence — the protection chip's
- * tooltip and the Stop column — so it is built once here and never contradicted by the other.
+ * a GAP, and an UNKNOWN read is not an absence either. Three cells print this sentence — the protection chip's
+ * tooltip, the Stop column, and the Fundamentals workspace's protection cell — so it is built once here and never
+ * contradicted by the others.
  */
-function stopSentence(p: Protection): string {
+export function stopSentence(p: Protection): string {
   const stale = p.stale === true ? ' (stale)' : ''
   if (p.stop !== null) return `stop ${price(p.stop)}${stale}`
   if (p.state === 'PROTECTED') return `resting GTC stop, pending activation — stop price not served${stale}`
