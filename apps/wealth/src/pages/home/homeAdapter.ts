@@ -49,7 +49,12 @@ export function state<T>(read: Read, map: (r: Row) => T, now: number, stamp?: (r
   if (empty?.(data)) return { ...base, status: asOf ? 'EMPTY' : 'UNKNOWN', reason: asOf ? 'No items at the source time.' : 'No items returned; age unknown, so absence is unproven.', data: asOf ? data : null, lastGood: null, asOf, ageHours }
   return { ...base, status: 'OK', data, lastGood: null, asOf, ageHours, healthUnproven: 'Source health is unproven; source and build clocks are shown separately.' }
 }
-export const money = (v: number | null): string => v === null ? 'Unknown' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(v)
+export const money = (v: number | null): string => {
+  if (v === null) return 'Unknown'
+  // Whole-dollar rounding would print a real sub-$1 amount as $0; a signed bound is honest, $0 is not.
+  if (v !== 0 && Math.abs(v) < 1) return `${v < 0 ? '-<' : '<'}$1`
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(v)
+}
 export const percent = (v: number | null): string => v === null ? 'Unknown' : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`
 export const tone = (v: number | null): string => v === null || v === 0 ? 'money-unknown' : v > 0 ? 'money-gain' : 'money-loss'
 export function accountMap(...sources: unknown[]): Map<string, string> {
@@ -76,7 +81,12 @@ export function safeUrl(value: unknown): string | null {
 
 export interface Mover { symbol: string; held: boolean | null; price: number | null; change: number | null; impact: number | null; close: string; extended: string; ext?: { price: number | null; change: number | null; at: string; reference: string; state: string } }
 export interface Story { title: string; publisher: string; published: string; url: string | null; why: string; kind: string }
-export interface Priority { title: string; why: string; kind: string; since: string; owner: string }
+export interface Priority {
+  kind: string; title: string; why: string; since: string; owner: string
+  status: string; statusLabel: string; stale: boolean | null; staleLabel: string
+  scope: string; label: string
+}
+export interface Priorities { protection: Priority[]; history: Priority[] }
 export interface Overview { value: number | null; source: string; build: string; session: string; dataAsOf: string; oldestAccount: string; accounts: { label: string; value: number | null; source: string }[] }
 export interface Snapshot {
  moves: Mover[]; feed: Story[]; brief: string; briefAt: string; briefSource: string; quoteClock: string; build: string
@@ -113,12 +123,30 @@ export function snapshotModel(r: Row, labels: Map<string, string>): Snapshot {
   weekFrom:text(week.from),weekTo:text(week.to),fedSpeakers:safeText(week.fed_speakers,labels),
  }
 }
-export function prioritiesModel(r: Row, labels: Map<string, string>): Priority[] {
-  return rows(r.items).map((p, i) => ({
-    // STOP source titles contain raw account identifiers, so reconstruct that title.
-    title: p.kind === 'STOP' ? `Protection review ${i + 1}` : safeText(p.title, labels),
-    why: safeText(p.why || p.reason, labels), kind: text(p.kind), since: text(p.since), owner: safeText(p.owner, labels),
-  }))
+const KIND_WORD: Record<string, string> = { INCIDENT: 'incident', APPROVALS: 'approval request', STOP: 'stop item' }
+/** The producer's STOP title is "<Action> · <symbol> · <account>"; the account segment is a raw key, so only the symbol is kept. */
+export function stopScope(p: Row): { symbol: string } | null {
+  const symbol = text(p.title).split(' · ')[1]?.trim() || ''
+  return /^[A-Z0-9][A-Z0-9.\-]{0,9}$/.test(symbol) ? { symbol } : null
+}
+export function prioritiesModel(r: Row, labels: Map<string, string>): Priorities {
+  const protection: Priority[] = [], history: Priority[] = []
+  for (const p of rows(r.items)) {
+    const kind = text(p.kind).toUpperCase(), status = text(p.status), stale = typeof p.stale === 'boolean' ? p.stale : null
+    const item: Priority = {
+      kind, title: safeText(p.title, labels), why: safeText(p.why || p.reason, labels), since: text(p.since), owner: safeText(p.owner, labels),
+      status, statusLabel: status ? `Status ${safeText(status, labels)}` : 'Status Unknown',
+      stale, staleLabel: stale === null ? 'Freshness not served' : stale ? 'Producer reports stale' : 'Producer reports not stale',
+      scope: '', label: '',
+    }
+    // Only a typed, account-scoped item is a protection fact. Everything else is recorded history: the producer's
+    // category is quoted as its source, never restated as this desk's own protection or stop-gap claim, and age
+    // alone never resolves a row.
+    const scope = kind === 'STOP' ? stopScope(p) : null
+    if (scope) protection.push({ ...item, scope: scope.symbol, title: `Protection review ${protection.length + 1}` })
+    else history.push({ ...item, label: `Recorded ${KIND_WORD[kind] || `item (${kind || 'kind unrecorded'})`} · source category: ` })
+  }
+  return { protection, history }
 }
 export function marketMoversModel(r: Row): Mover[] {
   return Object.values(record(r.signals)).flatMap(s => rows(record(s).rows)).map(m => ({
@@ -131,7 +159,7 @@ export function homeToday(reads: Record<string, Read>, now: number) {
     overview: state(reads.overview ?? null, overviewModel, now, r => record(record(r.clock_provenance).quote).as_of),
     snapshot: state(reads.snapshot ?? null, r => snapshotModel(r, labels), now, r => snapshot(r).quotes_as_of),
     movers: state(reads.movers ?? null, marketMoversModel, now, r => r.captured_at, m => m.length === 0),
-    priorities: state(reads.priorities ?? null, r => prioritiesModel(r, labels), now, undefined, p => p.length === 0),
+    priorities: state(reads.priorities ?? null, r => prioritiesModel(r, labels), now, undefined, p => p.protection.length === 0 && p.history.length === 0),
     labels,
   }
 }
@@ -170,7 +198,8 @@ export function reviewModel(r: Row): ReviewQueue {
     }),
   }
 }
-export interface Market { tier: string; score: number | null; mode: string; asOf: string; built: string; contributors: { name: string; detail: string; points: number | null; asOf: string }[]; categories: { name: string; status: string; detail: string; asOf: string }[]; history: { asOf: string; tier: string; score: number | null }[] }
+export interface MarketReport { status: string; greyed: boolean; cause: string }
+export interface Market { tier: string; score: number | null; mode: string; asOf: string; built: string; contributors: { name: string; detail: string; points: number | null; asOf: string }[]; categories: { name: string; status: string; detail: string; asOf: string }[]; history: { asOf: string; tier: string; score: number | null }[]; reported?: MarketReport }
 export const SCENARIOS = ['IF WEAKNESS PERSISTS', 'IF CONDITIONS STABILIZE', 'IF LEADERSHIP RECOVERS'].map(title => ({ title, availability: 'Not available — methodology pending' }))
 export function marketModel(r: Row): Market {
   return {
@@ -180,14 +209,35 @@ export function marketModel(r: Row): Market {
     history: rows(r.history).map(h => ({ asOf: text(h.as_of), tier: text(h.tier), score: number(h.score) })),
   }
 }
+/** The producer's own verdict on the served copy; null unless it says the copy is not current. */
+export function staleReport(r: Row): MarketReport | null {
+  const p = record(r._product), ps = record(r.product_stale)
+  const status = (text(ps.status) || text(p.status)).toUpperCase(), greyed = ps.greyed === true || p.greyed === true
+  // A body that disagrees with its own product ("OK" while the row is marked stale) supports no last-known claim.
+  if (!greyed && (status === '' || status === 'OK')) return null
+  return { status: status || 'UNKNOWN', greyed, cause: text(ps.reason) || text(p.reason) }
+}
+/** The producer's own words for why the served copy is not current. Never a client TTL. */
+export function staleLabel(rep: { status: string; greyed: boolean }): string {
+  if (rep.greyed) return 'producer reports last-good past its hard expiry (greyed)'
+  return rep.status === 'STALE' ? 'producer reports stale (age past its declared bound)' : `producer reports ${rep.status.toLowerCase() || 'not current'}`
+}
 export function marketState(read: Read, now: number): RenderState<Market> {
   if (read?.data !== null && read?.data !== undefined) {
     const r = body(read.data), c = clock(r.as_of)
     // Freshness is the stored producer's verdict, evaluated at its own build time.
     // Its rounded age and previous-hour input cannot be replaced by an exact client one-hour gate.
     if (r.ok === false || r.error || r.state !== 'evaluated' || r.stale !== false || !c || record(r._product).status !== 'OK' || record(r._product).greyed === true) {
-      const detail = safeText(r.error || r.reason)
-      return { status: 'UNKNOWN', reason: `Market nowcast unavailable or source verdict unproven. An evaluated state, explicit nonstale producer verdict, OK product and zoned source time are required.${detail ? ' Source: ' + detail : ''}`, data: null, lastGood: null, lastGoodAgeSeconds: null, asOf: c, ageHours: c ? Math.max(0, (now - Date.parse(c)) / 3600000) : null, healthUnproven: null }
+      const detail = safeText(r.error || r.reason), rep = staleReport(r)
+      // The serving layer keeps a stale tier and marks it stale (risk display rule, operator 13 Nov 2026).
+      // Show that copy as dated last-known, never as current: data stays null, the cause is the producer's own
+      // reason, the source observation time is preserved, and no age bound or TTL is invented here.
+      const last = rep && text(r.tier) ? { ...marketModel(r), reported: rep } : null
+      const why = rep ? `${staleLabel(rep)}${rep.cause ? ` — ${rep.cause}` : ''}` : ''
+      const reason = last
+        ? `Not current: ${why}. The last stored assessment is shown with its own source time and is not current.`
+        : `Market nowcast unavailable or source verdict unproven. An evaluated state, explicit nonstale producer verdict, OK product and zoned source time are required.${detail ? ' Source: ' + detail : ''}`
+      return { status: 'UNKNOWN', reason, data: null, lastGood: last, lastGoodAgeSeconds: c ? Math.max(0, Math.round((now - Date.parse(c)) / 1000)) : null, asOf: c, ageHours: c ? Math.max(0, (now - Date.parse(c)) / 3600000) : null, healthUnproven: null }
     }
   }
   return state(read, marketModel, now, r => r.as_of)
