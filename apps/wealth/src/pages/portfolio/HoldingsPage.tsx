@@ -601,8 +601,11 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
 
         <h4>Backend work to fulfill the cards this page shows as Unknown</h4>
         {/* No number on this page waits for a renderer: each Unknown above waits for a producer. The owner is a
-            proposal, not an assignment — the operator decides who builds it. */}
-        <div className="table-wrap"><table>
+            proposal, not an assignment — the operator decides who builds it.
+            `matrix` is the reference's own prose-table class (v02/v04: `white-space:normal`, cells top-aligned and
+            left). Without it the table inherits the shell's nowrap cell rule, and four columns of prose cannot fit
+            992 px at 1280 — measured 1133/992 (141 px over) on the live payload, 2026-11-15. */}
+        <div className="table-wrap"><table className="matrix">
           <caption>Fields with no producer on this read, and the work that would fill them</caption>
           <thead>
             <tr>
@@ -673,8 +676,11 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
                 {book.accounts.map(a => (
                   <tr key={a.accountKey}>
                     <th scope="row">
+                      {/* The display label, joined from the served holdings rows (adapter.ts → accountLabel.ts).
+                          A raw key renders only when the read served no label anywhere — and it says so, rather
+                          than passing for a label: the key is the one identifier that exists. */}
                       {a.accountLabel}
-                      {a.accountLabel === a.accountKey ? null : ` · ${a.accountKey}`}
+                      {a.accountLabel === a.accountKey ? <small className="muted">no display label served</small> : null}
                     </th>
                     <td>{a.totalUsd === null ? <span title="not served">N/A</span> : money(a.totalUsd)}</td>
                     <td>{a.cashUsd === null ? <span title="not served">N/A</span> : money(a.cashUsd)}</td>

@@ -14,6 +14,7 @@ import { specFor, READERS } from '../../src/api/readers.ts'
 import { deriveRenderState, statusCue } from '../../src/components/renderState.ts'
 import { price, money, unavailable } from '../../src/pages/portfolio/format.ts'
 import { barStatus, isBookRoute } from '../../src/pages/portfolio/bookView.ts'
+import { accountDisplayLabel } from '../../src/pages/portfolio/accountLabel.ts'
 
 const NOW = Date.parse('2026-11-14T23:30:00Z')
 
@@ -561,4 +562,30 @@ test('N-3: on the reader route the structural states still say what they say', (
   const R = '/portfolio/holdings'
   assert.deepEqual(barStatus(R, { book: null, loading: true, error: null, notice: null }), { kind: 'loading' })
   assert.deepEqual(barStatus(R, { book: null, loading: false, error: 'read failed', notice: null }), { kind: 'error', reason: 'read failed' })
+})
+
+// --- Account display label (lead finding 2026-11-15T05:09Z: raw keys in the Account table) ---
+// The served reconciliation block carries the KEY and no label; the holdings rows of the same payload carry
+// the label. The join happens in adapter.ts; this is the pure choice it makes, testable without a DOM.
+
+test('accountLabel: the live case — a served row label replaces the raw key', () => {
+  assert.equal(accountDisplayLabel('schwab_rollover_ira', null, 'Schwab Rollover IRA'), 'Schwab Rollover IRA')
+  assert.equal(accountDisplayLabel('alpaca_taxable_live', null, 'Alpaca Individual'), 'Alpaca Individual')
+})
+
+test('accountLabel: a label served on the reconciliation block itself wins over the row copy', () => {
+  assert.equal(accountDisplayLabel('schwab_roth_ira', 'Schwab Roth IRA', 'ROTH (row copy)'), 'Schwab Roth IRA')
+})
+
+test('accountLabel: a served label that merely repeats the key is not a label', () => {
+  // Some producers echo the key into account_label. Rendering that passes the key off as a label and hides
+  // the fact that no display name was served; the row copy is still a real chance to get one.
+  assert.equal(accountDisplayLabel('schwab_taxable', 'schwab_taxable', 'Schwab Taxable'), 'Schwab Taxable')
+  assert.equal(accountDisplayLabel('schwab_taxable', 'schwab_taxable', null), 'schwab_taxable')
+})
+
+test('accountLabel: nothing served anywhere leaves the key unchanged, and blank is nothing', () => {
+  assert.equal(accountDisplayLabel('moomoo_taxable_live', null, null), 'moomoo_taxable_live')
+  assert.equal(accountDisplayLabel('moomoo_taxable_live', '   ', ''), 'moomoo_taxable_live')
+  assert.equal(accountDisplayLabel('moomoo_taxable_live', null, '  Alpaca Individual  '), 'Alpaca Individual')
 })

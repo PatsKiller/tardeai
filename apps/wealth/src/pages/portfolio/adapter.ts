@@ -25,6 +25,7 @@ import type {
   PopulationExclusion, Protection, ProtectionState, RowFundamentals, RowKind,
 } from './contract'
 import { PORTFOLIO_HOLDINGS_CONTRACT_VERSION } from './contract'
+import { accountDisplayLabel } from './accountLabel'
 
 export interface AdaptResult {
   book: HoldingsBook | null
@@ -280,12 +281,21 @@ function accountsFrom(wire: Json): AccountTotal[] | null {
   const rec = asObj(wire.reconciliation)
   const list = asArr(rec.accounts).filter(isObj)
   if (list.length === 0) return null
+  // The display label for the same account is served on the holdings rows of this payload, not on this block:
+  // join it here rather than render the raw key (lead finding, 2026-11-15T05:09Z; accountLabel.ts).
+  const rowLabels = new Map<string, string>()
+  for (const r of asArr(wire.holdings)) {
+    const row = asObj(r)
+    const rowKey = str(row.account_key) ?? str(row.account)
+    const rowLabel = str(row.account_label)
+    if (rowKey !== null && rowLabel !== null && !rowLabels.has(rowKey)) rowLabels.set(rowKey, rowLabel)
+  }
   return list.map(a => {
     const end = asObj(a.end_equity)
     const key = str(a.account) ?? ''
     return {
       accountKey: key,
-      accountLabel: str(a.account_label) ?? key,
+      accountLabel: accountDisplayLabel(key, str(a.account_label), rowLabels.get(key) ?? null),
       totalUsd: num(end.value_usd),
       // The reconciliation serves ending equity per account, not cash per account; null, never 0.
       cashUsd: null,
