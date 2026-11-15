@@ -29,7 +29,7 @@ export function OperatingHeader(){
  return <section className="wealth-operating-header" aria-label="Operating overview · household" data-session={model.sessionKey} data-cell-count={HEADER_CELLS.length}>
   {model.cells.map(c=><article className="wealth-operating-cell" key={c.id} data-header-cell={c.id} data-tone={c.tone}>
    <div className="wealth-operating-label"><WealthIcon name={c.icon}/>{c.label}</div>
-   <WealthStatus icon={c.id!=='vix'&&c.id!=='session_pl'&&c.verdict.includes('stale')?'warning':c.icon} tone={c.id==='session_pl'&&c.numeric!==null&&c.verdict!=='read failed'?c.numeric>0?'green':c.numeric<0?'red':'grey':c.tone} label={c.id==='session_pl'&&c.numeric!==null&&c.numeric!==0?`${c.numeric>0?'▲':'▼'} ${c.display}`:c.display} detail={c.tooltip}/>
+   <WealthStatus icon={c.id!=='vix'&&c.id!=='session_pl'&&c.verdict.includes('stale')?'warning':c.icon} tone={c.id==='session_pl'&&c.numeric!==null&&c.verdict!=='read failed'?c.numeric>0?'green':c.numeric<0?'red':'grey':c.tone} label={c.id==='session_pl'&&c.verdict!=='read failed'&&c.numeric!==null&&c.numeric!==0?`${c.numeric>0?'▲':'▼'} ${c.display}`:c.display} detail={c.tooltip}/>
    {c.id==='session_pl'&&c.numeric!==null?<WealthStatus icon="clock" tone="amber" label="Estimate" detail="Stored current-holdings price movement; a verified reconciliation is not served."/>:null}
    {(c.id==='vix'||c.id==='session_pl')&&c.verdict.includes('stale')?<WealthStatus icon="warning" tone="amber" label="Stale" detail={c.tooltip}/>:null}
    {c.secondary.map((line,i)=><small key={i}>{line}</small>)}
