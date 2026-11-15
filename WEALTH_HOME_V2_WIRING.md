@@ -25,74 +25,74 @@ All source aliases below traverse this path. The Home producer formats financial
 
 Each row identifies the actual stored field or an explicit missing contract. Unknown is nullable/grey, never synthetic zero. All financial formatting occurs in `wealth_home_v2::build`; UI filters and progressive disclosure only select already formatted rows.
 
-| View / element | Source -> stored field | Clock / correctness / available behavior |
-| --- | --- | --- |
-| Header 1 Session label | existing `market_risk.sessions::session_label` | Real NYSE calendar including holidays/early close; overnight displayed Closed |
-| Header Session last date | `sessions::last_closed_session` | Actual exchange date; separate from unproven P/L interval |
-| Header Session next open | `sessions::is_trading_day` | UTC stored value; operator secondary explicitly ET |
-| Header 2 Session estimate dollars | P `day_pl_usd` | Current-holdings estimate; source interval unproven, amber |
-| Header Session estimate percent | P `day_pl_pct`, `day_pl_coverage` | Keeps method and eligible n/m, no verified account return claim |
-| Header 3 Household value | P `total_usd` | Retained mark/position clock; valuation build metadata separate; household distinguished from accounts |
-| Header Cash dollars / percentage | P `cash_usd`, `total_usd` | Percentage producer-derived only on positive known denominator; explicitly derived |
-| Header Approximate YTD | no compatible flow-adjusted stored contract | Unknown; raw balance growth is not profit |
-| Header 4 Temperature tier / score / stance | M `tier`, `score`, `reason` | M own clock, tier state retained separately from freshness |
-| Header 5 Regime label / confidence | R `label`, `confidence` | Independent R source and age; missing score stays unknown |
-| Header 6 VIX value | SC or R `vix`, `vix_source`, `vix_observation_time` | Neutral; source freshness contract, not a fabricated 36h policy |
-| Header 7 Operating mode / kill / submit | no typed stored operating-flags contract | Unknown; no broker inspection or flag inference |
-| Header 8 Health critical / total | H `findings[].severity`, findings population | Same snapshot denominator; stale snapshot is grey with retained counts |
-| Header Needs badge | Q `total` | Qualified nonnegative integer only; present in header-only payload |
-| Today 1 Daily decision left tier / score | M tier, score, reason, episode | Saved engine evidence; no new advice synthesis |
-| Today Decision Buys | no stored typed buy-risk stance | Explicit not served |
-| Today Decision Stops to decide | no typed stop-decision subset | Explicit not served; broad protect count not substituted |
-| Today Decision Unprotected / largest | no complete proved current subset summary | Explicit not served; raw missing stop not classified as gap |
-| Today Decision Re-entry ready / near / total | W available stages but no served near aggregate | Explicit not served; no invented near threshold |
-| Today 2 Snapshot Portfolio | P `total_usd` | Retained mark/position clock; batch build separate |
-| Today Snapshot Session estimate | P `day_pl_usd` | Signed estimate; stale source retains sign and freshness qualifier |
-| Today Snapshot Approximate YTD | compatible period/flows absent | Unknown |
-| Today Snapshot Realized P/L | eligible ledger/basis coverage absent | Unknown, not zero |
-| Today Snapshot Trading record | comparable finished-trade population absent | Unknown, not zero |
-| Today 3 Movers Price | C `symbols[].quote` measured facts only | Each guarded source clock; held/watch membership from canonical held/W populations |
-| Today Movers Change / reference | C `day_change.value.pct`, reference session | Current print versus prior completed NYSE session close; no unproved dollar contribution |
-| Today Movers Held / Watch filter | canonical P/S symbols / W keys | Filters served scope tags; no browser financial arithmetic |
-| Today 4 Protection status | S canonical `protection_state/protection` | Active requires strict flag, positive level, row clock, canonical threshold; missing proof grey |
-| Today Protection pending | S `stop_state=pending_activation` | Pending distinct from active; amber |
-| Today Protection partial quantity | S `resting_loss_qty`, `resting_coverage_shortfall_qty` | Positive remainder amber; exact covered/uncovered quantities retained |
-| Today Protection level / distance / shares | S stored stop level/distance/fractional shares | No recomputation of stop or rounding shares to integer |
-| Today Protection account detail link | S normalized account alias and symbol | Existing Holdings `hv_query` + `hv_account` filters |
-| Today 5 This week event rows | C `next_event.value` | Recorded date-only events explicitly timing-unconfirmed; bounded coverage named |
-| Today 6 What to read first titles | C guarded `headlines.value[]` | Exact stored title; all entity matches unverified candidates |
-| Today News publisher / publication / ingest | C per-headline source/publication and headline fact `as_of` | Independent clocks, safe HTTP(S) original source links |
-| Today News contextual links | canonical held membership / W watch membership | Held Holdings filter; otherwise existing classic watch intelligence reader |
-| Today 7 Accounts value / cash | P `accounts[].total_usd/cash_usd` | Account's own clock; no household return substituted |
-| Today Accounts session estimate / detail | P `accounts[].day_pl_usd`, account alias | Signed estimate; account-scoped Holdings link |
-| Today 8 Setups run / scanned / GO | SC run identifier and summary counts | Stored run receipt only; ranked latest-finished setup membership unproven |
-| Today 9 Watch / re-entry stage | W status/headline/exit/session date | Retained advisory evidence; existing date-only clock not promoted |
-| Today Watch five dots | W `conditions[].met` | Only exactly five typed booleans; missing not treated false |
-| Today 10 Historical brief | B typed `summary/brief`, `generated_at` | Historical figures retain generation snapshot; absent typed text explicit |
-| Today 11 System pulse source cards | per-source collection receipts | Home coverage, not Health findings or platform green declaration |
-| Outlook 1 Temperature contributors | M categories, tier/score/episode | Existing source evidence; no invented gauge thresholds |
-| Outlook 2 Regime components | R `parts` / retained component states | Independent engine, own source clock |
-| Outlook 3 Engine disagreements | CIO `conflicts.findings` | Registered findings only, no disagreement invented from risk tier |
-| Outlook 4 Sector states / return / RS | M `sectors.groups` plus existing canonical eleven-sector universe | Missing groups grey with a reason; no fictional momentum |
-| Outlook 5 Hedge progress | C `hedge.lagging_progress/exposure_progress` | Existing engine threshold facts only; missing independent rotation explicit |
-| Outlook 6 Week ahead | same C dated event facts as Today | Bounded held/watch coverage, recorded date not confirmed time |
-| Outlook 7 Futures / overseas levels | F print/session/date/source | Each independent print clock; level-only suppresses change |
-| Outlook Futures change / reference | F `change_pct`, reference basis/date | No change without dated reference |
-| Outlook supporting Headlines | same C unverified candidate rows | Exact titles/source links, no personalized consequence |
-| Outlook supporting Scanner movers | SC `top_gainers/top_losers` | At most five up and five down; missing down sample explicitly not served |
-| Needs Summary Money decisions today | no typed money-decision subset | Unknown; total queue does not masquerade as money decisions |
-| Needs Summary Protect money | Q complete all_items category / typed counts | Qualified source + nonnegative integer; unknown zero suppressed |
-| Needs Summary Decide | same Q category | Qualified count and existing queue reason |
-| Needs Summary Fix system | same Q category | Qualified count; no incident count substituted |
-| Needs Summary Queue freshness | Q own `as_of`, stale qualification | Source state independent from page build clock |
-| Needs Protect rows / details | same canonical S protection rows | Account-scoped, pending/gap/unknown separate |
-| Needs Decide rows | Q valid category=decide entries | Malformed neighbors cannot shift/drop decisions |
-| Needs Re-entry tracker | same W status/conditions | Historical/currentness qualification retained |
-| Needs Fix source gaps | producer source-read receipts | Review only; no scheduler mutation from page |
-| Needs Incident history category | I registered category / alert type | Separate history collapsed; actual cause provenance limitation below |
-| Needs Incident first / last seen | I occurrence clocks | Date-qualified history, never current protection proof |
-| All three views Show all / query filters | complete supplied section rows | Client disclosure/filtering only; no financial sums recomputed |
-| All views desktop / phone / supporting readers | same section contract and semantic links | Requires served release browser proof; local tests do not certify live destinations |
+| View / element | Source -> stored field | Clock / correctness / available behavior | Action |
+| --- | --- | --- | --- |
+| Header 1 Session label | existing `market_risk.sessions::session_label` | Real NYSE calendar including holidays/early close; overnight displayed Closed | extend — existing Home slice; reuse named source |
+| Header Session last date | `sessions::last_closed_session` | Actual exchange date; separate from unproven P/L interval | extend — existing Home slice; reuse named source |
+| Header Session next open | `sessions::is_trading_day` | UTC stored value; operator secondary explicitly ET | extend — existing Home slice; reuse named source |
+| Header 2 Session estimate dollars | P `day_pl_usd` | Current-holdings estimate; source interval unproven, amber | extend — existing Home slice; reuse named source |
+| Header Session estimate percent | P `day_pl_pct`, `day_pl_coverage` | Keeps method and eligible n/m, no verified account return claim | extend — existing Home slice; reuse named source |
+| Header 3 Household value | P `total_usd` | Retained mark/position clock; valuation build metadata separate; household distinguished from accounts | extend — existing Home slice; reuse named source |
+| Header Cash dollars / percentage | P `cash_usd`, `total_usd` | Percentage producer-derived only on positive known denominator; explicitly derived | extend — existing Home slice; reuse named source |
+| Header Approximate YTD | no compatible flow-adjusted stored contract | Unknown; raw balance growth is not profit | build — required producer absent; display not served |
+| Header 4 Temperature tier / score / stance | M `tier`, `score`, `reason` | M own clock, tier state retained separately from freshness | extend — existing Home slice; reuse named source |
+| Header 5 Regime label / confidence | R `label`, `confidence` | Independent R source and age; missing score stays unknown | extend — existing Home slice; reuse named source |
+| Header 6 VIX value | SC or R `vix`, `vix_source`, `vix_observation_time` | Neutral; source freshness contract, not a fabricated 36h policy | extend — existing Home slice; reuse named source |
+| Header 7 Operating mode / kill / submit | no typed stored operating-flags contract | Unknown; no broker inspection or flag inference | build — required producer absent; display not served |
+| Header 8 Health critical / total | H `findings[].severity`, findings population | Same snapshot denominator; stale snapshot is grey with retained counts | extend — existing Home slice; reuse named source |
+| Header Needs badge | Q `total` | Qualified nonnegative integer only; present in header-only payload | extend — existing Home slice; reuse named source |
+| Today 1 Daily decision left tier / score | M tier, score, reason, episode | Saved engine evidence; no new advice synthesis | extend — existing Home slice; reuse named source |
+| Today Decision Buys | no stored typed buy-risk stance | Explicit not served | build — required producer absent; display not served |
+| Today Decision Stops to decide | no typed stop-decision subset | Explicit not served; broad protect count not substituted | build — required producer absent; display not served |
+| Today Decision Unprotected / largest | no complete proved current subset summary | Explicit not served; raw missing stop not classified as gap | build — required producer absent; display not served |
+| Today Decision Re-entry ready / near / total | W available stages but no served near aggregate | Explicit not served; no invented near threshold | build — required producer absent; display not served |
+| Today 2 Snapshot Portfolio | P `total_usd` | Retained mark/position clock; batch build separate | extend — existing Home slice; reuse named source |
+| Today Snapshot Session estimate | P `day_pl_usd` | Signed estimate; stale source retains sign and freshness qualifier | extend — existing Home slice; reuse named source |
+| Today Snapshot Approximate YTD | compatible period/flows absent | Unknown | build — required producer absent; display not served |
+| Today Snapshot Realized P/L | eligible ledger/basis coverage absent | Unknown, not zero | build — required producer absent; display not served |
+| Today Snapshot Trading record | comparable finished-trade population absent | Unknown, not zero | build — required producer absent; display not served |
+| Today 3 Movers Price | C `symbols[].quote` measured facts only | Each guarded source clock; held/watch membership from canonical held/W populations | extend — existing Home slice; reuse named source |
+| Today Movers Change / reference | C `day_change.value.pct`, reference session | Current print versus prior completed NYSE session close; no unproved dollar contribution | extend — existing Home slice; reuse named source |
+| Today Movers Held / Watch filter | canonical P/S symbols / W keys | Filters served scope tags; no browser financial arithmetic | extend — existing Home slice; reuse named source |
+| Today 4 Protection status | S canonical `protection_state/protection` | Active requires strict flag, positive level, row clock, canonical threshold; missing proof grey | extend — existing Home slice; reuse named source |
+| Today Protection pending | S `stop_state=pending_activation` | Pending distinct from active; amber | extend — existing Home slice; reuse named source |
+| Today Protection partial quantity | S `resting_loss_qty`, `resting_coverage_shortfall_qty` | Positive remainder amber; exact covered/uncovered quantities retained | extend — existing Home slice; reuse named source |
+| Today Protection level / distance / shares | S stored stop level/distance/fractional shares | No recomputation of stop or rounding shares to integer | extend — existing Home slice; reuse named source |
+| Today Protection account detail link | S normalized account alias and symbol | Existing Holdings `hv_query` + `hv_account` filters | extend — existing Home slice; reuse named source |
+| Today 5 This week event rows | C `next_event.value` | Recorded date-only events explicitly timing-unconfirmed; bounded coverage named | extend — existing Home slice; reuse named source |
+| Today 6 What to read first titles | C guarded `headlines.value[]` | Exact stored title; all entity matches unverified candidates | extend — existing Home slice; reuse named source |
+| Today News publisher / publication / ingest | C per-headline source/publication and headline fact `as_of` | Independent clocks, safe HTTP(S) original source links | extend — existing Home slice; reuse named source |
+| Today News contextual links | canonical held membership / W watch membership | Held Holdings filter; otherwise existing classic watch intelligence reader | extend — existing Home slice; reuse named source |
+| Today 7 Accounts value / cash | P `accounts[].total_usd/cash_usd` | Account's own clock; no household return substituted | extend — existing Home slice; reuse named source |
+| Today Accounts session estimate / detail | P `accounts[].day_pl_usd`, account alias | Signed estimate; account-scoped Holdings link | extend — existing Home slice; reuse named source |
+| Today 8 Setups run / scanned / GO | SC run identifier and summary counts | Stored run receipt only; ranked latest-finished setup membership unproven | extend — existing Home slice; reuse named source |
+| Today 9 Watch / re-entry stage | W status/headline/exit/session date | Retained advisory evidence; existing date-only clock not promoted | extend — existing Home slice; reuse named source |
+| Today Watch five dots | W `conditions[].met` | Only exactly five typed booleans; missing not treated false | extend — existing Home slice; reuse named source |
+| Today 10 Historical brief | B typed `summary/brief`, `generated_at` | Historical figures retain generation snapshot; absent typed text explicit | extend — existing Home slice; reuse named source |
+| Today 11 System pulse source cards | per-source collection receipts | Home coverage, not Health findings or platform green declaration | extend — existing Home slice; reuse named source |
+| Outlook 1 Temperature contributors | M categories, tier/score/episode | Existing source evidence; no invented gauge thresholds | extend — existing Home slice; reuse named source |
+| Outlook 2 Regime components | R `parts` / retained component states | Independent engine, own source clock | extend — existing Home slice; reuse named source |
+| Outlook 3 Engine disagreements | CIO `conflicts.findings` | Registered findings only, no disagreement invented from risk tier | extend — existing Home slice; reuse named source |
+| Outlook 4 Sector states / return / RS | M `sectors.groups` plus existing canonical eleven-sector universe | Missing groups grey with a reason; no fictional momentum | extend — existing Home slice; reuse named source |
+| Outlook 5 Hedge progress | C `hedge.lagging_progress/exposure_progress` | Existing engine threshold facts only; missing independent rotation explicit | extend — existing Home slice; reuse named source |
+| Outlook 6 Week ahead | same C dated event facts as Today | Bounded held/watch coverage, recorded date not confirmed time | extend — existing Home slice; reuse named source |
+| Outlook 7 Futures / overseas levels | F print/session/date/source | Each independent print clock; level-only suppresses change | extend — existing Home slice; reuse named source |
+| Outlook Futures change / reference | F `change_pct`, reference basis/date | No change without dated reference | extend — existing Home slice; reuse named source |
+| Outlook supporting Headlines | same C unverified candidate rows | Exact titles/source links, no personalized consequence | extend — existing Home slice; reuse named source |
+| Outlook supporting Scanner movers | SC `top_gainers/top_losers` | At most five up and five down; missing down sample explicitly not served | extend — existing Home slice; reuse named source |
+| Needs Summary Money decisions today | no typed money-decision subset | Unknown; total queue does not masquerade as money decisions | build — required producer absent; display not served |
+| Needs Summary Protect money | Q complete all_items category / typed counts | Qualified source + nonnegative integer; unknown zero suppressed | extend — existing Home slice; reuse named source |
+| Needs Summary Decide | same Q category | Qualified count and existing queue reason | extend — existing Home slice; reuse named source |
+| Needs Summary Fix system | same Q category | Qualified count; no incident count substituted | extend — existing Home slice; reuse named source |
+| Needs Summary Queue freshness | Q own `as_of`, stale qualification | Source state independent from page build clock | extend — existing Home slice; reuse named source |
+| Needs Protect rows / details | same canonical S protection rows | Account-scoped, pending/gap/unknown separate | extend — existing Home slice; reuse named source |
+| Needs Decide rows | Q valid category=decide entries | Malformed neighbors cannot shift/drop decisions | extend — existing Home slice; reuse named source |
+| Needs Re-entry tracker | same W status/conditions | Historical/currentness qualification retained | extend — existing Home slice; reuse named source |
+| Needs Fix source gaps | producer source-read receipts | Review only; no scheduler mutation from page | extend — existing Home slice; reuse named source |
+| Needs Incident history category | I registered category / alert type | Separate history collapsed; actual cause provenance limitation below | extend — existing Home slice; reuse named source |
+| Needs Incident first / last seen | I occurrence clocks | Date-qualified history, never current protection proof | extend — existing Home slice; reuse named source |
+| All three views Show all / query filters | complete supplied section rows | Client disclosure/filtering only; no financial sums recomputed | extend — existing Home slice; reuse named source |
+| All views desktop / phone / supporting readers | same section contract and semantic links | Requires served release browser proof; local tests do not certify live destinations | extend — existing Home slice; reuse named source |
 
 ## PROCESS / CONTRACT / SELFHEAL / PROOF
 
