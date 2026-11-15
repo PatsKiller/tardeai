@@ -296,7 +296,9 @@ export function AnalyticsPanel({
       <div className="wm-pa-status" aria-live="polite">
         {view.rows.length} matching rows · {view.securityCount} investment securities ·{' '}
         {coverageText(view.coverage.valued, view.coverage.total)}
-        {fresh.line !== '' && <span className="wm-pa-warning">{fresh.line}</span>}
+        {/* N1 (review 2026-11-15T1704Z): the warning follows the coverage count with no separator otherwise, so the
+            page rendered "…valuedLast available snapshot…". One separator, not a new sentence. */}
+        {fresh.line !== '' && <> · <span className="wm-pa-warning">{fresh.line}</span></>}
         {announcement !== '' && <> · {announcement}</>}
       </div>
 

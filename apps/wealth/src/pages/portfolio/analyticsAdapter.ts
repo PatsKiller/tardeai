@@ -161,11 +161,21 @@ export interface LastSuccessReceipt {
   source: string
 }
 
-/** The four domain clocks the page shows, each with the clock role that dates it. */
-const DOMAIN_SPECS: { domain: SnapshotClock['domain']; label: string; role: ClockRole }[] = [
+/**
+ * The four domain clocks the page shows, each with the clock role that may date it.
+ *
+ * `role: null` means the wire has NO clock for that domain, and the page says so with a fixed reason instead of
+ * borrowing one. Basis is that case (review R1): the wire serves no basis clock — basis coverage is per-row
+ * `basis_truth` — and the VALUATION role is the document's `generated_at`, which says when the document was
+ * generated, not when the basis inputs were observed. Mapping basis to VALUATION printed a substituted clock
+ * under the basis's name on a book where one non-cash row has no basis at all. §K forbids that: unknown beats
+ * wrong, and a clock is never borrowed from another role.
+ */
+const DOMAIN_SPECS: { domain: SnapshotClock['domain']; label: string; role: ClockRole | null; staticReason?: string }[] = [
   { domain: 'quote', label: 'Quote', role: 'QUOTE' },
   { domain: 'positions', label: 'Positions', role: 'POSITIONS' },
-  { domain: 'basis', label: 'Basis (valuation)', role: 'VALUATION' },
+  { domain: 'basis', label: 'Basis', role: null,
+    staticReason: 'no basis clock is served on this read (basis coverage is per-row basis_truth)' },
   { domain: 'protection', label: 'Protection (stop read)', role: 'STOPS' },
 ]
 
@@ -176,6 +186,10 @@ const DOMAIN_SPECS: { domain: SnapshotClock['domain']; label: string; role: Cloc
  */
 export function snapshotClocks(book: HoldingsBook): SnapshotClock[] {
   return DOMAIN_SPECS.map(spec => {
+    if (spec.role === null) {
+      return { domain: spec.domain, label: spec.label, status: 'UNKNOWN', at: null, source: null,
+        reason: spec.staticReason ?? `no ${spec.domain} clock is served on this read` }
+    }
     const clock = book.clocks.find(c => c.role === spec.role) ?? null
     if (clock === null) {
       return { domain: spec.domain, label: spec.label, status: 'UNKNOWN', at: null, source: null,
@@ -191,14 +205,17 @@ export function snapshotClocks(book: HoldingsBook): SnapshotClock[] {
 
 /**
  * "Data as of <instant> (<clock> clock)", or "Unknown (<reason>)". The instant is the book's served as-of; the
- * clock that dates it is the one `asOfClock` names — an as-of that no declared clock dates is labelled so.
+ * clock that dates it is the one `asOfClock` names, read from the book's OWN clocks — not from the four display
+ * domains, because a book may be dated by a role the page does not display (VALUATION) and that instant is still
+ * a served fact. An as-of that no declared clock dates is labelled so, with the reason.
  */
-export function dataAsOfText(book: HoldingsBook, clocks: SnapshotClock[]): string {
+export function dataAsOfText(book: HoldingsBook): string {
   if (!book.asOf) return 'Unknown (the book served no as-of instant)'
-  const spec = DOMAIN_SPECS.find(s => s.role === book.asOfClock)
-  const clock = spec ? clocks.find(c => c.domain === spec.domain) : undefined
-  if (clock !== undefined && clock.status === 'KNOWN') return `${book.asOf} (${book.asOfClock} clock)`
-  return `Unknown (${clock?.reason ?? `the ${book.asOfClock} clock is not one this page dates`})`
+  const clock = book.clocks.find(c => c.role === book.asOfClock) ?? null
+  if (clock !== null && clock.at !== null) return `${book.asOf} (${book.asOfClock} clock)`
+  return `Unknown (${clock === null
+    ? `no ${book.asOfClock} clock declared on this read`
+    : `${book.asOfClock} clock declared without an instant`})`
 }
 
 /**
@@ -213,7 +230,7 @@ export function snapshotFor(book: HoldingsBook, receipt: LastSuccessReceipt | nu
   const current = !notCurrent(book.freshness)
   const session = book.session.status === 'KNOWN' ? (book.session.phase ?? 'Session known') : 'Session unknown'
   const clocks = snapshotClocks(book)
-  const dataAsOf = dataAsOfText(book, clocks)
+  const dataAsOf = dataAsOfText(book)
   const overall = current && clocks.every(c => c.status === 'KNOWN') ? 'COMPLETE' : 'PARTIAL'
   const base: AnalyticsSnapshot = {
     id: book.asOf,

@@ -12,7 +12,7 @@
 
 import type { HoldingsBook, HoldingsRow } from './contract'
 import { cellCarriesValue, peCellText } from './cells'
-import { FIXTURE_BOOK, FIXTURE_BOOK_EMPTY, FIXTURE_BOOK_LAST_KNOWN_GOOD, FIXTURE_BOOK_STALE } from './fixtures'
+import { FIXTURE_BOOK, FIXTURE_BOOK_EMPTY, FIXTURE_BOOK_LAST_KNOWN_GOOD, FIXTURE_BOOK_LEGACY_PUBLISHED, FIXTURE_BOOK_STALE, FIXTURE_BOOK_VALUATION_CLOCK } from './fixtures'
 
 const TOL = 0.02
 
@@ -284,6 +284,14 @@ export function checkAllFixtures(): string[] {
   for (const bad of checkBook(FIXTURE_BOOK_EMPTY)) out.push(`empty: ${bad}`)
   for (const bad of checkBook(FIXTURE_BOOK_STALE)) out.push(`stale: ${bad}`)
   for (const bad of checkBook(FIXTURE_BOOK_LAST_KNOWN_GOOD)) out.push(`last-known-good: ${bad}`)
+  // R1 / R3(b) fixtures (review 2026-11-15T1704Z): both are the same book with one served fact changed, so the
+  // same invariants must hold — and each must actually carry the fact its test name claims, or the test is vacuous.
+  for (const bad of checkBook(FIXTURE_BOOK_VALUATION_CLOCK)) out.push(`valuation-clock: ${bad}`)
+  for (const bad of checkBook(FIXTURE_BOOK_LEGACY_PUBLISHED)) out.push(`legacy-published: ${bad}`)
+  if (!FIXTURE_BOOK_VALUATION_CLOCK.clocks.some(c => c.role === 'VALUATION'))
+    out.push('the R1 fixture serves no VALUATION clock — the basis-UNKNOWN test would be vacuous')
+  if (!FIXTURE_BOOK_LEGACY_PUBLISHED.rows.some(r => r.marketValue === 0 && r.gainLoss !== null))
+    out.push('the R3(b) fixture carries no zero-value row with a published gain/loss — the legacy test would be vacuous')
   if (FIXTURE_BOOK_EMPTY.rows.length !== 0) out.push('empty fixture has rows')
   if (!FIXTURE_BOOK_STALE.freshness.stale) out.push('stale fixture is not stale')
 

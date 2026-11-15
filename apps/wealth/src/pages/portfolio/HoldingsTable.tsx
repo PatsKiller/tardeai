@@ -386,9 +386,11 @@ export function freshnessLine(ageSeconds: number | null, staleAfterSeconds: numb
   const aged = ageSeconds === null ? 'age not served' : `${age(ageSeconds)} old`
   const limit = staleAfterSeconds === null ? 'limit not served' : age(staleAfterSeconds)
   if (!stale) return `${aged} · stale after ${limit}`
+  // R2 (review 2026-11-15T1704Z, check 4): a response's cache age is not a validated last-success receipt, so the
+  // line says "last available snapshot" — the receipt-gated "Last known good <time>" exists only in the panel.
   if (staleAfterSeconds === null)
-    return `Last known good — ${aged}; the response served no stale limit (limit not served). These values are not current.`
-  return `Last known good — ${aged}, past the ${limit} limit. These values are not current.`
+    return `Last available snapshot — ${aged}; the response served no stale limit (limit not served). These values are not current.`
+  return `Last available snapshot — ${aged}, past the ${limit} limit. These values are not current.`
 }
 
 // ---- CSV export ----------------------------------------------------------------------------------------------

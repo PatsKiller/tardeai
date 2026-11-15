@@ -138,7 +138,9 @@ export function servedFreshnessLine(f: ServedFreshness): string {
   const limit = f.limitSeconds === null ? 'limit not served' : age(f.limitSeconds)
   if (f.status === 'UNKNOWN') return `${clock} clock · freshness cannot be computed${f.gap === null ? '' : ` (${f.gap})`}`
   if (f.status === 'FRESH') return `${clock} clock ${aged} · stale after ${limit}`
-  return `Last known good — ${clock} clock ${aged}, past the ${limit} limit. These values are not current.`
+  // R2 (review 2026-11-15T1704Z, check 4): a producer verdict is not a validated last-success receipt. The page
+  // reserves "Last known good <time>" for a stored receipt and says "Last available snapshot" everywhere else.
+  return `Last available snapshot — ${clock} clock ${aged}, past the ${limit} limit. These values are not current.`
 }
 
 /**
@@ -151,25 +153,31 @@ export function notCurrent(f: HoldingsFreshness): boolean {
   return f.served !== null ? f.served.status !== 'FRESH' : f.stale
 }
 
-/** The one sentence the last-known-good alert prints, for whichever verdict the book carries. */
+/**
+ * The one sentence the not-current alert prints, for whichever verdict the book carries.
+ *
+ * R2 (review 2026-11-15T1704Z, check 4): every branch here used to assert "last-known-good" while no validated
+ * last-success receipt exists on the wire — a page-read age, a cache age and a source-clock verdict are none of
+ * them a stored receipt. The vocabulary is now the same as the panel's: "the last available snapshot".
+ */
 export function lastKnownSentence(f: HoldingsFreshness): string {
   const s = f.served
   if (s !== null && s.status === 'FRESH') {
     // The producer's clocks are current; it is this READ that could not be proven, and the notice says why.
-    return 'This is last-known-good data; the read that produced it is not a current one.'
+    return 'This is the last available snapshot; the read that produced it is not a current one.'
   }
   if (s === null) {
     // No producer verdict: the numbers are the RESPONSE's cache facts, so whatever is printed says cache age.
     const aged = f.ageSeconds === null ? 'of unknown age' : `${age(f.ageSeconds)} old`
-    return `This is last-known-good data, ${aged} in the cache, past the ${f.staleAfterSeconds === null ? 'stale limit — limit not served.' : `${age(f.staleAfterSeconds)} limit.`}`
+    return `This is the last available snapshot, ${aged} in the cache, past the ${f.staleAfterSeconds === null ? 'stale limit — limit not served.' : `${age(f.staleAfterSeconds)} limit.`}`
   }
   if (s.status === 'UNKNOWN') {
     // The producer published no verdict and said why. The session strip and the Read status notice already print
     // that reason; an alert box that replaced it with a generic sentence was the one place the page withheld it.
-    return 'This is last-known-good data; the producer could not compute a freshness verdict'
+    return 'This is the last available snapshot; the producer could not compute a freshness verdict'
       + `${s.gap === null ? ' for it.' : ` (${s.gap}).`}`
   }
   const clock = s.clockLabel ?? s.clock ?? 'source'
   const aged = s.ageSeconds === null ? 'of unknown age' : `${age(s.ageSeconds)} old`
-  return `This is last-known-good data; the ${clock} clock is ${aged}, past the ${s.limitSeconds === null ? 'stale limit — limit not served.' : `${age(s.limitSeconds)} limit.`}`
+  return `This is the last available snapshot; the ${clock} clock is ${aged}, past the ${s.limitSeconds === null ? 'stale limit — limit not served.' : `${age(s.limitSeconds)} limit.`}`
 }

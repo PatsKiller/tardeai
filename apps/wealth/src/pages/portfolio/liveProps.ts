@@ -67,7 +67,9 @@ export function holdingsProps(env: Envelope<unknown> | null, now: number): Holdi
     if (st.lastGood !== null) {
       const lg = adaptHoldings(st.lastGood)
       if (lg.book !== null) {
-        const why = `This is the last good read (${ageText(st.lastGoodAgeSeconds)}); the current read failed: ${st.reason}.`
+        // R2 (review 2026-11-15T1704Z, check 4): a body this browser cached is not a validated last-success
+        // receipt. Say "last available read", never "last good" — §K reserves that for a receipt.
+        const why = `This is the last available read (${ageText(st.lastGoodAgeSeconds)}); the current read failed: ${st.reason}.`
         return none({ book: asLastKnown(lg.book, st.lastGoodAgeSeconds, why), notice: why })
       }
     }

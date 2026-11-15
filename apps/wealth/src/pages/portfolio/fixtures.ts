@@ -65,7 +65,9 @@ const cashValuation = (key: string): ValuationAssessment => unassessed(key, 'CAS
 export function staleTrailingPe(key: string): ValuationAssessment {
   return {
     contract: VALUATION_CONTRACT_VERSION,
-    methodology_id: 'fixture:last-known-good@1',
+    // Renamed from 'fixture:last-known-good@1' (review R2, page-wide): this id can render in the evidence
+    // table, and §K reserves "last-good" for a validated receipt. A synthetic id is not one.
+    methodology_id: 'fixture:stale-clock@1',
     account_security_key: key,
     instrument_type: 'EQUITY',
     status: 'UNASSESSED',
@@ -383,7 +385,7 @@ export const FIXTURE_BOOK_STALE: HoldingsBook = {
   freshness: { served: SERVED_STALE, ageSeconds: 314400, staleAfterSeconds: 259200, stale: true, blockPresent: true, withdrawn: false },
 }
 
-/** One row's trailing P/E is UNASSESSED but still carries its value: the last-known-good case (F1). */
+/** One row's trailing P/E is UNASSESSED but still carries its value: the stale-clock case (F1). */
 export const FIXTURE_BOOK_LAST_KNOWN_GOOD: HoldingsBook = {
   ...FIXTURE_BOOK,
   rows: FIXTURE_BOOK.rows.map(r =>
@@ -392,3 +394,77 @@ export const FIXTURE_BOOK_LAST_KNOWN_GOOD: HoldingsBook = {
   coverageNote:
     'Nine synthetic rows, of which one carries a stale trailing P/E that keeps its last known value. One dead-CUSIP zero-value row is omitted by the read-side filter.',
 }
+
+/**
+ * Review R1 fixture: the same book, and this read DOES declare a VALUATION clock (`generated_at`). The basis
+ * domain has no clock of its own — basis coverage is per-row — so the page must still render basis UNKNOWN with
+ * its own reason. A page that borrows VALUATION here prints a substituted clock under the basis's name.
+ */
+export const FIXTURE_BOOK_VALUATION_CLOCK: HoldingsBook = {
+  ...FIXTURE_BOOK,
+  clocks: [
+    ...FIXTURE_BOOK.clocks,
+    { role: 'VALUATION', at: '2026-11-15T03:30:30.069691+00:00', source: 'generated_at', isBuildClock: false },
+  ],
+}
+
+/**
+ * Review R3(b) fixture: a PUBLISHED row at zero market value. The live book's legacy-classified row is
+ * published, so a rule that drops zero-value rows instead of rows with no published gain/loss would silently
+ * remove it — and its contribution, so the subtotal moves. The row is synthetic, like every other row here.
+ *
+ * The contribution has to be non-zero and the market value zero, so it is a WRITTEN-DOWN lot: no served price
+ * (delisted), a $500 cost basis and a PUBLISHED loss of −$500 (gainLoss = market value − cost basis), which is
+ * what the producer's own field carries. A zero-value row with a zero-gain/loss contribution would make the
+ * "it stays in the subtotal" guard vacuous, which is exactly the gap review R3(b) names.
+ */
+export const FIXTURE_BOOK_LEGACY_PUBLISHED: HoldingsBook = {
+  ...FIXTURE_BOOK,
+  rows: [
+    ...FIXTURE_BOOK.rows,
+    {
+      ...FIXTURE_BOOK.rows[0],
+      accountKey: 'SYN_ROLL', accountLabel: 'Synthetic rollover', symbol: 'QZLGC',
+      name: 'Qzeta Legacy Delisted (zero value, published loss)',
+      shares: 40, price: null, priceAsOf: null, avgCost: 12.5,
+      marketValue: 0.0, gainLoss: -500.0, gainLossPct: -100.0,
+      dayChange: null, dayChangePct: null, marketCapB: null, yieldPct: null,
+      portfolioPct: 0, belowFloor: true, worthless: true, fundamentals: null, fib: null,
+      valuation: equityValuation('SYN_ROLL:QZLGC'),
+      protection: protection({ state: 'UNKNOWN', asOf: null,
+        reason: 'no broker stop read for a delisted zero-value identifier',
+        nextStep: 'Record the write-off decision; there is nothing left to protect.' }),
+      ...profiled('EQUITY'),
+    },
+  ],
+  // The extra row is rendered and counted, priced at zero, under the $100 floor and omitted from no population.
+  // The two produced counts and the listed-not-counted block move with it; nothing else does (a zero market
+  // value changes no account total, no weight and no account-value measure).
+  counts: {
+    allRows: 10,
+    nonCash: 9,
+    cash: 1,
+    nonCashOverFloor: 6,
+    heldUnderFloor: 2,
+    primaryScopeLabel: 'non-cash over the notional floor',
+  },
+  population: {
+    priceableRows: 11,
+    renderedRows: 10,
+    excluded: [
+      {
+        kind: 'DEAD_CUSIP_ZERO_VALUE',
+        label: 'dead CUSIP, zero value',
+        count: 1,
+        rule: 'read-side filter (LQ-20261107-1417): a dead-CUSIP holding with zero value is dropped before the counters',
+      },
+    ],
+    listedNotCounted: [
+      { reason: 'market value under $100: listed, not counted', count: 2, scope: 'holdings.held_under_100' },
+    ],
+    floorUsd: 100,
+  },
+  coverageNote:
+    'The same nine synthetic rows plus one legacy-classified row at zero market value that IS published (a written-down lot, −$500): it must stay in the subtotal.',
+}
+

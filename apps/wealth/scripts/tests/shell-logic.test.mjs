@@ -12,7 +12,8 @@ import { fileURLToPath } from 'node:url'
 import { createClient, HeavyReaderFromShell } from '../../src/api/client.ts'
 import { specFor, READERS } from '../../src/api/readers.ts'
 import { deriveRenderState, statusCue } from '../../src/components/renderState.ts'
-import { price, money, moneyTone, signedMoney, toneClass, unavailable } from '../../src/pages/portfolio/format.ts'
+import { price, money, moneyTone, signedMoney, toneClass, unavailable, lastKnownSentence, servedFreshnessLine } from '../../src/pages/portfolio/format.ts'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { barStatus, isBookRoute } from '../../src/pages/portfolio/bookView.ts'
 import { accountDisplayLabel } from '../../src/pages/portfolio/accountLabel.ts'
 import { ledgerLine } from '../../src/pages/portfolio/clockLedger.ts'
@@ -470,6 +471,10 @@ function compileGateModules() {
   fs.mkdirSync(GATE_CACHE, { recursive: true })
   const out = fs.mkdtempSync(path.join(GATE_CACHE, 'run-'))
   const tsc = path.join(APP, 'node_modules/typescript/bin/tsc')
+  // The panel imports the approved package's stylesheet; the gate has no bundler, so it declares the module
+  // shape and stubs the require extension below. Nothing else about the panel changes.
+  const cssDecl = path.join(out, 'css-modules.d.ts')
+  fs.writeFileSync(cssDecl, "declare module '*.css'\n")
   const args = [
     '--target', 'ES2020', '--module', 'commonjs', '--moduleResolution', 'node', '--strict', '--skipLibCheck',
     '--allowImportingTsExtensions', '--rewriteRelativeImportExtensions', '--jsx', 'react-jsx',
@@ -479,6 +484,8 @@ function compileGateModules() {
     path.join(APP, 'src/pages/portfolio/adapter.ts'),
     path.join(APP, 'src/pages/portfolio/analyticsAdapter.ts'),
     path.join(APP, 'src/pages/portfolio/presets.ts'),
+    path.join(APP, 'src/pages/portfolio/AnalyticsPanel.tsx'),
+    cssDecl,
   ]
   const r = spawnSync(process.execPath, [tsc, ...args], { encoding: 'utf8' })
   if (r.status !== 0) {
@@ -486,7 +493,15 @@ function compileGateModules() {
   }
   fs.writeFileSync(path.join(out, 'package.json'), '{"type":"commonjs"}')
   process.once('exit', () => fs.rmSync(out, { recursive: true, force: true }))
+  // The panel's stylesheet is an asset the gate does not bundle: the compiled require needs the file to exist,
+  // and an empty file is enough because nothing in this test reads it.
+  const cssOut = path.join(out, 'pages/portfolio/analytics')
+  fs.mkdirSync(cssOut, { recursive: true })
+  fs.writeFileSync(path.join(cssOut, 'analytics.css'), '')
   const load = createRequire(import.meta.url)
+  // The stylesheet is a text asset: requiring it must not execute anything, and the panel's render is what is
+  // under test. This stub is a loader fact, not a code path the page has.
+  load.extensions['.css'] = () => {}
   gateModules = {
     fixtureInvariants: load(path.join(out, 'pages/portfolio/fixtureInvariants.js')),
     fixtures: load(path.join(out, 'pages/portfolio/fixtures.js')),
@@ -494,6 +509,7 @@ function compileGateModules() {
     adapter: load(path.join(out, 'pages/portfolio/adapter.js')),
     analyticsAdapter: load(path.join(out, 'pages/portfolio/analyticsAdapter.js')),
     presets: load(path.join(out, 'pages/portfolio/presets.js')),
+    panel: load(path.join(out, 'pages/portfolio/AnalyticsPanel.js')),
   }
   return gateModules
 }
@@ -516,7 +532,7 @@ test('F2: an unserved stale limit renders as "limit not served", never 0 s', () 
 test('F2: a served 0.5 h limit is still 1800 s and keeps its wording', () => {
   const { freshnessLine } = compileGateModules().holdingsTable
   assert.equal(freshnessLine(41, 1800, false), '41 s old · stale after 30 min')
-  assert.equal(freshnessLine(41, 1800, true), 'Last known good — 41 s old, past the 30 min limit. These values are not current.')
+  assert.equal(freshnessLine(41, 1800, true), 'Last available snapshot — 41 s old, past the 30 min limit. These values are not current.')
 })
 
 // ---- P: a served price is not a dollar amount (lead-approved 2026-11-15T04:35Z, option 1) -----
@@ -915,7 +931,7 @@ test('§K: each domain clock is reported on its own; a stop-read gap is never th
   assert.equal(by.quote.at, '2026-11-14T21:00:00Z')
   assert.equal(by.positions.status, 'KNOWN')
   assert.equal(by.basis.status, 'UNKNOWN')
-  assert.match(by.basis.reason, /VALUATION clock declared on this read/)
+  assert.match(by.basis.reason, /no basis clock is served on this read/)
   assert.equal(by.protection.status, 'UNKNOWN')
   assert.match(by.protection.reason, /STOPS clock declared on this read/)
   assert.notEqual(by.basis.reason, by.protection.reason, 'two gaps, two named reasons')
@@ -929,6 +945,191 @@ test('§K: each domain clock is reported on its own; a stop-read gap is never th
   }
   assert.equal(snapshotFor(undated).dataAsOf, 'Unknown (QUOTE clock declared without an instant)')
 })
+
+// ---- R1/R2/R3: the review 2026-11-15T1704Z delta on aa8be33e8 -------------------------------------------
+// R1: basis must not borrow the VALUATION document clock. R2: no page copy may assert last-good without a
+// validated receipt. R3: the route's two render requirements get guards that fail when the render is removed.
+
+test('R1: a served VALUATION clock is never borrowed for basis — the basis line stays UNKNOWN with its own reason', () => {
+  const { fixtures, analyticsAdapter } = compileGateModules()
+  const { snapshotFor } = analyticsAdapter
+  const withValuation = fixtures.FIXTURE_BOOK_VALUATION_CLOCK
+  const snap = snapshotFor(withValuation)
+  const by = Object.fromEntries(snap.clocks.map(c => [c.domain, c]))
+  assert.equal(by.basis.label, 'Basis', 'the label names the domain, not a substituted role')
+  assert.equal(by.basis.status, 'UNKNOWN', 'basis has no clock on the wire, so no served clock can make it KNOWN')
+  assert.match(by.basis.reason, /no basis clock is served on this read/)
+  assert.doesNotMatch(by.basis.reason, /VALUATION|generated_at/, 'the basis line never credits the valuation document clock')
+  // The VALUATION instant is still a served fact: when the producer dates the book by it, "Data as of" uses it.
+  const datedByValuation = { ...withValuation, asOf: '2026-11-15T03:30:30.069691+00:00', asOfClock: 'VALUATION' }
+  assert.equal(snapshotFor(datedByValuation).dataAsOf, '2026-11-15T03:30:30.069691+00:00 (VALUATION clock)')
+  // A role the read does not declare is named as absent, never guessed.
+  assert.match(snapshotFor({ ...fixtures.FIXTURE_BOOK, asOfClock: 'STOPS' }).dataAsOf, /^Unknown \(no STOPS clock declared on this read\)$/)
+})
+
+/** The phrase §K reserves for a validated receipt. It must not appear in copy without one. */
+const LAST_GOOD = /last[- ]known[- ]good|last good/i
+
+test('R2: every pure copy producer the page prints refuses "last-good" without a receipt', () => {
+  const { fixtures, holdingsTable } = compileGateModules()
+  // The figure/table copy (HoldingsTable.freshnessLine), both stale branches.
+  assert.doesNotMatch(holdingsTable.freshnessLine(41, 1800, true), LAST_GOOD)
+  assert.doesNotMatch(holdingsTable.freshnessLine(41, null, true), LAST_GOOD)
+  assert.match(holdingsTable.freshnessLine(41, 1800, true), /^Last available snapshot — /)
+  // The producer-verdict line (format.servedFreshnessLine), stale branch.
+  const staleVerdict = { status: 'STALE', stale: true, clock: 'positions', clockLabel: 'POSITIONS',
+    asOf: null, ageSeconds: 5400, limitSeconds: 1800, gap: null }
+  assert.doesNotMatch(servedFreshnessLine(staleVerdict), LAST_GOOD)
+  assert.match(servedFreshnessLine(staleVerdict), /^Last available snapshot — /)
+  // The alert sentence (format.lastKnownSentence): every branch, not just the one a fixture happens to reach.
+  const verdicts = [
+    { served: { ...staleVerdict, status: 'FRESH', stale: false }, ageSeconds: null, staleAfterSeconds: null, stale: false, withdrawn: false },
+    { served: null, ageSeconds: 314400, staleAfterSeconds: 259200, stale: true, blockPresent: true, withdrawn: false },
+    { served: { ...staleVerdict, status: 'UNKNOWN', gap: 'no source clock' }, ageSeconds: null, staleAfterSeconds: null, stale: true, withdrawn: false },
+    { served: staleVerdict, ageSeconds: null, staleAfterSeconds: null, stale: true, withdrawn: false },
+  ]
+  for (const f of verdicts) {
+    const sentence = lastKnownSentence(f)
+    assert.doesNotMatch(sentence, LAST_GOOD, `the alert asserts a receipt it does not have: "${sentence}"`)
+    assert.match(sentence, /last available snapshot/i)
+  }
+})
+
+/**
+ * Every string literal in the page's modules, comments skipped. A small scanner rather than a regex over the
+ * whole file: an apostrophe in a comment must not open a "string" that swallows half the module.
+ */
+function stringLiterals(src) {
+  const out = []
+  let i = 0
+  while (i < src.length) {
+    const ch = src[i]
+    if (ch === '/' && src[i + 1] === '/') {
+      while (i < src.length && src[i] !== '\n') i++
+      continue
+    }
+    if (ch === '/' && src[i + 1] === '*') {
+      i += 2
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++
+      i += 2
+      continue
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      const quote = ch
+      let j = i + 1
+      let buf = ''
+      while (j < src.length) {
+        if (src[j] === '\\') { buf += src[j] + (src[j + 1] ?? ''); j += 2; continue }
+        if (src[j] === quote) break
+        buf += src[j]
+        j++
+      }
+      out.push({ text: buf, quoted: src.slice(i, j + 1) })
+      i = j + 1
+      continue
+    }
+    i++
+  }
+  return out
+}
+
+test('R2: page-wide — no string literal in the page modules asserts last-good except the receipt-gated line', () => {
+  const dir = path.join(APP, 'src/pages/portfolio')
+  const files = fs.readdirSync(dir).filter(f => /\.(ts|tsx)$/.test(f))
+  assert.ok(files.length > 10, 'the scan found no page modules — it would be vacuous')
+  // Two modules hold strings that never reach the page: the node-only harnesses `adapterTests.ts` (assertion
+  // labels, run by this suite) and `fixtureInvariants.ts` (violation messages, compiled by it). Every other
+  // module can print, so it is scanned — and the exclusion is proved rather than asserted: if any page module
+  // ever imports a harness, the scan fails rather than silently skipping its copy.
+  const NODE_ONLY = new Set(['adapterTests.ts', 'fixtureInvariants.ts'])
+  const bad = []
+  let receiptGated = 0
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8')
+    if (NODE_ONLY.has(f)) {
+      assert.match(src, /no React|imports no React|node:/, `${f} is excluded from the copy scan; prove it is node-only`)
+      continue
+    }
+    for (const other of NODE_ONLY) {
+      if (new RegExp(`from\\s+['"]\\./${other.replace('.ts', '')}['"]`).test(src)) {
+        assert.fail(`${f} imports ${other}; its strings can reach the page, so it is not safe to skip the scan`)
+      }
+    }
+    for (const { text, quoted } of stringLiterals(src)) {
+      if (!LAST_GOOD.test(text)) continue
+      // The one permitted occurrence: the panel's last-good line is built from the receipt OBJECT it interpolates.
+      if (f === 'analyticsAdapter.ts' && /\$\{(snapshot\.)?receipt\.at\}/.test(quoted)) {
+        receiptGated++
+        continue
+      }
+      bad.push(`${f}: ${text.slice(0, 90)}`)
+    }
+  }
+  assert.deepEqual(bad, [], 'copy that asserts last-good without a validated receipt')
+  assert.ok(receiptGated >= 1, 'the receipt-gated copies are found, not silently skipped')
+})
+
+test('R2: the rendered panel says "freshness unverified" on a stale book and never dresses it as good', () => {
+  const { fixtures, analyticsAdapter, panel } = compileGateModules()
+  const rows = analyticsAdapter.normalizeBook(fixtures.FIXTURE_BOOK_STALE)
+  const view = derivePortfolioView(rows, { account: '', sector: '', query: '', currency: null },
+    analyticsAdapter.snapshotFor(fixtures.FIXTURE_BOOK_STALE))
+  const html = renderPanel(panel.AnalyticsPanel, view, rows, analyticsAdapter.accountOptions)
+  assert.match(html, /Last available snapshot · freshness unverified/)
+  assert.doesNotMatch(html, LAST_GOOD)
+  // N1: the warning is followed by a separator, not glued to the coverage count ("…valued Last available…").
+  assert.doesNotMatch(html, /valued</, 'the warning is glued to the coverage count with no separator')
+  // A fresh book has no warning line at all.
+  const freshRows = analyticsAdapter.normalizeBook(fixtures.FIXTURE_BOOK)
+  const freshView = derivePortfolioView(freshRows, { account: '', sector: '', query: '', currency: null },
+    analyticsAdapter.snapshotFor(fixtures.FIXTURE_BOOK))
+  assert.doesNotMatch(renderPanel(panel.AnalyticsPanel, freshView, freshRows, analyticsAdapter.accountOptions), /wm-pa-warning/)
+})
+
+/** Render the panel with the props HoldingsPage passes, so the guard exercises the real markup. */
+function renderPanel(Panel, view, rows, accountOptions) {
+  const noop = () => {}
+  return renderToStaticMarkup(Panel({
+    view, accounts: accountOptions(rows), scope: 'ALL', sector: '', query: '', currency: null, announcement: '',
+    onAccount: noop, onSector: noop, onSearch: noop, onCurrency: noop, onReset: noop, onOpenHolding: noop,
+  }))
+}
+
+test('R3(a): the excluded rows are NAMED in the rendered panel — removing that render fails here', () => {
+  const { fixtures, analyticsAdapter, panel } = compileGateModules()
+  const rows = analyticsAdapter.normalizeBook(fixtures.FIXTURE_BOOK)
+  const view = derivePortfolioView(rows, { account: '', sector: '', query: '', currency: null },
+    analyticsAdapter.snapshotFor(fixtures.FIXTURE_BOOK))
+  const copy = analyticsAdapter.gainLossMeasureCopy(view)
+  assert.ok(copy.excluded.length >= 2, 'the fixture must exclude rows or this render guard is vacuous')
+  const html = renderPanel(panel.AnalyticsPanel, view, rows, analyticsAdapter.accountOptions)
+  assert.match(html, /Not included:/)
+  for (const x of copy.excluded) {
+    assert.ok(html.includes(x.label), `${x.label} is not named in the rendered measure`)
+    assert.ok(html.includes(x.reason), `${x.label}'s own reason is not rendered`)
+  }
+})
+
+test('R3(b): a published legacy row at zero market value stays in the subtotal', () => {
+  const { fixtures, analyticsAdapter } = compileGateModules()
+  const book = fixtures.FIXTURE_BOOK_LEGACY_PUBLISHED
+  const legacy = book.rows.find(r => r.symbol === 'QZLGC')
+  assert.equal(legacy.marketValue, 0)
+  assert.equal(legacy.gainLoss, -500)
+  const selection = { account: '', sector: '', query: '', currency: null }
+  const snapshot = analyticsAdapter.snapshotFor(book)
+  const rows = analyticsAdapter.normalizeBook(book)
+  const view = derivePortfolioView(rows, selection, snapshot)
+  const copy = analyticsAdapter.gainLossMeasureCopy(view)
+  assert.equal(copy.excluded.some(x => x.rowId === 'SYN_ROLL:QZLGC'), false, 'the legacy row is published, so it is never excluded')
+  // Removing the row changes the subtotal: it is inside the measure, not merely listed in the table. This row is
+  // the only zero-market-value row with a published gain/loss, so a rule that drops zero-value rows (instead of
+  // rows with no published gain/loss) changes the sum — and is killed here rather than incidentally.
+  const without = derivePortfolioView(rows.filter(r => r.rowId !== 'SYN_ROLL:QZLGC'), selection, snapshot)
+  assert.notEqual(without.pnl, view.pnl, 'the zero-value published row contributes to the subtotal')
+  assert.equal(view.pnl - without.pnl, -500)
+})
+
 
 test('an unkeepable row identity is rejected by the selector, never charted', () => {
   const { fixtures, analyticsAdapter } = compileGateModules()
