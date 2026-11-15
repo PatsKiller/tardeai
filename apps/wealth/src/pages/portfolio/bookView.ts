@@ -1,0 +1,43 @@
+// Where the book may be shown, and what the shell is allowed to say about it.
+//
+// One read, one snapshot (snapshot.tsx): the Holdings page publishes what it read and the shell's top bar renders
+// it. The snapshot is only meaningful ON the route whose page performs that read. A dated number on any other route
+// is still a claim about the current page, and the page that shows it never read the book — so the bar is
+// route-aware, not only state-aware.
+//
+// Measured failure this closes (cc-deepseek-3 verdict 2026-11-15T04:48Z §8): load Portfolio › Holdings, click Home,
+// and the bar kept both bound values and the clock, because nothing cleared the provider and nothing looked at the
+// route. The intended "not read on this page" state was reachable only on a cold load. Two independent guards now
+// stand: `usePublishBook` withdraws the snapshot when the page unmounts, and `barStatus` refuses to show a snapshot
+// published on another route. Either alone closes it; both are cheap, and the bar then does not depend on unmount
+// order.
+//
+// Pure: no React, no router import — the tests drive it with a pathname string.
+
+import type { HoldingsProps } from './liveProps'
+
+export const HOLDINGS_ROUTE = '/portfolio/holdings'
+
+/** True only for the route whose page performs the heavy read. A trailing slash is tolerated; nothing else is. */
+export function isBookRoute(pathname: string): boolean {
+  const p = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
+  return p === HOLDINGS_ROUTE
+}
+
+export type BarStatus =
+  | { kind: 'not-read' }
+  | { kind: 'loading' }
+  | { kind: 'error'; reason: string }
+  | { kind: 'book' }
+
+/**
+ * What the top bar may say for this route and this snapshot. A snapshot that exists but was published by another
+ * route is NOT read here: the reason is structural (this page never originated the heavy read), not an age, and it
+ * is never rendered as a number with a clock from a different page.
+ */
+export function barStatus(pathname: string, props: HoldingsProps | null): BarStatus {
+  if (!isBookRoute(pathname)) return { kind: 'not-read' }
+  if (props === null) return { kind: 'not-read' }
+  if (props.error !== null) return { kind: 'error', reason: props.error }
+  return props.book === null ? { kind: 'loading' } : { kind: 'book' }
+}

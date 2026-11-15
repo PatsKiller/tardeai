@@ -3,7 +3,9 @@
 // One read serves both the page and this bar (snapshot.tsx): Portfolio › Holdings publishes what it read, and this
 // bar renders the SAME book under the SAME scope. The bar never fetches — `/api/v2/portfolio/holdings` is a heavy
 // reader the shell may not originate (`HeavyReaderFromShell`) — so on any other route it says the book is not read
-// here, rather than showing a stale number or an UNKNOWN with no reason.
+// here, rather than showing a stale number or an UNKNOWN with no reason. That is enforced by route as well as by
+// snapshot state (`bookView.barStatus`): a snapshot left over from another route is not shown, even before the
+// provider withdraws it on unmount.
 //
 // Each value states its binding, because the binding is what a reviewer can check:
 //   * BOUND — the served field and its clock are named under the value;
@@ -18,10 +20,13 @@
 //   * no sign colouring: no verified colour policy exists in code or config for a signed dollar move, and colour
 //     is never the only carrier (cue contract). Text only.
 import type { BookMeasure, HoldingsBook } from './contract'
+import { barStatus } from './bookView'
+import type { BarStatus } from './bookView'
 import { money } from './format'
 import type { Scope } from './scope'
 import { scopeOptions, scopedMeasure } from './scope'
 import { useBookSnapshot } from './snapshot'
+import { useLocation } from 'react-router-dom'
 
 interface ValueSpec {
   id: BookMeasure['id']
@@ -39,13 +44,7 @@ const NOT_READ = 'The holdings reader is heavy; the shell may not originate it. 
 const PER_ACCOUNT =
   'Book-level measure: this read serves no per-account split, and the page never sums rows to stand in for one.'
 
-type Status =
-  | { kind: 'not-read' }
-  | { kind: 'loading' }
-  | { kind: 'error'; reason: string }
-  | { kind: 'book' }
-
-function Value({ spec, book, scope, status }: { spec: ValueSpec; book: HoldingsBook | null; scope: Scope; status: Status }) {
+function Value({ spec, book, scope, status }: { spec: ValueSpec; book: HoldingsBook | null; scope: Scope; status: BarStatus }) {
   if (status.kind !== 'book' || book === null) {
     const detail = status.kind === 'not-read' ? 'not read on this page' : status.kind === 'loading' ? 'reading the book' : 'the read failed'
     const title = status.kind === 'not-read' ? NOT_READ : status.kind === 'loading' ? 'The Holdings page is reading the book; this bar shows what it publishes.' : status.kind === 'error' ? status.reason : ''
@@ -83,9 +82,10 @@ function Value({ spec, book, scope, status }: { spec: ValueSpec; book: HoldingsB
 
 export function PortfolioTopBar() {
   const { props, scope, setScope } = useBookSnapshot()
-  const book = props?.book ?? null
-  const status: Status =
-    props === null ? { kind: 'not-read' } : props.error !== null ? { kind: 'error', reason: props.error } : book === null ? { kind: 'loading' } : { kind: 'book' }
+  const { pathname } = useLocation()
+  // Route-aware as well as state-aware: a snapshot is only shown on the route whose page read it (bookView.ts).
+  const status = barStatus(pathname, props)
+  const book = status.kind === 'book' ? (props?.book ?? null) : null
   return (
     <div className="scope">
       <button className="mobile-menu quiet" aria-label="Open navigation" onClick={() => document.body.classList.toggle('menu-open')}>

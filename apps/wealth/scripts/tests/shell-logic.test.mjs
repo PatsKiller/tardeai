@@ -13,6 +13,7 @@ import { createClient, HeavyReaderFromShell } from '../../src/api/client.ts'
 import { specFor, READERS } from '../../src/api/readers.ts'
 import { deriveRenderState, statusCue } from '../../src/components/renderState.ts'
 import { price, money, unavailable } from '../../src/pages/portfolio/format.ts'
+import { barStatus, isBookRoute } from '../../src/pages/portfolio/bookView.ts'
 
 const NOW = Date.parse('2026-11-14T23:30:00Z')
 
@@ -532,4 +533,32 @@ test('P-3: money() is unchanged — a dollar amount is still expressed in cents'
   assert.equal(money(0.0003), '$0.00', 'money() is out of scope by decision, not by oversight')
   assert.equal(money(1255586.37), '$1,255,586.37')
   assert.equal(money(null), unavailable('not served'))
+})
+
+// ---- N: the book snapshot does not outlive its route (cc-deepseek-3 verdict 2026-11-15T04:48Z §8) --------
+// The measured failure: load Portfolio › Holdings, click Home client-side, and the bar kept both bound values
+// and the clock — the "not read on this page" state existed only on a cold load. `barStatus` is the route-aware
+// guard, and it answers from the PATHNAME, never from "a snapshot happens to exist". A cold-load check cannot
+// make this assertion; these tests do, because the failing input is exactly "published props + another route".
+
+const PUBLISHED = { book: { rows: [], measures: { measures: {} } }, loading: false, error: null, notice: null }
+
+test('N-1: a published book is shown only on the route whose page read it', () => {
+  assert.equal(isBookRoute('/portfolio/holdings'), true)
+  assert.equal(isBookRoute('/portfolio/holdings/'), true, 'a trailing slash names the same route')
+  assert.equal(isBookRoute('/home/today'), false)
+  assert.equal(isBookRoute('/portfolio'), false, 'the section root is not the reader route')
+  assert.deepEqual(barStatus('/portfolio/holdings', PUBLISHED), { kind: 'book' })
+})
+
+test('N-2: after a client-side navigation the bar says not read, even with a snapshot still in state', () => {
+  assert.deepEqual(barStatus('/home/today', PUBLISHED), { kind: 'not-read' })
+  assert.deepEqual(barStatus('/portfolio/protection', PUBLISHED), { kind: 'not-read' })
+  assert.deepEqual(barStatus('/portfolio/holdings', null), { kind: 'not-read' }, 'nothing published yet')
+})
+
+test('N-3: on the reader route the structural states still say what they say', () => {
+  const R = '/portfolio/holdings'
+  assert.deepEqual(barStatus(R, { book: null, loading: true, error: null, notice: null }), { kind: 'loading' })
+  assert.deepEqual(barStatus(R, { book: null, loading: false, error: 'read failed', notice: null }), { kind: 'error', reason: 'read failed' })
 })
