@@ -170,7 +170,8 @@ export function reviewModel(r: Row): ReviewQueue {
     }),
   }
 }
-export interface Market { tier: string; score: number | null; mode: string; asOf: string; built: string; contributors: { name: string; detail: string; points: number | null; asOf: string }[]; categories: { name: string; status: string; detail: string; asOf: string }[]; history: { asOf: string; tier: string; score: number | null }[] }
+export interface MarketReport { status: string; greyed: boolean; cause: string }
+export interface Market { tier: string; score: number | null; mode: string; asOf: string; built: string; contributors: { name: string; detail: string; points: number | null; asOf: string }[]; categories: { name: string; status: string; detail: string; asOf: string }[]; history: { asOf: string; tier: string; score: number | null }[]; reported?: MarketReport }
 export const SCENARIOS = ['IF WEAKNESS PERSISTS', 'IF CONDITIONS STABILIZE', 'IF LEADERSHIP RECOVERS'].map(title => ({ title, availability: 'Not available — methodology pending' }))
 export function marketModel(r: Row): Market {
   return {
@@ -180,14 +181,35 @@ export function marketModel(r: Row): Market {
     history: rows(r.history).map(h => ({ asOf: text(h.as_of), tier: text(h.tier), score: number(h.score) })),
   }
 }
+/** The producer's own verdict on the served copy; null unless it says the copy is not current. */
+export function staleReport(r: Row): MarketReport | null {
+  const p = record(r._product), ps = record(r.product_stale)
+  const status = (text(ps.status) || text(p.status)).toUpperCase(), greyed = ps.greyed === true || p.greyed === true
+  // A body that disagrees with its own product ("OK" while the row is marked stale) supports no last-known claim.
+  if (!greyed && (status === '' || status === 'OK')) return null
+  return { status: status || 'UNKNOWN', greyed, cause: text(ps.reason) || text(p.reason) }
+}
+/** The producer's own words for why the served copy is not current. Never a client TTL. */
+export function staleLabel(rep: { status: string; greyed: boolean }): string {
+  if (rep.greyed) return 'producer reports last-good past its hard expiry (greyed)'
+  return rep.status === 'STALE' ? 'producer reports stale (age past its declared bound)' : `producer reports ${rep.status.toLowerCase() || 'not current'}`
+}
 export function marketState(read: Read, now: number): RenderState<Market> {
   if (read?.data !== null && read?.data !== undefined) {
     const r = body(read.data), c = clock(r.as_of)
     // Freshness is the stored producer's verdict, evaluated at its own build time.
     // Its rounded age and previous-hour input cannot be replaced by an exact client one-hour gate.
     if (r.ok === false || r.error || r.state !== 'evaluated' || r.stale !== false || !c || record(r._product).status !== 'OK' || record(r._product).greyed === true) {
-      const detail = safeText(r.error || r.reason)
-      return { status: 'UNKNOWN', reason: `Market nowcast unavailable or source verdict unproven. An evaluated state, explicit nonstale producer verdict, OK product and zoned source time are required.${detail ? ' Source: ' + detail : ''}`, data: null, lastGood: null, lastGoodAgeSeconds: null, asOf: c, ageHours: c ? Math.max(0, (now - Date.parse(c)) / 3600000) : null, healthUnproven: null }
+      const detail = safeText(r.error || r.reason), rep = staleReport(r)
+      // The serving layer keeps a stale tier and marks it stale (risk display rule, operator 13 Nov 2026).
+      // Show that copy as dated last-known, never as current: data stays null, the cause is the producer's own
+      // reason, the source observation time is preserved, and no age bound or TTL is invented here.
+      const last = rep && text(r.tier) ? { ...marketModel(r), reported: rep } : null
+      const why = rep ? `${staleLabel(rep)}${rep.cause ? ` — ${rep.cause}` : ''}` : ''
+      const reason = last
+        ? `Not current: ${why}. The last stored assessment is shown with its own source time and is not current.`
+        : `Market nowcast unavailable or source verdict unproven. An evaluated state, explicit nonstale producer verdict, OK product and zoned source time are required.${detail ? ' Source: ' + detail : ''}`
+      return { status: 'UNKNOWN', reason, data: null, lastGood: last, lastGoodAgeSeconds: c ? Math.max(0, Math.round((now - Date.parse(c)) / 1000)) : null, asOf: c, ageHours: c ? Math.max(0, (now - Date.parse(c)) / 3600000) : null, healthUnproven: null }
     }
   }
   return state(read, marketModel, now, r => r.as_of)

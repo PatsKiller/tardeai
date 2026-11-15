@@ -111,3 +111,53 @@ test('R5/S5 rendered source labels distinguish deterministic context and CIO pro
  assert.match(page,/Desk context built from stored numbers/);assert.doesNotMatch(page,/CIO interpretation:|className="page-title"/)
  assert.match(page,/className="hero"/)
 })
+test('R-a served stale product renders as dated last-known, never as current', async () => {
+  const { marketState } = await import('../../src/pages/home/homeAdapter.ts')
+  // Exact serving-layer shape: product_route._mark_product_stale keeps the tier (operator 13 Nov 2026 rule).
+  const stale = { state: 'stale', stale: true, tier: 'RED', score: -18.5, mode: 'Risk-off',
+    as_of: '2026-11-15T16:00:00Z', generated_at: '2026-11-15T16:00:04Z',
+    product_stale: { status: 'STALE', greyed: false, age_s: 10800, as_of: '2026-11-15T16:00:00Z', reason: 'stale: age 10800s past stale_after 9000s' },
+    _product: { status: 'STALE', greyed: false, age_s: 10800, reason: 'stale: age 10800s past stale_after 9000s' } }
+  const s = marketState(envelope({ data: stale }), NOW)
+  assert.equal(s.status, 'UNKNOWN')
+  assert.equal(s.data, null)
+  assert.ok(s.lastGood, 'the served assessment is last-known, not hidden')
+  assert.equal(s.lastGood.tier, 'RED'); assert.equal(s.lastGood.score, -18.5); assert.equal(s.lastGood.mode, 'Risk-off')
+  assert.equal(s.lastGood.asOf, '2026-11-15T16:00:00Z')
+  assert.equal(s.lastGoodAgeSeconds, 10800)
+  assert.match(s.reason, /10800s past stale_after 9000s/)
+  assert.match(s.reason, /not current/i)
+  assert.equal(s.lastGood.reported.greyed, false)
+})
+test('R-a greyed last-good and a product_stale-less _product reason are carried and labelled', async () => {
+  const { marketState } = await import('../../src/pages/home/homeAdapter.ts')
+  const g = marketState(envelope({ data: { state: 'stale', stale: true, tier: 'AMBER', score: 4, mode: 'Neutral', as_of: '2026-11-15T15:00:00Z', _product: { status: 'UNKNOWN', greyed: true, reason: 'past hard expiry 14400s; last good' } } }), NOW)
+  assert.equal(g.status, 'UNKNOWN'); assert.equal(g.lastGood.tier, 'AMBER')
+  assert.match(g.reason, /greyed/); assert.match(g.reason, /past hard expiry 14400s/)
+})
+test('R-a a not-current body with no served tier or no producer verdict is not dressed up as last-known', async () => {
+  const { marketState } = await import('../../src/pages/home/homeAdapter.ts')
+  const noTier = marketState(envelope({ data: { state: 'evaluated', stale: true, as_of: '2026-11-15T16:00:00Z', _product: { status: 'STALE' } } }), NOW)
+  assert.equal(noTier.lastGood, null); assert.match(noTier.reason, /required/)
+  const noVerdict = marketState(envelope({ data: { state: 'stale', stale: true, tier: 'RED', as_of: '2026-11-15T16:00:00Z', _product: { status: 'OK' } } }), NOW)
+  assert.equal(noVerdict.lastGood, null)
+  const unzoned = marketState(envelope({ data: { state: 'stale', stale: true, tier: 'RED', as_of: '2026-11-15T16:00:00', product_stale: { status: 'STALE', reason: 'stale' } } }), NOW)
+  assert.equal(unzoned.lastGood.tier, 'RED'); assert.equal(unzoned.lastGoodAgeSeconds, null)
+  assert.match(unzoned.reason, /not current/i)
+})
+test('R-a a current product keeps its OK path: no last-known, no stale wording', async () => {
+  const { marketState } = await import('../../src/pages/home/homeAdapter.ts')
+  const ok = marketState(envelope({ data: { state: 'evaluated', stale: false, tier: 'GREEN', score: 3, mode: 'Risk-on', as_of: '2026-11-15T18:00:00Z', generated_at: '2026-11-15T18:00:01Z', _product: { status: 'OK' } } }), NOW)
+  assert.equal(ok.status, 'OK'); assert.equal(ok.lastGood, null); assert.doesNotMatch(ok.reason, /not current|last stored/i)
+})
+test('R-a both Home market panels date the last-known block and drop the current-assessment wording', async () => {
+  const fs = await import('node:fs')
+  for (const f of ['HomeNeedsPage.tsx', 'HomeOutlookPage.tsx']) {
+    const src = fs.readFileSync(new URL(`../../src/pages/home/${f}`, import.meta.url), 'utf8')
+    assert.match(src, /Last stored assessment · not current/)
+    assert.match(src, /lastGood/)
+    assert.match(src, /ageLabel\(/)
+  }
+  assert.doesNotMatch(fs.readFileSync(new URL('../../src/pages/home/HomeNeedsPage.tsx', import.meta.url), 'utf8'), /sub="Current stored nowcast/)
+  assert.doesNotMatch(fs.readFileSync(new URL('../../src/pages/home/HomeOutlookPage.tsx', import.meta.url), 'utf8'), /sub="The current stored engine assessment/)
+})
