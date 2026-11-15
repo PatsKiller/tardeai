@@ -7,29 +7,30 @@
 //   * a P/E cell is a valuation-assessment@1 status word or the served multiple — and an UNASSESSED
 //     assessment that carries a value keeps the value (last known good), via `cells.peCellText`.
 
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { Cue, CueLevel } from '../../contracts/cue'
 import { cue } from '../../contracts/cue'
+import { Tag, type Tone } from '../../components/primitives'
 import { assessmentSummary, peCellText } from './cells'
 import type { HoldingsRow, Protection } from './contract'
 import { age, marketCapText, money, pct, price, shares, signedMoney, signedPct, unavailable } from './format'
 import type { Preset } from './presets'
 
-const ICON_GLYPH: Record<Cue['icon'], string> = {
-  ok: '✓',
-  caution: '!',
-  alert: '✕',
-  info: 'i',
-  unassessed: '?',
-}
+/**
+ * The protection cell is v04's `.tag` chip (good / warn / bad), not a bespoke `.cue-*` class that no
+ * stylesheet defines — measured 2026-11-15: `.cue` appears nowhere in v02.css or v04.css, so the cell
+ * was rendering as coloured plain text. The word carries the meaning; the tooltip carries the reason,
+ * the stop and the read clock.
+ */
+const CUE_TAG_TONE: Record<Cue['level'], Tone> = { GREEN: 'good', AMBER: 'warn', RED: 'bad', NEUTRAL: '' }
 
-// The four class names below must be styled by the shell slice (cc-opus-3). One line in its contract, not here.
-function CueBadge({ c }: { c: Cue }) {
+function ProtectionTag({ row }: { row: HoldingsRow }) {
+  const c = protectionCue(row)
+  if (!c) return unavailable('protection does not apply to cash')
   return (
-    <span className={`cue cue-${c.level.toLowerCase()}`} title={c.tooltip}>
-      <span aria-hidden="true">{ICON_GLYPH[c.icon]} </span>
+    <Tag tone={CUE_TAG_TONE[c.level]} title={`${c.label}. ${c.tooltip}`}>
       {c.label}
-    </span>
+    </Tag>
   )
 }
 
@@ -54,17 +55,31 @@ function valueCell(row: HoldingsRow): ReactNode {
 }
 
 function cell(row: HoldingsRow, key: string): ReactNode {
+  // A cash row is not a security: most columns do not apply. v04 prints `N/A` / `—` here, and a full
+  // "N/A — protection does not apply to cash" in four columns is what pushed this table 233 px past its
+  // container at 1440. The claim is unchanged; the reason moves one hover (and the row drawer) away.
+  if (row.kind === 'CASH' && !['security', 'price', 'value', 'weight'].includes(key)) {
+    return <span title="this column does not apply to a cash row">N/A</span>
+  }
   switch (key) {
-    case 'security':
+    case 'security': {
+      // v04's ticker cell: the chip carries the symbol's initials, then symbol / name · account.
+      const initials = row.symbol.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase()
       return (
-        <>
-          <strong>{row.symbol}</strong>
-          <br />
-          <small>
-            {row.name} · {row.accountLabel} · {row.accountKey}
-          </small>
-        </>
+        <span className="ticker">
+          <span className="ticker-icon" aria-hidden="true">
+            {initials || '—'}
+          </span>
+          <span>
+            <strong>{row.symbol}</strong>
+            <br />
+            <small>
+              {row.name} · {row.accountLabel} · {row.accountKey}
+            </small>
+          </span>
+        </span>
       )
+    }
     case 'shares':
       return shares(row.shares)
     case 'price':
@@ -97,8 +112,7 @@ function cell(row: HoldingsRow, key: string): ReactNode {
     case 'weight':
       return pct(row.portfolioPct)
     case 'protection': {
-      const c = protectionCue(row)
-      return c ? <CueBadge c={c} /> : unavailable('protection does not apply to cash')
+      return <ProtectionTag row={row} />
     }
     case 'peTrailing':
       return peCellText(row.valuation, 'trailing')
@@ -124,8 +138,7 @@ function cell(row: HoldingsRow, key: string): ReactNode {
         ? `${row.protection.asOf}${row.protection.stale ? ' (stale)' : ''}`
         : unavailable('no read clock for this account')
     case 'protectionState': {
-      const c = protectionCue(row)
-      return c ? <CueBadge c={c} /> : unavailable('protection does not apply to cash')
+      return <ProtectionTag row={row} />
     }
     case 'protectionNext':
       return row.protection?.nextStep ?? unavailable('protection does not apply to cash')
@@ -146,6 +159,19 @@ function cell(row: HoldingsRow, key: string): ReactNode {
     default:
       return unavailable(`no renderer for column ${key}`)
   }
+}
+
+// The row-open control has to read as the reference's plain ticker cell, not as a chrome button; the
+// design sheets are reference-locked, so the reset lives here rather than in CSS. Focus stays visible.
+const FLAT_BUTTON: CSSProperties = {
+  background: 'transparent',
+  border: 0,
+  padding: 0,
+  margin: 0,
+  color: 'inherit',
+  font: 'inherit',
+  textAlign: 'left',
+  cursor: 'pointer',
 }
 
 export function HoldingsTable({ rows, preset, onRowOpen }: {
@@ -172,12 +198,28 @@ export function HoldingsTable({ rows, preset, onRowOpen }: {
       </thead>
       <tbody>
         {rows.map(r => (
-          <tr key={`${r.accountKey}:${r.symbol}`}>
+          // v04 makes the row itself the target (`tr[data-asset]`: pointer + hover); the button inside the
+          // first cell is what a keyboard or a screen reader operates, so the row click is convenience only.
+          <tr
+            key={`${r.accountKey}:${r.symbol}`}
+            className={r.kind === 'CASH' ? 'cash-row' : undefined}
+            data-asset={`${r.accountKey}:${r.symbol}`}
+            onClick={onRowOpen ? () => onRowOpen(r) : undefined}
+          >
             {preset.columns.map((c, i) =>
               i === 0 ? (
                 <th key={c.key} scope="row">
                   {onRowOpen && c.key === 'security' ? (
-                    <button type="button" onClick={() => onRowOpen(r)} title="Open this row's detail">
+                    <button
+                      type="button"
+                      className="quiet"
+                      onClick={e => {
+                        e.stopPropagation()
+                        onRowOpen(r)
+                      }}
+                      title="Open this row's detail"
+                      style={FLAT_BUTTON}
+                    >
                       {cell(r, c.key)}
                     </button>
                   ) : (

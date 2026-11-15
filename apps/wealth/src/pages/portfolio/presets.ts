@@ -27,14 +27,14 @@ const SECURITY: Column = { key: 'security', header: 'Security / account' }
 export const PRESETS: Preset[] = [
   {
     id: 'holdings',
-    label: 'Holdings',
+    label: 'Overview',
     columns: [
       SECURITY,
       { key: 'shares', header: 'Shares' },
       { key: 'price', header: 'Price' },
       { key: 'avgCost', header: 'Avg cost' },
       { key: 'value', header: 'Value' },
-      { key: 'day', header: 'Day $ / % (no declared clock)' },
+      { key: 'day', header: 'Day $ / %' },
       { key: 'unrealized', header: 'Unrealized $ / %' },
       { key: 'weight', header: 'Weight' },
       { key: 'protection', header: 'Protection' },

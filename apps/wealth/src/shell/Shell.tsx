@@ -12,6 +12,10 @@
 import { Fragment, useEffect } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import './v02.css'
+// v04 is the approved fidelity target (operator order 2026-11-15T0301Z). Its sheet is the reference's own
+// <style> body and a strict superset of v02 — 257 shared selectors identical, 0 changed — so importing it
+// after v02.css adds v04's classes and moves nothing else.
+import './v04.css'
 import { Icon } from '../components/Icon'
 import { DrawerProvider, useDrawer } from '../components/Drawer'
 import { CueBadge } from '../components/primitives'
@@ -106,7 +110,7 @@ function ShellFrame() {
               ))}
             </nav>
             {known ? <Outlet /> : <div className="note bad">Unknown Wealth address. Showing {group.label} / {view.label}.</div>}
-            <div className="context-footer">TRADE-AI WEALTH v{__WEALTH_APP_VERSION__} · build {SOURCE} · design v0.2 · read-only: no orders, no approvals, no writes.</div>
+            <div className="context-footer">TRADE-AI WEALTH v{__WEALTH_APP_VERSION__} · build {SOURCE} · design v0.4 · read-only: no orders, no approvals, no writes.</div>
           </main>
         </div>
       </div>

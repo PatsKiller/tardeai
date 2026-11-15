@@ -3,12 +3,17 @@
 //  1. src/shell/v02.css, minus its one header comment line, must equal the reference <style> body
 //     byte for byte (lines 4-10 of the reference file). Additions belong in a separate stylesheet.
 //  2. The reference file in the tree must carry the approved sha256.
-//  3. No hex colour literal in src/shell or src/components outside v02.css (use var(--token)).
+//  3. No hex colour literal in src/shell or src/components outside the two reference-locked sheets
+//     (v02.css, v04.css) — use var(--token).
 //  4. The shell polls nothing: no setInterval / setTimeout / refetchInterval under src/shell.
 //  5. Every <table> under src/ sits inside a .table-wrap scroll container. v02 gives table
 //     min-width:720px and nowrap cells, so a table with no scroll container widens the whole
 //     document at narrow viewports (measured 2026-11-15: 412px viewport, scrollWidth 1731).
 //     Parsed as JSX with the TypeScript AST, so formatting cannot fool it.
+//  6. src/shell/v04.css, minus its one header comment line, must equal the v04 reference <style> body
+//     byte for byte (the approved fidelity target, sha256 1f8f87bb…). The v04 body must also remain a
+//     strict superset of the v02 body, rule by rule: that is what lets v04.css load after v02.css
+//     without moving a single shared declaration, and the claim is checked rather than assumed.
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
@@ -17,7 +22,10 @@ const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 const repo = path.resolve(root, '../..')
 const REF = 'docs/wealth/design-reference/TradeAI_Wealth_Management_Mockups_v02.html'
 const REF_SHA = '23f96d84199c5a7cabb3837a7bd94fab87d68eed15d3d5bbfb5d07e6f8dde7aa'
+const REF4 = 'docs/wealth/design-reference/TradeAI_Wealth_Management_Mockups_v04.html'
+const REF4_SHA = '1f8f87bb8db411acfb79eca53fccd4d147de800e7e2782f7d6a7fab817f6f68d'
 const fail = []
+let v02Body = null
 const refPath = path.join(repo, REF)
 if (!fs.existsSync(refPath)) fail.push(`reference missing: ${REF}`)
 else {
@@ -26,6 +34,7 @@ else {
   if (sha !== REF_SHA) fail.push(`reference sha256 ${sha} != approved ${REF_SHA}`)
   const ref = buf.toString('utf8').split('\n')
   const want = ref.slice(3, 10).join('\n')
+  v02Body = want
   const css = fs.readFileSync(path.join(root, 'src/shell/v02.css'), 'utf8').split('\n')
   if (!css[0].startsWith('/*')) fail.push('v02.css must start with its one-line header comment')
   const got = css.slice(1).join('\n').replace(/\n$/, '')
@@ -35,15 +44,41 @@ else {
     fail.push(`v02.css drifted from reference <style> (first differing css line ${i + 2})`)
   }
 }
+// Rule 6: v04 is the approved fidelity target. Its sheet is the reference's own <style> body (the
+// reference has one blank line before </style>; the sheet does not), and it must still contain every
+// v02 rule verbatim — the property that makes loading it after v02.css a no-op for shared selectors.
+const ref4Path = path.join(repo, REF4)
+if (!fs.existsSync(ref4Path)) fail.push(`reference missing: ${REF4}`)
+else {
+  const buf = fs.readFileSync(ref4Path)
+  const sha = crypto.createHash('sha256').update(buf).digest('hex')
+  if (sha !== REF4_SHA) fail.push(`v04 reference sha256 ${sha} != approved ${REF4_SHA}`)
+  const ref = buf.toString('utf8').split('\n')
+  const want = ref.slice(3, 21).join('\n')
+  const css = fs.readFileSync(path.join(root, 'src/shell/v04.css'), 'utf8').split('\n')
+  if (!css[0].startsWith('/*')) fail.push('v04.css must start with its one-line header comment')
+  const got = css.slice(1).join('\n').replace(/\n$/, '')
+  if (got !== want) {
+    const a = got.split('\n'), b = want.split('\n')
+    const i = a.findIndex((l, k) => l !== b[k])
+    fail.push(`v04.css drifted from reference <style> (first differing css line ${i + 2})`)
+  }
+  if (v02Body !== null) {
+    const missing = v02Body.split('}').map(r => r.trim()).filter(Boolean).filter(r => !want.includes(r))
+    if (missing.length) {
+      fail.push(`v04 body is not a superset of v02: ${missing.length} rule(s) absent (first: ${missing[0].slice(0, 80)})`)
+    }
+  }
+}
 const walk = (d, out = []) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); e.isDirectory() ? walk(p, out) : out.push(p) } return out }
 const strip = s => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 for (const dir of ['src/shell', 'src/components']) {
   for (const f of walk(path.join(root, dir))) {
     const rel = path.relative(root, f)
-    if (rel === 'src/shell/v02.css' || !/\.(tsx?|css)$/.test(f)) continue
+    if (rel === 'src/shell/v02.css' || rel === 'src/shell/v04.css' || !/\.(tsx?|css)$/.test(f)) continue
     const body = strip(fs.readFileSync(f, 'utf8'))
     const hex = body.match(/#[0-9a-fA-F]{3,8}\b/g)
-    if (hex) fail.push(`${rel}: hex colour literal ${hex.join(', ')} (use a v02 var(--token))`)
+    if (hex) fail.push(`${rel}: hex colour literal ${hex.join(', ')} (use a v02/v04 var(--token))`)
     if (dir === 'src/shell' && /\b(setInterval|setTimeout|refetchInterval)\b/.test(body)) fail.push(`${rel}: shell must not poll or schedule reads`)
   }
 }
@@ -92,5 +127,5 @@ for (const f of walk(path.join(root, 'src'))) {
   }
 }
 if (fail.length) { console.error('check-design-fidelity FAIL\n- ' + fail.join('\n- ')); process.exit(1) }
-console.log('check-design-fidelity PASS (v02.css == reference <style>, sha ok, no stray hex, no shell timers, ' +
-  'every table in a .table-wrap)')
+console.log('check-design-fidelity PASS (v02.css == reference <style>, v04.css == reference <style> and a superset of ' +
+  'v02, both shas ok, no stray hex, no shell timers, every table in a .table-wrap)')
