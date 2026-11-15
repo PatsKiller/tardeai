@@ -1,0 +1,30 @@
+/* Semantic colour and identity type for the portfolio surfaces — ONE place, operator route 2026-11-15T1555Z.
+ *
+ * The shell's two reference-locked sheets (v02.css, v04.css) are byte-identical to the approved mockups and
+ * the design gate fails on any drift, so additions live here and load after them. Every colour is a shell
+ * token: this file introduces no palette of its own.
+ *
+ * Policy: a signed amount is red when it is a loss, green when it is a gain, and NEUTRAL when it is unknown
+ * or unverified — an UNKNOWN is never painted as a direction the wire did not serve. Colour is a second
+ * carrier only: the sign, the word "Unknown" and the caption beside each number always say the same thing.
+ */
+
+.money-gain { color: var(--green); }
+.money-loss { color: var(--red); }
+/* Unknown keeps the surrounding ink; the class exists so the intent is stated where the value is drawn. */
+.money-unknown { color: var(--muted); }
+
+/* A warning is the gold token. `.note` already paints that palette; `warn` states the meaning so a warning
+ * is never styled as neutral information (`.note.blue`) or as an error (`.note.bad`). */
+.note.warn { border-left-color: var(--gold); }
+
+/* Warnings carried inline, in text that is not a note box. */
+.text-warn { color: var(--gold); }
+
+/* Ticker and company name: the symbol is the row's handle, so it leads and is stronger than its caption. */
+.ticker-symbol { font-size: 13px; font-weight: 700; letter-spacing: .2px; }
+.ticker-name { color: var(--ink); font-weight: 500; }
+
+/* A cash row is not a security: it carries a cash mark, and no security identity is invented for it. */
+.cash-icon { width: 18px; height: 18px; flex: none; color: var(--green); }
+.cash-card-head { display: inline-flex; gap: 6px; align-items: center; }

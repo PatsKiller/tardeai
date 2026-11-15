@@ -8,8 +8,9 @@
 
 import type { ReactNode } from 'react'
 import { Tag, type Tone } from '../../components/primitives'
+import { CashMark } from './HoldingsTable'
 import type { HoldingsRow, Protection } from './contract'
-import { money, pct, price, shares, signedMoney, signedPct, unavailable } from './format'
+import { money, moneyTone, pct, price, shares, signedMoney, signedPct, toneClass, unavailable } from './format'
 
 const PROTECTION_TAG: Record<Protection['state'], { tone: Tone; label: string }> = {
   PROTECTED: { tone: 'good', label: 'Protected' },
@@ -24,14 +25,23 @@ function unrealized(row: HoldingsRow): ReactNode {
       ? unavailable('no basis served, so no unrealized change')
       : unavailable('no unrealized change served')
   }
-  return `${signedMoney(row.gainLoss)} · ${signedPct(row.gainLossPct, 1)}`
+  // The signed change carries its direction in colour; the text still states it (one policy, format.ts).
+  return (
+    <span className={toneClass(moneyTone(row.gainLoss)) || undefined}>
+      {signedMoney(row.gainLoss)} · {signedPct(row.gainLossPct, 1)}
+    </span>
+  )
 }
 
 function CashCard({ row }: { row: HoldingsRow }) {
   // The served value of this cash row, with the account it sits in. No two cash rows are added together.
+  // The mark is the same one the desktop table draws (one identity, two surfaces); no logo is fetched.
   return (
     <article className="position-card row-between">
-      <b>Cash &amp; sweep · {row.accountLabel}</b>
+      <b className="cash-card-head">
+        <CashMark />
+        Cash &amp; sweep · {row.accountLabel}
+      </b>
       <b>{money(row.marketValue)}</b>
     </article>
   )
@@ -43,9 +53,9 @@ function PositionCard({ row, onOpen }: { row: HoldingsRow; onOpen?: (row: Holdin
   return (
     <article className="position-card">
       <div className="row-between">
-        <b>{row.symbol}</b>
+        <b className="ticker-symbol">{row.symbol}</b>
         <small className="muted">
-          {row.name} · {row.accountLabel}
+          <span className="ticker-name">{row.name}</span> · {row.accountLabel}
         </small>
         {tag ? <Tag tone={tag.tone} title={row.protection?.reason}>{tag.label}</Tag> : null}
       </div>

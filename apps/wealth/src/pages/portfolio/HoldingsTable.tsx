@@ -17,7 +17,7 @@ import { cue } from '../../contracts/cue'
 import { Tag, type Tone } from '../../components/primitives'
 import { assessmentSummary, peCellText } from './cells'
 import type { HoldingsRow, Protection } from './contract'
-import { age, marketCapText, money, multiple, pct, price, shares, signedMoney, signedPct, unavailable } from './format'
+import { age, marketCapText, money, moneyTone, multiple, pct, price, shares, signedMoney, signedPct, toneClass, unavailable } from './format'
 import type { Preset } from './presets'
 
 /**
@@ -126,6 +126,21 @@ function technical(value: number | null, fmt: (v: number) => string, why: string
   return value === null ? unavailable(why) : fmt(value)
 }
 
+/**
+ * The cash row's mark: a struck coin, drawn from the current text colour (the shell's `--green` via
+ * `.cash-icon`), never a downloaded logo. Decorative for assistive tech — the row's own "CASH" symbol and the
+ * table caption already say it is cash, and `rawText` drops `aria-hidden` nodes so the CSV is unchanged.
+ */
+export function CashMark() {
+  return (
+    <svg className="cash-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+      <circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M10 5.6v8.8M12.4 7.7c0-.9-1.1-1.5-2.4-1.5s-2.4.6-2.4 1.6c0 2.3 4.8 1.1 4.8 3.4 0 1-1.1 1.6-2.4 1.6s-2.4-.5-2.4-1.5"
+        fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 
 function cell(row: HoldingsRow, key: string): ReactNode {
   // A cash row is not a security: most columns do not apply. v04 prints `N/A` / `—` here; the reason rides the
@@ -135,20 +150,20 @@ function cell(row: HoldingsRow, key: string): ReactNode {
   }
   switch (key) {
     case 'security': {
-      // v04's ticker cell: the chip carries the symbol's initials, then symbol / name · account. The internal
-      // account key is NOT printed in the cell (it identifies the broker record, not the account); it is on the
-      // title and in the drawer.
-      const initials = row.symbol.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase()
+      // v04's ticker cell led with a two-letter initials chip. Two letters are not an identity: they are a
+      // decorative code that repeats the symbol beside them and reads as a logo (operator route
+      // 2026-11-15T1555Z). A cash row instead carries a cash mark — it has no security identity to show; a
+      // security carries its symbol, set as the row's handle, and its name in readable type. No logo is
+      // fetched and no brand is implied. The internal account key is NOT printed in the cell (it identifies
+      // the broker record, not the account); it is on the title and in the drawer.
       return (
         <span className="ticker">
-          <span className="ticker-icon" aria-hidden="true">
-            {initials || '—'}
-          </span>
+          {row.kind === 'CASH' && <CashMark />}
           <span>
-            <strong>{row.symbol}</strong>
+            <strong className="ticker-symbol">{row.symbol}</strong>
             <br />
             <small style={TRUNCATE} title={`${row.name} · ${row.accountLabel} · account ${row.accountKey}`}>
-              {row.name} · {row.accountLabel}
+              <span className="ticker-name">{row.name}</span> · {row.accountLabel}
             </small>
           </span>
         </span>
@@ -167,7 +182,7 @@ function cell(row: HoldingsRow, key: string): ReactNode {
       if (row.dayChange === null) return compactMissing('no day change served')
       return (
         <>
-          {signedMoney(row.dayChange)}
+          <span className={toneClass(moneyTone(row.dayChange)) || undefined}>{signedMoney(row.dayChange)}</span>
           <br />
           <small>{signedPct(row.dayChangePct)}</small>
         </>
@@ -179,7 +194,7 @@ function cell(row: HoldingsRow, key: string): ReactNode {
       }
       return (
         <>
-          {signedMoney(row.gainLoss)}
+          <span className={toneClass(moneyTone(row.gainLoss)) || undefined}>{signedMoney(row.gainLoss)}</span>
           <br />
           <small>{signedPct(row.gainLossPct)}</small>
         </>
@@ -388,7 +403,7 @@ function rawText(node: ReactNode): string {
   if (Array.isArray(node)) return node.map(rawText).join(' ')
   if (!isValidElement(node)) return ''
   const props = node.props as { children?: ReactNode; 'aria-hidden'?: boolean | string }
-  // A decorative node (the ticker initials chip) is not read by a screen reader either, so it is not cell text.
+  // A decorative node (an icon marked aria-hidden) is not read by a screen reader either, so it is not cell text.
   if (props['aria-hidden'] === true || props['aria-hidden'] === 'true') return ''
   if (node.type === 'br') return ' '
   return rawText(props.children)

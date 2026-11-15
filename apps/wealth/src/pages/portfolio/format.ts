@@ -22,8 +22,16 @@ export function unavailable(reason: string): string {
   return `N/A — ${reason}`
 }
 
+/**
+ * A dollar amount. The SIGN precedes the currency symbol: "-$1,841.22", never "$-1,841.22" — the
+ * second is what `$${format(n)}` produces for a negative, and it reads as a currency symbol followed
+ * by a stray minus rather than as a signed amount (measured on the live header, 2026-11-15T1555Z).
+ */
 export function money(n: number | null): string {
-  return n === null ? unavailable('not served') : `$${MONEY.format(n)}`
+  if (n === null) return unavailable('not served')
+  // Intl prints a negative zero as "-0.00"; a served zero is zero and carries no sign (n === 0 is true of -0).
+  if (n === 0) return `$${MONEY.format(0)}`
+  return n < 0 ? `-$${MONEY.format(Math.abs(n))}` : `$${MONEY.format(n)}`
 }
 
 export function signedMoney(n: number | null): string {
@@ -61,10 +69,35 @@ export function price(n: number | null): string {
   if (n === null) return unavailable('no price served')
   if (n === 0) return `$${MONEY.format(0)}`
   const abs = Math.abs(n)
-  if (abs >= 1) return `$${MONEY.format(n)}`
+  if (abs >= 1) return n < 0 ? `-$${MONEY.format(abs)}` : `$${MONEY.format(n)}`
   const body = PRICE_SUB.format(abs)
   if (body === PRICE_SUB.format(0)) return `${n < 0 ? '-' : ''}<$0.0001`
-  return `$${n < 0 ? '-' : ''}${body}`
+  return `${n < 0 ? '-' : ''}$${body}`
+}
+
+// ---- One colour policy, one place (operator visual-semantic route 2026-11-15T1555Z) --------------
+// Loss is red, gain is green, and an unknown or unverified value is NEITHER: it stays neutral. Colour is
+// never the only carrier — the sign, the word "Unknown" and the caption beside every number still say
+// what the colour says. The class names live in semantic.css, which maps them to the shell's tokens
+// (var(--red) / var(--green) / var(--muted)); no second palette is introduced here.
+
+export type MoneyTone = 'gain' | 'loss' | 'flat' | 'unknown'
+
+/**
+ * The tone a signed amount may carry. `null` is UNKNOWN and never a tone that implies a direction; zero
+ * is flat (a served zero is a measurement, but it is neither a gain nor a loss to colour).
+ */
+export function moneyTone(n: number | null): MoneyTone {
+  if (n === null || !Number.isFinite(n)) return 'unknown'
+  return n > 0 ? 'gain' : n < 0 ? 'loss' : 'flat'
+}
+
+/** The class for a tone, or '' for flat — an unsigned or zero amount keeps the surrounding ink. */
+export function toneClass(tone: MoneyTone): string {
+  if (tone === 'gain') return 'money-gain'
+  if (tone === 'loss') return 'money-loss'
+  if (tone === 'unknown') return 'money-unknown'
+  return ''
 }
 
 /**

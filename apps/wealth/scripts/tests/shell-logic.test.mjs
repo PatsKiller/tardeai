@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 import { createClient, HeavyReaderFromShell } from '../../src/api/client.ts'
 import { specFor, READERS } from '../../src/api/readers.ts'
 import { deriveRenderState, statusCue } from '../../src/components/renderState.ts'
-import { price, money, unavailable } from '../../src/pages/portfolio/format.ts'
+import { price, money, moneyTone, signedMoney, toneClass, unavailable } from '../../src/pages/portfolio/format.ts'
 import { barStatus, isBookRoute } from '../../src/pages/portfolio/bookView.ts'
 import { accountDisplayLabel } from '../../src/pages/portfolio/accountLabel.ts'
 import { ledgerLine } from '../../src/pages/portfolio/clockLedger.ts'
@@ -537,10 +537,61 @@ test('P-2: two decimals stay the rule at and above one dollar, and a served zero
   assert.equal(price(null), unavailable('no price served'), 'null is a reason, never a zero')
 })
 
-test('P-3: money() is unchanged — a dollar amount is still expressed in cents', () => {
+test('P-3: money() still expresses a dollar amount in cents', () => {
   assert.equal(money(0.0003), '$0.00', 'money() is out of scope by decision, not by oversight')
   assert.equal(money(1255586.37), '$1,255,586.37')
   assert.equal(money(null), unavailable('not served'))
+})
+
+// ---- V: the semantic colour and sign policy (operator route 2026-11-15T1555Z) ------------------------
+// The operator reload of the LIVE page showed the header estimate WHITE and printed "$-1,841.22", warnings in
+// neutral blue, and two-letter identity chips. These tests pin the three fixes that a tidy could silently undo:
+// the sign formatter, the tone decision (an UNKNOWN is never a direction), and the class that carries the colour.
+
+test('V-1: the sign precedes the currency symbol — "-$1,841.22", never "$-1,841.22"', () => {
+  assert.equal(money(-1841.22), '-$1,841.22', 'the measured live header value')
+  assert.equal(money(-1255586.37), '-$1,255,586.37')
+  assert.equal(money(1841.22), '$1,841.22', 'a positive amount is unchanged')
+  assert.equal(signedMoney(-1841.22), '-$1,841.22', 'signedMoney already led with the sign and must stay so')
+  assert.equal(signedMoney(1841.22), '+$1,841.22')
+  assert.equal(price(-0.0003), '-$0.0003', 'a negative sub-cent price keeps the same convention')
+  assert.equal(money(-0), '$0.00', 'a served negative zero is zero, not a loss')
+})
+
+test('V-2: a tone is a direction the wire served — unknown is never gain or loss', () => {
+  assert.equal(moneyTone(null), 'unknown')
+  assert.equal(moneyTone(Number.NaN), 'unknown')
+  assert.equal(moneyTone(-1841.22), 'loss')
+  assert.equal(moneyTone(349.6), 'gain')
+  assert.equal(moneyTone(0), 'flat', 'a served zero is a measurement, but not a direction')
+  assert.equal(toneClass('unknown'), 'money-unknown')
+  assert.equal(toneClass('loss'), 'money-loss')
+  assert.equal(toneClass('gain'), 'money-gain')
+  assert.equal(toneClass('flat'), '', 'flat keeps the surrounding ink')
+})
+
+test('V-3: the classes exist in one sheet and use the shell tokens', () => {
+  const css = fs.readFileSync(path.join(APP, 'src/pages/portfolio/semantic.css'), 'utf8')
+  const rule = name => {
+    const m = css.match(new RegExp(`\\.${name}\\s*\\{([^}]*)\\}`))
+    assert.ok(m, `.${name} must be defined in semantic.css`)
+    return m[1]
+  }
+  assert.match(rule('money-loss'), /var\(--red\)/, 'a loss is the shell red token')
+  assert.match(rule('money-gain'), /var\(--green\)/, 'a gain is the shell green token')
+  assert.match(rule('money-unknown'), /var\(--muted\)/, 'unknown is muted, never a direction')
+  assert.match(rule('note\\.warn'), /var\(--gold\)/, 'a warning is the gold token, not neutral blue')
+  assert.ok(!/#[0-9a-f]{3,8}\b/i.test(css), 'this sheet introduces no hex palette of its own')
+})
+
+test('V-4: the header and the page apply the tone class (deleting it fails here)', () => {
+  const top = fs.readFileSync(path.join(APP, 'src/pages/portfolio/TopBar.tsx'), 'utf8')
+  assert.match(top, /className=\{toneClass\(tone\)/, 'the top bar value must carry the tone class')
+  assert.match(top, /signed && !notCurrent\(book\.freshness\) \? moneyTone\(m\.valueUsd\)/, 'a direction only from a current read')
+  const page = fs.readFileSync(path.join(APP, 'src/pages/portfolio/HoldingsPage.tsx'), 'utf8')
+  assert.match(page, /className=\{toneClass\(priceMoveTone\)/, 'the page price-move value must carry the tone class')
+  const table = fs.readFileSync(path.join(APP, 'src/pages/portfolio/HoldingsTable.tsx'), 'utf8')
+  assert.match(table, /toneClass\(moneyTone\(row\.gainLoss\)\)/, 'the unrealized column must carry the tone class')
 })
 
 // ---- N: the book snapshot does not outlive its route (cc-deepseek-3 verdict 2026-11-15T04:48Z §8) --------

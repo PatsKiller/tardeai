@@ -17,27 +17,32 @@
 //   * the second value is labelled "Estimated price move", not "Regular-session move": the served measure is
 //     `price_move_estimate` (sum of stored per-position day changes) and the wire declares the day-change clock
 //     UNKNOWN (`clock_provenance.day_pnl`), so nothing on this read supports "regular-session";
-//   * no sign colouring: no verified colour policy exists in code or config for a signed dollar move, and colour
-//     is never the only carrier (cue contract). Text only.
+//   * a signed CHANGE is coloured by direction (operator visual-semantic route 2026-11-15T1555Z): loss red,
+//     gain green, and unknown/stale stays NEUTRAL — an UNKNOWN is never painted as a direction the wire did
+//     not serve. A STOCK amount (Account value) carries no direction and is never coloured. Colour is never
+//     the only carrier: the sign and the "measured, not verified" caption say the same thing in text.
 import type { BookMeasure, HoldingsBook } from './contract'
 import { barStatus } from './bookView'
 import type { BarStatus } from './bookView'
-import { money } from './format'
+import { money, moneyTone, notCurrent, toneClass } from './format'
 import type { Scope } from './scope'
 import { scopeOptions, scopedMeasure } from './scope'
 import { useBookSnapshot } from './snapshot'
 import { useLocation } from 'react-router-dom'
+import './semantic.css'
 
 interface ValueSpec {
   id: BookMeasure['id']
   label: string
   /** The field path and clock, for the tooltip — the trace a reviewer reads. */
   field: string
+  /** True only for a value whose meaning is a CHANGE (a signed move). A stock amount is never coloured. */
+  signed?: boolean
 }
 
 const VALUES: ValueSpec[] = [
   { id: 'account_value', label: 'Account value', field: 'data.measures.measures.account_value.value · clock data.measures.measures.account_value.as_of' },
-  { id: 'price_move_estimate', label: 'Estimated price move', field: 'data.measures.measures.price_move_estimate.value · clock data.measures.measures.price_move_estimate.as_of · day-change clock data.clock_provenance.day_pnl reports UNKNOWN' },
+  { id: 'price_move_estimate', label: 'Estimated price move', signed: true, field: 'data.measures.measures.price_move_estimate.value · clock data.measures.measures.price_move_estimate.as_of · day-change clock data.clock_provenance.day_pnl reports UNKNOWN' },
 ]
 
 const NOT_READ = 'The holdings reader is heavy; the shell may not originate it. Open Portfolio › Holdings to read the book.'
@@ -69,10 +74,13 @@ function Value({ spec, book, scope, status }: { spec: ValueSpec; book: HoldingsB
   const measure = m.measure
   const clock = measure?.asOf ?? 'clock not served'
   const verified = measure?.verified === true
+  // A signed CHANGE from a current read carries a direction; from a read the page calls last-good it keeps
+  // neutral ink, because the move is not current (the same verdict the page prints under the session strip).
+  const tone = spec.signed && !notCurrent(book.freshness) ? moneyTone(m.valueUsd) : 'flat'
   return (
     <div title={`${spec.field} · ${verified ? 'verified' : 'measured, not verified'}`}>
       <span className="muted">{spec.label}</span>
-      <strong>{money(m.valueUsd)}</strong>
+      <strong className={toneClass(tone) || undefined}>{money(m.valueUsd)}</strong>
       <small className="muted">
         {clock} · {verified ? 'verified' : 'measured, not verified'}
       </small>

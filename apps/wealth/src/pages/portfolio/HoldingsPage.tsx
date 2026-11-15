@@ -53,7 +53,7 @@ import { derivePortfolioView } from './analytics/portfolio-analytics.mjs'
 import type { AnalyticsSnapshot, PortfolioView } from './analytics/portfolio-analytics.mjs'
 import { PositionCards } from './PositionCards'
 import { PRESETS, preset, type PresetId } from './presets'
-import { lastKnownSentence, money, notCurrent, servedFreshnessLine } from './format'
+import { lastKnownSentence, money, moneyTone, notCurrent, servedFreshnessLine, toneClass } from './format'
 import { detailSections, detailHeading } from './detail'
 import { rowsInScope, scopeLabel, scopedMeasure } from './scope'
 import { useBookScope } from './snapshot'
@@ -331,6 +331,9 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
   // SELECTED rows, and each card says what it is. The one served book measure v04 drew from a canonical value
   // (account value) is still printed, with its verification and clock, in the Book measures block below.
   const priceMove = scopedMeasure(book, 'price_move_estimate', scope)
+  // A signed CHANGE is coloured by direction only while the read is current; an UNKNOWN or a last-good read
+  // keeps neutral ink (operator visual-semantic route 2026-11-15T1555Z).
+  const priceMoveTone = notCurrent(book.freshness) ? 'flat' : moneyTone(priceMove.valueUsd)
 
   // Protection gaps, quoted from the stops read. Not a recommendation: the card says what the producer
   // already reports, in the producer's own words, and opens the row it is about.
@@ -346,14 +349,16 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
       )}
 
       {notice !== null && (
-        <div className="note blue" role="status">
+        <div className="note warn" role="status">
           <strong>Read status.</strong> {notice}
         </div>
       )}
 
       <div className="session">
         <div>
-          <strong>{book.session.status === 'KNOWN' ? (book.session.phase ?? 'Session known') : 'Session UNKNOWN'}</strong>
+          <strong className={book.session.status === 'KNOWN' ? undefined : 'text-warn'}>
+            {book.session.status === 'KNOWN' ? (book.session.phase ?? 'Session known') : 'Session UNKNOWN'}
+          </strong>
           {' · '}
           {book.session.status === 'KNOWN'
             ? `last completed regular session ${book.session.latestOpenSession ?? 'not stated'}${
@@ -376,7 +381,7 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
           <br />
           {priceMove.available ? (
             <>
-              <strong>{money(priceMove.valueUsd)}</strong>{' '}
+              <strong className={toneClass(priceMoveTone) || undefined}>{money(priceMove.valueUsd)}</strong>{' '}
               <small className="muted">
                 {priceMove.measure?.verified ? 'verified' : 'measured, not verified'} · as of{' '}
                 {priceMove.measure?.asOf ?? 'clock not served'}
@@ -508,7 +513,7 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
       </div>
 
       {notCurrent(book.freshness) && (
-        <div className="note bad" role="alert">
+        <div className="note warn" role="alert">
           <strong>Not current.</strong> {lastKnownSentence(book.freshness)}
         </div>
       )}
