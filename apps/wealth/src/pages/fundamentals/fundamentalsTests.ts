@@ -47,6 +47,14 @@
 //         subline, no count in the Funds header), and the cash share and the Coverage card each name the
 //         population they divided by (a filtered numerator never sits over a book denominator).
 //
+// Fix sprint (LEAD-ASSIGN-WB1-FIX-SPRINT-20261115T2016Z, John's live audit) — each pin fails on the deployed fold:
+//   WB-1l a security held in several accounts prints EVERY account's own gain/loss and protection, with that
+//         account's label and its own detail action — a first-leg-only render fails both pins;
+//   WB-1m the yield card states how many rows serve a yield; it never claims none is served;
+//   WB-1n the Coverage card says "older than the quote", never "stale" (D7 is not a freshness verdict);
+//   WB-1o the page contributes no <h1> — the shell's crumb is the document's single top-level heading;
+//   WB-1p a pending or stale stop never reads "Protected": it reads "Stop recorded (GTC) …".
+//
 // G1's shell-scope wiring (bookView) is re-pinned at the end: WB-1 keeps the top bar's selection live.
 
 import { createElement } from 'react'
@@ -112,6 +120,23 @@ const stripTags = (h: string): string =>
 
 const count = (hay: string, needle: string): number => hay.split(needle).length - 1
 
+/** One rendered display row's markup, sliced by its `data-group` key — a cell claim is checked on ITS row only. */
+const groupRow = (html: string, key: string): string => {
+  const i = html.indexOf(`data-group="${key}"`)
+  if (i < 0) return ''
+  const end = html.indexOf('</tr>', i)
+  return end < 0 ? html.slice(i) : html.slice(i, end)
+}
+const groupRowText = (html: string, key: string): string => stripTags(groupRow(html, key))
+
+/** D7, computed here independently of the model: both clocks served and the record older than the quote. */
+const olderRecordsIn = (rows: HoldingsRow[]): number =>
+  rows.filter(r => {
+    const rec = r.profileUpdatedAt === null ? NaN : Date.parse(r.profileUpdatedAt)
+    const q = r.priceAsOf === null ? NaN : Date.parse(r.priceAsOf)
+    return Number.isFinite(rec) && Number.isFinite(q) && rec < q
+  }).length
+
 const ROWS: HoldingsRow[] = FIXTURE_BOOK.rows
 const bySymbol = (s: string): HoldingsRow => {
   const r = ROWS.find(x => x.symbol === s)
@@ -131,6 +156,24 @@ const TWIN: HoldingsRow = {
   portfolioPct: 5,
 }
 const TWO_BOOK: HoldingsBook = { ...FIXTURE_BOOK, rows: [...ROWS, TWIN] }
+
+/**
+ * The same twin with NO stop of its own: the second leg's protection differs from the first leg's. A render that
+ * prints only the group's lead row shows "Protected" alone and fails WB-1l.
+ */
+const TWIN_GAP: HoldingsRow = {
+  ...TWIN,
+  protection: {
+    state: 'GAP',
+    stop: null,
+    basis: null,
+    asOf: '2026-11-14T21:00:00Z',
+    stale: false,
+    reason: 'no resting stop on this account',
+    nextStep: 'Set a protective stop or record the decision to hold unprotected.',
+  },
+}
+const GAP_BOOK: HoldingsBook = { ...FIXTURE_BOOK, rows: [...ROWS, TWIN_GAP] }
 
 function renderPage(book: HoldingsBook): string | null {
   if (FundamentalsPage === null) return null
@@ -221,6 +264,21 @@ if (workspaceModule === null) {
     cov.withMultiple,
     ROWS.filter((r: HoldingsRow) => r.kind !== 'CASH' && r.fundamentals?.peTrailing != null).length,
   )
+  eq(
+    'WB-1m … and its served-yield count is the served `yieldPct` field, the one the Yield cell prints',
+    cov.withYield,
+    ROWS.filter((r: HoldingsRow) => r.kind !== 'CASH' && r.yieldPct != null).length,
+  )
+  check(
+    'WB-1m … so the live book’s served yields are counted, never claimed absent',
+    cov.withYield > 0,
+    `${cov.withYield} rows serve a yield`,
+  )
+  eq(
+    'WB-1n … and its D7 count is named for what D7 proves: records OLDER than the quote',
+    cov.olderRecords,
+    olderRecordsIn(ROWS),
+  )
 
   const totals = ws.valueTotal(ROWS)
   eq('WB-1g a value total counts only the rows whose value IS served', totals.valued, ROWS.filter((r: HoldingsRow) => r.marketValue !== null).length)
@@ -269,10 +327,26 @@ if (pageHtml === null || twoHtml === null) {
 
   const cardsRegion = pageHtml.slice(pageHtml.indexOf('fw-cards'), pageHtml.indexOf('fw-toolbar'))
   const cardsText = stripTags(cardsRegion)
+  // WB-1m: the card states the coverage it has. The deployed fold claimed no row serves a yield while the live
+  // book served one — an absent aggregate is not the same statement as an absent field.
+  const servedYield = FIXTURE_BOOK.rows.filter(r => r.kind !== 'CASH' && r.yieldPct != null).length
   check(
-    'WB-1a the yield card stays in place, in style, printing Unknown with its missing source',
-    cardsText.includes('Book yield · income') && cardsText.includes('needs a yield reader; N/A on every row today'),
-    cardsText.slice(0, 400),
+    'WB-1m the yield card states how many rows serve a yield, and its aggregate Unknown with the reason',
+    cardsText.includes('Book yield · income') &&
+      cardsText.includes(`served on ${servedYield} of ${FIXTURE_BOOK.rows.length} rows; aggregate Unknown`),
+    cardsText.slice(0, 500),
+  )
+  check(
+    'WB-1m … and it never claims the book serves no yield',
+    !cardsText.includes('N/A on every row') && !cardsText.includes('no yield'),
+    cardsText.slice(0, 500),
+  )
+  // WB-1n: D7 proves the record predates the quote. "Stale" would claim a freshness rule was violated.
+  const olderCount = olderRecordsIn(FIXTURE_BOOK.rows)
+  check(
+    'WB-1n the Coverage card says “older than the quote”, never “stale”',
+    cardsText.includes(`${olderCount} ${olderCount === 1 ? 'record' : 'records'} older than the quote`) && !cardsText.includes('stale'),
+    cardsText.slice(0, 500),
   )
   check(
     'WB-1b the three Tier 2 cards print Unknown in WB-1',
@@ -297,6 +371,15 @@ if (pageHtml === null || twoHtml === null) {
     pageText.includes('synthetic fixture') && pageText.includes('marks as of 2026-11-14T21:00:00Z'),
   )
   eq('WB-1a the Not-wired box is printed exactly once', count(pageText, 'Not wired: valuation-assessment@1'), 1)
+
+  // WB-1o: one top-level heading in the document. The shell renders the crumb as its <h1> on every book page, so
+  // this page must contribute none — a page <h1> beside the crumb duplicated the document's H1 (live audit).
+  eq('WB-1o the page contributes no <h1> of its own', count(pageHtml, '<h1'), 0)
+  check(
+    'WB-1o … and the workspace title is the H2 the reference’s type is applied to',
+    pageHtml.includes('<h2 class="fw-title">Fundamentals workspace</h2>'),
+    'workspace title heading missing',
+  )
 
   // WB-1c: the equity table's columns, in the reference's order.
   // The section cards are the split points: "Funds" also appears in the sector options, so a text index would
@@ -337,14 +420,15 @@ if (pageHtml === null || twoHtml === null) {
   check('WB-1i YTD prints signed', pageText.includes('+18.20%'), 'YTD missing')
   check('WB-1i the trend cell carries the 200-day line and RSI', pageText.includes('+12.70% vs 200d') && pageText.includes('RSI 61.3'), 'trend cell incomplete')
   check('WB-1i gain carries the dollar change and the cost basis', pageText.includes('+25.00%') && pageText.includes('+$3,000.00') && pageText.includes('cost $60.00'))
+  // WB-1i: an ACTIVE stop — served price, PROTECTED state, not stale — is the one case the word "Protected" rides.
+  const qztaRowText = groupRowText(pageHtml, 'QZTA')
   check(
-    'WB-1i protection carries the served stop and read clock',
-    pageText.includes('Protected') && pageText.includes('stop $68.00 · read 11-14'),
-    'protection cell incomplete',
+    'WB-1i the active stop prints Protected with the served stop and the stop-read clock',
+    qztaRowText.includes('Protected') && qztaRowText.includes('stop $68.00 · stop read 11-14'),
+    qztaRowText.slice(-300),
   )
-  // The checklist's stop rule: a recorded-but-not-active stop must not read as active protection. The cell uses the
-  // Holdings page's own sentence (stopSentence), so a PROTECTED row with no served stop price states the pending
-  // activation instead of anything that implies the stop is protecting the position today.
+  // WB-1p: the stop rule. A recorded stop with no served price, or a stale read, is NOT protection and must not
+  // print the word. The deployed fold printed "Protected pending activation · read 11-14" for exactly this case.
   const PENDING_BOOK: HoldingsBook = {
     ...FIXTURE_BOOK,
     rows: FIXTURE_BOOK.rows.map(r =>
@@ -354,7 +438,8 @@ if (pageHtml === null || twoHtml === null) {
             protection: {
               ...r.protection,
               stop: null,
-              basis: 'resting broker stop (GTC)',
+              // The live shape: the basis is a machine token, the reason carries the words "GTC".
+              basis: 'broker_resting',
               reason: 'Resting GTC stop, pending activation',
             },
           }
@@ -362,22 +447,41 @@ if (pageHtml === null || twoHtml === null) {
     ),
   }
   const pendingHtml = renderPage(PENDING_BOOK)
-  const pendingText = pendingHtml === null ? '' : stripTags(pendingHtml)
+  const pendingRow = pendingHtml === null ? '' : groupRowText(pendingHtml, 'QZTA')
   check(
-    'WB-1i a recorded stop with no served price states pending activation in the cell, never active protection',
-    pendingText.includes('pending activation · read 11-14'),
-    'pending-activation subline missing',
+    'WB-1p a recorded stop with no served price reads “Stop recorded (GTC), pending activation · stop read …”',
+    pendingRow.includes('Stop recorded (GTC)') && pendingRow.includes('pending activation · stop read 11-14'),
+    pendingRow.slice(-300),
   )
   check(
-    'WB-1i … and the Holdings page’s full sentence rides on the cell for the pointer',
-    pendingHtml !== null && pendingHtml.includes('resting GTC stop, pending activation — stop price not served'),
-    'the full stop sentence is not on the cell',
+    'WB-1p … and never the word Protected for a pending stop',
+    !pendingRow.includes('Protected'),
+    pendingRow.slice(-300),
   )
   check(
-    'WB-1i … and the bare basis never stands in for that sentence',
-    !/resting broker stop \(GTC\) · read/.test(pendingText),
-    'the basis was printed as the protection sentence',
+    'WB-1p … with the served basis, reason and next step on the cell for the pointer',
+    pendingHtml !== null &&
+      groupRow(pendingHtml, 'QZTA').includes('broker_resting') &&
+      groupRow(pendingHtml, 'QZTA').includes('Resting GTC stop, pending activation') &&
+      groupRow(pendingHtml, 'QZTA').includes('None — protection is in place.'),
+    'the served sentence is not on the cell',
   )
+  const STALE_BOOK: HoldingsBook = {
+    ...FIXTURE_BOOK,
+    rows: FIXTURE_BOOK.rows.map(r =>
+      r.symbol === 'QZTA' && r.protection !== null
+        ? { ...r, protection: { ...r.protection, stale: true } }
+        : r,
+    ),
+  }
+  const staleHtml = renderPage(STALE_BOOK)
+  const staleRow = staleHtml === null ? '' : groupRowText(staleHtml, 'QZTA')
+  check(
+    'WB-1p a stale stop read keeps its served price but reads “Stop recorded (GTC)” and dates the read as older',
+    staleRow.includes('Stop recorded (GTC)') && staleRow.includes('stop $68.00 · stop read 11-14 (older than the quote)'),
+    staleRow.slice(-300),
+  )
+  check('WB-1p … and never the word Protected for a stale stop', !staleRow.includes('Protected'), staleRow.slice(-300))
   check(
     'WB-1i the fund row prints the fund columns: expense ratio is the muted N/A with its reason',
     fundTable.includes('expense ratio is not served by this read'),
@@ -400,7 +504,7 @@ if (pageHtml === null || twoHtml === null) {
     twoText.includes('Synthetic taxable · 15.00%') && twoText.includes('Synthetic retirement · 5.00%'),
   )
   check(
-    'WB-1d the summed 20.00% is printed in no weight cell (the twin’s own +20.00% gain is a different field)',
+    'WB-1d the summed 20.00% is printed in no weight cell (the twin’s own SIGNED +20.00% gain is a different field)',
     !twoText.includes('· 20.00%'),
     'a summed percentage reached a weight cell',
   )
@@ -408,6 +512,34 @@ if (pageHtml === null || twoHtml === null) {
     'WB-1d the two-account book still renders ONE QZTA identity cell',
     count(twoHtml, 'data-group="QZTA"'),
     1,
+  )
+
+  // WB-1l: the fix sprint's item 1. The deployed fold printed the lead leg's gain and stop only, under no account
+  // qualifier; each of these pins fails on that render.
+  const twoQzta = groupRowText(twoHtml, 'QZTA')
+  check(
+    'WB-1l gain/loss prints BOTH accounts’ own served gains — a first-leg-only render shows the taxable leg alone',
+    twoQzta.includes('Synthetic taxable · +25.00% · +$3,000.00 · cost $60.00') &&
+      twoQzta.includes('Synthetic retirement · +20.00% · +$1,500.00 · cost $60.00'),
+    twoQzta.slice(0, 600),
+  )
+  check(
+    'WB-1l protection prints BOTH accounts’ own stop reads, in the position sublines’ order',
+    twoQzta.includes('Synthetic taxable · Protected · stop $68.00 · stop read 11-14') &&
+      twoQzta.includes('Synthetic retirement · Protected · stop $68.00 · stop read 11-14'),
+    twoQzta.slice(0, 600),
+  )
+  eq(
+    'WB-1l every per-account gain and protection subline is its own detail action',
+    count(groupRow(twoHtml, 'QZTA'), 'fw-acct'),
+    4,
+  )
+  const gapQzta = groupRowText(renderPage(GAP_BOOK) ?? '', 'QZTA')
+  check(
+    'WB-1l a second leg with no stop prints its own Gap state beside the other leg’s stop (never the first leg alone)',
+    gapQzta.includes('Synthetic retirement · Gap · no resting stop') &&
+      gapQzta.includes('Synthetic taxable · Protected · stop $68.00'),
+    gapQzta.slice(0, 600),
   )
 
   // WB-1f: the D7 mark, counted against the model.

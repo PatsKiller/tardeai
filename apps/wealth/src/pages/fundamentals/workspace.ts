@@ -174,20 +174,26 @@ export interface Coverage {
   rows: number
   /** Non-cash rows carrying a served TRAILING P/E — a count of served fields, never an estimate. */
   withMultiple: number
-  /** Rows whose profile record clock is older than their quote clock (D7). */
-  staleRecords: number
+  /** Non-cash rows carrying a served yield — the count the Book yield card states on its face. */
+  withYield: number
+  /**
+   * Rows whose profile record clock is older than their quote clock (D7). The word is "older", never "stale":
+   * D7 proves only that the record predates the quote, not that any freshness rule was violated.
+   */
+  olderRecords: number
 }
 
 /**
- * The Coverage card's three counts, over ONE population. The card's denominator is the book, so its numerator is
- * the book too: call this with every row the book served, never with a filtered view's rows — a filtered
+ * The Coverage card's counts, over ONE population. The card's denominator is the book, so its numerators are the
+ * book too: call this with every row the book served, never with a filtered view's rows — a filtered
  * numerator over a book denominator would read "3 of 30 rows" for a view of three.
  */
 export function coverageOf(rows: HoldingsRow[]): Coverage {
   return {
     rows: rows.length,
     withMultiple: rows.filter(r => r.kind !== 'CASH' && (r.fundamentals?.peTrailing ?? null) !== null).length,
-    staleRecords: rows.filter(r => recordOlderThanQuote(r)).length,
+    withYield: rows.filter(r => r.kind !== 'CASH' && (r.yieldPct ?? null) !== null).length,
+    olderRecords: rows.filter(r => recordOlderThanQuote(r)).length,
   }
 }
 
