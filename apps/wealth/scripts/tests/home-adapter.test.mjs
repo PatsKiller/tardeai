@@ -234,3 +234,60 @@ test('T2 a nonzero amount below one dollar never prints as $0', async () => {
   assert.equal(money(null), 'Unknown')
   assert.notEqual(money(-12.6), '$0')
 })
+// --- AK1-AK7: a raw account key never reaches the page (lead P1, 2026-11-15) ---------------------
+// Synthetic keys only (the repository is public): a three-segment lowercase account-key shape whose
+// short last segment is deliberately outside the opaque-identifier regex, so the map or the backstop
+// must do the work, never luck.
+test('AK1 a key the overview map never named is withheld from incident free text', async () => {
+  const { prioritiesModel } = await import('../../src/pages/home/homeAdapter.ts')
+  const key = 'synthetic_broker_ira'
+  const b = prioritiesModel({ items: [{ kind: 'INCIDENT', title: 'Unprotected Position', why: `cause references ${key}`, since: '2026-11-01T15:00:32-05:00' }] }, new Map())
+  assert.equal(b.history.length, 1)
+  assert.match(b.history[0].why, /\[account withheld\]/)
+  assert.doesNotMatch(JSON.stringify(b), new RegExp(key))
+})
+test('AK2 a key named by the item\'s own account fields is replaced with the served label', async () => {
+  const { prioritiesModel } = await import('../../src/pages/home/homeAdapter.ts')
+  const key = 'synthetic_broker_retirement'
+  const b = prioritiesModel({ items: [{ kind: 'INCIDENT', title: 'Data Integrity', why: `stop row ${key} unread`, since: '2026-11-13T09:00:07-04:00', account: key, account_label: 'Example retirement' }] }, new Map())
+  assert.equal(b.history[0].why, 'stop row Example retirement unread')
+  assert.doesNotMatch(JSON.stringify(b), new RegExp(key))
+})
+test('AK3 a STOP title that cannot yield a symbol still drops its account segment', async () => {
+  const { prioritiesModel } = await import('../../src/pages/home/homeAdapter.ts')
+  const key = 'synthetic_broker_ira'
+  const b = prioritiesModel({ items: [{ kind: 'STOP', title: `Add Stop · SYN/CLS · ${key}`, why: 'Stop below cost basis', since: '2026-11-15T12:00:00Z' }] }, new Map())
+  assert.equal(b.protection.length, 0)
+  assert.equal(b.history.length, 1)
+  assert.equal(b.history[0].title, 'Add Stop · SYN/CLS')
+  assert.doesNotMatch(JSON.stringify(b), new RegExp(key))
+})
+test('AK4 every free-text field on the protection card passes through safeText, since included', async () => {
+  const { prioritiesModel } = await import('../../src/pages/home/homeAdapter.ts')
+  const key = 'synthetic_broker_ira'
+  const b = prioritiesModel({ items: [{ kind: 'STOP', title: 'Add Stop · TEST · synthetic_key_a', why: `reason ${key}`, since: `first seen ${key}`, owner: `risk ${key}`, stale: false }] }, new Map([['synthetic_key_a', 'Example retirement']]))
+  assert.equal(b.protection.length, 1)
+  assert.equal(b.protection[0].scope, 'TEST')
+  assert.doesNotMatch(JSON.stringify(b.protection), new RegExp(key))
+})
+test('AK5 ordinary two-segment snake_case identifiers are not account-shaped and survive', async () => {
+  const { prioritiesModel } = await import('../../src/pages/home/homeAdapter.ts')
+  const b = prioritiesModel({ items: [{ kind: 'INCIDENT', title: 'Orphaned Stop', why: 'position_unprotected and data_integrity rows', since: '2026-11-13T09:00:07-04:00' }] }, new Map())
+  assert.equal(b.history[0].why, 'position_unprotected and data_integrity rows')
+})
+test('AK6 a key served only by the priorities read is withheld from the stored brief too', async () => {
+  const key = 'synthetic_broker_ira'
+  const result = homeToday({
+    overview: envelope({ data: {} }),
+    snapshot: envelope({ data: { snapshot: { cio_brief: { summary: { text: `brief mentions ${key}` } } } } }),
+    priorities: envelope({ data: { items: [{ kind: 'INCIDENT', title: 'Data Integrity', why: `cause ${key}` }] } }),
+  }, NOW)
+  assert.doesNotMatch(JSON.stringify(result.snapshot.data), new RegExp(key))
+  assert.doesNotMatch(JSON.stringify(result.priorities.data), new RegExp(key))
+})
+test('AK7 safeText withholds the multi-segment key shape and keeps short code tokens', async () => {
+  const { safeText } = await import('../../src/pages/home/homeAdapter.ts')
+  assert.equal(safeText('row synthetic_broker_ira unread'), 'row [account withheld] unread')
+  assert.equal(safeText('position_unprotected'), 'position_unprotected')
+  assert.equal(safeText('SCHEDULED JOBS 12345678'), 'SCHEDULED JOBS 12345678')
+})

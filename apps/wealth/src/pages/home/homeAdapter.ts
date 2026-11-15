@@ -69,11 +69,43 @@ export function accountMap(...sources: unknown[]): Map<string, string> {
   }
   return out
 }
+const WITHHELD = '[account withheld]'
+/** A lowercase token of three or more underscore-separated parts: the shape an account key has. */
+const ACCOUNT_KEY_SHAPE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+){2,}$/
+/**
+ * The account-key namespace the page can actually see, so a key is redacted by identity and not only by shape:
+ * the sources it already reads (overview `account_labels`, `portfolio_aggregate.accounts[]`) plus every account
+ * field and every `<Action> · <symbol> · <account>` title on the priorities payload. A key with no served label
+ * maps to `[account withheld]`; a key that does have one maps to its label. Never mutates `base`.
+ */
+export function accountNamespace(base: Map<string, string>, ...sources: unknown[]): Map<string, string> {
+  const out = new Map(base)
+  const add = (key: unknown, label: unknown) => {
+    const k = text(key), l = text(label)
+    if (k.length < 4) return
+    if (!out.has(k)) out.set(k, l && l !== k ? l : WITHHELD)
+  }
+  for (const source of sources) {
+    const r = body(source)
+    for (const [key, label] of Object.entries(record(r.account_labels))) if (typeof label === 'string' && label !== key) out.set(key, label)
+    for (const row of rows(record(r.portfolio_aggregate).accounts)) add(row.account_id || row.account, row.account_label)
+    for (const item of rows(r.items)) {
+      // The producer stamps the account onto the item itself when it has one.
+      add(item.account_id || item.account_key || item.account, item.account_label || item.account_name)
+      // The producer's STOP title is "<Action> · <symbol> · <account>"; elsewhere the third segment is a label.
+      const parts = text(item.title).split(' · '), third = parts.length >= 3 ? parts[2].trim() : ''
+      if (third && (text(item.kind).toUpperCase() === 'STOP' || ACCOUNT_KEY_SHAPE.test(third))) add(third, item.account_label)
+    }
+  }
+  return out
+}
 export function safeText(value: unknown, labels: Map<string, string> = new Map()): string {
   let s = text(value)
   for (const [key, label] of [...labels].sort((a, b) => b[0].length - a[0].length)) if (key) s = s.split(key).join(label)
-  // Opaque broker identifiers are never a display fallback.
-  return s.replace(/\b(?:[A-Z]{1,3}\d{6,}|[a-z]+_[a-z]+_[0-9a-f]{6,})\b/g, '[account withheld]')
+  // Opaque broker identifiers are never a display fallback. A lowercase multi-segment token is the account-key
+  // shape (`<broker>_<type>_<sub>`) and is withheld even when no source named it; display copy uses spaces and
+  // capitals. A two-segment token (`position_unprotected`) is ordinary code vocabulary and is left alone.
+  return s.replace(/\b(?:[A-Z]{1,3}\d{6,}|[a-z]+_[a-z]+_[0-9a-f]{6,}|[a-z][a-z0-9]*(?:_[a-z0-9]+){2,})\b/g, '[account withheld]')
 }
 export function safeUrl(value: unknown): string | null {
   try { const u = new URL(text(value)); return u.protocol === 'https:' && !u.username && !u.password ? u.href : null } catch { return null }
@@ -129,13 +161,21 @@ export function stopScope(p: Row): { symbol: string } | null {
   const symbol = text(p.title).split(' · ')[1]?.trim() || ''
   return /^[A-Z0-9][A-Z0-9.\-]{0,9}$/.test(symbol) ? { symbol } : null
 }
+/** The STOP producer title minus its trailing account segment; null when it carries no second segment. */
+export function stopTitle(p: Row): string | null {
+  const parts = text(p.title).split(' · ')
+  return parts.length >= 2 ? parts.slice(0, 2).join(' · ') : null
+}
 export function prioritiesModel(r: Row, labels: Map<string, string>): Priorities {
   const protection: Priority[] = [], history: Priority[] = []
+  // The item payload is itself an account source (its account fields and STOP titles); derive from it so a key is
+  // redacted even when the overview map never named it.
+  const keys = accountNamespace(labels, { items: r.items })
   for (const p of rows(r.items)) {
-    const kind = text(p.kind).toUpperCase(), status = text(p.status), stale = typeof p.stale === 'boolean' ? p.stale : null
+    const kind = safeText(p.kind, keys).toUpperCase(), status = text(p.status), stale = typeof p.stale === 'boolean' ? p.stale : null
     const item: Priority = {
-      kind, title: safeText(p.title, labels), why: safeText(p.why || p.reason, labels), since: text(p.since), owner: safeText(p.owner, labels),
-      status, statusLabel: status ? `Status ${safeText(status, labels)}` : 'Status Unknown',
+      kind, title: safeText(p.title, keys), why: safeText(p.why || p.reason, keys), since: safeText(p.since, keys), owner: safeText(p.owner, keys),
+      status, statusLabel: status ? `Status ${safeText(status, keys)}` : 'Status Unknown',
       stale, staleLabel: stale === null ? 'Freshness not served' : stale ? 'Producer reports stale' : 'Producer reports not stale',
       scope: '', label: '',
     }
@@ -143,8 +183,11 @@ export function prioritiesModel(r: Row, labels: Map<string, string>): Priorities
     // category is quoted as its source, never restated as this desk's own protection or stop-gap claim, and age
     // alone never resolves a row.
     const scope = kind === 'STOP' ? stopScope(p) : null
+    // A STOP title always ends in "<account>"; when no symbol can be derived the item is still history, but never
+    // with that segment on display.
+    const bare = kind === 'STOP' ? stopTitle(p) : null
     if (scope) protection.push({ ...item, scope: scope.symbol, title: `Protection review ${protection.length + 1}` })
-    else history.push({ ...item, label: `Recorded ${KIND_WORD[kind] || `item (${kind || 'kind unrecorded'})`} · source category: ` })
+    else history.push({ ...item, title: bare === null ? item.title : safeText(bare, keys), label: `Recorded ${KIND_WORD[kind] || `item (${kind || 'kind unrecorded'})`} · source category: ` })
   }
   return { protection, history }
 }
@@ -154,7 +197,9 @@ export function marketMoversModel(r: Row): Mover[] {
   })).filter((m, i, all) => all.findIndex(x => x.symbol === m.symbol) === i)
 }
 export function homeToday(reads: Record<string, Read>, now: number) {
-  const labels = accountMap(reads.overview?.data)
+  // Every source this page reads, not only the overview: a key the priorities payload carries is withheld from
+  // the brief and the feed too.
+  const labels = accountNamespace(accountMap(reads.overview?.data), reads.priorities)
   return {
     overview: state(reads.overview ?? null, overviewModel, now, r => record(record(r.clock_provenance).quote).as_of),
     snapshot: state(reads.snapshot ?? null, r => snapshotModel(r, labels), now, r => snapshot(r).quotes_as_of),
