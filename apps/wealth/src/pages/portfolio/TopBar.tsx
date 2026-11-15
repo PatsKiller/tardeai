@@ -29,6 +29,7 @@ import type { Scope } from './scope'
 import { scopeOptions, scopedMeasure } from './scope'
 import { useBookSnapshot } from './snapshot'
 import { useLocation } from 'react-router-dom'
+import { PerformanceAccountSelect } from './performanceScope'
 import './semantic.css'
 
 interface ValueSpec {
@@ -102,7 +103,7 @@ export function PortfolioTopBar() {
       <label>
         <span className="mini-label">Portfolio scope</span>
         <br />
-        {book === null ? (
+        {pathname.replace(/\/$/, '') === '/portfolio/performance' ? <PerformanceAccountSelect /> : book === null ? (
           <select id="account" aria-label="Portfolio account scope" disabled value="ALL" title={NOT_READ}>
             <option value="ALL">All accounts · not read here</option>
           </select>

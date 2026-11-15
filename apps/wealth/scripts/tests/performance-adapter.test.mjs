@@ -8,10 +8,11 @@ import { createRequire } from 'node:module'
 import { spawnSync } from 'node:child_process'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { adaptPerformance, performanceRead, PERFORMANCE_PATH } from '../../src/pages/portfolio/performanceAdapter.ts'
+import { adaptPerformance, performanceRead, selectPerformance, PERFORMANCE_PATH } from '../../src/pages/portfolio/performanceAdapter.ts'
 import { createClient, HeavyReaderFromShell } from '../../src/api/client.ts'
 import { READERS, specFor } from '../../src/api/readers.ts'
 
+const router = createRequire(import.meta.url)('react-router-dom')
 const NOW = Date.parse('2040-06-04T16:00:00Z'), OLD = '2040-06-01T16:00:00Z'
 const PERIODS = ['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y']
 const cell = (overrides = {}) => ({ change: 100, change_pct: 1, start_value: 10000, end_value: 10100,
@@ -163,9 +164,10 @@ named('raw account keys never render; coverage comes only from an explicit serve
 
 // Drive the actual compiled wrapper with stubbed React hooks/client. No renderer server or network.
 async function liveHarness(result, reject = false) {
-  const { live, client } = compiled(), saved = { useState: React.useState, useMemo: React.useMemo, useEffect: React.useEffect, getJson: client.getJson, now: Date.now }
+  const { live, client } = compiled(), saved = { useState: React.useState, useMemo: React.useMemo, useEffect: React.useEffect, useContext: React.useContext, useSearchParams: router.useSearchParams, getJson: client.getJson, now: Date.now }
   const state = [], effects = []; let cursor = 0, calls = 0, signal
   React.useState = initial => { const i = cursor++; if (!(i in state)) state[i] = typeof initial === 'function' ? initial() : initial; return [state[i], v => { state[i] = v }] }
+  React.useContext = () => null; router.useSearchParams = () => [new URLSearchParams(), () => {}]
   React.useMemo = fn => fn(); React.useEffect = fn => { effects.push(fn) }; Date.now = () => NOW
   client.getJson = (url, s) => { calls++; assert.equal(url, '/api/v2/portfolio/performance'); signal = s; return reject ? Promise.reject(new Error('synthetic offline')) : Promise.resolve(result) }
   try {
@@ -173,10 +175,10 @@ async function liveHarness(result, reject = false) {
     await new Promise(resolve => setImmediate(resolve))
     cursor = 0; const final = renderToStaticMarkup(live()); assert.equal(calls, 1); cleanup(); assert.equal(signal.aborted, true)
     return { initial, final }
-  } finally { Object.assign(React, { useState: saved.useState, useMemo: saved.useMemo, useEffect: saved.useEffect }); client.getJson = saved.getJson; Date.now = saved.now }
+  } finally { Object.assign(React, { useState: saved.useState, useMemo: saved.useMemo, useEffect: saved.useEffect, useContext: saved.useContext }); router.useSearchParams = saved.useSearchParams; client.getJson = saved.getJson; Date.now = saved.now }
 }
 named('live wrapper reads once, renders adapted data, and aborts on unmount', async () => {
-  const { initial, final } = await liveHarness(env({ ok: true, data: body() })); assert.match(initial, /Reading Performance source/); assert.match(final, /Account A/); assert.match(final, /source-supplied|eligibility/)
+  const { initial, final } = await liveHarness(env({ ok: true, data: body() })); assert.match(initial, /Reading Performance source/); assert.match(final, /Account A/); assert.match(final, /Source-supplied|eligible/)
 })
 named('live wrapper HTTP failure displays cached values and their old source ages', async () => {
   const { final } = await liveHarness(env(null, { ok: false, status: 503, error: 'HTTP 503', lastGood: body() })); assert.match(final, /Last available response/); assert.match(final, /3\.0 d old/); assert.match(final, /HTTP 503/)
@@ -213,4 +215,64 @@ named('parity 7: nested UNKNOWN with evidence withholds values but preserves sou
   assert.equal(m.amount.value, null); assert.equal(m.percent.value, null)
   assert.equal(m.clocks[0].ageSeconds, 259200); assert.match(m.clocks[0].label, /source status: OK/)
   assert.match(render(r.props), /All performance measures are unknown/)
+})
+
+named('C-PERF-B exposes only actual served period keys, never invented windows', () => {
+  const b = body(); b.periods = { '1W': cell(), 'YTD': cell() }
+  for (const a of Object.values(b.accounts)) a.periods = { '1W': cell() }
+  assert.deepEqual(adapt(b).availablePeriods, ['1W', 'YTD'])
+})
+named('C-PERF-B canonical label join changes no eligibility or monetary evidence', () => {
+  const b = body(); delete b.accounts['synthetic-account-a'].eligibility; delete b.accounts['synthetic-account-a'].account_label
+  const p = adaptPerformance(b, NOW, null, new Map([['synthetic-account-a', 'Canonical account A']])).props
+  assert.equal(acct(p).label, 'Canonical account A')
+  assert.equal(acct(p).periods['1W'].amount.value, null)
+  assert.match(acct(p).periods['1W'].amount.unknownReason, /eligibility unknown/)
+})
+
+named('C-PERF-B scoped period choices and measures share source membership', () => {
+  const b = body(); b.accounts['synthetic-account-a'].periods = { '1W': cell() }
+  const p = adapt(b), original = structuredClone(p)
+  const selected = selectPerformance(p, 'synthetic-account-a', 'YTD')
+  assert.equal(selected.props.accounts.length, 1)
+  assert.equal(selected.props.accounts[0].key, 'synthetic-account-a')
+  assert.deepEqual(selected.props.household, {})
+  assert.equal(selected.props.showHousehold, false)
+  assert.deepEqual(selected.props.availablePeriods, ['1W'])
+  assert.equal(selected.props.selectedPeriod, '1W')
+  assert.match(selected.notice, /not served for this scope/)
+  assert.deepEqual(p, original)
+  const html = render(selected.props)
+  assert.doesNotMatch(html, /<h2>Household<\/h2>|<h2>Account B<\/h2>|<h3>YTD<\/h3>/)
+})
+named('C-PERF-B unknown account URL never silently falls back to household', () => {
+  const selected = selectPerformance(adapt(), 'synthetic-missing', '1W')
+  assert.deepEqual(selected.props.accounts, [])
+  assert.deepEqual(selected.props.household, {})
+  assert.deepEqual(selected.props.availablePeriods, [])
+  assert.equal(selected.props.selectedPeriod, null)
+  assert.match(selected.notice, /account is not served.*fallback withheld/)
+  assert.doesNotMatch(render(selected.props), /\+\$100\.00|<h2>Household<\/h2>/)
+})
+named('C-PERF-B literal 1D URL selects Latest session; calendar aliases do not relabel rolling windows', () => {
+  assert.equal(selectPerformance(adapt(), null, '1D').props.selectedPeriod, 'Latest session')
+  for (const period of ['1W', '1M', '3M']) assert.equal(selectPerformance(adapt(), null, period).props.selectedPeriod, period)
+  for (const period of ['WTD', 'MTD', 'QTD', 'broken']) {
+    const selected = selectPerformance(adapt(), null, period)
+    assert.equal(selected.props.selectedPeriod, 'YTD')
+    assert.match(selected.notice, /Requested period is not served/)
+  }
+})
+named('C-PERF-B no served period keys produces an explicit unavailable selector', () => {
+  const b = body(); b.periods = {}; for (const a of Object.values(b.accounts)) a.periods = {}
+  const selected = selectPerformance(adapt(b), null, null)
+  assert.equal(selected.props.selectedPeriod, null)
+  assert.match(render(selected.props), /No periods served/)
+  assert.match(selected.notice, /No periods served/)
+})
+
+named('C-PERF-B selected account status does not count a suppressed household as a missing measure', () => {
+  const b = body(); b.accounts['synthetic-account-a'].periods['1W'] = cell({coverage:{included:1,total:1},observation_clock:{as_of:OLD,freshness:'fresh'}})
+  const selected = selectPerformance(adapt(b), 'synthetic-account-a', '1W')
+  assert.match(render(selected.props), /data-performance-state="available"/)
 })

@@ -261,3 +261,25 @@ test('performance invalid or unzoned source timestamps cannot claim fresh direct
     assert.doesNotMatch(html, /source reports fresh|class="money-gain">/)
   }
 })
+
+// C-PERF-B regressions: source selection on the actual presenter.
+test('C-PERF-B leaves the single page H1 to the shell', () => {
+  assert.doesNotMatch(render(), /<h1[ >]/)
+})
+test('C-PERF-B selected period renders only that interval with served choices', () => {
+  const p = fixture()
+  p.availablePeriods = ['1W', 'YTD']; p.selectedPeriod = '1W'
+  const html = render(p)
+  assert.match(html, /aria-label="Performance period"/)
+  assert.match(html, /value="1W"/); assert.match(html, /value="YTD"/)
+  assert.doesNotMatch(html, /value="1M"|<h3>YTD<\/h3>|<h3>Latest session<\/h3>/)
+  assert.match(html, /<h3>1W<\/h3>/)
+})
+test('C-PERF-B places source provenance inside a closed evidence disclosure', () => {
+  assert.match(render(), /<details><summary>Method &amp; interval details<\/summary><div class="performance-provenance"/)
+})
+
+test('C-PERF-B repeats an identical missing-number reason only once per measure', () => {
+  const html = justMeasure(fixture().household['6M'].observation)
+  assert.equal((html.match(/Unknown — insufficient history/g) ?? []).length, 1)
+})

@@ -1,5 +1,6 @@
 // Existing performance response -> presentation only. No financial derivation or source reads.
 // Runtime-free type imports keep this module directly loadable by node's TypeScript stripper.
+import { accountDisplayLabel } from './accountLabel.ts'
 import type { Envelope } from '../../api/client'
 import type {
   PerformanceAccount, PerformanceClock, PerformanceHouseholdPeriod, PerformanceMeasure,
@@ -117,7 +118,7 @@ function observation(cell: Obj, root: Obj, period: string, nowMs: number, accoun
 }
 
 /** Account selection is optional for future integration. Never re-label the unchanged household aggregate. */
-export function adaptPerformance(body: unknown, nowMs: number, accountKey: string | null = null): PerformanceAdaptation {
+export function adaptPerformance(body: unknown, nowMs: number, accountKey: string | null = null, labels: ReadonlyMap<string, string> = new Map()): PerformanceAdaptation {
   try {
     let root = obj(body)
     const outerUnavailable = unavailable(root)
@@ -138,9 +139,10 @@ export function adaptPerformance(body: unknown, nowMs: number, accountKey: strin
       const raw = obj(rawAccounts[key]), periods = obj(raw.periods)
       const eligibility = obj(raw.eligibility)
       const eligible = eligibility.status === 'eligible' && text(eligibility.source) !== null
-      return { key, label: text(raw.account_label) ?? text(raw.display_label),
-        scopeNote: eligible ? 'Source-declared eligible account; raw NAV includes flows; not reconciled investment profit.'
-          : `Account eligibility unknown — owner: ${OWNER}; no real-account scope inferred.`,
+      const label = accountDisplayLabel(key, labels.get(key) ?? null, text(raw.account_label) ?? text(raw.display_label))
+      return { key, availablePeriods: WINDOWS.filter(([, period]) => own(periods, period)).map(([label]) => label), label: label === key ? null : label,
+        scopeNote: eligible ? 'Source-declared eligible account.'
+          : 'Account eligibility unknown; no real-account scope inferred.',
         periods: Object.fromEntries(WINDOWS.map(([label, period]) => [label, observation(obj(periods[period]), root, period, nowMs, raw)])) }
     })
     const household: PerformancePageProps['household'] = {}
@@ -157,7 +159,9 @@ export function adaptPerformance(body: unknown, nowMs: number, accountKey: strin
       household[label] = row
     }
     // Scrub dynamic account keys even from producer text. Never synthesize broker/display labels.
-    const props: PerformancePageProps = { accounts, household, gapOwner: OWNER }
+    const availablePeriods = WINDOWS.filter(([label, period]) => own(obj(root.periods), period)
+      || accounts.some(a => a.availablePeriods?.includes(label))).map(([label]) => label)
+    const props: PerformancePageProps = { accounts, household, gapOwner: OWNER, availablePeriods }
     const scrub = (s: string) => keys.reduce((out, key) => key ? out.split(key).join('account identifier withheld') : out, s)
     for (const account of props.accounts) {
       account.label = account.label === account.key ? null : account.label === null ? null : scrub(account.label)
@@ -177,11 +181,11 @@ function scrubMeasure(m: PerformanceMeasure, scrub: (s: string) => string) {
 }
 
 /** HTTP cache age is described separately; it never replaces or renews a financial source clock. */
-export function performanceRead(env: Envelope<unknown> | null, nowMs: number, readError: string | null = null): PerformanceRead {
+export function performanceRead(env: Envelope<unknown> | null, nowMs: number, readError: string | null = null, labels: ReadonlyMap<string, string> = new Map()): PerformanceRead {
   if (env === null) return { props: null, reason: readError, state: readError ? 'unavailable' : 'loading', notice: null }
   if (!env.ok || readError !== null) {
     const cached = env.lastGood ?? (readError !== null ? env.data : null)
-    const old = adaptPerformance(cached, nowMs)
+    const old = adaptPerformance(cached, nowMs, null, labels)
     const why = readError ?? env.error ?? `HTTP ${env.status}`
     if (old.props === null) return { props: null, reason: `Performance read failed: ${why}. ${old.reason}`, state: 'unavailable', notice: null }
     const notice = `Current read failed: ${why}. Last available response; cache receipt age: ${num(env.lastGoodAgeSeconds) ?? 'unknown'} seconds. Source clocks/ages below remain separate; this is not a validated last-success receipt.${old.reason ? ` ${old.reason}` : ''}`
@@ -189,7 +193,23 @@ export function performanceRead(env: Envelope<unknown> | null, nowMs: number, re
     for (const row of Object.values(old.props.household)) for (const m of [row?.observation, row?.estimate]) if (m) m.qualifiers = [...new Set<PerformanceQualifier>([...m.qualifiers, 'stale'])]
     return { ...old, state: 'last-available', notice }
   }
-  const adapted = adaptPerformance(env.data, nowMs)
+  const adapted = adaptPerformance(env.data, nowMs, null, labels)
   return { ...adapted, state: adapted.props === null || adapted.reason !== null ? 'unavailable' : 'served',
-    notice: adapted.props === null ? null : adapted.reason ?? 'Source freshness and account eligibility are not certified by HTTP success. Household scope is source-supplied; benchmarks, alpha and NAV drawdown are not shown as account returns.' }
+    notice: adapted.props === null ? null : adapted.reason }
+}
+
+export function selectPerformance(props: PerformancePageProps, account: string | null, period: string | null): {
+  props: PerformancePageProps; notice: string | null
+} {
+  const selectedAccounts = account === null || account === 'ALL' ? props.accounts : props.accounts.filter(a => a.key === account)
+  const scoped = account !== null && account !== 'ALL'
+  const availablePeriods = scoped ? WINDOWS.map(([label]) => label).filter(label => selectedAccounts.some(a => a.availablePeriods?.includes(label))) : props.availablePeriods ?? []
+  const requested = WINDOWS.find(([, code]) => code === period)?.[0]
+  const selectedPeriod = requested && availablePeriods.includes(requested) ? requested
+    : availablePeriods.includes('YTD') ? 'YTD' : availablePeriods[0] ?? null
+  const notice = scoped && !selectedAccounts.length ? 'Selected account is not served. Choose a source account; household fallback withheld.'
+    : period !== null && (!requested || !availablePeriods.includes(requested)) ? 'Requested period is not served for this scope. Showing the selected available period.'
+      : selectedPeriod === null ? 'No periods served for this scope.' : null
+  return { props: { ...props, accounts: selectedAccounts, household: scoped ? {} : props.household,
+    availablePeriods, selectedPeriod, showHousehold: !scoped }, notice }
 }
