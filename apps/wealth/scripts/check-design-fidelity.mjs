@@ -14,6 +14,13 @@
 //     byte for byte (the approved fidelity target, sha256 1f8f87bb…). The v04 body must also remain a
 //     strict superset of the v02 body, rule by rule: that is what lets v04.css load after v02.css
 //     without moving a single shared declaration, and the claim is checked rather than assumed.
+//  7. The evidence table — the table of PROSE under the caption "Fields with no producer on this
+//     read…" — carries the reference's own `matrix` class. v02/v04 already ship
+//     `.matrix td{white-space:normal;vertical-align:top;text-align:left}`; without the class the cells
+//     inherit the shell's nowrap and the table sets its own 1133 px minimum inside a 992 px wrap at
+//     1280 (the live gate that rolled candidate 2 back, 2026-11-15T05:07Z). Measurement does not pin
+//     this: a tidy of the className passes every other check, so the class is asserted here, keyed by
+//     the caption's text.
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
@@ -107,6 +114,11 @@ const insideWrap = node => {
   }
   return false
 }
+// Rule 7: the evidence table is the one table of prose on the page, and it must keep the `matrix`
+// class (see the header note). Keyed by the caption text on purpose: if the caption is reworded the
+// rule fails rather than silently stopping to pin anything, so the change has to be made deliberately.
+const EVIDENCE_CAPTION = 'Fields with no producer on this read'
+let evidenceTables = 0
 for (const f of walk(path.join(root, 'src'))) {
   if (!/\.tsx$/.test(f)) continue
   const sf = ts.createSourceFile(f, fs.readFileSync(f, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
@@ -117,6 +129,16 @@ for (const f of walk(path.join(root, 'src'))) {
       if (open.tagName.getText(sf) === 'table' && !insideWrap(node)) {
         seen.push(sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1)
       }
+      if (open.tagName.getText(sf) === 'table' && node.getText(sf).includes(EVIDENCE_CAPTION)) {
+        evidenceTables += 1
+        const cls = wrapClassOf(open)
+        if (cls === null || !/(^|\s)matrix(\s|$)/.test(cls)) {
+          const at = sf.getLineAndCharacterOfPosition(open.getStart(sf)).line + 1
+          fail.push(`${path.relative(root, f)}:${at}: the evidence table (caption "${EVIDENCE_CAPTION}…") ` +
+            `must carry the reference's \`matrix\` class — without it its prose cells inherit the nowrap ` +
+            `shell rule and the table overflows a 992 px wrap at 1280`)
+        }
+      }
     }
     node.forEachChild(visit)
   }
@@ -126,6 +148,10 @@ for (const f of walk(path.join(root, 'src'))) {
       `(v02 table min-width 720px + nowrap cells would widen the page at narrow viewports)`)
   }
 }
+if (evidenceTables === 0) {
+  fail.push(`rule 7: no table carries the caption "${EVIDENCE_CAPTION}…", so the matrix pin would cover ` +
+    `nothing. If the table was renamed or removed, update this rule deliberately rather than dropping it.`)
+}
 if (fail.length) { console.error('check-design-fidelity FAIL\n- ' + fail.join('\n- ')); process.exit(1) }
 console.log('check-design-fidelity PASS (v02.css == reference <style>, v04.css == reference <style> and a superset of ' +
-  'v02, both shas ok, no stray hex, no shell timers, every table in a .table-wrap)')
+  'v02, both shas ok, no stray hex, no shell timers, every table in a .table-wrap, the evidence table `matrix`)')

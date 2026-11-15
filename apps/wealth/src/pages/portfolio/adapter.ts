@@ -277,7 +277,11 @@ function sessionFrom(wire: Json): HoldingsSession {
   }
 }
 
-function accountsFrom(wire: Json): AccountTotal[] | null {
+// Exported for the gate test only: the label join's preference (`account_key` before `account`) is a
+// behaviour of this call site, not of the helper, so a helper-only test cannot pin it (cc-deepseek-3's
+// mutant M-B keys on `account` alone and stays green at 62/62; the live payload's `schwab_roth` rows
+// carry `account_key: 'schwab_roth_ira'`). shell-logic.test.mjs compiles this module and calls it.
+export function accountsFrom(wire: Json): AccountTotal[] | null {
   const rec = asObj(wire.reconciliation)
   const list = asArr(rec.accounts).filter(isObj)
   if (list.length === 0) return null

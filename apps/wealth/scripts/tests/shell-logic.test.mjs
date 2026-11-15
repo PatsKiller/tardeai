@@ -475,6 +475,7 @@ function compileGateModules() {
     '--typeRoots', path.join(APP, 'node_modules/@types'), '--types', 'node', '--outDir', out,
     path.join(APP, 'src/pages/portfolio/fixtureInvariants.ts'),
     path.join(APP, 'src/pages/portfolio/HoldingsTable.tsx'),
+    path.join(APP, 'src/pages/portfolio/adapter.ts'),
   ]
   const r = spawnSync(process.execPath, [tsc, ...args], { encoding: 'utf8' })
   if (r.status !== 0) {
@@ -487,6 +488,7 @@ function compileGateModules() {
     fixtureInvariants: load(path.join(out, 'pages/portfolio/fixtureInvariants.js')),
     fixtures: load(path.join(out, 'pages/portfolio/fixtures.js')),
     holdingsTable: load(path.join(out, 'pages/portfolio/HoldingsTable.js')),
+    adapter: load(path.join(out, 'pages/portfolio/adapter.js')),
   }
   return gateModules
 }
@@ -588,4 +590,40 @@ test('accountLabel: nothing served anywhere leaves the key unchanged, and blank 
   assert.equal(accountDisplayLabel('moomoo_taxable_live', null, null), 'moomoo_taxable_live')
   assert.equal(accountDisplayLabel('moomoo_taxable_live', '   ', ''), 'moomoo_taxable_live')
   assert.equal(accountDisplayLabel('moomoo_taxable_live', null, '  Alpaca Individual  '), 'Alpaca Individual')
+})
+
+// ---- The label JOIN preference, through the adapter itself (cc-deepseek-3 §1, mutant M-B) -----------
+// The helper tests above pin `accountDisplayLabel`; they cannot pin which field the join KEYS on, because
+// that choice lives in `accountsFrom`. -3's mutant M-B — `rowKey = str(row.account) ?? str(row.account_key)`
+// — kept 62/62 green and, served on the live payload, rendered the Schwab Roth row as the raw key with
+// "no display label served" while the other four were right: on that payload the rows' `account` is
+// `schwab_roth` and only `account_key` is `schwab_roth_ira`, the key the reconciliation block publishes.
+// This case runs the real adapter over that shape, so the mutant dies here.
+
+test('accountLabel: the join keys on account_key, so a row whose two keys differ still gets its label', () => {
+  const { accountsFrom } = compileGateModules().adapter
+  const wire = {
+    reconciliation: {
+      accounts: [{ account: 'schwab_roth_ira', end_equity: { value_usd: 57147.66 } }],
+    },
+    holdings: [
+      { account: 'schwab_roth', account_key: 'schwab_roth_ira', account_label: 'Schwab Roth IRA', symbol: 'VTI', shares: 1 },
+      { account: 'alpaca_taxable_live', account_key: 'alpaca_taxable_live', account_label: 'Alpaca Individual', symbol: 'VTI', shares: 1 },
+    ],
+  }
+  const out = accountsFrom(wire)
+  assert.ok(out && out.length === 1, 'one reconciliation account renders one row')
+  assert.equal(out[0].accountKey, 'schwab_roth_ira')
+  assert.equal(out[0].accountLabel, 'Schwab Roth IRA',
+    'the label is joined on account_key; keying on `account` leaves the raw key, which is exactly mutant M-B')
+  assert.notEqual(out[0].accountLabel, out[0].accountKey, 'a label equal to the key is not a label')
+})
+
+test('accountLabel: through the adapter, nothing served anywhere still renders the key, never a guess', () => {
+  const { accountsFrom } = compileGateModules().adapter
+  const out = accountsFrom({
+    reconciliation: { accounts: [{ account: 'moomoo_taxable_live', end_equity: { value_usd: 521.66 } }] },
+    holdings: [{ account: 'moomoo_taxable_live', account_key: 'moomoo_taxable_live', symbol: 'VTI' }],
+  })
+  assert.equal(out[0].accountLabel, 'moomoo_taxable_live')
 })
