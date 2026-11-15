@@ -14,6 +14,7 @@
 // Pure: no React, no DOM — the invariants can pin it.
 
 import type { HoldingsRow } from './contract'
+import { sectorDisplayLabel, sectorSource } from './analyticsAdapter'
 import { decimal, marketCapText, money, multiple, pct, price, shares, signedMoney, signedPct, unavailable } from './format'
 
 export interface DetailField {
@@ -108,7 +109,7 @@ export function fundamentalsFields(row: HoldingsRow): DetailField[] {
     { label: 'EPS, next year (estimate)', value: f.epsNextY === null ? missing('next-year EPS') : money(f.epsNextY), source: 'wire eps_next_y · the provider’s estimate, not a measurement' },
     { label: 'PEG', value: f.peg === null ? missing('PEG') : decimal(f.peg), source: 'wire peg · served ratio, no threshold applied' },
     { label: 'Beta', value: f.beta === null ? missing('beta') : decimal(f.beta), source: 'wire beta · served ratio, no interpretation added' },
-    { label: 'Sector', value: f.sector ?? missing('sector'), source: 'wire sector' },
+    { label: 'Sector', value: sectorDisplayLabel(row), source: sectorSource(row) },
     { label: 'Industry', value: f.industry ?? missing('industry'), source: 'wire industry' },
     { label: 'Performance, year to date', value: f.perfYtdPct === null ? missing('YTD performance') : pct(f.perfYtdPct), source: 'wire perf_ytd_pct · percent as published' },
     { label: 'Short interest (float)', value: f.shortFloatPct === null ? missing('short float') : pct(f.shortFloatPct), source: 'wire short_float_pct · percent of float as published' },

@@ -6,7 +6,8 @@
 // `book` explicitly; this file binds no reader itself and issues no request.
 //
 // v04's order is kept: heading (the shell's — there is no second <h1> here), one compact session/freshness
-// line, the four-card summary strip, the Holdings workspace, then the two decision/allocation panels. The
+// line, the approved v0.5 analytics panel (filters, KPI strip, three charts — one selected view), the
+// Holdings workspace, then the protection-gap panel. The
 // plumbing the operator rejected as the main workspace — clocks, measure definitions, population, the
 // per-account audit table — now lives in collapsed <details> blocks below the fold, keyboard operable, with
 // the material warnings (stale, unverified, fixture) still visible above it.
@@ -27,24 +28,32 @@
 //   * a stale book says how old it is and that the values are not current;
 //   * a day-change column with no declared clock is labelled as such, not given one;
 //   * loading, error and empty are three different states, and empty is never a table of zeros;
-//   * the three v04 summary cards with no canonical source (unrealized total, YTD profit, cash total) print
-//     Unknown and the reason, because this page never sums rows to fill a card;
+//   * the v0.5 KPI strip, the charts, the table and the CSV are ONE selected view: the approved selector's
+//     totals over the rows the filters kept, labelled as display aggregates of published values — not
+//     broker equity and not verified profit;
+//   * sector is bound from served fields only (contract r6 §5): a cash or fund row is Funds & Cash, an
+//     unavailable profile says so instead of printing the carried label, and null/empty is Unclassified;
 //   * the account scope is a FILTER over served rows and nothing else (scope.ts): "All accounts" is the served
 //     book, and under one account every book-level measure says "not served per account" — the page never sums
-//     rows into a per-account total. The selection itself lives in the top bar (TopBar.tsx), one selection for
-//     both surfaces.
+//     rows into a per-account total. The selection is shared with the top bar (TopBar.tsx): this page's account
+//     select and the top bar's drive the same state, and this page's is a stable native control.
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useDrawer } from '../../components/Drawer'
-import { ActionCard, Metric, MetricGrid, Note, Panel, Tag } from '../../components/primitives'
+import { ActionCard, Panel, Tag } from '../../components/primitives'
 import type { HoldingsBook, HoldingsRow } from './contract'
 import { ledgerLine } from './clockLedger'
 import { FIXTURE_BOOK } from './fixtures'
-import { HoldingsTable, freshnessLine } from './HoldingsTable'
+import { HoldingsTable, csvFor, freshnessLine } from './HoldingsTable'
+import { AnalyticsPanel } from './AnalyticsPanel'
+import { accountOptions, displaySectorKey, normalizeBook, snapshotFor } from './analyticsAdapter'
+import type { AccountChoice, AnalyticsRow } from './analyticsAdapter'
+import { derivePortfolioView } from './analytics/portfolio-analytics.mjs'
+import type { AnalyticsSnapshot, PortfolioView } from './analytics/portfolio-analytics.mjs'
 import { PositionCards } from './PositionCards'
 import { PRESETS, preset, type PresetId } from './presets'
-import { age, lastKnownSentence, money, notCurrent, pct, servedFreshnessLine } from './format'
+import { lastKnownSentence, money, notCurrent, servedFreshnessLine } from './format'
 import { detailSections, detailHeading } from './detail'
 import { rowsInScope, scopeLabel, scopedMeasure } from './scope'
 import { useBookScope } from './snapshot'
@@ -141,17 +150,115 @@ function DetailBody({ row }: { row: HoldingsRow }) {
   )
 }
 
-// Allocation bands. Tokens only (the design gate forbids a stray hex outside the reference-locked sheets);
-// a row's colour is assigned by its position in the served book, so the same book always draws the same ring.
-const SLICE_TOKENS = ['var(--gold)', 'var(--blue)', 'var(--purple)', 'var(--green)', 'var(--red)'] as const
+/**
+ * The one selected view (v0.5), or a stated reason it could not be derived. The approved selector rejects a
+ * row whose canonical identity is missing or duplicated (`validateRows`) — on this read that happens only if
+ * the wire serves a row without an account or symbol. The page then says so and falls back to the plain table
+ * instead of charting an identity it cannot keep.
+ */
+function buildAnalytics(book: HoldingsBook, scope: string, sector: string, query: string, currency: string) {
+  const rows = normalizeBook(book)
+  const accounts = accountOptions(rows)
+  const snapshot = snapshotFor(book)
+  const selectorScope = {
+    account: scope === 'ALL' ? '' : scope,
+    sector,
+    query,
+    currency: currency === '' ? null : currency,
+  }
+  try {
+    return { rows, accounts, snapshot, view: derivePortfolioView(rows, selectorScope, snapshot), reason: null as string | null }
+  } catch (e) {
+    return { rows, accounts, snapshot, view: null as PortfolioView<AnalyticsRow> | null, reason: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+/** Sectors available under an account/currency — used to announce an impossible sector's reset. */
+function sectorsFor(rows: AnalyticsRow[], snapshot: AnalyticsSnapshot, scope: string, currency: string): string[] {
+  try {
+    const view = derivePortfolioView(
+      rows,
+      { account: scope === 'ALL' ? '' : scope, sector: '', query: '', currency: currency === '' ? null : currency },
+      snapshot,
+    )
+    return view.sectorOptions
+  } catch {
+    return []
+  }
+}
 
 export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = null, notice = null, nowMs = null }: HoldingsPageProps) {
   const [presetId, setPresetId] = useState<PresetId>('holdings')
   const [query, setQuery] = useState('')
+  const [sector, setSector] = useState('')
+  const [currency, setCurrency] = useState('')
+  const [announcement, setAnnouncement] = useState('')
   const drawer = useDrawer()
   // One scope for the page and the top bar. Outside the shell's provider this is local state, so a unit render
-  // still filters; inside it, the top bar's select drives this page.
-  const { scope } = useBookScope()
+  // still filters; inside it, the top bar's select drives this page (and this page's select drives it back).
+  const { scope, setScope } = useBookScope()
+
+  // Every hook above the early returns, unconditionally: the memo is computed only for a book that exists.
+  const analytics = useMemo(
+    () =>
+      book === null
+        ? { rows: [] as AnalyticsRow[], accounts: [] as AccountChoice[], snapshot: null, view: null as PortfolioView<AnalyticsRow> | null, reason: null as string | null }
+        : buildAnalytics(book, scope, sector, query, currency),
+    [book, scope, sector, query, currency],
+  )
+
+  // A filter that no longer exists in the book (an account change, or a snapshot refresh that dropped a
+  // sector) is reset AND announced. Without the announcement the population would change silently.
+  useEffect(() => {
+    if (analytics.view === null || sector === '') return
+    if (!analytics.view.sectorOptions.includes(sector)) {
+      setSector('')
+      setAnnouncement(`Sector reset because ${displaySectorKey(sector)} is not present in this account.`)
+    }
+  }, [analytics.view, sector])
+
+  // Filter handlers. An ACCOUNT or CURRENCY change can make the selected sector impossible; it is cleared in the
+  // SAME update as the change, so the table never renders an impossible slice for a frame, and the reset is
+  // announced because the population changed without the reader asking. Sector and search changes are the
+  // reader's own, so they withdraw a previous announcement.
+  const changeAccount = (key: string) => {
+    const next = key === '' ? 'ALL' : key
+    setScope(next)
+    setAnnouncement('')
+    if (sector === '' || analytics.snapshot === null) return
+    if (!sectorsFor(analytics.rows, analytics.snapshot, next, currency).includes(sector)) {
+      setSector('')
+      setAnnouncement(`Sector reset because ${displaySectorKey(sector)} is not present in this account.`)
+    }
+  }
+
+  const changeCurrency = (next: string) => {
+    setCurrency(next)
+    setAnnouncement('')
+    if (sector === '' || analytics.snapshot === null) return
+    if (!sectorsFor(analytics.rows, analytics.snapshot, scope, next).includes(sector)) {
+      setSector('')
+      setAnnouncement(`Sector reset because ${displaySectorKey(sector)} is not present in this currency.`)
+    }
+  }
+
+  const changeSector = (key: string) => {
+    setSector(key)
+    setAnnouncement('')
+  }
+
+  const changeSearch = (next: string) => {
+    setQuery(next)
+    setAnnouncement('')
+  }
+
+  const resetFilters = () => {
+    setScope('ALL')
+    setSector('')
+    setQuery('')
+    setCurrency('')
+    setAnnouncement('All filters reset: every account and sector, no search.')
+  }
 
   if (error !== null) {
     return (
@@ -175,13 +282,32 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
   const needle = query.trim().toLowerCase()
   // The scope narrows the rows; the search narrows them again. Neither changes a served value.
   const inScope = rowsInScope(book, scope)
-  const rows = needle
+  // The v0.5 view is the ONE filter pass when it can be derived: account, sector, search and currency narrow the
+  // same population, so the KPI strip, the charts, the table and the CSV cannot disagree about which rows they
+  // describe. When the selector rejects the book's identity the page falls back to scope + search and says why.
+  const view = analytics.view
+  const fallbackRows = needle
     ? inScope.filter(r => `${r.symbol} ${r.name} ${r.accountLabel} ${r.accountKey}`.toLowerCase().includes(needle))
     : inScope
+  const rows = view === null ? fallbackRows : view.rows.map(r => r.holding)
 
   const openRow = (row: HoldingsRow, origin?: HTMLElement) => {
     const h = detailHeading(row)
     drawer.open({ title: h.title, eyebrow: h.eyebrow, body: <DetailBody row={row} />, origin: origin ?? null })
+  }
+
+  // The export is the table's own cells: same rows, same preset, same cell() walker (HoldingsTable.csvFor), so
+  // the file cannot disagree with the screen. Download only — no request, no write, no upload.
+  const downloadCsv = () => {
+    const url = URL.createObjectURL(new Blob([csvFor(rows, active)], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `holdings-${book.asOf}-${active.id}.csv`
+    a.rel = 'noopener'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    requestAnimationFrame(() => URL.revokeObjectURL(url))
   }
 
   const scopeText = scopeLabel(book, scope)
@@ -201,43 +327,14 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
   // Named here so the disclosure can quote the served instant instead of describing the role in the abstract.
   const valuationClock = book.clocks.find(c => c.role === 'VALUATION') ?? null
 
-  // The one account-value card v04 draws from a canonical value. Everything else on the strip has no served
-  // source and says so: the page never derives a total from the rows below it. Under a single-account scope the
-  // served measure is the book's, so the card states that the read serves no per-account split.
-  const accountValue = scopedMeasure(book, 'account_value', scope)
-  const accountValueMeasure = accountValue.measure
-  const accountValueCard = accountValue.available
-    ? {
-        value: money(accountValue.valueUsd),
-        sub: `${
-          accountValueMeasure?.verified
-            ? `Verified, receipt ${accountValueMeasure.receiptId ?? 'missing'}`
-            : 'Measured, not verified — the ledger publishes no receipt'
-        } · as of ${accountValueMeasure?.asOf ?? 'clock not served'}`,
-      }
-    : { value: 'Unknown', sub: accountValue.reason }
-
+  // The v0.5 KPI strip replaces v04's four-card metric grid: its totals are the approved selector's own over the
+  // SELECTED rows, and each card says what it is. The one served book measure v04 drew from a canonical value
+  // (account value) is still printed, with its verification and clock, in the Book measures block below.
   const priceMove = scopedMeasure(book, 'price_move_estimate', scope)
 
   // Protection gaps, quoted from the stops read. Not a recommendation: the card says what the producer
   // already reports, in the producer's own words, and opens the row it is about.
   const gaps = inScope.filter(r => r.protection !== null && r.protection.state === 'GAP')
-
-  const weightTotal = book.rows.reduce((sum, r) => sum + r.portfolioPct, 0)
-  // This sum is a COMPLETENESS CHECK, not a displayed quantity: it decides only whether the ring closes.
-  // portfolioPct is percent-of-book by contract (the wire's rows sum to 100.0), and a ring drawn over a book
-  // that does not would silently misstate every band after the gap. It is quoted on screen only in the case
-  // where it fails, as the reason the ring is withheld — never as a measure of value. Bars are drawn from
-  // each row's served weight either way.
-  const ringCloses = book.rows.length > 0 && Math.abs(weightTotal - 100) <= 0.05
-  let running = 0
-  const stops = book.rows
-    .map((r, i) => {
-      const from = running
-      running += r.portfolioPct
-      return `${SLICE_TOKENS[i % SLICE_TOKENS.length]} ${from.toFixed(2)}% ${running.toFixed(2)}%`
-    })
-    .join(', ')
 
   return (
     <section aria-label="Portfolio holdings">
@@ -293,22 +390,32 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
         </div>
       </div>
 
-      <MetricGrid>
-        <Metric label="Account value" value={accountValueCard.value} sub={accountValueCard.sub} />
-        <Metric label="Unrealized gain" value="Unknown" sub="No served unrealized total; this page never sums rows." />
-        <Metric label="YTD investment profit" value="Unknown" sub="No YTD measure is served on any read of this book." />
-        <Metric label="Cash / book weight" value="Unknown" sub="No served cash total; cash is listed per account." />
-      </MetricGrid>
-
-      <Note tone="blue">
-        Scope: {scopeText} — chosen in the top bar. It filters the rows and never changes a served value. Same
-        account, security, session and snapshot in the row and the detail. Select a holding to review its cost,
-        levels and protection.
-      </Note>
+      {view !== null ? (
+        <AnalyticsPanel
+          view={view}
+          accounts={analytics.accounts}
+          scope={scope}
+          sector={sector}
+          query={query}
+          currency={currency}
+          announcement={announcement}
+          onAccount={changeAccount}
+          onSector={changeSector}
+          onSearch={changeSearch}
+          onCurrency={changeCurrency}
+          onReset={resetFilters}
+        />
+      ) : (
+        <div className="note bad" role="alert">
+          <strong>Overview withheld.</strong> The selected view cannot be derived from this book: {analytics.reason}{' '}
+          The rows below are filtered by account and search only; no total is printed over an identity the page
+          cannot keep.
+        </div>
+      )}
 
       <Panel
         title="Holdings workspace"
-        sub={`${inScope.length} rows in scope · ${inScope.filter(r => r.kind === 'CASH').length} cash · scope: ${scopeText} · ${
+        sub={`${rows.length} rows in the selected view · ${rows.filter(r => r.kind === 'CASH').length} cash · scope: ${scopeText} · ${
           book.source === 'FIXTURE' ? 'synthetic fixture' : 'served book'
         }`}
         right={
@@ -323,15 +430,6 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
       >
         <div className="toolbar">
           <div className="left">
-            {/* v04's own control: placeholder + aria-label, no visible label text beside the box. */}
-            <input
-              id="holdings-search"
-              type="search"
-              aria-label="Search holdings"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="Find a holding…"
-            />
             <div className="segmented" role="group" aria-label="Holding columns">
               {PRESETS.map(p => (
                 <button key={p.id} type="button" className={p.id === presetId ? 'active' : ''} aria-pressed={p.id === presetId} onClick={() => setPresetId(p.id)}>
@@ -339,6 +437,9 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
                 </button>
               ))}
             </div>
+            <button type="button" className="small" onClick={downloadCsv}>
+              Export CSV
+            </button>
           </div>
         </div>
 
@@ -366,7 +467,9 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
         <p className="small muted">{book.coverageNote}</p>
       </Panel>
 
-      <div className="grid-equal">
+      {/* One column: v0.5's sector panel above now carries the allocation v04's second panel drew, and a
+          half-width panel beside nothing would reserve a column for no content. */}
+      <div className="grid-equal" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
         <Panel
           title={`Protection gaps in ${scope === 'ALL' ? 'this book' : 'this account'}`}
           sub="Quoted from the stops read. Evidence precedes an investment proposal."
@@ -400,59 +503,6 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
               ))}
               {gaps.length > 3 && <p className="small muted">+{gaps.length - 3} more in the table above.</p>}
             </>
-          )}
-        </Panel>
-
-        <Panel
-          title="Where capital is allocated"
-          sub={
-            scope === 'ALL'
-              ? 'Book scope; each band is one row’s served percent of the cash-inclusive book.'
-              : `${scopeText}; each band is the row’s served percent of the WHOLE cash-inclusive book, so these bands do not sum to 100.`
-          }
-        >
-          {book.rows.length === 0 ? (
-            <p className="muted">No rows are served, so there is no allocation to draw.</p>
-          ) : (
-            <div className="donut-row">
-              {scope === 'ALL' ? (
-                ringCloses ? (
-                  <div className="donut" role="img" aria-label="Served allocation of the book, including cash" style={{ background: `conic-gradient(${stops})` }}>
-                    <span>
-                      <strong>{book.counts.nonCash}</strong>securities
-                      <br />
-                      {book.counts.cash} cash
-                    </span>
-                  </div>
-                ) : (
-                  <p className="muted">
-                    The served weights total {pct(weightTotal, 1)}, not 100%, so the ring is not drawn: a closed ring
-                    would misstate every band after the gap. The served weights are listed beside it.
-                  </p>
-                )
-              ) : (
-                <p className="muted">
-                  The ring shows the whole book and is not drawn for one account: a single account’s bands would not
-                  close. The served weights, which are percent of the whole book, are listed beside it.
-                </p>
-              )}
-              <div className="bar-list">
-                {inScope.map((r, i) => (
-                  <div className="bar-row" key={`${r.accountKey}:${r.symbol}`}>
-                    <div className="row-between">
-                      <span>{r.kind === 'CASH' ? `Cash · ${r.accountLabel}` : r.symbol}</span>
-                      <span className="mono">{pct(r.portfolioPct, 1)}</span>
-                    </div>
-                    <div className="bar-track">
-                      <div
-                        className="bar-fill"
-                        style={{ width: `${Math.max(0, Math.min(100, r.portfolioPct))}%`, background: SLICE_TOKENS[i % SLICE_TOKENS.length] }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
           )}
         </Panel>
       </div>
@@ -701,8 +751,9 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
 
       <p>
         <small className="muted">
-          <Tag>Read-only</Tag> No orders, no approvals, no writes. Cash rows are listed per account and never added
-          together; the summary cards that v04 fills from an aggregate print Unknown because no aggregate is served.
+          <Tag>Read-only</Tag> No orders, no approvals, no writes. The overview's totals are display aggregates of
+          published row values over the selected view — not broker equity, not verified profit; per-account totals
+          remain the producer's and are never summed here. The account scope is shared with the top bar.
         </small>
       </p>
     </section>

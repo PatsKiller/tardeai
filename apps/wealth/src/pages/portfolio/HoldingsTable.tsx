@@ -10,6 +10,7 @@
 //   * the identity cell is bounded and does not print the internal account key (r2, verdict 2026-11-15T0342Z B1):
 //     measured live, the unbounded name+label+key held this column at 516 px of a 1,409 px table in a 1,136 px box.
 
+import { isValidElement } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { Cue, CueLevel } from '../../contracts/cue'
 import { cue } from '../../contracts/cue'
@@ -27,7 +28,12 @@ import type { Preset } from './presets'
  */
 const CUE_TAG_TONE: Record<Cue['level'], Tone> = { GREEN: 'good', AMBER: 'warn', RED: 'bad', NEUTRAL: '' }
 
-function ProtectionTag({ row }: { row: HoldingsRow }) {
+/**
+ * The protection chip, returned as the element tree itself (not wrapped in a component) so the CSV export can
+ * walk the very node the table renders and read its label — a component's children are opaque to that walk.
+ * The rendered output is unchanged.
+ */
+function protectionCell(row: HoldingsRow): ReactNode {
   const c = protectionCue(row)
   if (!c) return compactMissing('protection does not apply to a cash row')
   return (
@@ -181,7 +187,7 @@ function cell(row: HoldingsRow, key: string): ReactNode {
     case 'weight':
       return pct(row.portfolioPct)
     case 'protection': {
-      return <ProtectionTag row={row} />
+      return protectionCell(row)
     }
     case 'peTrailing':
       return peServed(row, 'peTrailing')
@@ -222,7 +228,7 @@ function cell(row: HoldingsRow, key: string): ReactNode {
         ? `${row.protection.asOf}${row.protection.stale === true ? ' (stale)' : ''}`
         : compactMissing('no read clock was served for this account')
     case 'protectionState': {
-      return <ProtectionTag row={row} />
+      return protectionCell(row)
     }
     case 'protectionNext':
       return row.protection === null ? (
@@ -368,4 +374,42 @@ export function freshnessLine(ageSeconds: number | null, staleAfterSeconds: numb
   if (staleAfterSeconds === null)
     return `Last known good — ${aged}; the response served no stale limit (limit not served). These values are not current.`
   return `Last known good — ${aged}, past the ${limit} limit. These values are not current.`
+}
+
+// ---- CSV export ----------------------------------------------------------------------------------------------
+// The export is built from the SAME `cell()` output the table renders — one formatter, one column map — so the
+// file and the screen cannot disagree about a value or a row (INTEGRATION.md: one selected population feeds
+// the table and the export). No fetch, no second read, no derived column.
+
+function rawText(node: ReactNode): string {
+  if (node === null || node === undefined || typeof node === 'boolean') return ''
+  if (typeof node === 'string') return node
+  if (typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(rawText).join(' ')
+  if (!isValidElement(node)) return ''
+  const props = node.props as { children?: ReactNode; 'aria-hidden'?: boolean | string }
+  // A decorative node (the ticker initials chip) is not read by a screen reader either, so it is not cell text.
+  if (props['aria-hidden'] === true || props['aria-hidden'] === 'true') return ''
+  if (node.type === 'br') return ' '
+  return rawText(props.children)
+}
+
+/**
+ * What a cell says, as text. `<br/>` becomes one space — the two visual lines join — and whitespace collapses,
+ * so the CSV cell is the readable equivalent of the two-line cell above it.
+ */
+export function cellText(node: ReactNode): string {
+  return rawText(node).replace(/\s+/g, ' ').trim()
+}
+
+/** RFC 4180 quoting: quote a value containing a comma, a quote or a line break; double its quotes. */
+function csvField(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+}
+
+/** The rows the table is showing, in the preset's columns, as CSV. */
+export function csvFor(rows: HoldingsRow[], preset: Preset): string {
+  const lines = [preset.columns.map(c => csvField(c.header)).join(',')]
+  for (const r of rows) lines.push(preset.columns.map(c => csvField(cellText(cell(r, c.key)))).join(','))
+  return `${lines.join('\r\n')}\r\n`
 }

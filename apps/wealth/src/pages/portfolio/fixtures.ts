@@ -93,6 +93,14 @@ export function staleTrailingPe(key: string): ValuationAssessment {
 
 const ONCE_READ = '2026-11-14T02:00:00Z'
 
+/**
+ * The row-level classification provenance the wire serves (contract r6 §5). The fixture's source says
+ * `fixture`: it is synthetic, and a screenshot must never read it as a provider's classification clock.
+ */
+function profiled(assetType: string, source = 'fixture'): Pick<HoldingsRow, 'assetType' | 'profileSource' | 'profileUpdatedAt'> {
+  return { assetType, profileSource: source, profileUpdatedAt: '2026-11-14T13:00:00Z' }
+}
+
 function protection(over: Partial<Protection> & Pick<Protection, 'state' | 'reason'>): Protection {
   return { stop: null, basis: null, asOf: ONCE_READ, stale: false, nextStep: 'Review this row before acting.', ...over }
 }
@@ -121,6 +129,7 @@ const ROWS: HoldingsRow[] = [
       reason: 'a resting stop is recorded for this position', nextStep: 'None — protection is in place.' }),
     fib: ladder(82.5, 58.0, [82.5, 76.72, 73.14, 70.25, 67.36, 63.24, 58.0], 76.72, 30.61),
     valuation: equityValuation('SYN_TAX:QZTA'),
+    ...profiled('EQUITY'),
   },
   {
     accountKey: 'SYN_TAX', accountLabel: 'Synthetic taxable', symbol: 'QZBR', name: 'Qzeta Beta Holdings',
@@ -133,6 +142,7 @@ const ROWS: HoldingsRow[] = [
       nextStep: 'Set a protective stop or record the decision to hold unprotected.' }),
     fib: null,
     valuation: equityValuation('SYN_TAX:QZBR'),
+    ...profiled('EQUITY'),
   },
   {
     accountKey: 'SYN_ROTH', accountLabel: 'Synthetic retirement', symbol: 'QZGA', name: 'Qzeta Gamma Industries',
@@ -145,6 +155,7 @@ const ROWS: HoldingsRow[] = [
       reason: 'a resting stop is recorded for this position', nextStep: 'None — protection is in place.' }),
     fib: ladder(132.0, 96.0, [132.0, 123.5, 118.25, 114.0, 109.75, 103.7, 96.0], 118.25, 33.33),
     valuation: equityValuation('SYN_ROTH:QZGA'),
+    ...profiled('EQUITY'),
   },
   {
     accountKey: 'SYN_ROTH', accountLabel: 'Synthetic retirement', symbol: 'QZDL', name: 'Qzeta Delta Systems',
@@ -158,6 +169,7 @@ const ROWS: HoldingsRow[] = [
       nextStep: 'Re-read the protection state for this account.' }),
     fib: ladder(18.4, 9.6, [18.4, 16.32, 15.04, 14.0, 12.96, 11.48, 9.6], 12.96, 67.05),
     valuation: equityValuation('SYN_ROTH:QZDL'),
+    ...profiled('EQUITY'),
   },
   {
     accountKey: 'SYN_ROLL', accountLabel: 'Synthetic rollover', symbol: 'QZEP', name: 'Qzeta Epsilon Group',
@@ -170,6 +182,7 @@ const ROWS: HoldingsRow[] = [
       reason: 'a resting stop is recorded for this position', nextStep: 'None — protection is in place.' }),
     fib: null,
     valuation: equityValuation('SYN_ROLL:QZEP'),
+    ...profiled('EQUITY'),
   },
   {
     accountKey: 'SYN_ROLL', accountLabel: 'Synthetic rollover', symbol: 'QZFD', name: 'Qzeta Income Fund',
@@ -186,6 +199,8 @@ const ROWS: HoldingsRow[] = [
       window: { high: 27.8, low: 22.4, asOf: '2026-11-14T01:00:00Z' },
     },
     valuation: fundValuation,
+    // A fund: its classification is the fund itself, never invented look-through (r6 §5 / INTEGRATION).
+    ...profiled('MUTUAL_FUND'),
   },
   {
     // A worthless, delisted identifier the producer keeps at zero: a FACT, not a missing value. It renders
@@ -201,6 +216,7 @@ const ROWS: HoldingsRow[] = [
       nextStep: 'Record the write-off decision; there is nothing left to protect.' }),
     fib: null,
     valuation: equityValuation('SYN_TAX:QZDX'),
+    ...profiled('EQUITY'),
   },
   {
     // An unpriced holding: no price served, so the value is UNKNOWN — never $0.00, and never under the floor:
@@ -215,6 +231,7 @@ const ROWS: HoldingsRow[] = [
       nextStep: 'Set a protective stop once a price is served, or record the decision.' }),
     fib: null,
     valuation: equityValuation('SYN_ROLL:QZNV'),
+    ...profiled('EQUITY'),
   },
   {
     accountKey: 'SYN_TAX', accountLabel: 'Synthetic taxable', symbol: 'CASH', name: 'Cash',
@@ -226,6 +243,7 @@ const ROWS: HoldingsRow[] = [
     protection: null,
     fib: null,
     valuation: cashValuation('SYN_TAX:CASH'),
+    ...profiled('CASH'),
   },
 ]
 

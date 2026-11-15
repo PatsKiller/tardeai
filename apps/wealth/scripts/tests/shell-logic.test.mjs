@@ -477,6 +477,8 @@ function compileGateModules() {
     path.join(APP, 'src/pages/portfolio/fixtureInvariants.ts'),
     path.join(APP, 'src/pages/portfolio/HoldingsTable.tsx'),
     path.join(APP, 'src/pages/portfolio/adapter.ts'),
+    path.join(APP, 'src/pages/portfolio/analyticsAdapter.ts'),
+    path.join(APP, 'src/pages/portfolio/presets.ts'),
   ]
   const r = spawnSync(process.execPath, [tsc, ...args], { encoding: 'utf8' })
   if (r.status !== 0) {
@@ -490,6 +492,8 @@ function compileGateModules() {
     fixtures: load(path.join(out, 'pages/portfolio/fixtures.js')),
     holdingsTable: load(path.join(out, 'pages/portfolio/HoldingsTable.js')),
     adapter: load(path.join(out, 'pages/portfolio/adapter.js')),
+    analyticsAdapter: load(path.join(out, 'pages/portfolio/analyticsAdapter.js')),
+    presets: load(path.join(out, 'pages/portfolio/presets.js')),
   }
   return gateModules
 }
@@ -653,4 +657,182 @@ test('clockLedger: nothing withheld, or a blank datum, prints nothing — blank 
   assert.equal(ledgerLine(STOP_CLOCK), null)
   assert.equal(ledgerLine({ ...STOP_CLOCK, withheldAsOf: null }), null)
   assert.equal(ledgerLine({ ...STOP_CLOCK, withheldAsOf: '   ' }), null)
+})
+
+// ---- v0.5 selected view: approved-selector parity, the r6 §5 sector binding, and the exported CSV ------------
+// Route 2026-11-15T1500Z ports the approved package as-is. These pin (a) the operator addendum's parity numbers
+// against the package's own six synthetic preview rows (fixtures a–f), (b) the sector rule over fields served
+// today, and (c) the export rule: the CSV IS the visible table — same rows, same preset, same cell walker.
+const { derivePortfolioView } = await import('../../src/pages/portfolio/analytics/portfolio-analytics.mjs')
+
+const PARITY_SNAPSHOT = {
+  id: 'synthetic-2026-11-15T15:00:00Z',
+  currency: 'USD',
+  session: 'Session known',
+  observedAt: '2026-11-15T15:00:00Z',
+  status: 'fresh',
+}
+function parityRow(rowId, accountId, securityId, sector, marketValue, unrealizedPnl, isCash = false) {
+  return {
+    rowId,
+    accountId,
+    accountName: accountId === 'tax' ? 'Taxable' : 'IRA',
+    securityId,
+    symbol: securityId,
+    name: securityId,
+    snapshotId: PARITY_SNAPSHOT.id,
+    currency: 'USD',
+    isCash,
+    sector,
+    marketValue,
+    unrealizedPnl,
+  }
+}
+// The package's six preview rows. D-INC carries no sector, which is the Unclassified case; cash rows carry none.
+const PARITY_ROWS = [
+  parityRow('ira:D-AUR', 'ira', 'D-AUR', 'Technology', 250000, 50000),
+  parityRow('ira:D-NOV', 'ira', 'D-NOV', 'Technology', 300000, -20000),
+  parityRow('tax:D-ORB', 'tax', 'D-ORB', 'Health Care', 100000, 10000),
+  parityRow('ira:D-INC', 'ira', 'D-INC', '', 350000, 15000),
+  parityRow('ira:CASH', 'ira', 'CASH', '', 175000, null, true),
+  parityRow('tax:CASH', 'tax', 'CASH', '', 75000, null, true),
+]
+const parityView = over =>
+  derivePortfolioView(PARITY_ROWS, { account: '', sector: '', query: '', currency: null, ...over }, PARITY_SNAPSHOT)
+
+test('v0.5 parity: Taxable is 2 rows, 175000 value, 75000 cash, 10000 unrealized', () => {
+  const v = parityView({ account: 'tax' })
+  assert.equal(v.rows.length, 2)
+  assert.equal(v.total, 175000)
+  assert.equal(v.cash, 75000)
+  assert.equal(v.pnl, 10000)
+  assert.equal(v.currencyValid, true, 'one served currency is valid, not an unknown one')
+})
+
+test('v0.5 parity: Health Care is 1 row and 100000; reset is all 6 rows', () => {
+  const health = parityView({ sector: 'Health Care' })
+  assert.equal(health.rows.length, 1)
+  assert.equal(health.total, 100000)
+  const all = parityView()
+  assert.equal(all.rows.length, 6, 'reset shows every row')
+  assert.equal(all.total, 1250000, 'the six published values summed — a display aggregate of published values')
+})
+
+test('v0.5 parity: searching D-NOV is 1 row, 300000, −20000', () => {
+  const v = parityView({ query: 'D-NOV' })
+  assert.equal(v.rows.length, 1)
+  assert.equal(v.total, 300000)
+  assert.equal(v.pnl, -20000)
+})
+
+// A sector decision needs only the fields this read serves: kind, asset_type, profile_source, the carried label.
+const sectorRow = over => ({
+  kind: 'SECURITY',
+  assetType: 'EQUITY',
+  profileSource: 'yfinance',
+  fundamentals: { sector: 'Technology' },
+  ...over,
+})
+
+test('r6 §5: cash and fund rows are one displayed bucket under the selector’s own cash key', () => {
+  const { sectorDisplayLabel, selectorSector, displaySectorKey, CASH_BUCKET_KEY, SECTOR_FUNDS } = compileGateModules().analyticsAdapter
+  const cash = sectorRow({ kind: 'CASH', assetType: 'CASH', fundamentals: null })
+  assert.equal(sectorDisplayLabel(cash), SECTOR_FUNDS)
+  assert.equal(selectorSector(cash), CASH_BUCKET_KEY)
+  assert.equal(displaySectorKey(CASH_BUCKET_KEY), SECTOR_FUNDS, 'the internal key never reaches the reader')
+  assert.equal(sectorDisplayLabel(sectorRow({ assetType: 'ETF' })), SECTOR_FUNDS, 'an ETF is the fund, never look-through')
+  assert.equal(selectorSector(sectorRow({ assetType: 'MUTUAL_FUND' })), CASH_BUCKET_KEY)
+  assert.equal(sectorDisplayLabel(sectorRow({ assetType: null })), 'Technology', 'only a served fund asset type is a fund')
+})
+
+test('r6 §5: an unavailable profile prints the sentence, never the carried label', () => {
+  const { sectorDisplayLabel, selectorSector, SECTOR_UNAVAILABLE } = compileGateModules().analyticsAdapter
+  const row = sectorRow({ profileSource: 'unavailable', fundamentals: { sector: 'Technology' } })
+  assert.equal(sectorDisplayLabel(row), SECTOR_UNAVAILABLE)
+  assert.doesNotMatch(sectorDisplayLabel(row), /Technology/, 'provenance outranks the stale carried text')
+  assert.equal(selectorSector(row), SECTOR_UNAVAILABLE, 'no real Technology bucket absorbs an unsourced row')
+})
+
+test('r6 §5: null or blank classification is Unclassified, not a category the provider chose', () => {
+  const { sectorDisplayLabel, SECTOR_UNCLASSIFIED } = compileGateModules().analyticsAdapter
+  assert.equal(sectorDisplayLabel(sectorRow({ fundamentals: null })), SECTOR_UNCLASSIFIED)
+  assert.equal(sectorDisplayLabel(sectorRow({ fundamentals: { sector: '   ' } })), SECTOR_UNCLASSIFIED)
+  assert.equal(sectorDisplayLabel(sectorRow({ fundamentals: { sector: ' Health Care ' } })), 'Health Care')
+})
+
+test('the adapter normalizes the fixture book into a valid selected view', () => {
+  const { fixtures, analyticsAdapter } = compileGateModules()
+  const { normalizeBook, snapshotFor, selectorSector } = analyticsAdapter
+  const rows = normalizeBook(fixtures.FIXTURE_BOOK)
+  assert.equal(rows.length, fixtures.FIXTURE_BOOK.rows.length)
+  for (const r of rows) {
+    assert.equal(r.rowId, `${r.holding.accountKey}:${r.holding.symbol}`)
+    assert.equal(r.currency, 'USD', 'no per-row currency is served; the page’s declared USD is the stated adaptation')
+    assert.equal(r.snapshotId, fixtures.FIXTURE_BOOK.asOf)
+    assert.equal(r.isCash, r.holding.kind === 'CASH')
+    assert.equal(r.sector, selectorSector(r.holding))
+    assert.equal(r.unrealizedPnl, r.holding.gainLoss, 'unrealized is passed through, never recomputed')
+  }
+  const v = derivePortfolioView(rows, { account: '', sector: '', query: '', currency: null }, snapshotFor(fixtures.FIXTURE_BOOK))
+  assert.equal(v.rows.length, rows.length)
+  assert.equal(v.currencyValid, true)
+  assert.equal(snapshotFor(fixtures.FIXTURE_BOOK).status, 'fresh')
+  assert.equal(snapshotFor(fixtures.FIXTURE_BOOK_STALE).status, 'last-good')
+  assert.match(snapshotFor(fixtures.FIXTURE_BOOK_STALE).reason, /not current/)
+})
+
+test('an unkeepable row identity is rejected by the selector, never charted', () => {
+  const { fixtures, analyticsAdapter } = compileGateModules()
+  const book = { ...fixtures.FIXTURE_BOOK, rows: [{ ...fixtures.FIXTURE_BOOK.rows[0], accountKey: '' }] }
+  const rows = analyticsAdapter.normalizeBook(book)
+  assert.throws(
+    () => derivePortfolioView(rows, { account: '', sector: '', query: '', currency: null }, analyticsAdapter.snapshotFor(book)),
+    /canonical row, account and security identity/,
+    'the page catches this and says so; it does not print a total over a row it cannot identify',
+  )
+})
+
+/** A minimal RFC 4180 field splitter for the assertions below: quotes protect commas, doubled quotes unescape. */
+function csvFields(line) {
+  const out = []
+  let field = ''
+  let quoted = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (quoted) {
+      if (ch === '"' && line[i + 1] === '"') {
+        field += '"'
+        i++
+      } else if (ch === '"') quoted = false
+      else field += ch
+    } else if (ch === '"') quoted = true
+    else if (ch === ',') {
+      out.push(field)
+      field = ''
+    } else field += ch
+  }
+  out.push(field)
+  return out
+}
+
+test('CSV: header, row count and field count come from the preset and the visible rows', () => {
+  const { fixtures, holdingsTable, presets } = compileGateModules()
+  const overview = presets.PRESETS.find(p => p.id === 'holdings')
+  const rows = fixtures.FIXTURE_BOOK.rows.slice(0, 4)
+  const csv = holdingsTable.csvFor(rows, overview)
+  assert.ok(csv.endsWith('\r\n'), 'RFC 4180 records; the final record is terminated')
+  const lines = csv.slice(0, -2).split('\r\n')
+  assert.equal(lines.length, rows.length + 1, 'one header record and one record per visible row')
+  assert.equal(lines[0], overview.columns.map(c => c.header).join(','), 'the header is the preset’s own')
+  for (const line of lines.slice(1)) assert.equal(csvFields(line).length, overview.columns.length)
+})
+
+test('CSV: a protection chip exports its label — the same text the table prints', () => {
+  const { holdingsTable } = compileGateModules()
+  const preset = { id: 'holdings', label: 'protection', columns: [{ key: 'protection', header: 'Protection' }], methodNote: '', limits: [] }
+  const gap = {
+    kind: 'SECURITY',
+    protection: { state: 'GAP', reason: 'no resting stop', stop: null, basis: null, asOf: null, stale: null, nextStep: 'record a stop' },
+  }
+  assert.equal(holdingsTable.csvFor([gap], preset), 'Protection\r\nGap\r\n')
 })

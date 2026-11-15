@@ -191,6 +191,12 @@ function rowFrom(wire: Json, floorUsd: number | null): HoldingsRow | null {
     belowFloor: marketValue !== null && floorUsd !== null && marketValue < floorUsd,
     worthless: kind === 'SECURITY' && marketValue === 0,
     protection: kind === 'CASH' ? null : protectionFrom(wire, str(wire.protection_state)),
+    // The classification's own provenance, carried at the row level (contract r6 §5 binds these three on the
+    // row). `asset_type` decides whether a row is a fund; `profile_source: 'unavailable'` says the carried
+    // sector label could not be sourced. None of the three is derived here.
+    assetType: str(wire.asset_type),
+    profileSource: str(wire.profile_source),
+    profileUpdatedAt: str(wire.profile_updated_at),
     fundamentals: fundamentalsFrom(wire, kind),
     // Served but clockless (README §Adapter gaps): reported absent rather than given a clock it does not have.
     fib: null as FibLadder | null,

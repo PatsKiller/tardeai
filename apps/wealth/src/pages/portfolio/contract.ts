@@ -150,6 +150,20 @@ export interface HoldingsRow {
   worthless: boolean
   /** Null only for rows where protection does not apply (cash). */
   protection: Protection | null
+  /**
+   * The wire's `asset_type`, as served (EQUITY / ETF / MUTUAL_FUND / CASH …), or null when the row omits it.
+   * Row-level, not inside `fundamentals`: a cash row and an unenriched row carry no fundamentals block, and
+   * the sector rule still has to know a row is a fund (contract r6 §5 binds `asset_type`).
+   */
+  assetType: string | null
+  /**
+   * The wire's `profile_source` — where the row's classification came from. `'unavailable'` is a provenance
+   * verdict: the classification could not be sourced, so the carried `sector` text must not be read as one
+   * (contract r6 §5, R6e). Null when the wire did not serve the field.
+   */
+  profileSource: string | null
+  /** The wire's `profile_updated_at`, an ISO instant, or null when not served. A clock, not a verdict. */
+  profileUpdatedAt: string | null
   /** Null for a cash row, and for a security the enrichment never reached. Every field served or null. */
   fundamentals: RowFundamentals | null
   fib: FibLadder | null
