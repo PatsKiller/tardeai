@@ -3,10 +3,11 @@
 // The columns, headers, method note and limits come from `presets.ts` itself — this file renders the approved
 // preset, it does not restate it. What it adds is the route's two fixed cells and the market-cap provenance line:
 //
-//   * Peer TTM median and Evidence print `not wired — valuation-assessment@1` (evidence.ts owns the literal and
-//     the reasons); neither cell applies a status, a cutoff or a colour;
+//   * Peer TTM median and Evidence print the short `Not available` (G2); the contract id and the reason ride the
+//     cell's title and accessible name and the page's disclosure, and neither cell applies a status, a cutoff or
+//     a colour;
 //   * Market cap prints the served cap and, under it, the profile record's source and clock — the only provenance
-//     the row carries (see evidence.MARKET_CAP_PROVENANCE_NOTE).
+//     the row carries (stated in the page's disclosure; see evidence.MARKET_CAP_PROVENANCE_NOTE).
 //
 // Rules inherited from the reviewed Holdings table, because they are the preset's decisions:
 //   * a cash row takes the preset's cash rule for every column but identity and price;
@@ -20,13 +21,11 @@ import type { HoldingsRow } from '../portfolio/contract'
 import type { Preset } from '../portfolio/presets'
 import {
   CASH_COLUMN,
-  MARKET_CAP_PROVENANCE_NOTE,
+  NOT_AVAILABLE,
   assessmentNote,
-  assessmentText,
   marketCapProvenance,
   marketCapText,
   peerMedianNote,
-  peerMedianText,
   peNote,
   peText,
   priceText,
@@ -34,9 +33,9 @@ import {
 } from './evidence'
 
 /**
- * The reviewed Holdings identity cell bounds its name at 250 px. This preset has two columns that cannot be
- * shortened (each prints the route's literal), so the bound is narrower here — measured at 1280: at 250 the two
- * literal columns broke mid-word; at 150 the full literal costs two clean lines and the name stays ellipsised.
+ * The reviewed Holdings identity cell bounds its name at 250 px. This preset's two fixed cells are now the short
+ * phrase “Not available”, so the bound is narrower here only to keep the name from crowding the numeric columns —
+ * measured at 1280: at 150 the name stays ellipsised and every column fits its wrap.
  */
 const TRUNCATE: CSSProperties = {
   display: 'block',
@@ -47,21 +46,14 @@ const TRUNCATE: CSSProperties = {
 }
 
 /**
- * The two fixed literals may BREAK between their words — the text is unchanged, the column is not 224 px wide
- * on a phrase nothing can shorten. A `<wbr>` before the contract token breaks the line there; the token itself
- * stays nowrap, so the column is never narrower than the word a reviewer greps for. Measured at 1280: nowrap
- * literals held each column 224 px and scrolled the Evidence column off the page; with this break each literal
- * costs two clean lines and the table fits its wrap.
+ * A route-fixed cell whose contract is not wired (peer median, valuation evidence). G2: the cell says the short,
+ * truthful “Not available”; the contract id and the reason live on the title/accessible name and in the page's
+ * disclosure, so the column is not a repeated 200 px technical sentence on every row.
  */
-function literalCell(text: string, note: string): ReactNode {
-  const cut = text.lastIndexOf(' ')
-  const head = text.slice(0, cut)
-  const token = text.slice(cut + 1)
+function notAvailableCell(note: string): ReactNode {
   return (
-    <span style={{ whiteSpace: 'normal' }} title={note}>
-      {head}{' '}
-      <wbr />
-      <span style={{ whiteSpace: 'nowrap' }}>{token}</span>
+    <span title={note} aria-label={`Not available — ${note}`}>
+      {NOT_AVAILABLE}
     </span>
   )
 }
@@ -93,19 +85,15 @@ function compactCell(text: string): ReactNode {
 }
 
 function identityCell(row: HoldingsRow): ReactNode {
-  const initials = row.symbol.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase()
+  // G2: one compact identity line — symbol, then name and account. The two-letter initials badge is gone; it
+  // carried no served fact (it was the first two characters of the symbol) and doubled every row's height.
   return (
-    <span className="ticker">
-      <span className="ticker-icon" aria-hidden="true">
-        {initials || '—'}
-      </span>
-      <span>
-        <strong>{row.symbol}</strong>
-        <br />
-        <small style={TRUNCATE} title={`${row.name} · ${row.accountLabel} · account ${row.accountKey}`}>
-          {row.name} · {row.accountLabel}
-        </small>
-      </span>
+    <span>
+      <strong>{row.symbol}</strong>
+      <br />
+      <small style={TRUNCATE} title={`${row.name} · ${row.accountLabel} · account ${row.accountKey}`}>
+        {row.name} · {row.accountLabel}
+      </small>
     </span>
   )
 }
@@ -140,13 +128,13 @@ export function fundamentalsCell(row: HoldingsRow, key: string): ReactNode {
         <span title={peNote(row, 'peForward')}>{compactCell(peText(row, 'peForward'))}</span>
       )
     case 'peerMedian':
-      return literalCell(peerMedianText(), peerMedianNote())
+      return notAvailableCell(peerMedianNote())
     case 'marketCap':
       return marketCapCell(row)
     case 'yield':
       return compactCell(yieldText(row))
     case 'evidence':
-      return literalCell(assessmentText(), assessmentNote())
+      return notAvailableCell(assessmentNote())
     default:
       return compactMissing(`no renderer for column ${key}`)
   }
@@ -215,11 +203,6 @@ export function FundamentalsTable({ rows, preset, onRowOpen }: {
                 (LEAD-ROUTE-FUNDAMENTALS-NAV-WIRING-20261115T1613Z) fixes that column to a literal instead, so the
                 note would otherwise read as a description of the cells one line above it. State the override next
                 to the note rather than editing the preset. */}
-            <p className="small muted">
-              On this page the Evidence column prints the route’s literal instead of that contract status. A status
-              a row does serve is shown in its row drawer, and — where the read serves no company multiple — in
-              the P/E cell itself: a fund prints its fund metric there.
-            </p>
             {preset.limits.length > 0 && (
               <ul>
                 {preset.limits.map(l => (
@@ -227,7 +210,6 @@ export function FundamentalsTable({ rows, preset, onRowOpen }: {
                 ))}
               </ul>
             )}
-            <p className="small muted">{MARKET_CAP_PROVENANCE_NOTE}</p>
           </td>
         </tr>
       </tfoot>

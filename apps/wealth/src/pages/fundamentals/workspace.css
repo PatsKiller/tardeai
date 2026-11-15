@@ -1,0 +1,135 @@
+/* Fundamentals workspace — the operator reference's exact values (Main.dc.html, approved 2026-11-15).
+ *
+ * The reference is LOCAL ONLY (it carries real positions and account names), so its values are transcribed here,
+ * once, as page-scoped custom properties and used by nothing else. This sheet is scoped under `.fw` and every
+ * class is `fw-`-prefixed so it cannot touch the shell's own `.tag`, `.sub`, `.card` or table rules.
+ *
+ * The reference paints its own page canvas (#0a111e) because it is a standalone document. This page lives inside
+ * the shell, so the canvas is the shell's; the CARDS, type, spacing and marks below are the reference's.
+ * The shell already pads its main column (26px 30px); the reference's 28px outer padding is therefore not
+ * re-applied, or the page would sit 58px in.
+ */
+
+.fw {
+  --fw-card: #101a2c;
+  --fw-line: #1c2940;
+  --fw-line2: #2a3a57;
+  --fw-accent: #6aa8ff;
+  --fw-accent-bg: #16294a;
+  --fw-ink: #e7edf7;
+  --fw-muted: #93a1bb;
+  --fw-idle: #c3cee0;
+  --fw-warm: #f2b47a;
+  max-width: 1384px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  font-family: Inter, system-ui, sans-serif;
+  color: var(--fw-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Header -------------------------------------------------------------------------------------------- */
+.fw-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between; }
+.fw h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: normal; }
+.fw-subhead { margin: 6px 0 0; font-size: 13px; color: var(--fw-muted); line-height: 1.5; }
+.fw-notwired { margin: 0; font-size: 12.5px; color: var(--fw-muted); border: 1px solid var(--fw-line2); border-radius: 6px; padding: 8px 12px; max-width: 560px; }
+.fw-warning { margin: 0; font-size: 12.5px; color: var(--fw-warm); line-height: 1.5; }
+
+/* ---- Rollup strip -------------------------------------------------------------------------------------- */
+.fw-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.fw-card { background: var(--fw-card); border: 1px solid var(--fw-line); border-radius: 8px; padding: 14px 16px; }
+.fw-card-label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--fw-muted); }
+.fw-card-value { font-size: 24px; font-weight: 600; margin-top: 8px; }
+.fw-card-sub { font-size: 12px; color: var(--fw-muted); margin-top: 4px; }
+
+/* ---- Toolbar: lenses, filters, grouping ------------------------------------------------------------------ */
+.fw-toolbar { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; }
+.fw-buttons { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fw .fw-btn {
+  min-height: 44px; padding: 0 16px; border-radius: 6px;
+  border: 1px solid var(--fw-line2); background: transparent; color: var(--fw-idle);
+  font: 500 13px Inter, system-ui, sans-serif;
+}
+.fw .fw-btn.fw-btn-group { padding: 0 14px; }
+.fw .fw-btn[aria-pressed='true'] {
+  border-color: var(--fw-accent); background: var(--fw-accent-bg); color: var(--fw-ink); font-weight: 600;
+}
+/* Hover affordances use the reference's own palette only — no colour outside the set above is introduced. */
+.fw .fw-btn:hover { border-color: var(--fw-accent); color: var(--fw-ink); }
+.fw-sortlabel { font-size: 12px; color: var(--fw-muted); margin-left: 8px; }
+.fw-label { font-size: 12px; color: var(--fw-muted); }
+.fw .fw-select, .fw .fw-input {
+  min-height: 44px; border-radius: 6px; border: 1px solid var(--fw-line2); background: var(--fw-card);
+  color: var(--fw-ink); font: 400 13px Inter, system-ui, sans-serif; padding: 0 12px; max-width: 220px;
+}
+.fw .fw-input { min-width: 180px; }
+
+/* ---- Tables -------------------------------------------------------------------------------------------- */
+.fw-tablecard { background: var(--fw-card); border: 1px solid var(--fw-line); border-radius: 8px; overflow-x: auto; }
+.fw-section-head { padding: 12px 14px; font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--fw-line); }
+.fw-section-head .fw-count { color: var(--fw-muted); font-weight: 400; }
+.fw table { border-collapse: collapse; width: 100%; font-size: 14px; }
+.fw th {
+  font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--fw-muted);
+  text-align: right; padding: 10px 14px; border-bottom: 1px solid var(--fw-line); white-space: nowrap;
+}
+.fw th:first-child, .fw td:first-child { text-align: left; }
+.fw td {
+  padding: 14px; text-align: right; border-bottom: 1px solid var(--fw-line); vertical-align: top;
+  font-size: 14px; color: var(--fw-ink); white-space: nowrap;
+}
+.fw tbody tr { cursor: pointer; }
+.fw tbody tr:hover td { background: var(--fw-accent-bg); }
+.fw tbody tr:focus-visible { outline: 2px solid var(--fw-accent); outline-offset: -2px; }
+.fw tbody tr:last-child td { border-bottom: 0; }
+.fw-sym { font-weight: 600; }
+/* The identity cell's drawer button wears the reference's plain <strong>, so the port looks identical while
+   the row's detail stays reachable from the keyboard. */
+.fw .fw-rowopen {
+  background: none; border: 0; padding: 0; margin: 0; color: inherit;
+  font: inherit; font-weight: 600; text-align: left; border-radius: 2px;
+}
+.fw .fw-rowopen:hover { background: none; border-color: transparent; color: var(--fw-idle); }
+.fw-field { display: inline-flex; gap: 6px; align-items: center; }
+.fw-sub { display: block; font-size: 11.5px; color: var(--fw-muted); margin-top: 4px; font-weight: 400; white-space: normal; }
+.fw-ph { color: var(--fw-muted); }
+/* 196, not 200: measured on the served book at 1440, a 200 px bound held the equity table at 1180 px inside the
+   shell's 1176 px content column (4 px of scroll inside the card). 196 fits the same column with every column
+   still visible; the full classification text stays on the title. */
+.fw-sector { display: inline-block; max-width: 196px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.fw-stale { color: var(--fw-warm); }
+.fw-empty { padding: 14px; font-size: 13px; color: var(--fw-muted); }
+
+.fw-bar {
+  display: inline-block; width: 44px; height: 6px; background: var(--fw-line); border-radius: 3px;
+  margin-right: 8px; vertical-align: 2px;
+}
+.fw-bar > i { display: block; height: 6px; background: var(--fw-accent); border-radius: 3px; }
+
+/* ---- The reference's small tag (not the shell's .tag) --------------------------------------------------- */
+.fw-tag {
+  display: inline-block; font-size: 10.5px; letter-spacing: .04em; color: var(--fw-muted);
+  border: 1px solid var(--fw-line2); border-radius: 4px; padding: 1px 5px; margin-left: 6px; vertical-align: 1px;
+  font-weight: 400; text-transform: none;
+}
+
+/* ---- Collapsed cash line -------------------------------------------------------------------------------- */
+.fw-cash { background: var(--fw-card); border: 1px solid var(--fw-line); border-radius: 8px; }
+.fw-cash > summary {
+  list-style: none; cursor: pointer; padding: 14px; font-size: 13px;
+  display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between;
+}
+.fw-cash > summary::-webkit-details-marker { display: none; }
+.fw-cash > summary::marker { content: ''; }
+.fw-cash-body { padding: 0 14px 14px; }
+.fw-cash-body ul { margin: 0; padding-left: 18px; }
+.fw-cash-body li { font-size: 12.5px; color: var(--fw-muted); padding: 3px 0; }
+
+/* ---- Foot note and the disclosure behind it ------------------------------------------------------------- */
+.fw-foot { margin: 0; font-size: 12px; color: var(--fw-muted); line-height: 1.6; }
+.fw-details { font-size: 12.5px; color: var(--fw-muted); line-height: 1.6; }
+.fw-details summary { cursor: pointer; color: var(--fw-idle); }
+.fw-details ul { margin: 8px 0 0; padding-left: 18px; }
+.fw-details code { color: var(--fw-ink); }
