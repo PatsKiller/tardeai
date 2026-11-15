@@ -1237,3 +1237,71 @@ test('C: a PROTECTED row with no served stop price never says "no resting stop"'
   assert.match(strip(unknown), /stop state unknown: this row has no stop read/)
   assert.doesNotMatch(strip(unknown), /no resting stop/i)
 })
+
+/**
+ * C/RC1 (review 2026-11-15T1745Z): the default next step the ADAPTER chooses may not claim a stop "is served" on a
+ * row whose wire served no stop price. The defect was at adapter.ts:109-111 and only visible through the real
+ * adapter: a PROTECTED row with no `cause` and no `stop` got "none — a resting stop is served for this row", which
+ * the page then printed beside the Stop column's "pending activation — stop price not served" on 8/30 live rows.
+ * This builds the row through `adaptHoldings` from a synthetic wire body (never a hand-built Protection) and would
+ * fail on the old single-string default.
+ */
+test('C/RC1: a PROTECTED row served without a stop price never claims a stop "is served" (real adapter)', () => {
+  const { adapter, fixtures, holdingsTable } = compileGateModules()
+  const wireRow = (protection) => ({
+    symbol: 'SYNPX', name: 'Synthetic Pending Stop', account: 'acct_a', account_key: 'acct_a',
+    account_label: 'Synthetic A', is_cash: false, asset_type: 'EQUITY',
+    shares: 100, price: 150, price_as_of: '2026-11-15T12:00:00Z', market_value: 15000,
+    portfolio_pct: 100, avg_cost: 120, cost_basis_source: 'broker_avg_price', cost_basis_total: 12000,
+    gain_loss: 3000, gain_loss_pct: 25, protection_state: 'PROTECTED', protection,
+  })
+  const body = (protection) => ({
+    ok: true,
+    _swr: { stale: false, age_s: 0 },
+    data: {
+      count: 1,
+      holdings: [wireRow(protection)],
+      truth: { source: 'synthetic', as_of: '2026-11-15T12:00:00-05:00', stale: false, gap: null },
+      clock_provenance: { quote: { source_field: 'last_repriced', as_of: '2026-11-15T12:00:00-05:00', gap: null } },
+      scope_coverage: { min_position_usd: 100, scopes: { 'holdings.all_rows': 1, 'holdings.non_cash': 1, 'holdings.cash': 0 } },
+    },
+  })
+  const pendingProtection = {
+    state: 'PROTECTED', source: 'stops', as_of: '2026-11-15T14:15:00Z', cause: null, counted: true,
+    reason: 'Resting GTC stop, pending activation',
+  }
+
+  // The wire serves the state but NO price: stops_read publishes counts only.
+  const res = adapter.adaptHoldings(body(pendingProtection))
+  assert.ok(res.book !== null, `the synthetic body must adapt: ${res.error ?? ''}`)
+  const row = res.book.rows[0]
+  assert.equal(row.protection.state, 'PROTECTED')
+  assert.equal(row.protection.stop, null)
+  assert.doesNotMatch(row.protection.nextStep, /a resting stop is served/i,
+    'the adapter may not claim a stop is served when the wire served no stop price')
+  assert.match(row.protection.nextStep, /its price is not served/)
+
+  // Rendered through the real table, the two clauses agree instead of contradicting.
+  const preset = {
+    id: 'holdings', label: 'protection', methodNote: '', limits: [],
+    columns: [{ key: 'protection', header: 'Protection' }, { key: 'stop', header: 'Stop' }],
+  }
+  const markup = renderToStaticMarkup(holdingsTable.HoldingsTable({ rows: [row], preset, onRowOpen: () => {} }))
+  const strip = (s) => s.replace(/&amp;/g, '&')
+  assert.match(strip(markup), /resting GTC stop, pending activation — stop price not served/)
+  assert.doesNotMatch(strip(markup), /a resting stop is served/i, 'the next step must not contradict the stop sentence')
+  assert.doesNotMatch(strip(markup), /no resting stop/i, 'a protected row is not an unprotected one')
+
+  // A SERVED price keeps the served wording: the fix follows the state, it does not forbid the sentence.
+  const priced = adapter.adaptHoldings(body({ ...pendingProtection, stop: 68 }))
+  assert.ok(priced.book !== null, `the priced synthetic body must adapt: ${priced.error ?? ''}`)
+  assert.equal(priced.book.rows[0].protection.stop, 68)
+  assert.equal(priced.book.rows[0].protection.nextStep, 'none — a resting stop is served for this row')
+  const pricedMarkup = renderToStaticMarkup(
+    holdingsTable.HoldingsTable({ rows: [priced.book.rows[0]], preset, onRowOpen: () => {} }),
+  )
+  assert.match(strip(pricedMarkup), /stop \$68\.00/)
+  // The state sentence is the price alone; the producer's own reason is still echoed beside it, but the
+  // pending-activation STOP SENTENCE (the no-price wording) is gone.
+  assert.doesNotMatch(strip(pricedMarkup), /pending activation — stop price not served/)
+})

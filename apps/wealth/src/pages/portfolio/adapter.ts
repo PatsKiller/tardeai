@@ -97,17 +97,25 @@ function protectionFrom(wire: Json, state: string | null): Protection | null {
   const mapped: ProtectionState =
     wireState === 'PROTECTED' ? 'PROTECTED' : wireState === 'GAP' || wireState === 'NOT_PROTECTED' ? 'GAP' : 'UNKNOWN'
   const cause = str(p.cause)
+  // The wire carries no per-row resting stop price on this route (stops_read publishes counts only).
+  const stop = num(p.stop)
+  // RC1 (review 2026-11-15T1745Z): the default next step may not claim a stop "is served" when no stop price was
+  // served. A PROTECTED row served without a price renders "pending activation — stop price not served" beside the
+  // next step, so this sentence says recorded, not served; the two never contradict. A served price keeps the
+  // served wording.
+  const protectedDefault = stop !== null
+    ? 'none — a resting stop is served for this row'
+    : 'none — a resting stop is recorded for this row; its price is not served'
   return {
     state: mapped,
-    // The wire carries no per-row resting stop price on this route (stops_read publishes counts only).
-    stop: num(p.stop),
+    stop,
     basis: str(p.source) ?? null,
     asOf: str(p.as_of),
     // F-7: this row's OWN clock, as the producer publishes it. `stops_read.stale` is the BOOK's summary flag and
     // is never copied onto a row. A missing per-row flag stays null (no clock applies), never false.
     stale: typeof wire.protection_stale === 'boolean' ? wire.protection_stale : null,
     nextStep: (cause !== null ? NEXT_STEP[cause] : undefined) ?? (mapped === 'PROTECTED'
-      ? 'none — a resting stop is served for this row'
+      ? protectedDefault
       : 'read this account’s working orders; the route serves no per-row stop price'),
     reason: str(p.reason) ?? `producer state ${wireState ?? 'missing'}`,
   }
