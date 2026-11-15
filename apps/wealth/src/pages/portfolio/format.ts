@@ -8,6 +8,9 @@
 
 const MONEY = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const MONEY_WHOLE = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+// A PRICE below one dollar. Four decimals is the floor of this format: a served price smaller than
+// half of 0.0001 still cannot print as zero (see `price`), it prints as a bound.
+const PRICE_SUB = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
 const SHARES = new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 })
 const PCT2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const PCT1 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
@@ -45,8 +48,21 @@ export function shares(n: number): string {
   return SHARES.format(n)
 }
 
+/**
+ * A served PRICE. Unlike a dollar amount this can be sub-cent, so it is not forced to two decimals:
+ * a non-zero price below $1 keeps up to four decimals (0.0003 -> "$0.0003") and never collapses to
+ * "$0.00", which is the one price-like string the page reserves for a served zero. Below 0.00005 the
+ * format cannot express it, and the honest rendering is a bound ("<$0.0001"), never a zero.
+ * `money()` is deliberately NOT affected: a dollar amount (value, cost, P&L, a total) is in cents.
+ */
 export function price(n: number | null): string {
-  return n === null ? unavailable('no price served') : `$${MONEY.format(n)}`
+  if (n === null) return unavailable('no price served')
+  if (n === 0) return `$${MONEY.format(0)}`
+  const abs = Math.abs(n)
+  if (abs >= 1) return `$${MONEY.format(n)}`
+  const body = PRICE_SUB.format(abs)
+  if (body === PRICE_SUB.format(0)) return `${n < 0 ? '-' : ''}<$0.0001`
+  return `$${n < 0 ? '-' : ''}${body}`
 }
 
 /**

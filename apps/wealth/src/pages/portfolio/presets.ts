@@ -40,7 +40,7 @@ export const PRESETS: Preset[] = [
       { key: 'protection', header: 'Protection' },
     ],
     methodNote:
-      'Value, day change, unrealized change and weight are served fields. Weight is a percent of the cash-inclusive book, so the rows sum to 100. Avg cost is remaining basis per remaining share.',
+      'Value, day change, unrealized change and weight are served fields. Weight is a percent of the cash-inclusive book, so the rows sum to 100. Avg cost is remaining basis per remaining share. A price is printed as served rather than as a dollar amount: below one dollar it keeps up to four decimals, so a non-zero price is never shown as $0.00, and below $0.0001 it prints as a bound (<$0.0001) rather than as zero. Dollar amounts keep cents.',
     limits: [
       'Day $/% carries no declared per-row observation clock; the column is labelled UNKNOWN rather than given an invented clock.',
       'Unrealized $/% is unrealized only. Realized profit and reconciled period profit are not on this read: the reconciliation is reported PARTIAL and its residual is reported, never allocated to a row.',

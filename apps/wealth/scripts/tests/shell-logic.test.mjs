@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url'
 import { createClient, HeavyReaderFromShell } from '../../src/api/client.ts'
 import { specFor, READERS } from '../../src/api/readers.ts'
 import { deriveRenderState, statusCue } from '../../src/components/renderState.ts'
+import { price, money, unavailable } from '../../src/pages/portfolio/format.ts'
 
 const NOW = Date.parse('2026-11-14T23:30:00Z')
 
@@ -507,4 +508,28 @@ test('F2: a served 0.5 h limit is still 1800 s and keeps its wording', () => {
   const { freshnessLine } = compileGateModules().holdingsTable
   assert.equal(freshnessLine(41, 1800, false), '41 s old · stale after 30 min')
   assert.equal(freshnessLine(41, 1800, true), 'Last known good — 41 s old, past the 30 min limit. These values are not current.')
+})
+
+// ---- P: a served price is not a dollar amount (lead-approved 2026-11-15T04:35Z, option 1) -----
+// SRNE served 0.0003 on the live book and printed "$0.00" — a non-zero value rendering as the one
+// string the page reserves for a served zero. `price()` is fixed; `money()` is deliberately not.
+
+test('P-1: a served sub-cent price keeps its magnitude and never prints $0.00', () => {
+  assert.equal(price(0.0003), '$0.0003', 'the measured live row')
+  assert.equal(price(0.00004), '<$0.0001', 'below the format floor the honest rendering is a bound, not zero')
+  assert.notEqual(price(0.0003), '$0.00', 'a non-zero price must not print as zero')
+})
+
+test('P-2: two decimals stay the rule at and above one dollar, and a served zero is still $0.00', () => {
+  assert.equal(price(1), '$1.00')
+  assert.equal(price(12.345), '$12.35', 'display rounding only; the contract value is untouched')
+  assert.equal(price(0), '$0.00', 'a served zero IS zero; this is the branch $0.00 is reserved for')
+  assert.equal(price(0.3), '$0.30', 'a sub-dollar price that cents CAN express keeps two decimals')
+  assert.equal(price(null), unavailable('no price served'), 'null is a reason, never a zero')
+})
+
+test('P-3: money() is unchanged — a dollar amount is still expressed in cents', () => {
+  assert.equal(money(0.0003), '$0.00', 'money() is out of scope by decision, not by oversight')
+  assert.equal(money(1255586.37), '$1,255,586.37')
+  assert.equal(money(null), unavailable('not served'))
 })
