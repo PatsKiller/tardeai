@@ -22,7 +22,7 @@
 import type {
   AccountTotal, BookMeasure, BookSource, ClockProvenance, ClockRole, DeclaredClock, FibLadder, HoldingsBook,
   HoldingsCounts, HoldingsFreshness, HoldingsRow, HoldingsSession, ListedNotCounted, Population,
-  PopulationExclusion, Protection, ProtectionState, RowFundamentals, RowKind,
+  PopulationExclusion, Protection, ProtectionState, RowFundamentals, RowKind, ServedFreshness,
 } from './contract'
 import { PORTFOLIO_HOLDINGS_CONTRACT_VERSION } from './contract'
 import { accountDisplayLabel } from './accountLabel'
@@ -47,6 +47,8 @@ const CLOCK_ROLES: { key: string; role: ClockProvenance['role']; build: boolean 
   { key: 'position_list', role: 'BUILD', build: true },
   { key: 'quote', role: 'QUOTE', build: false },
   { key: 'valuation', role: 'VALUATION', build: false },
+  // The stop-read observation clock: one of the three clocks the served freshness verdict is computed from.
+  { key: 'stops', role: 'STOPS', build: false },
 ]
 
 function clocksFrom(wire: Json): ClockProvenance[] {
@@ -56,6 +58,10 @@ function clocksFrom(wire: Json): ClockProvenance[] {
     const c = asObj(cp[key])
     const mixed = typeof c.mixed === 'boolean' ? c.mixed : undefined
     const unknownRows = num(c.unknown_rows)
+    // The producer publishes `last_read_as_of` when it WITHHELD its read stamp as the book's clock (partial
+    // account coverage). Carried only when `as_of` is absent: if the clock stands, the datum IS the clock and
+    // printing it twice would read as two clocks.
+    const withheld = str(c.as_of) === null ? str(c.last_read_as_of) : null
     out.push({
       role,
       at: str(c.as_of),
@@ -63,7 +69,16 @@ function clocksFrom(wire: Json): ClockProvenance[] {
       isBuildClock: build,
       ...(mixed === undefined ? {} : { mixed }),
       ...(unknownRows === null ? {} : { unknownRows: unknownRows as number }),
+      ...(withheld === null ? {} : { withheldAsOf: withheld }),
     })
+  }
+  // R5 (review 2026-11-15T040420Z): the response's own render time, declared when the wire serves it, under
+  // REQUEST — the role the page labels "Rendered at". It is never a source clock, so it is not in CLOCK_ROLES:
+  // an older body that serves no `rendered_at` gains no clock it does not have.
+  const rendered = asObj(cp.rendered_at)
+  if (str(rendered.as_of) !== null) {
+    out.push({ role: 'REQUEST', at: str(rendered.as_of), source: str(rendered.source_field) ?? 'rendered_at',
+      isBuildClock: false })
   }
   return out
 }
@@ -82,14 +97,15 @@ function protectionFrom(wire: Json, state: string | null): Protection | null {
   const mapped: ProtectionState =
     wireState === 'PROTECTED' ? 'PROTECTED' : wireState === 'GAP' || wireState === 'NOT_PROTECTED' ? 'GAP' : 'UNKNOWN'
   const cause = str(p.cause)
-  const stops = asObj(wire.stops_read)
   return {
     state: mapped,
     // The wire carries no per-row resting stop price on this route (stops_read publishes counts only).
     stop: num(p.stop),
     basis: str(p.source) ?? null,
     asOf: str(p.as_of),
-    stale: stops.stale === true,
+    // F-7: this row's OWN clock, as the producer publishes it. `stops_read.stale` is the BOOK's summary flag and
+    // is never copied onto a row. A missing per-row flag stays null (no clock applies), never false.
+    stale: typeof wire.protection_stale === 'boolean' ? wire.protection_stale : null,
     nextStep: (cause !== null ? NEXT_STEP[cause] : undefined) ?? (mapped === 'PROTECTED'
       ? 'none — a resting stop is served for this row'
       : 'read this account’s working orders; the route serves no per-row stop price'),
@@ -316,6 +332,58 @@ function dayPnlClock(wire: Json): DeclaredClock {
   return { status: 'UNKNOWN', at: null, reason: str(asObj(d.gap).reason) ?? 'the producer declares no day-change clock' }
 }
 
+/** Clock role named by the served verdict's `clock` key, or null when the producer served none. */
+const FRESHNESS_CLOCK_ROLE: Record<string, ClockRole> = { positions: 'POSITIONS', quote: 'QUOTE', stops: 'STOPS' }
+
+/**
+ * The producer's ONE freshness verdict (F-2/F-3/F-5), or null when this producer serves none.
+ *
+ * It is computed from the source-observation clocks against the registry limit — not from the cache window and
+ * not from `truth.stale`. `stale` is only a boolean when a verdict was actually computed: an UNKNOWN book is
+ * neither fresh nor stale, and must never be shown as either.
+ */
+function servedFreshness(wire: Json): ServedFreshness | null {
+  const f = asObj(wire.freshness)
+  const status = str(f.status)
+  if (status !== 'FRESH' && status !== 'STALE' && status !== 'UNKNOWN') return null
+  const gap = str(asObj(f.gap).reason)
+  return {
+    status,
+    stale: status === 'UNKNOWN' ? null : status === 'STALE',
+    clock: str(f.clock),
+    clockLabel: str(f.clock_label),
+    asOf: str(f.as_of),
+    ageSeconds: num(f.age_s),
+    limitSeconds: num(f.limit_s),
+    limitSource: str(f.limit_source),
+    window: f.window === 'open' || f.window === 'closed' ? f.window : null,
+    rule: str(f.rule),
+    gap,
+  }
+}
+
+/**
+ * F-1: which clock `asOf` actually is — the label follows the VALUE, never the verdict about it.
+ *
+ * `asOf` is `truth.as_of`, the producer's aggregate clock (the quote clock on every body carrying
+ * `last_repriced`), while the served verdict's `clock` is the one furthest past its own limit — usually stops or
+ * positions. Labelling the value with the verdict's clock prints a quote instant as "STOP READ clock"
+ * (R2, review 2026-11-15T040420Z), so the declared clock whose INSTANT equals `asOf` wins (instants compared, not
+ * strings: the wire writes one clock as `…Z` and another with an ET offset). Only when no declared clock dates
+ * the value does the verdict's role apply, and only when the verdict is about that same instant; otherwise the
+ * value is UNDECLARED — no clock role is known, said plainly rather than dressed as a producer clock.
+ */
+function asOfClockFrom(clocks: ClockProvenance[], asOf: string, served: ServedFreshness | null): ClockRole {
+  const at = Date.parse(asOf)
+  if (Number.isFinite(at)) {
+    const match = clocks.find(c => c.at !== null && Date.parse(c.at) === at)
+    if (match !== undefined) return match.role
+    const servedRole = FRESHNESS_CLOCK_ROLE[served?.clock ?? '']
+    if (servedRole !== undefined && Date.parse(served?.asOf ?? '') === at) return servedRole
+  }
+  return 'UNDECLARED'
+}
+
 /**
  * Map the RESPONSE BODY of GET /api/v2/portfolio/holdings to a book.
  *
@@ -329,6 +397,7 @@ export function adaptHoldings(body: unknown): AdaptResult {
   if (!isObj(root.data)) return { book: null, error: 'the response carries no data block' }
   const holdings = asArr(wire.holdings)
   const coverage: string[] = []
+  const clocks = clocksFrom(wire)
   const sc = asObj(wire.scope_coverage)
   const floorUsd = num(sc.min_position_usd)
   const rows: HoldingsRow[] = []
@@ -349,11 +418,17 @@ export function adaptHoldings(body: unknown): AdaptResult {
   const positionsAsOf = str(positions.as_of)
   const asOf = truthAsOf ?? positionsAsOf ?? str(wire.as_of)
   if (asOf === null) return { book: null, error: 'the payload declares no readable as_of' }
-  const asOfClock: ClockRole = truthAsOf !== null ? 'QUOTE' : positionsAsOf !== null ? 'POSITIONS' : 'UNDECLARED'
-  if (asOfClock === 'UNDECLARED') coverage.push('the payload’s as_of names no clock role: it is shown as undeclared')
   const swr = asObj(root._swr)
   const staleAfterHours = num(asObj(asObj(asObj(wire.evidence).portfolio).clocks).stale_after_hours)
+  const served = servedFreshness(wire)
+  // F-1/R2: the label follows the INSTANT, never the field's name — see `asOfClockFrom`. A value no declared
+  // clock dates is 'UNDECLARED' (the tip's name for "no clock role is known"), never dressed as a producer clock.
+  const asOfClock: ClockRole = asOfClockFrom(clocks, asOf, served)
+  if (asOfClock === 'UNDECLARED') coverage.push('the payload’s as_of names no clock role: it is shown as undeclared')
   const freshness: HoldingsFreshness = {
+    served,
+    // The CACHE facts below age this RESPONSE, never the book: `age_s`/`stale` say when the body was built inside
+    // the cache window (the producer labels the clock `cache_build`). They are the fallback verdict only.
     // Served or null — never 0. `age_s: 0` would be a served age, and a block that serves none must not be aged.
     ageSeconds: num(swr.age_s),
     // Served or null — never 0. A served 0 h would be a real zero-hour limit; an absent clock is not that, and a
@@ -363,6 +438,7 @@ export function adaptHoldings(body: unknown): AdaptResult {
     // itself current, so it is not current, and the page must say the block was absent rather than that it reported.
     stale: isObj(root._swr) ? swr.stale !== false : true,
     blockPresent: isObj(root._swr),
+    withdrawn: false,
   }
   if (!isObj(root._swr)) coverage.push('the response carries no _swr block: freshness is treated as stale')
 
@@ -377,7 +453,7 @@ export function adaptHoldings(body: unknown): AdaptResult {
     source,
     asOf,
     asOfClock,
-    clocks: clocksFrom(wire),
+    clocks,
     rows,
     counts,
     population,

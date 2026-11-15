@@ -178,7 +178,7 @@ export function protectionFields(row: HoldingsRow): DetailField[] {
     { label: 'Stop basis', value: p.basis ?? unavailable('no basis served'), source: 'as recorded by the stops read' },
     {
       label: 'Read clock',
-      value: p.asOf === null ? unavailable('read clock absent') : `${p.asOf}${p.stale ? ' (stale)' : ''}`,
+      value: p.asOf === null ? unavailable('read clock absent') : `${p.asOf}${p.stale === true ? ' (stale)' : ''}`,
       source: 'the clock of the broker stop read, as served',
     },
     { label: 'Next step', value: p.nextStep, source: 'the producer’s own next step, quoted' },

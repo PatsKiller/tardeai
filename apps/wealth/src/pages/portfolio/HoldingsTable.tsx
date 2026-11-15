@@ -48,7 +48,7 @@ function protectionCue(row: HoldingsRow): Cue | null {
   if (!p) return null
   const meta = PROTECTION_CUE[p.state]
   const stopText = p.stop === null ? 'no resting stop' : `stop ${price(p.stop)}`
-  const readText = p.asOf === null ? 'read clock absent' : `read ${p.asOf}${p.stale ? ' (stale)' : ''}`
+  const readText = p.asOf === null ? 'read clock absent' : `read ${p.asOf}${p.stale === true ? ' (stale)' : ''}`
   return cue(meta.level, meta.label, meta.icon, `${p.reason}; ${stopText}; ${readText}; ${p.nextStep}`)
 }
 
@@ -219,7 +219,7 @@ function cell(row: HoldingsRow, key: string): ReactNode {
       return row.protection?.basis ?? compactMissing('no stop basis was recorded for this account')
     case 'stopRead':
       return row.protection?.asOf
-        ? `${row.protection.asOf}${row.protection.stale ? ' (stale)' : ''}`
+        ? `${row.protection.asOf}${row.protection.stale === true ? ' (stale)' : ''}`
         : compactMissing('no read clock was served for this account')
     case 'protectionState': {
       return <ProtectionTag row={row} />

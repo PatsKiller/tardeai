@@ -6,6 +6,8 @@
 //   * marketCapB arrives in MILLIONS. `marketCapText` divides by 1000 to reach billions and never
 //     multiplies into dollars.
 
+import type { HoldingsFreshness, ServedFreshness } from './contract'
+
 const MONEY = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const MONEY_WHOLE = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
 // A PRICE below one dollar. Four decimals is the floor of this format: a served price smaller than
@@ -94,4 +96,47 @@ export function multiple(value: number | null): string {
 /** A served ratio (PEG, beta). Printed as served, two decimals; no threshold and no verdict is derived from it. */
 export function decimal(value: number | null): string {
   return value === null ? unavailable('not published for this instrument') : PCT2.format(value)
+}
+
+/** The producer's verdict over its SOURCE clocks: which clock, how old, and the limit it applied. */
+export function servedFreshnessLine(f: ServedFreshness): string {
+  const clock = f.clockLabel ?? f.clock ?? 'source'
+  const aged = f.ageSeconds === null ? 'age not served' : `${age(f.ageSeconds)} old`
+  const limit = f.limitSeconds === null ? 'limit not served' : age(f.limitSeconds)
+  if (f.status === 'UNKNOWN') return `${clock} clock · freshness cannot be computed${f.gap === null ? '' : ` (${f.gap})`}`
+  if (f.status === 'FRESH') return `${clock} clock ${aged} · stale after ${limit}`
+  return `Last known good — ${clock} clock ${aged}, past the ${limit} limit. These values are not current.`
+}
+
+/**
+ * Whether the book is withdrawn from "current" — by the producer's verdict over its source clocks when it serves
+ * one, and by this page's own rule (a failed or unproven read) otherwise. The cache verdict alone never withdraws
+ * a book whose source clocks are current: cache age is how old the RESPONSE is.
+ */
+export function notCurrent(f: HoldingsFreshness): boolean {
+  if (f.withdrawn) return true
+  return f.served !== null ? f.served.status !== 'FRESH' : f.stale
+}
+
+/** The one sentence the last-known-good alert prints, for whichever verdict the book carries. */
+export function lastKnownSentence(f: HoldingsFreshness): string {
+  const s = f.served
+  if (s !== null && s.status === 'FRESH') {
+    // The producer's clocks are current; it is this READ that could not be proven, and the notice says why.
+    return 'This is last-known-good data; the read that produced it is not a current one.'
+  }
+  if (s === null) {
+    // No producer verdict: the numbers are the RESPONSE's cache facts, so whatever is printed says cache age.
+    const aged = f.ageSeconds === null ? 'of unknown age' : `${age(f.ageSeconds)} old`
+    return `This is last-known-good data, ${aged} in the cache, past the ${f.staleAfterSeconds === null ? 'stale limit — limit not served.' : `${age(f.staleAfterSeconds)} limit.`}`
+  }
+  if (s.status === 'UNKNOWN') {
+    // The producer published no verdict and said why. The session strip and the Read status notice already print
+    // that reason; an alert box that replaced it with a generic sentence was the one place the page withheld it.
+    return 'This is last-known-good data; the producer could not compute a freshness verdict'
+      + `${s.gap === null ? ' for it.' : ` (${s.gap}).`}`
+  }
+  const clock = s.clockLabel ?? s.clock ?? 'source'
+  const aged = s.ageSeconds === null ? 'of unknown age' : `${age(s.ageSeconds)} old`
+  return `This is last-known-good data; the ${clock} clock is ${aged}, past the ${s.limitSeconds === null ? 'stale limit — limit not served.' : `${age(s.limitSeconds)} limit.`}`
 }

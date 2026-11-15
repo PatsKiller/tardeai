@@ -12,6 +12,7 @@ import { READERS, specFor } from '../../api/readers'
 import { adaptHoldings } from './adapter'
 import type { HoldingsBook } from './contract'
 import { detailFields, detailHeading, detailSections } from './detail'
+import { lastKnownSentence, notCurrent } from './format'
 import { HOLDINGS_PATH, holdingsProps } from './liveProps'
 
 const NOW = Date.parse('2026-11-15T00:30:00Z')
@@ -202,7 +203,7 @@ function book(dataOver: Record<string, unknown> = {}, rootOver: Record<string, u
 {
   const b = book()
   const roles = b.clocks.map(c => c.role)
-  eq('A2 four declared clocks', roles.join(','), 'POSITIONS,BUILD,QUOTE,VALUATION')
+  eq('A2 five declared clocks', roles.join(','), 'POSITIONS,BUILD,QUOTE,VALUATION,STOPS')
   const build = b.clocks.find(c => c.role === 'BUILD')!
   eq('A2 the build clock is the position_list clock', build.at, '2026-11-13T15:24:05.766599+00:00')
   eq('A2 the build clock is flagged', build.isBuildClock, true)
@@ -210,10 +211,11 @@ function book(dataOver: Record<string, unknown> = {}, rootOver: Record<string, u
   const pos = b.clocks.find(c => c.role === 'POSITIONS')!
   eq('A2 the positions clock carries mixed', pos.mixed, true)
   eq('A2 the positions clock carries unknown rows', pos.unknownRows, 0)
-  // The book's as-of is `truth.as_of`, and on this wire that instant is the QUOTE clock (F-1): the label follows
-  // the field that won, not a literal role printed over whichever field happened to be readable.
+  // The book's as-of is `truth.as_of`, and on this wire that instant is the QUOTE clock (F-1/R2): the label follows
+  // the VALUE — the declared clock whose instant equals it — never a literal role printed over whichever field
+  // happened to be readable, and never the verdict's governing clock.
   eq('A2 book asOf is truth.as_of', b.asOf, '2026-11-14T19:45:01-05:00')
-  eq('A2 book asOfClock names the quote clock', b.asOfClock, 'QUOTE')
+  eq('A2 book asOfClock follows the value (QUOTE, not a POSITIONS literal)', b.asOfClock, 'QUOTE')
   // Day change is a declared UNKNOWN clock whose reason is the producer's.
   eq('A2 day-change clock stays UNKNOWN', b.dayPnl.status, 'UNKNOWN')
   eq('A2 day-change clock has no invented instant', b.dayPnl.at, null)
@@ -390,8 +392,10 @@ function book(dataOver: Record<string, unknown> = {}, rootOver: Record<string, u
   // so this verdict has to come from the adapted book — and it must still withdraw the claim of being current.
   const swrStale = holdingsProps(env({ data: wire({}, { _swr: { as_of: '2026-11-15T00:29:00Z', age_s: 500, stale: true } }) }), NOW)
   eq('swr stale → the book is not current', swrStale.book?.freshness.stale, true)
-  check('swr stale → the notice says not current', /Not current: the freshness block reports this body stale/.test(swrStale.notice ?? ''), String(swrStale.notice))
-  check('swr stale → the note carries the same reason', /the freshness block reports this body stale/.test(swrStale.book?.coverageNote ?? ''))
+  // F-2/F-5: with no produced verdict, the only clock is the CACHE's, and the notice says exactly that.
+  check('swr stale → the notice says the cache is what is old', /Not current: this response is 500 s old in the cache/.test(swrStale.notice ?? ''), String(swrStale.notice))
+  check('swr stale → the notice never reports a producer verdict that was not served', !/freshness block reports/.test(swrStale.notice ?? ''), String(swrStale.notice))
+  check('swr stale → the note carries the same reason', /in the cache/.test(swrStale.book?.coverageNote ?? ''))
 
   // A declared gap in the positions document fires too (null means "no gap published").
   const gap = holdingsProps(env({ data: wire({ truth: truth(false, { reason: 'synthetic gap' }) }) }), NOW)
@@ -403,7 +407,7 @@ function book(dataOver: Record<string, unknown> = {}, rootOver: Record<string, u
   eq('R1 no _swr → blockPresent false', noSwrBook.freshness.blockPresent, false)
   eq('R1 no _swr → stale', noSwrBook.freshness.stale, true)
   const noticeAbsent = holdingsProps(env({ data: wire({}, { _swr: undefined }) }), NOW)
-  check('R1 absent block → the notice names the block as absent', /carries no freshness block/.test(noticeAbsent.notice ?? ''), String(noticeAbsent.notice))
+  check('R1 absent block → the notice names both absences', /carries no cache block and no produced freshness verdict/.test(noticeAbsent.notice ?? ''), String(noticeAbsent.notice))
   check('R1 absent block → the notice does NOT say a block reported staleness', !/reports this body stale/.test(noticeAbsent.notice ?? ''), String(noticeAbsent.notice))
   check('R1 absent block → no invented "age 0 s"', !/\bage 0 s\b/.test(noticeAbsent.notice ?? ''), String(noticeAbsent.notice))
 
@@ -422,6 +426,95 @@ function book(dataOver: Record<string, unknown> = {}, rootOver: Record<string, u
   const noticeUnflagged = holdingsProps(env({ data: wire({}, { _swr: { as_of: '2026-11-15T00:29:00Z', age_s: 41 } }) }), NOW)
   check('R2 _swr without a stale verdict → a notice is shown', noticeUnflagged.notice !== null, String(noticeUnflagged.notice))
   eq('R2 _swr without a stale verdict → the book is not current', noticeUnflagged.book?.freshness.stale, true)
+
+  // ---- C1 (F-2/F-3/F-5): the producer's verdict over its SOURCE clocks decides, not the cache window ----------
+  {
+    const verdict = (over: Record<string, unknown>) => ({
+      status: 'FRESH', stale: false, clock: 'quote', clock_label: 'QUOTE', as_of: '2026-11-15T00:15:00Z',
+      age_s: 900, limit_s: 900, window: 'open',
+      limit_source: 'config/data_source_authority.json domains[quote_price].stale_after_hours',
+      rule: 'oldest source-observation clock against its registry window', gap: null, ...over,
+    })
+    const fresh = book({ freshness: verdict({}) })
+    eq('C1 a served FRESH verdict is carried', fresh.freshness.served?.status, 'FRESH')
+    eq('C1 the served verdict carries its own limit', fresh.freshness.served?.limitSeconds, 900)
+    eq('C1 asOfClock comes from the served clock role', fresh.asOfClock, 'QUOTE')
+    // R2 (review 2026-11-15T040420Z): the governing clock is the one furthest past its OWN limit — usually stops
+    // or positions — while truth.as_of is the QUOTE clock by construction. The label must follow the VALUE.
+    const stopsGovern = book({ freshness: verdict({ clock: 'stops', clock_label: 'STOP READ', as_of: '2026-11-15T00:20:00Z' }) })
+    eq('C1 R2 asOfClock follows the value it labels, not the verdict clock', stopsGovern.asOfClock, 'QUOTE')
+    eq('C1 R2 the governing clock is still named by the verdict', stopsGovern.freshness.served?.clock, 'stops')
+
+    // R5 (review 2026-11-15T040420Z): `clock_provenance.rendered_at` is the response's own render time. When the
+    // wire serves it, the ledger declares it under REQUEST; an older body simply has no such clock.
+    eq('C1 R5 no render clock when the wire serves none', book().clocks.some(c => c.role === 'REQUEST'), false)
+    const rendered = wireData()
+    ;(rendered.clock_provenance as Record<string, unknown>).rendered_at =
+      { source_field: 'rendered_at', as_of: '2026-11-15T00:31:00Z', gap: null }
+    const withRender = adaptHoldings(env({ data: rendered })).book!
+    eq('C1 R5 the served render time is declared as REQUEST', withRender.clocks.find(c => c.role === 'REQUEST')?.at, '2026-11-15T00:31:00Z')
+    eq('C1 R5 the render clock never ages the book', withRender.asOfClock, 'QUOTE')
+
+    // A cache-stale body whose SOURCE clocks are current is current: the cache age is not the book's age (F-3).
+    const cacheOld = holdingsProps(env({ data: wire({ freshness: verdict({}) },
+      { _swr: { as_of: '2026-11-15T00:29:00Z', age_s: 500, stale: true } }) }), NOW)
+    eq('C1 cache stale + verdict FRESH → the PAGE does not withdraw the book', cacheOld.book !== null && notCurrent(cacheOld.book.freshness), false)
+    eq('C1 … while the cache fact itself is still served as what it is', cacheOld.book?.freshness.stale, true)
+    eq('C1 cache stale + verdict FRESH → no not-current notice', cacheOld.notice, null)
+
+    const staleVerdict = holdingsProps(env({ data: wire({
+      freshness: verdict({ status: 'STALE', stale: true, age_s: 3600 }),
+    }, { _swr: { as_of: '2026-11-15T00:29:00Z', age_s: 12, stale: false } }) }), NOW)
+    eq('C1 verdict STALE → the book is not current', staleVerdict.book?.freshness.stale, true)
+    check('C1 the notice names the SOURCE clock, its age and the limit applied',
+      /Not current: the QUOTE clock is 60 min old, past the limit 900 s/.test(staleVerdict.notice ?? ''), String(staleVerdict.notice))
+    check('C1 the notice names where the limit came from', /data_source_authority/.test(staleVerdict.notice ?? ''), String(staleVerdict.notice))
+    check('C1 the notice does not blame the cache for a producer verdict', !/in the cache/.test(staleVerdict.notice ?? ''), String(staleVerdict.notice))
+
+    const unknownVerdict = holdingsProps(env({ data: wire({
+      freshness: verdict({ status: 'UNKNOWN', stale: null, clock: null, clock_label: null, as_of: null, age_s: null,
+        limit_s: null, limit_source: null, gap: { reason: 'no stops observation clock is published' } }),
+    }) }), NOW)
+    eq('C1 UNKNOWN → the served verdict is neither fresh nor stale', unknownVerdict.book?.freshness.served?.stale, null)
+    eq('C1 UNKNOWN → the book is not claimed current', unknownVerdict.book?.freshness.stale, true)
+    check('C1 UNKNOWN → the notice says the verdict could not be computed, and why',
+      /could not compute a freshness verdict \(no stops observation clock is published\)/.test(unknownVerdict.notice ?? ''),
+      String(unknownVerdict.notice))
+    // Review 2026-11-15T0509Z §5.2: the ALERT BOX said only "could not compute a verdict" while the strip and the
+    // Read status notice printed the producer's reason. One sentence, two audiences — the alert carries it too.
+    const alert = lastKnownSentence(unknownVerdict.book!.freshness)
+    check('C1 §5.2 the last-known-good alert carries the producer\'s own reason',
+      /no stops observation clock is published/.test(alert), alert)
+
+    // Review 2026-11-15T0509Z §5.3: a withheld read stamp is a DATUM, not the book's clock. It must not fill the
+    // clock's `at` slot, and it is carried under its own field so the ledger can print what was withheld.
+    const cp = (stops: Record<string, unknown>) => ({
+      positions: { source_field: 'holdings[].position_clock', as_of: '2026-11-15T00:30:04Z', status: 'KNOWN' },
+      position_list: { source_field: 'positions_built_at', as_of: '2026-11-13T15:24:05+00:00' },
+      valuation: { source_field: 'generated_at', as_of: '2026-11-15T00:29:07+00:00' },
+      quote: { source_field: 'last_repriced', as_of: '2026-11-15T00:30:00Z' },
+      stops: { source_field: 'stop_last_known.captured_at', ...stops },
+    })
+    const withheld = book({ clock_provenance: cp({ status: 'UNKNOWN', as_of: null, last_read_as_of: '2026-11-15T00:29:00Z' }) })
+    const withheldStops = withheld.clocks.find(c => c.role === 'STOPS')
+    eq('C1 §5.3 the withheld datum never fills the clock', withheldStops?.at, null)
+    eq('C1 §5.3 … it is carried under its own field', withheldStops?.withheldAsOf, '2026-11-15T00:29:00Z')
+    const standing = book({ clock_provenance: cp({ status: 'KNOWN', as_of: '2026-11-15T00:29:00Z', last_read_as_of: '2026-11-15T00:29:00Z' }) })
+    eq('C1 §5.3 when the clock stands, the same datum is not repeated as withheld',
+      standing.clocks.find(c => c.role === 'STOPS')?.withheldAsOf, undefined)
+  }
+
+  // ---- F-7: per-row staleness is the ROW's own clock, never the book's stop-read flag -------------------------
+  {
+    const rows = book({
+      stops_read: { stale: true, status: 'STALE' },
+      holdings: [row({ symbol: 'ROWA', protection_stale: false }), row({ symbol: 'ROWB', protection_stale: true }),
+        row({ symbol: 'ROWC' })],
+    }).rows
+    eq('F-7 a current row is not stale, whatever the book flag says', rows[0].protection?.stale, false)
+    eq('F-7 an expired row is stale', rows[1].protection?.stale, true)
+    eq('F-7 no served per-row clock → null, never false', rows[2].protection?.stale, null)
+  }
 
   // ---- A3: the freshness numbers are the body's, not constants ------------------------------------------------
   const aged = book({}, { _swr: { as_of: '2026-11-15T00:29:00Z', age_s: 41, stale: true } })

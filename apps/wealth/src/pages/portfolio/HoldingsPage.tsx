@@ -43,7 +43,7 @@ import { FIXTURE_BOOK } from './fixtures'
 import { HoldingsTable, freshnessLine } from './HoldingsTable'
 import { PositionCards } from './PositionCards'
 import { PRESETS, preset, type PresetId } from './presets'
-import { age, money, pct } from './format'
+import { age, lastKnownSentence, money, notCurrent, pct, servedFreshnessLine } from './format'
 import { detailSections, detailHeading } from './detail'
 import { rowsInScope, scopeLabel, scopedMeasure } from './scope'
 import { useBookScope } from './snapshot'
@@ -264,7 +264,9 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
             : book.session.reason}
           <br />
           <span className="muted">
-            {freshnessLine(book.freshness.ageSeconds, book.freshness.staleAfterSeconds, book.freshness.stale)} · Marks as of{' '}
+            {book.freshness.served === null
+              ? freshnessLine(book.freshness.ageSeconds, book.freshness.staleAfterSeconds, book.freshness.stale)
+              : servedFreshnessLine(book.freshness.served)} · Marks as of{' '}
             {book.asOf} ({book.asOfClock} clock) ·{' '}
             {book.dayPnl.status === 'KNOWN'
               ? `day-change clock ${book.dayPnl.at ?? 'known'}`
@@ -454,13 +456,9 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
         </Panel>
       </div>
 
-      {book.freshness.stale && (
+      {notCurrent(book.freshness) && (
         <div className="note bad" role="alert">
-          <strong>Not current.</strong> This is last-known-good data,{' '}
-          {book.freshness.ageSeconds === null ? 'of unknown age' : `${age(book.freshness.ageSeconds)} old`}, past the{' '}
-          {book.freshness.staleAfterSeconds === null
-            ? 'stale limit — limit not served.'
-            : `${age(book.freshness.staleAfterSeconds)} limit.`}
+          <strong>Not current.</strong> {lastKnownSentence(book.freshness)}
         </div>
       )}
 
@@ -472,7 +470,9 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
           <dt>As of</dt>
           <dd>
             {book.asOf} · {book.asOfClock} clock ·{' '}
-            {freshnessLine(book.freshness.ageSeconds, book.freshness.staleAfterSeconds, book.freshness.stale)}
+            {book.freshness.served === null
+              ? freshnessLine(book.freshness.ageSeconds, book.freshness.staleAfterSeconds, book.freshness.stale)
+              : servedFreshnessLine(book.freshness.served)}
           </dd>
           <dt>{book.counts.primaryScopeLabel}</dt>
           <dd>
@@ -517,10 +517,17 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
         <dl>
           {book.clocks.map(c => (
             <div key={c.role}>
-              <dt>{c.role} clock</dt>
+              {/* REQUEST is the response's own render time, not a producer clock: it says "Rendered at" (F-4). */}
+              <dt>{c.role === 'REQUEST' ? 'Rendered at' : `${c.role} clock`}</dt>
               <dd>
                 {c.at ?? 'UNKNOWN'} · {c.source}
                 {c.isBuildClock && ' · document build clock — the positions clock is the one that ages the book'}
+                {/* A withheld datum is printed as what it is. It is NOT the clock: the book is not aged from it,
+                    and it never fills the `at` slot above (review 2026-11-15T0509Z §5.3). */}
+                {c.withheldAsOf !== undefined && c.withheldAsOf !== null && (
+                  <> · last {c.role === 'STOPS' ? 'stop' : c.role.toLowerCase()} read {c.withheldAsOf} — not the
+                  book's clock</>
+                )}
               </dd>
             </div>
           ))}

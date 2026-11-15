@@ -47,6 +47,7 @@ function asLastKnown(book: HoldingsBook, ageSeconds: number | null, why: string)
       ...book.freshness,
       ageSeconds: ageSeconds ?? book.freshness.ageSeconds,
       stale: true,
+      withdrawn: true,
     },
     coverageNote: `${book.coverageNote} ${why}`,
   }
@@ -86,9 +87,28 @@ export function holdingsProps(env: Envelope<unknown> | null, now: number): Holdi
     return none({ book: asLastKnown(res.book, null, why), notice: why })
   }
 
-  // The shell's registry refuses a rule on a root path (`_swr` sits BESIDE `data`, not inside it), so the SWR
-  // layer's own verdict arrives through the adapter: the book's freshness. A stale body is not current, whatever
-  // the producer's verdict says about the positions inside it.
+  // The producer's own verdict over its SOURCE clocks decides first (C1, F-2/F-3/F-5): the read's cache age is how
+  // old this RESPONSE is, not how old the book is, and it must never overrule the verdict the producer computed.
+  // Only an older producer, which serves no verdict, falls through to the cache rule below — and then the notice
+  // says the age is the cache's.
+  const served = res.book.freshness.served
+  if (served !== null && served.status === 'UNKNOWN') {
+    const why = `Not current: the producer could not compute a freshness verdict${
+      served.gap === null ? '' : ` (${served.gap})`}. Every number below is the last served value.`
+    return none({ book: asLastKnown(res.book, null, why), notice: why })
+  }
+  if (served !== null && served.status === 'STALE') {
+    const clock = served.clockLabel ?? served.clock ?? 'a source'
+    const ageS = served.ageSeconds === null ? 'of unknown age' : ageText(served.ageSeconds)
+    const limit = served.limitSeconds === null ? 'limit not served' : `limit ${served.limitSeconds} s`
+    const why = `Not current: the ${clock} clock is ${ageS}, past the ${limit} the producer applied${
+      served.limitSource === null ? '' : ` (${served.limitSource})`}. Every number below is the last served value.`
+    return none({ book: asLastKnown(res.book, null, why), notice: why })
+  }
+  if (served !== null) return none({ book: res.book, notice: st.healthUnproven })
+
+  // No served verdict: the SWR layer's own cache verdict is all there is. A body past the cache window is not
+  // current, and the notice says it is the CACHE that is old — never that the producer reported the book stale.
   if (res.book.freshness.stale) {
     // Three different facts, three different sentences. An ABSENT block must not be described as one that reported
     // staleness, and a block with no served age must not be aged. Both are the R1 honesty defect, in the notice text.
@@ -96,10 +116,10 @@ export function holdingsProps(env: Envelope<unknown> | null, now: number): Holdi
     // An unserved limit is said to be unserved. A 0 s limit would be a number the producer never sent (R1b).
     const limit = f.staleAfterSeconds === null ? 'limit not served' : `limit ${f.staleAfterSeconds} s`
     const why = !f.blockPresent
-      ? 'Not current: the response carries no freshness block; this body cannot be shown as current. Every number below is the last served value, of unknown age.'
+      ? 'Not current: the response carries no cache block and no produced freshness verdict; this body cannot be shown as current. Every number below is the last served value, of unknown age.'
       : f.ageSeconds === null
-        ? `Not current: the freshness block reports this body stale, and the age is not served (${limit}). Every number below is the last served value.`
-        : `Not current: the freshness block reports this body stale (age ${f.ageSeconds} s, ${limit}). Every number below is the last served value.`
+        ? `Not current: this response is past its cache window and the cache age is not served (${limit}); no produced freshness verdict was served either. Every number below is the last served value.`
+        : `Not current: this response is ${f.ageSeconds} s old in the cache (${limit}) and no produced freshness verdict was served. Every number below is the last served value.`
     return none({ book: asLastKnown(res.book, null, why), notice: why })
   }
 

@@ -26,6 +26,7 @@ import type {
   HoldingsBook,
   HoldingsRow,
   Protection,
+  ServedFreshness,
 } from './contract'
 import { PORTFOLIO_HOLDINGS_CONTRACT_VERSION } from './contract'
 
@@ -283,6 +284,18 @@ const MEASURES: BookMeasure[] = [
     reason: 'no stored reconciliation; the current read reports PARTIAL and leaves a residual unallocated' },
 ]
 
+/** The producer's served verdicts, as they would arrive on `data.freshness` (synthetic, fixed clocks). */
+const SERVED_FRESH: ServedFreshness = {
+  status: 'FRESH', stale: false, clock: 'quote', clockLabel: 'QUOTE', asOf: '2026-11-14T20:55:00Z',
+  ageSeconds: 300, limitSeconds: 900, limitSource: 'config/data_source_authority.json domains[quote_price].stale_after_hours',
+  window: 'open', rule: 'oldest source-observation clock against its registry window; the read clock is not an input',
+  gap: null,
+}
+const SERVED_STALE: ServedFreshness = {
+  ...SERVED_FRESH, status: 'STALE', stale: true, clock: 'positions', clockLabel: 'POSITIONS',
+  asOf: '2026-11-11T20:55:00Z', ageSeconds: 259500,
+}
+
 export const FIXTURE_BOOK: HoldingsBook = {
   contract: PORTFOLIO_HOLDINGS_CONTRACT_VERSION,
   source: 'FIXTURE',
@@ -325,7 +338,7 @@ export const FIXTURE_BOOK: HoldingsBook = {
   accounts: ACCOUNTS,
   measures: MEASURES,
   session: SESSION,
-  freshness: { ageSeconds: 900, staleAfterSeconds: 259200, stale: false, blockPresent: true },
+  freshness: { served: SERVED_FRESH, ageSeconds: 900, staleAfterSeconds: 259200, stale: false, blockPresent: true, withdrawn: false },
   dayPnl: DAY_PNL,
   coverageNote:
     'Nine synthetic rows: six priced securities, one unpriced security, one worthless delisted zero row and one cash row. One dead-CUSIP zero-value row is omitted by the read-side filter and counted in the population block. Cash is inside the weight denominator.',
@@ -349,7 +362,7 @@ export const FIXTURE_BOOK_EMPTY: HoldingsBook = {
 /** Same rows, a stale clock — last-known-good must say how old it is. */
 export const FIXTURE_BOOK_STALE: HoldingsBook = {
   ...FIXTURE_BOOK,
-  freshness: { ageSeconds: 314400, staleAfterSeconds: 259200, stale: true, blockPresent: true },
+  freshness: { served: SERVED_STALE, ageSeconds: 314400, staleAfterSeconds: 259200, stale: true, blockPresent: true, withdrawn: false },
 }
 
 /** One row's trailing P/E is UNASSESSED but still carries its value: the last-known-good case (F1). */

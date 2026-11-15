@@ -43,16 +43,18 @@ export interface DeclaredClock {
  * wrong one.
  *
  * Mapping from the wire's `clock_provenance` keys (A2): `positions` → POSITIONS, `position_list` → BUILD,
- * `valuation` → VALUATION, `quote` → QUOTE; `day_pnl` is not a clock role here — it stays the separate
- * `dayPnl` field, because the wire declares the day-change clock UNKNOWN rather than dating it. REQUEST is not
- * on this route; it stays only for a reader that measures an as-of against the request time.
+ * `valuation` → VALUATION, `quote` → QUOTE, `stops` → STOPS; `day_pnl` is not a clock role here — it stays the
+ * separate `dayPnl` field, because the wire declares the day-change clock UNKNOWN rather than dating it.
+ * REQUEST is not a source clock: it is the response's own render time (`clock_provenance.rendered_at`), declared
+ * in the clock ledger as "Rendered at" only when the wire serves it. It is never a freshness input. UNDECLARED is
+ * the absence of a role: an `asOf` that no declared clock dates is labelled so, never dressed as a producer clock.
  *
  * POSITIONS is an AGGREGATION over the rows, not a single instant: the wire marks it `mixed: true` and carries
  * `oldest_known_as_of` / `newest_known_as_of` / `unknown_rows`. `at` is the aggregate the producer publishes
  * (its documented rule: the oldest known row, unknown if any row lacks a declared instant), and the disclosure
  * is carried alongside rather than flattened away.
  */
-export type ClockRole = 'POSITIONS' | 'BUILD' | 'QUOTE' | 'VALUATION' | 'REQUEST' | 'UNDECLARED'
+export type ClockRole = 'POSITIONS' | 'BUILD' | 'QUOTE' | 'VALUATION' | 'STOPS' | 'REQUEST' | 'UNDECLARED'
 
 export interface ClockProvenance {
   role: ClockRole
@@ -64,6 +66,13 @@ export interface ClockProvenance {
   mixed?: boolean
   /** Rows an aggregated clock could not date (`unknown_rows`). Absent means not stated. */
   unknownRows?: number
+  /**
+   * The producer's datum that it WITHHELD as this clock (`last_read_as_of`), served when the clock cannot stand
+   * for the book — today the stop read, when a displayed account has no dated broker read. It is diagnosis, not
+   * the clock: the ledger prints it under its own label ("not the book's clock") rather than in the `at` slot,
+   * so a withheld datum never becomes an age the page then ages the book from. Absent means nothing was withheld.
+   */
+  withheldAsOf?: string | null
 }
 
 export type ProtectionState = 'PROTECTED' | 'GAP' | 'UNKNOWN'
@@ -77,7 +86,16 @@ export interface Protection {
   stop: number | null
   basis: string | null
   asOf: string | null
-  stale: boolean
+  /**
+   * This ROW's own staleness, from its own clock (wire `protection_stale`). `null` means no clock applies — exempt,
+   * or a clock that never dated the row's observation. It is never the book-wide stop-read flag.
+   *
+   * Part of this row's protection VERDICT, not a decoration: it ships as a sibling key of `protection` only
+   * because the pinned LQ-2708 wire fixture compares `protection` byte-exactly. Moving it inside that object is
+   * therefore a deliberate contract revision (fixture regeneration + a re-check of the old-site page test), never
+   * a tidy-up.
+   */
+  stale: boolean | null
   nextStep: string
   reason: string
 }
@@ -300,7 +318,35 @@ export interface HoldingsSession {
   reason: string
 }
 
+/** The producer's ONE freshness verdict, computed from the SOURCE-observation clocks (wire `data.freshness`). */
+export interface ServedFreshness {
+  /** FRESH | STALE over the source clocks; UNKNOWN when a clock cannot be dated (unknown beats wrong). */
+  status: 'FRESH' | 'STALE' | 'UNKNOWN'
+  /** Served verdict; `null` alongside UNKNOWN — an undatable book is not a fresh one, and not a stale one either. */
+  stale: boolean | null
+  /** The clock the verdict is about (`positions` | `quote` | `stops`), or `null` when it could not be computed. */
+  clock: string | null
+  /** The role label for that clock, e.g. "QUOTE" — the label the page prints, never a literal. */
+  clockLabel: string | null
+  /** When that clock last observed the book. Not the read, not the render, not the cache. */
+  asOf: string | null
+  ageSeconds: number | null
+  /** The registry limit the verdict applied (`config/data_source_authority.json`), not the cache window. */
+  limitSeconds: number | null
+  /** Where that limit came from, so a printed limit names its source. */
+  limitSource: string | null
+  window: 'open' | 'closed' | null
+  rule: string | null
+  /** Why the verdict could not be computed, when it could not. */
+  gap: string | null
+}
+
 export interface HoldingsFreshness {
+  /**
+   * The producer's verdict over its SOURCE clocks, or `null` when the wire served none (an older producer).
+   * Judge currency by this. The four fields below are the RESPONSE's cache facts, not the book's clocks.
+   */
+  served: ServedFreshness | null
   /** The served cache age, or `null` when the response did not serve one. Never 0 to stand in for "unknown". */
   ageSeconds: number | null
   /**
@@ -309,8 +355,9 @@ export interface HoldingsFreshness {
    */
   staleAfterSeconds: number | null
   /**
-   * A false value is a claim of freshness, so only a served `stale: false` may produce one. A missing verdict is
-   * not freshness (a missing boolean must never read as true), and an absent block is not a block that reported.
+   * The CACHE verdict: was this body built inside the cache window? A false value is a claim of freshness, so only
+   * a served `stale: false` may produce one. It is the fallback when no source-clock verdict is served — never a
+   * substitute for `served`.
    */
   stale: boolean
   /**
@@ -318,6 +365,8 @@ export interface HoldingsFreshness {
    * made, not a verdict the producer published — the page says so instead of attributing it to a block that is absent.
    */
   blockPresent: boolean
+  /** True when THIS PAGE withdrew the claim (a failed read, or one whose currency could not be proven). */
+  withdrawn: boolean
 }
 
 export interface HoldingsBook {
