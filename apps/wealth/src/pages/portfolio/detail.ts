@@ -144,7 +144,7 @@ export function levelsFields(row: HoldingsRow): DetailField[] {
       label: 'RSI · moving averages',
       value: unavailable('served on the read; this page does not bind it yet'),
       source:
-        'the read serves rsi (24/30), sma20_pct / sma50_pct / sma200_pct (24/30), week52_high_pct and atr (23/30) as percent distances; the row contract here carries none of them',
+        'the read serves rsi (24/30, an index), sma20_pct / sma50_pct / sma200_pct (24/30) and week52_high_pct (23/30) as percent distances, and atr (23/30) in price units; the row contract here carries none of them',
     },
     {
       label: 'Next review',
