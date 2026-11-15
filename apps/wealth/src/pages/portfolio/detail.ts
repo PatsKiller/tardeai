@@ -79,8 +79,14 @@ export function positionFields(row: HoldingsRow): DetailField[] {
 }
 
 /**
- * Fundamentals: v04's pane, field by field. This route serves the market cap and the yield; the multiples and the
- * enrichment are not on the read, and the assessment is not wired — each is stated, not omitted.
+ * Fundamentals: v04's pane, field by field.
+ *
+ * The wire DOES serve most of this pane (measured on the captured live body, 30 rows: sector 30/30, industry 30/30,
+ * beta 22/30, perf_ytd_pct 23/30, short_float_pct 14/30, inst_own_pct 14/30, insider_own_pct 12/30, pe 12/30,
+ * forward_pe 12/30, peg 9/30, eps_ttm / eps_next_y / analyst_rating null on every row). What is missing is this
+ * page's binding: the row contract here (`contract.ts`) carries none of those fields, so the pane cannot render
+ * them. A field that says "not served" would therefore be false (peer finding, 2026-11-15) — each absent field
+ * says it is served-but-unbound instead. Binding them is candidate 2's work, not this correction's.
  */
 export function fundamentalsFields(row: HoldingsRow): DetailField[] {
   if (row.kind === 'CASH') {
@@ -95,23 +101,25 @@ export function fundamentalsFields(row: HoldingsRow): DetailField[] {
     },
     {
       label: 'Trailing / forward P/E',
-      value: unavailable('no multiple and no assessment are served on this route'),
-      source: 'the wire serves no per-row multiple here, and valuation-assessment@1 is not wired',
+      value: unavailable('served on the read; this page does not bind it yet'),
+      source:
+        'the read serves pe and forward_pe on 12 of 30 rows; the row contract here carries neither, and valuation-assessment@1 is not wired',
     },
     {
       label: 'EPS · PEG · Beta',
-      value: unavailable('no enrichment is served on this route'),
-      source: 'the read carries no EPS, PEG or beta field for the row',
+      value: unavailable('served on the read; this page does not bind it yet'),
+      source:
+        'the read serves peg (9/30), beta (22/30) and other enrichment, with eps_ttm and eps_next_y null on every row; the row contract here carries none of them',
     },
     {
       label: 'Sector / industry',
-      value: unavailable('no classification is served on this route'),
-      source: 'the read carries no sector or industry field for the row',
+      value: unavailable('served on the read; this page does not bind it yet'),
+      source: 'the read serves sector and industry on every row (30/30); the row contract here carries neither',
     },
     {
       label: 'Valuation',
       value: unavailable('UNASSESSED: valuation-assessment@1 is not wired on this route'),
-      source: 'a bare served P/E would not be an assessment, and none is served here either',
+      source: 'a bare served P/E would not be an assessment, and valuation-assessment@1 is not wired here',
     },
   ]
 }
@@ -134,8 +142,9 @@ export function levelsFields(row: HoldingsRow): DetailField[] {
     },
     {
       label: 'RSI · moving averages',
-      value: unavailable('no technicals are served on this route'),
-      source: 'the read carries no RSI or moving-average field for the row',
+      value: unavailable('served on the read; this page does not bind it yet'),
+      source:
+        'the read serves rsi (24/30), sma20_pct / sma50_pct / sma200_pct (24/30), week52_high_pct and atr (23/30) as percent distances; the row contract here carries none of them',
     },
     {
       label: 'Next review',

@@ -101,7 +101,7 @@ export const PRESETS: Preset[] = [
       { key: 'nextReview', header: 'Next review' },
     ],
     methodNote:
-      'The v04 column set. Only Price is served on this route today: the levels read (support, resistance, timeframe, next review) has no producer, and the wire’s Fibonacci block carries no clock, so Method cannot be dated either. Each empty cell names its own gap on hover, and none borrows a served number for a claim nothing supports.',
+      'The v04 column set. Of these columns only Price is served on this route today: the levels read (support, resistance, timeframe, next review) has no producer, and the wire’s Fibonacci block carries no clock, so Method cannot be dated either. The wire does serve RSI and moving-average distances, but this page does not bind them and they are not v04 Levels columns. Each empty cell names its own gap on hover, and none borrows a served number for a claim nothing supports.',
     limits: [
       'Support, Resistance, Timeframe and Next review have no producer on this route: they are drawn as N/A columns rather than replaced by a different label.',
       'The wire serves a Fibonacci ladder but no clock for it; Method therefore prints N/A — a ladder that cannot be dated is not shown as if it were current.',
