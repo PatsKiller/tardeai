@@ -161,3 +161,76 @@ test('R-a both Home market panels date the last-known block and drop the current
   assert.doesNotMatch(fs.readFileSync(new URL('../../src/pages/home/HomeNeedsPage.tsx', import.meta.url), 'utf8'), /sub="Current stored nowcast/)
   assert.doesNotMatch(fs.readFileSync(new URL('../../src/pages/home/HomeOutlookPage.tsx', import.meta.url), 'utf8'), /sub="The current stored engine assessment/)
 })
+test('T2 protection list takes typed, account-scoped items only; incidents and approvals are history', async () => {
+  const { prioritiesModel } = await import('../../src/pages/home/homeAdapter.ts')
+  const b = prioritiesModel({ items: [
+    { kind: 'INCIDENT', title: 'Unprotected Position', why: 'PR merge digest — 8 ready', since: '2026-11-01T15:00:32-05:00', stale: true },
+    { kind: 'INCIDENT', title: 'Orphaned Stop', why: 'Research lane RAW-store health', since: '2026-09-17T06:20:37-04:00', stale: true },
+    { kind: 'INCIDENT', title: 'Orphaned Stop', why: 'inode follow-up', since: '2026-11-13T09:00:07-04:00', stale: false },
+    { kind: 'APPROVALS', title: '2 approvals waiting', why: '1 urgent (expire inside 2 h)' },
+    { kind: 'STOP', title: 'Add Stop · TEST · synthetic_key_a', why: 'Stop below cost basis', since: '2026-11-15T12:00:00Z' },
+  ] }, new Map([['synthetic_key_a', 'Example retirement']]))
+  assert.equal(b.protection.length, 1)
+  assert.equal(b.protection[0].kind, 'STOP')
+  assert.equal(b.protection[0].title, 'Protection review 1')
+  assert.equal(b.protection[0].scope, 'TEST')
+  assert.equal(b.protection[0].label, '')
+  // The raw account key never reaches the page, not even through the title or the scope.
+  assert.doesNotMatch(JSON.stringify(b.protection), /synthetic_key_a/)
+  assert.equal(b.history.length, 4)
+  assert.deepEqual([...new Set(b.history.map(i => i.kind))].sort(), ['APPROVALS', 'INCIDENT'])
+  assert.doesNotMatch(JSON.stringify(b.protection), /Unprotected Position|Orphaned Stop|approvals waiting/)
+  // The producer's category survives as a quoted source, never as the desk's own claim.
+  assert.equal(b.history[0].label, 'Recorded incident · source category: ')
+  assert.equal(b.history[0].title, 'Unprotected Position')
+  assert.equal(b.history[0].why, 'PR merge digest — 8 ready')
+  assert.equal(b.history[3].label, 'Recorded approval request · source category: ')
+  assert.equal(b.history[2].stale, false)
+  assert.equal(b.history[2].staleLabel, 'Producer reports not stale')
+  assert.doesNotMatch(JSON.stringify(b.history), /stop gap|is unprotected|requires protection|active protection/i)
+})
+test('T2 an old incident keeps its age and stale clock, is never marked resolved, and gains no protection wording', async () => {
+  const { prioritiesModel } = await import('../../src/pages/home/homeAdapter.ts')
+  const b = prioritiesModel({ items: [{ kind: 'INCIDENT', title: 'Data Integrity', why: 'plausibility', since: '2026-09-16T06:20:37-04:00' }] }, new Map())
+  assert.equal(b.protection.length, 0)
+  assert.equal(b.history.length, 1)
+  assert.equal(b.history[0].status, '')
+  assert.equal(b.history[0].statusLabel, 'Status Unknown')
+  assert.equal(b.history[0].stale, null)
+  assert.equal(b.history[0].staleLabel, 'Freshness not served')
+  assert.equal(b.history[0].since, '2026-09-16T06:20:37-04:00')
+  assert.doesNotMatch(JSON.stringify(b), /resolved/i)
+})
+test('T2 an all-incident feed leaves protection explicitly empty and keeps every row in history', async () => {
+  const { prioritiesModel } = await import('../../src/pages/home/homeAdapter.ts')
+  const items = Array.from({ length: 17 }, (_, i) => ({ kind: 'INCIDENT', title: i % 2 ? 'Orphaned Stop' : 'Unprotected Position', why: `row ${i}`, since: '2026-10-01T00:00:00Z' }))
+  const b = prioritiesModel({ items }, new Map())
+  assert.equal(b.protection.length, 0)
+  assert.equal(b.history.length, 17)
+})
+test('T2 a stop item with no derivable symbol stays visible as history, never as protection', async () => {
+  const { prioritiesModel } = await import('../../src/pages/home/homeAdapter.ts')
+  const b = prioritiesModel({ items: [{ kind: 'STOP', title: 'Raise Stop', why: 'no scope served' }, { kind: '', title: 'Unknown kind' }] }, new Map())
+  assert.equal(b.protection.length, 0)
+  assert.equal(b.history.length, 2)
+  assert.equal(b.history[0].label, 'Recorded stop item · source category: ')
+  assert.equal(b.history[1].label, 'Recorded item (kind unrecorded) · source category: ')
+})
+test('T2 the protection panel states the empty case and files incidents under history', async () => {
+  const fs = await import('node:fs')
+  const page = fs.readFileSync(new URL('../../src/pages/home/HomeTodayPage.tsx', import.meta.url), 'utf8')
+  assert.match(page, /No account-scoped protection items served/)
+  assert.match(page, /Recorded incidents and items/)
+  assert.match(page, /items\.protection\.map/)
+  assert.match(page, /items\.history\.map/)
+  assert.doesNotMatch(page, /protection-card exception/)
+  assert.doesNotMatch(page, /items\.map\(/) // the unfiltered list is gone
+})
+test('T2 a nonzero amount below one dollar never prints as $0', async () => {
+  const { money } = await import('../../src/pages/home/homeAdapter.ts')
+  assert.equal(money(-0.37), '-<$1')
+  assert.equal(money(0.004), '<$1')
+  assert.equal(money(0), '$0')
+  assert.equal(money(null), 'Unknown')
+  assert.notEqual(money(-12.6), '$0')
+})
