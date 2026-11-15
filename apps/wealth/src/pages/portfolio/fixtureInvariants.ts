@@ -143,10 +143,12 @@ export function checkBook(book: HoldingsBook): string[] {
   if (cash !== book.counts.cash) out.push(`cash ${book.counts.cash} != ${cash}`)
   if (book.counts.nonCashOverFloor > nonCash) out.push('nonCashOverFloor exceeds nonCash')
   if (!book.counts.primaryScopeLabel.trim()) out.push('count has no scope label')
-  // A fixture book always serves its age; an unserved age is an adapter case (R1), never a fixture one.
+  // A fixture book always serves its age and its stale limit; either one unserved is an adapter case (R1/R1b).
   const ageSec = book.freshness.ageSeconds
+  const limitSec = book.freshness.staleAfterSeconds
   if (ageSec === null) out.push('freshness.ageSeconds is not served (a fixture must serve one)')
-  else if (book.freshness.stale !== ageSec > book.freshness.staleAfterSeconds) {
+  else if (limitSec === null) out.push('freshness.staleAfterSeconds is not served (a fixture must serve one)')
+  else if (book.freshness.stale !== ageSec > limitSec) {
     out.push('stale flag disagrees with age vs stale_after')
   }
   if (book.rows.length > 0) {

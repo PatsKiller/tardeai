@@ -208,11 +208,12 @@ export function HoldingsTable({ rows, preset, onRowOpen }: {
 }
 
 /** Kept for the page's freshness line and for callers that need the same wording. */
-export function freshnessLine(ageSeconds: number | null, staleAfterSeconds: number, stale: boolean): string {
-  const limit = age(staleAfterSeconds)
-  // An age the response did not serve is said to be unserved — never rendered as 0 s.
+export function freshnessLine(ageSeconds: number | null, staleAfterSeconds: number | null, stale: boolean): string {
+  // An age or a limit the response did not serve is said to be unserved — never rendered as 0 s.
   const aged = ageSeconds === null ? 'age not served' : `${age(ageSeconds)} old`
-  return stale
-    ? `Last known good — ${aged}, past the ${limit} limit. These values are not current.`
-    : `${aged} · stale after ${limit}`
+  const limit = staleAfterSeconds === null ? 'limit not served' : age(staleAfterSeconds)
+  if (!stale) return `${aged} · stale after ${limit}`
+  if (staleAfterSeconds === null)
+    return `Last known good — ${aged}; the response served no stale limit (limit not served). These values are not current.`
+  return `Last known good — ${aged}, past the ${limit} limit. These values are not current.`
 }

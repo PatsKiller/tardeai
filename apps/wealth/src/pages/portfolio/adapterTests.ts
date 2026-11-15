@@ -382,6 +382,18 @@ function book(dataOver: Record<string, unknown> = {}, rootOver: Record<string, u
   eq('A3 age_s 41 → ageSeconds 41', aged.freshness.ageSeconds, 41)
   eq('A3 stale_after_hours 0.5 → 1800 s', aged.freshness.staleAfterSeconds, 1800)
 
+  // ---- R1b: an ABSENT stale-limit clock is null, never a served 0 s (a 0 s limit is an invented number) -------
+  const noLimitSwr = { _swr: { as_of: '2026-11-15T00:29:00Z', age_s: 41, stale: true } }
+  const noLimitBook = book({ evidence: {} }, noLimitSwr)
+  eq('R1b no stale_after_hours → staleAfterSeconds is null, never 0', noLimitBook.freshness.staleAfterSeconds, null)
+  const noLimit = holdingsProps(env({ data: wire({ evidence: {} }, noLimitSwr) }), NOW)
+  check('R1b unserved limit → the notice says the limit is not served', /limit not served/.test(noLimit.notice ?? ''), String(noLimit.notice))
+  check('R1b unserved limit → no invented "limit 0 s"', !/limit 0 s\b/.test(noLimit.notice ?? ''), String(noLimit.notice))
+  // The served clock is unchanged: 0.5 h is still 1800 s, and the notice still names it.
+  const servedLimit = holdingsProps(env({ data: wire({}, noLimitSwr) }), NOW)
+  eq('R1b served 0.5 h → staleAfterSeconds stays 1800', servedLimit.book?.freshness.staleAfterSeconds, 1800)
+  check('R1b served limit → the notice still names the served 1800 s limit', /limit 1800 s/.test(servedLimit.notice ?? ''), String(servedLimit.notice))
+
   // A failed read with nothing kept: ERROR, never a table of nulls.
   const failed = holdingsProps(env({ ok: false, status: 503, data: null, error: 'HTTP 503' }), NOW)
   eq('a failed read with no last good → error', failed.error, 'HTTP 503')

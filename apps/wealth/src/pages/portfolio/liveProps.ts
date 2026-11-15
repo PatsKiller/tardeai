@@ -93,11 +93,13 @@ export function holdingsProps(env: Envelope<unknown> | null, now: number): Holdi
     // Three different facts, three different sentences. An ABSENT block must not be described as one that reported
     // staleness, and a block with no served age must not be aged. Both are the R1 honesty defect, in the notice text.
     const f = res.book.freshness
+    // An unserved limit is said to be unserved. A 0 s limit would be a number the producer never sent (R1b).
+    const limit = f.staleAfterSeconds === null ? 'limit not served' : `limit ${f.staleAfterSeconds} s`
     const why = !f.blockPresent
       ? 'Not current: the response carries no freshness block; this body cannot be shown as current. Every number below is the last served value, of unknown age.'
       : f.ageSeconds === null
-        ? `Not current: the freshness block reports this body stale, and the age is not served (limit ${f.staleAfterSeconds} s). Every number below is the last served value.`
-        : `Not current: the freshness block reports this body stale (age ${f.ageSeconds} s, limit ${f.staleAfterSeconds} s). Every number below is the last served value.`
+        ? `Not current: the freshness block reports this body stale, and the age is not served (${limit}). Every number below is the last served value.`
+        : `Not current: the freshness block reports this body stale (age ${f.ageSeconds} s, ${limit}). Every number below is the last served value.`
     return none({ book: asLastKnown(res.book, null, why), notice: why })
   }
 

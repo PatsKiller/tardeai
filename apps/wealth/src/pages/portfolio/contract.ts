@@ -259,7 +259,11 @@ export interface HoldingsSession {
 export interface HoldingsFreshness {
   /** The served cache age, or `null` when the response did not serve one. Never 0 to stand in for "unknown". */
   ageSeconds: number | null
-  staleAfterSeconds: number
+  /**
+   * The served stale-after limit in seconds, or `null` when `evidence.portfolio.clocks.stale_after_hours` was not
+   * served. Never 0 to stand in for "unknown" — the page says "limit not served"; a served 0 stays a served 0.
+   */
+  staleAfterSeconds: number | null
   /**
    * A false value is a claim of freshness, so only a served `stale: false` may produce one. A missing verdict is
    * not freshness (a missing boolean must never read as true), and an absent block is not a block that reported.

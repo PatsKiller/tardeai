@@ -187,7 +187,9 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
         <p role="alert">
           <strong>Not current.</strong> This is last-known-good data,{' '}
           {book.freshness.ageSeconds === null ? 'of unknown age' : `${age(book.freshness.ageSeconds)} old`}, past the{' '}
-          {age(book.freshness.staleAfterSeconds)} limit.
+          {book.freshness.staleAfterSeconds === null
+            ? 'stale limit — limit not served.'
+            : `${age(book.freshness.staleAfterSeconds)} limit.`}
         </p>
       )}
 

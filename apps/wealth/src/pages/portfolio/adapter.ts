@@ -299,7 +299,9 @@ export function adaptHoldings(body: unknown): AdaptResult {
   const freshness: HoldingsFreshness = {
     // Served or null — never 0. `age_s: 0` would be a served age, and a block that serves none must not be aged.
     ageSeconds: num(swr.age_s),
-    staleAfterSeconds: staleAfterHours !== null ? Math.round(staleAfterHours * 3600) : 0,
+    // Served or null — never 0. A served 0 h would be a real zero-hour limit; an absent clock is not that, and a
+    // page that printed "past the 0 s limit" would be quoting a number the producer never served.
+    staleAfterSeconds: staleAfterHours !== null ? Math.round(staleAfterHours * 3600) : null,
     // Only a PRESENT `stale: false` is fresh (missing boolean is never true). Absent block: the read cannot prove
     // itself current, so it is not current, and the page must say the block was absent rather than that it reported.
     stale: isObj(root._swr) ? swr.stale !== false : true,
