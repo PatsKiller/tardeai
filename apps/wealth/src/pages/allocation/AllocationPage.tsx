@@ -38,7 +38,7 @@ import {
 import type { AccountChoice, AnalyticsRow } from '../portfolio/analyticsAdapter'
 import type { PortfolioView } from '../portfolio/analytics/portfolio-analytics.mjs'
 import { useBookScope } from '../portfolio/snapshot'
-import { buildAllocationModel } from './allocationView'
+import { buildAllocationModel, readStatus } from './allocationView'
 import type { AllocationModel, SleeveBasis, Sleeve } from './allocationView'
 import '../portfolio/analytics/analytics.css'
 import './allocation.css'
@@ -230,8 +230,13 @@ export function AllocationPage({
   // validated receipt OBJECT and otherwise says "Last available snapshot · freshness unverified", so an
   // unverified read can never be dressed as a good one here. The overall verdict and the data's as-of stay
   // beside it (the header clock), as the reviewed panel prints them.
+  //
+  // W2 rebase (route 2026-11-15T1833Z): that sentence is the strip's ONE source — it is passed here instead
+  // of the page keeping a second copy — and the producer's notice, its reason and this read's clock go behind
+  // the disclosure. `readStatus` still falls back to the notice's lead clause when the adapter is silent
+  // (a health-unproven read), so the strip never says nothing over an unmeasured one.
   const fresh = freshnessCopy(view.snapshot)
-  const warning = fresh.line === '' ? null : fresh.line
+  const readState = readStatus(notice, view.snapshot, fresh.line)
   const accountLabel = scope === 'ALL' ? 'all accounts' : (accounts.find(a => a.key === scope)?.label ?? scope)
   const bookAccountCount = accounts.length
 
@@ -297,22 +302,31 @@ export function AllocationPage({
       <div className="wm-pa-status" aria-live="polite">
         {view.rows.length} matching rows · {view.securityCount} investment securities ·{' '}
         {coverageText(view.coverage.valued, view.coverage.total)}
-        {warning !== null && <span className="wm-pa-warning">{warning}</span>}
-        {notice !== null && notice !== '' && <span className="wm-pa-warning">{notice}</span>}
+        {readState.warning !== null && <span className="wm-pa-warning">{readState.warning}</span>}
         {announcement !== '' && <> · {announcement}</>}
       </div>
 
-      {/* Ledger row D, stated once where the filters are: two denominators, each named at its column. */}
-      <div className="note blue">
-        <strong>Two denominators, both named where used.</strong> <em>Weight of book</em> divides by the whole
-        read — {coverageText(bookView.coverage.valued, bookView.coverage.total)} across {bookAccountCount}{' '}
-        {bookAccountCount === 1 ? 'account' : 'accounts'}, every sleeve, cash included:{' '}
-        {bookView.currencyValid ? moneyText(bookView.total, bookView.scope.currency) : 'total unknown'}.{' '}
-        <em>Weight of selected view</em> divides by the rows these filters keep —{' '}
-        {coverageText(view.coverage.valued, view.coverage.total)}:{' '}
-        {view.currencyValid ? moneyText(view.total, view.scope.currency) : 'total unknown'}. A percentage without
-        one of those names is not printed on this page.
-      </div>
+      {/* Ledger row D, stated once where the filters are: two denominators, each named at its column.
+          Progressive detail (route 2026-11-15T1745Z, item 1): the statement stays one glanceable summary,
+          and the full methodology — plus this read's own technical reason — opens on demand. Native
+          <details>, so it is keyboard- and screen-reader-operable; no coverage, number or receipt changes. */}
+      <details className="note blue alloc-methodology">
+        <summary>
+          <strong>Two denominators, both named where used.</strong> How each weight is computed
+          {readState.detail !== null ? ' · this read’s status' : ''}
+        </summary>
+        <p>
+          <em>Weight of book</em> divides by the whole read —{' '}
+          {coverageText(bookView.coverage.valued, bookView.coverage.total)} across {bookAccountCount}{' '}
+          {bookAccountCount === 1 ? 'account' : 'accounts'}, every sleeve, cash included:{' '}
+          {bookView.currencyValid ? moneyText(bookView.total, bookView.scope.currency) : 'total unknown'}.{' '}
+          <em>Weight of selected view</em> divides by the rows these filters keep —{' '}
+          {coverageText(view.coverage.valued, view.coverage.total)}:{' '}
+          {view.currencyValid ? moneyText(view.total, view.scope.currency) : 'total unknown'}. A percentage
+          without one of those names is not printed on this page.
+        </p>
+        {readState.detail !== null && <p className="alloc-read-detail">{readState.detail}</p>}
+      </details>
 
       <div className="wm-pa-kpis">
         <article>

@@ -74,6 +74,81 @@ export interface AllocationModel<R extends AnalyticsRowInput = AnalyticsRowInput
   sleeves: Sleeve[]
 }
 
+/** One concise line for the top of the page, and the full technical reason for the expanded detail. */
+export interface ReadStatus {
+  /** null when the read is current (fresh) and the caller has nothing to disclose. */
+  warning: string | null
+  /** The producer's full reason plus the session/read clock, for the disclosure. null when there is none. */
+  detail: string | null
+}
+
+/**
+ * The notice's lead clause: the part before its parenthetical (or its first sentence), and the rest.
+ *
+ * The page's `notice` (liveProps, last-known-good with age) can run to several hundred characters — measured
+ * 355 on 2026-11-15. The top line takes the lead clause and the disclosure keeps the whole text verbatim, so
+ * nothing is dropped and nothing is reworded. Deterministic: split at the first " (" or first ". " only.
+ */
+function leadClause(text: string): { lead: string; rest: string | null } {
+  const paren = text.indexOf(' (')
+  if (paren > 0) return { lead: text.slice(0, paren).trim(), rest: text.slice(paren).trim() }
+  const sentence = text.indexOf('. ')
+  if (sentence > 0) return { lead: text.slice(0, sentence + 1).trim(), rest: text.slice(sentence + 1).trim() }
+  return { lead: text.trim(), rest: null }
+}
+
+/**
+ * The read's status as ONE concise line plus its full reason.
+ *
+ * Operator route 2026-11-15T1745Z, item 1: keep one honest freshness/session warning at the top and put
+ * the technical explanation behind a disclosure. Nothing is invented — a current read says nothing, an
+ * absent field is reported as absent, and a long notice is shortened only at its own clause boundary with
+ * the whole text kept in `detail`.
+ *
+ * `line` is the shell's ONE freshness sentence — `freshnessCopy(snapshot).line` in
+ * `portfolio/analyticsAdapter` (RC3, live on base 0659545ba). While it is non-empty it IS the top line,
+ * verbatim, and the producer's `notice` is never printed there a second time.
+ *
+ * The fallback is NOT dead on W1, which is why it stays: `holdingsProps` sets `notice = st.healthUnproven`
+ * on a read the producer's freshness verdict calls current (`liveProps.ts` :110/:128, `components/
+ * renderState.ts` :85 — a payload with no health flag and no producer clock is OK *and* unproven). In that
+ * state `freshnessCopy` returns `''` and the health caveat is the only warning there is; dropping it would
+ * print a calm strip over an unmeasured read, and the Holdings page beside it prints the same notice whole.
+ * So when the adapter is silent the notice's own lead clause — a verbatim prefix, never a new sentence —
+ * is the top line, and its full text stays in `detail`.
+ */
+export function readStatus(
+  notice: string | null | undefined,
+  snapshot: Pick<AnalyticsSnapshot, 'status' | 'reason' | 'session' | 'observedAt'>,
+  line?: string | null,
+): ReadStatus {
+  const lineText = typeof line === 'string' && line.trim() !== '' ? line.trim() : null
+  const noticeText = typeof notice === 'string' && notice.trim() !== '' ? notice.trim() : null
+  const reason = typeof snapshot.reason === 'string' && snapshot.reason.trim() !== '' ? snapshot.reason.trim() : null
+  // `snapshot.session` is the producer's own phrase and may already lead with the word — the live adapter
+  // publishes 'Session unknown' when the phase is not KNOWN (analyticsAdapter, measured 2026-11-15). Prefixing
+  // it again printed "Session Session unknown" behind the disclosure, so the word is added only when absent.
+  const rawSession =
+    typeof snapshot.session === 'string' && snapshot.session.trim() !== '' ? snapshot.session.trim() : 'Session unknown'
+  const sessionText = /^Session\b/.test(rawSession) ? rawSession : `Session ${rawSession}`
+  const clock = `${sessionText} · read ${snapshot.observedAt ?? 'time unknown'}.`
+
+  const noticeClause = noticeText !== null ? leadClause(noticeText) : null
+  // One source: the adapter's sentence when it has one, otherwise the notice's own lead clause.
+  const warning = lineText ?? noticeClause?.lead ?? null
+
+  const detailParts: string[] = []
+  // The whole notice goes behind the disclosure only when the top line truncated it; a notice short enough
+  // to be the whole top line is not printed twice.
+  if (noticeClause !== null && noticeClause.rest !== null) detailParts.push(`Full notice: ${noticeText}`)
+  if (reason !== null && !(noticeText ?? '').includes(reason) && !(lineText ?? '').includes(reason)) {
+    detailParts.push(reason)
+  }
+  // The session/read clock belongs with anything the page is flagging — and behind the disclosure only.
+  if (warning !== null || detailParts.length > 0) detailParts.push(clock)
+  return { warning, detail: detailParts.length > 0 ? detailParts.join(' ') : null }
+}
+
 /**
  * One sleeve under one denominator.
  *

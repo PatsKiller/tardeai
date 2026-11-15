@@ -17,11 +17,18 @@
 import type { HoldingsProps } from './liveProps'
 
 export const HOLDINGS_ROUTE = '/portfolio/holdings'
+/**
+ * The allocation view reads the same book through the same page-side reader (`AllocationLive`, one GET of
+ * `/api/v2/portfolio/holdings`), so it publishes into the snapshot just as Holdings does and the bar may show
+ * what that page read (operator finding 2026-11-15T1745Z, item 2). No other route joins this list: a route that
+ * does not originate the read must keep saying "not read here".
+ */
+export const ALLOCATION_ROUTE = '/portfolio/allocation'
 
-/** True only for the route whose page performs the heavy read. A trailing slash is tolerated; nothing else is. */
+/** True only for a route whose page performs the heavy read. A trailing slash is tolerated; nothing else is. */
 export function isBookRoute(pathname: string): boolean {
   const p = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
-  return p === HOLDINGS_ROUTE
+  return p === HOLDINGS_ROUTE || p === ALLOCATION_ROUTE
 }
 
 export type BarStatus =

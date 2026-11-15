@@ -10,7 +10,8 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildAllocationModel } from './allocationView.ts'
+import { buildAllocationModel, readStatus } from './allocationView.ts'
+import { barStatus, isBookRoute } from '../portfolio/bookView.ts'
 
 const SNAP = {
   id: 'snap-synthetic-20261115',
@@ -196,4 +197,124 @@ test('T9 an absent sleeve takes the SELECTION\'s validity, not the book\'s — 0
   assert.equal(tech.selected.weight, null, 'the weight must be withheld, not 0%')
   // The book side keeps its own valid denominator untouched.
   assert.ok(near(tech.book.weight, 4000 / 5700))
+})
+
+// ── Progressive detail: ONE concise warning at top, the full reason behind the disclosure ───────────────
+// Route 2026-11-15T1745Z, item 1: at 390 the long freshness/denominator prose pushed the monetary cards
+// below the first screen. The page now prints one concise line and moves the technical reason into native
+// <details>. These tests pin the pure decision — what the line says, and that nothing is invented.
+
+test('D1 a fresh read with no notice says nothing at all', () => {
+  assert.deepEqual(readStatus(null, { status: 'fresh', session: 'REGULAR', observedAt: '2026-11-15T14:30:00Z' }, ''), {
+    warning: null,
+    detail: null,
+  })
+})
+
+test('D2 the adapter\'s ONE freshness sentence is the top line, and a reason it already carries is not repeated', () => {
+  // RC3 (live on 0659545ba): freshnessCopy(snapshot).line is '' when current, else one sentence. It is passed
+  // here and printed verbatim; the page keeps no second copy of it.
+  const line = 'Last available snapshot · freshness unverified'
+  const s = readStatus(null, { status: 'unverified', reason: 'freshness unverified', session: 'REGULAR', observedAt: '2026-11-15T12:45:01Z' }, line)
+  assert.equal(s.warning, line)
+  assert.equal(s.detail, 'Session REGULAR · read 2026-11-15T12:45:01Z.', 'the line already says the reason; the clock sits behind it')
+  // A reason the line does NOT carry still reaches the disclosure.
+  const s2 = readStatus(null, { status: 'last-good', reason: 'producer clock is 51.7 h old', session: 'REGULAR', observedAt: '2026-11-15T12:45:01Z' }, 'Last known good 2026-11-15T09:00:00Z · receipt')
+  assert.equal(s2.warning, 'Last known good 2026-11-15T09:00:00Z · receipt')
+  assert.ok(s2.detail.includes('producer clock is 51.7 h old'), 'the reason is present, just behind the disclosure')
+  assert.ok(s2.detail.includes('Session REGULAR · read 2026-11-15T12:45:01Z.'), 'the detail carries the clock')
+})
+
+test('D3 a 355-character notice is never the top line: the WHOLE text sits behind the disclosure', () => {
+  // Measured on the live payload 2026-11-15T17:5xZ: the notice ran to 355 characters and, printed whole at the
+  // top of the page, pushed the monetary cards below the first screen at 390. The top line is the adapter's own
+  // sentence; the notice is kept verbatim in the detail, so no coverage is removed and no sentence is rewritten.
+  const notice =
+    'Not current: the producer could not compute a freshness verdict (freshness cannot be computed: no observation ' +
+    'clock for stops (stops: no stops observation clock is published: 1 of 4 displayed non-cash accounts have no ' +
+    'dated broker stop read; the book\'s stop clock covers only accounts a broker read returned)). Every number ' +
+    'below is the last served value.'
+  assert.ok(notice.length > 300, `this case must be a long notice (${notice.length})`)
+  const line = 'Last available snapshot · freshness unverified'
+  const s = readStatus(notice, {
+    status: 'last-good',
+    reason: 'freshness cannot be computed: no observation clock for stops',
+    session: 'CLOSED',
+    observedAt: '2026-11-15T17:45:00Z',
+  }, line)
+  assert.equal(s.warning, line)
+  assert.ok(s.warning.length < 80, `the top line must stay one glanceable line (${s.warning.length})`)
+  assert.ok(!s.warning.includes('stops observation clock'), 'the technical parenthetical is NOT on the top line')
+  assert.ok(s.detail.includes(notice), 'the full notice survives verbatim, not a paraphrase')
+  assert.ok(s.detail.includes('Every number below is the last served value.'), 'the last sentence is not lost')
+  assert.ok(s.detail.includes('Session CLOSED · read 2026-11-15T17:45:00Z.'), 'the clock is behind the disclosure')
+  assert.equal(s.detail.split(notice).length - 1, 1, 'the full notice appears exactly once')
+  assert.equal(
+    s.detail,
+    `Full notice: ${notice} Session CLOSED · read 2026-11-15T17:45:00Z.`,
+    'the reason is not repeated beside the notice that already carries it',
+  )
+})
+
+test('D4 with no adapter sentence and no notice the strip says nothing, and no sentence is derived', () => {
+  assert.deepEqual(readStatus(null, {}, ''), { warning: null, detail: null })
+  // A reason with no adapter sentence is NOT promoted into an invented top line; it only reaches the detail.
+  const s = readStatus(null, { status: 'unproven', reason: 'freshness cannot be computed' }, '')
+  assert.equal(s.warning, null)
+  assert.equal(s.detail, 'freshness cannot be computed Session unknown · read time unknown.')
+})
+
+test('D5 the fallback is live: a health-unproven notice on a CURRENT read still gets a top line', () => {
+  // holdingsProps sets notice = st.healthUnproven on a read the producer calls current (liveProps :110/:128,
+  // renderState :85: no health flag + no producer clock ⇒ OK *and* unproven). freshnessCopy then returns '',
+  // so without the fallback the strip would print nothing over an unmeasured read while Holdings prints the
+  // notice whole. The notice's own lead clause — a verbatim prefix, never a new sentence — is the top line.
+  const notice =
+    'this source carries no health flag and no producer clock: health UNKNOWN until the producer adds one'
+  const s = readStatus(notice, { status: 'fresh', session: 'REGULAR', observedAt: '2026-11-15T18:10:00Z' }, '')
+  assert.equal(s.warning, 'this source carries no health flag and no producer clock: health UNKNOWN until the producer adds one')
+  assert.equal(s.warning, notice, 'a notice with no clause boundary is shown whole, never cut mid-sentence')
+  assert.equal(s.detail, 'Session REGULAR · read 2026-11-15T18:10:00Z.', 'the clock is behind the disclosure')
+})
+
+test('D6 a short notice with no clause boundary stays verbatim, and its reason is not duplicated', () => {
+  const notice = 'Closing read: last-known-good from the 16:00 ET producer run'
+  const s = readStatus(notice, {
+    status: 'last-good',
+    reason: 'producer clock is 51.7 h old',
+    session: 'CLOSED',
+    observedAt: '2026-11-15T21:00:00Z',
+  }, '')
+  assert.equal(s.warning, notice, 'nothing is cut when there is no clause to cut at')
+  assert.ok(s.detail.includes('producer clock is 51.7 h old'), 'the reason still reaches the disclosure')
+  assert.equal(s.detail, 'producer clock is 51.7 h old Session CLOSED · read 2026-11-15T21:00:00Z.')
+})
+
+test('D7 the producer\'s own session phrase is not prefixed twice', () => {
+  // analyticsAdapter publishes session 'Session unknown' when the phase is not KNOWN; a naive `Session ${s}`
+  // printed "Session Session unknown" behind the disclosure (measured on the live read 2026-11-15T18:04Z).
+  const s = readStatus(null, { status: 'last-good', session: 'Session unknown', observedAt: '2026-11-15T12:45:01-05:00' }, 'Last known good 2026-11-15T09:00:00Z · receipt')
+  assert.ok(!/Session Session/.test(s.detail), `doubled word in: ${s.detail}`)
+  assert.equal(s.detail, 'Session unknown · read 2026-11-15T12:45:01-05:00.')
+  // A bare phase is still named as a session.
+  assert.equal(readStatus(null, { status: 'stale', session: 'CLOSED' }, 'Last available snapshot · freshness unverified').detail, 'Session CLOSED · read time unknown.')
+})
+
+// ── Shell scope: the bar may show the book on the route that read it ────────────────────────────────────
+// Route 2026-11-15T1745Z, item 2: on Allocation the shell said "All accounts · not read here" with Unknown
+// values while the page showed real ones. The page originates the same one GET, so the bar renders its book.
+
+const PUBLISHED = { book: { rows: [], measures: { measures: {} } }, loading: false, error: null, notice: null }
+
+test('S1 the allocation route is a book route, and the bar shows its published snapshot', () => {
+  assert.equal(isBookRoute('/portfolio/allocation'), true)
+  assert.equal(isBookRoute('/portfolio/allocation/'), true, 'a trailing slash names the same route')
+  assert.deepEqual(barStatus('/portfolio/allocation', PUBLISHED), { kind: 'book' })
+})
+
+test('S2 a route that does NOT originate the read still says not-read', () => {
+  // The guard this change must not weaken: the sibling views share the prefix but never read the book.
+  assert.equal(isBookRoute('/portfolio/performance'), false)
+  assert.equal(isBookRoute('/portfolio'), false)
+  assert.deepEqual(barStatus('/portfolio/performance', PUBLISHED), { kind: 'not-read' })
 })
