@@ -5,7 +5,7 @@ import type { Family } from '../routes/families'
 export function FamilyPage({ family }: { family: Family }) {
   return (
     <section aria-labelledby={`h-${family.id}`}>
-      <h1 id={`h-${family.id}`}>{family.title}</h1>
+      <h2 id={`h-${family.id}`}>{family.title}</h2>
       <p><strong>Not built yet.</strong> <em>This page shows no data until its reviewed batch lands.</em></p>
       <p>Decision it serves: {family.decision}</p>
       <details>
