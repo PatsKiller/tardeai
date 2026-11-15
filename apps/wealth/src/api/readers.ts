@@ -83,6 +83,11 @@ export const READERS: ReaderSpec[] = [
     // per-role clocks (POSITIONS / BUILD / QUOTE / VALUATION) are shown with their ages by the page instead.
     note: 'cc-deepseek-6 captures 2026-11-15 00:56-00:57Z (served R13 3ac0b4058): 271,806 B; 6 / 7 / 79 ms over three reads; no data.ok; the `_swr` freshness block sits BESIDE `data`, not inside it. heavy: 271 KB, fetched by its own page only. Two wire traps the page must not fall into: scope_coverage.priceable.row_count (33) is the priceable population and rows_read (30) is not; scope_coverage.excluded is the under-floor population that IS rendered (listed, not counted), not rows removed. truth.as_of is the quote clock, not the statement build clock.',
   },
+  {
+    path: '/api/v2/portfolio/performance', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'none',
+    unavailableWhen: [],
+    note: 'C-PERF-A parity-v2: page-owned legacy performance read; no unified producer clock. Raw NAV includes flows; household residual estimates are separate and account eligibility is unresolved unless explicitly sourced. Source-role clocks belong to the page. GET may persist a YTD pin: no live test probes or polling.',
+  },
   // ---- protection ----
   {
     path: '/api/v2/risk', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: false, clock: 'producer',
