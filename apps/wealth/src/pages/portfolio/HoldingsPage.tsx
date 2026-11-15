@@ -51,7 +51,7 @@ import { accountOptions, displaySectorKey, normalizeBook, snapshotFor } from './
 import type { AccountChoice, AnalyticsRow } from './analyticsAdapter'
 import { derivePortfolioView } from './analytics/portfolio-analytics.mjs'
 import type { AnalyticsSnapshot, PortfolioView } from './analytics/portfolio-analytics.mjs'
-import { PositionCards } from './PositionCards'
+import { HoldingsWorkspace } from './workspaceV2/Workspace'
 import { PRESETS, preset, type PresetId } from './presets'
 import { lastKnownSentence, money, moneyTone, notCurrent, servedFreshnessLine, toneClass } from './format'
 import { detailSections, detailHeading } from './detail'
@@ -188,341 +188,22 @@ function sectorsFor(rows: AnalyticsRow[], snapshot: AnalyticsSnapshot, scope: st
   }
 }
 
+
 export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = null, notice = null, nowMs = null }: HoldingsPageProps) {
-  const [presetId, setPresetId] = useState<PresetId>('holdings')
-  const [query, setQuery] = useState('')
-  const [sector, setSector] = useState('')
-  const [currency, setCurrency] = useState('')
-  const [announcement, setAnnouncement] = useState('')
-  const drawer = useDrawer()
-  // One scope for the page and the top bar. Outside the shell's provider this is local state, so a unit render
-  // still filters; inside it, the top bar's select drives this page (and this page's select drives it back).
-  const { scope, setScope } = useBookScope()
-
-  // Every hook above the early returns, unconditionally: the memo is computed only for a book that exists.
-  const analytics = useMemo(
-    () =>
-      book === null
-        ? { rows: [] as AnalyticsRow[], accounts: [] as AccountChoice[], snapshot: null, view: null as PortfolioView<AnalyticsRow> | null, reason: null as string | null }
-        : buildAnalytics(book, scope, sector, query, currency),
-    [book, scope, sector, query, currency],
-  )
-
-  // A filter that no longer exists in the book (an account change, or a snapshot refresh that dropped a
-  // sector) is reset AND announced. Without the announcement the population would change silently.
-  useEffect(() => {
-    if (analytics.view === null || sector === '') return
-    if (!analytics.view.sectorOptions.includes(sector)) {
-      setSector('')
-      setAnnouncement(`Sector reset because ${displaySectorKey(sector)} is not present in this account.`)
-    }
-  }, [analytics.view, sector])
-
-  // Filter handlers. An ACCOUNT or CURRENCY change can make the selected sector impossible; it is cleared in the
-  // SAME update as the change, so the table never renders an impossible slice for a frame, and the reset is
-  // announced because the population changed without the reader asking. Sector and search changes are the
-  // reader's own, so they withdraw a previous announcement.
-  const changeAccount = (key: string) => {
-    const next = key === '' ? 'ALL' : key
-    setScope(next)
-    setAnnouncement('')
-    if (sector === '' || analytics.snapshot === null) return
-    if (!sectorsFor(analytics.rows, analytics.snapshot, next, currency).includes(sector)) {
-      setSector('')
-      setAnnouncement(`Sector reset because ${displaySectorKey(sector)} is not present in this account.`)
-    }
-  }
-
-  const changeCurrency = (next: string) => {
-    setCurrency(next)
-    setAnnouncement('')
-    if (sector === '' || analytics.snapshot === null) return
-    if (!sectorsFor(analytics.rows, analytics.snapshot, scope, next).includes(sector)) {
-      setSector('')
-      setAnnouncement(`Sector reset because ${displaySectorKey(sector)} is not present in this currency.`)
-    }
-  }
-
-  const changeSector = (key: string) => {
-    setSector(key)
-    setAnnouncement('')
-  }
-
-  const changeSearch = (next: string) => {
-    setQuery(next)
-    setAnnouncement('')
-  }
-
-  const resetFilters = () => {
-    setScope('ALL')
-    setSector('')
-    setQuery('')
-    setCurrency('')
-    setAnnouncement('All filters reset: every account and sector, no search.')
-  }
-
-  if (error !== null) {
-    return (
-      <section aria-label="Portfolio holdings">
-        <div className="note bad" role="alert">
-          <strong>Holdings could not be read.</strong> {error} No values are shown, because none were served.
-        </div>
-      </section>
-    )
-  }
-
-  if (loading || book === null) {
-    return (
-      <section aria-label="Portfolio holdings" aria-busy={loading}>
-        <p className="muted">{loading ? 'Reading the book…' : 'No book has been supplied.'}</p>
-      </section>
-    )
-  }
-
-  const active = preset(presetId)
-  // The scope narrows the rows; the search narrows them again. Neither changes a served value.
-  const inScope = rowsInScope(book, scope)
-  // The v0.5 view is the ONE filter pass when it can be derived: account, sector, search and currency narrow the
-  // same population, so the KPI strip, the charts, the table and the CSV cannot disagree about which rows they
-  // describe. When the selector rejects the book's identity the page falls back to scope + search and says why.
-  const view = analytics.view
-  // The predicate lives in search.ts so the gate exercises the real matcher (SPCX spec T9); its results are
-  // unchanged (R7) — it still reads `name`, never the display identity.
-  const fallbackRows = query.trim() === '' ? inScope : inScope.filter(r => rowMatchesQuery(r, query))
-  const rows = view === null ? fallbackRows : view.rows.map(r => r.holding)
-
-  const openRow = (row: HoldingsRow, origin?: HTMLElement) => {
-    const h = detailHeading(row)
-    drawer.open({ title: h.title, eyebrow: h.eyebrow, body: <DetailBody row={row} />, origin: origin ?? null })
-  }
-
-  // The export is the table's own cells: same rows, same preset, same cell() walker (HoldingsTable.csvFor), so
-  // the file cannot disagree with the screen. Download only — no request, no write, no upload.
-  const downloadCsv = () => {
-    const url = URL.createObjectURL(new Blob([csvFor(rows, active)], { type: 'text/csv;charset=utf-8' }))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `holdings-${book.asOf}-${active.id}.csv`
-    a.rel = 'noopener'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    requestAnimationFrame(() => URL.revokeObjectURL(url))
-  }
-
-  const scopeText = scopeLabel(book, scope)
-
-  const sessionText =
-    book.session.status === 'KNOWN'
-      ? `Market session: ${book.session.phase ?? 'known'} · last open session ${book.session.latestOpenSession ?? 'unknown'}${
-          book.session.source ? ` · source: ${book.session.source}` : ''
-        } (the rows carry no session label)`
-      : `Market session: UNKNOWN — ${book.session.reason}`
-
-  const excludedText =
-    book.population.excluded.length === 0
-      ? 'none omitted'
-      : book.population.excluded.map(e => `${e.count} ${e.label}`).join(' · ')
-
-  // Named here so the disclosure can quote the served instant instead of describing the role in the abstract.
-  const valuationClock = book.clocks.find(c => c.role === 'VALUATION') ?? null
-
-  // The v0.5 KPI strip replaces v04's four-card metric grid: its totals are the approved selector's own over the
-  // SELECTED rows, and each card says what it is. The one served book measure v04 drew from a canonical value
-  // (account value) is still printed, with its verification and clock, in the Book measures block below.
-  const priceMove = scopedMeasure(book, 'price_move_estimate', scope)
-  // A signed CHANGE is coloured by direction only while the read is current; an UNKNOWN or a last-good read
-  // keeps neutral ink (operator visual-semantic route 2026-11-15T1555Z).
-  const priceMoveTone = notCurrent(book.freshness) ? 'flat' : moneyTone(priceMove.valueUsd)
-
-  // Protection gaps, quoted from the stops read. Not a recommendation: the card says what the producer
-  // already reports, in the producer's own words, and opens the row it is about.
-  const gaps = inScope.filter(r => r.protection !== null && r.protection.state === 'GAP')
-
-  return (
-    <section aria-label="Portfolio holdings">
-      {book.source === 'FIXTURE' && (
-        <div className="note" role="note">
-          <strong>Fixture data.</strong> Every value on this page is synthetic and no live reader is bound.
-          portfolio-holdings@2 is proposed, not approved for wiring.
-        </div>
-      )}
-
-      {notice !== null && (
-        <div className="note warn" role="status">
-          <strong>Read status.</strong> {notice}
-        </div>
-      )}
-
-      <div className="session">
-        <div>
-          <strong className={book.session.status === 'KNOWN' ? undefined : 'text-warn'}>
-            {book.session.status === 'KNOWN' ? (book.session.phase ?? 'Session known') : 'Session UNKNOWN'}
-          </strong>
-          {' · '}
-          {book.session.status === 'KNOWN'
-            ? `last completed regular session ${book.session.latestOpenSession ?? 'not stated'}${
-                book.session.source ? ` · source: ${book.session.source}` : ''
-              }`
-            : book.session.reason}
-          <br />
-          <span className="muted">
-            {book.freshness.served === null
-              ? freshnessLine(book.freshness.ageSeconds, book.freshness.staleAfterSeconds, book.freshness.stale)
-              : servedFreshnessLine(book.freshness.served)} · Marks as of{' '}
-            {book.asOf} ({book.asOfClock} clock) ·{' '}
-            {book.dayPnl.status === 'KNOWN'
-              ? `day-change clock ${book.dayPnl.at ?? 'known'}`
-              : 'day-change clock not declared by the producer'}
-          </span>
-        </div>
-        <div className="session-controls">
-          <span className="muted">Estimated price movement</span>
-          <br />
-          {priceMove.available ? (
-            <>
-              <strong className={toneClass(priceMoveTone) || undefined}>{money(priceMove.valueUsd)}</strong>{' '}
-              <small className="muted">
-                {priceMove.measure?.verified ? 'verified' : 'measured, not verified'} · as of{' '}
-                {priceMove.measure?.asOf ?? 'clock not served'}
-              </small>
-            </>
-          ) : (
-            <>
-              <strong>Unknown</strong> <small className="muted">{priceMove.reason}</small>
-            </>
-          )}
-        </div>
-      </div>
-
-      {view !== null ? (
-        <AnalyticsPanel
-          view={view}
-          accounts={analytics.accounts}
-          scope={scope}
-          sector={sector}
-          query={query}
-          currency={currency}
-          announcement={announcement}
-          onAccount={changeAccount}
-          onSector={changeSector}
-          onSearch={changeSearch}
-          onCurrency={changeCurrency}
-          onReset={resetFilters}
-          onOpenHolding={openRow}
-        />
-      ) : (
-        <div className="note bad" role="alert">
-          <strong>Overview withheld.</strong> The selected view cannot be derived from this book: {analytics.reason}{' '}
-          The rows below are filtered by account and search only; no total is printed over an identity the page
-          cannot keep.
-        </div>
-      )}
-
-      <Panel
-        title="Holdings workspace"
-        sub={`${rows.length} rows in the selected view · ${rows.filter(r => r.kind === 'CASH').length} cash · scope: ${scopeText} · ${
-          book.source === 'FIXTURE' ? 'synthetic fixture' : 'served book'
-        }`}
-        right={
-          <button
-            type="button"
-            className="small"
-            onClick={() => document.getElementById('holdings-evidence')?.scrollIntoView({ block: 'start' })}
-          >
-            Accounting definitions →
-          </button>
-        }
-      >
-        <div className="toolbar">
-          <div className="left">
-            <div className="segmented" role="group" aria-label="Holding columns">
-              {PRESETS.map(p => (
-                <button key={p.id} type="button" className={p.id === presetId ? 'active' : ''} aria-pressed={p.id === presetId} onClick={() => setPresetId(p.id)}>
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            <button type="button" className="small" onClick={downloadCsv}>
-              Export CSV
-            </button>
-          </div>
-        </div>
-
-        {rows.length === 0 ? (
-          <p>
-            <strong>No positions.</strong> {book.rows.length === 0 ? book.coverageNote : 'No row matches this search.'}
-          </p>
-        ) : (
-          <>
-            {/* v04 hides .holdings-table at ≤510 px and shows .position-cards instead; the class is the switch. */}
-            <div className="holdings-table">
-              <HoldingsTable rows={rows} preset={active} onRowOpen={openRow} />
-            </div>
-            <PositionCards rows={rows} onRowOpen={openRow} />
-          </>
-        )}
-
-        <div className="table-foot">
-          <span>
-            Marks: {book.asOf} ({book.asOfClock} clock) · basis: remaining recorded cost · USD · day change: no
-            declared per-row clock
-          </span>
-          <span>Technical diagnostics stay in details.</span>
-        </div>
-        <p className="small muted">{book.coverageNote}</p>
-      </Panel>
-
-      {/* One column: v0.5's sector panel above now carries the allocation v04's second panel drew, and a
-          half-width panel beside nothing would reserve a column for no content. */}
-      <div className="grid-equal" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
-        <Panel
-          title={`Protection gaps in ${scope === 'ALL' ? 'this book' : 'this account'}`}
-          sub="Quoted from the stops read. Evidence precedes an investment proposal."
-        >
-          {gaps.length === 0 ? (
-            <p className="muted">
-              No row {scope === 'ALL' ? 'in this book' : 'in this scope'} is reported as a protection gap by the stops
-              read. That is not a claim that every holding is covered — an UNKNOWN protection state is not a covered one.
-            </p>
-          ) : (
-            <>
-              {gaps.slice(0, 3).map(r => (
-                <ActionCard
-                  key={`${r.accountKey}:${r.symbol}`}
-                  title={`${r.symbol} · protection gap`}
-                  desc={`${r.protection?.reason ?? 'the stops read reports a gap'}. ${r.protection?.nextStep ?? ''}`.trim()}
-                  meta={
-                    <>
-                      Served by the stops read · {r.protection?.asOf ?? 'read clock absent'}
-                      {r.protection?.stale ? ' (stale)' : ''}
-                      {ageCue(r.protection?.asOf ?? null, nowMs) !== null ? ` · ${ageCue(r.protection?.asOf ?? null, nowMs)}` : ''} ·{' '}
-                      {r.accountLabel}
-                    </>
-                  }
-                  cta={
-                    <button type="button" className="small" onClick={() => openRow(r)}>
-                      Review →
-                    </button>
-                  }
-                />
-              ))}
-              {gaps.length > 3 && <p className="small muted">+{gaps.length - 3} more in the table above.</p>}
-            </>
-          )}
-        </Panel>
-      </div>
-
-      {notCurrent(book.freshness) && (
-        <div className="note warn" role="alert">
-          <strong>Not current.</strong> {lastKnownSentence(book.freshness)}
-        </div>
-      )}
-
+ const drawer=useDrawer()
+ if(error!==null)return <section aria-label="Portfolio holdings"><div className="note bad" role="alert"><strong>Holdings could not be read.</strong> {error} No values are shown, because none were served.</div></section>
+ if(loading||book===null)return <section aria-label="Portfolio holdings" aria-busy={loading}><p>{loading?'Reading the book…':'No book has been supplied.'}</p></section>
+ const excludedText=book.population.excluded.length===0?'none omitted':book.population.excluded.map(e=>e.count+' '+e.label).join(' · ')
+ const valuationClock=book.clocks.find(c=>c.role==='VALUATION')??null
+ const sessionText=book.session.status==='KNOWN'?'Market session: '+(book.session.phase??'known')+' · last open session '+(book.session.latestOpenSession??'unknown')+' · source '+(book.session.source??'not served')+' (rows carry no session label)':'Market session: UNKNOWN — '+book.session.reason
+ const openRow=(row:HoldingsRow,origin?:HTMLElement)=>{const h=detailHeading(row);drawer.open({title:h.title,eyebrow:h.eyebrow,body:<DetailBody row={row}/>,origin:origin??null})}
+ return <section aria-label="Portfolio holdings"><HoldingsWorkspace book={book} notice={notice} onRowOpen={openRow} evidence={<>
       <details id="holdings-evidence">
         <summary>
           <b>Evidence &amp; definitions</b> — clocks, book measures, population, session and source paths
         </summary>
+        {notice?<p className="note warn">Read status: {notice}</p>:null}
+        {notCurrent(book.freshness)?<p className="note warn">Not current. {lastKnownSentence(book.freshness)}</p>:null}
         <dl>
           <dt>As of</dt>
           <dd>
@@ -716,6 +397,7 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
         </table></div>
       </details>
 
+
       <details id="holdings-accounts">
         <summary>
           <b>Account details</b> — per-account totals as the producer publishes them
@@ -759,13 +441,6 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
         )}
       </details>
 
-      <p>
-        <small className="muted">
-          <Tag>Read-only</Tag> No orders, no approvals, no writes. The overview's totals are display aggregates of
-          published row values over the selected view — not broker equity, not verified profit; per-account totals
-          remain the producer's and are never summed here. The account scope is shared with the top bar.
-        </small>
-      </p>
-    </section>
-  )
+ <p>Read-only. No orders, no approvals, no writes. New workspace sums are derived display aggregates over published rows, not broker equity or verified profit. Producer per-account totals remain distinct.</p>
+ </>}/></section>
 }
