@@ -2,10 +2,13 @@
 //
 // Rules held here:
 //   * the client never computes a value — no shares x price, no P/L arithmetic, no score, no row sums;
-//   * a null renders as "N/A — <reason>", never as 0 (an unpriced row is not a worthless row);
+//   * a null renders as `N/A` with its reason in the cell's title and accessible name, never as 0 (an unpriced row
+//     is not a worthless row). The full reason is also in the preset's notes under the table and in the row drawer;
 //   * no cell carries meaning by colour alone: the protection cell is text + icon glyph + tooltip;
 //   * a P/E cell is a valuation-assessment@1 status word or the served multiple — and an UNASSESSED
-//     assessment that carries a value keeps the value (last known good), via `cells.peCellText`.
+//     assessment that carries a value keeps the value (last known good), via `cells.peCellText`;
+//   * the identity cell is bounded and does not print the internal account key (r2, verdict 2026-11-15T0342Z B1):
+//     measured live, the unbounded name+label+key held this column at 516 px of a 1,409 px table in a 1,136 px box.
 
 import type { CSSProperties, ReactNode } from 'react'
 import type { Cue, CueLevel } from '../../contracts/cue'
@@ -26,7 +29,7 @@ const CUE_TAG_TONE: Record<Cue['level'], Tone> = { GREEN: 'good', AMBER: 'warn',
 
 function ProtectionTag({ row }: { row: HoldingsRow }) {
   const c = protectionCue(row)
-  if (!c) return unavailable('protection does not apply to cash')
+  if (!c) return compactMissing('protection does not apply to a cash row')
   return (
     <Tag tone={CUE_TAG_TONE[c.level]} title={`${c.label}. ${c.tooltip}`}>
       {c.label}
@@ -49,21 +52,61 @@ function protectionCue(row: HoldingsRow): Cue | null {
   return cue(meta.level, meta.label, meta.icon, `${p.reason}; ${stopText}; ${readText}; ${p.nextStep}`)
 }
 
+// A real book's names are long (measured 2026-11-15 on the live payload: the unbounded identity cell was 516 px and
+// the table 1,409 px inside a 1,136 px wrap). The design sheets are reference-locked, so the bound is applied here,
+// not in CSS. The full name, account label and account key stay on the title and in the row drawer.
+//
+// The bound is 250, not 290: measured on the live payload at 1280 (wrap 976), a 290 px bound held this column at
+// 312 px and left the Protection preset 30 px past the wrap. The reviewer's zero-overflow test covers 1280, so the
+// bound is set where the widest preset fits.
+const TRUNCATE: CSSProperties = { display: 'block', maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+
+/**
+ * A missing cell. The reason travels with the cell (title + aria-label) and in full under the table, but the cell
+ * prints `N/A`: measured on the live payload, spelling the reason in every cell took the Overview table to 1,409 px
+ * and the Fundamentals preset to 1,812 px against a 1,136 px wrap.
+ */
+function compactMissing(reason: string): ReactNode {
+  return (
+    <span title={reason} aria-label={`N/A — ${reason}`}>
+      N/A
+    </span>
+  )
+}
+
+/**
+ * `peCellText` / `assessmentSummary` return their reason inline (`N/A — no assessment served`), which is right for the
+ * drawer and for the cell's accessible name but wrong for a nowrap column: measured live at 1280, the two P/E columns
+ * held 180 px each on that sentence and pushed the Fundamentals preset 118 px past a 976 px wrap. The reason rides the
+ * title/aria-label instead.
+ */
+function compactCell(text: string): ReactNode {
+  const m = /^N\/A — (.+)$/.exec(text)
+  return m ? compactMissing(m[1]) : text
+}
+
+/**
+ * The wire serves a Fibonacci ladder but NO clock for it (`adapter.ts` leaves `fib` null rather than dating it with
+ * the quote clock). A cell that said "no ladder is served" would be untrue: the ladder is served, the clock is not.
+ */
+const LADDER_NO_CLOCK = 'a ladder is served without a clock, so it is not dated here'
+
 function valueCell(row: HoldingsRow): ReactNode {
   if (row.marketValue === null) return unavailable('unpriced — no price served')
   return row.worthless ? `${money(row.marketValue)} · worthless` : money(row.marketValue)
 }
 
 function cell(row: HoldingsRow, key: string): ReactNode {
-  // A cash row is not a security: most columns do not apply. v04 prints `N/A` / `—` here, and a full
-  // "N/A — protection does not apply to cash" in four columns is what pushed this table 233 px past its
-  // container at 1440. The claim is unchanged; the reason moves one hover (and the row drawer) away.
+  // A cash row is not a security: most columns do not apply. v04 prints `N/A` / `—` here; the reason rides the
+  // title, and the row drawer states it per field.
   if (row.kind === 'CASH' && !['security', 'price', 'value', 'weight'].includes(key)) {
-    return <span title="this column does not apply to a cash row">N/A</span>
+    return compactMissing('this column does not apply to a cash row')
   }
   switch (key) {
     case 'security': {
-      // v04's ticker cell: the chip carries the symbol's initials, then symbol / name · account.
+      // v04's ticker cell: the chip carries the symbol's initials, then symbol / name · account. The internal
+      // account key is NOT printed in the cell (it identifies the broker record, not the account); it is on the
+      // title and in the drawer.
       const initials = row.symbol.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase()
       return (
         <span className="ticker">
@@ -73,8 +116,8 @@ function cell(row: HoldingsRow, key: string): ReactNode {
           <span>
             <strong>{row.symbol}</strong>
             <br />
-            <small>
-              {row.name} · {row.accountLabel} · {row.accountKey}
+            <small style={TRUNCATE} title={`${row.name} · ${row.accountLabel} · account ${row.accountKey}`}>
+              {row.name} · {row.accountLabel}
             </small>
           </span>
         </span>
@@ -83,13 +126,14 @@ function cell(row: HoldingsRow, key: string): ReactNode {
     case 'shares':
       return shares(row.shares)
     case 'price':
-      return row.worthless ? unavailable('no price served for a worthless identifier') : price(row.price)
+    case 'mark':
+      return row.worthless ? compactMissing('no price served for a worthless identifier') : price(row.price)
     case 'avgCost':
-      return row.avgCost === null ? unavailable('no basis served') : money(row.avgCost)
+      return row.avgCost === null ? compactMissing('no basis served') : money(row.avgCost)
     case 'value':
       return valueCell(row)
     case 'day':
-      if (row.dayChange === null) return unavailable('no day change served')
+      if (row.dayChange === null) return compactMissing('no day change served')
       return (
         <>
           {signedMoney(row.dayChange)}
@@ -100,7 +144,7 @@ function cell(row: HoldingsRow, key: string): ReactNode {
     case 'unrealized':
       // The basis and the change are two fields: name the one that is absent (F7).
       if (row.gainLoss === null) {
-        return row.avgCost === null ? unavailable('no basis served, so no unrealized change') : unavailable('no unrealized change served')
+        return compactMissing(row.avgCost === null ? 'no basis served, so no unrealized change' : 'no unrealized change served')
       }
       return (
         <>
@@ -115,49 +159,73 @@ function cell(row: HoldingsRow, key: string): ReactNode {
       return <ProtectionTag row={row} />
     }
     case 'peTrailing':
-      return peCellText(row.valuation, 'trailing')
+      return compactCell(peCellText(row.valuation, 'trailing'))
     case 'peForward':
-      return peCellText(row.valuation, 'forward')
+      return compactCell(peCellText(row.valuation, 'forward'))
     case 'peerMedian':
-      return unavailable('no reader serves a peer median')
+      return compactMissing('no reader serves a peer median on any route')
     case 'marketCap':
-      return marketCapText(row.marketCapB, row.kind === 'CASH' ? 'cash has no market cap' : 'not published for this instrument')
+      return row.marketCapB === null
+        ? compactMissing(row.kind === 'CASH' ? 'cash has no market cap' : 'not published for this instrument')
+        : marketCapText(row.marketCapB)
     case 'yield':
-      return row.yieldPct === null ? unavailable('not published for this instrument') : pct(row.yieldPct)
+      return row.yieldPct === null ? compactMissing('not published for this instrument') : pct(row.yieldPct)
     case 'evidence':
-      return assessmentSummary(row.valuation)
+      return row.valuation === null ? compactMissing('no valuation assessment is wired on this route') : compactCell(assessmentSummary(row.valuation))
     case 'held':
       return shares(row.shares)
     case 'stop':
-      if (!row.protection) return unavailable('protection does not apply to cash')
-      return row.protection.stop === null ? unavailable('no resting stop') : price(row.protection.stop)
+      if (!row.protection) return compactMissing('protection does not apply to a cash row')
+      return row.protection.stop === null ? compactMissing('no resting stop is on file for this account') : price(row.protection.stop)
+    case 'downsideToStop':
+      // v04 draws this column; the route serves no such field and the page never computes one.
+      return compactMissing('downside to stop is not served; computing it would be a calculated field')
     case 'stopBasis':
-      return row.protection?.basis ?? unavailable('no basis recorded')
+      return row.protection?.basis ?? compactMissing('no stop basis was recorded for this account')
     case 'stopRead':
       return row.protection?.asOf
         ? `${row.protection.asOf}${row.protection.stale ? ' (stale)' : ''}`
-        : unavailable('no read clock for this account')
+        : compactMissing('no read clock was served for this account')
     case 'protectionState': {
       return <ProtectionTag row={row} />
     }
     case 'protectionNext':
-      return row.protection?.nextStep ?? unavailable('protection does not apply to cash')
+      return row.protection === null ? (
+        compactMissing('protection does not apply to a cash row')
+      ) : (
+        // The producer's next step is a sentence. Measured on the live payload, rendering it unbounded took this
+        // preset to 1,289 px inside a 1,136 px wrap; 160 px still left it 30 px past a 976 px wrap at 1280. The full
+        // sentence stays on the title and in the drawer.
+        <span style={{ ...TRUNCATE, maxWidth: 150 }} title={row.protection.nextStep}>
+          {row.protection.nextStep}
+        </span>
+      )
     case 'method':
-      return row.fib ? 'Fibonacci retracement · 52-week range' : unavailable('no ladder served for this row')
+      return row.fib ? 'Fibonacci retracement · 52-week range' : compactMissing(LADDER_NO_CLOCK)
     case 'ladder':
-      if (!row.fib) return unavailable('no ladder served for this row')
+      if (!row.fib) return compactMissing(LADDER_NO_CLOCK)
       if (row.fib.levels.length === 0) return `nearest only (${price(row.fib.nearestLevel)})`
       return row.fib.levels.map(l => `${Math.round(l.ratio * 1000) / 10}% ${price(l.price)}`).join(' · ')
     case 'nearestLevel':
-      return row.fib ? price(row.fib.nearestLevel) : unavailable('no ladder served for this row')
+      return row.fib ? price(row.fib.nearestLevel) : compactMissing(LADDER_NO_CLOCK)
     case 'fromHigh':
-      return row.fib ? pct(row.fib.retracementFromHighPct) : unavailable('no ladder served for this row')
+      return row.fib ? pct(row.fib.retracementFromHighPct) : compactMissing(LADDER_NO_CLOCK)
     case 'range':
       return row.fib
         ? `${price(row.fib.window.low)} – ${price(row.fib.window.high)} · as of ${row.fib.window.asOf}`
-        : unavailable('no ladder served for this row')
+        : compactMissing(LADDER_NO_CLOCK)
+    // v04's Levels column set, which this route cannot fill (verdict 2026-11-15T0342Z B2). Each names its own gap
+    // rather than borrowing a served number for a claim nothing supports.
+    case 'support':
+      return compactMissing('no support field is served on this route')
+    case 'resistance':
+      return compactMissing('no resistance field is served on this route')
+    case 'timeframe':
+      return compactMissing('no timeframe field is served on this route')
+    case 'nextReview':
+      return compactMissing('no next-review field is served on this route')
     default:
-      return unavailable(`no renderer for column ${key}`)
+      return compactMissing(`no renderer for column ${key}`)
   }
 }
 
@@ -177,16 +245,16 @@ const FLAT_BUTTON: CSSProperties = {
 export function HoldingsTable({ rows, preset, onRowOpen }: {
   rows: HoldingsRow[]
   preset: Preset
-  /** Opens the row's detail drawer. Absent (fixture invariants): the identity cell is plain text. */
-  onRowOpen?: (row: HoldingsRow) => void
+  /**
+   * Opens the row's detail drawer, with the element that opened it, so the drawer can return focus there (verdict
+   * 2026-11-15T0342Z B4). Absent (fixture invariants): the identity cell is plain text.
+   */
+  onRowOpen?: (row: HoldingsRow, origin?: HTMLElement) => void
 }) {
   // The table keeps its intrinsic width (v02: min-width 720, nowrap cells); this scroll container
   // is what stops that width from widening the page, so every caller inherits containment.
   return (
     <div className="table-wrap"><table>
-      <caption>
-        {preset.label} preset · {rows.length} row{rows.length === 1 ? '' : 's'}
-      </caption>
       <thead>
         <tr>
           {preset.columns.map(c => (
@@ -198,13 +266,15 @@ export function HoldingsTable({ rows, preset, onRowOpen }: {
       </thead>
       <tbody>
         {rows.map(r => (
-          // v04 makes the row itself the target (`tr[data-asset]`: pointer + hover); the button inside the
-          // first cell is what a keyboard or a screen reader operates, so the row click is convenience only.
+          // v04 makes the row itself the target (`tr[data-asset]`: pointer + hover); it is focusable with
+          // tabIndex -1 so the drawer can hand focus back to it, while the button inside the first cell is what a
+          // keyboard or a screen reader operates (the row click is convenience only).
           <tr
             key={`${r.accountKey}:${r.symbol}`}
             className={r.kind === 'CASH' ? 'cash-row' : undefined}
             data-asset={`${r.accountKey}:${r.symbol}`}
-            onClick={onRowOpen ? () => onRowOpen(r) : undefined}
+            tabIndex={-1}
+            onClick={onRowOpen ? e => onRowOpen(r, e.currentTarget) : undefined}
           >
             {preset.columns.map((c, i) =>
               i === 0 ? (
@@ -215,7 +285,7 @@ export function HoldingsTable({ rows, preset, onRowOpen }: {
                       className="quiet"
                       onClick={e => {
                         e.stopPropagation()
-                        onRowOpen(r)
+                        onRowOpen(r, e.currentTarget)
                       }}
                       title="Open this row's detail"
                       style={FLAT_BUTTON}
@@ -235,7 +305,10 @@ export function HoldingsTable({ rows, preset, onRowOpen }: {
       </tbody>
       <tfoot>
         <tr>
-          <td colSpan={preset.columns.length}>
+          {/* The reference's `td{white-space:nowrap}` is right for a data cell and wrong for this one: a colSpan
+              footnote set nowrap sets the TABLE's min width from its prose (measured 2026-11-15: 1,606 px of footnote
+              forced a 1,628 px table into a 1,136 px wrap). It wraps here and nowhere else. */}
+          <td colSpan={preset.columns.length} style={{ whiteSpace: 'normal' }}>
             <p>{preset.methodNote}</p>
             {preset.limits.length > 0 && (
               <ul>

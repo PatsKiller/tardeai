@@ -31,6 +31,7 @@
 //     Unknown and the reason, because this page never sums rows to fill a card.
 
 import { useState } from 'react'
+import type { CSSProperties } from 'react'
 import { useDrawer } from '../../components/Drawer'
 import { ActionCard, Metric, MetricGrid, Note, Panel, Tag } from '../../components/primitives'
 import type { HoldingsBook, HoldingsRow } from './contract'
@@ -39,7 +40,7 @@ import { HoldingsTable, freshnessLine } from './HoldingsTable'
 import { PositionCards } from './PositionCards'
 import { PRESETS, preset, type PresetId } from './presets'
 import { age, money, pct } from './format'
-import { detailFields, detailHeading } from './detail'
+import { detailHeading, detailSections } from './detail'
 
 export interface HoldingsPageProps {
   /**
@@ -55,23 +56,81 @@ export interface HoldingsPageProps {
    * `liveProps.ts` sets it; a page that passes a book without it is claiming the book is current.
    */
   notice?: string | null
+  /** The read's own clock in ms, for age cues on served timestamps. Absent: no age cue is claimed. */
+  nowMs?: number | null
 }
 
-/** The drawer body: this row's own served fields and their provenance, nothing recomputed and no other row. */
+// v04's asset-detail tabs are `.tabs` of links; the design sheets are reference-locked and their rules only style
+// `.tabs a`, so the button form carries the same declarations inline (tokens only — no hex outside the sheets).
+const TAB_BASE: CSSProperties = {
+  flex: 'none',
+  padding: '0 0 11px',
+  background: 'transparent',
+  border: 0,
+  borderRadius: 0,
+  color: 'var(--muted)',
+  fontSize: 13,
+  whiteSpace: 'nowrap',
+  cursor: 'pointer',
+}
+const TAB_ACTIVE: CSSProperties = { ...TAB_BASE, color: 'var(--gold)', borderBottom: '2px solid var(--gold)' }
+
+/** An age cue for a served timestamp. Arithmetic on two instants only — no threshold, no verdict. */
+function ageCue(iso: string | null, nowMs: number | null | undefined): string | null {
+  if (iso === null || nowMs === null || nowMs === undefined) return null
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return null
+  const days = Math.floor((nowMs - t) / 86_400_000)
+  if (days <= 0) return 'recorded today'
+  if (days < 60) return `recorded ${days} day${days === 1 ? '' : 's'} ago`
+  return `recorded about ${Math.round(days / 30.44)} months ago`
+}
+
+/**
+ * The drawer body: v04's four detail tabs over THIS row's own served fields, then the two tabs the route cannot
+ * fill, named (verdict 2026-11-15T0342Z B3). Nothing recomputed; no other row appears.
+ */
 function DetailBody({ row }: { row: HoldingsRow }) {
+  const { sections, unserved } = detailSections(row)
+  const [tab, setTab] = useState(sections[0]?.title ?? '')
+  const active = sections.find(s => s.title === tab) ?? sections[0]
   return (
-    <dl>
-      {detailFields(row).map(f => (
-        <div key={f.label}>
-          <dt>{f.label}</dt>
-          <dd>
-            {f.value}
-            <br />
-            <small>{f.source}</small>
-          </dd>
-        </div>
+    <>
+      <nav className="tabs" role="tablist" aria-label="Row detail">
+        {sections.map(s => {
+          const on = s.title === active?.title
+          return (
+            <button
+              key={s.title}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              style={on ? TAB_ACTIVE : TAB_BASE}
+              onClick={() => setTab(s.title)}
+            >
+              {s.title}
+            </button>
+          )
+        })}
+      </nav>
+      <dl>
+        {active?.fields.map(f => (
+          <div key={f.label}>
+            <dt>{f.label}</dt>
+            <dd>
+              {f.value}
+              <br />
+              <small>{f.source}</small>
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {unserved.map(u => (
+        <p key={u} className="small muted">
+          {u}
+        </p>
       ))}
-    </dl>
+    </>
   )
 }
 
@@ -79,7 +138,7 @@ function DetailBody({ row }: { row: HoldingsRow }) {
 // a row's colour is assigned by its position in the served book, so the same book always draws the same ring.
 const SLICE_TOKENS = ['var(--gold)', 'var(--blue)', 'var(--purple)', 'var(--green)', 'var(--red)'] as const
 
-export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = null, notice = null }: HoldingsPageProps) {
+export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = null, notice = null, nowMs = null }: HoldingsPageProps) {
   const [presetId, setPresetId] = useState<PresetId>('holdings')
   const [query, setQuery] = useState('')
   const drawer = useDrawer()
@@ -108,9 +167,9 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
     ? book.rows.filter(r => `${r.symbol} ${r.name} ${r.accountLabel} ${r.accountKey}`.toLowerCase().includes(needle))
     : book.rows
 
-  const openRow = (row: HoldingsRow) => {
+  const openRow = (row: HoldingsRow, origin?: HTMLElement) => {
     const h = detailHeading(row)
-    drawer.open({ title: h.title, eyebrow: h.eyebrow, body: <DetailBody row={row} /> })
+    drawer.open({ title: h.title, eyebrow: h.eyebrow, body: <DetailBody row={row} />, origin: origin ?? null })
   }
 
   const accountKeys = [...new Set(book.rows.map(r => r.accountKey))]
@@ -216,17 +275,9 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
 
       <MetricGrid>
         <Metric label="Account value" value={accountValueCard.value} sub={accountValueCard.sub} />
-        <Metric
-          label="Unrealized gain"
-          value="Unknown"
-          sub="No unrealized total is served; this page never sums rows to invent one."
-        />
+        <Metric label="Unrealized gain" value="Unknown" sub="No served unrealized total; this page never sums rows." />
         <Metric label="YTD investment profit" value="Unknown" sub="No YTD measure is served on any read of this book." />
-        <Metric
-          label="Cash / book weight"
-          value="Unknown"
-          sub="No served cash total; cash is listed per account, never added up here."
-        />
+        <Metric label="Cash / book weight" value="Unknown" sub="No served cash total; cash is listed per account." />
       </MetricGrid>
 
       <Note tone="blue">
@@ -311,7 +362,9 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
                   meta={
                     <>
                       Served by the stops read · {r.protection?.asOf ?? 'read clock absent'}
-                      {r.protection?.stale ? ' (stale)' : ''} · {r.accountLabel}
+                      {r.protection?.stale ? ' (stale)' : ''}
+                      {ageCue(r.protection?.asOf ?? null, nowMs) !== null ? ` · ${ageCue(r.protection?.asOf ?? null, nowMs)}` : ''} ·{' '}
+                      {r.accountLabel}
                     </>
                   }
                   cta={
@@ -485,10 +538,11 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
                 {book.accounts.map(a => (
                   <tr key={a.accountKey}>
                     <th scope="row">
-                      {a.accountLabel} · {a.accountKey}
+                      {a.accountLabel}
+                      {a.accountLabel === a.accountKey ? null : ` · ${a.accountKey}`}
                     </th>
-                    <td>{money(a.totalUsd)}</td>
-                    <td>{money(a.cashUsd)}</td>
+                    <td>{a.totalUsd === null ? <span title="not served">N/A</span> : money(a.totalUsd)}</td>
+                    <td>{a.cashUsd === null ? <span title="not served">N/A</span> : money(a.cashUsd)}</td>
                     <td>{a.asOf ?? 'unknown'}</td>
                   </tr>
                 ))}

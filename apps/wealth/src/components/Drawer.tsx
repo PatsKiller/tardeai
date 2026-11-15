@@ -4,7 +4,17 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
-export interface DrawerContent { title: ReactNode; eyebrow?: ReactNode; body: ReactNode }
+export interface DrawerContent {
+  title: ReactNode
+  eyebrow?: ReactNode
+  body: ReactNode
+  /**
+   * The element that opened the drawer, when the opener knows it (a mouse click on a table row leaves
+   * `document.activeElement` at BODY, so focus could not return there — verdict 2026-11-15T0342Z B4). The drawer
+   * focuses this element on close if it is still connected; otherwise it falls back to whatever was focused at open.
+   */
+  origin?: Element | null
+}
 interface DrawerApi { open: (c: DrawerContent) => void; close: () => void; isOpen: boolean }
 
 const Ctx = createContext<DrawerApi | null>(null)
@@ -15,7 +25,7 @@ export function useDrawer(): DrawerApi {
   return api
 }
 
-const FOCUSABLE = 'button,a,input,textarea,select,summary'
+const FOCUSABLE = 'button,a,input,textarea,select,summary,[tabindex]'
 
 export function DrawerProvider({ children }: { children: ReactNode }) {
   const [content, setContent] = useState<DrawerContent | null>(null)
@@ -23,7 +33,9 @@ export function DrawerProvider({ children }: { children: ReactNode }) {
   const drawerRef = useRef<HTMLElement | null>(null)
 
   const open = useCallback((c: DrawerContent) => {
-    if (!returnFocus.current) returnFocus.current = document.activeElement
+    // The opener's own element wins: a row clicked with a mouse is not `document.activeElement`.
+    const origin = c.origin ?? null
+    if (!returnFocus.current) returnFocus.current = origin !== null && origin.isConnected ? origin : document.activeElement
     setContent(c)
   }, [])
   const close = useCallback(() => {

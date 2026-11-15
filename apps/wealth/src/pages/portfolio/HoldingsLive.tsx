@@ -36,5 +36,5 @@ export function HoldingsLive() {
   }, [])
 
   const p = readError !== null ? { book: null, loading: false, error: readError, notice: null } : holdingsProps(env, now)
-  return <HoldingsPage book={p.book} loading={p.loading} error={p.error} notice={p.notice} />
+  return <HoldingsPage book={p.book} loading={p.loading} error={p.error} notice={p.notice} nowMs={now} />
 }
