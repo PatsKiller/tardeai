@@ -125,6 +125,8 @@ export const READERS: ReaderSpec[] = [
     // items/history queries fall back to [] on a failed read and carry no signal. Deliberate: this row reads
     // recovery_cases.state, not data.ok, so a future data.ok:false alone would not fire here (add a rule then).
     // Never attach llm_analysis.generated_at as asOfAt: it is days old by design, not a freshness clock.
+    // Page rule: never render "no cases" from an empty items or history list. [] there is silence (a failed read
+    // looks the same), not data. The page must also show the F4 count mismatch rather than look settled.
     unavailableWhen: [{ at: 'data.recovery_cases.state', notEquals: 'ok' }],
     // recovery_cases.generated_at is request time and the payload has no top-level as_of: count 0 can never read EMPTY.
     note: 'cc-deepseek-7 2307Z F4: recovery_cases.count 0 + state ok while 16 legacy items are active; writer has no scheduler',

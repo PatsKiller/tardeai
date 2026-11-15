@@ -9,6 +9,7 @@
 //  * UNKNOWN is never green: its cue level is NEUTRAL with the word UNKNOWN.
 //  * A read with no health field present in the payload and no producer clock has no signal: its OK carries
 //    healthUnproven, and the page shows "Health UNKNOWN" beside the body. A missing flag is not ok.
+//  * The same badge applies when any declared stale flag is absent or null, producer clock or not (R-1).
 import type { Envelope } from '../api/client.ts'
 import type { ReaderSpec } from '../api/readers.ts'
 import { readPath, ruleFires } from '../api/readers.ts'
@@ -78,9 +79,14 @@ export function deriveRenderState<T>({ envelope, spec, now, isEmpty }: DeriveInp
   }
   // Derived from the payload, not declared: a rule whose field is absent is no signal at all.
   const healthFieldPresent = s.unavailableWhen.some(r => readPath(body, r.at) !== undefined)
+  // R-1: a declared stale flag that is not literally false (absent or null; true and non-booleans already fired)
+  // proves nothing, even behind a producer clock. ruleFires is unchanged: this only adds the badge.
+  const unreadStale = s.unavailableWhen.filter(r => r.staleFlag === true && readPath(body, r.at) !== false).map(r => r.at)
   const healthUnproven = !healthFieldPresent && s.clock !== 'producer'
     ? 'this source carries no health flag and no producer clock: health UNKNOWN until the producer adds one'
-    : null
+    : unreadStale.length > 0
+      ? `source omits its declared stale flag (${unreadStale.join(', ')} absent or null): health UNKNOWN`
+      : null
   if (isEmpty && isEmpty(body)) {
     if (asOf === null) return base('UNKNOWN', 'empty with no as_of behind it: not materialised and none look the same')
     return base('EMPTY', `none as of ${asOf}`, { data: body, asOf, ageHours, healthUnproven })

@@ -415,3 +415,29 @@ test('no registry row keys on data.ok for /api/v2/recovery (its healthy payload 
 test('/risk with data._product dropped → UNKNOWN (pins the notEquals path)', () => {
   assert.equal(deriveRenderState({ envelope: env('/api/v2/risk', wrap({ truth: { stale: false } })), now: NOW }).status, 'UNKNOWN')
 })
+
+// R-1 (cc-deepseek-3, verdict 6ce7b9f9f 00:12Z): a producer-clocked row whose declared staleFlag is absent or null
+// reached OK with no badge. ruleFires is unchanged (absence does not fire); only the derived health flag moves.
+const R1_SPEC = { path: '/api/v2/synthetic-r1', timeoutMs: 1000, heavy: false, clock: 'producer',
+  unavailableWhen: [{ at: 'data.stale', staleFlag: true }], asOfAt: 'data.as_of', maxAgeHours: 2, note: 't' }
+const r1 = d => deriveRenderState({ envelope: { ...env('/api/v2/synthetic-r1', wrap({ as_of: '2026-11-14T23:00:00Z', rows: [1], ...d })), spec: R1_SPEC }, now: NOW })
+test('R-1: producer-clocked row with its staleFlag absent or null → OK + Health UNKNOWN badge', async () => {
+  const { healthCue } = await import('../../src/components/renderState.ts')
+  for (const d of [{}, { stale: null }]) {
+    const st = r1(d)
+    assert.equal(st.status, 'OK')
+    assert.equal(healthCue(st)?.label, 'Health UNKNOWN', JSON.stringify(d))
+    assert.match(st.healthUnproven, /data\.stale/)
+  }
+  const risk = deriveRenderState({ envelope: env('/api/v2/risk', wrap({ truth: { stale: false },
+    _product: { status: 'OK', as_of: '2026-11-14T23:00:00Z' } })), now: NOW })
+  assert.equal(risk.status, 'OK')
+  assert.equal(healthCue(risk)?.label, 'Health UNKNOWN')
+})
+test('R-1: staleFlag literally false → no badge', async () => {
+  const { healthCue } = await import('../../src/components/renderState.ts')
+  const st = r1({ stale: false })
+  assert.equal(st.status, 'OK')
+  assert.equal(st.healthUnproven, null)
+  assert.equal(healthCue(st), null)
+})
