@@ -572,9 +572,12 @@ test('V-2: a tone is a direction the wire served — unknown is never gain or lo
 
 test('V-3: the classes exist in one sheet and use the shell tokens', () => {
   const css = fs.readFileSync(path.join(APP, 'src/pages/portfolio/semantic.css'), 'utf8')
+  // Anchored at the start of a line: the POLICY rule, not a later qualified restatement of it.
+  // A `.session strong.money-loss` rule alone must not satisfy this test — otherwise deleting the base
+  // class (the one every row and the header carry) would leave the suite green. Measured: it did.
   const rule = name => {
-    const m = css.match(new RegExp(`\\.${name}\\s*\\{([^}]*)\\}`))
-    assert.ok(m, `.${name} must be defined in semantic.css`)
+    const m = css.match(new RegExp(`^\\.${name}\\s*\\{([^}]*)\\}`, 'm'))
+    assert.ok(m, `.${name} must be defined as its own rule in semantic.css`)
     return m[1]
   }
   assert.match(rule('money-loss'), /var\(--red\)/, 'a loss is the shell red token')
