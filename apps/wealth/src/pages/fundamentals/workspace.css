@@ -32,7 +32,8 @@
 
 /* ---- Header -------------------------------------------------------------------------------------------- */
 .fw-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between; }
-.fw h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: normal; }
+/* The shell's crumb is the page's single <h1>; the workspace title is the H2 beneath it, in the reference's type. */
+.fw .fw-title { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: normal; }
 .fw-subhead { margin: 6px 0 0; font-size: 13px; color: var(--fw-muted); line-height: 1.5; }
 .fw-notwired { margin: 0; font-size: 12.5px; color: var(--fw-muted); border: 1px solid var(--fw-line2); border-radius: 6px; padding: 8px 12px; max-width: 560px; }
 .fw-warning { margin: 0; font-size: 12.5px; color: var(--fw-warm); line-height: 1.5; }
@@ -92,13 +93,20 @@
   font: inherit; font-weight: 600; text-align: left; border-radius: 2px;
 }
 .fw .fw-rowopen:hover { background: none; border-color: transparent; color: var(--fw-idle); }
+/* A per-account subline's detail action: the account name itself, in the subline's own quiet type. */
+.fw .fw-acct { font-weight: 400; color: inherit; }
+.fw .fw-acct:hover { color: var(--fw-accent); text-decoration: underline; }
 .fw-field { display: inline-flex; gap: 6px; align-items: center; }
 .fw-sub { display: block; font-size: 11.5px; color: var(--fw-muted); margin-top: 4px; font-weight: 400; white-space: normal; }
 .fw-ph { color: var(--fw-muted); }
 /* 196, not 200: measured on the served book at 1440, a 200 px bound held the equity table at 1180 px inside the
-   shell's 1176 px content column (4 px of scroll inside the card). 196 fits the same column with every column
-   still visible; the full classification text stays on the title. */
-.fw-sector { display: inline-block; max-width: 196px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+   shell's 1176 px content column (4 px of scroll inside the card). 196 fits that column.
+   The line WRAPS rather than ellipsizing (`white-space: normal`): once every account printed its own gain and
+   protection, the nowrap classification line set the table's floor at 1228 px inside the same 1176 px column
+   (measured, BEFORE/AFTER on the same live book). Wrapping keeps the full text visible and the table at 1176. */
+.fw-sector { display: inline-block; max-width: 196px; overflow: hidden; vertical-align: top; white-space: normal; }
+/* A stop-read clock is one token: `stop read 11-14` must not break at the hyphen, or the column reads "11-" / "14". */
+.fw-nowrap { white-space: nowrap; }
 .fw-stale { color: var(--fw-warm); }
 .fw-empty { padding: 14px; font-size: 13px; color: var(--fw-muted); }
 

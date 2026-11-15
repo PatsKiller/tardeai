@@ -54,9 +54,9 @@ const NOT_WIRED = 'Not wired: valuation-assessment@1 (peer median, assessment, e
 
 /** The one Tier 3 sentence the ruling asks for — the producer gaps, named once, never as placeholder tiles. */
 const NOT_SERVED =
-  'Not served by this read: valuation-assessment@1 (peer and own-history median, assessment), a yield/income ' +
-  'reader (Book yield · income), and fund expense ratio, SEC yield and duration — producer gaps, named once ' +
-  'here, not per row.'
+  'Not served by this read: valuation-assessment@1 (peer and own-history median, assessment), a book yield/income ' +
+  'aggregate (each row’s own yield IS served; the aggregate belongs to WB-2), and fund expense ratio, SEC yield ' +
+  'and duration — producer gaps, named once here, not per row.'
 
 /** The reference's foot sentence, kept verbatim except for the mock's own production note, which is dropped. */
 const FOOT =
@@ -108,13 +108,21 @@ function RollupStrip({ coverage }: { coverage: Coverage }) {
   const cards = [
     { label: 'Equity sleeve P/E', value: 'Unknown', sub: 'weight-harmonic, trailing → forward', derived: true },
     { label: 'Book beta', value: 'Unknown', sub: 'weight-averaged, cash at 0', derived: true },
-    { label: 'Book yield · income', value: 'Unknown', sub: 'needs a yield reader; N/A on every row today', derived: true },
+    {
+      label: 'Book yield · income',
+      value: 'Unknown',
+      // The live book DOES serve yields, so the card states how many rather than claiming none exist. The aggregate
+      // is Unknown because WB-2 owns the income formula — an absent aggregate, never a "no yields today" claim.
+      sub: `served on ${coverage.withYield} of ${coverage.rows} rows; aggregate Unknown (WB-2 owns the income formula)`,
+      derived: true,
+    },
     { label: 'Largest sector', value: 'Unknown', sub: 'served sector × served weight', derived: false },
     {
       label: 'Coverage',
       // Counts and denominator are the SAME population: the book. Never a filtered numerator over a book total.
       value: `${coverage.withMultiple} of ${coverage.rows} rows`,
-      sub: `with a served multiple · ${coverage.staleRecords} stale ${coverage.staleRecords === 1 ? 'record' : 'records'}`,
+      // "older", not "stale": D7 proves the record predates the quote, not that a freshness rule was violated.
+      sub: `with a served multiple · ${coverage.olderRecords} ${coverage.olderRecords === 1 ? 'record' : 'records'} older than the quote`,
       derived: false,
     },
   ]
@@ -213,7 +221,10 @@ export function FundamentalsPage({
 
       <div className="fw-head">
         <div>
-          <h1>Fundamentals workspace</h1>
+          {/* The document's one <h1> is the shell's crumb ("Portfolio / Fundamentals"), as on every book page
+              (HoldingsPage states the rule). A second <h1> here duplicated the top-level heading, so the
+              reference's workspace title is the H2 beneath it, in the reference's own type. */}
+          <h2 className="fw-title">Fundamentals workspace</h2>
           <p className="fw-subhead" aria-live="polite" data-testid="workspace-meta">
             {filteredView ? `${rows.length} of ${view.bookRows} rows` : `${view.bookRows} rows`} ·{' '}
             {scopeLabel(book, scope)} · {sourceText} · marks as of {book.asOf} ({book.asOfClock ?? 'clock not served'} clock)
@@ -375,8 +386,9 @@ export function FundamentalsPage({
             <b>Grouping and ordering.</b> Rows group by the selector’s stable security identity (the symbol — this
             route serves no CUSIP) and the declared contract currency; a security held in several accounts is one
             display row whose accounts and quantities are sublines. No percentage is summed and no cost, P/E or
-            beta is averaged: the sublines carry each account’s own served weight, and the ratio cells come from
-            the group’s largest-weight row. Order is by served weight, largest first.
+            beta is averaged: the sublines carry each account’s own served weight, gain/loss and protection (each
+            label its own detail action), and the ratio cells (P/E, PEG, beta, yield, YTD, trend) come from the
+            group’s largest-weight row. Order is by served weight, largest first.
           </li>
           <li>
             <b>Derived values.</b> Only two marks on this page are arithmetic on served fields: the Equities share
