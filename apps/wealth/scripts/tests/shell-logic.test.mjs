@@ -1368,3 +1368,59 @@ test('RC3: the Allocation strip says "Last available snapshot · freshness unver
   assert.match(strip, /Data as of /)
   assert.match(strip, /freshness (COMPLETE|PARTIAL)/)
 })
+
+test('W1/KPI: the Allocation gain/loss KPI says the SHARED §L label, "— partial" only when partial', () => {
+  const { adapter, allocationPage, analyticsAdapter } = compileGateModules()
+  // `basis === null` omits every cost_basis_* field: the row publishes no gain/loss (the "no basis served" absence).
+  const row = (symbol, mv, price, basis) => ({
+    symbol, name: `Synthetic ${symbol}`, account: 'acct_a', account_key: 'acct_a', account_label: 'Synthetic A',
+    is_cash: false, asset_type: 'EQUITY', market_session: 'REGULAR',
+    shares: 10, price, price_as_of: '2026-11-15T12:00:00Z', market_value: mv, portfolio_pct: 50,
+    protection_state: 'GAP',
+    ...(basis === null
+      ? {}
+      : {
+          avg_cost: basis / 10, cost_basis_source: 'broker_avg_price', cost_basis_total: basis,
+          gain_loss: mv - basis, gain_loss_pct: ((mv - basis) / basis) * 100,
+        }),
+  })
+  const body = rows => ({
+    ok: true,
+    data: {
+      count: rows.length,
+      holdings: rows,
+      truth: { source: 'synthetic', as_of: '2026-11-15T12:00:00-05:00', stale: false, gap: null },
+      scope_coverage: {
+        min_position_usd: 100,
+        scopes: { 'holdings.all_rows': rows.length, 'holdings.non_cash': rows.length, 'holdings.cash': 0 },
+      },
+    },
+  })
+  // The rendered KPI title, as its own span — the page is rendered as an ELEMENT (it holds state).
+  const render = rows => {
+    const res = adapter.adaptHoldings(body(rows))
+    assert.ok(res.book !== null, `the synthetic body must adapt: ${res.error ?? ''}`)
+    return renderToStaticMarkup(
+      createElement(allocationPage.AllocationPage, { book: res.book, loading: false, error: null, notice: null }),
+    )
+  }
+  const kpiLabel = html => {
+    const m = html.replace(/&amp;/g, '&').match(/<span>([^<]*gain\/loss[^<]*)<\/span>/)
+    assert.ok(m !== null, 'the Allocation gain/loss KPI label span must be present')
+    return m[1]
+  }
+
+  // One of two non-cash rows publishes no gain/loss → the measure is partial, and the label carries "— partial"
+  // INSIDE it, not as a " · partial" suffix this page appends.
+  const partialHtml = render([row('SYNAA', 12500, 125, 10000), row('SYNBB', 7500, 75, null)])
+  assert.equal(kpiLabel(partialHtml), 'Open-position gain/loss vs. cost — partial')
+  // ...and that string is the shared label, not a page-local literal that happens to agree today.
+  assert.equal(kpiLabel(partialHtml), analyticsAdapter.gainLossMeasureLabel(true))
+  // The old page-local wording is gone from the rendered page.
+  assert.doesNotMatch(partialHtml, /Unrealized gain \/ loss/)
+
+  // Both rows publish → no partial suffix; still the shared label (a literal duplicated in the page would drift here).
+  const completeHtml = render([row('SYNAA', 12500, 125, 10000), row('SYNBB', 7500, 75, 5000)])
+  assert.equal(kpiLabel(completeHtml), 'Open-position gain/loss vs. cost')
+  assert.equal(kpiLabel(completeHtml), analyticsAdapter.gainLossMeasureLabel(false))
+})

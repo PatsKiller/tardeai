@@ -29,6 +29,7 @@ import {
   coverageText,
   displaySectorKey,
   freshnessCopy,
+  gainLossMeasureLabel,
   moneyText,
   normalizeBook,
   percentText,
@@ -353,10 +354,7 @@ export function AllocationPage({
           </small>
         </article>
         <article>
-          <span>
-            Unrealized gain / loss
-            {view.coverage.pnl < view.coverage.nonCash ? ' · partial' : ''}
-          </span>
+          <span>{gainLossMeasureLabel(view.coverage.pnl < view.coverage.nonCash)}</span>
           <strong
             className={
               view.pnl !== null && view.pnl < 0 ? 'wm-pa-negative' : view.pnl !== null && view.pnl > 0 ? 'wm-pa-positive' : ''

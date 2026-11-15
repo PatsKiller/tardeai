@@ -297,6 +297,15 @@ export interface GainLossCopy {
   excluded: ExcludedGainLossRow[]
 }
 
+/**
+ * The §L measure label — ONE definition for every surface that names this measure: the reviewed panel's KPI
+ * (`gainLossMeasureCopy().title`) and the Allocation route's KPI. `— partial` is part of the label, not a
+ * separator a caller appends, so the two surfaces cannot drift into different names for the same number.
+ */
+export function gainLossMeasureLabel(partial: boolean): string {
+  return `Open-position gain/loss vs. cost${partial ? ' — partial' : ''}`
+}
+
 export function gainLossMeasureCopy(view: {
   rows: AnalyticsRow[]
   coverage: { pnl: number; nonCash: number }
@@ -312,7 +321,7 @@ export function gainLossMeasureCopy(view: {
       reason: r.holding.avgCost === null ? 'no basis served' : 'no gain/loss served',
     }))
   return {
-    title: `Open-position gain/loss vs. cost${partial ? ' — partial' : ''}`,
+    title: gainLossMeasureLabel(partial),
     subtext: `Unrealized on currently held positions · ${published} of ${held} have published gain/loss · legacy included · not today/YTD profit`,
     partial,
     published,
