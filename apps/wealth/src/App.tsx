@@ -5,6 +5,8 @@ import { HoldingsLive } from './pages/portfolio/HoldingsLive'
 import { AllocationLive } from './pages/allocation/AllocationLive'
 import { FundamentalsLive } from './pages/fundamentals/FundamentalsLive'
 import { PerformanceLive } from './pages/portfolio/PerformanceLive'
+import { HomeLive } from './pages/home/HomeLive'
+import { IncomeLive } from './pages/portfolio/income/IncomeLive'
 import { FAMILIES } from './routes/families'
 import { NAV } from './shell/nav'
 
@@ -33,6 +35,8 @@ export default function App() {
           <Route path="portfolio/allocation" element={<AllocationLive />} />
           <Route path="portfolio/fundamentals" element={<FundamentalsLive />} />
           <Route path="portfolio/performance" element={<PerformanceLive />} />
+          <Route path="portfolio/income" element={<IncomeLive />} />
+          <Route path="home/today" element={<HomeLive />} />
           <Route path=":group/:view" element={<V02View />} />
           {FAMILIES.filter(f => f.path !== '/').map(f => (
             <Route key={f.id} path={f.path.slice(1)} element={<FamilyPage family={f} />} />
