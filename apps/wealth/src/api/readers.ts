@@ -111,15 +111,21 @@ export const READERS: ReaderSpec[] = [
     path: '/api/v2/rotation/summary', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: false, clock: 'producer',
     unavailableWhen: [
       { at: 'data.ok', equals: false },
-      { at: 'data.publication.status', equals: 'UNAVAILABLE' },
+      { at: 'data.publication.status', notEquals: 'READY' },
       { at: 'data.stale', staleFlag: true },
     ],
     asOfAt: 'data.generated_at',
-    note: `cc-deepseek-7 2307Z: HTTP 200 + outer ok:true while data.ok=false, publication UNAVAILABLE (unbound_cache_inputs). Page: candidates only when publication.status is OK; on UNAVAILABLE show reasons + producer_ok.`,
+    note: `cc-deepseek-7 2307Z: HTTP 200 + outer ok:true while data.ok=false, publication UNAVAILABLE (unbound_cache_inputs). Page: candidates only when publication.status is READY (rotation_publication.py:380; the producer's own read gate :409); on STALE or UNAVAILABLE show reasons + producer_ok.`,
   },
   {
     path: '/api/v2/recovery', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: false, clock: 'none',
-    unavailableWhen: [{ at: 'data.ok', equals: false }],
+    // The healthy payload has no data.ok (api_v2.py _recovery_dashboard; cc-deepseek-7 probe 23:56Z), so a data.ok rule
+    // would read every healthy reply as unavailable. The producer's own health field is recovery_cases.state:
+    // "ok" (:25445) or "unavailable" (:25400/:25416/:25430). It covers the case projection only: the legacy
+    // items/history queries fall back to [] on a failed read and carry no signal. Deliberate: this row reads
+    // recovery_cases.state, not data.ok, so a future data.ok:false alone would not fire here (add a rule then).
+    // Never attach llm_analysis.generated_at as asOfAt: it is days old by design, not a freshness clock.
+    unavailableWhen: [{ at: 'data.recovery_cases.state', notEquals: 'ok' }],
     // recovery_cases.generated_at is request time and the payload has no top-level as_of: count 0 can never read EMPTY.
     note: 'cc-deepseek-7 2307Z F4: recovery_cases.count 0 + state ok while 16 legacy items are active; writer has no scheduler',
   },

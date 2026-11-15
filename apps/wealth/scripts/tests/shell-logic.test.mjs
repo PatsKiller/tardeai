@@ -34,7 +34,7 @@ test('F-rot: publication UNAVAILABLE alone (data.ok missing) is still UNKNOWN', 
 })
 
 // ---- F-rec: count 0 + state ok, no as_of -------------------------------------------------
-const F_REC = { ok: true, data: { ok: true, recovery_cases: { count: 0, state: 'ok', generated_at: '2026-11-14T23:29:59Z' }, items: [{ id: 1 }] } }
+const F_REC = { ok: true, data: { recovery_cases: { count: 0, state: 'ok', generated_at: '2026-11-14T23:29:59Z' }, items: [{ id: 1 }] } }
 
 test('F-rec: recovery count 0 with state ok and no fresh as_of renders UNKNOWN, never EMPTY', () => {
   const st = deriveRenderState({ envelope: env('/api/v2/recovery', F_REC), now: NOW,
@@ -142,7 +142,7 @@ test('readPath indexes arrays by position', async () => {
 })
 
 test('OK only when no rule fires; UNKNOWN cue is NEUTRAL with the word UNKNOWN (never green)', () => {
-  const good = { ok: true, data: { ok: true, generated_at: '2026-11-14T23:00:02Z', publication: { status: 'PUBLISHED' } } }
+  const good = { ok: true, data: { ok: true, generated_at: '2026-11-14T23:00:02Z', publication: { status: 'READY' } } }
   const ok = deriveRenderState({ envelope: env('/api/v2/rotation/summary', good), now: NOW })
   assert.equal(ok.status, 'OK')
   const unk = deriveRenderState({ envelope: env('/api/v2/rotation/summary', F_ROT), now: NOW })
@@ -264,8 +264,10 @@ test('reentry/status: state must be "POPULATED"; missing → UNKNOWN', () => {
 })
 
 test('rotation and market-event: stale true → UNKNOWN', () => {
-  const rot = wrap({ ok: true, stale: true, generated_at: '2026-11-14T23:00:00Z', publication: { status: 'PUBLISHED' } })
-  assert.equal(deriveRenderState({ envelope: env('/api/v2/rotation/summary', rot), now: NOW }).status, 'UNKNOWN')
+  const rot = wrap({ ok: true, stale: true, generated_at: '2026-11-14T23:00:00Z', publication: { status: 'READY' } })
+  const rst = deriveRenderState({ envelope: env('/api/v2/rotation/summary', rot), now: NOW })
+  assert.equal(rst.status, 'UNKNOWN')
+  assert.match(rst.reason, /data\.stale/)
   assert.equal(deriveRenderState({ envelope: env('/api/v2/market-event/active', wrap({ stale: true, events: [] })), now: NOW }).status, 'UNKNOWN')
   assert.equal(deriveRenderState({ envelope: env('/api/v2/market-event/active', wrap({ stale: false, inputs_as_of: { market_risk: '2026-11-14T23:00:02.55Z' }, events: [{ id: 1 }] })), now: NOW }).status, 'OK')
 })
@@ -381,12 +383,33 @@ test('rotation publication siblings (cc-deepseek-5): null status and renamed key
   assert.match(rs({ status: null }).reason, /data\.publication\.status/)
   assert.equal(rs(null).status, 'UNKNOWN')
   assert.equal(rs({ state: 'PUBLISHED' }).status, 'UNKNOWN')
-  assert.equal(rs({ status: 'PUBLISHED' }).status, 'OK')
+  assert.equal(rs({ status: 'READY' }).status, 'OK')
 })
 
-test('recovery with data.ok missing → UNKNOWN (class A always carries data.ok; absence = changed envelope)', () => {
-  assert.equal(deriveRenderState({ envelope: env('/api/v2/recovery', wrap({ rows: [{ id: 1 }] })), now: NOW }).status, 'UNKNOWN')
-  assert.equal(deriveRenderState({ envelope: env('/api/v2/recovery', wrap({ ok: true, rows: [{ id: 1 }] })), now: NOW }).status, 'OK')
+test('rotation publication: only the producer healthy value READY reaches OK (rotation_publication.py:380, read gate :409)', () => {
+  const base = { ok: true, stale: false, generated_at: '2026-11-14T23:00:00Z' }
+  const rs = status => deriveRenderState({ envelope: env('/api/v2/rotation/summary', wrap({ ...base, publication: { status } })), now: NOW }).status
+  assert.equal(rs('READY'), 'OK')
+  for (const v of ['STALE', 'UNAVAILABLE', 'DEGRADED', 'ready', 'PUBLISHED']) assert.equal(rs(v), 'UNKNOWN', v)
+})
+
+// Recovery's real top-level shape (scripts/api_v2.py _recovery_dashboard ~:25311; cc-deepseek-7 probe 23:56Z):
+// data has NO `ok` key. Its health field is recovery_cases.state: "ok" (:25445) or "unavailable" (:25400/:25416/:25430).
+const recReal = cases => wrap({ recovery_cases: cases, items: [{ id: 1 }], relist_events: [], history: [],
+  summary: { total_active: 1 }, classification_legend: {}, sector_context: {}, llm_analysis: { generated_at: '2026-11-10T08:15:00Z' } })
+test('recovery real shape (no data.ok) with recovery_cases.state "ok" is NOT unavailable', () => {
+  const st = deriveRenderState({ envelope: env('/api/v2/recovery', recReal({ state: 'ok', count: 1, cases: [{}] })), now: NOW })
+  assert.equal(st.status, 'OK')
+  assert.equal(st.healthUnproven, null)
+})
+test('recovery: recovery_cases.state "unavailable", missing state, or missing recovery_cases → UNKNOWN', () => {
+  for (const c of [{ state: 'unavailable', reason: 'recovery case store not reachable', count: null, cases: [] }, { count: 1 }, undefined]) {
+    assert.equal(deriveRenderState({ envelope: env('/api/v2/recovery', recReal(c)), now: NOW }).status, 'UNKNOWN')
+  }
+})
+test('no registry row keys on data.ok for /api/v2/recovery (its healthy payload has no such field)', () => {
+  const row = READERS.find(r => r.path === '/api/v2/recovery')
+  assert.ok(!row.unavailableWhen.some(r => r.at === 'data.ok'))
 })
 
 test('/risk with data._product dropped → UNKNOWN (pins the notEquals path)', () => {
