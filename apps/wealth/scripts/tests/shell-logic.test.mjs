@@ -1,8 +1,14 @@
-// Shell logic tests (client + renderState). Plain node: `node --test scripts/tests/`.
+// Shell logic tests (client + renderState), plus the portfolio gates that need a compiled artifact: the
+// Holdings fixture invariants and the Holdings freshness line. Plain node: `node --test scripts/tests/`.
 // Synthetic fixtures only; shapes copied from cc-deepseek-7's measured envelopes (2026-11-14 2307Z),
 // values invented.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createRequire } from 'node:module'
+import { spawnSync } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createClient, HeavyReaderFromShell } from '../../src/api/client.ts'
 import { specFor, READERS } from '../../src/api/readers.ts'
 import { deriveRenderState, statusCue } from '../../src/components/renderState.ts'
@@ -440,4 +446,65 @@ test('R-1: staleFlag literally false → no badge', async () => {
   assert.equal(st.status, 'OK')
   assert.equal(st.healthUnproven, null)
   assert.equal(healthCue(st), null)
+})
+
+// ---- Portfolio gates: fixture invariants (F1) and the Holdings freshness line (F2) ------------------------
+// Verdict VERDICT-HOLDINGS-R1b-cc-deepseek-8 §F1/§F2. `fixtureInvariants.ts` ran in no gate, so a broken fixture
+// could ship green; `freshnessLine`'s R1b branches (unserved stale limit) had no committed test.
+//
+// Neither module is importable by the test runner as-is: fixtureInvariants resolves extensionless relative
+// imports, and HoldingsTable.tsx carries JSX — node strips types but neither resolves those nor parses JSX. So the
+// gate compiles both with the repo's OWN tsc into an ignored cache dir under node_modules and requires the emitted
+// CJS. The code executed is the source under src/, not a copy, and a compile failure fails this test with tsc's
+// stderr rather than passing silently.
+const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+const GATE_CACHE = path.join(APP, 'node_modules/.cache/wealth-gate-tests')
+
+let gateModules = null
+function compileGateModules() {
+  if (gateModules !== null) return gateModules
+  fs.mkdirSync(GATE_CACHE, { recursive: true })
+  const out = fs.mkdtempSync(path.join(GATE_CACHE, 'run-'))
+  const tsc = path.join(APP, 'node_modules/typescript/bin/tsc')
+  const args = [
+    '--target', 'ES2020', '--module', 'commonjs', '--moduleResolution', 'node', '--strict', '--skipLibCheck',
+    '--allowImportingTsExtensions', '--rewriteRelativeImportExtensions', '--jsx', 'react-jsx',
+    '--typeRoots', path.join(APP, 'node_modules/@types'), '--types', 'node', '--outDir', out,
+    path.join(APP, 'src/pages/portfolio/fixtureInvariants.ts'),
+    path.join(APP, 'src/pages/portfolio/HoldingsTable.tsx'),
+  ]
+  const r = spawnSync(process.execPath, [tsc, ...args], { encoding: 'utf8' })
+  if (r.status !== 0) {
+    throw new Error(`tsc could not compile the portfolio gate modules (rc ${r.status}):\n${r.stdout ?? ''}${r.stderr ?? ''}`)
+  }
+  fs.writeFileSync(path.join(out, 'package.json'), '{"type":"commonjs"}')
+  process.once('exit', () => fs.rmSync(out, { recursive: true, force: true }))
+  const load = createRequire(import.meta.url)
+  gateModules = {
+    fixtureInvariants: load(path.join(out, 'pages/portfolio/fixtureInvariants.js')),
+    fixtures: load(path.join(out, 'pages/portfolio/fixtures.js')),
+    holdingsTable: load(path.join(out, 'pages/portfolio/HoldingsTable.js')),
+  }
+  return gateModules
+}
+
+test('F1: the fixture invariants run here and report no violations', () => {
+  const { fixtureInvariants, fixtures } = compileGateModules()
+  // Not vacuous: the compiled module is the real fixture graph, and the book it checks is populated.
+  assert.ok(fixtures.FIXTURE_BOOK.rows.length > 0, 'the compiled fixture book is empty — this gate would be vacuous')
+  assert.deepEqual(fixtureInvariants.checkAllFixtures(), [])
+})
+
+test('F2: an unserved stale limit renders as "limit not served", never 0 s', () => {
+  const { freshnessLine } = compileGateModules().holdingsTable
+  assert.equal(freshnessLine(41, null, false), '41 s old · stale after limit not served')
+  assert.match(freshnessLine(41, null, true), /limit not served/)
+  assert.doesNotMatch(freshnessLine(41, null, true), /\b0 s\b/, 'an absent clock must not print an invented 0 s limit')
+  assert.match(freshnessLine(null, null, true), /age not served/, 'the age branch is unchanged')
+})
+
+test('F2: a served 0.5 h limit is still 1800 s and keeps its wording', () => {
+  const { freshnessLine } = compileGateModules().holdingsTable
+  assert.equal(freshnessLine(41, 1800, false), '41 s old · stale after 30 min')
+  assert.equal(freshnessLine(41, 1800, true), 'Last known good — 41 s old, past the 30 min limit. These values are not current.')
 })
