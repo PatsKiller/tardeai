@@ -33,7 +33,7 @@ export function HomeLive({ view = 'today' }: { view?: 'today' | 'needs' | 'outlo
   const reads = useReads(view === 'today' ? TODAY : view === 'needs' ? NEEDS : OUTLOOK), drawer = useDrawer()
   const now = Date.now()
   const model = useMemo(() => homeToday(reads, now), [reads, now])
-  if (view === 'needs') return <HomeNeedsPage queue={state(reads.queue ?? null, reviewModel, now)} market={marketState(reads.market ?? null, now)} now={now} />
-  if (view === 'outlook') return <HomeOutlookPage market={marketState(reads.market ?? null, now)} overview={state(reads.overview ?? null, overviewModel, now, r => record(record(r.clock_provenance).quote).as_of)} now={now} />
+  if (view === 'needs') return <HomeNeedsPage queue={state(reads.queue ?? null, reviewModel, now, undefined, q => q.items.length === 0)} market={marketState(reads.market ?? null, now)} now={now} />
+  if (view === 'outlook') return <HomeOutlookPage market={marketState(reads.market ?? null, now)} overview={state(reads.overview ?? null, overviewModel, now, r => record(record(r.clock_provenance).quote).as_of, o => o.value === null)} now={now} />
   return <HomeTodayPage model={model} now={now} cio={() => drawer.open({ title: 'CIO context', body: <CioContext now={Date.now()} labels={model.labels} /> })} />
 }

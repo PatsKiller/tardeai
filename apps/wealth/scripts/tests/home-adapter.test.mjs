@@ -52,10 +52,12 @@ test('review queue preserves order, separates category and removes evidence acco
   assert.doesNotMatch(JSON.stringify(q),/secret-key/)
   assert.equal(q.allAnswered,false);assert.equal(q.sources[0].stale,true)
 })
-test('market engine refuses missing, stale and more-than-one-hour evidence', async () => {
+test('market engine honours explicit producer/product verdict and keeps its source/build clocks separate', async () => {
   const { marketState } = await import('../../src/pages/home/homeAdapter.ts')
-  for(const r of [{state:'evaluated',stale:false},{state:'evaluated',stale:false,as_of:'2026-11-15T17:59:59Z'},{state:'evaluated',stale:true,as_of:'2026-11-15T19:00:00Z'}]) assert.equal(marketState(envelope({data:r}),NOW).status,'UNKNOWN')
-  assert.equal(marketState(envelope({data:{state:'evaluated',stale:false,as_of:'2026-11-15T18:00:00Z',tier:'YELLOW',score:0}}),NOW).data.score,0)
+  for(const r of [{state:'evaluated',stale:false},{state:'evaluated',stale:false,as_of:'2026-11-15T18:00:00Z'},{state:'evaluated',stale:true,as_of:'2026-11-15T19:00:00Z',_product:{status:'OK'}}]) assert.equal(marketState(envelope({data:r}),NOW).status,'UNKNOWN')
+  const s=marketState(envelope({data:{state:'evaluated',stale:false,as_of:'2026-11-15T17:59:57Z',generated_at:'2026-11-15T19:00:00Z',stale_after_hours:1,_product:{status:'OK'},tier:'YELLOW',score:0}}),NOW)
+  assert.equal(s.status,'OK');assert.equal(s.data.score,0);assert.equal(s.data.built,'2026-11-15T19:00:00Z');assert.ok(s.ageHours>1)
+  assert.match(marketState(envelope({ok:false,error:'Stored projection missing'}),NOW).reason,/Stored projection missing/)
 })
 test('scenario frames and adapted market never expose probability or invented forecast', async () => {
   const { SCENARIOS, marketModel } = await import('../../src/pages/home/homeAdapter.ts')
