@@ -1680,3 +1680,38 @@ test('SPCX/T9: search keeps today results — company-only found by company, tic
   // The display identity does not enter search: the resolved company name is not a match field.
   assert.equal(book.rows[1].identity.nameText, 'Qzeta Ticker Name Co')
 })
+
+test('SPCX/CSV: the exported Security field is the identity line, so two accounts of one symbol stay distinguishable', () => {
+  const { adapter, holdingsTable, displayIdentity } = compileGateModules()
+  const LABEL = displayIdentity.IDENTITY_UNVERIFIED_LABEL
+  // The export is the Blob's own text: `csvFor` is the page's Export CSV call, unrendered. It is NOT built from
+  // the rendered DOM — `rawText` cannot see a component element, which is why the security column had silently
+  // collapsed to the symbol alone (review 2026-11-15T1906Z P2, measured on a real export capture).
+  const book = spcxAdapt(adapter, [
+    spcxRow({ symbol: 'QZSP', name: 'QZSP', company: 'Qzeta Space Holdings' }),
+    spcxRow({ symbol: 'QZSP', name: '', company: 'Qzeta Space Holdings', account: 'acct_b', account_key: 'acct_b', account_label: 'Synthetic B' }),
+    spcxRow({ symbol: 'QZCA', name: 'Qzeta Carried Corp', account: 'acct_c', account_key: 'acct_c', account_label: 'Synthetic C' }),
+    spcxRow({ symbol: 'QZSL', name: '', company: null, account: 'acct_d', account_key: 'acct_d', account_label: 'Synthetic D' }),
+  ])
+  const preset = {
+    id: 'csv-identity', label: 'identity', methodNote: '', limits: [],
+    columns: [{ key: 'security', header: 'Security / account' }],
+  }
+  const fields = holdingsTable.csvFor(book.rows, preset).trim().split('\r\n').slice(1)
+  assert.deepEqual(fields, [
+    `QZSP Qzeta Space Holdings · ${LABEL} · Synthetic A`,
+    `QZSP Qzeta Space Holdings · ${LABEL} · Synthetic B`,
+    'QZCA Qzeta Carried Corp · Synthetic C',
+    'QZSL Synthetic D',
+  ])
+  // (a) one symbol in two accounts: the file keeps the account label, so the rows are distinguishable...
+  assert.notEqual(fields[0], fields[1])
+  assert.match(fields[0], /· Synthetic A$/)
+  assert.match(fields[1], /· Synthetic B$/)
+  // (b) ...and a company-sourced name carries R4's caveat in the export, exactly as it does on screen.
+  assert.ok(fields[0].includes(LABEL) && fields[1].includes(LABEL))
+  assert.doesNotMatch(fields[2], /identity unverified/)
+  // The file's text IS the screen's line — one function, no second wording that could drift.
+  assert.equal(fields[0], `QZSP ${displayIdentity.identitySecondLine(book.rows[0].identity, 'QZSP', 'Synthetic A')}`)
+  assert.equal(fields[3], `QZSL ${displayIdentity.identitySecondLine(book.rows[3].identity, 'QZSL', 'Synthetic D')}`)
+})

@@ -442,9 +442,11 @@ export function freshnessLine(ageSeconds: number | null, staleAfterSeconds: numb
 }
 
 // ---- CSV export ----------------------------------------------------------------------------------------------
-// The export is built from the SAME `cell()` output the table renders — one formatter, one column map — so the
-// file and the screen cannot disagree about a value or a row (INTEGRATION.md: one selected population feeds
-// the table and the export). No fetch, no second read, no derived column.
+// The export is built from the same row and the same formatters the table renders — one column map, so the file
+// and the screen cannot disagree about a value or a row (INTEGRATION.md: one selected population feeds the table
+// and the export). One column is NOT obtained by walking the rendered cell: the security column takes its text
+// from `identitySecondLine`, the very function the cell's second line renders (see `csvCell` below). No fetch, no
+// second read, no derived column.
 
 function rawText(node: ReactNode): string {
   if (node === null || node === undefined || typeof node === 'boolean') return ''
@@ -472,9 +474,26 @@ function csvField(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
 }
 
+/**
+ * What one CSV cell says.
+ *
+ * The security column is built from the ROW, not walked out of the React tree. Its second line is
+ * `<IdentityLine>`, a function-component element with no `children` — and `rawText` does not invoke components,
+ * so a walk exports the symbol alone and silently drops the instrument name and the only account label the file
+ * has (review 2026-11-15T1906Z P2, measured on the real export). Reusing `identitySecondLine` gives the file the
+ * same text the row renders — `SYMBOL NAME · [label ·] ACCOUNT`, R4's caveat included where it applies — so the
+ * two surfaces cannot drift into different names for one instrument and two accounts stay distinguishable.
+ *
+ * Every other column is the rendered cell's own text.
+ */
+function csvCell(r: HoldingsRow, key: string): string {
+  if (key === 'security') return `${r.symbol} ${identitySecondLine(displayOf(r), r.symbol, r.accountLabel)}`
+  return cellText(cell(r, key))
+}
+
 /** The rows the table is showing, in the preset's columns, as CSV. */
 export function csvFor(rows: HoldingsRow[], preset: Preset): string {
   const lines = [preset.columns.map(c => csvField(c.header)).join(',')]
-  for (const r of rows) lines.push(preset.columns.map(c => csvField(cellText(cell(r, c.key)))).join(','))
+  for (const r of rows) lines.push(preset.columns.map(c => csvField(csvCell(r, c.key))).join(','))
   return `${lines.join('\r\n')}\r\n`
 }
