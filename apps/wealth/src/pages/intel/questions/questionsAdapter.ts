@@ -1,9 +1,9 @@
 import { accountMap, body, record, rows, safeText, safeUrl, state, text } from '../../home/homeAdapter.ts'
 import type { Read, Row } from '../../home/homeAdapter.ts'
 export const QUESTIONS_PATH = '/api/v2/cio/asks'
-export function questionPath(id?: string): string {
+export function questionPath(id?: string): string | null {
  if (id === undefined) return QUESTIONS_PATH
- if (!/^thr_[0-9a-f]{16}$/.test(id)) throw new Error('Invalid stored thread reference')
+ if (!/^thr_[0-9a-f]{16}$/.test(id)) return null
  return QUESTIONS_PATH + '/' + encodeURIComponent(id)
 }
 export interface Question { ref: string | null; title: string; excerpt: string; updated: string; status: string; symbols: string[] }
@@ -17,7 +17,7 @@ export function questionsModel(r: Row): Question[] {
 }
 export function questionsState(read: Read, now: number) {
  // The list's as_of is _now() at request time, not ledger freshness or the answer date.
- return state(read, questionsModel, now)
+ return state(read, questionsModel, now, undefined, questions => questions.length === 0)
 }
 export interface Answer { summary: string; at: string; status: string; changed: string; sources: { title: string; kind: string; asOf: string; url: string | null }[] }
 export interface QuestionDetail { title: string; updated: string; turns: { question: string; asked: string; answers: Answer[] }[] }
@@ -36,7 +36,13 @@ export function questionDetailModel(r: Row): QuestionDetail {
  }
 }
 export function questionDetailState(read: Read, now: number) {
- if (read?.data !== null && read?.data !== undefined && !Object.keys(record(body(read.data).thread)).length)
-  return { ...state(read, questionDetailModel, now), status: 'UNKNOWN' as const, data: null, reason: 'Stored thread unavailable; no answer is inferred.' }
- return state(read, questionDetailModel, now)
+ const result=state(read,questionDetailModel,now)
+ if(read?.error) return {...result,status:'ERROR' as const,data:null,reason:read.error}
+ if(result.status!=='OK') {
+  const detail=safeText(body(read?.data).error || body(read?.data).reason)
+  return {...result,reason:detail ? result.reason+' Source: '+detail : result.reason}
+ }
+ if (!Object.keys(record(body(read?.data).thread)).length)
+  return { ...result, status: 'UNKNOWN' as const, data: null, reason: 'Stored thread unavailable; no answer is inferred.' }
+ return result
 }

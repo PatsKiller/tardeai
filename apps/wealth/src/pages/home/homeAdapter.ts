@@ -170,11 +170,11 @@ export function reviewModel(r: Row): ReviewQueue {
     }),
   }
 }
-export interface Market { tier: string; score: number | null; mode: string; asOf: string; contributors: { name: string; detail: string; points: number | null; asOf: string }[]; categories: { name: string; status: string; detail: string; asOf: string }[]; history: { asOf: string; tier: string; score: number | null }[] }
+export interface Market { tier: string; score: number | null; mode: string; asOf: string; built: string; contributors: { name: string; detail: string; points: number | null; asOf: string }[]; categories: { name: string; status: string; detail: string; asOf: string }[]; history: { asOf: string; tier: string; score: number | null }[] }
 export const SCENARIOS = ['IF WEAKNESS PERSISTS', 'IF CONDITIONS STABILIZE', 'IF LEADERSHIP RECOVERS'].map(title => ({ title, availability: 'Not available — methodology pending' }))
 export function marketModel(r: Row): Market {
   return {
-    tier: text(r.tier) || 'Unknown', score: number(r.score), mode: text(r.mode) || 'Mode unknown', asOf: text(r.as_of),
+    tier: text(r.tier) || 'Unknown', score: number(r.score), mode: text(r.mode) || 'Mode unknown', asOf: text(r.as_of), built: text(r.generated_at),
     contributors: rows(r.contributors).map(c => ({ name: safeText(c.name), detail: safeText(c.detail), points: number(c.points), asOf: text(c.as_of) })),
     categories: rows(r.categories).map(c => ({ name: safeText(c.name), status: safeText(c.state), detail: safeText(c.detail), asOf: text(c.as_of) })),
     history: rows(r.history).map(h => ({ asOf: text(h.as_of), tier: text(h.tier), score: number(h.score) })),
@@ -183,8 +183,11 @@ export function marketModel(r: Row): Market {
 export function marketState(read: Read, now: number): RenderState<Market> {
   if (read?.data !== null && read?.data !== undefined) {
     const r = body(read.data), c = clock(r.as_of)
-    if (r.state !== 'evaluated' || r.stale !== false || !c || now - Date.parse(c) > 3600000) {
-      return { status: 'UNKNOWN', reason: 'Market nowcast unavailable or freshness unproven. An evaluated state, nonstale verdict and source time within the producer’s one-hour bound are required.', data: null, lastGood: null, lastGoodAgeSeconds: null, asOf: c, ageHours: c ? Math.max(0, (now - Date.parse(c)) / 3600000) : null, healthUnproven: null }
+    // Freshness is the stored producer's verdict, evaluated at its own build time.
+    // Its rounded age and previous-hour input cannot be replaced by an exact client one-hour gate.
+    if (r.ok === false || r.error || r.state !== 'evaluated' || r.stale !== false || !c || record(r._product).status !== 'OK' || record(r._product).greyed === true) {
+      const detail = safeText(r.error || r.reason)
+      return { status: 'UNKNOWN', reason: `Market nowcast unavailable or source verdict unproven. An evaluated state, explicit nonstale producer verdict, OK product and zoned source time are required.${detail ? ' Source: ' + detail : ''}`, data: null, lastGood: null, lastGoodAgeSeconds: null, asOf: c, ageHours: c ? Math.max(0, (now - Date.parse(c)) / 3600000) : null, healthUnproven: null }
     }
   }
   return state(read, marketModel, now, r => r.as_of)
