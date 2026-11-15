@@ -92,7 +92,7 @@ export function snapshotModel(r: Row, labels: Map<string, string>): Snapshot {
   const s = snapshot(r)
   return {
     moves: rows(s.moves).map(m => ({ symbol: text(m.symbol), held: typeof m.held === 'boolean' ? m.held : null, price: number(m.price), change: number(m.change_pct), impact: number(m.dollar_impact), close: safeText(m.close_tag, labels), extended: text(record(m.extended).label) })),
-    feed: rows(s.feed).map(f => ({ title: safeText(f.title, labels), publisher: safeText(f.source, labels), published: text(f.published_at), url: safeUrl(f.url), why: safeText(f.so_what, labels), kind: text(f.kind) })),
+    feed: rows(s.feed).map(f => ({ title: safeText(f.title, labels), publisher: safeText(f.source, labels), published: text(f.published_at), url: safeUrl(f.source_url || f.url), why: safeText(f.so_what, labels), kind: text(f.kind) })),
     brief: safeText(record(s.cio_brief).summary || record(s.cio_brief).headline, labels),
     quoteClock: text(s.quotes_as_of), build: text(s.generated_at),
     macro: rows(s.macro).map(m => ({ label: safeText(m.label || m.name, labels), value: safeText(m.value, labels) })),
@@ -122,3 +122,56 @@ export function homeToday(reads: Record<string, Read>, now: number) {
   }
 }
 export type HomeTodayModel = ReturnType<typeof homeToday>
+
+export interface ReviewItem { title: string; why: string; category: string; severity: string; since: string; accounts: string[]; thesis: string; horizon: string; evidence: { label: string; value: string }[] }
+export interface ReviewQueue { items: ReviewItem[]; sources: { name: string; status: string; asOf: string; basis: string; stale: boolean | null }[]; allAnswered: boolean; anyStale: boolean; servedStale: boolean; severity: { name: string; count: number | null }[] }
+export function reviewModel(r: Row): ReviewQueue {
+  const labels = accountMap(r)
+  for (const item of rows(r.items)) {
+    const e = record(item.evidence)
+    const keys = Array.isArray(e.accounts) ? e.accounts : []
+    const names = Array.isArray(e.account_labels) ? e.account_labels : []
+    keys.forEach((key, i) => { if (typeof key === 'string' && typeof names[i] === 'string' && key !== names[i]) labels.set(key, names[i]) })
+  }
+  return {
+    allAnswered: r.all_sources_answered === true, anyStale: r.any_source_stale !== false,
+    servedStale: record(r.served).stale === true,
+    severity: ['P0', 'P1', 'P2', 'P3'].map(name => ({ name, count: number(record(r.severity_counts)[name]) })),
+    sources: Object.entries(record(r.sources)).map(([name, v]) => {
+      const s = record(v)
+      return { name, status: text(s.status) || 'Unknown', asOf: text(s.as_of), basis: text(s.as_of_basis), stale: typeof s.stale === 'boolean' ? s.stale : null }
+    }),
+    items: rows(r.items).map(i => {
+      const e = record(i.evidence)
+      return {
+        title: safeText(i.title, labels), why: safeText(i.why, labels),
+        category: text(i.category), severity: text(i.severity), since: text(i.since),
+        accounts: Array.isArray(e.account_labels) ? e.account_labels.map(v => safeText(v, labels)).filter(Boolean) : text(i.account_label) ? [safeText(i.account_label, labels)] : [],
+        thesis: safeText(i.thesis || e.thesis, labels), horizon: safeText(i.horizon || e.horizon, labels),
+        evidence: ['symbol', 'reason', 'coverage_verdict', 'fallback_reason', 'money_basis'].flatMap(key => {
+          const value = i[key] ?? e[key]
+          return typeof value === 'string' ? [{ label: key.replace(/_/g, ' '), value: safeText(value, labels) }] : []
+        }),
+      }
+    }),
+  }
+}
+export interface Market { tier: string; score: number | null; mode: string; asOf: string; contributors: { name: string; detail: string; points: number | null; asOf: string }[]; categories: { name: string; status: string; detail: string; asOf: string }[]; history: { asOf: string; tier: string; score: number | null }[] }
+export const SCENARIOS = ['IF WEAKNESS PERSISTS', 'IF CONDITIONS STABILIZE', 'IF LEADERSHIP RECOVERS'].map(title => ({ title, availability: 'Not available — methodology pending' }))
+export function marketModel(r: Row): Market {
+  return {
+    tier: text(r.tier) || 'Unknown', score: number(r.score), mode: text(r.mode) || 'Mode unknown', asOf: text(r.as_of),
+    contributors: rows(r.contributors).map(c => ({ name: safeText(c.name), detail: safeText(c.detail), points: number(c.points), asOf: text(c.as_of) })),
+    categories: rows(r.categories).map(c => ({ name: safeText(c.name), status: safeText(c.state), detail: safeText(c.detail), asOf: text(c.as_of) })),
+    history: rows(r.history).map(h => ({ asOf: text(h.as_of), tier: text(h.tier), score: number(h.score) })),
+  }
+}
+export function marketState(read: Read, now: number): RenderState<Market> {
+  if (read?.data !== null && read?.data !== undefined) {
+    const r = body(read.data), c = clock(r.as_of)
+    if (r.state !== 'evaluated' || r.stale !== false || !c || now - Date.parse(c) > 3600000) {
+      return { status: 'UNKNOWN', reason: 'Market nowcast unavailable or freshness unproven. An evaluated state, nonstale verdict and source time within the producer’s one-hour bound are required.', data: null, lastGood: null, lastGoodAgeSeconds: null, asOf: c, ageHours: c ? Math.max(0, (now - Date.parse(c)) / 3600000) : null, healthUnproven: null }
+    }
+  }
+  return state(read, marketModel, now, r => r.as_of)
+}

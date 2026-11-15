@@ -43,3 +43,27 @@ test('raw known account keys are removed from news and review output', () => {
 test('producer stale and greyed verdicts never render current', () => {
   for (const data of [{ stale: true }, { freshness: { stale: true } }, { _product: { status: 'UNKNOWN', greyed: true } }]) assert.equal(state(envelope({ data }), x => x, NOW).status, 'UNKNOWN')
 })
+
+test('review queue preserves order, separates category and removes evidence account keys', async () => {
+  const { reviewModel } = await import('../../src/pages/home/homeAdapter.ts')
+  const q = reviewModel({all_sources_answered:false,any_source_stale:true,items:[{category:'protect',title:'Review secret-key',evidence:{accounts:['secret-key'],account_labels:['Example account'],thesis:'Stored thesis',horizon:'Long term'}},{category:'fix',title:'Technical issue'}],sources:{risk:{status:'PARTIAL',as_of:'2026-11-15T18:00:00Z',as_of_basis:'source',stale:true}}})
+  assert.equal(q.items[0].category,'protect'); assert.equal(q.items[1].category,'fix')
+  assert.equal(q.items[0].thesis,'Stored thesis');assert.equal(q.items[0].horizon,'Long term')
+  assert.doesNotMatch(JSON.stringify(q),/secret-key/)
+  assert.equal(q.allAnswered,false);assert.equal(q.sources[0].stale,true)
+})
+test('market engine refuses missing, stale and more-than-one-hour evidence', async () => {
+  const { marketState } = await import('../../src/pages/home/homeAdapter.ts')
+  for(const r of [{state:'evaluated',stale:false},{state:'evaluated',stale:false,as_of:'2026-11-15T17:59:59Z'},{state:'evaluated',stale:true,as_of:'2026-11-15T19:00:00Z'}]) assert.equal(marketState(envelope({data:r}),NOW).status,'UNKNOWN')
+  assert.equal(marketState(envelope({data:{state:'evaluated',stale:false,as_of:'2026-11-15T18:00:00Z',tier:'YELLOW',score:0}}),NOW).data.score,0)
+})
+test('scenario frames and adapted market never expose probability or invented forecast', async () => {
+  const { SCENARIOS, marketModel } = await import('../../src/pages/home/homeAdapter.ts')
+  assert.equal(SCENARIOS.length,3)
+  for(const frame of SCENARIOS) assert.match(frame.availability,/methodology pending/)
+  assert.doesNotMatch(JSON.stringify(marketModel({probabilities:{crash:0.8},forward_price:123})),/probabilit|forward_price/)
+})
+test('news contextual reader uses the actual source_url field and rejects unsafe links', () => {
+  const m = snapshotModel({snapshot:{feed:[{source_url:'https://example.com/research'},{source_url:'javascript:alert(1)'}]}},new Map())
+  assert.equal(m.feed[0].url,'https://example.com/research');assert.equal(m.feed[1].url,null)
+})

@@ -4,10 +4,12 @@ import { useDrawer } from '../../components/Drawer'
 import { Note } from '../../components/primitives'
 import { StateView } from '../../components/StateView'
 import { HomeTodayPage } from './HomeTodayPage'
-import { ageLabel, homeToday, record, rows, safeText, state, text } from './homeAdapter'
+import { HomeNeedsPage } from './HomeNeedsPage'
+import { HomeOutlookPage } from './HomeOutlookPage'
+import { ageLabel, homeToday, marketState, overviewModel, reviewModel, record, rows, safeText, state, text } from './homeAdapter'
 import type { Read, Row } from './homeAdapter'
 
-function useReads(paths: Record<string, string>) {
+export function useReads(paths: Record<string, string>) {
   const [reads, setReads] = useState<Record<string, Read>>({})
   const key = JSON.stringify(paths)
   useEffect(() => {
@@ -29,9 +31,13 @@ function CioContext({ now }: { now: number }) {
   }}</StateView>
 }
 const TODAY = { overview: '/api/v2/overview', snapshot: '/api/v2/home/since-close', movers: '/api/v2/market-movers', priorities: '/api/v2/home/priorities-live' }
-export function HomeLive() {
-  const reads = useReads(TODAY), drawer = useDrawer()
+const NEEDS = { queue: '/api/v2/home/do-now', market: '/api/v2/market-risk/latest' }
+const OUTLOOK = { overview: '/api/v2/overview', market: '/api/v2/market-risk/latest' }
+export function HomeLive({ view = 'today' }: { view?: 'today' | 'needs' | 'outlook' }) {
+  const reads = useReads(view === 'today' ? TODAY : view === 'needs' ? NEEDS : OUTLOOK), drawer = useDrawer()
   const now = Date.now()
   const model = useMemo(() => homeToday(reads, now), [reads, now])
+  if (view === 'needs') return <HomeNeedsPage queue={state(reads.queue ?? null, reviewModel, now)} market={marketState(reads.market ?? null, now)} now={now} />
+  if (view === 'outlook') return <HomeOutlookPage market={marketState(reads.market ?? null, now)} overview={state(reads.overview ?? null, overviewModel, now, r => record(record(r.clock_provenance).quote).as_of)} now={now} />
   return <HomeTodayPage model={model} now={now} cio={() => drawer.open({ title: 'CIO context', body: <CioContext now={Date.now()} /> })} />
 }
