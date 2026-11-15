@@ -5,17 +5,19 @@
 // rendering of the served weight) and the section share, which the page tags `derived` (served market values over
 // the view's served value — see workspace.ts).
 //
-// Two deliberate departures from the reference's markup, both named in the WB-1 READY:
+// Three deliberate departures from the reference's markup, all named in the WB-1 READY:
 //   * the identity cell's symbol is a real <button> (so the row drawer is reachable by keyboard); it is styled as
 //     the reference's plain <strong>, so the port looks identical;
 //   * columns the reference draws but this read cannot serve print the muted `N/A` with the reason on the cell
-//     (expense ratio, SEC yield, duration — Tier 3 producer gaps), never a blank or a placeholder value.
+//     (expense ratio, SEC yield, duration — Tier 3 producer gaps), never a blank or a placeholder value;
+//   * a security held in several accounts prints one subline PER ACCOUNT in Gain / loss and Protection as well as
+//     in the identity and weight cells, each label its own detail action. The reference drew only single-account
+//     rows; showing one leg's gain or stop for a two-account position is financially misleading (fix sprint, item 1).
 
 import type { ReactNode } from 'react'
 import type { HoldingsRow, Protection } from '../portfolio/contract'
 import { decimal, marketCapText, multiple, pct, price, shares, signedMoney, signedPct } from '../portfolio/format'
-import { stopSentence } from '../portfolio/HoldingsTable'
-import type { CashLine, ColumnKey, Group, Section, ValueTotal } from './workspace'
+import type { AccountLine, CashLine, ColumnKey, Group, Section, ValueTotal } from './workspace'
 import { COLUMN_LABEL, EQUITY_MIN_WIDTH, FUND_MIN_WIDTH, barWidth, recordOlderThanQuote, shortStamp, valuedText } from './workspace'
 
 /** The reference's muted `N/A`; the reason rides on the cell's title and accessible name, never printed twice. */
@@ -31,11 +33,31 @@ function orNa(value: string | null, reason: string): ReactNode {
   return value === null ? na(reason) : value
 }
 
-const PROTECTION_LABEL = { PROTECTED: 'Protected', GAP: 'Gap', UNKNOWN: 'Unknown' } as const
-
 /** `MM-DD` of a served instant, or the reason there is none; never "today" and never an age in days. */
 function readStamp(iso: string | null): string {
   return shortStamp(iso) ?? 'clock not served'
+}
+
+/**
+ * One account's own detail action. The label is the account name the position sublines print, and the action opens
+ * THAT account's row — never the group's lead row standing in for the rest.
+ */
+function accountButton(line: AccountLine, onOpen?: (row: HoldingsRow) => void): ReactNode {
+  if (onOpen === undefined) return line.accountLabel
+  return (
+    <button
+      type="button"
+      className="fw-rowopen fw-acct"
+      title={`Open ${line.row.symbol} in ${line.accountLabel}`}
+      aria-label={`Open ${line.row.symbol} in ${line.accountLabel}`}
+      onClick={e => {
+        e.stopPropagation()
+        onOpen(line.row)
+      }}
+    >
+      {line.accountLabel}
+    </button>
+  )
 }
 
 interface CellCtx {
@@ -164,12 +186,44 @@ function trendCell(g: Group): ReactNode {
   )
 }
 
-function gainCell(g: Group): ReactNode {
+/** The served gain fields of one row, in the reference's order; empty when the row serves none of them. */
+function gainParts(r: HoldingsRow): string[] {
+  const parts: string[] = []
+  if (r.gainLossPct !== null) parts.push(signedPct(r.gainLossPct))
+  if (r.gainLoss !== null) parts.push(signedMoney(r.gainLoss))
+  if (r.avgCost !== null) parts.push(`cost $${r.avgCost.toFixed(2)}`)
+  return parts
+}
+
+/**
+ * Gain/loss. One account: the reference's `%` with `$ · cost` beneath it. Several accounts: gain is never taken
+ * from the first (or largest) leg alone — the cell states the account count and prints EVERY account's own served
+ * gain, amount and cost, in the same order and with the same account labels as the position sublines, each label
+ * its own detail action (the fix sprint's option (a); no percentage is ever summed or averaged).
+ */
+function gainCell(g: Group, onOpen?: (row: HoldingsRow) => void): ReactNode {
+  if (g.lines.length > 1) {
+    return (
+      <>
+        <span className="fw-ph">{g.lines.length} accounts</span>
+        {g.lines.map(l => {
+          const parts = gainParts(l.row)
+          return (
+            <span className="fw-sub" key={`${l.row.accountKey}:${l.row.symbol}`}>
+              {accountButton(l, onOpen)}
+              {' · '}
+              {parts.length === 0 ? 'no unrealized change served' : parts.join(' · ')}
+            </span>
+          )
+        })}
+      </>
+    )
+  }
   const r = g.lead
+  if (r.gainLossPct === null) return na('no unrealized change is served for this row')
   const subs: string[] = []
   if (r.gainLoss !== null) subs.push(signedMoney(r.gainLoss))
   if (r.avgCost !== null) subs.push(`cost $${r.avgCost.toFixed(2)}`)
-  if (r.gainLossPct === null) return na('no unrealized change is served for this row')
   return (
     <>
       {signedPct(r.gainLossPct)}
@@ -178,31 +232,100 @@ function gainCell(g: Group): ReactNode {
   )
 }
 
-/**
- * The state word, then the short truth about the stop. The reference draws `Protected · resting GTC stop · read
- * 11-14`, and on the served book that row's stop is recorded but NOT active — "resting GTC stop" would read as
- * active protection, which the lead's checklist rules a defect, so the subline says `pending activation` instead
- * (the full sentence, the served basis, the reason and the next step all ride on the title). The word "Protected"
- * is the served state value, the same word the Holdings page's protection chip prints for the same row.
- */
-function protectionSub(p: Protection): string {
-  if (p.stop !== null) return `stop ${price(p.stop)}`
-  if (p.state === 'PROTECTED') return 'pending activation'
-  if (p.state === 'GAP') return 'no resting stop'
-  return 'stop state unknown'
+interface ProtectionText {
+  /** The state word. "Protected" only when a stop price is served AND this row's stop read is not stale. */
+  word: string
+  /** The short truth about the stop: the served price, pending activation, no resting stop, or unknown. */
+  truth: string
+  /** The read's own clock, kept on one line — `stop read 11-14` must never break at the hyphen. */
+  stamp: string
+  /** ` (older than the quote)` for a stale read, else the empty string. */
+  stale: string
 }
 
-function protectionCell(g: Group): ReactNode {
+/**
+ * The stop rule, in one place. A pending or stale stop is NOT protection: "Protected" is printed only for a served
+ * stop price on a row whose protection read is not stale. A recorded stop with no served price reads
+ * `Stop recorded (GTC), pending activation`; a stale read keeps its served price but is marked older than the quote
+ * and its word is `Stop recorded (GTC)` — the word "Protected" never rides either case.
+ */
+function protectionText(p: Protection): ProtectionText {
+  // GTC is claimed only where the served basis or reason names it — the live rows' basis is the token
+  // `broker_resting`, and their reason carries the words "Resting GTC stop".
+  const gtc = /GTC/i.test(`${p.basis ?? ''} ${p.reason}`) ? ' (GTC)' : ''
+  const stamp = `stop read ${readStamp(p.asOf)}`
+  const servedStop = p.stop === null ? null : `stop ${price(p.stop)}`
+  const stale = p.stale === true ? ' (older than the quote)' : ''
+  if (p.state === 'PROTECTED' && servedStop !== null && p.stale !== true) {
+    return { word: 'Protected', truth: servedStop, stamp, stale }
+  }
+  const word = p.state === 'PROTECTED' ? `Stop recorded${gtc}` : p.state === 'GAP' ? 'Gap' : 'Unknown'
+  const truth =
+    servedStop ?? (p.state === 'PROTECTED' ? 'pending activation' : p.state === 'GAP' ? 'no resting stop' : 'stop state unknown')
+  return { word, truth, stamp, stale }
+}
+
+/** One protection read as a subline: `truth · stop read MM-DD`, the clock unbreakable. */
+function protectionSubline(t: ProtectionText): ReactNode {
+  return (
+    <>
+      {t.truth} · <span className="fw-nowrap">{t.stamp}</span>
+      {t.stale}
+    </>
+  )
+}
+
+/** The full served sentence behind the short cell: state, basis, reason and next step, all on the title. */
+function protectionTitle(p: Protection): string {
+  const t = protectionText(p)
+  return [`${t.word} · ${t.truth} · ${t.stamp}${t.stale}`, p.basis ?? 'basis not served', p.reason, p.nextStep]
+    .filter(s => s !== '')
+    .join(' · ')
+}
+
+/**
+ * Protection. One account: the state word over the short stop truth (the reference draws `Protected · resting GTC
+ * stop · read 11-14`; its own row is the active case, so that word is kept only where the stop is actually active
+ * and fresh). Several accounts: protection never aggregates, so every account prints its own state word and read
+ * date, with its own label and detail action, in the position sublines' order.
+ */
+function protectionCell(g: Group, onOpen?: (row: HoldingsRow) => void): ReactNode {
   const p = g.lead.protection
   if (p === null) return na('protection does not apply to a cash row')
-  const stale = p.stale === true
-  const title = [stopSentence(p), p.basis ?? 'basis not served', p.reason, p.nextStep].filter(s => s !== '').join(' · ')
+  if (g.lines.length > 1) {
+    return (
+      <>
+        <span className="fw-ph">{g.lines.length} accounts</span>
+        {g.lines.map(l => {
+          const lp = l.row.protection
+          const t = lp === null ? null : protectionText(lp)
+          return (
+            <span
+              className={lp !== null && lp.stale === true ? 'fw-sub fw-stale' : 'fw-sub'}
+              title={lp === null ? 'no protection read on this account’s row' : protectionTitle(lp)}
+              key={`${l.row.accountKey}:${l.row.symbol}`}
+            >
+              {accountButton(l, onOpen)}
+              {' · '}
+              {t === null ? (
+                'protection does not apply to a cash row'
+              ) : (
+                <>
+                  {t.word} · {protectionSubline(t)}
+                </>
+              )}
+            </span>
+          )
+        })}
+      </>
+    )
+  }
+  const t = protectionText(p)
   return (
-    <span title={title}>
-      {PROTECTION_LABEL[p.state]}
-      <span className={stale ? 'fw-sub fw-stale' : 'fw-sub'}>
-        {protectionSub(p)}
-        {stale ? ' (stale)' : ''} · read {readStamp(p.asOf)}
+    <span title={protectionTitle(p)}>
+      {t.word}
+      <span className={p.stale === true ? 'fw-sub fw-stale' : 'fw-sub'}>
+        {protectionSubline(t)}
       </span>
     </span>
   )
@@ -233,9 +356,9 @@ function cell(key: ColumnKey, g: Group, ctx: CellCtx, onOpen?: (row: HoldingsRow
     case 'yield':
       return g.lead.yieldPct === null ? na('yield is not published for this instrument') : pct(g.lead.yieldPct)
     case 'gain':
-      return gainCell(g)
+      return gainCell(g, onOpen)
     case 'protection':
-      return protectionCell(g)
+      return protectionCell(g, onOpen)
     case 'expense':
       return na('expense ratio is not served by this read — the wire carries no fund-fee field')
     case 'shortFloat': {
