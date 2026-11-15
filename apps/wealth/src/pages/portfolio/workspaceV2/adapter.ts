@@ -1,6 +1,8 @@
 // Display-only aggregates over served rows. No price reconstruction, advice, identity or broker calls.
 import type { HoldingsBook, HoldingsRow } from '../contract'
 import { displayOf } from '../displayIdentity'
+import { allocationOf, sectorOf } from '../../fundamentals/modelV2'
+export { sectorOf } from '../../fundamentals/modelV2'
 export type Period = 'session' | 'purchase'
 export interface Filters {period:Period; sector:string; account:string; result:string; protection:string; size:string; query:string; group:string}
 export const DEFAULT:Filters={period:'session',sector:'',account:'',result:'',protection:'',size:'',query:'',group:'security'}
@@ -11,11 +13,7 @@ export function sum(values:(number|null)[]):Aggregate {
 }
 export const coverage=(a:Aggregate)=>a.n<a.m?`partial · ${a.n} of ${a.m}`:`${a.n} of ${a.m}`
 export const periodValue=(r:HoldingsRow,p:Period)=>r.kind==='CASH'?null:p==='session'?r.dayChange:r.gainLoss
-export function sectorOf(r:HoldingsRow):string {
- if(r.kind==='CASH')return 'Cash'
- if(['ETF','MUTUAL_FUND','FUND'].includes(r.assetType||''))return 'Funds'
- return r.profileSource==='unavailable'?'Sector unavailable':r.fundamentals?.sector||'Unclassified'
-}
+
 export const applicability=(r:HoldingsRow)=>r.kind==='CASH'?'Cash · not applicable':r.assetType==='MUTUAL_FUND'?'Mutual fund · resting stop not applicable':r.protection?.state||'UNKNOWN'
 export function fromSearch(p:URLSearchParams):Filters {
  const f={...DEFAULT}
@@ -53,7 +51,7 @@ export interface Group {
 }
 export function totals(rows:HoldingsRow[],p:Period) {
  const securities=rows.filter(r=>r.kind!=='CASH'),cash=rows.filter(r=>r.kind==='CASH')
- const value=sum(rows.map(r=>r.marketValue)),cashValue=sum(cash.map(r=>r.marketValue)),invested=sum(securities.map(r=>r.marketValue))
+ const value=sum(rows.map(r=>r.marketValue)),cashValue=cash.length?sum(cash.map(r=>r.marketValue)):{value:0,n:0,m:0},invested=securities.length?sum(securities.map(r=>r.marketValue)):{value:0,n:0,m:0}
  return {value,cash:cashValue,invested,pnl:sum(securities.map(r=>periodValue(r,p))),unrealized:sum(securities.map(r=>r.gainLoss)),cashPct:value.value!==null&&value.value!==0&&value.n===value.m&&cashValue.n===cashValue.m?(cashValue.value??(cash.length?null:0))===null?null:(cashValue.value??0)/value.value*100:null}
 }
 function group(key:string,label:string,kind:Group['kind'],rows:HoldingsRow[],p:Period,t:ReturnType<typeof totals>):Group {
@@ -96,9 +94,16 @@ export function workspace(book:HoldingsBook,f:Filters) {
  const contributors=[...movers].filter(g=>g.pnl.value!>0).sort((a,b)=>b.pnl.value!-a.pnl.value!).slice(0,3)
  const detractors=[...movers].filter(g=>g.pnl.value!<0).sort((a,b)=>a.pnl.value!-b.pnl.value!).slice(0,3)
  const picked=new Set([...contributors,...detractors].flatMap(g=>g.rows))
- const other=sum(rows.filter(r=>r.kind!=='CASH'&&!picked.has(r)).map(r=>periodValue(r,f.period)))
+ const remaining=rows.filter(r=>r.kind!=='CASH'&&!picked.has(r))
+ const other=remaining.length?sum(remaining.map(r=>periodValue(r,f.period))):{value:0,n:0,m:0}
  const newsSymbols=securities.filter(g=>g.value.n===g.value.m&&g.value.value!==null&&Math.abs(g.value.value)>=100).map(g=>g.label)
- return {rows,groups,totals:t,contributors,detractors,other,material,newsSymbols,gaps:material.filter(r=>r.protection?.state==='GAP'&&r.assetType!=='MUTUAL_FUND')}
+ const shell=book.measures.find(m=>m.id==='price_move_estimate')
+ const fullPopulation=rows.length===book.rows.length&&book.rows.every(r=>rows.includes(r))
+ const reconciliation={fullPopulation,storedRows:totals(book.rows,'session').pnl,canonical:shell?.status==='MEASURED'?shell.valueUsd:null,canonicalAt:shell?.asOf||null,definition:shell?.definition||'Canonical baseline definition not served',difference:null as number|null}
+ if(fullPopulation&&reconciliation.storedRows.n===reconciliation.storedRows.m&&reconciliation.storedRows.value!==null&&reconciliation.canonical!==null)reconciliation.difference=reconciliation.canonical-reconciliation.storedRows.value
+ const identities={nonCashPositions:rows.filter(r=>r.kind!=='CASH').length,securities:new Set(rows.filter(r=>r.kind!=='CASH').map(r=>r.symbol)).size}
+ const allocation=allocationOf(rows,'security'),sectorChips=allocationOf(selectRows(book.rows,{...f,sector:''})).segments
+ return {allocation,sectorChips,rows,groups,totals:t,contributors,detractors,other,material,newsSymbols,reconciliation,identities,gaps:material.filter(r=>r.protection?.state==='GAP'&&r.assetType!=='MUTUAL_FUND')}
 }
 
 /** Display reported protection without promoting pending, undated or stale records to active. */

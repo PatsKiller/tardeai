@@ -55,6 +55,8 @@ import { HoldingsWorkspace } from './workspaceV2/Workspace'
 import { PRESETS, preset, type PresetId } from './presets'
 import { lastKnownSentence, money, moneyTone, notCurrent, servedFreshnessLine, toneClass } from './format'
 import { detailSections, detailHeading } from './detail'
+import { WealthStatus } from '../../components/WealthStatus'
+import { protectionSummary } from './workspaceV2/adapter'
 import { rowsInScope, scopeLabel, scopedMeasure } from './scope'
 import { rowMatchesQuery } from './search'
 import { useBookScope } from './snapshot'
@@ -108,11 +110,13 @@ function ageCue(iso: string | null, nowMs: number | null | undefined): string | 
  * fill, named (verdict 2026-11-15T0342Z B3). Nothing recomputed; no other row appears.
  */
 function DetailBody({ row }: { row: HoldingsRow }) {
+  const protection = protectionSummary([row])
   const { sections, unserved } = detailSections(row)
   const [tab, setTab] = useState(sections[0]?.title ?? '')
   const active = sections.find(s => s.title === tab) ?? sections[0]
   return (
     <>
+      <p><WealthStatus icon={protection.icon==='locked'?'closed':protection.icon==='unlocked'?'open':'na'} tone={protection.tone==='gain'?'green':protection.tone==='partial'?'amber':protection.tone==='loss'?'red':'grey'} label={protection.label} detail={protection.detail}/></p><p className="muted">Protection below is the raw producer evidence; applicability and pending-state display are summarized above.</p>
       <nav className="tabs" role="tablist" aria-label="Row detail">
         {sections.map(s => {
           const on = s.title === active?.title

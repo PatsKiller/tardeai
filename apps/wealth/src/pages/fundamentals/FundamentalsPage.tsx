@@ -1,416 +1,105 @@
-// Portfolio › Fundamentals — WB-1: the operator reference's workspace, ported into the app.
-//
-// Layout source: the operator's approved reference (`Main.dc.html`, WB-1 amendment
-// LEAD-AMEND-WB1-EXACT-LAYOUT-NOW-20261115T1936Z, binding rulings RULING-FUNDAMENTALS-WORKSPACE-TIER2-…T1934Z /
-// T1936Z / T1938Z). It is a LOCAL-ONLY design document: its real positions, account names and any brackets are
-// NOT carried here — every value below is a served field of this book or the reference's muted `N/A`.
-//
-// Structure, top to bottom, is the reference's: header (title, one served meta line, the "Not wired" box), the
-// five-card rollup strip, the lens/Group-by toolbar, the Equities table, the Funds table, the collapsed cash line,
-// and the one-sentence foot note. The filters (sector, search, reset) are the only controls the reference does not
-// draw; G1's filter is reused, in the reference's own 44 px control idiom, because the account scope must stay the
-// shell's single selection.
-//
-// What this page does NOT do: no second reader, no second book, no derived column in a cell. The rollup cards that
-// need a Tier 2 formula (equity sleeve P/E, book beta, book yield · income) and the largest-sector card print
-// `Unknown` in WB-1 — WB-2 owns those formulas, each tagged `derived` with its one-line disclosure. The reference
-// keeps the yield card in place and in style, showing its missing source; it does not disappear.
-//
-// The rows come from `filterFundamentals` (G1: the approved selector), are grouped and ordered by `workspace.ts`
-// (no summed percentages, no averaged ratios), and are printed by `WorkspaceTables.tsx`.
-
-import { useEffect, useMemo, useState } from 'react'
+// Read-only Fundamentals workspace over the same served holdings book. All financial arithmetic lives in modelV2.
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useDrawer } from '../../components/Drawer'
+import { WealthIcon, WealthStatus, SignedValue } from '../../components/WealthStatus'
 import type { HoldingsBook, HoldingsRow } from '../portfolio/contract'
 import { detailHeading, detailSections } from '../portfolio/detail'
 import { FIXTURE_BOOK } from '../portfolio/fixtures'
-import { lastKnownSentence, notCurrent, servedFreshnessLine } from '../portfolio/format'
-import { freshnessLine } from '../portfolio/HoldingsTable'
-import { displaySectorKey, freshnessCopy, snapshotFor } from '../portfolio/analyticsAdapter'
-import { scopeLabel } from '../portfolio/scope'
+import { money, marketCapText, multiple, decimal, pct, price, notCurrent, servedFreshnessLine } from '../portfolio/format'
+import { isFundRow } from '../portfolio/analyticsAdapter'
 import { useBookScope } from '../portfolio/snapshot'
-import { MARKET_CAP_PROVENANCE_NOTE, evidenceCopy } from './evidence'
-import { EMPTY_NO_MATCH, filterFundamentals } from './filter'
-import type { FundamentalsView } from './filter'
-import { GROUPS, LENSES, buildWorkspace, coverageOf, equityColumns, fundColumns } from './workspace'
-import type { Coverage, GroupBy, Lens } from './workspace'
-import { CashLineRow, SectionTable } from './WorkspaceTables'
-import '../portfolio/analytics/analytics.css'
-import './workspace.css'
-
-export interface FundamentalsPageProps {
-  /** Fixture today; the live route always passes an explicit book, so a wiring mistake cannot fall through to it. */
-  book?: HoldingsBook | null
-  loading?: boolean
-  error?: string | null
-  /** What the read is NOT claiming (last good, not current, health unproven), set by `liveProps`. */
-  notice?: string | null
-  /** The read's own clock in ms. Unused for a derived value; kept for parity with the Holdings page props. */
-  nowMs?: number | null
+import { protectionSummary } from '../portfolio/workspaceV2/adapter'
+import { DEFAULT, fromSearch, searchFor, viewOf, impliedGrowth, recordFlag, exportCsv } from './modelV2'
+import type { Filters, DisplayGroup } from './modelV2'
+import './workspaceV2.css'
+export interface FundamentalsPageProps {book?:HoldingsBook|null;loading?:boolean;error?:string|null;notice?:string|null;nowMs?:number|null}
+const percent=(v:number|null)=>v===null?'not served':pct(v)
+const quantity=(v:number|null)=>v===null?'not served':new Intl.NumberFormat('en-US',{maximumFractionDigits:8}).format(v)
+const coverage=(n:number,m:number)=>n===m?n+' of '+m:'partial · '+n+' of '+m
+function Protection({rows}:{rows:HoldingsRow[]}) {
+ const p=protectionSummary(rows)
+ return <WealthStatus className="fv-protection" icon={p.icon==='locked'?'closed':p.icon==='unlocked'?'open':'na'} dataIcon={p.icon} tone={p.tone==='gain'?'green':p.tone==='partial'?'amber':p.tone==='loss'?'red':'grey'} label={p.label} summary={p.detail.split('. ')[0]} detail={p.detail}/>
 }
-
-/** The reference's own sentence beside the title, adapted to what this read serves. */
-const NOT_WIRED = 'Not wired: valuation-assessment@1 (peer median, assessment, evidence). Those columns are hidden until a reader serves them, instead of printing the notice on every row.'
-
-/** The one Tier 3 sentence the ruling asks for — the producer gaps, named once, never as placeholder tiles. */
-const NOT_SERVED =
-  'Not served by this read: valuation-assessment@1 (peer and own-history median, assessment), a book yield/income ' +
-  'aggregate (each row’s own yield IS served; the aggregate belongs to WB-2), and fund expense ratio, SEC yield ' +
-  'and duration — producer gaps, named once here, not per row.'
-
-/** The reference's foot sentence, kept verbatim except for the mock's own production note, which is dropped. */
-const FOOT =
-  'Printed as served unless tagged derived (arithmetic on served fields, no threshold, no colour verdict). ' +
-  '▲ appears only where a record’s clock is older than the quote clock.'
-
-const SCOPE_NOTE =
-  'The account control is the top bar’s portfolio scope — this page renders no second one; sector and search ' +
-  'filter these same served rows. No second read and no second book: every value below is a field of the one ' +
-  'book this page read.'
-
-/** The row drawer: the same served fields the Holdings page's drawer shows, nothing recomputed. */
-function DetailBody({ row }: { row: HoldingsRow }) {
-  const { sections, unserved } = detailSections(row)
-  return (
-    <>
-      {sections.map(s => (
-        <div key={s.title}>
-          <h3>{s.title}</h3>
-          <dl>
-            {s.fields.map(f => (
-              <div key={f.label}>
-                <dt>{f.label}</dt>
-                <dd>
-                  {f.value}
-                  <br />
-                  <small>{f.source}</small>
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      ))}
-      {unserved.map(u => (
-        <p key={u} className="small muted">
-          {u}
-        </p>
-      ))}
-    </>
-  )
+function SignedPercent({value}:{value:number|null}) {return <SignedValue value={value}>{percent(value)}</SignedValue>}
+function DetailBody({row}:{row:HoldingsRow}) {
+ const {sections,unserved}=detailSections(row)
+ return <><p><Protection rows={[row]}/></p><p>Display interpretation above; original producer evidence remains below.</p>{sections.map(s=><details key={s.title} open={s.title==='Position'}><summary>{s.title}</summary><dl>{s.fields.map(f=><div key={f.label}><dt>{f.label}</dt><dd>{f.value}<br/><small>{f.source}</small></dd></div>)}</dl></details>)}{unserved.map(u=><p key={u}>{u}</p>)}<p>Profile source {row.profileSource||'not served'} · record {row.profileUpdatedAt||'not served'} · quote {row.priceAsOf||'not served'}.</p></>
 }
-
-/**
- * The five cards, in the reference's order and wording — the three formula sublines are the reference's sentences
- * alone: the WB-2 deferral is stated in the page's disclosure, so the card face needs no extra clause.
- * Unknown is a printed value, never a blank.
- */
-function RollupStrip({ coverage }: { coverage: Coverage }) {
-  const cards = [
-    { label: 'Equity sleeve P/E', value: 'Unknown', sub: 'weight-harmonic, trailing → forward', derived: true },
-    { label: 'Book beta', value: 'Unknown', sub: 'weight-averaged, cash at 0', derived: true },
-    {
-      label: 'Book yield · income',
-      value: 'Unknown',
-      // The live book DOES serve yields, so the card states how many rather than claiming none exist. The aggregate
-      // is Unknown because WB-2 owns the income formula — an absent aggregate, never a "no yields today" claim.
-      sub: `served on ${coverage.withYield} of ${coverage.rows} rows; aggregate Unknown (WB-2 owns the income formula)`,
-      derived: true,
-    },
-    { label: 'Largest sector', value: 'Unknown', sub: 'served sector × served weight', derived: false },
-    {
-      label: 'Coverage',
-      // Counts and denominator are the SAME population: the book. Never a filtered numerator over a book total.
-      value: `${coverage.withMultiple} of ${coverage.rows} rows`,
-      // "older", not "stale": D7 proves the record predates the quote, not that a freshness rule was violated.
-      sub: `with a served multiple · ${coverage.olderRecords} ${coverage.olderRecords === 1 ? 'record' : 'records'} older than the quote`,
-      derived: false,
-    },
-  ]
-  return (
-    <div className="fw-cards">
-      {cards.map(c => (
-        <div className="fw-card" key={c.label}>
-          <div className="fw-card-label">
-            {c.label}
-            {c.derived && (
-              <span className="fw-tag" title="arithmetic on served fields — no threshold, no colour verdict">
-                derived
-              </span>
-            )}
-          </div>
-          <div className="fw-card-value">{c.value}</div>
-          <div className="fw-card-sub">{c.sub}</div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-export function FundamentalsPage({
-  book = FIXTURE_BOOK,
-  loading = false,
-  error = null,
-  notice = null,
-}: FundamentalsPageProps) {
-  const drawer = useDrawer()
-  const { scope } = useBookScope()
-  const [sector, setSector] = useState('')
-  const [query, setQuery] = useState('')
-  const [lens, setLens] = useState<Lens>('valuation')
-  const [groupBy, setGroupBy] = useState<GroupBy>('security')
-  const [announcement, setAnnouncement] = useState('')
-
-  // Every hook above the early returns, unconditionally: the view is computed only for a book that exists.
-  const filtered = useMemo<FundamentalsView | null>(
-    () => (book === null ? null : filterFundamentals(book, { scope, sector, query })),
-    [book, scope, sector, query],
-  )
-
-  // A sector that the selected account no longer contains is reset AND announced — the population must not
-  // change silently (the Holdings page's rule, kept here because this page has the same filter).
-  const sectorOptions = filtered?.sectorOptions ?? null
-  useEffect(() => {
-    if (sectorOptions === null || sector === '') return
-    if (!sectorOptions.includes(sector)) {
-      setSector('')
-      setAnnouncement(`Sector reset because ${displaySectorKey(sector)} is not present in this account.`)
-    }
-  }, [sectorOptions, sector])
-
-  if (error !== null) {
-    return (
-      <section aria-label="Portfolio fundamentals">
-        <div className="note bad" role="alert">
-          <strong>Fundamentals could not be read.</strong> {error} No values are shown, because none were served.
-        </div>
-      </section>
-    )
+type Field='valuation'|'size'|'performance'|'trend'|'risk'
+const labels:Record<Field,string>={valuation:'Valuation',size:'Size · income',performance:'Performance',trend:'Trend',risk:'Risk · protection'}
+const fieldOrders:Record<string,Field[]>={valuation:['valuation','size','performance','trend','risk'],income:['size','performance','valuation','trend','risk'],risk:['risk','trend','performance','valuation','size']}
+export function FundamentalsPage({book=FIXTURE_BOOK,loading=false,error=null,notice=null}:FundamentalsPageProps) {
+ const drawer=useDrawer(),[params,setParams]=useSearchParams(),{scope,setScope}=useBookScope(),previousScope=useRef(scope)
+ const initialized=useRef(false),f=fromSearch(params)
+ if(!initialized.current&&!params.has('fv_account')&&scope!=='ALL')f.account=scope
+ const lens=f.lens||'valuation'
+ const [open,setOpen]=useState<Set<string>>(()=>new Set())
+ useEffect(()=>{if(!initialized.current){initialized.current=true;if(!params.has('fv_account')&&scope!=='ALL'){setParams(searchFor(params,{...f,account:scope}),{replace:true});return}}setScope(f.account||'ALL')},[params.toString()])
+ useEffect(()=>{if(previousScope.current!==scope){previousScope.current=scope;if(scope!==(f.account||'ALL'))setParams(searchFor(params,{...f,account:scope==='ALL'?'':scope}))}},[scope])
+ const view=useMemo(()=>book?viewOf(book,f):null,[book,params.toString()])
+ const update=(p:Partial<Filters>)=>{const n={...f,...p};setParams(searchFor(params,n));if(p.account!==undefined)setScope(p.account||'ALL')}
+ const reset=()=>{setParams(searchFor(params,DEFAULT));setScope('ALL');setOpen(new Set())}
+ const toggle=(key:string)=>setOpen(old=>{const next=new Set(old);next.has(key)?next.delete(key):next.add(key);return next})
+ if(error!==null)return <section className="fv"><p role="alert">Fundamentals could not be read. {error} No values are shown.</p></section>
+ if(!book||!view||loading)return <section className="fv" aria-busy={loading}><p>{loading?'Reading stored fundamentals…':'No book has been supplied.'}</p></section>
+ const openRow=(r:HoldingsRow,origin:HTMLElement)=>{const h=detailHeading(r);drawer.open({title:h.title,eyebrow:h.eyebrow,body:<DetailBody row={r}/>,origin})}
+ const accounts=[...new Map(book.rows.map(r=>[r.accountKey,r.accountLabel])).entries()]
+ const fields=fieldOrders[lens]||fieldOrders.valuation
+ const download=()=>{const url=URL.createObjectURL(new Blob([exportCsv(view,f)],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='fundamentals-filtered.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),0)}
+ const flag=(r:HoldingsRow)=>{const v=recordFlag(r);return v.older?<WealthStatus icon="warning" tone="amber" label={v.stale?'Stale record':'Older record'} detail={v.detail}/>:null}
+ const cell=(g:DisplayGroup,field:Field)=>{
+  const r=g.lead,fu=r.fundamentals,fund=isFundRow(r),cash=r.kind==='CASH'
+  if(cash)return field==='risk'?<Protection rows={g.rows}/>:<span className="fv-muted">Not applicable to cash</span>
+  switch(field){
+   case 'valuation':return <>{fund?<><span className="fv-muted">Company P/E not applicable</span><small>Expense ratio · unavailable</small><small>Duration · unavailable</small></>:<><span>{multiple(fu?.peTrailing??null)} → {multiple(fu?.peForward??null)}</span><small>PEG {decimal(fu?.peg??null)}</small>{impliedGrowth(fu?.peTrailing??null,fu?.peForward??null)!==null?<small className="fv-implied">Implied EPS change {percent(impliedGrowth(fu?.peTrailing??null,fu?.peForward??null))}<span className="fv-tag">derived</span><span>Indicative · earnings basis unverified</span></small>:null}</>}{g.rows.length>1?<small>Ratios from largest-value account; expand for each source.</small>:null}</>
+   case 'size':return <>{lens==='income'?<><span>{r.yieldPct===null?'Yield unavailable':<>Schedule yield {percent(r.yieldPct)}</>}</span><small>{fund?'Fund size unavailable':marketCapText(r.marketCapB)}</small></>:<><span>{fund?'Fund size unavailable':marketCapText(r.marketCapB)}</span><small>{r.yieldPct===null?'Yield unavailable':<>Schedule yield {percent(r.yieldPct)}</>}</small></>}{flag(r)}<small>Yield is a static estimate, not received income.</small>{lens==='income'?<a className="fv-context-link" href="/wealth/portfolio/income">Calendar & forecast →</a>:null}</>
+   case 'performance':return <>YTD <SignedPercent value={fu?.perfYtdPct??null}/><small>Since purchase <SignedPercent value={g.gainPct}/>{g.rows.length>1?<span className="fv-tag">derived</span>:null}</small><small>Unrealized <SignedValue value={g.gain.value}>{money(g.gain.value)}</SignedValue>{g.rows.length>1?<span className="fv-tag">derived</span>:null}</small>{g.gain.n<g.gain.m||g.basis.n<g.basis.m?<small><WealthStatus icon="warning" tone="amber" label="Partial gain / basis" detail={'Unrealized '+coverage(g.gain.n,g.gain.m)+'; basis '+coverage(g.basis.n,g.basis.m)+' account rows. Quote '+(r.priceAsOf||'not served')+'. Missing basis is never zero.'}/></small>:null}</>
+   case 'trend':return <><SignedPercent value={fu?.sma200Pct??null}/> vs 200d<small>{percent(fu?.week52HighPct??null)} from 52-week high</small><small>RSI {decimal(fu?.rsi??null)}</small></>
+   case 'risk':return <>{lens==='risk'?<><span>Insider {percent(fu?.insiderOwnPct??null)}</span><small>Institutional {percent(fu?.instOwnPct??null)}</small><small>Beta {decimal(fu?.beta??null)} · short {percent(fu?.shortFloatPct??null)}</small></>:<><span>Beta {decimal(fu?.beta??null)}</span><small>Short {percent(fu?.shortFloatPct??null)}</small><small>Insider {percent(fu?.insiderOwnPct??null)} · institutional {percent(fu?.instOwnPct??null)}</small></>}<Protection rows={g.rows}/></>
   }
-
-  if (loading || book === null) {
-    return (
-      <section aria-label="Portfolio fundamentals" aria-busy={loading}>
-        <p className="muted">{loading ? 'Reading the book…' : 'No book has been supplied.'}</p>
-      </section>
-    )
-  }
-
-  const view: FundamentalsView = filtered ?? filterFundamentals(book, { scope, sector, query })
-  const rows = view.rows
-  const workspace = buildWorkspace(rows, groupBy)
-  const snapshot = snapshotFor(book)
-  const fresh = freshnessCopy(snapshot)
-  const readState = evidenceCopy(notice, snapshot, fresh.line)
-  const sourceText = book.source === 'FIXTURE' ? 'synthetic fixture' : 'served book'
-  const filteredView = scope !== 'ALL' || sector !== '' || query.trim() !== ''
-  const shareLabel = filteredView ? 'view' : 'book'
-
-  const openRow = (row: HoldingsRow, origin?: HTMLElement) => {
-    const h = detailHeading(row)
-    drawer.open({ title: h.title, eyebrow: h.eyebrow, body: <DetailBody row={row} />, origin: origin ?? null })
-  }
-
-  return (
-    <section aria-label="Portfolio fundamentals" className="fw">
-      {book.source === 'FIXTURE' && (
-        <div className="note" role="note">
-          <strong>Fixture data.</strong> Every value on this page is synthetic and no live reader is bound.
-          portfolio-holdings@2 is proposed, not approved for wiring.
-        </div>
-      )}
-
-      <div className="fw-head">
-        <div>
-          {/* The document's one <h1> is the shell's crumb ("Portfolio / Fundamentals"), as on every book page
-              (HoldingsPage states the rule). A second <h1> here duplicated the top-level heading, so the
-              reference's workspace title is the H2 beneath it, in the reference's own type. */}
-          <h2 className="fw-title">Fundamentals workspace</h2>
-          <p className="fw-subhead" aria-live="polite" data-testid="workspace-meta">
-            {filteredView ? `${rows.length} of ${view.bookRows} rows` : `${view.bookRows} rows`} ·{' '}
-            {scopeLabel(book, scope)} · {sourceText} · marks as of {book.asOf} ({book.asOfClock ?? 'clock not served'} clock)
-            {announcement !== '' && <> · {announcement}</>}
-          </p>
-        </div>
-        <p className="fw-notwired">{NOT_WIRED}</p>
-      </div>
-
-      {/* A read that is not current, or whose health the producer did not state, must never look calm. */}
-      {readState.line !== null && (
-        <p className="fw-warning" role="alert" data-testid="workspace-warning">
-          {readState.line}
-        </p>
-      )}
-
-      <RollupStrip coverage={coverageOf(book.rows)} />
-
-      <div className="fw-toolbar">
-        <div className="fw-buttons" role="group" aria-label="Lens">
-          {LENSES.map(l => (
-            <button
-              key={l.key}
-              type="button"
-              className="fw-btn"
-              aria-pressed={lens === l.key}
-              onClick={() => setLens(l.key)}
-            >
-              {l.label}
-            </button>
-          ))}
-        </div>
-        <div className="fw-buttons">
-          <label className="fw-field">
-            <span className="fw-label">Sector</span>
-            <select
-              className="fw-select"
-              value={sector}
-              onChange={e => {
-                setSector(e.target.value)
-                setAnnouncement('')
-              }}
-            >
-              <option value="">All sectors</option>
-              {view.sectorOptions.map(s => (
-                <option key={s} value={s}>
-                  {displaySectorKey(s)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <input
-            className="fw-input"
-            type="search"
-            aria-label="Find a holding"
-            placeholder="Find a holding"
-            value={query}
-            autoComplete="off"
-            onChange={e => {
-              setQuery(e.target.value)
-              setAnnouncement('')
-            }}
-          />
-          <button
-            type="button"
-            className="fw-btn fw-btn-group"
-            onClick={() => {
-              setSector('')
-              setQuery('')
-              setAnnouncement('Filters reset: all sectors. The account scope is the top bar’s.')
-            }}
-          >
-            Reset filters
-          </button>
-          <span className="fw-label">Group by</span>
-          <div className="fw-buttons" role="group" aria-label="Group by">
-            {GROUPS.map(g => (
-              <button
-                key={g.key}
-                type="button"
-                className="fw-btn fw-btn-group"
-                aria-pressed={groupBy === g.key}
-                onClick={() => setGroupBy(g.key)}
-              >
-                {g.label}
-              </button>
-            ))}
-          </div>
-          <span className="fw-sortlabel">Sorted by weight ▾</span>
-        </div>
-      </div>
-
-      {book.rows.length === 0 ? (
-        <div className="fw-tablecard">
-          <p className="fw-empty">
-            <strong>No positions.</strong> {book.coverageNote}
-          </p>
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="fw-tablecard">
-          <p className="fw-empty">
-            <strong>{EMPTY_NO_MATCH}</strong>
-          </p>
-        </div>
-      ) : view.refused !== null ? (
-        <div className="fw-tablecard">
-          <p className="fw-empty">
-            <strong>This view cannot be filtered as asked.</strong> {view.refused} No row is printed over a
-            selection the page cannot keep.
-          </p>
-        </div>
-      ) : (
-        <>
-          <SectionTable
-            section={workspace.equities}
-            columns={equityColumns(lens)}
-            shareOf={shareLabel}
-            viewValue={workspace.value}
-            onRowOpen={openRow}
-          />
-          <SectionTable
-            section={workspace.funds}
-            columns={fundColumns(lens)}
-            shareOf={shareLabel}
-            viewValue={workspace.value}
-            onRowOpen={openRow}
-          />
-          <CashLineRow section={workspace.cash} viewValue={workspace.value} shareOf={shareLabel} onRowOpen={openRow} />
-        </>
-      )}
-
-      <p className="fw-foot">{FOOT}</p>
-      <p className="fw-foot">{NOT_SERVED}</p>
-      <p className="fw-foot">{book.coverageNote}</p>
-
-      <details className="fw-details">
-        <summary>
-          <b>How this page is wired</b> — source, scope, this read’s session and status, and the gaps
-        </summary>
-        <ul>
-          <li>
-            One GET of the same reader the Holdings page uses (<code>/api/v2/portfolio/holdings</code>); the same
-            adapter turns the envelope into this book. No second source and no second book.
-          </li>
-          <li>
-            <b>This read’s session.</b>{' '}
-            {book.session.status === 'KNOWN'
-              ? `last completed regular session ${book.session.latestOpenSession ?? 'not stated'}${
-                  book.session.source ? ` · source: ${book.session.source}` : ''
-                }`
-              : book.session.reason}{' '}
-            <b>Freshness.</b>{' '}
-            {book.freshness.served === null
-              ? freshnessLine(book.freshness.ageSeconds, book.freshness.staleAfterSeconds, book.freshness.stale)
-              : servedFreshnessLine(book.freshness.served)}
-          </li>
-          <li>{SCOPE_NOTE}</li>
-          <li>
-            <b>Grouping and ordering.</b> Rows group by the selector’s stable security identity (the symbol — this
-            route serves no CUSIP) and the declared contract currency; a security held in several accounts is one
-            display row whose accounts and quantities are sublines. No percentage is summed and no cost, P/E or
-            beta is averaged: the sublines carry each account’s own served weight, gain/loss and protection (each
-            label its own detail action), and the ratio cells (P/E, PEG, beta, yield, YTD, trend) come from the
-            group’s largest-weight row. Order is by served weight, largest first.
-          </li>
-          <li>
-            <b>Derived values.</b> Only two marks on this page are arithmetic on served fields: the Equities share
-            and the cash line’s share of the book (Σ served market value over Σ served market value in view), each
-            tagged <span className="fw-tag">derived</span>. The three Tier 2 rollup cards print{' '}
-            <b>Unknown</b> in WB-1: their formulas (value-weighted harmonic P/E, weight-averaged beta, implied EPS
-            growth) are deterministic adapter arithmetic delivered in WB-2 with their own tests.
-          </li>
-          <li>
-            <b>The ▲ mark.</b> Shown only where a row’s record clock is older than its quote clock; the record’s
-            own date rides beside it. No age threshold and no colour verdict is derived from it.
-          </li>
-          <li>{MARKET_CAP_PROVENANCE_NOTE}</li>
-          <li>{NOT_SERVED}</li>
-          {readState.detail !== null && (
-            <li>
-              <b>This read’s status.</b> {readState.detail}
-            </li>
-          )}
-          {notCurrent(book.freshness) && <li>{lastKnownSentence(book.freshness)}</li>}
-        </ul>
-      </details>
-    </section>
-  )
+ }
+ const row=(g:DisplayGroup,child=false)=><tr key={(child?'child-':'')+g.key} className={child?'fv-child':undefined} data-symbol={g.symbol}>
+  <th scope="row" data-label="Security · weight"><div className="fv-security"><span className="fv-badge" aria-hidden="true">{g.lead.kind==='CASH'?'$':g.symbol.slice(0,2)}</span><div>{!child&&g.children.length>1?<button className="fv-row-link" onClick={()=>toggle(g.key)} aria-expanded={open.has(g.key)} aria-label={(open.has(g.key)?'Collapse ':'Expand ')+g.symbol+' account positions'}>{open.has(g.key)?'▾':'▸'} {g.symbol}<span className="fv-tag">grouped</span></button>:<strong>{g.symbol}</strong>}<small>{g.sectorText||g.assetType||'Classification unavailable'}</small><small>{percent(g.weightPct)} of filtered value · {money(g.value.value)}{g.rows.length>1?<span className="fv-tag">derived</span>:null}</small>{g.weightPct!==null&&g.weightPct>=0&&g.weightPct<=100?<span className="fv-weight-bar" aria-hidden="true"><i style={{width:g.weightPct+'%'}}/></span>:null}<small>{quantity(g.shares.value)} shares{g.lead.kind==='CASH'?' / sweep units':''} · {g.rows.length} account row{g.rows.length===1?'':'s'}</small>{g.value.n<g.value.m?<small>Value {coverage(g.value.n,g.value.m)}</small>:null}{g.rows.length===1?<><small>{g.lead.accountLabel} · price {price(g.lead.price)}</small><button className="fv-link" onClick={e=>openRow(g.lead,e.currentTarget)}>Details & source evidence</button></>:<small>Expand for accounts, quantities and full evidence.</small>}</div></div></th>
+  {fields.map(field=><td key={field} data-label={labels[field]}>{cell(g,field)}</td>)}
+ </tr>
+ const renderGroups=(gs:DisplayGroup[])=>gs.map(g=><Fragment key={g.key}>{row(g)}{open.has(g.key)&&g.children.length>1?g.children.map(c=>row(c,true)):null}</Fragment>)
+ const pe=view.trailing,fw=view.forward,allocation=view.allocation
+ return <section className="fv" aria-label="Portfolio fundamentals">
+  <header className="fv-header"><div><h2>Fundamentals workspace</h2><p>{view.rowCount} filtered account positions · {view.securityCount} distinct securities · marks {book.asOf} ({book.asOfClock} clock)</p></div><a className="fv-evidence-link" href="#fundamentals-evidence" onClick={()=>{const e=document.getElementById('fundamentals-evidence');if(e instanceof HTMLDetailsElement)e.open=true}}>Sources & definitions ↓</a></header>
+  {book.source==='FIXTURE'?<p>Synthetic fixture · no financial evidence.</p>:null}
+  {notCurrent(book.freshness)?<p className="fv-freshness" role="status"><WealthStatus icon="warning" tone="amber" label="Partial · last available snapshot" detail={'Source freshness '+(book.freshness.served?.status||'not served')+'; marks '+book.asOf+'. Sign colours describe these served readings; they do not establish current data.'}/></p>:null}
+  <div className="fv-legend" aria-label="Colour and icon meanings"><span className="wealth-sign" data-tone="green">▲ + Gain / protected</span><span className="wealth-sign" data-tone="red">▼ − Loss / gap</span><WealthStatus icon="warning" tone="amber" label="Partial / stale / planned" detail={'Incomplete or not-current evidence; source marks '+book.asOf+'.'}/><WealthStatus icon="na" tone="grey" label="Unknown / unavailable / zero" detail="Missing data is never zero. P/E, PEG, beta and RSI are neutral readings."/><span>Blue · selection / allocation</span></div>
+  <section className="fv-filters" aria-label="Fundamentals filters">
+   <div className="fv-filterline" role="group" aria-label="Weighted sector filters"><b>Sector</b><button aria-pressed={!f.sector} onClick={()=>update({sector:''})}>All sectors</button>{view.sectorChips.map(s=><button key={s.key} aria-pressed={f.sector===s.name} onClick={()=>update({sector:s.name})}>{s.name} <span>{percent(s.pct)}</span>{s.n<s.m?' · partial':''}</button>)}</div><small>{view.sectorChipScope}</small>
+   <div className="fv-filterline">
+    <label>Account<select aria-label="Fundamentals account" value={f.account} onChange={e=>update({account:e.target.value})}><option value="">All accounts</option>{accounts.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
+    <label>Type<select aria-label="Type" value={f.type} onChange={e=>update({type:e.target.value})}><option value="">All types · includes cash</option><option value="equity">Equities only</option><option value="fund">Funds only</option><option value="cash">Cash only</option><option value="unknown">Unknown instrument type</option></select></label>
+    <label>Data coverage<select aria-label="Data coverage" value={f.data} onChange={e=>update({data:e.target.value})}><option value="">Any coverage</option><option value="multiple">Positive trailing or forward P/E</option><option value="missing">Missing multiple or stale record</option><option value="forward">Positive forward P/E</option><option value="yield">Has published schedule yield</option><option value="stale">Confirmed stale records</option></select></label>
+    <label>Sort<select aria-label="Sort" value={f.sort} onChange={e=>update({sort:e.target.value})}>{[['weight','Value · largest first'],['forward','Forward P/E · low first'],['peg','PEG · low first'],['ytd','YTD · high first'],['sma200','Distance from 200-day · high first'],['symbol','Security · A–Z'],['gain','Unrealized · high first'],['yield','Schedule yield · high first'],['beta','Beta · high first']].map(([v,t])=><option value={v} key={v}>{t}</option>)}</select></label>
+    <label>Find<input type="search" aria-label="Find holding" placeholder="Find a holding" value={f.query} onChange={e=>update({query:e.target.value})}/></label><button onClick={reset}>Reset filters</button><button onClick={download} disabled={!view.rows.length}>Export filtered CSV</button>
+   </div><small>All filters combine with AND. Cards, chart, context and table describe the same filtered account positions. Missing sort values come last.</small>
+  </section>
+  <section className="fv-cards" aria-label="Filtered rollups">
+   <article><h3>Covered equity P/E <span className="fv-tag">derived</span></h3><strong>{pe.value===null?'Unavailable':multiple(pe.value)} → {fw.value===null?'Unavailable':multiple(fw.value)}</strong><small>Value-weighted harmonic · trailing {coverage(pe.n,pe.m)}; forward {coverage(fw.n,fw.m)} equity account rows</small><small>Trailing {pe.coveredSecurities} of {pe.totalSecurities} equity securities · {percent(pe.valueCoveragePct)} of known equity value covered.</small><small>{money(pe.coveredValue)} covered of {money(pe.totalValue)} known equity value; cash and funds excluded. Covered sleeve only.</small></article>
+   <article className="fv-wait"><h3>Book beta</h3><strong>Unavailable</strong><small>A comparable book-wide estimate is unavailable. Individual published beta readings remain in the table.</small></article>
+   <article className="fv-wait"><h3>Book yield · income</h3><strong>Unavailable</strong><small>{view.yields} of {view.nonCashRowCount} filtered non-cash account rows have published schedule yields.</small><small>Static estimates remain in the table. Forecast and received income stay separate.</small><a href="/wealth/portfolio/income">Income calendar →</a></article>
+   <article><h3>Largest equity sector <span className="fv-tag">derived</span></h3><strong>{view.largest?view.largest.name:'Unavailable'}</strong><small>{view.largest?percent(view.largest.pct)+' of known equity value':'No classified equity value in this selection'} · cash and funds excluded.</small><small>{view.classificationPartial?'Partial classification; unknown exposure retained.':'Served equity classifications.'} Equity denominator {money(view.equityDenominator)}.</small></article>
+   <article><h3>Coverage · filtered view</h3><strong>{coverage(pe.n,pe.m)}</strong><small>Equity account rows with valued positive trailing P/E · {pe.coveredSecurities} of {view.equitySecurityCount} distinct equity securities.</small><small>{view.valued} of {view.rowCount} account positions valued · {view.older.length} profile records older than quotes.</small></article>
+  </section>
+  <section className="fv-sector" aria-label="Filtered sector allocation"><h3>Sector mix <span className="fv-tag">derived</span></h3><small>{allocation.denominatorLabel} · {coverage(allocation.valued,allocation.rows)} rows valued{allocation.partial?' · partial; unpriced exposure remains unknown':''}. Funds are classified as funds, with no look-through sector claim.</small>{allocation.valid&&allocation.denominator!==null&&allocation.denominator>0?<div className="fv-sector-bar" role="img" aria-label={'Filtered sector mix; '+view.mix.map(s=>s.name+' '+percent(s.pct)).join('; ')}>{view.mix.map((s,i)=><span key={s.key} style={{width:s.pct===null?'0%':s.pct+'%',background:'var(--chart-'+(i%8+1)+')'}}/>)}</div>:<p className="fv-muted">A complete comparable allocation graphic is unavailable for this selection. Known exposures remain listed below.</p>}<div className="fv-sector-key">{view.mix.map((s,i)=><span key={s.key}><i style={{background:'var(--chart-'+(i%8+1)+')'}}/>{s.name} {percent(s.pct)} · {money(s.value)} · {coverage(s.n,s.m)}</span>)}</div></section>
+  <section className="fv-panels" aria-label="Fundamentals context">
+   <article className="fv-wait"><h3><WealthIcon name="plug"/> Comparisons unavailable</h3><p>Peer and own-history comparisons, valuation assessments and company quality measures are unavailable here.</p><p>Published ratios remain useful context; they do not imply a buy, sell or quality verdict.</p></article>
+   <article><h3><WealthIcon name="warning"/> Record clocks</h3><p>{view.older.length} filtered profile records predate their quotes. Older does not, by itself, mean stale.</p>{view.older.length?<details><summary>Inspect record and quote dates</summary>{view.older.map((r,i)=><p key={i}><button className="fv-link" onClick={e=>openRow(r,e.currentTarget)}>{r.symbol} · {r.accountLabel}</button><small>{recordFlag(r).detail}</small></p>)}</details>:<p>No dated older records in this selection. Missing clocks do not establish freshness.</p>}</article>
+   <article className="fv-wait"><h3><WealthIcon name="calendar"/> Next earnings</h3><p>Confirmed earnings and declared ex-dividend dates are unavailable on this view. An absent date does not mean no upcoming event.</p><a href="/wealth/portfolio/income">Income calendar →</a></article>
+  </section>
+  <section className="fv-table-section"><div className="fv-table-toolbar"><h3>Fundamentals · {view.rowCount} filtered account positions</h3><div role="group" aria-label="Fundamentals lens">{[['valuation','Valuation'],['income','Income'],['risk','Risk & ownership']].map(([key,label])=><button key={key} aria-pressed={lens===key} onClick={()=>update({lens:key as Filters['lens']})}>{label}</button>)}</div><div role="group" aria-label="Group by">{(['security','account'] as const).map(group=><button key={group} aria-pressed={(f.group||'security')===group} onClick={()=>update({group})}>{group==='security'?'By security':'By account'}</button>)}</div></div><p className="fv-lens-note">{lens==='income'?'Income lens brings yield, distributions and returns first.':lens==='risk'?'Risk & ownership lens brings protection, ownership and trend first.':'Valuation lens brings multiples and company size first.'} Every lens retains all six field groups.</p><div className="table-wrap"><table className="fv-table"><thead><tr><th scope="col">Security · weight</th>{fields.map(field=><th key={field} scope="col">{labels[field]}</th>)}</tr></thead><tbody>
+   <tr className="fv-section"><th colSpan={6} scope="rowgroup">Equities · material positions and pinned losses</th></tr>{renderGroups(view.equities)}
+   <tr className="fv-section"><th colSpan={6} scope="rowgroup">Funds · no company P/E</th></tr>{renderGroups(view.funds)}
+   {view.unknown.length?<><tr className="fv-section"><th colSpan={6} scope="rowgroup">Unclassified instruments · applicability unknown</th></tr>{renderGroups(view.unknown)}</>:null}
+   <tr className="fv-section"><th colSpan={6}><button onClick={()=>toggle('small')} aria-expanded={open.has('small')}>{open.has('small')?'▾':'▸'} Small positions · {view.small.length} display groups under $100 · {money(view.smallTotals.value)} · {percent(view.smallWeightPct)} of filtered value</button><small>Any material served unrealized loss remains above, even below the value floor.</small></th></tr>{open.has('small')?renderGroups(view.small):null}
+   <tr className="fv-section"><th colSpan={6}><button onClick={()=>toggle('cash')} aria-expanded={open.has('cash')}>{open.has('cash')?'▾':'▸'} Cash & sweep · {view.w.cash.rows.length} account positions · {view.w.cash.rows.length===0?'$0.00 in this selection':view.w.cash.value.valued===0?'value unavailable':money(view.w.cash.value.usd)+' · '+coverage(view.w.cash.value.valued,view.w.cash.rows.length)}</button></th></tr>{open.has('cash')?renderGroups(view.cashGroups):null}
+  </tbody></table></div>{!view.rows.length?<p className="fv-empty">No holdings match this view. Reset filters to continue; missing data is never inferred as zero.</p>:null}</section>
+  <details className="fv-evidence" id="fundamentals-evidence"><summary>Sources, clocks, definitions and full read notice</summary>{notice?<p>{notice}</p>:null}<p>Reader: portfolio-holdings@2, one existing stored GET of /api/v2/portfolio/holdings, the same source as Holdings. No new upstream request or advice is computed here.</p><p>Read freshness: {book.freshness.served?servedFreshnessLine(book.freshness.served):'Source verdict not served'}. Signed historical readings retain their signs and colours; separate freshness warnings qualify the snapshot. Build time is not quote or record time.</p>{book.clocks.map((c,i)=><p key={i}>{c.role}: {c.at||'UNKNOWN'} · {c.source}{c.isBuildClock?' · BUILD clock, not a financial source clock':''}{c.withheldAsOf?' · withheld date, not the clock: '+c.withheldAsOf:''}{c.unknownRows!==undefined?' · rows with unknown time: '+c.unknownRows:''}</p>)}<p>{book.coverageNote}</p><p>Grouped market value, shares and gain use each underlying account position once. Return uses summed covered remaining basis and served unrealized dollars, never averaged account percentages; incomplete inputs retain coverage or an unknown return. Expanding accounts does not add rows to totals. Group ratio and technical readings come from the largest-value account; all original account fields remain in details.</p><p>Covered equity P/E = covered equity value / sum(value / positive P/E), using the same eligible rows in numerator and denominator. Trailing and forward coverage may differ. It is not a full-book metric. Implied EPS change = trailing / forward − 1 for positive same-row inputs; earnings periods and comparability are unverified.</p><p>Sector mix uses filtered known market value including cash, funds and unknown classifications. Weighted sector filters describe the other active filters before the sector selection. Largest equity sector excludes cash and funds and retains unknown equity exposure in its denominator. Unpriced exposure has unknown value, never zero.</p><p>Record time older than quote time is a relative-clock observation. An exchange-session freshness verdict requires the existing calendar policy; no threshold is invented here. Profile time does not date every individual field. Protection uses the same canonical applicability, recorded-order, pending and freshness interpretation as Holdings; the drawer separately preserves raw producer evidence.</p><p>Book yield requires the existing income aggregate contract; static schedule yields are not current SEC yields or received income. Fund expenses and duration, peer/history comparisons, valuation assessments and earnings-event dates remain unavailable. No alternative backend, scheduler, broker action or financial policy is introduced.</p></details>
+ </section>
 }

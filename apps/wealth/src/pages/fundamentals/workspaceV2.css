@@ -1,0 +1,58 @@
+/* Fundamentals workspace parity. Layout and component rules are scoped; semantic tokens are shared. */
+.fv{display:flex;flex-direction:column;gap:18px;min-width:0;max-width:100%;font-family:Inter,system-ui,sans-serif;color:var(--text);font-variant-numeric:tabular-nums}
+.fv *{box-sizing:border-box}
+.fv-header,.fv-filterline,.fv-legend,.fv-sector-key{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.fv-header{justify-content:space-between;align-items:flex-end}
+.fv h2{font-size:22px;font-weight:700;margin:0 0 6px}.fv h3{margin:0 0 8px}.fv p{font-size:13px;line-height:1.6;margin:4px 0;overflow-wrap:anywhere}
+.fv small{display:block;font-size:11.5px;color:var(--text-muted);line-height:1.5;margin-top:4px;overflow-wrap:anywhere}
+.fv a,.fv .fv-link{color:var(--accent-text)}.fv a:hover{color:var(--text)}
+.fv-filters,.fv-cards article,.fv-sector,.fv-panels article,.fv-table-section,.fv-evidence{background:var(--panel);border:1px solid var(--line);border-radius:8px;min-width:0}
+.fv-filters,.fv-sector,.fv-evidence{padding:14px}
+.fv-legend{font-size:12px;gap:8px 18px;line-height:1.6}.fv-legend .wealth-tooltip{inset-inline-start:0;inset-inline-end:auto}
+.fv-freshness{padding:8px 12px;border:1px solid var(--amber-border);border-radius:6px;background:var(--panel-inset)}
+.fv-filterline{align-items:flex-end;margin:8px 0 12px}.fv-filterline>b{font-size:11px;color:var(--text-muted);min-width:52px;padding-bottom:12px;text-transform:uppercase;letter-spacing:.06em}
+.fv label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted);min-width:0}
+.fv button,.fv select,.fv input{min-height:44px;min-width:0;max-width:100%;padding:8px 12px;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:inherit;font-size:13px;line-height:1.4}
+.fv button{cursor:pointer;white-space:normal;overflow-wrap:anywhere}.fv select{max-width:230px}.fv input{width:180px}
+.fv button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-fill);color:var(--text);font-weight:600}
+.fv button:disabled{border-style:dashed;color:var(--text-muted);cursor:not-allowed}.fv :focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.fv-cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}.fv-cards article{padding:14px 16px}
+.fv-cards h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);font-weight:500}
+.fv-cards strong{display:block;font-size:22px;line-height:1.3;font-weight:600;margin-top:8px;overflow-wrap:anywhere}
+.fv-cards a{display:inline-flex;align-items:center;min-height:44px;font-size:12px}
+.fv-tag{display:inline-block;border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:10px;color:var(--text-muted);font-weight:400;margin-left:6px;vertical-align:1px;text-transform:none;letter-spacing:0}
+.fv-wait{border:1px dashed var(--border)!important;border-radius:8px}.fv-evidence-link{display:inline-flex;align-items:center;min-height:44px;font-size:12px}
+.fv-sector h3{font-size:12px}.fv-sector-bar{display:flex;gap:0;height:14px;margin:12px 0;border-radius:7px;overflow:hidden}.fv-sector-bar>span{display:block;flex:none;min-width:0}
+.fv-sector-key{font-size:12px;gap:6px 16px;line-height:1.6}.fv-sector-key>span{overflow-wrap:anywhere;min-width:0}.fv-sector-key i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+.fv-panels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.fv-panels article{padding:14px 16px}.fv-panels h3{font-size:12px;font-weight:600;display:flex;align-items:center;gap:7px}.fv-panels details{margin-top:8px}.fv-panels details[open]{max-height:320px;overflow:auto}.fv-panels summary{font-size:12px;min-height:44px;cursor:pointer}
+.fv-table-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}.fv-table-toolbar h3{font-size:13px;margin:0;margin-right:auto}.fv-table-toolbar>div{display:flex;gap:6px;flex-wrap:wrap}
+.fv p.fv-lens-note{font-size:12px;color:var(--text-muted);padding:6px 14px}
+.fv .table-wrap{width:100%;min-width:0;overflow:visible}
+.fv .fv-table{table-layout:fixed;min-width:0!important;width:100%;border-collapse:collapse}
+.fv .fv-table th,.fv .fv-table td{min-width:0!important;white-space:normal!important;overflow-wrap:anywhere;padding:12px 8px;vertical-align:top;text-align:right;border-bottom:1px solid var(--line);font-size:13px;letter-spacing:0;text-transform:none;color:var(--text);font-weight:400}
+.fv .fv-table thead th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);font-weight:600}.fv .fv-table th:first-child{width:25%;text-align:left}
+.fv .fv-table tbody th{font-size:13.5px;text-transform:none;letter-spacing:0;font-weight:400}
+.fv .fv-table tbody tr:not(.fv-section):hover>th,.fv .fv-table tbody tr:not(.fv-section):hover>td{background:var(--row-hover)}
+.fv .fv-table td .wealth-status{font-size:11.5px;text-align:left}.fv .fv-table td small .wealth-sign[data-tone="green"]{color:var(--status-green)}.fv .fv-table td small .wealth-sign[data-tone="red"]{color:var(--status-red)}.fv .fv-table td small .wealth-sign[data-tone="grey"]{color:var(--status-grey)}
+.fv .fv-table .fv-section th{background:var(--panel-inset);text-align:left;font-size:12px;font-weight:600;padding:8px 12px}.fv .fv-table .fv-section button{text-align:left;border:0;background:transparent;padding:0;min-height:44px}
+.fv-security{display:flex;gap:10px;min-width:0;align-items:flex-start}.fv-security>div{min-width:0}.fv-security strong{font-size:13.5px;font-weight:600}
+.fv-badge{display:flex;justify-content:center;align-items:center;flex:none;width:34px;height:34px;background:var(--accent-fill);border:1px solid var(--border);border-radius:8px;color:var(--accent-text);font-size:11.5px;font-weight:700}
+.fv button.fv-row-link,.fv button.fv-link{border:0;background:transparent;color:var(--accent-text);padding:0;min-height:44px;white-space:normal;overflow-wrap:anywhere;text-align:inherit}
+.fv button.fv-row-link{font-weight:600;font-size:13.5px;color:var(--text)}.fv button.fv-link{font-size:11.5px}
+.fv-muted{color:var(--text-muted)}.fv-implied>span:last-child{display:block;color:var(--text-muted)}.fv .fv-child th,.fv .fv-child td{background:var(--panel-inset);font-size:12.5px}.fv .fv-child th:first-child{padding-left:24px}
+.fv-weight-bar{display:block;width:48px;max-width:100%;height:5px;margin-top:7px;border-radius:3px;background:var(--chart-1);overflow:hidden}.fv-weight-bar i{height:100%;display:block;background:var(--chart-2)}
+.fv-protection{margin-top:6px}.fv-protection small{width:100%}.fv-context-link{display:inline-flex;align-items:center;min-height:44px;font-size:11.5px}
+.fv-evidence{overflow-wrap:anywhere}.fv-evidence summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-size:13px}.fv-evidence p{font-size:12px;color:var(--text-muted);margin:8px 0}.fv-empty{padding:14px}
+@media(max-width:1100px){.fv-cards{grid-template-columns:repeat(3,minmax(0,1fr))}.fv .fv-table th:first-child{width:24%}.fv .fv-table th,.fv .fv-table td{padding:10px 6px}}
+@media(max-width:760px){
+ .fv-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.fv-panels{grid-template-columns:minmax(0,1fr)}
+ .fv .fv-table thead{display:none}.fv .fv-table,.fv .fv-table tbody,.fv .fv-table tr{display:block;width:100%!important;max-width:100%;min-width:0!important}
+ .fv .fv-table tr{padding:8px 0;border-bottom:1px solid var(--border)}
+ .fv .fv-table th,.fv .fv-table td,.fv .fv-table th:first-child{display:block;width:auto!important;min-width:0!important;max-width:100%;border:0;padding:5px 12px}
+ .fv .fv-table td::before{content:attr(data-label);display:block;text-align:left;color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+ .fv .fv-table td{text-align:right}.fv .fv-table .fv-section{padding:0}.fv .fv-table .fv-section th{padding:8px 12px}
+ .fv .fv-table .fv-child th:first-child{padding-left:24px}.fv-security>div{flex:1}
+ .fv-filterline{align-items:stretch}.fv-filterline>label{flex:1 1 130px}.fv-filterline>label select,.fv-filterline>label input{width:100%;max-width:100%}.fv-filterline>button{max-width:100%}
+ .fv-table-toolbar>div{width:100%;max-width:100%}.fv-table-toolbar button{flex:1 1 auto}.fv-legend{align-items:flex-start}.fv-cards strong{font-size:19px}.fv-cards article{padding:12px}.fv-cards small{font-size:11px}
+ .fv .wealth-status .wealth-tooltip{position:fixed;inset:auto 16px 16px 16px;width:auto;max-width:none;max-height:40vh;overflow:auto;z-index:1000}
+}

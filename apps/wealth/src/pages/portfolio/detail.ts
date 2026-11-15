@@ -171,7 +171,9 @@ export function levelsFields(row: HoldingsRow): DetailField[] {
 export function protectionFields(row: HoldingsRow): DetailField[] {
   const p = row.protection
   if (p === null) {
-    return [{ label: 'Protection', value: 'not applicable — a cash row is not protected', source: 'cash rows carry no protection block' }]
+    return row.kind === 'CASH'
+      ? [{ label: 'Protection', value: 'not applicable — a cash row is not protected', source: 'cash rows carry no protection block' }]
+      : [{ label: 'Protection', value: 'UNKNOWN — no protection record served', source: 'this security has no protection block; absence is not an active stop or a reported gap' }]
   }
   return [
     { label: 'State', value: `${p.state} · ${p.reason}`, source: 'the protection producer’s verdict for this account' },

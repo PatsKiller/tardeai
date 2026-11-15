@@ -26,7 +26,7 @@ Scope: /wealth/portfolio/holdings. Operator-approved layout is a private local v
 - Cash yield and YTD cash receipts are not served. Missing is not zero.
 - Stable confirmed security identity is not guaranteed. Existing ticker-keyed identity caveats remain; no invented logos or CUSIP verification.
 - Backend materialization changes belong in established n8n producers, with versioned stored contracts, source/build timestamps, coverage, idempotency, bounded retries/recovery and observable failure receipts. Reuse retained CIO memory and existing stores.
-- Fundamentals four Unknown cards remain owned by its assigned worker; source and static-yield provenance findings were routed to Claude and that owner. Holdings files do not overlap Fundamentals.
+- Superseded by the operator's combined design-parity assignment: the same Codex session now owns both workspaces and their shared display interpretation; existing producers remain unchanged.
 
 ## Verification
 [VERIFIED] node --test scripts/tests/holdings-workspace.test.mjs: 11 passed, 0 failed. Covers independent expected arithmetic, partial/missing/zero, account/security mode, floor pin, AND/CSV parity, URL reset, top movers reconciliation and each protection/icon state.
@@ -284,3 +284,23 @@ User prioritized Holdings live and explicitly authorized subagents. Worktree /da
 - [CODE] Authorized stored holdings response has no per-row stop price. No live-stops or broker call; absent price remains unserved.
 
 Next: integrate actual current live release; run checks and clean build; independently inspect production bundle at 390/412/1280/1440; package rollback-ready release; activation dry-run then serialize activation; verify served SHA and every affected live view. Deployment is not complete from this checkpoint.
+
+
+## Combined design parity repair — 2026-11-15
+[CODE] Both workspaces now share fundamentals/modelV2.ts::allocationOf and sectorOf over the same underlying served account positions. Holdings uses security/cash/other segments; Fundamentals uses sector/fund/cash/unknown segments. Every chart names its known-value denominator and coverage; negative exposure or duplicate underlying identities withhold graphic percentages. Account expansion never changes totals. Sector chips respect all filters except their own selection.
+
+[CODE] workspaceV2/adapter.ts::workspace separately exposes the stored non-cash row-change sum and the published price_move_estimate, including its definition and clock. A difference is shown only for the full population with complete row inputs; filtered comparisons are withheld. Quote time cannot supply the unknown session-observation clock. An empty selected cash population is zero; missing cash values remain unknown. No omitted mover rows means zero Other, while omitted unknown inputs remain unknown.
+
+[CODE] Shared WealthStatus/WealthIcon/SignedValue present semantic colors, exact SVG paths, accessible explanations and signed arrows. protectionSummary remains canonical for both tables and both drawer summaries. Raw producer protection remains separately visible; missing security protection is UNKNOWN rather than a cash applicability claim. Mutual funds and cash have no resting-stop applicability; recorded pending/stale orders do not become active protection.
+
+[CODE] StoredNews keeps explicit bounded GETs, four-worker cancellation and generation fencing. Exact normalized titles or tracking-stripped URLs combine duplicate records while preserving original source links, clocks and query tags. All returned stories are source-tagged candidates with unverified entity relevance: the route publishes no issuer-match evidence. The existing API's ingest.latest is max(published_at) over the global feed, not ingestion completion. Global publication diagnostics are labeled as such and never added across symbol queries. A producer correction must use the existing governed news lane, not another scheduler.
+
+Acceptance checklist for the bounded frontend repair (production AFTER pending activation):
+- [x] Summary labels distinguish session estimate, unrealized only, unavailable realized return and received income.
+- [x] Shared security allocation model and weighted sector chips retain cash/funds/unknown and name coverage.
+- [x] Holdings period/result/protection/size/account/sector/search/reset/group/CSV and source evidence retained.
+- [x] Independent regressions cover fractional basis, grouped positions, missing/zero, material losses, applicability, reconciliation, deduplication, concurrency and cancellation.
+- [ ] Qualified clean-bundle browser checks at measured390/412/760/1280/1440 and same-width reference comparison recorded in the private acceptance receipt.
+- [ ] Production activation, both served SHAs/assets and live AFTER interactions. Automatic approval review rejected production packaging twice, including after renewed explicit user approval. No alternate publishing path used.
+
+[VERIFIED] Targeted implementation checks: Holdings23 tests (including26 news-quality cases), Fundamentals27 adapter cases; required frontend contract/design, shell102, Performance page27/adapter37, Home30, Income7, TypeScript and Vite passed. These are local implementation checks, not production verification. Subsequent browser findings and final source SHA belong in the private release receipt, not an assertion of live completion here.
