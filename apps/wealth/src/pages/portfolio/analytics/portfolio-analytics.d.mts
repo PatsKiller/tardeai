@@ -15,15 +15,45 @@ export interface AnalyticsScope {
   currency?: string | null
 }
 
+/**
+ * One domain clock as the page renders it. The selector itself reads only `snapshot.id` (and the copy uses
+ * session/observedAt/status/reason); these fields are ADDITIVE and consumed by the React port, so the approved
+ * module keeps its bytes and the page gains the per-domain evidence the operator asked for (route 20261115T1636Z §K).
+ */
+export interface SnapshotClock {
+  domain: 'quote' | 'positions' | 'basis' | 'protection'
+  label: string
+  status: 'KNOWN' | 'UNKNOWN'
+  at: string | null
+  source: string | null
+  /** Why the clock is UNKNOWN, or '' when it is KNOWN. Never a size or a traceback. */
+  reason: string
+}
+
 /** The snapshot identity and its served freshness fields (INTEGRATION.md §Required normalized row contract). */
 export interface AnalyticsSnapshot {
   id: string
   currency?: string | null
   session?: string
   observedAt?: string
-  /** fresh | last-good | stale | unavailable | unproven */
+  /**
+   * fresh | last-good | unverified | stale | unavailable | unproven.
+   * `last-good` is reserved for a VALIDATED last-success receipt; without one the adapter says `unverified`
+   * and the page prints "Last available snapshot · freshness unverified" (route 20261115T1636Z §K).
+   */
   status?: string
   reason?: string
+  /** The four domain clocks that date this book, in the order the page lists them. */
+  clocks?: SnapshotClock[]
+  /** "Data as of <instant> (<clock> clock)" or "Unknown (<reason>)" — one instant, or the reason there is none. */
+  dataAsOf?: string
+  /** PARTIAL unless every domain clock is KNOWN and the producer's verdict is FRESH. */
+  overall?: 'PARTIAL' | 'COMPLETE'
+  /**
+   * The validated last-success receipt this snapshot's `last-good` rests on. Absent means there is none, and
+   * then no renderer may print "last known good" however the `status` string was set (route 20261115T1636Z §K).
+   */
+  receipt?: { at: string; source: string }
 }
 
 /**

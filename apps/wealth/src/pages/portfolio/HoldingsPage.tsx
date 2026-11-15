@@ -409,6 +409,7 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
           onSearch={changeSearch}
           onCurrency={changeCurrency}
           onReset={resetFilters}
+          onOpenHolding={openRow}
         />
       ) : (
         <div className="note bad" role="alert">
@@ -678,8 +679,12 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
           </thead>
           <tbody>
             <tr>
-              <th scope="row">Unrealized gain (book)</th>
-              <td>A book-level unrealized total, with its own clock</td>
+              <th scope="row">Unrealized gain — whole book</th>
+              <td>
+                A book-level unrealized total, with its own clock. Not the overview’s “Open-position gain/loss vs.
+                cost”: that one is a display aggregate of the published row values in the selected view (and says
+                when it is partial), not a measure of the whole book.
+              </td>
               <td>broker positions store, computed by the producer</td>
               <td>holdings reader repair (unassigned)</td>
             </tr>

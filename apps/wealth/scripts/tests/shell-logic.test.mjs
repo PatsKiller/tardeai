@@ -831,8 +831,103 @@ test('the adapter normalizes the fixture book into a valid selected view', () =>
   assert.equal(v.rows.length, rows.length)
   assert.equal(v.currencyValid, true)
   assert.equal(snapshotFor(fixtures.FIXTURE_BOOK).status, 'fresh')
-  assert.equal(snapshotFor(fixtures.FIXTURE_BOOK_STALE).status, 'last-good')
-  assert.match(snapshotFor(fixtures.FIXTURE_BOOK_STALE).reason, /not current/)
+  // §K: the wire serves NO validated last-success receipt, so a stale book is 'unverified' — never 'last-good'.
+  assert.equal(snapshotFor(fixtures.FIXTURE_BOOK_STALE).status, 'unverified')
+  assert.match(snapshotFor(fixtures.FIXTURE_BOOK_STALE).reason, /freshness unverified/)
+})
+
+test('§L: the gain/loss label counts N of M from the rows in the CURRENT filter, never a constant', () => {
+  const { fixtures, analyticsAdapter } = compileGateModules()
+  const { normalizeBook, snapshotFor, gainLossMeasureCopy } = analyticsAdapter
+  const rows = normalizeBook(fixtures.FIXTURE_BOOK)
+  const snapshot = snapshotFor(fixtures.FIXTURE_BOOK)
+  const measure = scope =>
+    gainLossMeasureCopy(derivePortfolioView(rows, { account: '', sector: '', query: '', currency: null, ...scope }, snapshot))
+  // Three different filters over the same fixture book: three different counts. A hardcoded "6 of 8" (or any
+  // other constant) makes at least one of these three assertions fail.
+  const all = measure({})
+  const taxable = measure({ account: 'SYN_TAX' })
+  const health = measure({ sector: 'Health care' })
+  assert.deepEqual([all.published, all.held], [6, 8])
+  assert.deepEqual([taxable.published, taxable.held], [2, 3])
+  assert.deepEqual([health.published, health.held], [1, 1])
+  assert.match(taxable.subtext, /2 of 3 have published gain\/loss/)
+  assert.match(health.subtext, /1 of 1 have published gain\/loss/)
+  assert.doesNotMatch(taxable.subtext, /6 of 8/)
+  assert.equal(all.partial, true)
+  assert.match(all.title, /^Open-position gain\/loss vs\. cost — partial$/)
+  assert.equal(health.partial, false)
+  assert.equal(health.title, 'Open-position gain/loss vs. cost', 'a complete filter is not labelled partial')
+  assert.match(all.subtext, /not today\/YTD profit/)
+  assert.doesNotMatch(all.subtext, /period profit/i)
+})
+
+test('§L: each excluded row is named with the reason from its OWN coverage', () => {
+  const { gainLossMeasureCopy } = compileGateModules().analyticsAdapter
+  const row = (rowId, pnl, avgCost, cash = false) => ({
+    rowId, symbol: rowId, name: rowId, securityId: rowId, isCash: cash,
+    unrealizedPnl: pnl, holding: { avgCost },
+  })
+  const copy = gainLossMeasureCopy({
+    rows: [
+      row('A:Q1', 25, 10),
+      row('A:Q2', null, null),
+      row('A:Q3', null, 12),
+      row('A:CASH', null, null, true),
+    ],
+    coverage: { pnl: 1, nonCash: 3 },
+  })
+  assert.deepEqual(copy.excluded.map(x => [x.rowId, x.reason]), [
+    ['A:Q2', 'no basis served'],
+    ['A:Q3', 'no gain/loss served'],
+  ])
+  assert.equal(copy.excluded.some(x => x.rowId === 'A:CASH'), false, 'cash is not an investment row with a missing gain/loss')
+  // A row with a published gain/loss stays in the subtotal whatever its basis representation — the exclusion test
+  // is "no published gain/loss", never a basis-provenance veto.
+  assert.equal(copy.excluded.some(x => x.rowId === 'A:Q1'), false, 'a published row is never excluded for its basis provenance')
+})
+
+test('§K: a stale book says "freshness unverified" — last-good needs a validated receipt', () => {
+  const { fixtures, analyticsAdapter } = compileGateModules()
+  const { snapshotFor, freshnessCopy } = analyticsAdapter
+  const stale = snapshotFor(fixtures.FIXTURE_BOOK_STALE)
+  assert.equal(stale.status, 'unverified')
+  assert.equal(stale.receipt, undefined)
+  const line = 'Last available snapshot · freshness unverified'
+  assert.equal(freshnessCopy(stale).line, line)
+  // Fail-closed at the render layer: even a hand-set last-good status with no receipt is not dressed as good.
+  assert.equal(freshnessCopy({ ...stale, status: 'last-good', reason: 'forged' }).line, line)
+  // With a receipt the copy is built from the receipt object, not from the status string.
+  const good = snapshotFor(fixtures.FIXTURE_BOOK_STALE, { at: '2026-11-14T20:00:00Z', source: 'fixture last-success receipt' })
+  assert.equal(good.status, 'last-good')
+  assert.equal(freshnessCopy(good).line, 'Last known good 2026-11-14T20:00:00Z · fixture last-success receipt')
+  // A current book prints no warning line at all.
+  assert.equal(freshnessCopy(snapshotFor(fixtures.FIXTURE_BOOK)).line, '')
+})
+
+test('§K: each domain clock is reported on its own; a stop-read gap is never the quote clock’s fault', () => {
+  const { fixtures, analyticsAdapter } = compileGateModules()
+  const { snapshotFor } = analyticsAdapter
+  const snap = snapshotFor(fixtures.FIXTURE_BOOK)
+  assert.deepEqual(snap.clocks.map(c => c.domain), ['quote', 'positions', 'basis', 'protection'])
+  const by = Object.fromEntries(snap.clocks.map(c => [c.domain, c]))
+  assert.equal(by.quote.status, 'KNOWN')
+  assert.equal(by.quote.at, '2026-11-14T21:00:00Z')
+  assert.equal(by.positions.status, 'KNOWN')
+  assert.equal(by.basis.status, 'UNKNOWN')
+  assert.match(by.basis.reason, /VALUATION clock declared on this read/)
+  assert.equal(by.protection.status, 'UNKNOWN')
+  assert.match(by.protection.reason, /STOPS clock declared on this read/)
+  assert.notEqual(by.basis.reason, by.protection.reason, 'two gaps, two named reasons')
+  assert.equal(snap.dataAsOf, '2026-11-14T21:00:00Z (QUOTE clock)')
+  assert.equal(snap.overall, 'PARTIAL', 'two of four domain clocks are UNKNOWN')
+  for (const c of snap.clocks) assert.doesNotMatch(c.reason, /Error|\bMB\b|\bKB\b|\bat .*:\d+\b/, 'no traceback or size prose')
+  // A clock role present without an instant dates nothing: the label says Unknown and why.
+  const undated = {
+    ...fixtures.FIXTURE_BOOK,
+    clocks: fixtures.FIXTURE_BOOK.clocks.map(c => (c.role === 'QUOTE' ? { ...c, at: null } : c)),
+  }
+  assert.equal(snapshotFor(undated).dataAsOf, 'Unknown (QUOTE clock declared without an instant)')
 })
 
 test('an unkeepable row identity is rejected by the selector, never charted', () => {

@@ -17,7 +17,16 @@
 
 import type { PortfolioView } from './analytics/portfolio-analytics.mjs'
 import type { AccountChoice, AnalyticsRow } from './analyticsAdapter'
-import { coverageText, displaySectorKey, moneyText, percentText, signedMoneyText } from './analyticsAdapter'
+import {
+  coverageText,
+  displaySectorKey,
+  freshnessCopy,
+  gainLossMeasureCopy,
+  moneyText,
+  percentText,
+  signedMoneyText,
+} from './analyticsAdapter'
+import type { HoldingsRow } from './contract'
 import './analytics/analytics.css'
 
 export interface AnalyticsPanelProps {
@@ -39,6 +48,8 @@ export interface AnalyticsPanelProps {
   onSearch: (query: string) => void
   onCurrency: (currency: string) => void
   onReset: () => void
+  /** Open a holding's own detail — the excluded-rows line links each named row to its row. */
+  onOpenHolding?: (row: HoldingsRow) => void
 }
 
 const EMPTY_NO_MATCH = 'No holdings match this view. Clear a filter to continue.'
@@ -206,10 +217,14 @@ export function AnalyticsPanel({
   onSearch,
   onCurrency,
   onReset,
+  onOpenHolding,
 }: AnalyticsPanelProps) {
   const account = scope === 'ALL' ? '' : scope
-  const warning =
-    view.snapshot.status === 'fresh' ? null : `${view.snapshot.status ?? 'Unknown freshness'}${view.snapshot.reason ? ` · ${view.snapshot.reason}` : ''}`
+  // K: one concern line and its evidence. `last-good` copy comes from the receipt object, never the status
+  // string (analyticsAdapter.freshnessCopy), so an unverified read cannot be dressed as a good one.
+  const fresh = freshnessCopy(view.snapshot)
+  // L: the measure's own label, counted from the rows in the CURRENT filter — never a constant.
+  const gainLoss = gainLossMeasureCopy(view)
   const largest = view.holdings.find(h => h.known)
   const cashBySector = view.scope.sector !== '' && view.scope.sector !== 'Cash & sweep'
 
@@ -221,7 +236,7 @@ export function AnalyticsPanel({
           <h2>Portfolio at a glance</h2>
         </div>
         <span className="wm-pa-clock">
-          {view.snapshot.session ?? 'Session unknown'} · {view.snapshot.observedAt ?? 'Source time unknown'}
+          {view.snapshot.session ?? 'Session unknown'} · Data as of {fresh.dataAsOf}
         </span>
       </header>
 
@@ -281,9 +296,37 @@ export function AnalyticsPanel({
       <div className="wm-pa-status" aria-live="polite">
         {view.rows.length} matching rows · {view.securityCount} investment securities ·{' '}
         {coverageText(view.coverage.valued, view.coverage.total)}
-        {warning !== null && <span className="wm-pa-warning">{warning}</span>}
+        {fresh.line !== '' && <span className="wm-pa-warning">{fresh.line}</span>}
         {announcement !== '' && <> · {announcement}</>}
       </div>
+
+      {/* K: the evidence behind the one line above. Each domain names its OWN clock, so a stop-read gap is never
+          printed as a quote-clock fault and a price-clock gap is never printed as a protection fault. */}
+      <details className="wm-pa-freshness">
+        <summary>
+          Freshness evidence · overall {fresh.overall}
+        </summary>
+        <ul className="wm-pa-clocks">
+          {fresh.clocks.map(c => (
+            <li key={c.domain}>
+              <strong>{c.label}</strong>{' '}
+              {c.status === 'KNOWN' ? (
+                <span>
+                  Known · {c.at}
+                  {c.source ? ` · ${c.source}` : ''}
+                </span>
+              ) : (
+                <span>{c.reason}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+        <p className="wm-pa-foot">
+          {fresh.overall === 'COMPLETE'
+            ? 'Every domain clock is KNOWN and the producer’s verdict is current.'
+            : 'Overall PARTIAL: a domain clock above is UNKNOWN or the producer’s verdict is not current. This page does not substitute one clock for another.'}
+        </p>
+      </details>
 
       <div className="wm-pa-kpis">
         <article>
@@ -292,13 +335,33 @@ export function AnalyticsPanel({
           <small>Published row values · includes selected cash</small>
         </article>
         <article>
-          <span>Unrealized gain / loss{view.coverage.pnl < view.coverage.nonCash ? ' · partial' : ''}</span>
+          <span>{gainLoss.title}</span>
           <strong className={view.pnl !== null && view.pnl < 0 ? 'wm-pa-negative' : view.pnl !== null && view.pnl > 0 ? 'wm-pa-positive' : ''}>
             {view.currencyValid ? moneyText(view.pnl, view.scope.currency) : 'Unknown'}
           </strong>
-          <small>
-            {view.coverage.pnl}/{view.coverage.nonCash} investment rows · not period profit
-          </small>
+          <small>{gainLoss.subtext}</small>
+          {gainLoss.excluded.length > 0 && (
+            <small className="wm-pa-excluded">
+              Not included:{' '}
+              {gainLoss.excluded.map((x, i) => {
+                const row = view.rows.find(r => r.rowId === x.rowId)
+                return (
+                  <span key={x.rowId}>
+                    {i > 0 ? ' · ' : ''}
+                    {onOpenHolding && row ? (
+                      <button type="button" className="wm-pa-excluded-row" onClick={() => onOpenHolding(row.holding)}>
+                        {x.label}
+                      </button>
+                    ) : (
+                      x.label
+                    )}
+                    {' — '}
+                    {x.reason}
+                  </span>
+                )
+              })}
+            </small>
+          )}
         </article>
         <article>
           <span>Cash in selected view{view.coverage.cash < view.coverage.cashTotal ? ' · partial' : ''}</span>

@@ -26,9 +26,9 @@
 // "Funds & Cash" everywhere the reader sees it (legend, sector select, row label). The internal key is used
 // only to filter — the same one selector feeds the table, every chart, the KPI strip and the CSV.
 
-import type { HoldingsBook, HoldingsRow } from './contract'
+import type { ClockRole, HoldingsBook, HoldingsRow } from './contract'
 import { notCurrent } from './format'
-import type { AnalyticsRowInput, AnalyticsSnapshot } from './analytics/portfolio-analytics.mjs'
+import type { AnalyticsRowInput, AnalyticsSnapshot, SnapshotClock } from './analytics/portfolio-analytics.mjs'
 
 /** The page's declared contract currency (the table foot says so, and the adapter formats dollars). */
 export const SERVED_CURRENCY = 'USD'
@@ -149,20 +149,158 @@ export function normalizeBook(book: HoldingsBook): AnalyticsRow[] {
 }
 
 /**
- * The snapshot the selector carries. `status` is 'fresh' only when this page's own verdict says the book is
- * current (`notCurrent`, which reads the producer's verdict first); otherwise it is 'last-good' and the
- * selector prints its warning. Passing 'fresh' is never independent proof — it is the page's existing verdict.
+ * A validated last-success receipt: the ONLY evidence that lets a page say "last known good".
+ *
+ * `portfolio-holdings@2` serves no such receipt today (measured 2026-11-15: `data.metrics[]` carries
+ * `verified:false, receipt:null` for all four governed measures, and `freshness` carries a verdict, not a
+ * stored snapshot receipt). The page-read time, the document BUILD clock and a quote instant are all
+ * DIFFERENT facts and none of them is a last-success receipt, so none of them may stand in for one.
  */
-export function snapshotFor(book: HoldingsBook): AnalyticsSnapshot {
+export interface LastSuccessReceipt {
+  at: string
+  source: string
+}
+
+/** The four domain clocks the page shows, each with the clock role that dates it. */
+const DOMAIN_SPECS: { domain: SnapshotClock['domain']; label: string; role: ClockRole }[] = [
+  { domain: 'quote', label: 'Quote', role: 'QUOTE' },
+  { domain: 'positions', label: 'Positions', role: 'POSITIONS' },
+  { domain: 'basis', label: 'Basis (valuation)', role: 'VALUATION' },
+  { domain: 'protection', label: 'Protection (stop read)', role: 'STOPS' },
+]
+
+/**
+ * The book's four domain clocks, in view order. A role the wire does not declare is UNKNOWN with that reason —
+ * never omitted (an absent clock is a fact about the read, and the operator asked to see it) and never borrowed
+ * from another role: the stop read's gap is not the quote clock's fault and vice versa.
+ */
+export function snapshotClocks(book: HoldingsBook): SnapshotClock[] {
+  return DOMAIN_SPECS.map(spec => {
+    const clock = book.clocks.find(c => c.role === spec.role) ?? null
+    if (clock === null) {
+      return { domain: spec.domain, label: spec.label, status: 'UNKNOWN', at: null, source: null,
+        reason: `no ${spec.role} clock declared on this read` }
+    }
+    if (clock.at === null) {
+      return { domain: spec.domain, label: spec.label, status: 'UNKNOWN', at: null, source: clock.source ?? null,
+        reason: `${spec.role} clock declared without an instant` }
+    }
+    return { domain: spec.domain, label: spec.label, status: 'KNOWN', at: clock.at, source: clock.source ?? null, reason: '' }
+  })
+}
+
+/**
+ * "Data as of <instant> (<clock> clock)", or "Unknown (<reason>)". The instant is the book's served as-of; the
+ * clock that dates it is the one `asOfClock` names — an as-of that no declared clock dates is labelled so.
+ */
+export function dataAsOfText(book: HoldingsBook, clocks: SnapshotClock[]): string {
+  if (!book.asOf) return 'Unknown (the book served no as-of instant)'
+  const spec = DOMAIN_SPECS.find(s => s.role === book.asOfClock)
+  const clock = spec ? clocks.find(c => c.domain === spec.domain) : undefined
+  if (clock !== undefined && clock.status === 'KNOWN') return `${book.asOf} (${book.asOfClock} clock)`
+  return `Unknown (${clock?.reason ?? `the ${book.asOfClock} clock is not one this page dates`})`
+}
+
+/**
+ * The snapshot the selector carries. `status` is 'fresh' only when this page's own verdict says the book is
+ * current (`notCurrent`, which reads the producer's verdict first). Passing 'fresh' is never independent proof —
+ * it is the page's existing verdict.
+ *
+ * `last-good` is reachable ONLY with a validated receipt. Without one the status is 'unverified' and the page
+ * prints "Last available snapshot · freshness unverified" — it never dresses an unverified read as last-good.
+ */
+export function snapshotFor(book: HoldingsBook, receipt: LastSuccessReceipt | null = null): AnalyticsSnapshot {
   const current = !notCurrent(book.freshness)
   const session = book.session.status === 'KNOWN' ? (book.session.phase ?? 'Session known') : 'Session unknown'
-  return {
+  const clocks = snapshotClocks(book)
+  const dataAsOf = dataAsOfText(book, clocks)
+  const overall = current && clocks.every(c => c.status === 'KNOWN') ? 'COMPLETE' : 'PARTIAL'
+  const base: AnalyticsSnapshot = {
     id: book.asOf,
     currency: SERVED_CURRENCY,
     session,
     observedAt: book.asOf,
-    status: current ? 'fresh' : 'last-good',
-    reason: current ? undefined : 'last-known-good; the read that produced it is not current',
+    clocks,
+    dataAsOf,
+    overall,
+  }
+  if (current) return { ...base, status: 'fresh' }
+  if (receipt !== null) {
+    return { ...base, status: 'last-good', receipt, reason: `Last known good ${receipt.at} · ${receipt.source}` }
+  }
+  return { ...base, status: 'unverified', reason: 'freshness unverified' }
+}
+
+/**
+ * The one line the page may print about freshness, and the evidence behind it.
+ *
+ * `last-good` copy is produced from the receipt OBJECT, never from the status string: a snapshot whose status
+ * says last-good but carries no receipt still renders "freshness unverified". That is the fail-closed behaviour
+ * the route asks for, and the test that removes the receipt fails here.
+ */
+export interface FreshnessCopy {
+  /** One concise warning, or '' when the read is current. */
+  line: string
+  overall: 'PARTIAL' | 'COMPLETE'
+  dataAsOf: string
+  clocks: SnapshotClock[]
+}
+
+export function freshnessCopy(snapshot: AnalyticsSnapshot): FreshnessCopy {
+  const clocks = snapshot.clocks ?? []
+  const overall = snapshot.overall ?? 'PARTIAL'
+  const dataAsOf = snapshot.dataAsOf ?? 'Unknown (the snapshot does not say which clock dates it)'
+  if (snapshot.status === 'fresh') return { line: '', overall, dataAsOf, clocks }
+  if (snapshot.status === 'last-good' && snapshot.receipt !== undefined) {
+    return { line: `Last known good ${snapshot.receipt.at} · ${snapshot.receipt.source}`, overall, dataAsOf, clocks }
+  }
+  return { line: 'Last available snapshot · freshness unverified', overall, dataAsOf, clocks }
+}
+
+// ---- L: the open-position gain/loss measure's own label ------------------------------------------------
+// The KPI is "open-position gain/loss vs. cost", and it is PARTIAL whenever some held row has no published
+// gain/loss. N and M are counted from the rows in the CURRENT filter (the selector's own coverage block), never
+// constants: the same function feeds every filter state, which is what the test that changes the filter proves.
+// It is not today's P&L, not YTD profit and not account profit; legacy rows stay in the subtotal.
+
+export interface ExcludedGainLossRow {
+  /** The row's stable identity, so the page can link the name to that row's own detail. */
+  rowId: string
+  label: string
+  /** From the row's own coverage: no cost basis is a different absence from no published gain/loss. */
+  reason: string
+}
+
+export interface GainLossCopy {
+  title: string
+  subtext: string
+  partial: boolean
+  published: number
+  held: number
+  excluded: ExcludedGainLossRow[]
+}
+
+export function gainLossMeasureCopy(view: {
+  rows: AnalyticsRow[]
+  coverage: { pnl: number; nonCash: number }
+}): GainLossCopy {
+  const published = view.coverage.pnl
+  const held = view.coverage.nonCash
+  const partial = published < held
+  const excluded = view.rows
+    .filter(r => !r.isCash && r.unrealizedPnl === null)
+    .map(r => ({
+      rowId: r.rowId,
+      label: r.symbol || r.name || r.securityId,
+      reason: r.holding.avgCost === null ? 'no basis served' : 'no gain/loss served',
+    }))
+  return {
+    title: `Open-position gain/loss vs. cost${partial ? ' — partial' : ''}`,
+    subtext: `Unrealized on currently held positions · ${published} of ${held} have published gain/loss · legacy included · not today/YTD profit`,
+    partial,
+    published,
+    held,
+    excluded,
   }
 }
 
