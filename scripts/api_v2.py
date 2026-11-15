@@ -9295,7 +9295,11 @@ def dividends():
     d = _load_json(STATE_DIR / "dividend_calendar.json") or {}
     payers = list(d.get("payers") or [])
     for p in payers:
-        p.setdefault("qualified", False)
+        # v2: a null ``qualified`` is UNCLASSIFIED, not ordinary tax treatment — never default it to False
+        # (review R6). The basis travels with the flag so the surface can say why it is unknown.
+        if not p.get("qualified_basis"):
+            p["qualified_basis"] = ("unclassified: no operator mapping for this symbol"
+                                    if p.get("qualified") is None else "operator classification")
         p.setdefault("safety", "watch")
 
     holdings_doc = _load_json(STATE_DIR / "holdings.json") or {}
@@ -9383,6 +9387,14 @@ def dividends():
         "total_annual": d.get("total_annual", 0),
         "qualified_annual": d.get("qualified_annual", 0),
         "ordinary_annual": d.get("ordinary_annual", 0),
+        # v2 provenance: the declared/forecast split, the coverage line and the contract travel with the
+        # blended total — a reader must be able to see which part is observed and which is a forecast (R6).
+        "schema": d.get("schema"),
+        "declared_annual": d.get("declared_annual"),
+        "forecast_annual": d.get("forecast_annual"),
+        "unclassified_annual": d.get("unclassified_annual"),
+        "coverage": d.get("coverage") or {},
+        "contract": d.get("contract") or {},
         "monthly_average": d.get("monthly_average", 0),
         "monthly_summary": d.get("monthly_summary", {}),
         "ex_div_alerts": d.get("ex_div_alerts", []),
@@ -48949,6 +48961,14 @@ def _stored_home_product(query=None):
     return _pr.serve_home_product(query, **_product_io())
 
 
+def _wealth_home_v2(header_only=False):
+    """One stored Home slice; GET refreshes source ages/calendar only, never rebuilds missing data."""
+    from scripts.lib import wealth_home_v2
+
+    stored = _stored_home_slice("wealth_v2")
+    return wealth_home_v2.serve(stored, header_only=header_only)
+
+
 def _stored_home_slice(name):
     """One Home route (since-close, incidents, priorities-live, status, gates) from its stored ``home`` slice."""
     from scripts.lib.cc_products import product_route as _pr
@@ -50715,6 +50735,8 @@ ROUTES = {
     "/api/v2/atm/protection-advisory-outcomes": lambda: _atm_advisory_outcomes(),
     "/api/v2/atm/profit-capture": lambda: _atm_profit_capture(),
     "/api/v2/atm/advisory-threshold-tuning": lambda: _atm_advisory_threshold_tuning(),
+    "/api/v2/wealth/home-v2": lambda: _wealth_home_v2(),
+    "/api/v2/wealth/operating-header": lambda: _wealth_home_v2(header_only=True),
     "/api/v2/overview": lambda: _overview_served(),
     "/api/v2/portfolio/holdings": _cio_holdings_with_evidence,
     "/api/v2/holdings/share-drift": lambda q=None: _share_drift_list(q),

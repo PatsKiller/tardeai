@@ -66,6 +66,14 @@ export const DEFAULT_TIMEOUT_MS = 8000
 const M = 'cc-deepseek-7 captures 2026-11-14 23:00-23:27Z (served R11)'
 
 export const READERS: ReaderSpec[] = [
+  {
+    path: '/api/v2/wealth/operating-header', timeoutMs: 2000, heavy: false, clock: 'none', unavailableWhen: [],
+    note: 'WealthOperatingHeader@v1: stored lightweight projection only; independent cell source clocks and staleness. Shell may read; no broker or request-time advice.',
+  },
+  {
+    path: '/api/v2/wealth/home-v2', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: false, clock: 'none', unavailableWhen: [],
+    note: 'WealthHome@v2: existing n8n Home product projection, source/clock/verdict per panel; missing never zero.',
+  },
   // ---- portfolio ----
   {
     path: '/api/v2/portfolio/holdings', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'producer',

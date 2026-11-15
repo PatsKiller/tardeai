@@ -37,6 +37,8 @@ export default function App() {
           <Route path="portfolio/performance" element={<PerformanceLive />} />
           <Route path="portfolio/income" element={<IncomeLive />} />
           <Route path="home/today" element={<HomeLive />} />
+          <Route path="home/outlook" element={<HomeLive view="outlook" />} />
+          <Route path="home/needs" element={<HomeLive view="needs" />} />
           <Route path=":group/:view" element={<V02View />} />
           {FAMILIES.filter(f => f.path !== '/').map(f => (
             <Route key={f.id} path={f.path.slice(1)} element={<FamilyPage family={f} />} />

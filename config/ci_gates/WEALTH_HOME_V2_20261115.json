@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "WEALTH_HOME_V2_20261115",
+  "files": ["tests/test_wealth_home_v2.py"],
+  "anchor": "WEALTH_HOME_V2_20261115",
+  "comment": ["ANCHOR: WEALTH_HOME_V2_20261115 — stored-only Home slice presence, financial coverage, canonical identity, protection evidence and exchange-session contract. Synthetic inputs only; no broker/provider access."]
+}

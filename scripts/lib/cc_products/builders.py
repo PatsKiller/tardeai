@@ -306,7 +306,7 @@ def build_analyst_links(ctx) -> dict:
 
 #: Per-slice staleness the read side applies with the slice's OWN clock (a fresh build never refreshes it).
 HOME_SLICE_STALE_S = {"since_close": 3 * 3600, "incidents": 180, "approvals_summary": 180, "priorities_live": 180,
-                      "status": 180, "gates": 180}
+                      "status": 180, "gates": 180, "wealth_v2": 180}
 
 
 def build_home(ctx) -> dict:
@@ -398,6 +398,12 @@ def build_home(ctx) -> dict:
 
     _slice("gates", lambda: _h.home_gates(ctx.db_query, use_cache=False), lambda b: (read_at.isoformat(), "build_time"))
 
+    # Wealth Home v2 is another slice of the EXISTING n8n Home product. Never compute on GET.
+    from scripts.lib import wealth_home_v2
+
+    _slice("wealth_v2", lambda: wealth_home_v2.collect(ctx, slices, now=read_at),
+           lambda b: (_iso(b.get("built_at")), "build_time"))
+
     live = [parse_ts(m.get("as_of")) for k, m in marks.items() if k != "since_close" and isinstance(m, dict)]
     live = [t for t in live if t is not None]
     as_of = min(live).astimezone(timezone.utc).isoformat() if live else None
@@ -427,6 +433,10 @@ def build_home(ctx) -> dict:
     reason = ("slices failed: " + ", ".join(failed)) if failed else None
     if held:
         reason += "; product clock held at the stored " + prior_as_of
+    from scripts.lib.cc_products.product_builder import CATALOGUE, limits_for
+    # Composition availability follows this existing product's market/off-hours cadence.
+    # Financial observations keep independent field clocks/thresholds inside the slice.
+    slice_limits={**HOME_SLICE_STALE_S,"wealth_v2":limits_for(CATALOGUE["home"],read_at)["stale_after_s"]}
     return {"data": {"slices": slices, "slice_clocks": {k: v for k, v in marks.items() if k != "_product"},
-                     "slice_stale_after_s": HOME_SLICE_STALE_S},
+                     "slice_stale_after_s": slice_limits},
             "as_of": as_of, "source_watermarks": marks, "status": status, "reason": reason}

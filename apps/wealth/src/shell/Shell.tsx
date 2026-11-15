@@ -21,6 +21,7 @@ import './v04.css'
 import { Icon } from '../components/Icon'
 import { DrawerProvider, useDrawer } from '../components/Drawer'
 import { PortfolioTopBar } from '../pages/portfolio/TopBar'
+import { OperatingHeader, OperatingHeaderProvider, useOperatingHeader } from './OperatingHeader'
 import { BookSnapshotProvider } from '../pages/portfolio/snapshot'
 import { NAV, groupPath, resolve, viewPath } from './nav'
 
@@ -31,7 +32,7 @@ export function Shell() {
   return (
     <DrawerProvider>
       <BookSnapshotProvider>
-        <ShellFrame />
+        <OperatingHeaderProvider><ShellFrame /></OperatingHeaderProvider>
       </BookSnapshotProvider>
     </DrawerProvider>
   )
@@ -57,6 +58,7 @@ function ShellFrame() {
   const drawer = useDrawer()
   const { pathname } = useLocation()
   const { group, view, known } = resolve(pathname)
+  const operating = useOperatingHeader()
 
   useEffect(() => {
     document.body.classList.remove('menu-open')
@@ -88,9 +90,9 @@ function ShellFrame() {
           <div className="nav-foot">One book. One decision record.<br /><br /><a href="/v3/">Command Center (classic) →</a></div>
         </aside>
         <div className="workspace">
-          <header className="topbar">
-            <PortfolioTopBar />
-            <div className="top-actions" />
+          <header className="wealth-operating-region">
+            <PortfolioTopBar controlsOnly />
+            <OperatingHeader />
           </header>
           <main className="page" id="main">
             <div className="page-heading">
@@ -105,7 +107,7 @@ function ShellFrame() {
             </div>
             <nav className="tabs" aria-label={`${group.label} tabs`}>
               {group.views.map(v => (
-                <Link key={v.id} to={viewPath(group, v)} className={v.id === view.id ? 'active' : ''} aria-current={v.id === view.id ? 'page' : undefined}>{v.label}</Link>
+                <Link key={v.id} to={viewPath(group, v)} className={v.id === view.id ? 'active' : ''} aria-current={v.id === view.id ? 'page' : undefined}>{v.label}{group.id === 'home' && v.id === 'needs' ? <span className="home-queue-count" title="Live stored review queue total"> · {operating.queueTotal ?? 'not served'}</span> : null}</Link>
               ))}
             </nav>
             {known ? <Outlet /> : <div className="note bad">Unknown Wealth address. Showing {group.label} / {view.label}.</div>}

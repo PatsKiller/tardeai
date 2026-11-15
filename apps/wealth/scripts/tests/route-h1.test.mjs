@@ -182,7 +182,10 @@ test('a NAV route still draws its group tabs', () => {
     const html = renderShell(`/${g.id}`)
     if (!html.includes('class="tabs"')) failures.push(`${g.id}: the tabs nav is gone`)
     for (const v of g.views) {
-      if (!html.includes(`>${escapeText(v.label)}</a>`)) failures.push(`${g.id}: tab ${v.label} is missing`)
+      const labels = [...html.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/g)].map(a => a[1].replace(/<[^>]*>/g, ''))
+      const expected = escapeText(v.label)
+      const present = labels.some(label => label === expected || (g.id === 'home' && v.id === 'needs' && label.startsWith(expected + ' · ')))
+      if (!present) failures.push(`${g.id}: tab ${v.label} is missing`)
     }
   }
   assert.deepEqual(failures, [], `NAV routes keep their tabs\n${failures.join('\n')}`)

@@ -92,7 +92,16 @@ for (const dir of ['src/shell', 'src/components']) {
     const body = strip(fs.readFileSync(f, 'utf8'))
     const hex = body.match(/#[0-9a-fA-F]{3,8}\b/g)
     if (hex) fail.push(`${rel}: hex colour literal ${hex.join(', ')} (use a v02/v04 var(--token))`)
-    if (dir === 'src/shell' && /\b(setInterval|setTimeout|refetchInterval)\b/.test(body)) fail.push(`${rel}: shell must not poll or schedule reads`)
+    // Operator Home-v2 mandate explicitly refreshes the lightweight operating header only.
+    // All other shell modules retain the no-polling rule; the exception may not originate heavy readers.
+    if (dir === 'src/shell' && /\b(setInterval|setTimeout|refetchInterval)\b/.test(body)) {
+      if (rel !== 'src/shell/OperatingHeader.tsx') fail.push(`${rel}: shell must not poll or schedule reads`)
+      else {
+        const reads = [...body.matchAll(/client\.get(?:<[^>]*>)?\(\s*['"]([^'"]+)/g)].map(m => m[1])
+        if (reads.length !== 1 || reads[0] !== '/api/v2/wealth/operating-header') fail.push(`${rel}: only the approved lightweight operating-header read may poll`)
+        if (!/from:\s*['"]shell['"]/.test(body) || !body.includes('next.pollAfterSeconds*1000')) fail.push(`${rel}: header polling must use the shell reader guard and server session cadence`)
+      }
+    }
   }
 }
 // Rule 5: a <table> is contained only if a non-table ancestor JSX element carries a literal

@@ -108,7 +108,8 @@ test('S3/S4 actual note.topic and account position times are used; raw account k
 test('R5/S5 rendered source labels distinguish deterministic context and CIO prose, using an existing hero class',async()=>{
  const fs=await import('node:fs')
  const page=fs.readFileSync(new URL('../../src/pages/home/HomeTodayPage.tsx',import.meta.url),'utf8')
- assert.match(page,/Desk context built from stored numbers/);assert.doesNotMatch(page,/CIO interpretation:|className="page-title"/)
+ const parts=fs.readFileSync(new URL('../../src/pages/home/HomeV2Parts.tsx',import.meta.url),'utf8')
+ assert.match(parts,/Desk context built from stored numbers/);assert.doesNotMatch(page,/CIO interpretation:|className="page-title"/)
  assert.match(page,/className="hero"/)
 })
 test('R-a served stale product renders as dated last-known, never as current', async () => {
@@ -150,14 +151,18 @@ test('R-a a current product keeps its OK path: no last-known, no stale wording',
   const ok = marketState(envelope({ data: { state: 'evaluated', stale: false, tier: 'GREEN', score: 3, mode: 'Risk-on', as_of: '2026-11-15T18:00:00Z', generated_at: '2026-11-15T18:00:01Z', _product: { status: 'OK' } } }), NOW)
   assert.equal(ok.status, 'OK'); assert.equal(ok.lastGood, null); assert.doesNotMatch(ok.reason, /not current|last stored/i)
 })
-test('R-a both Home market panels date the last-known block and drop the current-assessment wording', async () => {
+test('R-a both Home market panels consume the dated stored projection through the shared evidence renderer', async () => {
   const fs = await import('node:fs')
+  const parts = fs.readFileSync(new URL('../../src/pages/home/HomeV2Parts.tsx', import.meta.url), 'utf8')
+  const adapter = fs.readFileSync(new URL('../../src/pages/home/homeV2Adapter.ts', import.meta.url), 'utf8')
   for (const f of ['HomeNeedsPage.tsx', 'HomeOutlookPage.tsx']) {
     const src = fs.readFileSync(new URL(`../../src/pages/home/${f}`, import.meta.url), 'utf8')
-    assert.match(src, /Last stored assessment · not current/)
-    assert.match(src, /lastGood/)
-    assert.match(src, /ageLabel\(/)
+    assert.match(src, /HomePanel/)
+    assert.match(src, /HomeEvidenceButton sections=\{sections\}/)
   }
+  assert.match(parts, /<HomeClock clock=\{section\?\.clock\} source=\{section\?\.source\}/)
+  assert.match(adapter, /read\?\.data\?\?read\?\.lastGood/)
+  assert.match(adapter, /state:error\?'amber':tone\(s.state\)/)
   assert.doesNotMatch(fs.readFileSync(new URL('../../src/pages/home/HomeNeedsPage.tsx', import.meta.url), 'utf8'), /sub="Current stored nowcast/)
   assert.doesNotMatch(fs.readFileSync(new URL('../../src/pages/home/HomeOutlookPage.tsx', import.meta.url), 'utf8'), /sub="The current stored engine assessment/)
 })
@@ -216,15 +221,19 @@ test('T2 a stop item with no derivable symbol stays visible as history, never as
   assert.equal(b.history[0].label, 'Recorded stop item · source category: ')
   assert.equal(b.history[1].label, 'Recorded item (kind unrecorded) · source category: ')
 })
-test('T2 the protection panel states the empty case and files incidents under history', async () => {
+test('T2 the protection panel binds its separate stored section and keeps incident history collapsed', async () => {
   const fs = await import('node:fs')
-  const page = fs.readFileSync(new URL('../../src/pages/home/HomeTodayPage.tsx', import.meta.url), 'utf8')
-  assert.match(page, /No account-scoped protection items served/)
-  assert.match(page, /Recorded incidents and items/)
-  assert.match(page, /items\.protection\.map/)
-  assert.match(page, /items\.history\.map/)
-  assert.doesNotMatch(page, /protection-card exception/)
-  assert.doesNotMatch(page, /items\.map\(/) // the unfiltered list is gone
+  const today = fs.readFileSync(new URL('../../src/pages/home/HomeTodayPage.tsx', import.meta.url), 'utf8')
+  const needs = fs.readFileSync(new URL('../../src/pages/home/HomeNeedsPage.tsx', import.meta.url), 'utf8')
+  const parts = fs.readFileSync(new URL('../../src/pages/home/HomeV2Parts.tsx', import.meta.url), 'utf8')
+  assert.match(today, /id="stops"[^>]*section=\{sections.stops\}/)
+  assert.match(needs, /id="protect"[^>]*section=\{sections.protect\}/)
+  assert.match(needs, /recorded incidents · history, not current gaps/)
+  assert.match(needs, /useState\(false\)/)
+  assert.match(needs, /hidden=\{!history\}/)
+  assert.match(parts, /!section\?\.available\?<HomeUnavailable/)
+  assert.doesNotMatch(today, /protection-card exception/)
+  assert.doesNotMatch(today, /items\.map\(/)
 })
 test('T2 a nonzero amount below one dollar never prints as $0', async () => {
   const { money } = await import('../../src/pages/home/homeAdapter.ts')

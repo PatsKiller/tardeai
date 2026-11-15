@@ -89,7 +89,7 @@ function Value({ spec, book, scope, status }: { spec: ValueSpec; book: HoldingsB
   )
 }
 
-export function PortfolioTopBar() {
+export function PortfolioTopBar({ controlsOnly = false }: { controlsOnly?: boolean }) {
   const { props, scope, setScope } = useBookSnapshot()
   const { pathname } = useLocation()
   // Route-aware as well as state-aware: a snapshot is only shown on the route whose page read it (bookView.ts).
@@ -117,11 +117,11 @@ export function PortfolioTopBar() {
           </select>
         )}
       </label>
-      <div className="top-values">
+      {!controlsOnly ? <div className="top-values">
         {VALUES.map(v => (
           <Value key={v.id} spec={v} book={book} scope={scope} status={status} />
         ))}
-      </div>
+      </div> : null}
     </div>
   )
 }

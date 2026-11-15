@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { getJson } from '../../api/client'
 import { useDrawer } from '../../components/Drawer'
 import { Note } from '../../components/primitives'
@@ -6,34 +6,35 @@ import { StateView } from '../../components/StateView'
 import { HomeTodayPage } from './HomeTodayPage'
 import { HomeNeedsPage } from './HomeNeedsPage'
 import { HomeOutlookPage } from './HomeOutlookPage'
-import { ageLabel, cioContextModel, homeToday, marketState, overviewModel, reviewModel, record, rows, safeText, state, text } from './homeAdapter'
-import type { Read, Row } from './homeAdapter'
+import { ageLabel, cioContextModel, state } from './homeAdapter'
+import type { Read } from './homeAdapter'
+import { homeV2Model } from './homeV2Adapter'
+import { useOperatingHeader } from '../../shell/OperatingHeader'
 
-export function useReads(paths: Record<string, string>) {
-  const [reads, setReads] = useState<Record<string, Read>>({})
-  const key = JSON.stringify(paths)
-  useEffect(() => {
-    const ctl = new AbortController()
-    setReads({})
-    for (const [name, path] of Object.entries(paths)) void getJson<unknown>(path, ctl.signal).then(read => {
-      if (!ctl.signal.aborted) setReads(previous => ({ ...previous, [name]: read }))
-    })
-    return () => ctl.abort()
-  }, [key])
-  return reads
+export function useReads(paths:Record<string,string>,refreshSeconds?:number) {
+ const [reads,setReads]=useState<Record<string,Read>>({}),key=JSON.stringify(paths)
+ useEffect(()=>{
+  const ctl=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined
+  setReads({})
+  async function refresh(){
+   await Promise.allSettled(Object.entries(paths).map(async([name,path])=>{
+    const read=await getJson<unknown>(path,ctl.signal)
+    if(!ctl.signal.aborted)setReads(previous=>({...previous,[name]:read}))
+   }))
+   if(refreshSeconds&&!ctl.signal.aborted)timer=setTimeout(()=>void refresh(),refreshSeconds*1000)
+  }
+  void refresh()
+  return()=>{ctl.abort();if(timer!==undefined)clearTimeout(timer)}
+ },[key,refreshSeconds])
+ return reads
 }
-function CioContext({ now, labels }: { now: number; labels: Map<string,string> }) {
- const reads=useReads({cio:'/api/v2/home/cio-card'}), s=state(reads.cio??null,r=>cioContextModel(r,labels),now)
- return <StateView state={s}>{c=><><Note>Read-only stored CIO context · advisory only. Generated {c.built||'unknown'}; this is a build time.</Note><h3>Advice</h3>{c.eligible?c.facts.length?c.facts.map((f,i)=><section key={i}><h4>{f.label}</h4><p>{f.value}</p><p>{ageLabel(f.at,now)}</p></section>):<p>No stored advice text supplied.</p>:<p>Current advice unavailable.</p>}<p>{c.reason}</p><h3>Inputs &amp; clocks</h3>{c.inputs.map((v,i)=><section key={i}><h4>{v.name}</h4><p>{v.present?'Source supplied':'Source presence unproven'} · {v.stale?'Stale':'Health unproven'} · {v.role}</p><p>{ageLabel(v.at,now)}</p></section>)}<h3>Recorded notes</h3>{c.notes.length?c.notes.map((n,i)=><section key={i}><h4>{n.title||'Recorded note'}</h4><p>{n.text}</p><p>{ageLabel(n.at,now)}</p></section>):<p>No comparison notes supplied.</p>}<p>Protection records do not establish active protection.</p></>}</StateView>
+function CioContext({now,labels}:{now:number;labels:Map<string,string>}) {
+ const reads=useReads({cio:'/api/v2/home/cio-card'}),s=state(reads.cio??null,r=>cioContextModel(r,labels),now)
+ return <StateView state={s}>{c=><><Note>Read-only stored CIO context · advisory only. Generated {c.built||'unknown'}; this is a build time.</Note><h3>Advice</h3>{c.eligible?c.facts.length?c.facts.map((f,i)=><section key={i}><h4>{f.label}</h4><p>{f.value}</p><p>{ageLabel(f.at,now)}</p></section>):<p>No stored advice text supplied.</p>:<p>Current advice unavailable.</p>}<p>{c.reason}</p><h3>Inputs &amp; clocks</h3>{c.inputs.map((v,i)=><section key={i}><h4>{v.name}</h4><p>{v.present?'Source supplied':'Source presence unproven'} · {v.stale?'Stale':'Health unproven'} · {v.role}</p><p>{ageLabel(v.at,now)}</p></section>)}<h3>Recorded notes</h3>{c.notes.length?c.notes.map((n,i)=><section key={i}><h4>{n.title||'Recorded note'}</h4><p>{n.text}</p><p>{ageLabel(n.at,now)}</p></section>):<p>No comparison notes supplied.</p>}<p>Protection records do not establish active protection. Conflicting dated inputs remain separate from a newly synthesized answer.</p></>}</StateView>
 }
-const TODAY = { overview: '/api/v2/overview', snapshot: '/api/v2/home/since-close', movers: '/api/v2/market-movers', priorities: '/api/v2/home/priorities-live' }
-const NEEDS = { queue: '/api/v2/home/do-now', market: '/api/v2/market-risk/latest' }
-const OUTLOOK = { overview: '/api/v2/overview', market: '/api/v2/market-risk/latest' }
-export function HomeLive({ view = 'today' }: { view?: 'today' | 'needs' | 'outlook' }) {
-  const reads = useReads(view === 'today' ? TODAY : view === 'needs' ? NEEDS : OUTLOOK), drawer = useDrawer()
-  const now = Date.now()
-  const model = useMemo(() => homeToday(reads, now), [reads, now])
-  if (view === 'needs') return <HomeNeedsPage queue={state(reads.queue ?? null, reviewModel, now, undefined, q => q.items.length === 0)} market={marketState(reads.market ?? null, now)} now={now} />
-  if (view === 'outlook') return <HomeOutlookPage market={marketState(reads.market ?? null, now)} overview={state(reads.overview ?? null, overviewModel, now, r => record(record(r.clock_provenance).quote).as_of, o => o.value === null)} now={now} />
-  return <HomeTodayPage model={model} now={now} cio={() => drawer.open({ title: 'CIO context', body: <CioContext now={Date.now()} labels={model.labels} /> })} />
+const DASHBOARD={dashboard:'/api/v2/wealth/home-v2'}
+export function HomeLive({view='today'}:{view?:'today'|'needs'|'outlook'}) {
+ const header=useOperatingHeader(),reads=useReads(DASHBOARD,header.pollAfterSeconds),drawer=useDrawer(),model=homeV2Model(reads.dashboard??null)
+ const now=Date.now()
+ return <>{model.error?<Note>Home stored read failed: {model.error}. Any retained values below are last known, with their original source clocks.</Note>:null}{view==='needs'?<HomeNeedsPage sections={model.needs} now={now}/>:view==='outlook'?<HomeOutlookPage sections={model.outlook} now={now}/>:<HomeTodayPage sections={model.today} now={now} cio={()=>drawer.open({title:'CIO context · dated evidence',body:<CioContext now={Date.now()} labels={model.labels}/>})}/>}</>
 }

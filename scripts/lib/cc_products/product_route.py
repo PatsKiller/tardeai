@@ -199,9 +199,10 @@ def serve_analyst_links(query=None, *, now=None, **io) -> dict:
 
 # ------------------------------------------------------------------------------------------------ home
 
-HOME_SLICES = ("since_close", "incidents", "approvals_summary", "priorities_live", "status", "gates")
+HOME_SLICES = ("since_close", "incidents", "approvals_summary", "priorities_live", "status", "gates", "wealth_v2")
 
 _SLICE_UNKNOWN = {
+    "wealth_v2": lambda why: {"state": "UNKNOWN", "reason": why},
     "since_close": lambda why: {"status": "UNKNOWN", "reason": why},
     "incidents": lambda why: {"schema": "HomeIncidents@v1", "state": "UNKNOWN", "reason": why},
     "priorities_live": lambda why: {"schema": "HomePrioritiesLive@v1", "state": "UNKNOWN", "reason": why},
