@@ -1,0 +1,105 @@
+// Envelope → page props for the live holdings page.
+//
+// The shell's `deriveRenderState` decides whether the read is current; this module decides what the page shows
+// for each verdict, and states it. Pure: no React, no fetch — the tests drive it with envelopes built by hand.
+//
+// The rule that keeps this honest: a book that is not current is NEVER passed as current. ERROR with a last good
+// body and UNKNOWN both hand the page a book whose `freshness.stale` is forced true and whose age is the age of
+// the read it came from, plus a notice that says so in one sentence. The numbers stay served; only their claim to
+// be today is withdrawn.
+
+import type { Envelope } from '../../api/client'
+import { deriveRenderState } from '../../components/renderState'
+import { adaptHoldings } from './adapter'
+import type { HoldingsBook } from './contract'
+
+export const HOLDINGS_PATH = '/api/v2/portfolio/holdings'
+
+export interface HoldingsProps {
+  book: HoldingsBook | null
+  loading: boolean
+  error: string | null
+  /** A one-line statement of what the reader is NOT claiming (last good, not current, health unproven). */
+  notice: string | null
+}
+
+/** "Empty" for this payload is a holdings list the producer served with nothing in it — only then is it EMPTY. */
+function isEmptyBody(body: unknown): boolean {
+  if (body === null || typeof body !== 'object') return false
+  const d = (body as { data?: unknown }).data
+  if (d === null || typeof d !== 'object') return false
+  const h = (d as { holdings?: unknown }).holdings
+  return Array.isArray(h) && h.length === 0
+}
+
+function ageText(seconds: number | null): string {
+  if (seconds === null) return 'of unknown age'
+  if (seconds < 90) return `${Math.round(seconds)} s old`
+  if (seconds < 5400) return `${Math.round(seconds / 60)} min old`
+  return `${Math.round(seconds / 3600)} h old`
+}
+
+/** Withdraw the book's claim to be current, and say why in the note the page prints. */
+function asLastKnown(book: HoldingsBook, ageSeconds: number | null, why: string): HoldingsBook {
+  return {
+    ...book,
+    freshness: {
+      ...book.freshness,
+      ageSeconds: ageSeconds ?? book.freshness.ageSeconds,
+      stale: true,
+    },
+    coverageNote: `${book.coverageNote} ${why}`,
+  }
+}
+
+const none = (p: Partial<HoldingsProps>): HoldingsProps => ({ book: null, loading: false, error: null, notice: null, ...p })
+
+export function holdingsProps(env: Envelope<unknown> | null, now: number): HoldingsProps {
+  if (env === null) return none({ loading: true })
+  const st = deriveRenderState<unknown>({ envelope: env, now, isEmpty: isEmptyBody })
+
+  if (st.status === 'LOADING') return none({ loading: true })
+
+  if (st.status === 'ERROR') {
+    // The client keeps the last body it read. Showing it is allowed only with its age, labelled: a failed read is
+    // never a current book.
+    if (st.lastGood !== null) {
+      const lg = adaptHoldings(st.lastGood)
+      if (lg.book !== null) {
+        const why = `This is the last good read (${ageText(st.lastGoodAgeSeconds)}); the current read failed: ${st.reason}.`
+        return none({ book: asLastKnown(lg.book, st.lastGoodAgeSeconds, why), notice: why })
+      }
+    }
+    return none({ error: st.reason })
+  }
+
+  // `deriveRenderState` returns UNKNOWN from a rule with `data: null` — the body was fine, what is missing is the
+  // proof it is current — so the body comes from the envelope in that case. (`ERROR` and `LOADING` never reach here.)
+  const body = st.data ?? env.data
+  if (body === null) return none({ error: 'the read returned no body' })
+  const res = adaptHoldings(body)
+  if (res.book === null) return none({ error: res.error ?? 'the payload is not a holdings book' })
+
+  if (st.status === 'UNKNOWN') {
+    // The body is there; what is missing is the proof that it is current. Show it as last known, never as current.
+    const why = `Not current: ${st.reason}. Every number below is the last served value, not a current one.`
+    return none({ book: asLastKnown(res.book, null, why), notice: why })
+  }
+
+  // The shell's registry refuses a rule on a root path (`_swr` sits BESIDE `data`, not inside it), so the SWR
+  // layer's own verdict arrives through the adapter: the book's freshness. A stale body is not current, whatever
+  // the producer's verdict says about the positions inside it.
+  if (res.book.freshness.stale) {
+    // Three different facts, three different sentences. An ABSENT block must not be described as one that reported
+    // staleness, and a block with no served age must not be aged. Both are the R1 honesty defect, in the notice text.
+    const f = res.book.freshness
+    const why = !f.blockPresent
+      ? 'Not current: the response carries no freshness block; this body cannot be shown as current. Every number below is the last served value, of unknown age.'
+      : f.ageSeconds === null
+        ? `Not current: the freshness block reports this body stale, and the age is not served (limit ${f.staleAfterSeconds} s). Every number below is the last served value.`
+        : `Not current: the freshness block reports this body stale (age ${f.ageSeconds} s, limit ${f.staleAfterSeconds} s). Every number below is the last served value.`
+    return none({ book: asLastKnown(res.book, null, why), notice: why })
+  }
+
+  return none({ book: res.book, notice: st.healthUnproven })
+}

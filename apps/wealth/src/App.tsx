@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { Shell } from './shell/Shell'
 import { FamilyPage } from './pages/FamilyPage'
+import { HoldingsLive } from './pages/portfolio/HoldingsLive'
 import { FAMILIES } from './routes/families'
 import { NAV } from './shell/nav'
 
@@ -21,6 +22,9 @@ export default function App() {
       <Routes>
         <Route element={<Shell />}>
           <Route index element={<Navigate to="/home/today" replace />} />
+          {/* The one v02 view live on served data. A static path ranks above `:group/:view`, and it renders inside
+              Shell's known-address gate like every other view. */}
+          <Route path="portfolio/holdings" element={<HoldingsLive />} />
           <Route path=":group/:view" element={<V02View />} />
           {FAMILIES.filter(f => f.path !== '/').map(f => (
             <Route key={f.id} path={f.path.slice(1)} element={<FamilyPage family={f} />} />

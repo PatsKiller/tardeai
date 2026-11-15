@@ -1,0 +1,333 @@
+// The adapter: GET /api/v2/portfolio/holdings (served, R13 3ac0b4058) → portfolio-holdings@2.
+//
+// It is a PURE function over the payload's `data` object and a `now` in ms. It never fetches, never writes, never
+// throws on a malformed payload (a render must not crash), and never computes a value the wire did not serve —
+// with exactly one stated exception, `belowFloor` (C2), which the wire does not mark and which the contract
+// defines here. Everything else is a rename, a unit label, or an honest `null` with the reason recorded.
+//
+// Why some contract fields are null on this read, stated rather than hidden (see README §"Adapter gaps"):
+//   * `fib` — the wire serves a ladder but NO clock for it; FibLadder.window.asOf is required, and using the quote
+//     clock would label a clock the producer never declared for the ladder. Reported absent, never mislabelled.
+//   * `valuation` — valuation-assessment@1 is not wired on this route; the row's bare `pe`/`forward_pe` numbers
+//     are NOT an assessment, and turning one into a status would be the exact claim that contract forbids.
+//   * `accounts[].cashUsd` — the reconciliation block serves per-account ending equity, not per-account cash.
+//
+// The two wire shapes that are easy to get wrong, both pinned by a planted-payload test:
+//   1. `scope_coverage.excluded` is the "listed, not counted" population (under the floor), NOT rows removed
+//      before the counters. Removals have to be recovered as `priceable.row_count − rendered_rows` and labelled
+//      as a rule the producer does not state (C3).
+//   2. `priceableRows` is `scope_coverage.priceable.row_count` (33), never `scope_coverage.rows_read` (30).
+//      Taking rows_read renders a 0-row gap for a book that read 33 and rendered 30.
+
+import type {
+  AccountTotal, BookMeasure, BookSource, ClockProvenance, DeclaredClock, FibLadder, HoldingsBook,
+  HoldingsCounts, HoldingsFreshness, HoldingsRow, HoldingsSession, ListedNotCounted, Population,
+  PopulationExclusion, Protection, ProtectionState, RowKind,
+} from './contract'
+import { PORTFOLIO_HOLDINGS_CONTRACT_VERSION } from './contract'
+
+export interface AdaptResult {
+  book: HoldingsBook | null
+  /** Non-null when the payload cannot be a book. The page then shows ERROR, not a table of nulls. */
+  error: string | null
+}
+
+type Json = Record<string, unknown>
+
+const isObj = (v: unknown): v is Json => v !== null && typeof v === 'object' && !Array.isArray(v)
+const asObj = (v: unknown): Json => (isObj(v) ? v : {})
+const asArr = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
+const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null)
+
+/** A clock role from `clock_provenance`. `position_list` is the DOCUMENT build clock — see contract's trap. */
+const CLOCK_ROLES: { key: string; role: ClockProvenance['role']; build: boolean }[] = [
+  { key: 'positions', role: 'POSITIONS', build: false },
+  { key: 'position_list', role: 'BUILD', build: true },
+  { key: 'quote', role: 'QUOTE', build: false },
+  { key: 'valuation', role: 'VALUATION', build: false },
+]
+
+function clocksFrom(wire: Json): ClockProvenance[] {
+  const cp = asObj(wire.clock_provenance)
+  const out: ClockProvenance[] = []
+  for (const { key, role, build } of CLOCK_ROLES) {
+    const c = asObj(cp[key])
+    const mixed = typeof c.mixed === 'boolean' ? c.mixed : undefined
+    const unknownRows = num(c.unknown_rows)
+    out.push({
+      role,
+      at: str(c.as_of),
+      source: str(c.source_field) ?? key,
+      isBuildClock: build,
+      ...(mixed === undefined ? {} : { mixed }),
+      ...(unknownRows === null ? {} : { unknownRows: unknownRows as number }),
+    })
+  }
+  return out
+}
+
+/** Wire protection is per row but serves no stop price: `stops_read` publishes counts only. */
+const NEXT_STEP: Record<string, string> = {
+  'No Stop Read': 'read this account’s working orders at the broker; until then protection is UNKNOWN',
+  'Not Protected': 'place a stop if this position is meant to be protected',
+  'No position': 'none — the broker holds no position for this row',
+}
+
+function protectionFrom(wire: Json, state: string | null): Protection | null {
+  if (state === 'EXEMPT') return null
+  const p = asObj(wire.protection)
+  const wireState = str(p.state) ?? state
+  const mapped: ProtectionState =
+    wireState === 'PROTECTED' ? 'PROTECTED' : wireState === 'GAP' || wireState === 'NOT_PROTECTED' ? 'GAP' : 'UNKNOWN'
+  const cause = str(p.cause)
+  const stops = asObj(wire.stops_read)
+  return {
+    state: mapped,
+    // The wire carries no per-row resting stop price on this route (stops_read publishes counts only).
+    stop: num(p.stop),
+    basis: str(p.source) ?? null,
+    asOf: str(p.as_of),
+    stale: stops.stale === true,
+    nextStep: (cause !== null ? NEXT_STEP[cause] : undefined) ?? (mapped === 'PROTECTED'
+      ? 'none — a resting stop is served for this row'
+      : 'read this account’s working orders; the route serves no per-row stop price'),
+    reason: str(p.reason) ?? `producer state ${wireState ?? 'missing'}`,
+  }
+}
+
+function rowFrom(wire: Json, floorUsd: number | null): HoldingsRow | null {
+  const symbol = str(wire.symbol)
+  if (symbol === null) return null
+  const isCash = wire.is_cash === true || str(wire.asset_type) === 'CASH'
+  const kind: RowKind = isCash ? 'CASH' : 'SECURITY'
+  const shares = num(wire.shares) ?? num(wire.quantity) ?? 0
+  const marketValue = num(wire.market_value)
+  const basisTotal = num(wire.cost_basis_total)
+  const avgServed = num(wire.avg_cost)
+  // avgCost is remaining basis / remaining shares (contract). Prefer the served per-share basis; fall back to the
+  // served total divided by the served shares. A 0.0 from a row that declares NO basis source is "no basis served",
+  // not a $0.00 cost — the wire uses 0.0 for both, and only `cost_basis_source` tells them apart.
+  const hasBasisSource = str(wire.cost_basis_source) !== null
+  const avgCost = avgServed !== null && (avgServed !== 0 || hasBasisSource)
+    ? avgServed
+    : basisTotal !== null && basisTotal !== 0 && shares > 0
+      ? basisTotal / shares
+      : null
+  const accountKey = str(wire.account_key) ?? str(wire.account_id) ?? str(wire.account) ?? ''
+  return {
+    accountKey,
+    accountLabel: str(wire.account_label) ?? str(wire.account) ?? accountKey,
+    symbol,
+    name: str(wire.name) ?? str(wire.company) ?? symbol,
+    kind,
+    shares,
+    price: num(wire.price) ?? num(wire.current_price),
+    priceAsOf: str(wire.price_as_of),
+    avgCost,
+    marketValue,
+    gainLoss: num(wire.gain_loss),
+    gainLossPct: num(wire.gain_loss_pct),
+    // Percent of the cash-inclusive book, served. A missing weight is 0 only because the contract's field is a
+    // number; it is counted as a malformed cell so the coverage note can say so.
+    portfolioPct: num(wire.portfolio_pct) ?? 0,
+    dayChange: num(wire.day_change),
+    dayChangePct: num(wire.day_change_pct),
+    marketCapB: num(wire.market_cap_b),
+    yieldPct: num(wire.yield_pct),
+    // C2: the one adapter-DERIVED field. An unpriced row (null) is never "below the floor": unknown is not under.
+    belowFloor: marketValue !== null && floorUsd !== null && marketValue < floorUsd,
+    worthless: kind === 'SECURITY' && marketValue === 0,
+    protection: kind === 'CASH' ? null : protectionFrom(wire, str(wire.protection_state)),
+    // Served but clockless (README §Adapter gaps): reported absent rather than given a clock it does not have.
+    fib: null as FibLadder | null,
+    valuation: null,
+  }
+}
+
+function measuresFrom(wire: Json): BookMeasure[] {
+  const block = asObj(asObj(wire.measures).measures)
+  const metrics = asArr(wire.metrics).filter(isObj)
+  const out: BookMeasure[] = []
+  for (const id of ['account_value', 'price_move_estimate', 'account_value_change_1d', 'verified_daily_pnl'] as const) {
+    const m = asObj(block[id])
+    const metric = metrics.find(x => str(x.metric_id) === `portfolio.${id}`)
+    const status = str(m.status) === 'MEASURED' ? 'MEASURED' : 'UNKNOWN'
+    const verified = metric !== undefined && metric.verified === true
+    const receiptId = metric !== undefined ? str(metric.receipt) : null
+    const asOf =
+      str(m.as_of) ??
+      str(asObj(m.end).as_of) ??
+      str(asObj(m.start).as_of) ??
+      (status === 'MEASURED' ? str(asObj(wire.measures).as_of) : null)
+    out.push({
+      id,
+      label: str(m.label) ?? id,
+      // account_value publishes `basis` and no `definition`; the contract quotes the basis there (C1.2).
+      definition: str(m.definition) ?? str(m.basis) ?? '',
+      status,
+      valueUsd: num(m.value),
+      verified,
+      receiptId,
+      asOf,
+      reason:
+        status === 'UNKNOWN'
+          ? (str(asObj(m.gap).reason) ?? str(m.reason) ?? `the producer reports ${str(m.status) ?? 'no status'}`)
+          : verified
+            ? ''
+            : 'measured, not verified — the ledger publishes no receipt for this measure',
+    })
+  }
+  return out
+}
+
+function populationFrom(wire: Json, renderedRows: number, coverage: string[]): Population {
+  const sc = asObj(wire.scope_coverage)
+  const priceable = asObj(sc.priceable)
+  const priceableRows = num(priceable.row_count) ?? renderedRows
+  const excluded: PopulationExclusion[] = []
+  const gap = priceableRows - renderedRows
+  if (gap > 0) {
+    excluded.push({
+      kind: 'OTHER',
+      label: 'read and not rendered',
+      count: gap,
+      rule: 'the producer publishes the gap (scope_coverage.priceable.row_count − rendered_rows) but no rule for it: scope_coverage.filtered_rows is null and findings is empty',
+    })
+  } else if (gap < 0) {
+    coverage.push(`rendered ${renderedRows} rows from a population the producer sized at ${priceableRows}`)
+  }
+  const listedNotCounted: ListedNotCounted[] = asArr(sc.excluded).filter(isObj).map(e => ({
+    reason: str(e.reason) ?? 'listed, not counted',
+    count: num(e.count) ?? 0,
+    scope: str(e.scope) ?? 'unstated',
+  }))
+  return { priceableRows, renderedRows, excluded, listedNotCounted, floorUsd: num(sc.min_position_usd) }
+}
+
+function countsFrom(wire: Json, rows: HoldingsRow[], coverage: string[]): HoldingsCounts {
+  const scopes = asObj(asObj(wire.scope_coverage).scopes)
+  const cash = rows.filter(r => r.kind === 'CASH').length
+  const nonCash = rows.length - cash
+  const allRows = num(scopes['holdings.all_rows']) ?? rows.length
+  if (allRows !== rows.length) coverage.push(`the producer counts ${allRows} rows and the payload lists ${rows.length}`)
+  return {
+    allRows,
+    nonCash: num(scopes['holdings.non_cash']) ?? nonCash,
+    cash: num(scopes['holdings.cash']) ?? cash,
+    nonCashOverFloor: num(scopes['holdings.non_cash_over_100']) ?? 0,
+    heldUnderFloor: num(scopes['holdings.held_under_100']) ?? 0,
+    primaryScopeLabel: 'holdings · non-cash rows priced at or above the notional floor',
+  }
+}
+
+function sessionFrom(wire: Json): HoldingsSession {
+  const labelled = asArr(wire.holdings).filter(isObj).map(r => str(r.market_session)).filter((s): s is string => s !== null)
+  const distinct = Array.from(new Set(labelled))
+  if (distinct.length === 1 && asArr(wire.holdings).length === labelled.length) {
+    return { status: 'KNOWN', phase: distinct[0], latestOpenSession: null, asOf: null, source: 'holdings[].market_session', reason: '' }
+  }
+  const total = asArr(wire.holdings).length
+  return {
+    status: 'UNKNOWN',
+    phase: null,
+    latestOpenSession: null,
+    asOf: null,
+    source: 'holdings[].market_session',
+    reason: labelled.length === 0
+      ? `no row declares a market session (${total} rows): the route publishes no session field`
+      : `${labelled.length} of ${total} rows carry a session label (${distinct.join(', ')}): one row's label is not the book's session`,
+  }
+}
+
+function accountsFrom(wire: Json): AccountTotal[] | null {
+  const rec = asObj(wire.reconciliation)
+  const list = asArr(rec.accounts).filter(isObj)
+  if (list.length === 0) return null
+  return list.map(a => {
+    const end = asObj(a.end_equity)
+    const key = str(a.account) ?? ''
+    return {
+      accountKey: key,
+      accountLabel: str(a.account_label) ?? key,
+      totalUsd: num(end.value_usd),
+      // The reconciliation serves ending equity per account, not cash per account; null, never 0.
+      cashUsd: null,
+      asOf: str(end.as_of),
+      source: str(end.source) ?? 'reconciliation.accounts[].end_equity',
+    }
+  })
+}
+
+function dayPnlClock(wire: Json): DeclaredClock {
+  const d = asObj(asObj(wire.clock_provenance).day_pnl)
+  const at = str(d.as_of)
+  if (str(d.status) === 'KNOWN' && at !== null) return { status: 'KNOWN', at, reason: '' }
+  return { status: 'UNKNOWN', at: null, reason: str(asObj(d.gap).reason) ?? 'the producer declares no day-change clock' }
+}
+
+/**
+ * Map the RESPONSE BODY of GET /api/v2/portfolio/holdings to a book.
+ *
+ * The body is `{ ok, data: {...}, _swr: {...} }`: the book lives under `data`, and its freshness annotation
+ * (`_swr`) sits BESIDE it, not inside it. The outer `ok` is read for nothing — it is HTTP-level, and the shell's
+ * RenderState decides availability from the declared nested paths (this route publishes no `data.ok`).
+ */
+export function adaptHoldings(body: unknown): AdaptResult {
+  const root = asObj(body)
+  const wire = isObj(root.data) ? root.data : {}
+  if (!isObj(root.data)) return { book: null, error: 'the response carries no data block' }
+  const holdings = asArr(wire.holdings)
+  const coverage: string[] = []
+  const sc = asObj(wire.scope_coverage)
+  const floorUsd = num(sc.min_position_usd)
+  const rows: HoldingsRow[] = []
+  let malformed = 0
+  for (const h of holdings) {
+    const row = isObj(h) ? rowFrom(h, floorUsd) : null
+    if (row === null) malformed += 1
+    else rows.push(row)
+  }
+  if (malformed > 0) coverage.push(`${malformed} listed row(s) carried no symbol and are not shown`)
+  const population = populationFrom(wire, rows.length, coverage)
+  const counts = countsFrom(wire, rows, coverage)
+  const positions = asObj(asObj(wire.clock_provenance).positions)
+  const asOf = str(asObj(wire.truth).as_of) ?? str(positions.as_of) ?? str(wire.as_of)
+  if (asOf === null) return { book: null, error: 'the payload declares no readable as_of' }
+  const swr = asObj(root._swr)
+  const staleAfterHours = num(asObj(asObj(asObj(wire.evidence).portfolio).clocks).stale_after_hours)
+  const freshness: HoldingsFreshness = {
+    // Served or null — never 0. `age_s: 0` would be a served age, and a block that serves none must not be aged.
+    ageSeconds: num(swr.age_s),
+    staleAfterSeconds: staleAfterHours !== null ? Math.round(staleAfterHours * 3600) : 0,
+    // Only a PRESENT `stale: false` is fresh (missing boolean is never true). Absent block: the read cannot prove
+    // itself current, so it is not current, and the page must say the block was absent rather than that it reported.
+    stale: isObj(root._swr) ? swr.stale !== false : true,
+    blockPresent: isObj(root._swr),
+  }
+  if (!isObj(root._swr)) coverage.push('the response carries no _swr block: freshness is treated as stale')
+
+  const note = [
+    `${rows.length} rows as served: ${counts.cash} cash and ${counts.nonCash} non-cash.`,
+    `The producer counts ${counts.nonCashOverFloor} non-cash rows at or above the ${population.floorUsd ?? 'unstated'} floor and ${counts.heldUnderFloor} below it; the rows below the floor are listed and outside the counted scope, not omitted.`,
+    ...coverage,
+  ].join(' ')
+  const source: BookSource = 'LIVE'
+  const book: HoldingsBook = {
+    contract: PORTFOLIO_HOLDINGS_CONTRACT_VERSION,
+    source,
+    asOf,
+    asOfClock: 'POSITIONS',
+    clocks: clocksFrom(wire),
+    rows,
+    counts,
+    population,
+    accounts: accountsFrom(wire),
+    measures: measuresFrom(wire),
+    session: sessionFrom(wire),
+    freshness,
+    dayPnl: dayPnlClock(wire),
+    coverageNote: note,
+  }
+  return { book, error: null }
+}
