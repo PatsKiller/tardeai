@@ -4,6 +4,7 @@ import { FamilyPage } from './pages/FamilyPage'
 import { HoldingsLive } from './pages/portfolio/HoldingsLive'
 import { AllocationLive } from './pages/allocation/AllocationLive'
 import { FundamentalsLive } from './pages/fundamentals/FundamentalsLive'
+import { PerformanceLive } from './pages/portfolio/PerformanceLive'
 import { FAMILIES } from './routes/families'
 import { NAV } from './shell/nav'
 
@@ -31,6 +32,7 @@ export default function App() {
               already a NAV view (shell/nav.ts), so the address needs no other change. */}
           <Route path="portfolio/allocation" element={<AllocationLive />} />
           <Route path="portfolio/fundamentals" element={<FundamentalsLive />} />
+          <Route path="portfolio/performance" element={<PerformanceLive />} />
           <Route path=":group/:view" element={<V02View />} />
           {FAMILIES.filter(f => f.path !== '/').map(f => (
             <Route key={f.id} path={f.path.slice(1)} element={<FamilyPage family={f} />} />
