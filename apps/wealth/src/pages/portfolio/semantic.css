@@ -21,6 +21,14 @@
 /* Warnings carried inline, in text that is not a note box. */
 .text-warn { color: var(--gold); }
 
+/* The session strip sets its own ink on `strong` (`.session strong`), which outranks a bare class. The strip's
+ * own signed value and its UNKNOWN label must still carry the policy, so the tone is restated at that
+ * specificity — measured 2026-11-15T1606Z: without this the header was red and the strip stayed white. */
+.session strong.money-gain { color: var(--green); }
+.session strong.money-loss { color: var(--red); }
+.session strong.money-unknown { color: var(--muted); }
+.session strong.text-warn { color: var(--gold); }
+
 /* Ticker and company name: the symbol is the row's handle, so it leads and is stronger than its caption. */
 .ticker-symbol { font-size: 13px; font-weight: 700; letter-spacing: .2px; }
 .ticker-name { color: var(--ink); font-weight: 500; }
