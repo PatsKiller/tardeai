@@ -140,7 +140,7 @@ export function adaptPerformance(body: unknown, nowMs: number, accountKey: strin
       const eligibility = obj(raw.eligibility)
       const eligible = eligibility.status === 'eligible' && text(eligibility.source) !== null
       const label = accountDisplayLabel(key, labels.get(key) ?? null, text(raw.account_label) ?? text(raw.display_label))
-      return { key, availablePeriods: WINDOWS.filter(([, period]) => own(periods, period)).map(([label]) => label), label: label === key ? null : label,
+      return { key, sourceOrdinal: keys.indexOf(key) + 1, availablePeriods: WINDOWS.filter(([, period]) => own(periods, period)).map(([label]) => label), label: label === key ? null : label,
         scopeNote: eligible ? 'Source-declared eligible account.'
           : 'Account eligibility unknown; no real-account scope inferred.',
         periods: Object.fromEntries(WINDOWS.map(([label, period]) => [label, observation(obj(periods[period]), root, period, nowMs, raw)])) }
