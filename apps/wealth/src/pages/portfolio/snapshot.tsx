@@ -15,6 +15,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from 'react'
 import type { HoldingsProps } from './liveProps'
 import type { Scope } from './scope'
+import { PerformanceScopeProvider } from './performanceScope'
 
 export interface SnapshotApi {
   /** What the owning page has published; null before its first answer (or on a route that does not read). */
@@ -53,7 +54,7 @@ export function BookSnapshotProvider({ children }: { children: ReactNode }) {
   }, [book, scope])
 
   const value = useMemo<SnapshotApi>(() => ({ props, publish, clear, scope, setScope }), [props, publish, clear, scope])
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
+  return <PerformanceScopeProvider><Ctx.Provider value={value}>{children}</Ctx.Provider></PerformanceScopeProvider>
 }
 
 /** For the shell's top bar: always inside the provider. */

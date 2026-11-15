@@ -189,6 +189,39 @@ export const READERS: ReaderSpec[] = [
     unavailableWhen: [{ at: 'data.ok', equals: false }],
     note: `${M}: 5,745 B; data.as_of is request time; pools under data.pools. open_event_remaining_usd is prospective proceeds: never added to visible cash.`,
   },
+  // ---- home today (codex-remote 624a790b8; rows per READY 191542 + REWORK 194737; shapes checked live 2026-11-15 15:02 ET) ----
+  {
+    path: '/api/v2/overview', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'producer',
+    asOfAt: 'data.clock_provenance.quote.as_of', unavailableWhen: [],
+    note: 'Home today household header: canonical PortfolioTotal@v1 (portfolio_total.value). Quote clock is clock_provenance.quote.as_of; valuation build (data.as_of) is separate. Health unknown.',
+  },
+  {
+    path: '/api/v2/home/since-close', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'producer',
+    asOfAt: 'data.quotes_as_of',
+    unavailableWhen: [{ at: 'data.status', notEquals: 'ok' }, { at: 'data.freshness.stale', staleFlag: true }],
+    note: 'Stored since-close snapshot. Clock = its quotes_as_of (served at data.quotes_as_of, not data.snapshot.* as first requested), never generated_at/as_of_now. A persisted stale:false is not a lifetime grant; no product expiry field exists here, so no maxAgeHours is invented (follow-up: versioned expiry in the since-close product contract).',
+  },
+  {
+    path: '/api/v2/market-movers', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'producer',
+    asOfAt: 'data.captured_at', unavailableWhen: [{ at: 'data.ok', equals: false }],
+    note: 'Top-movers SAMPLE only, never market breadth.',
+  },
+  {
+    path: '/api/v2/home/priorities-live', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'request-time',
+    unavailableWhen: [],
+    note: 'served_at is request time, not input freshness. PARTIAL is meaningful live output: the adapter keeps PARTIAL items and rejects explicit UNKNOWN/UNAVAILABLE/errors/stale/greyed itself (REWORK 194737 R6). A recorded review does not prove active protection.',
+  },
+  {
+    path: '/api/v2/home/cio-card', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'none',
+    unavailableWhen: [{ at: 'data.advisory_only', notEquals: true }],
+    note: 'Stored CIO card, on-demand drawer. generated_at is build only; input/fact clocks are shown separately by the page.',
+  },
+  // ---- income (codex-remote 0ec470167; READY 193657) ----
+  {
+    path: '/api/v2/dividends', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'none',
+    unavailableWhen: [],
+    note: 'Forecast-only dividend calendar (build_dividend_calendar). Unzoned build stamp shown literally; source age unknown. Adapter rejects nested data.ok false.',
+  },
 ]
 
 export function specFor(path: string, registry: ReaderSpec[] = READERS): ReaderSpec {
