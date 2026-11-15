@@ -97,7 +97,8 @@ export function workspace(book:HoldingsBook,f:Filters) {
  const detractors=[...movers].filter(g=>g.pnl.value!<0).sort((a,b)=>a.pnl.value!-b.pnl.value!).slice(0,3)
  const picked=new Set([...contributors,...detractors].flatMap(g=>g.rows))
  const other=sum(rows.filter(r=>r.kind!=='CASH'&&!picked.has(r)).map(r=>periodValue(r,f.period)))
- return {rows,groups,totals:t,contributors,detractors,other,material,gaps:material.filter(r=>r.protection?.state==='GAP'&&r.assetType!=='MUTUAL_FUND')}
+ const newsSymbols=securities.filter(g=>g.value.n===g.value.m&&g.value.value!==null&&Math.abs(g.value.value)>=100).map(g=>g.label)
+ return {rows,groups,totals:t,contributors,detractors,other,material,newsSymbols,gaps:material.filter(r=>r.protection?.state==='GAP'&&r.assetType!=='MUTUAL_FUND')}
 }
 
 /** Display reported protection without promoting pending, undated or stale records to active. */
