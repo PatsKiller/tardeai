@@ -7,6 +7,8 @@ import { FundamentalsLive } from './pages/fundamentals/FundamentalsLive'
 import { PerformanceLive } from './pages/portfolio/PerformanceLive'
 import { HomeLive } from './pages/home/HomeLive'
 import { IncomeLive } from './pages/portfolio/income/IncomeLive'
+import { RetirementLive } from './pages/portfolio/retirement/RetirementLive'
+import { LevelsLive } from './pages/portfolio/levels/LevelsLive'
 import { FAMILIES } from './routes/families'
 import { NAV } from './shell/nav'
 
@@ -36,6 +38,8 @@ export default function App() {
           <Route path="portfolio/fundamentals" element={<FundamentalsLive />} />
           <Route path="portfolio/performance" element={<PerformanceLive />} />
           <Route path="portfolio/income" element={<IncomeLive />} />
+          <Route path="portfolio/retirement" element={<RetirementLive />} />
+          <Route path="portfolio/levels" element={<LevelsLive />} />
           <Route path="home/today" element={<HomeLive />} />
           <Route path="home/outlook" element={<HomeLive view="outlook" />} />
           <Route path="home/needs" element={<HomeLive view="needs" />} />
