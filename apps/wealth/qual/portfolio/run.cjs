@@ -204,6 +204,33 @@ const INTERACTIONS = {
     await page.getByRole('button', { name: 'Risk & ownership' }).click(); await page.waitForTimeout(150)
     t = await H.mainText(page)
     add(R, width, 'ownership-over-100-shown-not-clamped', /112\.4/.test(t), 'inst ownership 112.4 not visible')
+    // Regression (codex review of 7a251b4b7): hand-opened Small, then Show all, then Collapse must collapse Small and Cash;
+    // an unrelated grouped-row expansion is kept.
+    const tbl = async () => (await page.locator('main table').allInnerTexts()).join('\n')
+    const small = page.locator('.fv-section button', { hasText: 'Small positions' })
+    const top = page.locator('.fv-disclosure button')
+    const big = page.locator('.fv-row-link', { hasText: 'QZBIG' })
+    await goReady(page, route)
+    await big.click(); await small.click(); await page.waitForTimeout(150)
+    const pre = (await tbl()).includes('QZSA') && (await big.getAttribute('aria-expanded')) === 'true'
+    await top.click(); await page.waitForTimeout(150)
+    const onLabel = (await top.innerText()).trim()
+    await top.click(); await page.waitForTimeout(200)
+    const after = await tbl()
+    add(R, width, 'collapse-after-manual-expand-collapses-small-and-cash', pre && onLabel === 'Collapse small and cash' && !page.url().includes('fv_show=all') && !after.includes('QZSA') && !after.includes('QZCASH')
+      && (await small.getAttribute('aria-expanded')) === 'false' && !(await small.isDisabled()), `pre=${pre} label=${onLabel} url=${page.url().slice(-30)}`)
+    add(R, width, 'collapse-keeps-unrelated-row-expansion', (await big.getAttribute('aria-expanded')) === 'true', '')
+    // Regression: under a search that reveals Small, the top control never promises a collapse it cannot do.
+    await goReady(page, route, route.path + '?fv_query=qzsc')
+    await top.click(); await page.waitForTimeout(150)
+    const sLabel = (await top.innerText()).trim()
+    const sForced = (await page.locator('.fv-forced').allTextContents()).join(' ')
+    await top.click(); await page.waitForTimeout(200)
+    const sAfter = await H.mainText(page)
+    add(R, width, 'search-forced-collapse-label-is-honest', sLabel !== 'Collapse small and cash' && /search matches stay shown/.test(sLabel) && sForced.includes(sLabel), `label=${sLabel}`)
+    add(R, width, 'search-forced-small-stays-shown-with-search-reason', !page.url().includes('fv_show=all') && sAfter.includes('QZSC') && (await small.isDisabled()) && /Shown because a search is active/.test(sAfter), `url=${page.url().slice(-30)}`)
+    await page.getByLabel('Find holding').fill(''); await page.waitForTimeout(250)
+    add(R, width, 'clearing-search-after-collapse-collapses-small', !(await tbl()).includes('QZSA') && (await small.getAttribute('aria-expanded')) === 'false', '')
     await page.close()
   },
 
