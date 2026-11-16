@@ -96,8 +96,7 @@ test('F2: labels resolve registry vs derived vs fallback, and a number-like key 
   const old=book(data({account_aliases:undefined,account_labels:undefined,account_label_source:undefined}))
   assert.equal(old.rows.find(r=>r.symbol==='QZC').accountLabelBasis,'fallback')
   assert.equal(old.rows.find(r=>r.symbol==='QZB').accountLabelBasis,'served')
-  // The drawer eyebrow still ends in the key until the lead flips it with shell-logic SPCX/T5+T6 (READY patch).
-  for(const r of [...b.rows,...old.rows]){noRaw(r.accountLabel,'row label');noRaw(a.detailHeading(r).eyebrow.replace(/ · [^·]+$/,''),'drawer eyebrow before the key suffix')
+  for(const r of [...b.rows,...old.rows]){noRaw(r.accountLabel,'row label');noRaw(a.detailHeading(r).eyebrow,'drawer eyebrow')
     noRaw(a.detailFields(r).map(f=>`${f.value} ${f.source}`).join(' '),'drawer')}
   assert.match(a.detailFields(by('QZA')).find(f=>f.label==='Account').source,/account registry/)
   assert.match(a.detailFields(by('QZC')).find(f=>f.label==='Account').source,/not in the account registry/)

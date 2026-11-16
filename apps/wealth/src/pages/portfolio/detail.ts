@@ -41,16 +41,15 @@ function rowAccount(row: HoldingsRow) {
 }
 
 export function detailHeading(row: HoldingsRow): { title: string; eyebrow: string } {
-  // The eyebrow is the table cell's own second line plus the account key (spec T6 parity): the resolved identity,
-  // never the per-row `name`, so the drawer cannot name an instrument differently from the row that opened it.
+  // The eyebrow is the table cell's own second line plus the account's stable ref (spec T6 parity; F2: never the raw
+  // key): the resolved identity, never the per-row `name`, so the drawer cannot name an instrument differently from
+  // the row that opened it.
   const identity = displayOf(row)
   const account = rowAccount(row)
   return {
     title: row.symbol,
-    // HELD (lead integration): the suffix is still the raw key because scripts/tests/shell-logic.test.mjs (SPCX/T5+T6,
-    // not this lane's file) pins `${line} · ${row.accountKey}`. The flip to the stable ref is one atomic patch with
-    // that assertion; see the population-contracts READY file.
-    eyebrow: `${identitySecondLine(identity, row.symbol, account.label)} · ${row.accountKey}`,
+    // A fallback label already carries the ref; it is printed once.
+    eyebrow: `${identitySecondLine(identity, row.symbol, account.label)}${account.basis === 'fallback' ? '' : ` · ${account.ref}`}`,
   }
 }
 

@@ -19,6 +19,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { HoldingsRow } from '../portfolio/contract'
 import type { Preset } from '../portfolio/presets'
+import { stableAccountRef } from '../portfolio/accountLabel'
 import {
   CASH_COLUMN,
   NOT_AVAILABLE,
@@ -91,7 +92,7 @@ function identityCell(row: HoldingsRow): ReactNode {
     <span>
       <strong>{row.symbol}</strong>
       <br />
-      <small style={TRUNCATE} title={`${row.name} · ${row.accountLabel} · account ${row.accountKey}`}>
+      <small style={TRUNCATE} title={`${row.name} · ${row.accountLabel} · ${row.accountRef ?? stableAccountRef(row.accountKey)}`}>
         {row.name} · {row.accountLabel}
       </small>
     </span>

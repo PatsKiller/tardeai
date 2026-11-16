@@ -589,7 +589,7 @@ function book(dataOver: Record<string, unknown> = {}, rootOver: Record<string, u
   const fields = sections.flatMap(s => s.fields)
   const text = fields.map(f => `${f.label} ${f.value} ${f.source}`).join(' | ')
   const head = detailHeading(r)
-  check('the drawer leads with the row its own identity', head.title === r.symbol && head.eyebrow.includes(r.accountKey), `${head.title} / ${head.eyebrow}`)
+  check('the drawer leads with the row its own identity', head.title === r.symbol && head.eyebrow.includes(stableAccountRef(r.accountKey)) && !head.eyebrow.includes(r.accountKey), `${head.title} / ${head.eyebrow}`)
   check('the drawer names the floor flag as adapter-derived', fields.some(f => f.label.startsWith('Below the notional floor') && /ADAPTER-DERIVED/.test(f.source)))
   check('the drawer reports the ladder absent rather than clocking it', /no clock/.test(text), text)
   check('the drawer reports valuation unassessed', /UNASSESSED/.test(text), text)

@@ -53,7 +53,7 @@ import { derivePortfolioView } from './analytics/portfolio-analytics.mjs'
 import type { AnalyticsSnapshot, PortfolioView } from './analytics/portfolio-analytics.mjs'
 import { HoldingsWorkspace } from './workspaceV2/Workspace'
 import { PRESETS, preset, type PresetId } from './presets'
-import { lastKnownSentence, money, moneyTone, notCurrent, servedFreshnessLine, toneClass } from './format'
+import { lastKnownSentence, money, moneyTone, notCurrent, populationLines, servedFreshnessLine, toneClass } from './format'
 import { detailSections, detailHeading } from './detail'
 import { WealthStatus } from '../../components/WealthStatus'
 import { protectionSummary } from './workspaceV2/adapter'
@@ -197,7 +197,6 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
  const drawer=useDrawer()
  if(error!==null)return <section aria-label="Portfolio holdings"><div className="note bad" role="alert"><strong>Holdings could not be read.</strong> {error} No values are shown, because none were served.</div></section>
  if(loading||book===null)return <section aria-label="Portfolio holdings" aria-busy={loading}><p>{loading?'Reading the book…':'No book has been supplied.'}</p></section>
- const excludedText=book.population.excluded.length===0?'none omitted':book.population.excluded.map(e=>e.count+' '+e.label).join(' · ')
  const valuationClock=book.clocks.find(c=>c.role==='VALUATION')??null
  const sessionText=book.session.status==='KNOWN'?'Market session: '+(book.session.phase??'known')+' · last open session '+(book.session.latestOpenSession??'unknown')+' · source '+(book.session.source??'not served')+' (rows carry no session label)':'Market session: UNKNOWN — '+book.session.reason
  const openRow=(row:HoldingsRow,origin?:HTMLElement)=>{const h=detailHeading(row);drawer.open({title:h.title,eyebrow:h.eyebrow,body:<DetailBody row={row}/>,origin:origin??null})}
@@ -222,36 +221,13 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
             {book.counts.cash} · under the floor {book.counts.heldUnderFloor}
           </dd>
           <dt>Population</dt>
-          <dd>
-            read {book.population.readRows} · in the book {book.population.renderedRows} · omitted: {excludedText}
-            {book.population.floorUsd !== null && ` · notional floor ${money(book.population.floorUsd)}`}
-          </dd>
-          {book.population.measurePopulation && (
-            <dd>
-              separate population · the account-value measure counts {book.population.measurePopulation.rowCount} rows
-              {book.population.measurePopulation.measuredRows !== null && ` (${book.population.measurePopulation.measuredRows} with a measured price move)`}
-              {book.population.measurePopulation.differenceFromRead !== 0 && ` · ${Math.abs(book.population.measurePopulation.differenceFromRead)} ${book.population.measurePopulation.differenceFromRead > 0 ? 'more' : 'fewer'} than this read`}
-              {' '}— a different population, not rows omitted from this table. The producer does not publish which rows differ.
-            </dd>
-          )}
-          {book.population.aliasedAccounts.length > 0 && (
-            <dd>
-              account keys normalized: {book.population.aliasedAccounts.map(a => `${a.scopeKey} = ${a.rowKey}`).join(' · ')}
-            </dd>
-          )}
-          {book.population.scopeAccountsWithoutRows.length > 0 && (
-            <dd>accounts in the read scope with no rows: {book.population.scopeAccountsWithoutRows.join(' · ')}</dd>
-          )}
-          <dd>
-            Broker completeness: UNVERIFIED — no producer receipt reconciles broker → store → API → page for this read.
-          </dd>
-          {book.population.listedNotCounted.length > 0 && (
-            <dd>
-              in the table, outside the counted scope:{' '}
-              {book.population.listedNotCounted.map(l => `${l.count} ${l.reason} (${l.scope})`).join(' · ')} — these
-              rows are rendered; they are not omitted
-            </dd>
-          )}
+          {/* A1-A4 (population lane): one source of the population words, format.ts `populationLines`. The read count
+              names its basis, the measure population is never subtracted from it, aliases and accounts without rows
+              print stable refs only, and broker completeness stays unverified. */}
+          {populationLines(book.population).map((line, i) => (
+            <dd key={i}>{line}</dd>
+          ))}
+          {book.population.floorUsd !== null && <dd>notional floor {money(book.population.floorUsd)}</dd>}
           <dt>Session</dt>
           <dd>{sessionText}</dd>
           <dt>Day change clock</dt>
@@ -447,11 +423,10 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
                 {book.accounts.map(a => (
                   <tr key={a.accountKey}>
                     <th scope="row">
-                      {/* The display label, joined from the served holdings rows (adapter.ts → accountLabel.ts).
-                          A raw key renders only when the read served no label anywhere — and it says so, rather
-                          than passing for a label: the key is the one identifier that exists. */}
-                      {a.accountLabel}
-                      {a.accountLabel === a.accountKey ? <small className="muted">no display label served</small> : null}
+                      {/* F2: the resolved display label (accountLabel.ts `resolveAccountDisplay`), never the raw key.
+                          With no usable name served, the label is the fallback text carrying the stable ref. */}
+                      {a.displayLabel ?? a.accountLabel}
+                      {a.labelBasis !== undefined ? <small className="muted"> · {a.labelBasis === 'fallback' ? 'no display label served' : `${a.labelBasis} label · ${a.accountRef}`}</small> : null}
                     </th>
                     <td>{a.totalUsd === null ? <span title="not served">N/A</span> : money(a.totalUsd)}</td>
                     <td>{a.cashUsd === null ? <span title="not served">N/A</span> : money(a.cashUsd)}</td>

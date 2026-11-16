@@ -10,6 +10,7 @@
 // does not contain cannot be selected.
 
 import type { BookMeasure, HoldingsBook, HoldingsRow } from './contract'
+import { accountFallbackLabel, stableAccountRef } from './accountLabel'
 
 /** `'ALL'` or a served `accountKey`. */
 export type Scope = 'ALL' | string
@@ -22,7 +23,7 @@ export interface ScopeOption {
 export function scopeOptions(book: HoldingsBook): ScopeOption[] {
   const seen = new Map<string, string>()
   for (const r of book.rows) {
-    if (r.accountKey !== '' && !seen.has(r.accountKey)) seen.set(r.accountKey, r.accountLabel || r.accountKey)
+    if (r.accountKey !== '' && !seen.has(r.accountKey)) seen.set(r.accountKey, r.accountLabel || accountFallbackLabel(r.accountRef ?? stableAccountRef(r.accountKey)))
   }
   const accounts = [...seen.entries()]
     .map(([key, label]) => ({ key: key as Scope, label }))
@@ -40,7 +41,10 @@ export function scopeLabel(book: HoldingsBook, scope: Scope): string {
     return `all accounts${n > 0 ? ` (${n})` : ''}`
   }
   const row = book.rows.find(r => r.accountKey === scope)
-  return row ? `${row.accountLabel} · ${scope}` : scope
+  // F2: never the raw key. A fallback label already carries the stable ref, so it is printed once.
+  if (!row) return accountFallbackLabel(stableAccountRef(scope))
+  const ref = row.accountRef ?? stableAccountRef(row.accountKey)
+  return row.accountLabelBasis === 'fallback' ? row.accountLabel : `${row.accountLabel} · ${ref}`
 }
 
 export function rowsInScope(book: HoldingsBook, scope: Scope): HoldingsRow[] {

@@ -16,6 +16,7 @@ import type { Cue, CueLevel } from '../../contracts/cue'
 import { cue } from '../../contracts/cue'
 import { Tag, type Tone } from '../../components/primitives'
 import { assessmentSummary, peCellText } from './cells'
+import { stableAccountRef } from './accountLabel'
 import type { HoldingsRow, Protection } from './contract'
 import { displayOf, identitySecondLine, identityShowsName } from './displayIdentity'
 import { age, marketCapText, money, moneyTone, multiple, overLimitPhrase, pct, price, shares, signedMoney, signedPct, toneClass, unavailable } from './format'
@@ -209,7 +210,7 @@ function cell(row: HoldingsRow, key: string): ReactNode {
             <br />
             <small
               style={TRUNCATE}
-              title={`${identitySecondLine(identity, row.symbol, row.accountLabel)} · account ${row.accountKey}`}
+              title={`${identitySecondLine(identity, row.symbol, row.accountLabel)} · ${row.accountRef ?? stableAccountRef(row.accountKey)}`}
             >
               <IdentityLine row={row} />
             </small>
