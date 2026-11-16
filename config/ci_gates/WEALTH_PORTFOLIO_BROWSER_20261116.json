@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "WEALTH_PORTFOLIO_BROWSER_20261116",
+  "files": [
+    "apps/wealth/qual/portfolio/test_portfolio_browser.py"
+  ],
+  "anchor": "WEALTH_PORTFOLIO_BROWSER",
+  "comment": [
+    "ANCHOR: WEALTH_PORTFOLIO_BROWSER — Playwright acceptance of the seven Portfolio routes (five widths, interactions, lifecycle). Red until the Portfolio lanes land."
+  ]
+}
