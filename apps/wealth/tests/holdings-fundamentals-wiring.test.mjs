@@ -102,10 +102,14 @@ test('Fundamentals page: forced-open controls are truthfully disabled with the r
   assert.ok(!/fv-forced/.test(d))
   // Show all: group + section buttons cannot do anything, so they are disabled and the page says why.
   const all=fund('?fv_show=all')
-  assert.ok(/disabled/.test(btn(all,'QZDUP account positions \\(expanded because Show all is on\\)')),'group button disabled under show all')
+  assert.ok(/disabled/.test(btn(all,'QZDUP account positions \\(expanded because Show all is on; use Collapse small and cash\\)')),'group button disabled under show all')
   assert.ok(!/aria-label="Collapse QZDUP/.test(all),'no Collapse label that cannot collapse')
-  assert.ok(all.includes('Expanded because Show all is on.'))
-  assert.ok(all.includes('Shown because Show all is on.')&&/disabled=""[^>]*aria-expanded="true">▾ Small positions/.test(all)||/<button[^>]*disabled[^>]*>▾ Small positions/.test(all),'small section button disabled')
+  // L1-2: the reason names the control on screen (the toggle reads "Collapse small and cash" while Show all is on).
+  assert.ok(all.includes('Expanded because Show all is on (use Collapse small and cash).'))
+  assert.ok(/aria-pressed="true"[^>]*>Collapse small and cash</.test(all),'the named control is on screen')
+  // L1-1: both halves are required (the old `A && B || C` passed on C alone).
+  assert.ok(all.includes('Shown because Show all is on (use Collapse small and cash).'),'small/cash reason text')
+  assert.ok(/<button[^>]*disabled[^>]*>▾ Small positions/.test(all),'small section button disabled')
   assert.ok(/<button[^>]*disabled[^>]*>▾ Cash/.test(all),'cash section button disabled')
   // Search: forced sections are disabled with the search reason, matching rows stay visible, group expanders stay live.
   const q=fund('?fv_query=QZSB')
