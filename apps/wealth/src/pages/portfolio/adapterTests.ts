@@ -113,18 +113,34 @@ function book(dataOver: Record<string, unknown> = {}, rootOver: Record<string, u
 // ---- C3: the population's two numbers, and the population the wire calls "excluded" -------------------------
 {
   const b = book()
-  // priceable is row_count (6 here), NOT rows_read (3): a reader taking rows_read reports a 2-row gap that is 1.
-  eq('C3 priceableRows comes from priceable.row_count', b.population.priceableRows, 6)
+  // Audit 2026-11-16 (A): the read is rows_read; priceable.row_count is the account-value measure's own
+  // population and is never subtracted from the read.
+  eq('A readRows comes from rows_read', b.population.readRows, 3)
   eq('C3 renderedRows is the rows actually rendered', b.population.renderedRows, 5)
-  // The wire's scope_coverage.excluded is the under-floor population — listed, not omitted. It must NOT become
-  // population.excluded (14-on-the-wire today would print "14 omitted" about rows the reader can see).
-  // Optional chaining on purpose: a wrong population must fail BY NAME, not crash the harness on an empty array.
+  eq('A measure population keeps its own count', b.population.measurePopulation?.rowCount, 6)
+  eq('A measure difference is cross-population', b.population.measurePopulation?.differenceFromRead, 3)
+  eq('A completeness is unverified until a producer receipt', b.population.completeness, 'BROKER_COMPLETENESS_UNVERIFIED')
+  // The wire's scope_coverage.excluded is the under-floor population — listed, not omitted.
   eq('C3 listed-not-counted keeps its count', b.population.listedNotCounted[0]?.count, 2)
   eq('C3 listed-not-counted keeps its scope', b.population.listedNotCounted[0]?.scope, 'holdings.held_under_100')
-  // Removals are the published gap, and their rule is stated as unknown rather than invented.
-  eq('C3 removals are the gap', b.population.excluded.length, 1)
-  eq('C3 removal count = priceable − rendered', b.population.excluded[0]?.count, 1)
-  check('C3 removal rule says the producer does not state it', /does not state|no rule/i.test(b.population.excluded[0]?.rule ?? ''))
+  // rows_read 3 < rendered 5: no omission can exist; the mismatch is reported as coverage, never as "omitted".
+  eq('A no omission when read <= rendered', b.population.excluded.length, 0)
+}
+{
+  // Same-population gap: rows_read 7 and 5 rendered → 2 omitted, rule stated as unknown.
+  const sc = wireData().scope_coverage as Record<string, unknown>
+  const g = book({ scope_coverage: { ...sc, rows_read: 7, priceable: { row_count: 40, measured_rows: 30 } } })
+  eq('A omission = rows_read − rendered', g.population.excluded[0]?.count, 2)
+  check('A omission rule says the producer does not state it', /no rule/i.test(g.population.excluded[0]?.rule ?? ''))
+  // The measure population (40) never inflates the omission.
+  eq('A measure count does not become an omission', g.population.excluded.reduce((t, e) => t + e.count, 0), 2)
+  // Alias normalization: a scope key that extends a row key resolves to it; an unmatched key is reported.
+  const aliased = book({ scope_coverage: { ...sc, scope: { accounts: ['acct_a_ira', 'acct_zz'] } } })
+  eq('A alias scope key resolves to the row key', aliased.population.aliasedAccounts[0]?.rowKey, 'acct_a')
+  eq('A unmatched scope account is reported', aliased.population.scopeAccountsWithoutRows.join(','), 'acct_zz')
+}
+{
+  const b = book()
   // C4: the counts add up against the rows the adapter emitted.
   eq('C4 allRows matches the listed rows', b.counts.allRows, 5)
   eq('C4 cash count', b.counts.cash, 1)

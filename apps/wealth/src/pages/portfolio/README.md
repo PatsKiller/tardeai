@@ -37,9 +37,10 @@ does not exist there (the r3 patch creates it).
 
 - **Fixture data says so** above the table, in the page itself, not only in this file.
 - **A count names its scope**: "non-cash over the notional floor" is separate from all rows / securities / cash /
-  under the floor, and the population block states the priceable population (`priceableRows`, the wire's
-  `scope_coverage.priceable.row_count` — deliberately *not* its `rows_read`, which is the post-filter 30), rows in
-  the book, what the read removed, and the floor it was measured against. **Two populations, never merged:**
+  under the floor, and the population block states the read (`readRows`, the wire's `scope_coverage.rows_read`), rows in
+  the book, the account-value measure's own row count as a SEPARATE population (`measurePopulation`; audit
+  2026-11-16 A — it was wrongly subtracted from the read and printed "3 omitted"), broker completeness
+  (UNVERIFIED until a producer receipt), what the read removed, and the floor it was measured against. **Two populations, never merged:**
   `excluded` is rows removed before the counters (an omission), `listedNotCounted` is rows that are IN the table and
   outside the counted scope — the wire's `scope_coverage.excluded`, which means the opposite of an omission.
   Rendering them together would print "omitted: 14" about 14 visible rows.

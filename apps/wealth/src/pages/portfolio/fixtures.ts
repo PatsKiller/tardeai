@@ -348,9 +348,9 @@ export const FIXTURE_BOOK: HoldingsBook = {
     primaryScopeLabel: 'non-cash over the notional floor',
   },
   population: {
-    // One dead-CUSIP zero-value holding is dropped by the read-side filter before the counters (the wire's
-    // 33 -> 30 gap in miniature): it is not a row, and the omission is stated rather than hidden.
-    priceableRows: 10,
+    // One dead-CUSIP zero-value holding is dropped inside this read (rows_read 10, rendered 9): same population,
+    // so the omission is stated rather than hidden.
+    readRows: 10,
     renderedRows: 9,
     excluded: [
       {
@@ -368,6 +368,10 @@ export const FIXTURE_BOOK: HoldingsBook = {
       { reason: 'market value under $100: listed, not counted', count: 1, scope: 'holdings.held_under_100' },
     ],
     floorUsd: 100,
+    measurePopulation: { measure: 'account_value', rowCount: 12, measuredRows: 8, differenceFromRead: 2 },
+    scopeAccountsWithoutRows: [],
+    aliasedAccounts: [],
+    completeness: 'BROKER_COMPLETENESS_UNVERIFIED',
   },
   accounts: ACCOUNTS,
   measures: MEASURES,
@@ -387,7 +391,8 @@ export const FIXTURE_BOOK_EMPTY: HoldingsBook = {
     primaryScopeLabel: 'non-cash over the notional floor',
   },
   population: {
-    priceableRows: 0, renderedRows: 0, excluded: [], listedNotCounted: [], floorUsd: 100,
+    readRows: 0, renderedRows: 0, excluded: [], listedNotCounted: [], floorUsd: 100,
+    measurePopulation: null, scopeAccountsWithoutRows: [], aliasedAccounts: [], completeness: 'BROKER_COMPLETENESS_UNVERIFIED',
   },
   accounts: null,
   coverageNote: 'No positions are present in this fixture.',
@@ -466,7 +471,7 @@ export const FIXTURE_BOOK_LEGACY_PUBLISHED: HoldingsBook = {
     primaryScopeLabel: 'non-cash over the notional floor',
   },
   population: {
-    priceableRows: 11,
+    readRows: 11,
     renderedRows: 10,
     excluded: [
       {
@@ -480,6 +485,7 @@ export const FIXTURE_BOOK_LEGACY_PUBLISHED: HoldingsBook = {
       { reason: 'market value under $100: listed, not counted', count: 2, scope: 'holdings.held_under_100' },
     ],
     floorUsd: 100,
+    measurePopulation: null, scopeAccountsWithoutRows: [], aliasedAccounts: [], completeness: 'BROKER_COMPLETENESS_UNVERIFIED',
   },
   coverageNote:
     'The same nine synthetic rows plus one legacy-classified row at zero market value that IS published (a written-down lot, −$500): it must stay in the subtotal.',

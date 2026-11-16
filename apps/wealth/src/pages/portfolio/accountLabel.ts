@@ -18,3 +18,16 @@ export function accountDisplayLabel(key: string, servedLabel: string | null, row
   }
   return key
 }
+
+// Central account-key alias normalization (portfolio audit 2026-11-16, A). The same account is served under two
+// keys on one payload — holdings rows say `schwab_roth`, the scope list and the measures say `schwab_roth_ira` —
+// so a key compare reports a missing account and a "missing" row that is present. Data-driven, no hardcoded
+// table: a key resolves to a served key that equals it, or to the ONE served key that extends it at an
+// underscore boundary (or that it extends). Ambiguous or absent matches return null rather than guessing.
+export function normalizeAccountKey(key: string, servedKeys: readonly string[]): string | null {
+  const k = key.trim()
+  if (k === '') return null
+  if (servedKeys.includes(k)) return k
+  const hits = servedKeys.filter(s => s.startsWith(k + '_') || k.startsWith(s + '_'))
+  return hits.length === 1 ? hits[0] : null
+}

@@ -168,11 +168,16 @@ export function checkBook(book: HoldingsBook): string[] {
   // (the opposite of an omission). Merging them would print "omitted: 14" about 14 visible rows.
   const pop = book.population
   if (pop.renderedRows !== book.rows.length) out.push(`population.renderedRows ${pop.renderedRows} != rows ${book.rows.length}`)
-  if (pop.priceableRows < pop.renderedRows) out.push('population.priceableRows is below renderedRows')
+  if (pop.readRows < pop.renderedRows) out.push('population.readRows is below renderedRows')
   const excluded = pop.excluded.reduce((a, e) => a + e.count, 0)
-  if (pop.priceableRows - pop.renderedRows !== excluded) {
-    out.push(`population gap ${pop.priceableRows - pop.renderedRows} != excluded ${excluded}`)
+  if (pop.readRows - pop.renderedRows !== excluded) {
+    out.push(`population gap ${pop.readRows - pop.renderedRows} != excluded ${excluded}`)
   }
+  // Audit A: a cross-population measure count must never feed the omission arithmetic.
+  if (pop.measurePopulation && pop.measurePopulation.differenceFromRead !== pop.measurePopulation.rowCount - pop.readRows) {
+    out.push('measurePopulation.differenceFromRead is not rowCount − readRows')
+  }
+  if (pop.completeness !== 'BROKER_COMPLETENESS_UNVERIFIED') out.push('fixture claims broker completeness')
   for (const e of pop.excluded) {
     if (e.count <= 0) out.push(`excluded ${e.kind} has count ${e.count}`)
     if (!e.label.trim() || !e.rule.trim()) out.push(`excluded ${e.kind} does not state its label and rule`)

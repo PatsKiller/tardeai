@@ -14,18 +14,18 @@
 //
 // The two wire shapes that are easy to get wrong, both pinned by a planted-payload test:
 //   1. `scope_coverage.excluded` is the "listed, not counted" population (under the floor), NOT rows removed
-//      before the counters. Removals have to be recovered as `priceable.row_count − rendered_rows` and labelled
-//      as a rule the producer does not state (C3).
-//   2. `priceableRows` is `scope_coverage.priceable.row_count` (33), never `scope_coverage.rows_read` (30).
-//      Taking rows_read renders a 0-row gap for a book that read 33 and rendered 30.
+//      before the counters (C3).
+//   2. `scope_coverage.priceable.row_count` is the ACCOUNT-VALUE MEASURE's row count, a different population
+//      from this read (audit 2026-11-16, A). Omissions come only from `rows_read − rendered rows`; the measure
+//      count is shown beside the read as its own population and never subtracted from it.
 
 import type {
   AccountTotal, BookMeasure, BookSource, ClockProvenance, ClockRole, DeclaredClock, FibLadder, HoldingsBook,
   HoldingsCounts, HoldingsFreshness, HoldingsRow, HoldingsSession, ListedNotCounted, Population,
-  PopulationExclusion, Protection, ProtectionState, RowFundamentals, RowKind, ServedFreshness, ServedIdentity,
+  PopulationExclusion, MeasurePopulation, Protection, ProtectionState, RowFundamentals, RowKind, ServedFreshness, ServedIdentity,
 } from './contract'
 import { PORTFOLIO_HOLDINGS_CONTRACT_VERSION } from './contract'
-import { accountDisplayLabel } from './accountLabel'
+import { accountDisplayLabel, normalizeAccountKey } from './accountLabel'
 import { attachDisplayIdentity, nameSourceFrom } from './displayIdentity'
 
 export interface AdaptResult {
@@ -274,28 +274,45 @@ function measuresFrom(wire: Json): BookMeasure[] {
   return out
 }
 
-function populationFrom(wire: Json, renderedRows: number, coverage: string[]): Population {
+function populationFrom(wire: Json, rows: HoldingsRow[], coverage: string[]): Population {
   const sc = asObj(wire.scope_coverage)
-  const priceable = asObj(sc.priceable)
-  const priceableRows = num(priceable.row_count) ?? renderedRows
+  const renderedRows = rows.length
+  const readRows = num(sc.rows_read) ?? num(asObj(sc.scopes)['holdings.all_rows']) ?? renderedRows
   const excluded: PopulationExclusion[] = []
-  const gap = priceableRows - renderedRows
+  const gap = readRows - renderedRows
   if (gap > 0) {
     excluded.push({
       kind: 'OTHER',
       label: 'read and not rendered',
       count: gap,
-      rule: 'the producer publishes the gap (scope_coverage.priceable.row_count − rendered_rows) but no rule for it: scope_coverage.filtered_rows is null and findings is empty',
+      rule: 'the producer publishes the gap (scope_coverage.rows_read − rendered rows) but no rule for it',
     })
   } else if (gap < 0) {
-    coverage.push(`rendered ${renderedRows} rows from a population the producer sized at ${priceableRows}`)
+    coverage.push(`rendered ${renderedRows} rows from a read the producer sized at ${readRows}`)
   }
   const listedNotCounted: ListedNotCounted[] = asArr(sc.excluded).filter(isObj).map(e => ({
     reason: str(e.reason) ?? 'listed, not counted',
     count: num(e.count) ?? 0,
     scope: str(e.scope) ?? 'unstated',
   }))
-  return { priceableRows, renderedRows, excluded, listedNotCounted, floorUsd: num(sc.min_position_usd) }
+  const priceable = asObj(sc.priceable)
+  const measureRows = num(priceable.row_count)
+  const measurePopulation: MeasurePopulation | null = measureRows === null ? null : {
+    measure: 'account_value',
+    rowCount: measureRows,
+    measuredRows: num(priceable.measured_rows),
+    differenceFromRead: measureRows - readRows,
+  }
+  const rowKeys = Array.from(new Set(rows.map(r => r.accountKey)))
+  const scopeKeys = asArr(asObj(sc.scope).accounts).map(str).filter((k): k is string => k !== null)
+  const aliasedAccounts: { scopeKey: string; rowKey: string }[] = []
+  const scopeAccountsWithoutRows: string[] = []
+  for (const k of scopeKeys) {
+    const hit = normalizeAccountKey(k, rowKeys)
+    if (hit === null) scopeAccountsWithoutRows.push(k)
+    else if (hit !== k) aliasedAccounts.push({ scopeKey: k, rowKey: hit })
+  }
+  return { readRows, renderedRows, excluded, listedNotCounted, floorUsd: num(sc.min_position_usd), measurePopulation, scopeAccountsWithoutRows, aliasedAccounts, completeness: 'BROKER_COMPLETENESS_UNVERIFIED' }
 }
 
 function countsFrom(wire: Json, rows: HoldingsRow[], coverage: string[]): HoldingsCounts {
@@ -451,7 +468,7 @@ export function adaptHoldings(body: unknown): AdaptResult {
   // One display identity per symbol, resolved once over the whole book (spec R1/R2): every row of a symbol then
   // renders the same name and the same status. Attaching copies the rows, so no later reader can hold one without.
   const identified = attachDisplayIdentity(rows)
-  const population = populationFrom(wire, identified.length, coverage)
+  const population = populationFrom(wire, identified, coverage)
   const counts = countsFrom(wire, identified, coverage)
   const positions = asObj(asObj(wire.clock_provenance).positions)
   // F-1 (ledger 2026-11-15T0325Z): the book's as-of is the QUOTE clock when `truth.as_of` carries it. The page

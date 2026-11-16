@@ -5,7 +5,8 @@
 // collision, C4 a rendered count that did not add up, A1–A3). Still NOT APPROVED_FOR_WIRING (runbook step 5).
 // Nothing in this folder reads /api.
 //
-// @2, not @1: C3 renames `Population.rowsRead` to `priceableRows` and C1 adds a required `verified` to every
+// @2, not @1: C3 renamed `Population.rowsRead` (audit 2026-11-16 A renames it back to `readRows`, with the measure
+// count split into `measurePopulation`) and C1 adds a required `verified` to every
 // measure. A changed shape under an unchanged version number is the drift the version suffix exists to stop.
 //
 // Units are part of the contract and are the two traps measured on 2026-11-14:
@@ -288,11 +289,16 @@ export interface ListedNotCounted {
 /**
  * The read-side population, stated rather than collapsed into a count.
  *
- * Two populations, and they must not be merged:
- *   * `excluded` = rows REMOVED before the counters (the wire reads 30 rows after a filter dropped three dead
- *     CUSIPs from a priceable population of 33). Only removals belong here — the arithmetic
- *     `priceableRows − renderedRows == Σ excluded` is what makes the gap renderable ("3 omitted").
+ * Portfolio audit 2026-11-16 (A): the r3 reading of `scope_coverage.priceable.row_count` as "rows read before a
+ * filter" was wrong. Measured on the served payload: rows_read == rendered_rows == holdings.all_rows ==
+ * holdings.length, and `priceable.row_count` is the row count of the ACCOUNT-VALUE MEASURE — a different
+ * population (its rows include CUSIP-only lines and an alias-keyed account). Subtracting the two printed
+ * "3 omitted" about rows this read never contained. So:
+ *   * `excluded` = rows REMOVED inside THIS read: only `rows_read − rendered_rows` (same population) may produce it.
  *   * `listedNotCounted` = rows that ARE rendered and are outside the counted scope.
+ *   * `measurePopulation` = the other population, named with its own count and never subtracted from the read.
+ *   * `completeness` stays BROKER_COMPLETENESS_UNVERIFIED until broker -> store -> API -> UI reconciliation is
+ *     proven by a producer receipt; the client cannot prove it.
  */
 export type ExclusionKind = 'DEAD_CUSIP_ZERO_VALUE' | 'OTHER'
 
@@ -304,20 +310,38 @@ export interface PopulationExclusion {
   rule: string
 }
 
+/** A served measure that counts its own rows; a population beside the read, never a subtrahend of it. */
+export interface MeasurePopulation {
+  /** The wire measure name, e.g. `account_value`. */
+  measure: string
+  /** Rows the measure counts (`scope_coverage.priceable.row_count`). */
+  rowCount: number
+  /** Rows with a measured price move (`priceable.measured_rows`), or null when not served. */
+  measuredRows: number | null
+  /** `rowCount − readRows`, labelled as a cross-population difference, never as an omission. */
+  differenceFromRead: number
+}
+
+export type BrokerCompleteness = 'BROKER_COMPLETENESS_UNVERIFIED' | 'BROKER_COMPLETENESS_VERIFIED'
+
 export interface Population {
-  /**
-   * C3: rows the producer read before its read-side filter, from `scope_coverage.priceable.row_count` (33).
-   * Deliberately NOT called `rowsRead`: the wire has its own `scope_coverage.rows_read` — 30, the post-filter
-   * number — and an adapter reading this field by name would take 30 and report a 0 gap.
-   */
-  priceableRows: number
+  /** Rows this read returned (`scope_coverage.rows_read`, else `holdings.all_rows`, else the rendered count). */
+  readRows: number
   /** Rows in this book; must equal `rows.length`. */
   renderedRows: number
-  /** Removals only — never the listed-not-counted population. */
+  /** Removals inside this read only — `readRows − renderedRows`; never a cross-population difference. */
   excluded: PopulationExclusion[]
   listedNotCounted: ListedNotCounted[]
   /** The wire's `min_position_usd`, so the "over floor" count has a population to be checked against. */
   floorUsd: number | null
+  /** The account-value measure's own population, or null when the producer serves no row count. */
+  measurePopulation: MeasurePopulation | null
+  /** Scope account keys with no rendered row after alias normalization (reason-coded, never inferred empty). */
+  scopeAccountsWithoutRows: string[]
+  /** Scope keys that matched a row key only through alias normalization, as `scopeKey -> rowKey`. */
+  aliasedAccounts: { scopeKey: string; rowKey: string }[]
+  /** Only a producer reconciliation receipt may promote this; the client never does. */
+  completeness: BrokerCompleteness
 }
 
 /**

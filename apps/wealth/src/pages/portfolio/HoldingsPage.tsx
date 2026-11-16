@@ -223,8 +223,27 @@ export function HoldingsPage({ book = FIXTURE_BOOK, loading = false, error = nul
           </dd>
           <dt>Population</dt>
           <dd>
-            read {book.population.priceableRows} · in the book {book.population.renderedRows} · omitted: {excludedText}
+            read {book.population.readRows} · in the book {book.population.renderedRows} · omitted: {excludedText}
             {book.population.floorUsd !== null && ` · notional floor ${money(book.population.floorUsd)}`}
+          </dd>
+          {book.population.measurePopulation && (
+            <dd>
+              separate population · the account-value measure counts {book.population.measurePopulation.rowCount} rows
+              {book.population.measurePopulation.measuredRows !== null && ` (${book.population.measurePopulation.measuredRows} with a measured price move)`}
+              {book.population.measurePopulation.differenceFromRead !== 0 && ` · ${Math.abs(book.population.measurePopulation.differenceFromRead)} ${book.population.measurePopulation.differenceFromRead > 0 ? 'more' : 'fewer'} than this read`}
+              {' '}— a different population, not rows omitted from this table. The producer does not publish which rows differ.
+            </dd>
+          )}
+          {book.population.aliasedAccounts.length > 0 && (
+            <dd>
+              account keys normalized: {book.population.aliasedAccounts.map(a => `${a.scopeKey} = ${a.rowKey}`).join(' · ')}
+            </dd>
+          )}
+          {book.population.scopeAccountsWithoutRows.length > 0 && (
+            <dd>accounts in the read scope with no rows: {book.population.scopeAccountsWithoutRows.join(' · ')}</dd>
+          )}
+          <dd>
+            Broker completeness: UNVERIFIED — no producer receipt reconciles broker → store → API → page for this read.
           </dd>
           {book.population.listedNotCounted.length > 0 && (
             <dd>
