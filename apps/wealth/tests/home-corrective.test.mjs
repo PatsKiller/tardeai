@@ -55,7 +55,7 @@ test('canonical task lists and position inventory stay separate with explicit un
  const model=adapt(payload({needs:{summary:section({metrics:[{label:'Protect money',value:'9'},{label:'Decide',value:'1'},{label:'Fix system',value:'0'},{label:'Queue freshness',value:null}]}),protect:section({rows:tasks,unit:'task groups',populationLabel:'Stored task groups',totalCount:9}),protectionInventory:section({rows:positions,unit:'account positions',populationLabel:'Position inventory, not tasks',totalCount:25})}}))
  assert.equal(model.needs.protect.rows.length,9);assert.equal(model.needs.protectionInventory.rows.length,25)
  const html=render('needs',{sections:model.needs})
- assert.match(html,/1–6 of 9 served task groups/);assert.match(html,/1–6 of 25 served account positions/)
+ assert.match(html,/1–6 of 9 served task groups/);assert.match(html,/Open protection inventory/);assert.doesNotMatch(html,/Position observation 0/);assert.match(render('panel',{id:'inventory',title:'Separate position inventory',icon:'shield',section:model.needs.protectionInventory}),/1–6 of 25 served account positions/)
  assert.match(html,/Re-entry watch/);assert.doesNotMatch(html,/Since you were stopped out/)
  assert.equal(model.needs.summary.metrics.find(f=>f.label==='Protect money').value,'9')
  assert.equal(model.needs.summary.metrics.find(f=>f.label==='Fix system').value,'0')
@@ -64,8 +64,8 @@ test('canonical task lists and position inventory stay separate with explicit un
 test('separated conflicts render distinct truthful sections with engine details instead of a 200-card disagreement group',()=>{
  const model=adapt(payload({outlook:{disagreements:section({rows:findings.filter(r=>r.category==='CONFLICT')}),gates:section({title:'Policy gates',rows:findings.filter(r=>r.category==='GATE')}),dataQuality:section({title:'Data-quality findings',rows:findings.filter(r=>r.category==='DATA_ERROR')})}}))
  assert.equal(model.outlook.disagreements.rows.length,1);assert.equal(model.outlook.gates.rows.length,27);assert.equal(model.outlook.dataQuality.rows.length,172)
- const html=render('outlook',{sections:model.outlook});assert.equal((html.match(/data-home-record="true"/g)||[]).length,13)
- assert.match(html,/Policy gates/);assert.match(html,/Data-quality findings/)
+ const html=render('outlook',{sections:model.outlook});assert.equal((html.match(/data-home-record="true"/g)||[]).length,0)
+ assert.match(html,/Open registered findings/);assert.match(render('panel',{id:'gates',title:'Policy gates',icon:'shield',section:model.outlook.gates}),/1–6 of 27/);assert.match(render('panel',{id:'dataQuality',title:'Data-quality findings',icon:'gear',section:model.outlook.dataQuality}),/1–6 of 172/)
 })
 test('farther-out retained dates cannot leak into the near-term week rows and have separate findable evidence',()=>{
  const near={id:'near',label:'Near event'},later={id:'later',label:'Far event'}
@@ -137,8 +137,8 @@ test('compact protection retains proof state, dated level and exact fractional c
  assert.deepEqual(compactHomeRowFacts(row).map(f=>f.label),['Protection','Recorded advisory/order level','Distance','Covered shares','Uncovered shares'])
  const card=render('panel',{id:'stops',title:'Stops',icon:'shield',section:section({rows:[row]})})
  assert.match(card,/Synthetic account/);assert.match(card,/Partial resting coverage/);assert.match(card,/0.4985/);assert.match(card,/0.025/);assert.match(card,/\$71.23/)
- assert.doesNotMatch(card,/Canonical order verdict|canonical applicability served|home-v2-ticker/)
- assert.match(card,/Observation · source time not served/)
+ assert.doesNotMatch(card,/Canonical order verdict|canonical applicability served/)
+ assert.match(card,/Observation · source time not served/);assert.match(card,/home-v2-ticker">SYN/)
  const detail=render('evidence',{row,section:section({})})
  assert.match(detail,/Canonical order verdict/);assert.match(detail,/canonical applicability served/);assert.match(detail,/Synthetic stop producer/)
 })
@@ -146,7 +146,7 @@ test('a long actionable reason has a concise real excerpt while Evidence retains
  const reason='Investigate the retained upstream schema mismatch. '+ 'Registered evidence remains independently reviewable. '.repeat(8)
  const row={id:'synthetic:long',label:'Review stored source',summary:reason,detail:reason,clock:at,href:'/v3/health',facts:[]}
  const card=render('panel',{id:'fix',title:'Fix system',icon:'gear',section:section({rows:[row]})})
- assert.ok(card.includes(reason.slice(0,150).trimEnd()+'…'));assert.ok(!card.includes(reason));assert.match(card,/href="\/v3\/health"/)
+ assert.ok(card.includes(reason.slice(0,110).trimEnd()+'…'));assert.ok(!card.includes(reason));assert.match(card,/href="\/v3\/health"/)
  const evidence=render('evidence',{row,section:section({})})
  assert.ok(evidence.includes(reason));assert.match(evidence,new RegExp('dateTime="'+at+'"'))
  assert.ok(render('evidence',{row:{...row,detail:undefined},section:section({})}).includes(reason))
@@ -158,4 +158,103 @@ test('stance uses concise retained readings and an honest compact unavailable ga
  assert.match(html,/Historical synthetic stance/);assert.match(html,/Small sizes only/);assert.match(html,/41.8/);assert.match(html,/Gauge unavailable/)
  assert.doesNotMatch(html,/Independent tier detail|Independent score detail|Independent buy detail/)
  assert.match(html,/Source evidence/);assert.match(html,/Engine-owned gauge cut-offs and marker are not served/)
+})
+
+
+test('one-letter served symbols outrank incidental prose while account labels and explicit symbol queries remain searchable',()=>{
+ const list=[{id:'visa:one',label:'Visa',symbol:'V',scope:'held',scopeLabel:'Synthetic retirement account',detail:'Stored coverage'},{id:'telecom:one',label:'Telecom',symbol:'T',scope:'held',scopeLabel:'Synthetic taxable account'},{id:'unrelated',label:'A very active review',symbol:'OTHER',detail:'V and T occur in narrative only'}]
+ assert.deepEqual(selectHomeRows(list,{query:'V'}).filtered.map(r=>r.id),['visa:one'])
+ assert.deepEqual(selectHomeRows(list,{query:'t'}).filtered.map(r=>r.id),['telecom:one'])
+ assert.deepEqual(selectHomeRows(list,{query:'symbol:V'}).filtered.map(r=>r.id),['visa:one'])
+ assert.deepEqual(selectHomeRows(list,{query:'account:taxable'}).filtered.map(r=>r.id),['telecom:one'])
+ assert.equal(selectHomeRows(list,{query:'V',scope:'watch'}).total,0)
+ assert.equal(selectHomeRows(list,{query:'retirement'}).total,1)
+})
+test('all eleven sector tiles can render together without expanding the general ten-row browse limit',()=>{
+ const sectors=Array.from({length:11},(_,i)=>({id:'sector:'+i,label:'Synthetic sector '+i,facts:[{label:'Condition',value:'Observed'}]}))
+ const html=render('outlook',{sections:{sectors:section({rows:sectors})}})
+ assert.equal((html.match(/data-home-record="true"/g)||[]).length,11)
+ assert.match(html,/Synthetic sector 10/);assert.equal(selectHomeRows(sectors,{pageSize:99}).visible.length,10)
+})
+test('known complete zero, missing queue, unpublished queue and stale observation remain distinct',()=>{
+ const known=section({available:false,rows:[],complete:true,totalCount:0,emptyState:'known-zero',unit:'task groups'})
+ const zero=render('panel',{id:'decide',title:'Decide',icon:'bell',section:known})
+ assert.match(zero,/known empty/);assert.match(zero,/No task groups in this complete observed population/);assert.doesNotMatch(zero,/class="home-v2-unavailable"/)
+ const absent=render('panel',{id:'fix',title:'Fix system',icon:'gear',section:section({available:false,rows:[],complete:false,totalCount:null})})
+ assert.match(absent,/class="home-v2-unavailable"/);assert.doesNotMatch(absent,/known empty|No task groups/)
+ const unpublished=render('panel',{id:'fix',title:'Fix system',icon:'gear',section:section({available:false,emptyState:'not-published',reason:'No published queue contract'})})
+ assert.match(unpublished,/not published/)
+ const stale=render('panel',{id:'decide',title:'Decide',icon:'bell',section:section({verdict:'stale',emptyState:'stale',rows:[],complete:false,totalCount:0})})
+ assert.match(stale,/stale/);assert.doesNotMatch(stale,/known empty/)
+})
+test('generic owning desk links expose an honest subject/account/record handoff rather than fabricated deep-link completion',()=>{
+ const html=render('evidence',{row:{id:'synthetic-task:7',version:'2',label:'Review synthetic protection',symbol:'SYN',scopeLabel:'Synthetic family account',href:'/v3/risk',cta:'Review canonical quantity coverage'},section:section({})})
+ for(const text of['Subject-specific review handoff','SYN','Synthetic family account','synthetic-task:7','selecting this exact record is not supported','Review canonical quantity coverage'])assert.ok(html.includes(text),text)
+ assert.doesNotMatch(html,/risk\?symbol|risk#synthetic/)
+})
+test('typed public publisher and engine labels survive while unrelated opaque identifiers remain withheld',()=>{
+ const model=adapt(payload({today:{news:section({rows:[{label:'Synthetic story',facts:[{label:'Publisher',value:'sec_edgar'},{label:'Engine',value:'market_risk'},{label:'Publisher',value:'synthetic_broker_account'}]}]})}}))
+ const facts=model.today.news.rows[0].facts
+ assert.equal(facts[0].value,'SEC EDGAR');assert.equal(facts[1].value,'Market risk');assert.equal(facts[2].value,'[account withheld]')
+})
+test('partial source inventory retains total, returned cap and typed classification correction without rewriting original event facts',()=>{
+ const model=adapt(payload({needs:{incidents:section({sourceTotal:6510,returnedCount:200,sourceCap:200,coverageLabel:'200 returned of 6510 recorded',rows:[{id:'synthetic-incident',label:'Research health',categoryLabel:'Platform health',originalKind:'stored_misc',correctionReason:'Original typed event is health',facts:[{label:'Original recorded category',value:'Orphaned stop'}]}]})}}))
+ const s=model.needs.incidents;assert.equal(s.sourceTotal,6510);assert.equal(s.returnedCount,200);assert.equal(s.sourceCap,200)
+ const evidence=render('evidence',{row:s.rows[0],section:s});for(const v of['Platform health','stored_misc','Original typed event is health','Orphaned stop'])assert.ok(evidence.includes(v),v)
+})
+test('Today has separate held and watch mover contracts and retains re-entry context on demand',()=>{
+ const html=render('today',{sections:{movers:section({rows:[{label:'Held synthetic',symbol:'HELD',scope:'held'}]}),watchMovers:section({rows:[{label:'Watch synthetic',symbol:'WATCH',scope:'watch'}]}),watch:section({rows:[{label:'Retained re-entry synthetic'}]})}})
+ assert.match(html,/Held synthetic/);assert.match(html,/Watch synthetic/);assert.match(html,/Open retained re-entry context/);assert.doesNotMatch(html,/Retained re-entry synthetic/)
+ assert.match(html,/home-v2-ticker">HELD/);assert.match(html,/home-v2-ticker">WATCH/)
+})
+
+test('re-entry truth preserves unknown separately from false and displays real served names only',()=>{
+ const model=adapt(payload({needs:{reentry:section({rows:[{label:'Synthetic watch',clock:at,state:'amber',progress:[true,false,null,'unknown',0],conditions:[{label:'Validation current',value:null},{label:'Saved setup',value:false},{label:'Source joined',value:true}]}]})}}))
+ const row=model.needs.reentry.rows[0]
+ assert.deepEqual(row.progress,[true,false,null,null,null]);assert.deepEqual(row.conditions.map(c=>c.value),[null,false,true])
+ const detail=render('evidence',{row,section:model.needs.reentry})
+ assert.match(detail,/Validation current: unknown/);assert.match(detail,/Saved setup: not met/);assert.match(detail,/Source joined: met/)
+ const unnamed=render('evidence',{row:{...row,conditions:[]},section:model.needs.reentry})
+ assert.match(unnamed,/Condition 2 · name not served: not met/);assert.match(unnamed,/Condition 3 · name not served: unknown/)
+})
+test('scoped journal meaning remains visible while all stored partial ledger evidence is retained',()=>{
+ const model=adapt(payload({today:{tiles:section({metrics:[{label:'Realized P/L',value:'$12.34',qualifier:'Partial ledger',accountScope:'Synthetic broker only',timeWindow:'all_time',interval:'Closed through synthetic date',basis:'Known basis subset',details:[{label:'Unknown basis records',value:'7'},{label:'Proceeds, not profit',value:'$56.78'}]}]})}}))
+ const fact=model.today.tiles.metrics[0]
+ for(const q of ['Partial ledger','Synthetic broker only','all_time','Closed through synthetic date','Known basis subset'])assert.ok(fact.qualifier.includes(q))
+ const html=render('today',{sections:model.today});assert.match(html,/Synthetic broker only/);assert.match(html,/Known basis subset/)
+ const detail=render('evidence',{row:{label:'Ledger',facts:[fact]}})
+ assert.match(detail,/Unknown basis records/);assert.match(detail,/Proceeds, not profit/)
+})
+test('explicit stale empty observation cannot become a complete current zero queue',()=>{
+ const html=render('panel',{id:'fix',title:'Fix system',icon:'gear',section:section({available:false,rows:[],complete:true,totalCount:0,emptyState:'stale'})})
+ assert.doesNotMatch(html,/No records in this complete observed population/);assert.match(html,/not served/)
+})
+
+test('expired or failed-refresh known zero is retained history and cannot assert a current empty population',()=>{
+ const base=section({rows:[],complete:true,totalCount:0,unit:'task groups',emptyState:'known-zero'})
+ for(const ss of[{...base,verdict:'stale'},{...base,readFailed:true}]){
+  const html=render('panel',{id:'fix',title:'Fix system',icon:'gear',section:ss})
+  assert.doesNotMatch(html,/known empty|No task groups in this complete observed population/)
+  assert.match(html,/Retained observation: zero task groups; current population is unknown/)
+ }
+ const model=adapt(payload({needs:{fix:base}}),{error:'Synthetic failed refresh'})
+ assert.equal(model.needs.fix.readFailed,true)
+ assert.doesNotMatch(render('panel',{id:'fix',title:'Fix system',icon:'gear',section:model.needs.fix}),/known empty|No task groups in this complete observed population/)
+})
+test('retained re-entry truth stays readable but failed reads cannot retain green condition confirmation',()=>{
+ const base=section({rows:[{label:'Saved watch',conditions:[{label:'Validation current',value:true}],progress:[true,false,null,true,true]}]})
+ const model=adapt(payload({needs:{reentry:base}}),{error:'Synthetic failed refresh'})
+ const html=render('evidence',{row:model.needs.reentry.rows[0],section:model.needs.reentry})
+ assert.match(html,/saved met; current truth unknown/);assert.doesNotMatch(html,/data-tone="green"/)
+ const unnamed=render('evidence',{row:{...model.needs.reentry.rows[0],conditions:[]},section:model.needs.reentry})
+ assert.match(unnamed,/current truth unknown/);assert.doesNotMatch(unnamed,/class="on"/)
+ const dated=render('evidence',{row:{label:'Dated watch',state:'grey',clock:null,conditions:[{label:'Stored check',value:true}]},section:section({})})
+ assert.match(dated,/saved met; current truth unknown/);assert.doesNotMatch(dated,/data-tone="green"/)
+})
+test('gauge provenance retains its independent clock and source policy rather than borrowing stance time',()=>{
+ const model=adapt(payload({today:{stance:section({metrics:[{label:'Score',value:'25'}],gauge:{scoreLabel:'Stored score only',marker:'25%',bands:[{width:'100%',state:'grey'}],ticks:[],policyVersion:'Synthetic scale v1',source:'Synthetic engine',clock:built,qualifier:'Score only; no weighted contribution claim'}})}}))
+ assert.equal(model.today.stance.clock,at);assert.equal(model.today.stance.gauge.clock,built)
+ assert.equal(model.today.stance.gauge.qualifier,'Score only; no weighted contribution claim')
+ const html=render('today',{sections:model.today})
+ assert.match(html,/Gauge observation/);assert.ok(html.includes(built));assert.match(html,/Synthetic scale v1/)
 })

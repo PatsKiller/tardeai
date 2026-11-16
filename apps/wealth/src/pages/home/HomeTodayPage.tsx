@@ -1,5 +1,5 @@
 import type { HomeTodayModel } from './homeAdapter'
-import { HomeEvidenceButton, HomeFact, HomeGauge, HomeMetricTiles, HomePanel, HomeRows, HomeStoredNarrative } from './HomeV2Parts'
+import { HomeSecondary, HomeEvidenceButton, HomeFact, HomeGauge, HomeMetricTiles, HomePanel, HomeRows, HomeStoredNarrative } from './HomeV2Parts'
 import type { HomeV2Sections } from './HomeV2Parts'
 export function HomeTodayPage({sections={},cio}:{model?:HomeTodayModel;now?:number;cio?:()=>void;sections?:HomeV2Sections}) {
  const stance=sections.stance,stanceFacts=['Buys','Stops to decide','Unprotected','Re-entry'].map(label=>stance?.metrics?.find(f=>f.label.toLowerCase()===label.toLowerCase())||{label,value:null,qualifier:`${label}: stored field not served`})
@@ -8,8 +8,9 @@ export function HomeTodayPage({sections={},cio}:{model?:HomeTodayModel;now?:numb
  <HomeMetricTiles id="tiles" labels={['Portfolio','Session P&L','Year to date ≈','Realized','Trading record']} section={sections.tiles}/>
  <div className="home-v2-grid-two"><HomePanel id="movers" title="Held book movers" icon="pulse" section={sections.movers} limit={5}/><HomePanel id="stops" title="Stops" icon="shield" section={sections.stops}/></div>
  <div className="home-v2-grid-two"><HomePanel id="week" title="This week · earnings and events" icon="calendar" section={sections.week}/><HomePanel id="news" title="Read first · symbol-tagged candidates" icon="news" section={sections.news} limit={5} news/></div>
- {sections.recordedUpcoming?<HomePanel id="recordedUpcoming" title="Recorded upcoming dates · outside week window" icon="calendar" section={sections.recordedUpcoming}/>:null}
- <div className="home-v2-grid-three"><HomePanel id="accounts" title="Accounts" icon="wallet" section={sections.accounts}/><HomePanel id="setups" title="Setups · latest scan" icon="target" section={sections.setups} limit={5}/><HomePanel id="watch" title="Watchlist · retained re-entry context" icon="swap" section={sections.watch} limit={6}/></div>
+ {sections.recordedUpcoming?<HomeSecondary title="later recorded dates · outside this week"><HomePanel id="recordedUpcoming" title="Recorded upcoming dates · outside week window" icon="calendar" section={sections.recordedUpcoming}/></HomeSecondary>:null}
+ <div className="home-v2-grid-three"><HomePanel id="accounts" title="Accounts" icon="wallet" section={sections.accounts}/><HomePanel id="setups" title="Setups · latest scan" icon="target" section={sections.setups} limit={5}/><HomePanel id="watch" title="Watch movers · sampled watch securities" icon="swap" section={sections.watchMovers} limit={5}/></div>
+ {sections.watch?<HomeSecondary title="retained re-entry context"><HomePanel id="reentryContext" title="Re-entry watch · retained context, not buy eligibility" icon="target" section={sections.watch}/></HomeSecondary>:null}
  <div className="home-v2-grid-two"><HomePanel id="brief" title="CIO brief · stored history" icon="news" section={sections.brief}><HomeStoredNarrative section={sections.brief}/></HomePanel><HomePanel id="pulse" title="System pulse" icon="heart" section={sections.pulse}/></div>
  </div>
 }

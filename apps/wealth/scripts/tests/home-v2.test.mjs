@@ -15,14 +15,13 @@ test('all eleven Today groups render in approved order even when every source is
  assert.deepEqual(actual,['stance','tiles','movers','stops','week','news','accounts','setups','watch','brief','pulse'])
  assert.match(html,/not served/);assert.doesNotMatch(html,/\$0|41\.8|1,255,586/)
 })
-test('Outlook keeps independent engines and nine markup boxes; unknown disagreement source is not silently hidden',()=>{
+test('Outlook promotes independent engine differences and keeps registry inventory explicitly available on demand',()=>{
  const html=render('outlook',{}),actual=[...html.matchAll(/data-home-panel="([^"]+)"/g)].map(x=>x[1])
- assert.deepEqual(actual,['temperature','regime','disagreements','sectors','hedge','week','futures','headlines','marketMovers'])
- assert.match(html,/Regime · separate engine/)
- const empty=render('outlook',{sections:{disagreements:section({rows:[]})}})
- assert.doesNotMatch(empty,/data-home-panel="disagreements"/)
- const missing=render('outlook',{sections:{disagreements:{available:false,rows:[],reason:'Source offline'}}})
- assert.match(missing,/data-home-panel="disagreements"/)
+ assert.deepEqual(actual,['temperature','regime','engineDifferences','sectors','hedge','week','futures','headlines','marketMovers'])
+ assert.match(html,/Regime · separate engine/);assert.match(html,/Open registered findings/);assert.match(html,/aria-expanded="false"/)
+ const model=homeV2Model({data:{outlook:{disagreements:section({rows:[{id:'registry:kept',label:'Retained registry conflict'}]}),engineDifferences:section({rows:[{label:'Independent engine risk comparison',facts:[{label:'Engine A',value:'Dated side A'},{label:'Engine B',value:'Dated side B'}]}]})}}})
+ const populated=render('outlook',{sections:model.outlook})
+ assert.match(populated,/Independent engine risk comparison/);assert.doesNotMatch(populated,/Retained registry conflict/);assert.equal(model.outlook.disagreements.rows[0].id,'registry:kept')
 })
 test('Needs history is collapsed by default and distinct from current protection and queue groups',()=>{
  const html=render('needs',{sections:{incidents:section({rows:[{label:'Synthetic historic incident'}],totalLabel:'one recorded item'})}})
@@ -46,10 +45,10 @@ test('signed gains and losses have arrows as well as direction; neutral readings
  assert.match(render('fact',{fact:{label:'Move',value:'−$12.34',state:'red',signed:true}}),/▼ −\$12\.34/)
  assert.match(render('fact',{fact:{label:'VIX',value:'12.34',state:'grey'}}),/data-tone="grey"/)
 })
-test('compact rows preserve contextual held link and defer remaining rows behind Show all',()=>{
+test('compact rows preserve contextual held link and defer remaining rows behind accurately named browsing',()=>{
  const html=render('panel',{id:'movers',title:'Movers',icon:'pulse',section:section({rows}),limit:5})
  assert.equal((html.match(/class="home-v2-row"/g)||[]).length,5)
- assert.match(html,/Show all/);assert.doesNotMatch(html,/Synthetic issuer 5/)
+ assert.match(html,/Browse 10 per page/);assert.doesNotMatch(html,/Show all/);assert.doesNotMatch(html,/Synthetic issuer 5/)
  assert.match(html,/hv_query=TEST0&amp;hv_account=synthetic/)
 })
 test('unverified news never exposes confident financial explanation; issuer evidence unlocks stored detail',()=>{
@@ -69,10 +68,10 @@ test('safe links preserve actual symbol/account context and reject APIs, credent
 test('gauge cannot adopt the mockup assumed policy; only served engine bands render',()=>{
  const absent=render('gauge',{})
  assert.match(absent,/Engine-owned gauge cut-offs/);assert.doesNotMatch(absent,/home-v2-gauge-marker/)
- const actual=render('gauge',{section:section({gauge:{scoreLabel:'Synthetic engine score',bands:[{width:'35%',state:'green'},{width:'65%',state:'red'}],marker:'27%',ticks:[{position:'35%',label:'Engine boundary'}]}})})
+ const actual=render('gauge',{section:section({gauge:{policyVersion:'synthetic-scale@v1',source:'Synthetic engine scale',scoreLabel:'Synthetic engine score',bands:[{width:'35%',state:'green'},{width:'65%',state:'red'}],marker:'27%',ticks:[{position:'35%',label:'Engine boundary'}]}})})
  assert.match(actual,/width:35%/);assert.match(actual,/left:27%/);assert.match(actual,/Engine boundary/)
- const invalid=render('gauge',{section:section({gauge:{scoreLabel:'bad',bands:[{width:'999%',state:'red'}],marker:'101%',ticks:[]}})})
- assert.match(invalid,/not served/)
+ const invalid=render('gauge',{section:section({gauge:{policyVersion:'synthetic-scale@v1',source:'Synthetic engine scale',scoreLabel:'bad',bands:[{width:'999%',state:'red'}],marker:'101%',ticks:[]}})})
+ assert.match(invalid,/Gauge unavailable/)
 })
 test('an unzoned source clock stays unknown and cannot become a trustworthy observation',()=>{
  const html=render('panel',{id:'test',title:'Test',icon:'clock',section:section({clock:'2040-01-02T03:04:05',rows:[{label:'Synthetic record'}]})})
@@ -100,7 +99,7 @@ test('adapter retains last known evidence with an amber failure qualification an
  const good={today:{movers:section({rows:[{label:'Retained synthetic mover',state:'green',clock:'2040-01-01T01:00:00Z',facts:[{label:'Protection',value:'Active',state:'green',icon:'closed',clock:'2040-01-01T01:00:00Z'}]}]})}}
  const m=homeV2Model(envelope(null,{ok:false,error:'Synthetic current read failed',lastGood:good,lastGoodAt:'2040-01-02T03:50:00Z',lastGoodAgeSeconds:600}))
  assert.equal(m.today.movers.available,true);assert.equal(m.today.movers.state,'amber');assert.equal(m.today.movers.rows[0].state,'grey');assert.equal(m.today.movers.rows[0].facts[0].state,'grey');assert.match(m.today.movers.rows[0].facts[0].qualifier,/last known|current read failed/i);assert.equal(m.today.movers.rows[0].facts[0].clock,'2040-01-01T01:00:00Z');assert.match(m.today.movers.reason,/Synthetic current read failed/);assert.equal(m.today.movers.clock,'2040-01-02T03:04:05Z')
- const html=render('today',{sections:m.today});assert.match(html,/Retained synthetic mover/);assert.match(html,/qualified/);assert.match(html,/Synthetic current read failed/)
+ const html=render('today',{sections:m.today});assert.match(html,/Retained synthetic mover/);assert.match(html,/last known · read failed/);assert.match(html,/Synthetic current read failed/)
 })
 test('adapter redacts known and opaque account identifiers from every displayed copy while retaining friendly account labels',()=>{
  const key='synthetic_broker_key',opaque='Z123456789',m=homeV2Model(envelope({account_labels:{[key]:'Synthetic family account'},today:{movers:section({reason:key+' '+opaque,source:key,title:key,notes:[key,opaque],metrics:[{label:key,value:opaque,qualifier:key}],rows:[{label:key,detail:opaque,symbol:key,source:key,facts:[{label:key,value:opaque}],links:[{label:key,href:'/wealth/portfolio/holdings?hv_query=TEST'}]}]})}}))
