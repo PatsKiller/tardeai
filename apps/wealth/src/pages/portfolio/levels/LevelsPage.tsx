@@ -30,8 +30,9 @@ export function LevelsPage({ state, draft, onDraft, onSubmit, badInput }: Levels
       </form>
 
       {state.kind === 'idle' && <p className="muted" data-state="idle">Enter a symbol to read its levels. Nothing is requested until you do.</p>}
-      <p className="muted" data-note="backend-fetch">A lookup is not a pure read: when the server holds no cached levels for the symbol, it fetches market data from an external provider and caches the result.</p>
+      <p className="muted" data-note="backend-fetch">Stored levels only: a cache miss returns BUILDING. This read does not calculate levels or fetch market data.</p>
       {state.kind === 'loading' && <p className="muted" data-state="loading">Reading levels for {state.symbol}…</p>}
+      {state.kind === 'building' && <p className="note blue" role="status" data-state="building">BUILDING · Levels for {state.symbol}: {state.reason}. No level is printed; this is not a known-empty or zero result.</p>}
       {state.kind === 'error' && (
         <div className="note bad" role="alert" data-state="error">
           <strong>Levels for {state.symbol} could not be read.</strong> {state.message}.{' '}

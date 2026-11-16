@@ -1,6 +1,6 @@
 // Levels & valuation — adapter for GET /api/v2/indicators/levels?symbol=X (one symbol per call).
-// Pure. The producer serves price levels with presentation colours and a label, but NO computed-at clock, no
-// cache age and no portfolio-wide form. Valuation (valuation-assessment@1) is not wired, so it is never shown.
+// Pure. A stored-cache miss is BUILDING, never a known-empty result or a request to analyze.
+// Valuation (valuation-assessment@1) is not wired, so it is never shown.
 import type { Envelope } from '../../../api/client'
 
 export const LEVELS_PATH = '/api/v2/indicators/levels'
@@ -16,6 +16,7 @@ export interface LevelsModel { symbol: string; levels: Level[]; groups: { name: 
 export type LevelsState =
   | { kind: 'idle' }
   | { kind: 'loading'; symbol: string }
+  | { kind: 'building'; symbol: string; reason: string }
   | { kind: 'error'; symbol: string; message: string; lastGoodAt: string | null }
   | { kind: 'empty'; symbol: string; fetchedAt: string }
   | { kind: 'ok'; model: LevelsModel; fetchedAt: string }
@@ -32,8 +33,11 @@ export function adaptLevels(symbol: string, env: Envelope<unknown> | null): Leve
   if (!env.ok) return { kind: 'error', symbol, message: env.error ?? 'the read failed', lastGoodAt: env.lastGoodAt }
   const b = env.data
   if (b === null || typeof b !== 'object' || Array.isArray(b)) return { kind: 'error', symbol, message: 'the producer answered with no body', lastGoodAt: env.lastGoodAt }
-  const o = b as Record<string, unknown>
+  const root = b as Record<string, unknown>
+  if (root.ok === false) return { kind: 'error', symbol, message: typeof root.error === 'string' ? root.error : 'the producer declared the read unavailable', lastGoodAt: env.lastGoodAt }
+  const o = root.data !== null && typeof root.data === 'object' && !Array.isArray(root.data) ? root.data as Record<string, unknown> : root
   if (o.ok === false) return { kind: 'error', symbol, message: typeof o.error === 'string' ? o.error : 'the producer declared the read unavailable', lastGoodAt: env.lastGoodAt }
+  if (o.status === 'BUILDING') return { kind: 'building', symbol, reason: typeof o.reason === 'string' ? o.reason : 'Stored levels are not built yet' }
   const raw = Array.isArray(o.levels) ? o.levels : []
   const levels: Level[] = []
   for (const r of raw) {

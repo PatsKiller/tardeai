@@ -162,3 +162,30 @@ test('levels render: idle, served (grouped, freshness Unknown), empty, error; va
   assert.equal(a.lv.adaptLevels('QZAA',env({ok:false,error:'symbol required'})).kind,'error')
   assert.ok(!/cheap|expensive|undervalued/i.test(t))
 })
+
+test('levels: cold BUILDING is not empty for bare and canonical wrapped replies',()=>{
+  const cold={ok:true,status:'BUILDING',symbol:'QZAA',levels:[],reason:'Stored levels are not built yet'}
+  for(const body of [cold,{ok:true,data:cold}]){
+    const state=a.lv.adaptLevels('QZAA',env(body)); assert.equal(state.kind,'building')
+    const s=page(state),t=text(s)
+    assert.match(s,/data-state="building"/); assert.match(s,/role="status"/)
+    assert.ok(t.includes('BUILDING')&&t.includes(cold.reason)&&t.includes('QZAA'))
+    assert.ok(!s.includes('data-state="empty"')&&!s.includes('data-state="served"'))
+    assert.ok(t.includes('not a known-empty or zero result'))
+    assert.ok(!t.includes('fetches market data from an external provider'))
+  }
+})
+test('levels: BUILDING never prints accidental cached values and wrapped served reply preserves levels',()=>{
+  const raw={ok:true,symbol:'QZAA',levels:[{type:'pivot_p',label:'Synthetic pivot',price:123.45}]}
+  const building=a.lv.adaptLevels('QZAA',env({...raw,status:'BUILDING'}))
+  assert.equal(building.kind,'building'); assert.ok(!text(page(building)).includes('$123.45'))
+  const served=a.lv.adaptLevels('QZAA',env({ok:true,data:raw}))
+  assert.equal(served.kind,'ok'); assert.ok(text(page(served)).includes('$123.45'))
+  assert.equal(a.lv.adaptLevels('QZAA',env({ok:true,data:{ok:true,levels:[]}})).kind,'empty')
+  assert.equal(a.lv.adaptLevels('QZAA',env({ok:true,data:{ok:false,error:'Stored source unavailable'}})).kind,'error')
+  for(const nested of [raw,{ok:true,levels:[]}]){
+    const refused=a.lv.adaptLevels('QZAA',env({ok:false,error:'Synthetic outer refusal',data:nested}))
+    assert.equal(refused.kind,'error'); assert.match(text(page(refused)),/Synthetic outer refusal/)
+    assert.ok(!page(refused).includes('data-state="served"')&&!page(refused).includes('data-state="empty"'))
+  }
+})
