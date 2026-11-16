@@ -11,6 +11,7 @@ import { WorkspaceIcon } from './icons'
 import { WealthStatus, SignedValue } from '../../../components/WealthStatus'
 import { StoredNews } from './StoredNews'
 import { protectionSummary } from './adapter'
+import { PROTECTION_CLASSES, protectionFilterValue, protectionMix, showAllFrom, withShowAll, allGroupKeys, queryRevealKeys, disclosure, disclosureText } from './discovery'
 import './workspace.css'
 const money=(v:number|null)=>v===null?'not served':new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(Object.is(v,-0)?0:v)
 const mark=(v:number|null)=>v===null?'not served':servedPrice(v)
@@ -21,11 +22,17 @@ function Value({a,signed=false,asOf}:{a:Aggregate;signed?:boolean;asOf?:string})
 export function HoldingsWorkspace({book,notice,evidence,onRowOpen}:{book:HoldingsBook;notice:string|null;evidence:ReactNode;onRowOpen:(r:HoldingsRow,origin?:HTMLElement)=>void}) {
  const [params,setParams]=useSearchParams(), parsed=fromSearch(params),{scope,setScope}=useBookScope()
  const [expanded,setExpanded]=useState<Set<string>>(()=>new Set())
+ // Audit B1: keys forced open by Show all or by a search match; `closed` lets a viewer still collapse one.
+ const [closed,setClosed]=useState<Set<string>>(()=>new Set())
  const priorScope=useRef(scope),initialized=useRef(false)
  if(!initialized.current&&!params.has('hv_account')&&scope!=='ALL')parsed.account=scope
  useEffect(()=>{if(!initialized.current){initialized.current=true;if(!params.has('hv_account')&&scope!=='ALL'){setParams(searchFor(params,{...parsed,account:scope}),{replace:true});return}}setScope(parsed.account||'ALL')},[params.toString()])
  useEffect(()=>{if(priorScope.current!==scope){priorScope.current=scope;if((parsed.account||'ALL')!==scope)setParams(searchFor(params,{...parsed,account:scope==='ALL'?'':scope}))}},[scope])
  const f=parsed,view=useMemo(()=>workspace(book,f),[book,params.toString()])
+ const showAll=showAllFrom(params)
+ const forced=useMemo(()=>new Set([...(showAll?allGroupKeys(view.groups):[]),...queryRevealKeys(view.groups,f.query)]),[view,showAll,f.query])
+ const open=useMemo(()=>new Set([...expanded,...[...forced].filter(k=>!closed.has(k))]),[expanded,forced,closed])
+ const shownCount=disclosure(book.rows.length,view.groups,open)
  const target=holdingLinkTarget(view.groups,f),targetSignature=target?JSON.stringify([f.query.trim().toUpperCase(),f.account,f.group,target.rowKey]):''
  const rowNodes=useRef(new Map<string,HTMLTableRowElement>()),focusedTarget=useRef('')
  useEffect(()=>{
@@ -38,21 +45,27 @@ export function HoldingsWorkspace({book,notice,evidence,onRowOpen}:{book:Holding
   if(node){node.focus({preventScroll:true});node.scrollIntoView({block:'nearest'});focusedTarget.current=targetSignature}
  },[targetSignature,expanded])
  const update=(patch:Partial<Filters>)=>{const next={...f,...patch};setParams(searchFor(params,next));if(patch.account!==undefined)setScope(patch.account||'ALL')}
- const reset=()=>{setParams(searchFor(params,DEFAULT));setScope('ALL');setExpanded(new Set())}
+ const reset=()=>{setParams(withShowAll(searchFor(params,DEFAULT),false));setScope('ALL');setExpanded(new Set());setClosed(new Set())}
+ const toggleShowAll=()=>{setClosed(new Set());setParams(withShowAll(params,!showAll))}
  const accounts=[...new Map(book.rows.map(r=>[r.accountKey,r.accountLabel])).entries()]
  const period=f.period==='session'?'Last session':'Since purchase'
  const periodNote=f.period==='session'?'Served row price-change estimates · observation clock UNKNOWN; not economic P&L.':'Served unrealized gain/loss only · realized profit and received income not served.'
  const colour=sign
- const expand=(key:string)=>setExpanded(old=>{const n=new Set(old);n.has(key)?n.delete(key):n.add(key);return n})
+ const expand=(key:string)=>{
+  if(open.has(key)){setExpanded(old=>{const n=new Set(old);n.delete(key);return n});if(forced.has(key))setClosed(old=>new Set([...old,key]))}
+  else{setClosed(old=>{const n=new Set(old);n.delete(key);return n});setExpanded(old=>new Set([...old,key]))}
+ }
  const download=()=>{const url=URL.createObjectURL(new Blob([exportCsv(view,f)],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='holdings-filtered.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),0)}
+ // Audit C2: a parent whose account rows disagree says so with counts and names each account's state.
+ const mixed=(rows:HoldingsRow[])=>{if(rows.length<2)return null;const m=protectionMix(rows);return m.mixed?<><small className="hv-mixed"><WorkspaceIcon name="warning"/> {m.label}</small><small>{m.byAccount.join(' · ')}</small></>:null}
  const protection=(rows:HoldingsRow[])=>{const p=protectionSummary(rows);return <WealthStatus className="hv-status" icon={p.icon==='locked'?'closed':p.icon==='unlocked'?'open':'na'} dataIcon={p.icon} tone={p.tone==='gain'?'green':p.tone==='partial'?'amber':p.tone==='loss'?'red':'grey'} label={p.label} detail={p.detail}/> }
  const row=(g:Group,child=false)=><tr className={child?'hv-child':undefined} key={g.key} data-group={g.key} ref={node=>{if(node)rowNodes.current.set(g.key,node);else rowNodes.current.delete(g.key)}} tabIndex={target?.rowKey===g.key?-1:undefined} aria-label={target?.rowKey===g.key?'Selected holding: '+g.label+' · '+g.rows[0].accountLabel:undefined}>
-  <th scope="row"><div className="hv-security">{!child&&g.kind!=='account'?<button className="hv-expand" aria-expanded={expanded.has(g.key)} aria-label={`${expanded.has(g.key)?'Collapse':'Expand'} ${g.label}`} onClick={()=>expand(g.key)}>{expanded.has(g.key)?'▾':'▸'}</button>:null}<div><span className="hv-ticker" aria-hidden="true">{g.cash?'$':g.kind==='small'?String(g.rows.length):g.label.slice(0,2)}</span><strong>{g.label}</strong>{g.kind==='security'||g.kind==='account'?<small>{displayOf(g.rows[0]).nameText}{displayOf(g.rows[0]).label?<><br/>{displayOf(g.rows[0]).label}</>:null}</small>:null}<small>{[...new Set(g.rows.map(sectorOf))].join(' · ')}</small><small>{g.rows.length} account row{g.rows.length===1?'':'s'} · {qty(g.shares.value)} shares{g.cash?' / sweep units':''}{g.rows.length>1?<span className="hv-tag">grouped</span>:null}</small><small>{[...new Set(g.rows.map(r=>r.accountLabel))].join(' · ')}</small>{(child||g.kind==='account')?<button className="hv-link" onClick={e=>onRowOpen(g.rows[0],e.currentTarget)}>Evidence & details</button>:null}</div></div></th>
+  <th scope="row"><div className="hv-security">{!child&&g.kind!=='account'?<button className="hv-expand" aria-expanded={open.has(g.key)} aria-label={`${open.has(g.key)?'Collapse':'Expand'} ${g.label}`} onClick={()=>expand(g.key)}>{open.has(g.key)?'▾':'▸'}</button>:null}<div><span className="hv-ticker" aria-hidden="true">{g.cash?'$':g.kind==='small'?String(g.rows.length):g.label.slice(0,2)}</span><strong>{g.label}</strong>{g.kind==='security'||g.kind==='account'?<small>{displayOf(g.rows[0]).nameText}{displayOf(g.rows[0]).label?<><br/>{displayOf(g.rows[0]).label}</>:null}</small>:null}<small>{[...new Set(g.rows.map(sectorOf))].join(' · ')}</small><small>{g.rows.length} account row{g.rows.length===1?'':'s'} · {qty(g.shares.value)} shares{g.cash?' / sweep units':''}{g.rows.length>1?<span className="hv-tag">grouped</span>:null}</small><small>{[...new Set(g.rows.map(r=>r.accountLabel))].join(' · ')}</small>{(child||g.kind==='account')?<button className="hv-link" onClick={e=>onRowOpen(g.rows[0],e.currentTarget)}>Evidence & details</button>:null}</div></div></th>
   <td data-label="Price / average cost">{g.kind==='small'?'Multiple securities · see account rows':g.kind==='cash'?'Cash / sweep · see account rows':g.mixedPrice?'Mixed served marks':mark(g.price)}<small>Average {g.kind==='small'||g.kind==='cash'?'not applicable to this summary':mark(g.cost.value)}{g.kind==='security'&&g.rows.length>1?' · blended, derived':''}</small>{g.cost.n<g.cost.m?<small>{coverage(g.cost)}</small>:null}</td>
   <td data-label="Value"><Value a={g.value} asOf={book.asOf}/><small>{pct(g.weight)} of filtered value</small><small>{g.cash?'Not applicable to cash':pct(g.investedWeight)+' of filtered invested · derived'}</small></td>
   <td data-label={period} className={colour(g.pnl.value)}>{g.cash?'not applicable':<Value a={g.pnl} signed asOf={book.asOf}/>}<small>{f.period==='session'?'Clock UNKNOWN':'Unrealized only'}</small></td>
   <td data-label="Unrealized" className={colour(g.unrealized.value)}>{g.cash?'not applicable':<Value a={g.unrealized} signed asOf={book.asOf}/>}<small>{g.cash?'not applicable':g.kind==='small'?'Mixed securities · see account percentages':g.rows.length===1?<SignedValue value={g.rows[0].gainLossPct}>{pct(g.rows[0].gainLossPct)}</SignedValue>:<SignedValue value={g.costPct}>{pct(g.costPct)}</SignedValue>}{g.kind==='security'&&g.rows.length>1?' · derived from covered basis':''}</small></td>
-  <td data-label="Protection">{protection(g.rows)}{g.rows.length===1&&g.rows[0].protection?<><small>Stop {mark(g.rows[0].protection!.stop)}</small><small>Read {g.rows[0].protection!.asOf||'not served'}{g.rows[0].protection!.stale?' · stale':''}</small></>:null}</td>
+  <td data-label="Protection">{protection(g.rows)}{mixed(g.rows)}{g.rows.length===1&&g.rows[0].protection?<><small>Stop {mark(g.rows[0].protection!.stop)}</small><small>Read {g.rows[0].protection!.asOf||'not served'}{g.rows[0].protection!.stale?' · stale':''}</small></>:null}</td>
  </tr>
  return <div className="holdings-v2">
   <header className="hv-header"><div><h2>Holdings workspace</h2><p>{view.identities.nonCashPositions} filtered non-cash account positions · {view.identities.securities} distinct securities · marks {book.asOf} ({book.asOfClock} clock)</p></div><a className="hv-fresh" href="#holdings-evidence" onClick={()=>{const e=document.getElementById('holdings-evidence');if(e instanceof HTMLDetailsElement)e.open=true}}><WorkspaceIcon name={notCurrent(book.freshness)?'warning':'na'}/> Freshness {notCurrent(book.freshness)?'PARTIAL · not current':'producer verdict'} · evidence ↓</a></header>
@@ -65,7 +78,7 @@ export function HoldingsWorkspace({book,notice,evidence,onRowOpen}:{book:Holding
    <div className="hv-filterline">
     <label>Account<select aria-label="Holdings account" value={f.account} onChange={e=>update({account:e.target.value})}><option value="">All accounts</option>{accounts.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
     <label>Result<select aria-label="Result" value={f.result} onChange={e=>update({result:e.target.value})}><option value="">All results</option><option value="gainers">Gainers only</option><option value="losers">Losers only</option></select></label>
-    <label>Protection<select aria-label="Protection" value={f.protection} onChange={e=>update({protection:e.target.value})}><option value="">All protection</option>{['PROTECTED','GAP','UNKNOWN','not-applicable'].map(s=><option key={s} value={s}>{s}</option>)}</select></label>
+    <label>Protection<select aria-label="Protection" value={protectionFilterValue(f.protection)} onChange={e=>update({protection:e.target.value})}><option value="">All protection</option>{PROTECTION_CLASSES.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}</select></label>
     <label>Size<select aria-label="Size" value={f.size} onChange={e=>update({size:e.target.value})}><option value="">All sizes</option><option value="small">Under $100</option><option value="material">$100 or more</option><option value="large">$1,000 or more</option><option value="unpriced">Unpriced</option></select></label>
     <label>Search<input aria-label="Search holdings" value={f.query} onChange={e=>update({query:e.target.value})}/></label><button onClick={reset}>Reset</button><button onClick={download}>Export CSV</button>
    </div>
@@ -85,8 +98,9 @@ export function HoldingsWorkspace({book,notice,evidence,onRowOpen}:{book:Holding
    <article><h3><WorkspaceIcon name="shield"/> Protection gaps</h3>{view.gaps.length?view.gaps.map((r,i)=><div key={i}><button className="hv-link" onClick={e=>onRowOpen(r,e.currentTarget)}>{r.symbol} · {r.accountLabel}</button><p>{r.protection?.reason} · read {r.protection?.asOf||'not served'}{r.protection?.stale?' · stale':''}</p></div>):<p>No served GAP rows at or above $100 match. UNKNOWN does not establish protection.</p>}</article>
   </section>
   <section className="hv-book" aria-label="Holdings table"><div className="hv-filterline"><h3>Positions · {view.rows.length} filtered account rows</h3><button aria-pressed={f.group==='security'} onClick={()=>update({group:'security'})}>By security</button><button aria-pressed={f.group==='account'} onClick={()=>update({group:'account'})}>By account</button></div>
-   <p className="hv-note">Grouped and derived totals preserve missing inputs as partial counts. Under-$100 security groups collapse unless an account has unrealized loss of at least $100. Cash remains separate. Price change is not economic profit.</p>
-   <div className="table-wrap"><table className="hv-table"><thead><tr>{['Security','Price / average cost','Value',period+' · '+(f.period==='session'?'clock UNKNOWN':'unrealized only'),'Unrealized','Protection'].map(c=><th key={c} scope="col">{c}</th>)}</tr></thead><tbody>{view.groups.map(g=><Fragment key={g.key}>{row(g)}{expanded.has(g.key)?g.children.map(c=>row(c,true)):null}</Fragment>)}</tbody></table></div>{!view.rows.length?<p>No rows match these filters. No zero totals are inferred.</p>:null}
+   <p className="hv-note">Grouped and derived totals preserve missing inputs as partial counts. Under-$100 security groups collapse unless an account has unrealized loss of at least $100; Show all rows or a matching search opens them. Cash remains separate. Price change is not economic profit.</p>
+   <p className="hv-note hv-disclosure" role="status">{disclosureText(shownCount)} <button aria-pressed={showAll} onClick={toggleShowAll}>{showAll?'Collapse summaries':'Show all rows'}</button></p>
+   <div className="table-wrap"><table className="hv-table"><thead><tr>{['Security','Price / average cost','Value',period+' · '+(f.period==='session'?'clock UNKNOWN':'unrealized only'),'Unrealized','Protection'].map(c=><th key={c} scope="col">{c}</th>)}</tr></thead><tbody>{view.groups.map(g=><Fragment key={g.key}>{row(g)}{open.has(g.key)?g.children.map(c=>row(c,true)):null}</Fragment>)}</tbody></table></div>{!view.rows.length?<p>No rows match these filters. No zero totals are inferred.</p>:null}
   </section>
   <div className="hv-evidence">{evidence}</div>
  </div>

@@ -2,6 +2,7 @@
 import type { HoldingsBook, HoldingsRow } from '../contract'
 import { displayOf } from '../displayIdentity'
 import { allocationOf, sectorOf } from '../../fundamentals/modelV2'
+import { matchesProtection, protectionFilterValue } from './discovery'
 export { sectorOf } from '../../fundamentals/modelV2'
 export type Period = 'session' | 'purchase'
 export interface Filters {period:Period; sector:string; account:string; result:string; protection:string; size:string; query:string; group:string}
@@ -22,7 +23,9 @@ export function fromSearch(p:URLSearchParams):Filters {
  if(!['session','purchase'].includes(f.period))f.period='session'
  if(!['security','account'].includes(f.group))f.group='security'
  if(!['','gainers','losers'].includes(f.result))f.result=''
- if(!['','PROTECTED','GAP','UNKNOWN','not-applicable'].includes(f.protection))f.protection=''
+ // Audit C1: one normalized class per row; a legacy PROTECTED link now means verified-active only.
+ // The raw URL value is kept (old bookmarks round-trip); matching always goes through the normalized class.
+ if(protectionFilterValue(f.protection)==='')f.protection=''
  if(!['','small','material','large','unpriced'].includes(f.size))f.size=''
  return f
 }
@@ -36,10 +39,10 @@ export function searchFor(p:URLSearchParams,f:Filters):URLSearchParams {
 export function selectRows(rows:HoldingsRow[],f:Filters):HoldingsRow[] {
  const q=f.query.trim().toLowerCase()
  return rows.filter(r=>{
-  const v=periodValue(r,f.period),notApplicable=r.kind==='CASH'
+  const v=periodValue(r,f.period)
   return (!f.account||r.accountKey===f.account)&&(!f.sector||sectorOf(r)===f.sector)
    &&(!f.result||(v!==null&&(f.result==='gainers'?v>0:v<0)))
-   &&(!f.protection||(f.protection==='not-applicable'?notApplicable:!notApplicable&&(r.protection?.state||'UNKNOWN')===f.protection))
+   &&matchesProtection(r,f.protection)
    &&(!f.size||(f.size==='unpriced'?r.marketValue===null:r.marketValue!==null&&(f.size==='small'?Math.abs(r.marketValue)<100:f.size==='material'?Math.abs(r.marketValue)>=100:Math.abs(r.marketValue)>=1000)))
    &&(!q||[r.symbol,r.name,displayOf(r).nameText,r.accountLabel,sectorOf(r)].some(s=>s.toLowerCase().includes(q)))
  })

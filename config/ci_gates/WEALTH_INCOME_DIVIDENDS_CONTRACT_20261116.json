@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "WEALTH_INCOME_DIVIDENDS_CONTRACT_20261116",
+  "files": [
+    "tests/test_wealth_income_dividends_contract_20261116.py"
+  ],
+  "anchor": "WEALTH_INCOME_DIVIDENDS_CONTRACT_20261116",
+  "comment": [
+    "ANCHOR: WEALTH_INCOME_DIVIDENDS_CONTRACT_20261116 — /api/v2/dividends serves account_labels with registry/derived/unlabelled provenance (never an account number) and passes through unplaced/unplaced_annual so months reconcile to annual − unplaced within per-month rounding. Synthetic inputs only."
+  ]
+}

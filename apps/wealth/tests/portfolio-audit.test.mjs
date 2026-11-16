@@ -137,3 +137,48 @@ test('H: ownership above 100% is printed as published with an explanation, never
   assert.ok(flat.includes('101.30%'),'raw value kept'); assert.ok(flat.includes('not clamped'))
   assert.ok(!JSON.stringify(a.detailSections(row({fundamentals:{sector:'Technology',instOwnPct:70}}))).includes('not clamped'))
 })
+
+// ---- Wired page (not just the model): render the real HoldingsWorkspace through the router with URL state. ------
+const React=require('react'),{renderToStaticMarkup}=require('react-dom/server'),{MemoryRouter}=require('react-router-dom')
+const ws=(()=>{const c=buildSync({stdin:{contents:"export {HoldingsWorkspace} from './src/pages/portfolio/workspaceV2/Workspace'",resolveDir:APP,loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',jsx:'automatic',external:['react','react-dom','react-router-dom','react/jsx-runtime'],loader:{'.css':'empty'},logLevel:'silent'}).outputFiles[0].text
+  const fn=path.join(APP,'portfolio-audit-ws.cjs'),m=new Module(fn);m.filename=fn;m.paths=Module._nodeModulePaths(APP);m._compile(c,fn);return m.exports})()
+const page=(query,b=book)=>renderToStaticMarkup(React.createElement(MemoryRouter,{initialEntries:['/wealth/portfolio/holdings'+query]},React.createElement(ws.HoldingsWorkspace,{book:b,notice:null,evidence:null,onRowOpen:()=>{}})))
+const childRows=html=>(html.match(/Evidence &amp; details/g)||[]).length
+const status=html=>(html.match(/<p class="hv-note hv-disclosure" role="status">([\s\S]*?)<button/)||[])[1]||''
+
+test('B wired: default page names the collapsed small securities on screen and offers Show all',()=>{
+  const html=page('')
+  for(const s of SMALL)assert.ok(status(html).includes(s),s)
+  assert.match(html,/aria-pressed="false"[^>]*>Show all rows</)
+  assert.ok(!html.includes('>QZSA</strong>'),'small child rows stay collapsed by default')
+})
+
+test('B wired: ?hv_show=all renders every account row, including each small security and cash',()=>{
+  const html=page('?hv_show=all')
+  for(const s of [...SMALL,'QZCASH'])assert.ok(html.includes('>'+s+'</strong>'),s)
+  assert.ok(!/collapsed \(/.test(status(html)),'nothing reported collapsed')
+  assert.match(html,/aria-pressed="true"[^>]*>Collapse summaries</)
+  assert.ok(childRows(html)>childRows(page('')))
+})
+
+test('B wired: a search for a collapsed symbol opens its section on the page',()=>{
+  const html=page('?hv_query=QZSE')
+  assert.ok(html.includes('>QZSE</strong>'),'match rendered as its own row')
+  assert.ok(!/collapsed \(/.test(status(html)))
+})
+
+test('C wired: legacy ?hv_protection=PROTECTED shows verified-active rows only; pending is its own class',()=>{
+  const pend=row({symbol:'QZPEND',protection:prot({reason:'Pending activation'})}),stale=row({symbol:'QZSTALE',protection:prot({stale:true})})
+  const b={...book,rows:[row(),pend,stale]}
+  const legacy=page('?hv_protection=PROTECTED',b)
+  assert.ok(legacy.includes('>QZBIG</strong>')&&!legacy.includes('>QZPEND</strong>')&&!legacy.includes('>QZSTALE</strong>'))
+  assert.ok(page('?hv_protection=pending',b).includes('>QZPEND</strong>'))
+  assert.ok(page('?hv_protection=stale',b).includes('>QZSTALE</strong>'))
+  assert.match(legacy,/<option value="active" selected="">Active · verified current<\/option>/)
+})
+
+test('C wired: a grouped parent whose accounts disagree shows a Mixed badge with per-account states',()=>{
+  const html=page('?hv_show=all')
+  assert.match(html,/hv-mixed[\s\S]*?Mixed · 1 active · 1 gap/)
+  assert.ok(html.includes('Synthetic A: active · Synthetic B: gap'))
+})

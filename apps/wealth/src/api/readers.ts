@@ -89,7 +89,7 @@ export const READERS: ReaderSpec[] = [
     // No maxAgeHours on purpose: the producer publishes its own verdict (`data.truth.stale`) and the document
     // refreshes on its own cadence overnight, so a wall-clock bound here would turn a healthy book UNKNOWN. The
     // per-role clocks (POSITIONS / BUILD / QUOTE / VALUATION) are shown with their ages by the page instead.
-    note: 'cc-deepseek-6 captures 2026-11-15 00:56-00:57Z (served R13 3ac0b4058): 271,806 B; 6 / 7 / 79 ms over three reads; no data.ok; the `_swr` freshness block sits BESIDE `data`, not inside it. heavy: 271 KB, fetched by its own page only. Two wire traps the page must not fall into: scope_coverage.priceable.row_count (33) is the priceable population and rows_read (30) is not; scope_coverage.excluded is the under-floor population that IS rendered (listed, not counted), not rows removed. truth.as_of is the quote clock, not the statement build clock.',
+    note: 'cc-deepseek-6 captures 2026-11-15 00:56-00:57Z (served R13 3ac0b4058): 271,806 B; 6 / 7 / 79 ms over three reads; no data.ok; the `_swr` freshness block sits BESIDE `data`, not inside it. heavy: 271 KB, fetched by its own page only. Two wire traps the page must not fall into: scope_coverage.priceable.row_count (33) counts the priceable MEASURE population, while rows_read (30) is the rows read and rendered; the difference is not omitted rows (audit A1); scope_coverage.excluded is the under-floor population that IS rendered (listed, not counted), not rows removed. truth.as_of is the quote clock, not the statement build clock.',
   },
   {
     path: '/api/v2/portfolio/performance', timeoutMs: DEFAULT_TIMEOUT_MS, heavy: true, clock: 'none',

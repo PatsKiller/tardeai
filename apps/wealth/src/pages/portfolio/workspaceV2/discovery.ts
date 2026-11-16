@@ -53,9 +53,11 @@ export function protectionClass(r: HoldingsRow): ProtectionClass {
   return 'active'
 }
 
+/** Empty = no filter. An unrecognized non-empty value matches nothing (fail closed, never "all rows"). */
 export function matchesProtection(r: HoldingsRow, raw: string): boolean {
+  if (!raw) return true
   const want = protectionFilterValue(raw)
-  return want === '' || protectionClass(r) === want
+  return want !== '' && protectionClass(r) === want
 }
 
 /** Counts per class for a set of account rows; `mixed` when more than one applicable class is present. */
