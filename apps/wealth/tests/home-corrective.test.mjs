@@ -5,9 +5,9 @@ import Module from 'node:module'
 import {fileURLToPath} from 'node:url'
 import path from 'node:path'
 const app=fileURLToPath(new URL('../',import.meta.url))
-const output=await build({stdin:{contents:`import React from 'react';import{renderToStaticMarkup}from'react-dom/server';import{MemoryRouter}from'react-router-dom';import{DrawerProvider}from'./src/components/Drawer';import{HomePanel,HomeRowEvidence,HomeStoredNarrative,selectHomeRows,homeLink}from'./src/pages/home/HomeV2Parts';import{HomeNeedsPage}from'./src/pages/home/HomeNeedsPage';import{HomeOutlookPage}from'./src/pages/home/HomeOutlookPage';import{homeV2Model}from'./src/pages/home/homeV2Adapter';export{selectHomeRows,homeLink,homeV2Model};export function render(kind,props){const C={panel:HomePanel,evidence:HomeRowEvidence,narrative:HomeStoredNarrative,needs:HomeNeedsPage,outlook:HomeOutlookPage}[kind];return renderToStaticMarkup(<MemoryRouter><DrawerProvider><C {...props}/></DrawerProvider></MemoryRouter>)}`,resolveDir:app,loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',target:'node22',loader:{'.css':'empty'},logLevel:'silent',define:{'process.env.NODE_ENV':'"production"'}})
+const output=await build({stdin:{contents:`import React from 'react';import{renderToStaticMarkup}from'react-dom/server';import{MemoryRouter}from'react-router-dom';import{DrawerProvider}from'./src/components/Drawer';import{HomePanel,HomeRowEvidence,HomeStoredNarrative,selectHomeRows,compactHomeRowFacts,homeLink}from'./src/pages/home/HomeV2Parts';import{HomeNeedsPage}from'./src/pages/home/HomeNeedsPage';import{HomeTodayPage}from'./src/pages/home/HomeTodayPage';import{HomeOutlookPage}from'./src/pages/home/HomeOutlookPage';import{homeV2Model}from'./src/pages/home/homeV2Adapter';export{selectHomeRows,compactHomeRowFacts,homeLink,homeV2Model};export function render(kind,props){const C={panel:HomePanel,evidence:HomeRowEvidence,narrative:HomeStoredNarrative,needs:HomeNeedsPage,outlook:HomeOutlookPage,today:HomeTodayPage}[kind];return renderToStaticMarkup(<MemoryRouter><DrawerProvider><C {...props}/></DrawerProvider></MemoryRouter>)}`,resolveDir:app,loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',target:'node22',loader:{'.css':'empty'},logLevel:'silent',define:{'process.env.NODE_ENV':'"production"'}})
 const module=new Module(path.join(app,'tests/home-corrective-virtual.cjs'));module.filename=path.join(app,'tests/home-corrective-virtual.cjs');module.paths=Module._nodeModulePaths(app);module._compile(output.outputFiles[0].text,module.filename)
-const{render,selectHomeRows,homeV2Model,homeLink}=module.exports
+const{render,selectHomeRows,compactHomeRowFacts,homeV2Model,homeLink}=module.exports
 const at='2040-01-02T03:04:05Z',built='2040-01-02T03:10:00Z'
 const section=extra=>({available:true,state:'amber',source:'Synthetic contract',clock:at,...extra})
 const payload=extra=>({schema:'WealthHome@v2',...extra})
@@ -129,4 +129,33 @@ test('an explicit unknown row observation stays unknown in its drawer with secti
  const observation=html.split('<h3>Observation time</h3>')[1].split('<h3>Producer build time')[0]
  assert.match(observation,/source time not served/);assert.doesNotMatch(observation,/<time/)
  assert.match(html,/Section context observation · separate from this item/);assert.match(html,new RegExp('dateTime="'+at+'"'))
+})
+
+
+test('compact protection retains proof state, dated level and exact fractional coverage without duplicate canonical labels',()=>{
+ const row={label:'SYN',symbol:'SYN',detail:'Synthetic account · Partial resting coverage · canonical applicability served',clock:null,source:'Synthetic stop producer',facts:[{label:'Protection',value:'Partial resting coverage',state:'amber'},{label:'Canonical order verdict',value:'PROTECTED'},{label:'Recorded advisory/order level',value:'$71.23'},{label:'Distance',value:null},{label:'Covered shares',value:'0.4985'},{label:'Uncovered shares',value:'0.025'}]}
+ assert.deepEqual(compactHomeRowFacts(row).map(f=>f.label),['Protection','Recorded advisory/order level','Distance','Covered shares','Uncovered shares'])
+ const card=render('panel',{id:'stops',title:'Stops',icon:'shield',section:section({rows:[row]})})
+ assert.match(card,/Synthetic account/);assert.match(card,/Partial resting coverage/);assert.match(card,/0.4985/);assert.match(card,/0.025/);assert.match(card,/\$71.23/)
+ assert.doesNotMatch(card,/Canonical order verdict|canonical applicability served|home-v2-ticker/)
+ assert.match(card,/Observation · source time not served/)
+ const detail=render('evidence',{row,section:section({})})
+ assert.match(detail,/Canonical order verdict/);assert.match(detail,/canonical applicability served/);assert.match(detail,/Synthetic stop producer/)
+})
+test('a long actionable reason has a concise real excerpt while Evidence retains every exact reason and own clock',()=>{
+ const reason='Investigate the retained upstream schema mismatch. '+ 'Registered evidence remains independently reviewable. '.repeat(8)
+ const row={id:'synthetic:long',label:'Review stored source',summary:reason,detail:reason,clock:at,href:'/v3/health',facts:[]}
+ const card=render('panel',{id:'fix',title:'Fix system',icon:'gear',section:section({rows:[row]})})
+ assert.ok(card.includes(reason.slice(0,150).trimEnd()+'…'));assert.ok(!card.includes(reason));assert.match(card,/href="\/v3\/health"/)
+ const evidence=render('evidence',{row,section:section({})})
+ assert.ok(evidence.includes(reason));assert.match(evidence,new RegExp('dateTime="'+at+'"'))
+ assert.ok(render('evidence',{row:{...row,detail:undefined},section:section({})}).includes(reason))
+ const distinct=render('evidence',{row:{...row,summary:'Separate registered action reason',detail:'Independent retained source detail'},section:section({})});assert.match(distinct,/Separate registered action reason/);assert.match(distinct,/Independent retained source detail/)
+})
+test('stance uses concise retained readings and an honest compact unavailable gauge without repeated visible per-field provenance',()=>{
+ const stance=section({title:'Last available CIO stance',notes:['Historical synthetic stance · own dated record'],metrics:[{label:'Tier',value:'YELLOW',source:'Synthetic stance source',clock:at,qualifier:'Independent tier detail'},{label:'Score',value:'41.8',source:'Synthetic score source',clock:at,qualifier:'Independent score detail'},{label:'Buys',value:'Small sizes only',source:'Synthetic buy source',clock:at,qualifier:'Independent buy detail'}]})
+ const html=render('today',{sections:{stance}})
+ assert.match(html,/Historical synthetic stance/);assert.match(html,/Small sizes only/);assert.match(html,/41.8/);assert.match(html,/Gauge unavailable/)
+ assert.doesNotMatch(html,/Independent tier detail|Independent score detail|Independent buy detail/)
+ assert.match(html,/Source evidence/);assert.match(html,/Engine-owned gauge cut-offs and marker are not served/)
 })

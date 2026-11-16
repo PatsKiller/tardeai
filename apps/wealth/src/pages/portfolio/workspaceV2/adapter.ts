@@ -14,7 +14,8 @@ export function sum(values:(number|null)[]):Aggregate {
 export const coverage=(a:Aggregate)=>a.n<a.m?`partial · ${a.n} of ${a.m}`:`${a.n} of ${a.m}`
 export const periodValue=(r:HoldingsRow,p:Period)=>r.kind==='CASH'?null:p==='session'?r.dayChange:r.gainLoss
 
-export const applicability=(r:HoldingsRow)=>r.kind==='CASH'?'Cash · not applicable':r.assetType==='MUTUAL_FUND'?'Mutual fund · resting stop not applicable':r.protection?.state||'UNKNOWN'
+/** Asset type does not override the retained producer verdict. Missing non-cash proof stays unknown. */
+export const applicability=(r:HoldingsRow)=>r.kind==='CASH'?'Cash · not applicable':r.protection?.state||'UNKNOWN'
 export function fromSearch(p:URLSearchParams):Filters {
  const f={...DEFAULT}
  for(const k of Object.keys(f) as (keyof Filters)[]) {const v=p.get('hv_'+k);if(v!==null)(f as Record<string,string>)[k]=v}
@@ -35,7 +36,7 @@ export function searchFor(p:URLSearchParams,f:Filters):URLSearchParams {
 export function selectRows(rows:HoldingsRow[],f:Filters):HoldingsRow[] {
  const q=f.query.trim().toLowerCase()
  return rows.filter(r=>{
-  const v=periodValue(r,f.period),notApplicable=r.kind==='CASH'||r.assetType==='MUTUAL_FUND'
+  const v=periodValue(r,f.period),notApplicable=r.kind==='CASH'
   return (!f.account||r.accountKey===f.account)&&(!f.sector||sectorOf(r)===f.sector)
    &&(!f.result||(v!==null&&(f.result==='gainers'?v>0:v<0)))
    &&(!f.protection||(f.protection==='not-applicable'?notApplicable:!notApplicable&&(r.protection?.state||'UNKNOWN')===f.protection))
@@ -103,7 +104,7 @@ export function workspace(book:HoldingsBook,f:Filters) {
  if(fullPopulation&&reconciliation.storedRows.n===reconciliation.storedRows.m&&reconciliation.storedRows.value!==null&&reconciliation.canonical!==null)reconciliation.difference=reconciliation.canonical-reconciliation.storedRows.value
  const identities={nonCashPositions:rows.filter(r=>r.kind!=='CASH').length,securities:new Set(rows.filter(r=>r.kind!=='CASH').map(r=>r.symbol)).size}
  const allocation=allocationOf(rows,'security'),sectorChips=allocationOf(selectRows(book.rows,{...f,sector:''})).segments
- return {allocation,sectorChips,rows,groups,totals:t,contributors,detractors,other,material,newsSymbols,reconciliation,identities,gaps:material.filter(r=>r.protection?.state==='GAP'&&r.assetType!=='MUTUAL_FUND')}
+ return {allocation,sectorChips,rows,groups,totals:t,contributors,detractors,other,material,newsSymbols,reconciliation,identities,gaps:material.filter(r=>r.protection?.state==='GAP')}
 }
 
 /** Resolve an exact symbol deep link to the existing display row; floor and loss rules stay unchanged. */
@@ -122,7 +123,7 @@ export function holdingLinkTarget(groups:Group[],f:Pick<Filters,'query'|'account
 
 /** Display reported protection without promoting pending, undated or stale records to active. */
 export function protectionSummary(rows:HoldingsRow[]) {
- const applicable=rows.filter(r=>r.kind!=='CASH'&&r.assetType!=='MUTUAL_FUND')
+ const applicable=rows.filter(r=>r.kind!=='CASH')
  const active=applicable.filter(r=>r.protection?.state==='PROTECTED'&&r.protection.stale===false&&r.protection.stop!==null&&Number.isFinite(r.protection.stop)&&r.protection.stop>0&&r.protection.asOf!==null&&Number.isFinite(Date.parse(r.protection.asOf))&&!/pending|activation/i.test(r.protection.reason+' '+r.protection.nextStep)).length
  const recorded=applicable.filter(r=>r.protection?.state==='PROTECTED').length
  const gaps=applicable.filter(r=>r.protection?.state==='GAP').length
@@ -130,7 +131,7 @@ export function protectionSummary(rows:HoldingsRow[]) {
  const unknown=applicable.length-recorded-gaps,m=applicable.length
  const notes=rows.map(r=>r.accountLabel+': '+(r.protection?.reason||applicability(r))+'; next '+(r.protection?.nextStep||'not served')+'; read '+(r.protection?.asOf||'not served')+'; freshness '+(r.protection?.stale===false?'reported current':r.protection?.stale===true?'stale':'unknown')).join(' · ')
  const detail=active+' current recorded · '+(recorded-active)+' pending/stale · '+gaps+' gap · '+unknown+' unknown of '+m+' applicable rows. '+notes
- if(!m)return {icon:'na' as const,tone:'unknown',label:rows.every(r=>r.kind==='CASH')?'Cash · not applicable':'Resting stop not applicable',detail:'Applicability from served asset type. '+notes}
+ if(!m)return {icon:'na' as const,tone:'unknown',label:'Cash · not applicable',detail:'Applicability from served cash classification. '+notes}
  if(active===m)return {icon:'locked' as const,tone:'gain',label:'Protected · recorded',detail}
  if(active>0)return {icon:'locked' as const,tone:'partial',label:gaps?'Partially protected · '+gaps+' reported gap'+(gaps===1?'':'s'):'Partially protected',detail}
  if(recorded&&materialGap)return {icon:'unlocked' as const,tone:'loss',label:'Reported gap · other records pending or not current',detail}

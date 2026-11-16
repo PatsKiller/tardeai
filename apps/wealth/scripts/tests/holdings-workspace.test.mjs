@@ -77,8 +77,43 @@ test('protection icons distinguish protected, gap, partial, pending, stale, unkn
  }
  assert.equal(a.protectionSummary([row({protection:null})]).icon,'na')
  assert.equal(a.protectionSummary([row({kind:'CASH'})]).icon,'na')
- assert.equal(a.protectionSummary([row({assetType:'MUTUAL_FUND'})]).icon,'na')
  assert.equal(view([row({marketValue:99,protection:{state:'GAP'}})]).gaps.length,0)
+})
+test('mutual-fund asset labels never replace served protection verdicts with invented exemption',()=>{
+ const protectedFund=row({assetType:'MUTUAL_FUND'}),gapFund=row({symbol:'QZFG',assetType:'MUTUAL_FUND',protection:{state:'GAP',reason:'Synthetic successful read found no resting stop',asOf:'2040-01-01T12:00:00Z',stale:false}})
+ const unknownFund=row({symbol:'QZFU',assetType:'MUTUAL_FUND',protection:{state:'UNKNOWN',reason:'Synthetic observation unavailable'}}),missingFund=row({symbol:'QZFM',assetType:'MUTUAL_FUND',protection:null})
+ const rs=[protectedFund,gapFund,unknownFund,missingFund],original=structuredClone(rs)
+ assert.deepEqual(rs.map(a.applicability),['PROTECTED','GAP','UNKNOWN','UNKNOWN'])
+ assert.equal(a.protectionSummary([protectedFund]).label,'Protected · recorded')
+ assert.equal(a.protectionSummary([gapFund]).tone,'loss');assert.match(a.protectionSummary([gapFund]).label,/reported gap/)
+ for(const r of [unknownFund,missingFund]){assert.equal(a.protectionSummary([r]).label,'Protection unknown');assert.equal(a.protectionSummary([r]).tone,'unknown')}
+ for(const changes of [{stale:true},{stale:null},{stop:null},{asOf:null},{reason:'pending activation'}]){
+  const r=structuredClone(protectedFund);Object.assign(r.protection,changes)
+  assert.equal(a.protectionSummary([r]).tone,'partial');assert.doesNotMatch(a.protectionSummary([r]).label,/^Protected/)
+ }
+ assert.equal(a.protectionSummary([protectedFund,gapFund]).tone,'partial')
+ assert.equal(a.protectionSummary([row({kind:'CASH',protection:null}),gapFund]).tone,'loss')
+ assert.deepEqual(rs,original)
+})
+test('mutual-fund filters, gap panel and CSV share the producer verdict without changing the material floor',()=>{
+ const rs=[row({symbol:'QZFG',assetType:'MUTUAL_FUND',protection:{state:'GAP'}}),row({symbol:'QZFS',assetType:'MUTUAL_FUND',marketValue:99,protection:{state:'GAP'}}),row({symbol:'QZFU',assetType:'MUTUAL_FUND',protection:null}),row({symbol:'QZFC',kind:'CASH',assetType:'MUTUAL_FUND',protection:null})]
+ assert.deepEqual(view(rs,{protection:'GAP'}).rows.map(r=>r.symbol),['QZFG','QZFS'])
+ assert.deepEqual(view(rs,{protection:'UNKNOWN'}).rows.map(r=>r.symbol),['QZFU'])
+ assert.deepEqual(view(rs,{protection:'not-applicable'}).rows.map(r=>r.symbol),['QZFC'])
+ assert.deepEqual(view(rs).gaps.map(r=>r.symbol),['QZFG'])
+ assert.equal(a.protectionSummary([rs[1]]).tone,'unknown')
+ const csv=a.exportCsv(view(rs),a.DEFAULT),lines=csv.split('\r\n')
+ assert.match(lines.find(l=>l.includes('QZFG')),/,"GAP",/)
+ assert.match(lines.find(l=>l.includes('QZFU')),/,"UNKNOWN",/)
+ assert.doesNotMatch(csv,/Mutual fund · resting stop not applicable/)
+})
+test('rendered mutual-fund gap uses canonical evidence without a contradictory exemption caption',()=>{
+ const rs=[row({symbol:'QZFG',assetType:'MUTUAL_FUND',protection:{state:'GAP',reason:'Synthetic read found no resting stop',asOf:'2040-01-01T12:00:00Z',stale:false}}),row({symbol:'QZFU',assetType:'MUTUAL_FUND',protection:null})]
+ const html=renderToStaticMarkup(React.createElement(MemoryRouter,null,React.createElement(a.HoldingsWorkspace,{book:book(rs),notice:null,evidence:null,onRowOpen:()=>{}})))
+ const panel=html.split('Protection gaps</h3>')[1].split('</article>')[0]
+ assert.match(panel,/QZFG/);assert.match(panel,/Synthetic read found no resting stop/)
+ assert.match(html,/Unprotected · reported gap/);assert.match(html,/Protection unknown/)
+ assert.doesNotMatch(html,/mutual fund · resting stop not applicable|Resting stop not applicable/i)
 })
 test('functional SVGs preserve approved paths and supply no icon-only financial meaning',()=>{
  const closed=renderToStaticMarkup(React.createElement(a.WorkspaceIcon,{name:'locked'})),open=renderToStaticMarkup(React.createElement(a.WorkspaceIcon,{name:'unlocked'}))

@@ -294,15 +294,22 @@ def test_existing_macro_calendar_not_replaced_by_far_context_dates():
     assert "end excluded" in result["today"]["week"]["windowLabel"]
 
 
-def test_applicability_does_not_silently_adjudicate_mutual_fund_policy_disagreement():
-    p = position("FUND", protection_state="UNKNOWN", stop_captured_at="2020-01-01T00:00:00Z", stop_price=10)
-    result = home.build(cio=source([p]), holdings={"holdings": [{**p, "asset_type": "MUTUAL_FUND"}]}, now=NOW)
-    row = result["needs"]["protectionInventory"]["rows"][0]
-    assert "Applicability differs" in row["facts"][0]["value"]
-    assert any(f["label"] == "Canonical order verdict" and f["value"] == "UNKNOWN" for f in row["facts"])
-    assert not any(f["value"] == "Not applicable" for f in row["facts"])
-    exempt = home.build(cio=source([position(protection_state="EXEMPT")]), now=NOW)
-    assert exempt["today"]["stops"]["rows"][0]["facts"][0]["value"] == "Not applicable"
+@pytest.mark.parametrize("canonical", ["UNKNOWN", "GAP", "PROTECTED", "EXEMPT"])
+def test_asset_type_does_not_override_canonical_protection_verdict(canonical):
+    p = position("FUND", protection_state=canonical, stop_captured_at="2020-01-01T00:00:00Z", stop_price=10)
+
+    def inventory(asset_type):
+        return home.build(cio=source([p]), holdings={"holdings": [{**p, "asset_type": asset_type}]}, now=NOW)["needs"][
+            "protectionInventory"
+        ]["rows"][0]
+
+    mutual = inventory("MUTUAL_FUND")
+    equity = inventory("EQUITY")
+    assert mutual["facts"][0] == equity["facts"][0]
+    assert mutual["state"] == equity["state"]
+    assert any(f["label"] == "Canonical order verdict" and f["value"] == canonical for f in mutual["facts"])
+    assert (mutual["facts"][0]["value"] == "Not applicable") is (canonical == "EXEMPT")
+    assert "Holdings" not in str(mutual["facts"])
 
 
 def test_reentry_never_asserts_stop_execution_and_stages_keep_engine_wording():

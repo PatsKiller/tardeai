@@ -899,7 +899,6 @@ def build(
         asset = holding_by_identity.get(identity, {})
         # Applicability is separate from freshness; only a retained canonical exemption grants N/A.
         not_applicable = canonical == "EXEMPT"
-        applicability_conflict = str(asset.get("asset_type") or "").upper() == "MUTUAL_FUND" and not not_applicable
         pending = row.get("stop_state") == "pending_activation"
         stop_meta = source_meta(
             row.get("stop_source") or "cio.pages.positions.stop evidence",
@@ -921,9 +920,7 @@ def build(
         shortfall = number(row.get("resting_coverage_shortfall_qty"))
         partial = proven and shortfall is not None and shortfall > 0
         status = (
-            "Applicability differs: Holdings display / canonical proof"
-            if applicability_conflict
-            else "Not applicable"
+            "Not applicable"
             if not_applicable
             else "Partial resting coverage"
             if partial
@@ -939,7 +936,7 @@ def build(
         )
         state = (
             "grey"
-            if not_applicable or applicability_conflict
+            if not_applicable
             else "amber"
             if partial
             else "green"
@@ -974,11 +971,7 @@ def build(
                     fact("Asset type", asset.get("asset_type")),
                     fact(
                         "Applicability",
-                        "Holdings says not applicable; canonical proof differs"
-                        if applicability_conflict
-                        else "Canonical exemption"
-                        if not_applicable
-                        else "Canonical verdict retained",
+                        "Canonical exemption" if not_applicable else "Canonical verdict retained",
                         applicability=True,
                     ),
                     fact("Recorded advisory/order level", money(row.get("stop_price"))),
