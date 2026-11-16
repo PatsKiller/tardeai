@@ -47,7 +47,7 @@ export function RetirementPage({ retirement, research }: RetirementPageProps) {
       <header>
         <div className="eyebrow">PORTFOLIO · RETIREMENT</div>
         <h2>Retirement roadmap</h2>
-        <p className="muted">Partial: only fields the producer serves are shown. Plan inputs, not advice and not a projection.</p>
+        <p className="muted">Partial: only fields the producer serves are shown; producer defaults and zero-fills are Unknown. Not advice and not a projection.</p>
       </header>
 
       {retirement.kind === 'loading' && <p className="muted" data-state="loading">Reading the retirement roadmap…</p>}
@@ -62,12 +62,11 @@ export function RetirementPage({ retirement, research }: RetirementPageProps) {
             </p>
             <div className="table-wrap"><table><caption>Accounts as stored in the roadmap</caption><tbody>
               <Row k="Current age"><F f={m.currentAge} /></Row>
-              <Row k="Portfolio total (roadmap)"><F f={m.accounts.total} fmt={money} /></Row>
+              <Row k="Portfolio total (holdings, or roadmap as fallback; which one is not served)"><F f={m.accounts.total} fmt={money} /></Row>
               <Row k="Roth"><F f={m.accounts.roth} fmt={money} /></Row>
               <Row k="Traditional"><F f={m.accounts.traditional} fmt={money} /></Row>
               <Row k="Taxable"><F f={m.accounts.taxable} fmt={money} /></Row>
               <Row k="Holdings total (stored state)"><F f={m.canonicalTotal} fmt={money} /></Row>
-              <Row k="Roadmap minus holdings total"><F f={m.snapshotDelta} fmt={money} /></Row>
             </tbody></table></div>
             <div className="table-wrap"><table><caption>Loan</caption><tbody>
               <Row k="Balance"><F f={m.loan.balance} fmt={money} /></Row>
@@ -75,7 +74,7 @@ export function RetirementPage({ retirement, research }: RetirementPageProps) {
               <Row k="Days remaining (as stored at build, not recounted)"><F f={m.loan.storedDaysRemaining} /></Row>
               <Row k="Monthly to pay off"><F f={m.loan.monthlyToPayoff} fmt={money} /></Row>
             </tbody></table></div>
-            <div className="table-wrap"><table><caption>Golden window (plan inputs)</caption><tbody>
+            <div className="table-wrap"><table><caption>Golden window (as served; producer defaults withheld)</caption><tbody>
               <Row k="Start age"><F f={m.goldenWindow.startAge} /></Row>
               <Row k="End age"><F f={m.goldenWindow.endAge} /></Row>
               <Row k="Years available"><F f={m.goldenWindow.yearsAvailable} /></Row>
@@ -85,7 +84,7 @@ export function RetirementPage({ retirement, research }: RetirementPageProps) {
             <div className="table-wrap"><table><caption>Dividend income (stored calendar; its own clock is not served here)</caption><tbody>
               <Row k="Annual"><F f={m.dividend.annualTotal} fmt={money} /></Row>
               <Row k="Monthly average"><F f={m.dividend.monthlyAvg} fmt={money} /></Row>
-              <Row k="Yield on the roadmap total"><F f={m.dividend.yieldPct} fmt={v => `${v}%`} /></Row>
+              <Row k="Yield on the served total"><F f={m.dividend.yieldPct} fmt={v => `${v}%`} /></Row>
             </tbody></table></div>
             <h3>Milestones</h3>
             {m.timeline.length === 0 ? <p className="muted">No milestones served.</p> : (
@@ -108,8 +107,8 @@ export function RetirementPage({ retirement, research }: RetirementPageProps) {
             which is a read stamp, not a source clock; each note carries its own time.
           </p>
           {research.model.themes.length === 0 ? <p className="muted">No themes served.</p> : research.model.themes.map(t => (
-            <details key={t.theme}><summary>{t.theme} · {t.count}</summary>
-              <ul>{t.items.map((i, k) => <li key={k}>{i.topic} · {i.status ?? 'status not served'} · confidence {i.confidence ?? 'not served'} · {i.sourceCount} sources · {i.at ?? 'time not served'}</li>)}</ul>
+            <details key={t.theme}><summary>{t.theme} · {t.count ?? 'count not served'}</summary>
+              <ul>{t.items.map((i, k) => <li key={k}>{i.topic} · {i.status ?? 'status not served'} · confidence {i.confidence ?? 'not served'} · {i.sourceCount === null ? 'sources not served' : `${i.sourceCount} sources`} · {i.at ?? 'time not served'}</li>)}</ul>
             </details>
           ))}
         </div>

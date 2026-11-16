@@ -15,6 +15,10 @@ export const RESEARCH_PATH = '/api/v2/retirement/planning-research'
 export type Field<T> = { state: 'served'; value: T } | { state: 'unknown'; reason: string }
 const ZERO_REASON = 'served as 0, which this producer cannot tell from a missing value'
 const MISSING = 'not served'
+// api_v2 retirement() substitutes these when the roadmap stores none, and does not say which it did (FE review L2-2).
+const DEFAULTED = 'withheld: the producer substitutes a fixed default when no plan value is stored and does not say which this is'
+// accounts.total is holdings.json portfolio_totals.total_value when one exists, else the roadmap total (FE review L2-1).
+const NOT_COMPARABLE = 'withheld: the producer computes this as the holdings total minus a total that already is the holdings total whenever one exists, so nothing was compared'
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => v !== null && typeof v === 'object' && !Array.isArray(v)
@@ -27,6 +31,18 @@ function money(v: unknown): Field<number> {
 function num(v: unknown): Field<number> {
   return typeof v === 'number' && Number.isFinite(v) ? { state: 'served', value: v } : { state: 'unknown', reason: MISSING }
 }
+/** A count or measure the producer zero-fills when absent (`or 0` / `.get(k, 0)`): a 0 is Unknown, never 0 (L2-3). */
+function zeroFilled(v: unknown): Field<number> {
+  const f = num(v)
+  return f.state === 'served' && f.value === 0 ? { state: 'unknown', reason: ZERO_REASON } : f
+}
+/** End age falls back to key_dates.golden_window_end, a date string: render what was served, as served (L2-4). */
+function ageOrDate(v: unknown): Field<number | string> {
+  if (typeof v === 'number' && Number.isFinite(v)) return v === 0 ? { state: 'unknown', reason: ZERO_REASON } : { state: 'served', value: v }
+  if (typeof v === 'string' && v.trim() !== '') return { state: 'served', value: `${v.trim()} (served as a date, not an age)` }
+  return { state: 'unknown', reason: MISSING }
+}
+const withheld = (reason: string): Field<never> => ({ state: 'unknown', reason })
 function text(v: unknown): Field<string> {
   return typeof v === 'string' && v.trim() !== '' ? { state: 'served', value: v.trim() } : { state: 'unknown', reason: MISSING }
 }
@@ -42,7 +58,7 @@ export interface Retirement {
   canonicalTotal: Field<number>
   snapshotDelta: Field<number>
   loan: { balance: Field<number>; deadline: Field<string>; storedDaysRemaining: Field<number>; monthlyToPayoff: Field<number> }
-  goldenWindow: { startAge: Field<number>; endAge: Field<number>; yearsAvailable: Field<number>; annualConversion: Field<number>; bracketCeiling: Field<string> }
+  goldenWindow: { startAge: Field<number>; endAge: Field<number | string>; yearsAvailable: Field<number>; annualConversion: Field<number>; bracketCeiling: Field<string> }
   dividend: { annualTotal: Field<number>; monthlyAvg: Field<number>; yieldPct: Field<number> }
   timeline: Milestone[]
   withheld: string[]
@@ -50,8 +66,9 @@ export interface Retirement {
 
 export interface ResearchTheme {
   theme: string
-  count: number
-  items: { topic: string; status: string | null; confidence: number | null; at: string | null; sourceCount: number }[]
+  /** null when not served (L2-5): never 0. */
+  count: number | null
+  items: { topic: string; status: string | null; confidence: number | null; at: string | null; sourceCount: number | null }[]
 }
 export interface Research { asOf: Field<string>; advisoryOnly: boolean; total: number | null; themes: ResearchTheme[] }
 
@@ -99,15 +116,19 @@ export function adaptRetirement(env: Envelope<unknown> | null, now: number): Sec
       currentAge: money(d.current_age),
       accounts: { total: money(acc.total), roth: money(acc.roth), traditional: money(acc.traditional), taxable: money(acc.taxable) },
       canonicalTotal: money(d.canonical_total),
-      snapshotDelta: num(d.snapshot_delta),
-      loan: { balance: money(loan.balance), deadline: text(loan.deadline), storedDaysRemaining: num(loan.days_remaining), monthlyToPayoff: money(loan.monthly_to_payoff) },
-      goldenWindow: { startAge: num(gw.start_age), endAge: num(gw.end_age), yearsAvailable: num(gw.years_available), annualConversion: money(gw.annual_conversion), bracketCeiling: text(gw.bracket_ceiling) },
-      dividend: { annualTotal: money(div.annual_total), monthlyAvg: money(div.monthly_avg), yieldPct: num(div.yield_pct) },
+      // L2-1: the served difference is structurally 0 (or -total when holdings.json is absent); never shown.
+      snapshotDelta: withheld(NOT_COMPARABLE),
+      loan: { balance: money(loan.balance), deadline: text(loan.deadline), storedDaysRemaining: zeroFilled(loan.days_remaining), monthlyToPayoff: money(loan.monthly_to_payoff) },
+      goldenWindow: { startAge: withheld(DEFAULTED), endAge: ageOrDate(gw.end_age), yearsAvailable: zeroFilled(gw.years_available), annualConversion: withheld(DEFAULTED), bracketCeiling: text(gw.bracket_ceiling) },
+      // L2-3: annual_total is zero-filled when dividend_calendar.json is missing, and yield_pct is then 0.0: both Unknown.
+      dividend: { annualTotal: money(div.annual_total), monthlyAvg: money(div.monthly_avg), yieldPct: money(div.annual_total).state === 'served' ? zeroFilled(div.yield_pct) : { state: 'unknown', reason: 'the annual total it divides is not served' } },
       timeline,
       withheld: [
         'Projected balances (conservative / base / aggressive): the response does not carry the rate assumptions they were computed under.',
         'The intelligence brief: the producer writes a fixed growth rate and a fixed monthly spending need into that text; neither is a stored assumption of yours.',
         'Roth ladder, income floor, mortgage and rate assumptions: held in the stored roadmap but not in this response.',
+        'Golden-window start age and annual conversion: the producer substitutes fixed defaults when none is stored and does not say which it served.',
+        'Roadmap minus holdings total: the producer\'s "roadmap" total is the holdings total whenever one exists, so the served difference compares a number with itself.',
       ],
     },
   }
@@ -120,13 +141,13 @@ export function adaptResearch(env: Envelope<unknown> | null): Section<Research> 
   if (d === null) return fail(env, 'the producer declared the read unavailable or answered with no body')
   const themes: ResearchTheme[] = (Array.isArray(d.themes) ? d.themes : []).filter(isObj).map(t => ({
     theme: typeof t.theme === 'string' ? t.theme : 'Unnamed theme',
-    count: typeof t.count === 'number' ? t.count : 0,
+    count: typeof t.count === 'number' ? t.count : null,
     items: (Array.isArray(t.items) ? t.items : []).filter(isObj).map(i => ({
       topic: typeof i.topic === 'string' ? i.topic : 'Untitled',
       status: typeof i.status === 'string' ? i.status : null,
       confidence: typeof i.confidence === 'number' ? i.confidence : null,
       at: typeof i.at === 'string' ? i.at : null,
-      sourceCount: typeof i.source_count === 'number' ? i.source_count : 0,
+      sourceCount: typeof i.source_count === 'number' ? i.source_count : null,
     })),
   }))
   return {
