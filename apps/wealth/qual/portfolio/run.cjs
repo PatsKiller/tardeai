@@ -227,7 +227,7 @@ const INTERACTIONS = {
     const sForced = (await page.locator('.fv-forced').allTextContents()).join(' ')
     await top.click(); await page.waitForTimeout(200)
     const sAfter = await H.mainText(page)
-    add(R, width, 'search-forced-collapse-label-is-honest', sLabel !== 'Collapse small and cash' && /search matches stay shown/.test(sLabel) && sForced.includes(sLabel), `label=${sLabel}`)
+    add(R, width, 'search-forced-collapse-label-is-honest', sLabel !== 'Collapse small and cash' && /search matches stay shown/.test(sLabel) && sForced.includes(sLabel) && !/\([^)]*\(/.test(sForced), `label=${sLabel}`)
     add(R, width, 'search-forced-small-stays-shown-with-search-reason', !page.url().includes('fv_show=all') && sAfter.includes('QZSC') && (await small.isDisabled()) && /Shown because a search is active/.test(sAfter), `url=${page.url().slice(-30)}`)
     await page.getByLabel('Find holding').fill(''); await page.waitForTimeout(250)
     add(R, width, 'clearing-search-after-collapse-collapses-small', !(await tbl()).includes('QZSA') && (await small.getAttribute('aria-expanded')) === 'false', '')

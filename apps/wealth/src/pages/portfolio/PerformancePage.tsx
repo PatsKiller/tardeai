@@ -45,7 +45,10 @@ function Measure({ measure, window, scope, allowHouseholdEstimate = false }: {
     return <p className="money-unknown">Unknown — account measure not served — owner: {measure.owner}</p>
   }
   const warnings = measureWarnings(measure)
-  const lines = contractLines(measure.contract, measure.startAt, measure.endAt)
+  // Review B1 (2026-11-16): a withheld cell (eligibility unknown/ineligible, refused anchor, ...) prints no figure at all,
+  // so the household-residual allocation and the raw NAV change appear only when the measure itself is shown.
+  const measureShown = numberIsKnown(measure.amount)
+  const lines = contractLines(measure.contract, measure.startAt, measure.endAt, !measureShown)
   const reasons = [...new Set([measure.amount, measure.percent].filter(number => !numberIsKnown(number))
     .map(number => numberText(number, 'amount', measure.owner)))]
   return <div className="performance-measure" data-method={measure.method}>
@@ -56,7 +59,8 @@ function Measure({ measure, window, scope, allowHouseholdEstimate = false }: {
       <div><dt>Change (%)</dt><dd className={numberClass(measure.percent, measure)}>{numberIsKnown(measure.percent) ? numberText(measure.percent, 'percent', measure.owner) : 'Unknown'}</dd></div>
     </dl>
     {reasons.length > 0 && <p className="money-unknown">{reasons.join(' · ')}</p>}
-    {measure.contract?.residualAllocated === true && <div className="note warn" data-residual-allocated="true">! {RESIDUAL_FLAG}.
+    {measure.contract?.residualAllocated === true && !measureShown && <div className="note warn" data-residual-allocated="withheld">! {RESIDUAL_FLAG}; the allocated figure is withheld with this measure.</div>}
+    {measure.contract?.residualAllocated === true && measureShown && <div className="note warn" data-residual-allocated="true">! {RESIDUAL_FLAG}.
       {' '}Allocated {numberIsKnown({ value: measure.contract.allocatedAmount, unknownReason: null }) ? signedMoney(measure.contract.allocatedAmount) : 'unknown'}
       {' · '}{numberIsKnown({ value: measure.contract.allocatedPercent, unknownReason: null }) ? signedPct(measure.contract.allocatedPercent) : 'unknown'}
       {' '}beside raw NAV change {numberText(measure.amount, 'amount', measure.owner)} (includes deposits and withdrawals).</div>}

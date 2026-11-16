@@ -79,9 +79,13 @@ def test_an_account_without_cells_is_named_by_the_census_not_given_a_result(tmp_
     gamma = block["accounts"]["syn_gamma"]["YTD"]
     assert gamma["eligibility"]["status"] == "unknown" and gamma["raw_change"] is None
     pnl = out["today_pnl"]
-    assert pnl["represented_accounts"]["count"] == len(pnl["represented_accounts"]["internal_keys"])
-    assert pnl["missing_accounts_stored_rows"]["internal_keys"] == ["syn_beta"]  # QZB row has no day_change: missing, not zero
-    assert "syn_alpha" in pnl["represented_accounts"]["internal_keys"]
+    # alpha has a day change, gamma a zero change; QZB (beta) has no day_change: missing, not zero
+    assert pnl["represented_accounts"]["count"] == 2
+    assert pnl["missing_accounts_stored_rows"]["count"] == 1
+    # review N6: the census serves counts only, never account keys
+    for key in ("represented_accounts", "missing_accounts_stored_rows"):
+        assert "internal_keys" not in pnl[key]
+        assert not any(name in json.dumps(pnl[key]) for name in ("syn_alpha", "syn_beta", "syn_gamma"))
     # legacy keys keep their meaning
     assert pnl["missing_accounts"] is None and pnl["represented_account_count"] is None
 
@@ -163,3 +167,31 @@ def test_window_start_not_before_end_is_not_served_as_an_interval(tmp_path):
                                     holdings_doc=deepcopy(HOLDINGS), now=NOW)
     e = out["performance_contract"]["accounts"]["syn_alpha"]["1W"]
     assert e["end_date"] is None and e["end_date_reason"]
+
+
+def test_a_bad_input_shape_degrades_to_no_contract_and_never_fails_the_route(tmp_path, monkeypatch):
+    """Review N2: the performance route is shared with classic /v3; a contract failure must not fail it."""
+    state = _state(tmp_path)
+    good = truth.performance_payload(ppq.annotate_performance_result(_result(), state, deepcopy(HOLDINGS)),
+                                     holdings_doc=deepcopy(HOLDINGS), now=NOW)
+
+    def boom(*_a, **_k):
+        raise TypeError("unexpected shape")
+    monkeypatch.setattr(truth, "_add_performance_contract", boom)
+    out = truth.performance_payload(ppq.annotate_performance_result(_result(), state, deepcopy(HOLDINGS)),
+                                    holdings_doc=deepcopy(HOLDINGS), now=NOW)
+    assert "performance_contract" not in out
+    assert out["performance_contract_error"] == "cio_truth contract: TypeError"
+    assert "represented_accounts" not in out["today_pnl"] and "missing_accounts_stored_rows" not in out["today_pnl"]
+    # everything the classic site reads is unchanged
+    assert out["periods"] == good["periods"] and out["accounts"] == good["accounts"]
+    assert {k: v for k, v in out["today_pnl"].items()} == {k: v for k, v in good["today_pnl"].items()
+                                                          if k not in ("represented_accounts", "missing_accounts_stored_rows")}
+
+
+def test_a_real_bad_census_shape_raises_inside_the_contract_helper():
+    """Review N2: a census whose stored_row_evidence is null does raise inside the helper, which is why the call is wrapped."""
+    import pytest
+    out = {"periods": {}, "accounts": {}, "today_pnl": {}}
+    with pytest.raises(AttributeError):
+        truth._add_performance_contract(out, {"quote_as_of": None, "valuation_as_of": None}, {"stored_row_evidence": None})

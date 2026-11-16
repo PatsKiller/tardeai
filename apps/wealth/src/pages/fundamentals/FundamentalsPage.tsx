@@ -46,7 +46,7 @@ export function FundamentalsPage({book=FIXTURE_BOOK,loading=false,error=null,not
  // Codex review 2026-11-16: the top control collapses only what it can. A real collapse also clears the hand-opened
  // small/cash sections (other expansions are kept); sections a search reveals stay visible and the label says so.
  const searchForced=revealSectionsFv(view,f.query)
- const collapseLabel=searchForced.length?'Turn off Show all (search matches stay shown)':'Collapse small and cash'
+ const collapseLabel=searchForced.length?'Turn off Show all; search matches stay shown':'Collapse small and cash'
  const toggleShowAll=()=>{if(showAll)setOpen(old=>{const next=new Set(old);next.delete('small');next.delete('cash');return next});setParams(withShowAllFv(params,!showAll))}
  const forcedBy=(key:string)=>showAll?`Show all is on (use ${collapseLabel})`:searchForced.includes(key)?'a search is active':''
  const shown=new Set([...open,...(showAll?['small','cash']:[]),...searchForced]),disc=disclosureFv(book.rows.length,view,shown)

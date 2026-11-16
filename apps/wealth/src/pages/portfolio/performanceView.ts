@@ -246,7 +246,7 @@ export function accountCoverageText(c: PerformanceAccountCoverage): string {
 
 export const RESIDUAL_FLAG = 'Includes household residual allocation, not account profit'
 /** Plain lines for the contract evidence; "not served" whenever the producer did not send the field. */
-export function contractLines(c: PerformanceContractEvidence | undefined, startAt: string | null, endAt: string | null): string[] {
+export function contractLines(c: PerformanceContractEvidence | undefined, startAt: string | null, endAt: string | null, withheld = false): string[] {
   const money = (v: number | null) => v === null ? 'unknown' : signedMoney(v)
   const pct = (v: number | null) => v === null ? 'unknown' : signedPct(v)
   if (!c || !c.served) return ['Eligibility: not served', `Interval: ${startAt ?? 'start not served'} → ${endAt ?? 'end not served'}`, 'Start anchor: not served', 'External flows: not served']
@@ -254,7 +254,8 @@ export function contractLines(c: PerformanceContractEvidence | undefined, startA
     c.eligibility ? `Eligibility: ${c.eligibility.status} · ${c.eligibility.source}` : 'Eligibility: not served',
     `Interval: ${startAt ?? 'start not served'} → ${c.endDate ?? endAt ?? `end not served${c.endDateReason ? ` (${c.endDateReason})` : ''}`}`,
     c.anchor ? `Start anchor: ${c.anchor.date ? `snapshot ${c.anchor.snapshotId ?? 'id not served'} dated ${c.anchor.date}` : 'no snapshot found'} · ${c.anchor.source ?? 'source not served'}${c.anchor.matches === false ? ' · start value differs from the snapshot' : ''}` : 'Start anchor: not served',
-    ...(c.residualAllocated === true ? [`Raw NAV change (before household residual allocation): ${money(c.rawAmount)} · ${pct(c.rawPercent)}`] : []),
+    ...(c.residualAllocated === true ? [withheld ? 'Raw NAV change (before household residual allocation): withheld with this measure'
+      : `Raw NAV change (before household residual allocation): ${money(c.rawAmount)} · ${pct(c.rawPercent)}`] : []),
     `External flows: ${c.externalFlows}`,
   ]
 }

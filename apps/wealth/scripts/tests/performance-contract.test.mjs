@@ -54,6 +54,21 @@ test('residual-allocated value is flagged and shown beside the raw NAV change', 
   assert.match(h, /beside raw NAV change \+\$9,000\.00/)
   assert.match(h, /Raw NAV change \(before household residual allocation\): \+\$9,000\.00/)
 })
+// Review B1 (2026-11-16): the producer (portfolio_period_quality.py) serves eligibility "unknown" for every result today and
+// never "eligible"; the "eligible" case above is the future certified path only. A withheld residual cell prints no figure.
+for (const status of ['unknown', 'ineligible']) {
+  test(`B1: residual cell with eligibility ${status} prints no allocated residual or raw NAV figure`, () => {
+    const b = contractBody(true)
+    b.performance_contract.accounts.syn_a['1M'].eligibility = { status, source: 'no eligibility registry; a result is served but not certified' }
+    const h = html(b, '1M')
+    assert.match(h, /account eligibility unknown/)
+    assert.doesNotMatch(h, /Allocated /)
+    assert.doesNotMatch(h, /\$120\.00|1\.20%/)
+    assert.doesNotMatch(h, /\$9,000\.00|90\.00%/)
+    assert.match(h, /Includes household residual allocation, not account profit; the allocated figure is withheld with this measure/)
+    assert.match(h, /Raw NAV change \(before household residual allocation\): withheld with this measure/)
+  })
+}
 test('old backend (no contract): everything says not served, residual stays withheld, nothing is guessed', () => {
   const b = contractBody(false)
   for (const a of Object.values(b.accounts)) a.eligibility = undefined

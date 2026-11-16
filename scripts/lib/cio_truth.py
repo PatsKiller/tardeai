@@ -1522,7 +1522,15 @@ def performance_payload(payload, *, root=None, now=None, holdings_doc=None, docu
                           baseline_note=("start_value is derived as current_value - change; it is not an "
                                          "observed prior-close total (LQ-20261113-3124R). The observed "
                                          "prior-close equity is account_value_change_1d.start"))
-    _add_performance_contract(out, p, census)
+    # Review N2 (2026-11-16): this route is shared with classic /v3, so a bad input shape degrades to the contract being
+    # absent (the frontend's "not served" path) and a named error; it never fails the performance route.
+    try:
+        _add_performance_contract(out, p, census)
+    except Exception as exc:  # noqa: BLE001 -- a failure is named, never silently dropped
+        out.pop("performance_contract", None)
+        for key in ("represented_accounts", "missing_accounts_stored_rows"):
+            (out.get("today_pnl") or {}).pop(key, None)
+        out["performance_contract_error"] = f"cio_truth contract: {type(exc).__name__}"
     return out
 
 
@@ -1573,14 +1581,15 @@ def _add_performance_contract(out: dict, p: dict, census: dict) -> None:
                 entry.update(end_date=None, observation_clock=None,
                              end_date_reason=("end value is not the live holdings value, so its observation date is not served"
                                               if ev is not None else "no end value served"))
-    # Counts plus internal account keys (never rendered) from the SAME stored-row census. The legacy ``missing_accounts`` /
+    # Counts only (review N6: account keys are not served here; nothing in Wealth or classic reads them) from the SAME
+    # stored-row census. The legacy ``missing_accounts`` /
     # ``represented_account_count`` keys stay None (economic day is unproven); these name the stored-row census.
     refs = lambda key: list(census.get("stored_row_evidence", {}).get("census", {}).get(key) or [])  # noqa: E731
     pnl = out["today_pnl"]
     represented = refs("contributing_accounts") + refs("zero_change_accounts")
-    pnl["represented_accounts"] = {"count": len(represented), "internal_keys": sorted(represented),
+    pnl["represented_accounts"] = {"count": len(represented),
                                    "basis": "stored holding-row day change census, not economic day P&L"}
-    pnl["missing_accounts_stored_rows"] = {"count": len(refs("missing_accounts")), "internal_keys": refs("missing_accounts"),
+    pnl["missing_accounts_stored_rows"] = {"count": len(refs("missing_accounts")),
                                            "basis": "stored holding-row day change census, not economic day P&L"}
 
 
