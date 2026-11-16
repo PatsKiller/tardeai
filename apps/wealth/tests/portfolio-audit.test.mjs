@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url'
 import {createRequire,Module} from 'node:module'
 const APP=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),require=createRequire(import.meta.url)
 const {buildSync}=require('esbuild')
-const code=buildSync({stdin:{contents:"export * from './src/pages/portfolio/workspaceV2/adapter'; export * from './src/pages/portfolio/workspaceV2/discovery'; export * from './src/pages/portfolio/fixtures'; export {normalizeAccountKey} from './src/pages/portfolio/accountLabel'; export * as fv from './src/pages/fundamentals/modelV2'; export {servedFreshnessLine,lastKnownSentence,overLimitPhrase} from './src/pages/portfolio/format'",resolveDir:APP,loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',jsx:'automatic',external:['react','react-dom','react-router-dom','react/jsx-runtime'],loader:{'.css':'empty'},logLevel:'silent'}).outputFiles[0].text
+const code=buildSync({stdin:{contents:"export * from './src/pages/portfolio/workspaceV2/adapter'; export * from './src/pages/portfolio/workspaceV2/discovery'; export * from './src/pages/portfolio/fixtures'; export {normalizeAccountKey} from './src/pages/portfolio/accountLabel'; export * as fv from './src/pages/fundamentals/modelV2'; export * as inc from './src/pages/portfolio/income/incomeAdapter'; export {servedFreshnessLine,lastKnownSentence,overLimitPhrase} from './src/pages/portfolio/format'",resolveDir:APP,loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',jsx:'automatic',external:['react','react-dom','react-router-dom','react/jsx-runtime'],loader:{'.css':'empty'},logLevel:'silent'}).outputFiles[0].text
 const filename=path.join(APP,'portfolio-audit.cjs'),module=new Module(filename);module.filename=filename;module.paths=Module._nodeModulePaths(APP);module._compile(code,filename)
 const a=module.exports
 
@@ -117,4 +117,16 @@ test('D/H5: "past the limit" only when the served age exceeds the served limit',
   assert.ok(/cannot be computed/.test(a.overLimitPhrase(null,1800)))
   const lk=a.lastKnownSentence({withdrawn:false,stale:true,ageSeconds:null,staleAfterSeconds:null,served:sf()})
   assert.ok(!/past the/.test(lk),lk)
+})
+
+test('F: account refs are stable across payer order and never positional; unknown frequency is totalled apart',()=>{
+  const p=(o)=>({symbol:'QZA',account:'syn_a',annual_income:100,monthly_amort:8.33,yield_pct:2,frequency:'quarterly',...o})
+  const payers=[p(),p({symbol:'QZB',account:'syn_b',annual_income:50,frequency:'Unknown'}),p({symbol:'QZC',account:'syn_b',annual_income:25,frequency:''})]
+  const m1=a.inc.incomeModel({has_data:true,total_annual:175,payers}),m2=a.inc.incomeModel({has_data:true,total_annual:175,payers:[...payers].reverse()})
+  const ref=(m,k)=>m.legs.find(l=>l.symbol===k).scope
+  assert.equal(ref(m1,'QZA'),ref(m2,'QZA')); assert.equal(ref(m1,'QZB'),ref(m2,'QZB'))
+  assert.doesNotMatch(JSON.stringify(m1.accounts),/\(\d\)|syn_a|syn_b/)
+  const s=a.inc.incomeScope(m1,'household')
+  assert.equal(s.scheduledAnnual,100); assert.equal(s.unscheduledAnnual,75)
+  assert.deepEqual(s.unscheduled.map(l=>l.symbol),['QZB','QZC'])
 })

@@ -7,14 +7,26 @@ export interface IncomeLeg { ref: string; scope: string; account: string; symbol
 export interface IncomeMonth { month: number | null; name: string; total: number | null; symbols: string[] }
 export interface IncomeDate { symbol: string; exDate: string; payDate: string; perShare: number | null; estimate: number | null }
 export interface Income { hasData: boolean | null; built: string; method: string; annual: number | null; monthly: number | null; legs: IncomeLeg[]; accounts: { ref: string; label: string }[]; months: IncomeMonth[]; dates: IncomeDate[]; tax: string; safety: string }
+// Portfolio audit 2026-11-16 (F): accounts were "Account label unavailable (1)/(2)/(3)" — positional numbers that
+// change with payer order. The ref is now a stable digest of the served key (the key itself is never printed). The
+// label comes only from this read (`account_labels` or the payer row): Income is one GET by contract, so naming the
+// accounts is producer work on /api/v2/dividends. Until then the unavailable label carries the stable ref.
+export function stableAccountRef(key: string): string {
+ let h = 0x811c9dc5
+ for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
+ return 'acct-' + h.toString(16).padStart(8, '0')
+}
+/** Frequencies with a stated schedule; anything else (missing, Unknown) is unscheduled and totalled separately. */
+export const SCHEDULED_FREQUENCIES = ['monthly', 'quarterly', 'semiannual', 'semi-annual', 'annual']
+export const isScheduled = (l: IncomeLeg) => SCHEDULED_FREQUENCIES.includes(l.frequency.trim().toLowerCase())
 export function incomeModel(r: Row): Income {
  const raw = rows(r.payers), keys: string[] = [], labels = record(r.account_labels)
  const keyOf = (p: Row) => text(p.account || p.account_key) || '_unassigned'
  for (const key of [...raw.map(keyOf), ...Object.keys(record(r.by_account))]) if (!keys.includes(key)) keys.push(key)
- const accounts = keys.map((key, i) => {
+ const accounts = keys.map(key => {
   const served = text(labels[key]), rowLabel = text(raw.find(p => keyOf(p) === key && p.account_label)?.account_label)
-  const label = accountDisplayLabel(key, served || null, rowLabel || null)
-  return { ref: key === '_unassigned' ? 'unassigned' : `account-${i}`, label: key === '_unassigned' ? 'Unassigned' : label === key ? `Account label unavailable (${i + 1})` : safeText(label) }
+  const label = accountDisplayLabel(key, served || null, rowLabel || null), ref = stableAccountRef(key)
+  return { ref: key === '_unassigned' ? 'unassigned' : ref, label: key === '_unassigned' ? 'Unassigned' : label === key ? `Account label unavailable · ${ref}` : safeText(label) }
  })
  const accountFor = (p: Row) => accounts[keys.indexOf(keyOf(p))]
  const hasData = typeof r.has_data === 'boolean' ? r.has_data : null
@@ -48,6 +60,10 @@ export function incomeScope(model: Income, scope: string) {
   // The published monthly pattern and alert amounts have no account contract.
   months:household ? model.months : [], dates:household ? model.dates : [],
   difference:roundedDifference === 0 ? 0 : roundedDifference,
+  // Audit F: legs with an unknown frequency cannot be placed in a month, so the twelve-month pattern cannot hold
+  // them; they are totalled apart instead of disappearing from the monthly view.
+  scheduled:legs.filter(isScheduled), unscheduled:legs.filter(l => !isScheduled(l)),
+  scheduledAnnual:sum(legs.filter(isScheduled),'annual'), unscheduledAnnual:sum(legs.filter(l => !isScheduled(l)),'annual'),
  }
 }
 export function allocationLabel(method: string): string {
