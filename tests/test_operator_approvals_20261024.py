@@ -1,4 +1,5 @@
 """Exact-version reviews, actor/CSRF checks, source gaps and no authority escalation."""
+
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -6,7 +7,19 @@ from pathlib import Path
 import pytest
 
 from scripts.lib import operator_approvals as c
-from scripts.lib import operator_approvals_api as api
+
+# Load this transport by file path, with its own module identity, so another
+# test's stub cannot silently replace the implementation being exercised.
+import importlib.util
+import sys
+
+_spec = importlib.util.spec_from_file_location(
+    "approval_reader_api_under_test", Path(__file__).resolve().parents[1] / "scripts/lib/operator_approvals_api.py"
+)
+assert _spec and _spec.loader
+api = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = api
+_spec.loader.exec_module(api)
 
 NOW = datetime(2032, 4, 12, 14, 0, tzinfo=timezone.utc)
 SHA = "a" * 40
@@ -15,15 +28,33 @@ SHA = "a" * 40
 @pytest.fixture
 def rig(tmp_path):
     clock = [NOW]
-    row = c.item(ident="policy-42", kind="POLICY", title="Policy amendment", proposed_by="worker",
-                 created_at=NOW.isoformat(), source="fixture", pr=42,
-                 doc=c.document("# 0 · Rules\n\nNever bypass a denial.\n\n# 28 · Operations\n\nRead every change.",
-                                source_sha=SHA, version="20.2.0", source_verified=True))
+    row = c.item(
+        ident="policy-42",
+        kind="POLICY",
+        title="Policy amendment",
+        proposed_by="worker",
+        created_at=NOW.isoformat(),
+        source="fixture",
+        pr=42,
+        doc=c.document(
+            "# 0 · Rules\n\nNever bypass a denial.\n\n# 28 · Operations\n\nRead every change.",
+            source_sha=SHA,
+            version="20.2.0",
+            source_verified=True,
+        ),
+    )
     ledger = c.DecisionLedger(tmp_path / "ledger.jsonl", approved=lambda: True, clock=lambda: clock[0])
-    ctx = api.Ctx(principal=lambda: "tailnet:operator@example.test", listener=lambda: "serve_proxy",
-                  csrf=lambda m, p: (True, ""), allowed_logins=frozenset({"operator@example.test"}),
-                  sources={"fixture": lambda: [row]}, ledger=ledger, policy=lambda: {}, clock=lambda: clock[0],
-                  can_read=lambda: True)
+    ctx = api.Ctx(
+        principal=lambda: "tailnet:operator@example.test",
+        listener=lambda: "serve_proxy",
+        csrf=lambda m, p: (True, ""),
+        allowed_logins=frozenset({"operator@example.test"}),
+        sources={"fixture": lambda: [row]},
+        ledger=ledger,
+        policy=lambda: {},
+        clock=lambda: clock[0],
+        can_read=lambda: True,
+    )
     return ctx, row, clock
 
 
@@ -32,8 +63,13 @@ def start(ctx, row):
 
 
 def decision(row, review, **extra):
-    return {"document_sha": row["document"]["document_sha"], "review_id": review["review_id"],
-            "decision": "APPROVE", "request_id": "request_123456", **extra}
+    return {
+        "document_sha": row["document"]["document_sha"],
+        "review_id": review["review_id"],
+        "decision": "APPROVE",
+        "request_id": "request_123456",
+        **extra,
+    }
 
 
 def read_all(ctx, row, clock, review):
@@ -63,13 +99,25 @@ def test_unread_changes_refused_and_no_decision_written(rig):
     assert not any(r["event"] == "DECIDED" for r in ctx.ledger.rows())
 
 
-@pytest.mark.parametrize("actor,listener", [("service-token", "serve_proxy"), ("tailnet:operator@example.test", "loopback"),
-                                            ("tailnet:stranger@example.test", "serve_proxy"), ("codex", "serve_proxy"), ("", "serve_proxy")])
+@pytest.mark.parametrize(
+    "actor,listener",
+    [
+        ("service-token", "serve_proxy"),
+        ("tailnet:operator@example.test", "loopback"),
+        ("tailnet:stranger@example.test", "serve_proxy"),
+        ("codex", "serve_proxy"),
+        ("", "serve_proxy"),
+    ],
+)
 def test_agents_and_forged_body_actor_cannot_decide(rig, actor, listener):
     ctx, row, _ = rig
     ctx.principal, ctx.listener = lambda: actor, lambda: listener
-    status, data = api.handle(api.PREFIX + "/approvals/policy-42/decide", "POST",
-                              {"actor": "tailnet:operator@example.test", "decision": "APPROVE"}, ctx=ctx)
+    status, data = api.handle(
+        api.PREFIX + "/approvals/policy-42/decide",
+        "POST",
+        {"actor": "tailnet:operator@example.test", "decision": "APPROVE"},
+        ctx=ctx,
+    )
     assert status == 403 and data["error"] == "AGENT_CALLER_REFUSED"
     assert not ctx.ledger.path.exists()
 
@@ -93,8 +141,10 @@ def test_get_does_not_create_ledger_or_embed_whole_documents(rig):
 
 def test_source_failure_is_unknown_count_and_preserves_known_rows(rig):
     ctx, _, _ = rig
+
     def broken():
         raise ValueError("do not expose raw error contents")
+
     ctx.sources["missing"] = broken
     data = api.queue(ctx)
     assert data["pending_count"] is None and data["known_pending_count"] == 1
@@ -172,11 +222,15 @@ def test_simultaneous_decisions_have_only_one_winner(rig):
     ctx, row, clock = rig
     review = start(ctx, row)
     read_all(ctx, row, clock, review)
+
     def decide(i):
         try:
-            return ctx.ledger.decide(ctx.principal(), lambda: row, decision(row, review, request_id=f"request_{i:08}"))["event"]
+            return ctx.ledger.decide(ctx.principal(), lambda: row, decision(row, review, request_id=f"request_{i:08}"))[
+                "event"
+            ]
         except c.Refused as exc:
             return exc.code
+
     with ThreadPoolExecutor(max_workers=2) as pool:
         outcomes = list(pool.map(decide, (1, 2)))
     assert sorted(outcomes) == ["ALREADY_DECIDED", "DECIDED"]
@@ -198,8 +252,18 @@ def test_build_permission_cannot_enable_new_store(rig):
         start(ctx, row)
     assert not ctx.ledger.path.exists()
     assert not c.writes_approved({"proposed_domains": [{"id": "operator_decisions"}]})
-    assert c.writes_approved({"domains": [{"id": "operator_decisions", "store": {"file": "governance/operator_decisions.jsonl"}, "writer": c.WRITER,
-                                           "approval": {"approved_by": "operator", "approved_on": "2032-04-12", "reference": "exact sign-off"}}]})
+    assert c.writes_approved(
+        {
+            "domains": [
+                {
+                    "id": "operator_decisions",
+                    "store": {"file": "governance/operator_decisions.jsonl"},
+                    "writer": c.WRITER,
+                    "approval": {"approved_by": "operator", "approved_on": "2032-04-12", "reference": "exact sign-off"},
+                }
+            ]
+        }
+    )
 
 
 def test_removals_require_reading_and_sensitive_sections_are_flagged():
@@ -214,7 +278,10 @@ def test_policy_no_evidence_is_never_enforced():
     assert policy["counts"]["WRITTEN-only"] == len(policy["rules"])
     rule = policy["rules"][-1]["id"]
     forged = {rule: {"document_sha": "stale", "test_passed": True, "runtime_passed": True}}
-    assert all(r["status"] == "WRITTEN-only" for r in c.policy_projection("# 0 · Rules\n\nNever delete.", source_sha=SHA, enforcement=forged)["rules"])
+    assert all(
+        r["status"] == "WRITTEN-only"
+        for r in c.policy_projection("# 0 · Rules\n\nNever delete.", source_sha=SHA, enforcement=forged)["rules"]
+    )
 
 
 def test_policy_sections_ordered_like_agents_chapters_not_document_preamble():
@@ -246,8 +313,16 @@ def test_policy_sections_ordered_like_agents_chapters_not_document_preamble():
 
 def test_explicit_ref_dedup_preserves_pending_governed_items(rig):
     ctx, row, _ = rig
-    financial = c.item(ident="financial:action_queue:7", kind="FINANCIAL", title=row["title"], proposed_by=None,
-                       created_at=None, source="action_queue", doc=row["document"], source_refs=["action_queue:7"])
+    financial = c.item(
+        ident="financial:action_queue:7",
+        kind="FINANCIAL",
+        title=row["title"],
+        proposed_by=None,
+        created_at=None,
+        source="action_queue",
+        doc=row["document"],
+        source_refs=["action_queue:7"],
+    )
     row["source_refs"].append("action_queue:7")
     ctx.sources["finance"] = lambda: [financial]
     data = api.queue(ctx)
@@ -273,8 +348,12 @@ def test_rejection_of_trade_review_does_not_hide_actual_pending_source(rig):
 def test_rule_disagreement_becomes_proposal_without_changing_policy(rig):
     ctx, _, _ = rig
     policy = c.policy_projection("# 0 · Rules\n\nNever delete.", source_sha=SHA)
-    body = {"position": "DISAGREE", "comment": "Please clarify the cleanup exception.",
-            "document_sha": policy["document_sha"], "rule_id": policy["rules"][-1]["id"]}
+    body = {
+        "position": "DISAGREE",
+        "comment": "Please clarify the cleanup exception.",
+        "document_sha": policy["document_sha"],
+        "rule_id": policy["rules"][-1]["id"],
+    }
     before = repr(policy)
     result = ctx.ledger.feedback(ctx.principal(), lambda: policy, body)
     assert result["effect"] == "PROPOSAL_ONLY" and repr(policy) == before
@@ -288,8 +367,13 @@ def test_add_section_becomes_proposal_without_rule_id(rig):
     ctx, _, _ = rig
     policy = c.policy_projection("# 0 · Rules\n\nNever delete.", source_sha=SHA)
     before = repr(policy)
-    body = {"position": "DISAGREE", "action": "add_section", "section_title": "29 · Observability",
-            "comment": "Add a section on alert ownership and runbooks.", "document_sha": policy["document_sha"]}
+    body = {
+        "position": "DISAGREE",
+        "action": "add_section",
+        "section_title": "29 · Observability",
+        "comment": "Add a section on alert ownership and runbooks.",
+        "document_sha": policy["document_sha"],
+    }
     result = ctx.ledger.feedback(ctx.principal(), lambda: policy, body)
     assert result["effect"] == "PROPOSAL_ONLY" and result["action"] == "add_section"
     assert result["section"] == "29 · Observability" and result.get("rule_id") is None
@@ -323,14 +407,23 @@ def test_actual_rulebook_before_after_pair_fits_and_offsets_name_exact_changed_t
     assert additions
     for change in additions:
         offset = change["after_offset"]
-        assert updated[offset:offset + len(change["after"])] == change["after"]
+        assert updated[offset : offset + len(change["after"])] == change["after"]
 
 
 def test_audit_proposals_cannot_embed_a_decision_or_invent_evidence(rig):
     ctx, _, _ = rig
     policy = c.policy_projection("# 0 · Rules\n\nNever delete.", source_sha=SHA)
-    finding = {"title": "Review cleanup evidence", "detail": "No receipt was supplied.", "rule_id": "rule", "evidence_refs": ["receipt:1"], "decision": "APPROVE", "auto_apply": True}
-    event = ctx.ledger.audit_findings(policy=policy, audit_key="c" * 40, findings=[finding], evidence_refs={"receipt:1"})
+    finding = {
+        "title": "Review cleanup evidence",
+        "detail": "No receipt was supplied.",
+        "rule_id": "rule",
+        "evidence_refs": ["receipt:1"],
+        "decision": "APPROVE",
+        "auto_apply": True,
+    }
+    event = ctx.ledger.audit_findings(
+        policy=policy, audit_key="c" * 40, findings=[finding], evidence_refs={"receipt:1"}
+    )
     assert event["event"] == "AUDIT_FINDINGS" and event["effect"] == "PROPOSAL_ONLY"
     assert "decision" not in event["findings"][0] and event["findings"][0]["auto_apply"] is False
     assert ctx.ledger.proposal_rows()[0]["kind"] == "FINDING"
@@ -342,10 +435,23 @@ def test_financial_adapter_accepts_real_database_clock_types_without_losing_queu
     import sys
     import types
     from decimal import Decimal
+
     module = types.ModuleType("scripts.lib.cio_truth")
-    module.financial_queue_items = lambda **kwargs: {"complete": True, "items": [{"source_id": "7", "canonical_entity_id": "action_queue:7",
-        "source": "action_queue", "source_refs": [{"source": "action_queue", "id": "7"}], "kind": "actions", "title": "Review fixture",
-        "created_at": NOW, "action": {"amount": Decimal("12.34")}}]}
+    module.financial_queue_items = lambda **kwargs: {
+        "complete": True,
+        "items": [
+            {
+                "source_id": "7",
+                "canonical_entity_id": "action_queue:7",
+                "source": "action_queue",
+                "source_refs": [{"source": "action_queue", "id": "7"}],
+                "kind": "actions",
+                "title": "Review fixture",
+                "created_at": NOW,
+                "action": {"amount": Decimal("12.34")},
+            }
+        ],
+    }
     monkeypatch.setitem(sys.modules, "scripts.lib.cio_truth", module)
     result = api._default_sources(Path(__file__).resolve().parents[1])["financial_queues"]()
     assert result["gap"] is None and result["rows"][0]["created_at"] == NOW.isoformat()
@@ -355,9 +461,13 @@ def test_financial_adapter_accepts_real_database_clock_types_without_losing_queu
 
 def test_author_explanations_bind_exact_pr_head_and_reset_review_hash():
     import json
+
     doc = c.document("A proposed rule.", source_sha=SHA)
     ident = doc["changes"][0]["id"]
-    notes = {"head_sha": SHA, "annotations": {ident: {"plain": "You review the proposal.", "reason": "A prior change lacked review."}}}
+    notes = {
+        "head_sha": SHA,
+        "annotations": {ident: {"plain": "You review the proposal.", "reason": "A prior change lacked review."}},
+    }
     pr = {"body": "```approval-reader-notes\n" + json.dumps(notes) + "\n```"}
     annotations = api.reader_annotations(pr, doc)
     updated = c.document("A proposed rule.", source_sha=SHA, annotations=annotations)
@@ -370,20 +480,32 @@ def test_author_explanations_bind_exact_pr_head_and_reset_review_hash():
 def _policy_repository(root):
     import os
     import subprocess
+
     root.mkdir()
     subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True)
-    env = {**os.environ, "GIT_AUTHOR_NAME": "Fixture", "GIT_AUTHOR_EMAIL": "fixture@example.test",
-           "GIT_COMMITTER_NAME": "Fixture", "GIT_COMMITTER_EMAIL": "fixture@example.test",
-           "GIT_AUTHOR_DATE": "2032-04-12T14:00:00Z", "GIT_COMMITTER_DATE": "2032-04-12T14:00:00Z"}
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "Fixture",
+        "GIT_AUTHOR_EMAIL": "fixture@example.test",
+        "GIT_COMMITTER_NAME": "Fixture",
+        "GIT_COMMITTER_EMAIL": "fixture@example.test",
+        "GIT_AUTHOR_DATE": "2032-04-12T14:00:00Z",
+        "GIT_COMMITTER_DATE": "2032-04-12T14:00:00Z",
+    }
+
     def write(text, parent=None):
         def git(*args, data=None):
-            return subprocess.run(["git", "-C", str(root), *args], input=data, text=True, capture_output=True, check=True, env=env).stdout.strip()
+            return subprocess.run(
+                ["git", "-C", str(root), *args], input=data, text=True, capture_output=True, check=True, env=env
+            ).stdout.strip()
+
         blob = git("hash-object", "-w", "--stdin", data=text)
         tree = git("mktree", data=f"100644 blob {blob}\tAGENTS.md\n")
         args = ["commit-tree", tree, "-m", "fixture policy"] + (["-p", parent] if parent else [])
         commit = git(*args)
         git("update-ref", "refs/heads/main", commit)
         return commit
+
     return write
 
 
@@ -393,7 +515,8 @@ def test_packed_release_binds_its_own_commit_without_git_or_env_override(tmp_pat
     old_text = "Policy-Version: 20.1.0\n\n# 0 · Rules\n\nNever bypass a denial.\n"
     original = write(old_text)
     newer = write(old_text.replace("20.1.0", "20.2.0"), original)
-    release = repository / "packed-release"; release.mkdir()
+    release = repository / "packed-release"
+    release.mkdir()
     (release / "SOURCE_COMMIT").write_text(original)
     (release / "BUILD_SHA").write_text(original)
     (release / "AGENTS.md").write_text(old_text)
@@ -410,7 +533,8 @@ def test_packed_release_stamp_or_policy_disagreement_is_reported_not_repaired(tm
     write = _policy_repository(repository)
     text = "Policy-Version: 20.1.0\n\n# 0 · Rules\n\nNever bypass.\n"
     commit = write(text)
-    release = tmp_path / "release"; release.mkdir()
+    release = tmp_path / "release"
+    release.mkdir()
     (release / "SOURCE_COMMIT").write_text(commit)
     (release / "BUILD_SHA").write_text("f" * 40)
     (release / "AGENTS.md").write_text(text)
@@ -429,15 +553,35 @@ def test_w10_adapter_uses_durable_default_and_opaque_ids_with_real_watch_link(mo
     import sys
     import types
     from urllib.parse import urlparse, parse_qs
-    package = types.ModuleType("scripts.lib.conflicts"); package.__path__ = []
+
+    package = types.ModuleType("scripts.lib.conflicts")
+    package.__path__ = []
     module = types.ModuleType("scripts.lib.conflicts.api")
     key = "security:guid:U0:source:Schwab Rollover IRA / Research & ops"
+
     def read(**kwargs):
         assert kwargs == {"limit": 200}  # code artifacts must not replace W10's canonical state root
-        return {"gap": None, "total": 1, "rows": [{"id": key, "title": "Review source disagreement", "proposed_by": "conflict engine",
-            "created_at": NOW.isoformat(), "revision": 3, "owner": "the CIO",
-            "document": {"text": "Both source versions and their clear condition.", "version": "1", "source_sha": "d" * 64},
-            "governed_href": "/v3/watch?conflict=" + key}]}
+        return {
+            "gap": None,
+            "total": 1,
+            "rows": [
+                {
+                    "id": key,
+                    "title": "Review source disagreement",
+                    "proposed_by": "conflict engine",
+                    "created_at": NOW.isoformat(),
+                    "revision": 3,
+                    "owner": "the CIO",
+                    "document": {
+                        "text": "Both source versions and their clear condition.",
+                        "version": "1",
+                        "source_sha": "d" * 64,
+                    },
+                    "governed_href": "/v3/watch?conflict=" + key,
+                }
+            ],
+        }
+
     module.approval_rows = read
     monkeypatch.setitem(sys.modules, "scripts.lib.conflicts", package)
     monkeypatch.setitem(sys.modules, "scripts.lib.conflicts.api", module)
@@ -458,14 +602,29 @@ def test_queue_card_shows_the_source_label_not_the_bound_digest():
     "<sha>:<sha>" while the source said "open conflict · revision 3". Display only; the decision still binds
     document_sha."""
     doc = c.document("both sides", source_sha=SHA, version="2:" + "b" * 64)
-    labelled = c.item(ident="conflict:x", kind="CONFLICT", title="Review source disagreement", proposed_by=None,
-                      created_at=None, doc=doc, source="conflicts", version="open conflict · revision 3")
+    labelled = c.item(
+        ident="conflict:x",
+        kind="CONFLICT",
+        title="Review source disagreement",
+        proposed_by=None,
+        created_at=None,
+        doc=doc,
+        source="conflicts",
+        version="open conflict · revision 3",
+    )
     card = api._queue_card(labelled)
     assert card["version"] == "open conflict · revision 3"
     assert card["document_sha"] == doc["document_sha"] and "document" not in card
     # An item whose source supplies no label keeps the bound version rather than losing the field.
-    plain = c.item(ident="policy:1", kind="POLICY", title="Policy amendment", proposed_by=None, created_at=None,
-                   doc=doc, source="fixture")
+    plain = c.item(
+        ident="policy:1",
+        kind="POLICY",
+        title="Policy amendment",
+        proposed_by=None,
+        created_at=None,
+        doc=doc,
+        source="fixture",
+    )
     assert api._queue_card(plain)["version"] == "2:" + "b" * 64
 
 
@@ -476,34 +635,60 @@ def test_encoded_item_ids_resolve_for_read_and_open(rig):
     row["id"] = "policy:42"
     status, data = api.handle(api.PREFIX + "/approvals/policy%3A42", "GET", ctx=ctx)
     assert status == 200 and data["data"]["id"] == "policy:42"
-    status, data = api.handle(api.PREFIX + "/approvals/policy%3A42/open", "POST",
-                              {"document_sha": row["document"]["document_sha"]}, ctx=ctx)
+    status, data = api.handle(
+        api.PREFIX + "/approvals/policy%3A42/open", "POST", {"document_sha": row["document"]["document_sha"]}, ctx=ctx
+    )
     assert status == 200 and data["data"]["review_id"]
 
 
 def _rule_proposal_store(root, monkeypatch, *, pending=("rp-pending1",), decided=("rp-done1",)):
     from scripts.lib.conflicts import proposals as rp
+
     monkeypatch.setattr(rp, "default_root", lambda: root)
     store = rp.ProposalStore(root)
     for ident in (*pending, *decided):
-        store.append({"event": "proposal_created", "at": "2032-04-12T13:00:00Z", "proposal_id": ident,
-                      "proposal": {"proposal_id": ident, "signature": "ups-" + ident, "summary": "desk says FOO_BAR",
-                                   "plain_rule": "Treat FOO BAR as WATCH.", "tier": "T4", "never_auto": False,
-                                   "model": {"provider": "grok"}, "created_at": "2032-04-12T13:00:00Z",
-                                   "facts_sha256": "f" * 64}})
+        store.append(
+            {
+                "event": "proposal_created",
+                "at": "2032-04-12T13:00:00Z",
+                "proposal_id": ident,
+                "proposal": {
+                    "proposal_id": ident,
+                    "signature": "ups-" + ident,
+                    "summary": "desk says FOO_BAR",
+                    "plain_rule": "Treat FOO BAR as WATCH.",
+                    "tier": "T4",
+                    "never_auto": False,
+                    "model": {"provider": "grok"},
+                    "created_at": "2032-04-12T13:00:00Z",
+                    "facts_sha256": "f" * 64,
+                },
+            }
+        )
     for ident in decided:
-        store.append({"event": "decided", "at": "2032-04-12T13:30:00Z", "proposal_id": ident,
-                      "decision": {"decision": "reject", "actor_kind": "operator", "actor": "tailnet:operator@example.test"}})
+        store.append(
+            {
+                "event": "decided",
+                "at": "2032-04-12T13:30:00Z",
+                "proposal_id": ident,
+                "decision": {"decision": "reject", "actor_kind": "operator", "actor": "tailnet:operator@example.test"},
+            }
+        )
     return store
 
 
 def test_pending_ai_rule_proposals_join_queue_as_governed_conflicts_linked_to_proposal_sheet(tmp_path, monkeypatch):
     from urllib.parse import parse_qs, urlparse
+
     _rule_proposal_store(tmp_path, monkeypatch)
     rows = api._default_sources(Path(__file__).resolve().parents[1])["conflict_rule_proposals"]()
     assert [r["id"] for r in rows] == ["rule-proposal:rp-pending1"]  # approved/rejected proposals never wait on you
     row = rows[0]
-    assert (row["kind"], row["decision_mode"], row["source"]) == ("CONFLICT", "GOVERNED_PATH", "conflict_rule_proposals")
+    assert (row["kind"], row["decision_mode"], row["source"]) == (
+        "CONFLICT",
+        "GOVERNED_PATH",
+        "conflict_rule_proposals",
+    )
     assert urlparse(row["governed_href"]).path == "/conflicts/rules"
     assert parse_qs(urlparse(row["governed_href"]).query)["proposal"] == ["rp-pending1"]
     assert row["proposed_by"] == "AI rule proposer (grok)" and "facts_sha256" not in row["document"]["text"]
@@ -522,7 +707,9 @@ def test_rule_proposal_cannot_be_approved_in_approvals_ledger(tmp_path, monkeypa
     with pytest.raises(c.Refused, match="GOVERNED_ACTION_REQUIRED"):
         ctx.ledger.decide(ctx.principal(), lambda: row, decision(row, review))
     # Recording a reject disposition never hides a still-pending proposal: only the conflict rules page decides it.
-    ctx.ledger.decide(ctx.principal(), lambda: row, decision(row, review, decision="REJECT", request_id="request_654321"))
+    ctx.ledger.decide(
+        ctx.principal(), lambda: row, decision(row, review, decision="REJECT", request_id="request_654321")
+    )
     queue = c.queue_projection({"conflict_rule_proposals": lambda: [row]}, decisions=ctx.ledger.rows(), now=NOW)
     assert [r["id"] for r in queue["items"]] == ["rule-proposal:rp-pending1"]
 
@@ -531,15 +718,166 @@ def test_unreadable_rule_proposal_store_is_a_named_gap_not_zero(tmp_path, monkey
     _rule_proposal_store(tmp_path, monkeypatch, pending=("rp-pending1",), decided=())
     path = tmp_path / "data/conflicts/rule_proposals.jsonl"
     path.write_text(path.read_text().replace("FOO_BAR", "TAMPERED"))
-    sources = {"conflict_rule_proposals": api._default_sources(Path(__file__).resolve().parents[1])["conflict_rule_proposals"]}
+    sources = {
+        "conflict_rule_proposals": api._default_sources(Path(__file__).resolve().parents[1])["conflict_rule_proposals"]
+    }
     queue = c.queue_projection(sources, decisions=[], now=NOW)
     assert queue["pending_count"] is None and queue["gaps"][0]["source"] == "conflict_rule_proposals"
 
 
 def test_rule_proposal_href_allowlist_rejects_other_conflict_paths():
     doc = c.document("x", source_sha=SHA)
-    ok = c.item(ident="rule-proposal:rp-1", kind="CONFLICT", title="t", proposed_by=None, created_at=None, doc=doc,
-                source="conflict_rule_proposals", governed_href="/conflicts/rules?proposal=rp-1")
-    bad = c.item(ident="rule-proposal:rp-2", kind="CONFLICT", title="t", proposed_by=None, created_at=None, doc=doc,
-                 source="conflict_rule_proposals", governed_href="/conflicts/rules/../../evil")
+    ok = c.item(
+        ident="rule-proposal:rp-1",
+        kind="CONFLICT",
+        title="t",
+        proposed_by=None,
+        created_at=None,
+        doc=doc,
+        source="conflict_rule_proposals",
+        governed_href="/conflicts/rules?proposal=rp-1",
+    )
+    bad = c.item(
+        ident="rule-proposal:rp-2",
+        kind="CONFLICT",
+        title="t",
+        proposed_by=None,
+        created_at=None,
+        doc=doc,
+        source="conflict_rule_proposals",
+        governed_href="/conflicts/rules/../../evil",
+    )
     assert ok["governed_href"] == "/conflicts/rules?proposal=rp-1" and bad["governed_href"] is None
+
+
+# The GET-only reader may retain evidence; the mutation authority rails stay pinned.
+def test_retained_reader_preserves_transaction_resolver_and_post_bytes():
+    import hashlib
+
+    source = Path(api.__file__).read_bytes()
+    current = source[source.index(b"def _current(ctx:") :]
+    post = source[source.index(b'        if method != "POST":') : source.index(b"\n\ndef _current(ctx:")]
+    # Ruff's sole protected-resolver edit is one permitted blank line. Bind every
+    # other byte to the pre-repair authority code, then compare compiled behavior.
+    original = current.replace(b"\n\n    return current\n", b"\n    return current\n")
+    assert hashlib.sha256(original).hexdigest() == "2ac6d3234b2799cf7a504984fbfb95f5aa0c5b6a8869b4f8bf8bf7d4165fac9e"
+    from types import CodeType
+
+    def behavior(code):
+        return (
+            code.co_code,
+            code.co_names,
+            code.co_varnames,
+            tuple(behavior(value) if isinstance(value, CodeType) else value for value in code.co_consts),
+        )
+
+    assert behavior(compile(current, "authority", "exec")) == behavior(compile(original, "authority", "exec"))
+    assert hashlib.sha256(post).hexdigest() == "292f62a7952ece3f3032474d8f769f9c90a8e3acd1b1d857845ab5ee7545f707"
+
+
+def test_partial_source_exact_retained_document_is_readable_without_ledger(rig):
+    ctx, row, _ = rig
+    row["id"] = "design:synthetic"
+    ctx.sources = {"fixture": lambda: {"rows": [row], "gap": "Synthetic scan incomplete"}}
+    assert not ctx.ledger.path.exists()
+    status, queue = api.handle(api.PREFIX + "/approvals", "GET", ctx=ctx)
+    assert status == 200 and queue["data"]["complete"] is False
+    assert queue["data"]["known_pending_count"] == 1
+    status, result = api.handle(api.PREFIX + "/approvals/design%3Asynthetic", "GET", ctx=ctx)
+    assert status == 200
+    assert result["data"]["document"] == row["document"]
+    assert result["data"]["reader_context"] == {
+        "state": "partial",
+        "source": "fixture",
+        "reason": "Synthetic scan incomplete",
+        "decision_eligible": False,
+    }
+    assert not ctx.ledger.path.exists()
+    with pytest.raises(c.Refused, match="ITEM_UNAVAILABLE"):
+        api._current(ctx, row["id"])()
+
+
+@pytest.mark.parametrize("action", ["open", "read", "decide", "question"])
+def test_partial_reader_does_not_enable_any_post_action(rig, action):
+    ctx, row, _ = rig
+    ctx.sources = {"fixture": lambda: {"rows": [row], "gap": "Synthetic scan incomplete"}}
+    body = {
+        "document_sha": row["document"]["document_sha"],
+        "review_id": "synthetic_review",
+        "request_id": "synthetic_request",
+        "decision": "APPROVE",
+        "question": "Synthetic question",
+        "change_id": row["document"]["changes"][0]["id"],
+        "phase": "read",
+    }
+    status, result = api.handle(api.PREFIX + "/approvals/policy-42/" + action, "POST", body, ctx=ctx)
+    assert status == 404 and result["error"] == "ITEM_UNAVAILABLE"
+    assert ctx.ledger.rows() == []
+
+
+def test_retained_reader_duplicate_across_partial_and_complete_is_refused(rig):
+    ctx, row, _ = rig
+    ctx.sources = {"partial": lambda: {"rows": [row], "gap": "Synthetic incomplete"}, "complete": lambda: [dict(row)]}
+    status, result = api.handle(api.PREFIX + "/approvals/policy-42", "GET", ctx=ctx)
+    assert status == 503 and result["error"] == "DUPLICATE_APPROVAL_ID"
+    assert not ctx.ledger.path.exists()
+
+
+def test_retained_reader_auth_missing_and_source_exception(rig):
+    ctx, row, _ = rig
+    ctx.principal = lambda: None
+    ctx.can_read = lambda: False
+    assert api.handle(api.PREFIX + "/approvals/policy-42", "GET", ctx=ctx)[0] == 403
+    ctx.can_read = lambda: True
+    assert api.handle(api.PREFIX + "/approvals/missing", "GET", ctx=ctx)[0] == 404
+
+    def broken():
+        raise RuntimeError("Synthetic source failure")
+
+    ctx.sources["broken"] = broken
+    status, result = api.handle(api.PREFIX + "/approvals/policy-42", "GET", ctx=ctx)
+    assert status == 200
+    assert result["data"]["reader_context"]["state"] == "partial"
+    assert result["data"]["reader_context"]["decision_eligible"] is False
+    assert not ctx.ledger.path.exists()
+
+
+@pytest.mark.parametrize(
+    "batch,error",
+    [
+        ([{}], "SOURCE_UNAVAILABLE"),
+        ("malformed", "SOURCE_UNAVAILABLE"),
+        ([{"id": "filler"}] * 501, "READER_SOURCE_LIMIT"),
+    ],
+)
+def test_retained_reader_never_claims_unique_identity_from_invalid_or_truncated_source(rig, batch, error):
+    ctx, _, _ = rig
+    ctx.sources = {"fixture": lambda: batch}
+    status, result = api.handle(api.PREFIX + "/approvals/missing", "GET", ctx=ctx)
+    assert status == 503 and result["error"] == error
+    assert not ctx.ledger.path.exists()
+
+
+def test_complete_reader_preserves_existing_positive_review_path(rig):
+    ctx, row, _ = rig
+    status, result = api.handle(api.PREFIX + "/approvals/policy-42", "GET", ctx=ctx)
+    assert status == 200
+    assert result["data"]["reader_context"] == {
+        "state": "complete",
+        "source": "fixture",
+        "reason": None,
+        "decision_eligible": True,
+    }
+    status, result = api.handle(
+        api.PREFIX + "/approvals/policy-42/open", "POST", {"document_sha": row["document"]["document_sha"]}, ctx=ctx
+    )
+    assert status == 200 and result["data"]["event"] == "READ_STARTED"
+
+
+@pytest.mark.parametrize("batch", [{}, {"rows": 0}, {"rows": None}, {"rows": False}])
+def test_malformed_sibling_cannot_claim_complete_identity_coverage(rig, batch):
+    ctx, _, _ = rig
+    ctx.sources["malformed"] = lambda: batch
+    status, result = api.handle(api.PREFIX + "/approvals/policy-42", "GET", ctx=ctx)
+    assert status == 503 and result["error"] == "SOURCE_UNAVAILABLE"
+    assert not ctx.ledger.path.exists()

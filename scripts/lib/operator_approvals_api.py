@@ -3,6 +3,7 @@
 POST performs a handler-side origin/CSRF check even in report-only auth mode.
 No submitted actor, document text, command, URL, grant or policy token is trusted.
 """
+
 from __future__ import annotations
 
 import json
@@ -51,10 +52,16 @@ def design_registry_entry(row: dict, meta: dict, text: str, code_sha: str) -> di
     packet = row["kind"] == "packet"
     # Packets containing activations/policy edits cannot be approved as a generic design.
     mode = "ACTIVATE" if packet else "DESIGN"
-    entry = core.item(ident="design:" + row["id"], kind=mode, title=meta["title"],
-                      proposed_by=meta["proposed_by"], created_at=meta["created_at"], source="design_registry",
-                      doc=core.document(text, source_sha=code_sha, version=row["id"]),
-                      governed_href="/coordination?tab=work" if packet else design_approval_href(row["id"]))
+    entry = core.item(
+        ident="design:" + row["id"],
+        kind=mode,
+        title=meta["title"],
+        proposed_by=meta["proposed_by"],
+        created_at=meta["created_at"],
+        source="design_registry",
+        doc=core.document(text, source_sha=code_sha, version=row["id"]),
+        governed_href="/coordination?tab=work" if packet else design_approval_href(row["id"]),
+    )
     entry["decision_mode"] = "GOVERNED_PATH"
     return entry
 
@@ -73,6 +80,7 @@ def source_revision(root: Path) -> str:
         sha = _raw_git(root, "rev-parse", "HEAD").strip()
     else:
         from scripts.lib.runtime_identity import resolve_source_sha
+
         sha = resolve_source_sha(env={}, project_root=root, current_release=root, allow_git=False)
         stamps = []
         for name in ("BUILD_SHA", "SOURCE_COMMIT", "GIT_SHA"):
@@ -113,7 +121,8 @@ def _queue_card(item: dict) -> dict:
     """
     return {k: v for k, v in item.items() if k != "document"} | {
         "document_sha": item["document"]["document_sha"],
-        "version": item.get("version") or item["document"]["version"]}
+        "version": item.get("version") or item["document"]["version"],
+    }
 
 
 def policy_source(root: Path) -> tuple[str, str]:
@@ -146,9 +155,16 @@ def reader_annotations(pr: dict, doc: dict) -> dict:
         if not isinstance(annotations, dict) or len(annotations) > 100:
             return {}
         ids = {change["id"] for change in doc["changes"]}
-        return {key: {"plain": note["plain"], "reason": note["reason"]} for key, note in annotations.items()
-                if key in ids and isinstance(note, dict) and isinstance(note.get("plain"), str)
-                and isinstance(note.get("reason"), str) and 0 < len(note["plain"]) <= 400 and 0 < len(note["reason"]) <= 800}
+        return {
+            key: {"plain": note["plain"], "reason": note["reason"]}
+            for key, note in annotations.items()
+            if key in ids
+            and isinstance(note, dict)
+            and isinstance(note.get("plain"), str)
+            and isinstance(note.get("reason"), str)
+            and 0 < len(note["plain"]) <= 400
+            and 0 < len(note["reason"]) <= 800
+        }
     except (ValueError, TypeError):
         return {}
 
@@ -159,6 +175,7 @@ def git_policy(root: Path = ROOT) -> dict:
     policy = core.policy_projection(text, source_sha=sha)
     from scripts.lib.lane_last_receipt import runtime_dir
     from scripts.lib.approval_package import governance_dir
+
     report_path = runtime_dir() / "policy_enforcement_audit_last_report.json"
     if not report_path.is_file() or report_path.stat().st_size > 4_000_000:
         return policy
@@ -166,16 +183,29 @@ def git_policy(root: Path = ROOT) -> dict:
     policy["audit"] = core.unverified_audit(report)  # replaced below only when the report binds this exact version
     ledger = core.DecisionLedger(governance_dir() / "operator_decisions.jsonl", approved=lambda: False)
     # A report is a derived view. Bind it back to an actual canonical proposal event.
-    verified = any(row.get("event") == "AUDIT_FINDINGS" and row.get("hash_self") == report.get("event_hash")
-                   and row.get("document_sha") == policy["document_sha"] for row in ledger.rows())
-    if (verified and report.get("document_sha") == policy["document_sha"]
-            and report.get("code_sha") == _git(root, "rev-parse", "HEAD").strip()):
+    verified = any(
+        row.get("event") == "AUDIT_FINDINGS"
+        and row.get("hash_self") == report.get("event_hash")
+        and row.get("document_sha") == policy["document_sha"]
+        for row in ledger.rows()
+    )
+    if (
+        verified
+        and report.get("document_sha") == policy["document_sha"]
+        and report.get("code_sha") == _git(root, "rev-parse", "HEAD").strip()
+    ):
         measured = report.get("mechanical") or {}
         policy = core.policy_projection(text, source_sha=sha, enforcement=measured.get("proofs") or {})
-        policy["audit"] = {"state": "PARTIAL", "last_audit": report.get("as_of"), "scope": report.get("review_scope"),
-                           "mapped_count": measured.get("mapped_count"), "unmapped_count": measured.get("unmapped_count"),
-                           "reviewer_called": report.get("reviewer_called"), "gaps": report.get("evidence_gaps") or [],
-                           "findings": report.get("findings") or []}
+        policy["audit"] = {
+            "state": "PARTIAL",
+            "last_audit": report.get("as_of"),
+            "scope": report.get("review_scope"),
+            "mapped_count": measured.get("mapped_count"),
+            "unmapped_count": measured.get("unmapped_count"),
+            "reviewer_called": report.get("reviewer_called"),
+            "gaps": report.get("evidence_gaps") or [],
+            "findings": report.get("findings") or [],
+        }
     return policy
 
 
@@ -212,20 +242,35 @@ def _default_sources(root: Path) -> dict:
                 if proposal.get("state") not in ("PENDING", "NEEDS_LOCAL", "DEFERRED"):
                     continue
                 # Project only fields the operator is meant to read; never raw codes/tokens.
-                public = {key: proposal.get(key) for key in ("title", "why", "rule", "rollback", "scopes_needed", "depends_on")}
+                public = {
+                    key: proposal.get(key)
+                    for key in ("title", "why", "rule", "rollback", "scopes_needed", "depends_on")
+                }
                 kind = "SPEND" if proposal.get("category") == "BUDGET" else "ACTIVATE"
                 if "release-write" in (proposal.get("scopes_needed") or []):
                     kind = "RELEASE"
-                doc = core.document(json.dumps(public, indent=2, ensure_ascii=False), source_sha=source_sha,
-                                    version=str(pkg.get("package_id")))
-                rows.append(core.item(ident=f"{pkg['package_id']}:{proposal['item_no']}", kind=kind,
-                                      title=proposal["title"], proposed_by=pkg.get("created_by"),
-                                      created_at=pkg.get("submitted_at") or pkg.get("created_at"), doc=doc,
-                                      source="approval_packages", governed_href="/system/ops-controls"))
+                doc = core.document(
+                    json.dumps(public, indent=2, ensure_ascii=False),
+                    source_sha=source_sha,
+                    version=str(pkg.get("package_id")),
+                )
+                rows.append(
+                    core.item(
+                        ident=f"{pkg['package_id']}:{proposal['item_no']}",
+                        kind=kind,
+                        title=proposal["title"],
+                        proposed_by=pkg.get("created_by"),
+                        created_at=pkg.get("submitted_at") or pkg.get("created_at"),
+                        doc=doc,
+                        source="approval_packages",
+                        governed_href="/system/ops-controls",
+                    )
+                )
         return rows
 
     def guard_requests():
         from scripts.lib import guard_remote_approval as guard
+
         if not guard.requests_path().is_file():
             raise core.Refused("GUARD_REQUEST_SOURCE_UNAVAILABLE", 503)
         data = guard._load()
@@ -237,18 +282,28 @@ def _default_sources(root: Path) -> dict:
                 continue
             if row.get("scope_conflict"):
                 raise core.Refused("GUARD_SCOPE_CONFLICT", 503)
-            public = {k: row.get(k) for k in ("request_id", "scope", "seconds", "uses", "reason", "created_at", "expires_at")}
+            public = {
+                k: row.get(k) for k in ("request_id", "scope", "seconds", "uses", "reason", "created_at", "expires_at")
+            }
             kind = "RELEASE" if row.get("scope") == "release-write" else "ACTIVATE"
-            out.append(core.item(ident="guard:" + guard.request_id_of(row), kind=kind,
-                                 title=f"Grant request: {guard.request_scope(row)}", proposed_by=None,
-                                 created_at=iso_timestamp(row.get("created_at")), source="guard_requests",
-                                 doc=core.document(json.dumps(public, ensure_ascii=False, indent=2), source_sha=code_sha),
-                                 governed_href="/system/ops-controls"))
+            out.append(
+                core.item(
+                    ident="guard:" + guard.request_id_of(row),
+                    kind=kind,
+                    title=f"Grant request: {guard.request_scope(row)}",
+                    proposed_by=None,
+                    created_at=iso_timestamp(row.get("created_at")),
+                    source="guard_requests",
+                    doc=core.document(json.dumps(public, ensure_ascii=False, indent=2), source_sha=code_sha),
+                    governed_href="/system/ops-controls",
+                )
+            )
         return out
 
     def designs():
         from scripts.lib.design_registry import DesignStore, designs_awaiting, ledger_approved_ids
         from scripts.lib import activation_reconcile as reconcile
+
         designs, errors = DesignStore(root).load()
         candidates = designs_awaiting(root, designs, ledger_approved_ids(None))
         code_sha, out, resolved = _git(root, "rev-parse", "HEAD").strip(), [], []
@@ -260,6 +315,7 @@ def _default_sources(root: Path) -> dict:
         added = reconcile.added_commits_cached(git, [row.get("path") for row in candidates[:200]], code_sha)
         try:
             from scripts.lib.agent_claim_board import default_claims_dir
+
             claims = reconcile.claim_index(default_claims_dir())
         except Exception:  # noqa: BLE001 - claim metadata is optional; the row then says "unknown" and why
             claims = {}
@@ -273,9 +329,17 @@ def _default_sources(root: Path) -> dict:
             text = _git(root, "show", f"{code_sha}:{path}")
             packet = row["kind"] == "packet"
             target = targets.get(row["id"]) if packet else None
-            meta = reconcile.describe(kind=row["kind"], ident=row["id"], path=path, readme_text=text if packet else None,
-                                      owner=None if packet else owners.get(row["id"]), target=target,
-                                      added=added.get(path), claims=claims, title=row.get("title"))
+            meta = reconcile.describe(
+                kind=row["kind"],
+                ident=row["id"],
+                path=path,
+                readme_text=text if packet else None,
+                owner=None if packet else owners.get(row["id"]),
+                target=target,
+                added=added.get(path),
+                claims=claims,
+                title=row.get("title"),
+            )
             entry = design_registry_entry(row, meta, text, code_sha)
             entry["proposed_by_basis"], entry["created_at_basis"] = meta["proposed_by_basis"], meta["created_at_basis"]
             if packet:
@@ -285,11 +349,15 @@ def _default_sources(root: Path) -> dict:
                     resolved.append(entry)  # already applied or superseded: shown under Resolved, never deleted
                     continue
             out.append(entry)
-        return {"rows": out, "resolved": resolved,
-                "gap": "Design scan incomplete or invalid" if errors or incomplete or len(candidates) > 200 else None}
+        return {
+            "rows": out,
+            "resolved": resolved,
+            "gap": "Design scan incomplete or invalid" if errors or incomplete or len(candidates) > 200 else None,
+        }
 
     def policy_prs():
         from scripts.lib.design_registry import work_board
+
         board = work_board()
         # Consume the existing board's background snapshot. A GET never starts a GitHub scan/job.
         if board.prs is None:
@@ -312,19 +380,41 @@ def _default_sources(root: Path) -> dict:
             if text == old:
                 continue
             version = re.search(r"^Policy-Version:\s*(\d+\.\d+\.\d+)\s*$", text, re.M)
-            doc = core.document(text, base_text=old, source_sha=head, version=version[1] if version else "",
-                                source_verified=True)
+            doc = core.document(
+                text, base_text=old, source_sha=head, version=version[1] if version else "", source_verified=True
+            )
             annotations = reader_annotations(pr, doc)
             if annotations:
-                doc = core.document(text, base_text=old, source_sha=head, version=doc["version"],
-                                    source_verified=True, annotations=annotations)
-            out.append(core.item(ident=f"policy:{pr['number']}", kind="POLICY", title=pr["title"],
-                                 proposed_by=(pr.get("user") or {}).get("login"), created_at=pr.get("created_at"),
-                                 doc=doc, source="github_pr_snapshot", pr=pr["number"]))
-        return {"rows": out, "gap": "Exact open PR snapshot or local commit objects incomplete" if missing or len(board.prs) >= 100 else None}
+                doc = core.document(
+                    text,
+                    base_text=old,
+                    source_sha=head,
+                    version=doc["version"],
+                    source_verified=True,
+                    annotations=annotations,
+                )
+            out.append(
+                core.item(
+                    ident=f"policy:{pr['number']}",
+                    kind="POLICY",
+                    title=pr["title"],
+                    proposed_by=(pr.get("user") or {}).get("login"),
+                    created_at=pr.get("created_at"),
+                    doc=doc,
+                    source="github_pr_snapshot",
+                    pr=pr["number"],
+                )
+            )
+        return {
+            "rows": out,
+            "gap": "Exact open PR snapshot or local commit objects incomplete"
+            if missing or len(board.prs) >= 100
+            else None,
+        }
 
     def conflicts():
         from scripts.lib.conflicts.api import approval_rows
+
         # W10's default resolves the registered durable state tree, not this immutable code artifact.
         projected = approval_rows(limit=200)
         if projected.get("gap") or projected.get("total") is None:
@@ -337,24 +427,38 @@ def _default_sources(root: Path) -> dict:
             # W10's source_sha is its evidence digest, not necessarily a Git commit.
             # Preserve it as document version; bind the adapter code's exact commit separately.
             code_sha = _git(root, "rev-parse", "HEAD").strip()
-            doc = core.document(raw["text"], source_sha=code_sha,
-                                version=str(raw.get("version")) + ":" + str(raw.get("source_sha")))
-            rows.append(core.item(ident="conflict:" + core.digest(row["id"])[:32], kind="CONFLICT", title=row["title"],
-                                  proposed_by=row.get("proposed_by"), created_at=row.get("created_at"), doc=doc,
-                                  source="conflicts", governed_href="/watch?conflict=" + quote(str(row["id"]), safe=""),
-                                  # The bound version is the evidence digest twice over; the row label is the
-                                  # record's revision plus who must act on it, so the reader sees something it can
-                                  # act on. Owner comes from the record, outside the bound document text.
-                                  version=("open conflict · revision " + str(row["revision"])
-                                           if row.get("revision") is not None else "open conflict")
-                                          + (f" · owner: {row['owner']}" if row.get("owner") else ""),
-                                  source_refs=["conflict_events:" + str(row["id"])]))
+            doc = core.document(
+                raw["text"], source_sha=code_sha, version=str(raw.get("version")) + ":" + str(raw.get("source_sha"))
+            )
+            rows.append(
+                core.item(
+                    ident="conflict:" + core.digest(row["id"])[:32],
+                    kind="CONFLICT",
+                    title=row["title"],
+                    proposed_by=row.get("proposed_by"),
+                    created_at=row.get("created_at"),
+                    doc=doc,
+                    source="conflicts",
+                    governed_href="/watch?conflict=" + quote(str(row["id"]), safe=""),
+                    # The bound version is the evidence digest twice over; the row label is the
+                    # record's revision plus who must act on it, so the reader sees something it can
+                    # act on. Owner comes from the record, outside the bound document text.
+                    version=(
+                        "open conflict · revision " + str(row["revision"])
+                        if row.get("revision") is not None
+                        else "open conflict"
+                    )
+                    + (f" · owner: {row['owner']}" if row.get("owner") else ""),
+                    source_refs=["conflict_events:" + str(row["id"])],
+                )
+            )
         return rows
 
     def conflict_rule_proposals():
         # W10 AI-proposed conflict rules (docs/ops/CONFLICT_RULE_PROPOSALS.md). Read-only: the queue links to the
         # proposal sheet on /conflicts/rules, which owns Approve / Edit then approve / Reject (single channel).
         from scripts.lib.conflicts import proposals as rule_proposals
+
         data = rule_proposals.collection(rule_proposals.default_root(), status="PENDING", limit=200)
         if data["total"] > len(data["proposals"]):
             raise core.Refused("RULE_PROPOSAL_SOURCE_TRUNCATED", 503)
@@ -363,23 +467,45 @@ def _default_sources(root: Path) -> dict:
             ident = str(proposal.get("proposal_id") or "")
             if proposal.get("status") != "PENDING" or not re.fullmatch(r"[A-Za-z0-9-]{1,64}", ident):
                 raise core.Refused("RULE_PROPOSAL_SOURCE_INVALID", 503)
-            public = {k: proposal.get(k) for k in ("proposal_id", "revision", "summary", "plain_rule", "tier", "never_auto",
-                                                   "never_auto_implications", "proposed_resolution", "risks",
-                                                   "machine_form", "created_at")}
+            public = {
+                k: proposal.get(k)
+                for k in (
+                    "proposal_id",
+                    "revision",
+                    "summary",
+                    "plain_rule",
+                    "tier",
+                    "never_auto",
+                    "never_auto_implications",
+                    "proposed_resolution",
+                    "risks",
+                    "machine_form",
+                    "created_at",
+                )
+            }
             provider = (proposal.get("model") or {}).get("provider")
             # Readable queue label: "revision 2 · T4" when both are known, never "revision None".
             tier = proposal.get("tier") or "tier not supplied"
-            label = (f"revision {proposal['revision']} · {tier}" if proposal.get("revision") is not None
-                     else str(tier))
-            out.append(core.item(ident="rule-proposal:" + ident, kind="CONFLICT",
-                                 title="Proposed conflict rule: " + str(proposal.get("summary") or proposal.get("plain_rule") or ident),
-                                 proposed_by=f"AI rule proposer ({provider})" if provider else "AI rule proposer",
-                                 created_at=proposal.get("created_at"), source="conflict_rule_proposals",
-                                 version=label,
-                                 doc=core.document(json.dumps(public, indent=2, ensure_ascii=False, sort_keys=True),
-                                                   source_sha=code_sha, version=label),
-                                 governed_href="/conflicts/rules?proposal=" + quote(ident, safe=""),
-                                 source_refs=["rule_proposals.jsonl:" + ident]))
+            label = f"revision {proposal['revision']} · {tier}" if proposal.get("revision") is not None else str(tier)
+            out.append(
+                core.item(
+                    ident="rule-proposal:" + ident,
+                    kind="CONFLICT",
+                    title="Proposed conflict rule: "
+                    + str(proposal.get("summary") or proposal.get("plain_rule") or ident),
+                    proposed_by=f"AI rule proposer ({provider})" if provider else "AI rule proposer",
+                    created_at=proposal.get("created_at"),
+                    source="conflict_rule_proposals",
+                    version=label,
+                    doc=core.document(
+                        json.dumps(public, indent=2, ensure_ascii=False, sort_keys=True),
+                        source_sha=code_sha,
+                        version=label,
+                    ),
+                    governed_href="/conflicts/rules?proposal=" + quote(ident, safe=""),
+                    source_refs=["rule_proposals.jsonl:" + ident],
+                )
+            )
         return out
 
     def missing():
@@ -387,20 +513,49 @@ def _default_sources(root: Path) -> dict:
 
     def financial():
         from scripts.lib.cio_truth import financial_queue_items
+
         result = financial_queue_items(limit=200)
         code_sha, out = _git(root, "rev-parse", "HEAD").strip(), []
         for row in result["items"]:
-            public = {k: row.get(k) for k in ("title", "kind", "symbol", "account_label", "status", "created_at", "expires_at", "category", "action")}
+            public = {
+                k: row.get(k)
+                for k in (
+                    "title",
+                    "kind",
+                    "symbol",
+                    "account_label",
+                    "status",
+                    "created_at",
+                    "expires_at",
+                    "category",
+                    "action",
+                )
+            }
             public["created_at"] = instant(row.get("created_at"))
             public["expires_at"] = instant(row.get("expires_at"))
             ident = "financial:" + row["canonical_entity_id"]
-            refs = [f"{ref['source']}:{ref['id']}" for ref in row.get("source_refs", [])
-                    if isinstance(ref, dict) and ref.get("source") and ref.get("id") is not None]
-            out.append(core.item(ident=ident, kind="FINANCIAL", title=row.get("title") or "Trade review",
-                                 proposed_by=None, created_at=public["created_at"], source=row["source"],
-                                 doc=core.document(json.dumps(public, indent=2, ensure_ascii=False, default=str), source_sha=code_sha),
-                                 governed_href="/trading?tab=Proposals" if row["kind"] in ("paper", "broker", "unclassified_proposals") else "/cio",
-                                 source_refs=refs + [row["canonical_entity_id"]]))
+            refs = [
+                f"{ref['source']}:{ref['id']}"
+                for ref in row.get("source_refs", [])
+                if isinstance(ref, dict) and ref.get("source") and ref.get("id") is not None
+            ]
+            out.append(
+                core.item(
+                    ident=ident,
+                    kind="FINANCIAL",
+                    title=row.get("title") or "Trade review",
+                    proposed_by=None,
+                    created_at=public["created_at"],
+                    source=row["source"],
+                    doc=core.document(
+                        json.dumps(public, indent=2, ensure_ascii=False, default=str), source_sha=code_sha
+                    ),
+                    governed_href="/trading?tab=Proposals"
+                    if row["kind"] in ("paper", "broker", "unclassified_proposals")
+                    else "/cio",
+                    source_refs=refs + [row["canonical_entity_id"]],
+                )
+            )
             out[-1]["financial_kind"] = row["kind"]
         return {"rows": out, "gap": None if result.get("complete") else "Financial queues incomplete"}
 
@@ -408,16 +563,26 @@ def _default_sources(root: Path) -> dict:
         # Approvals → Merges (Design approvals-pr-review/v001): one MERGE item per PR from the independent reviewer's
         # store and its open-PR snapshot. Reads only; the reviewer timer is the store's single writer.
         from scripts.lib import pr_review_view
+
         return pr_review_view.merge_items(state_root=state_root(), root=root, code_sha="")
 
     # These missing adapters are explicit. Neither empty queues nor a complete global count are invented.
-    return {"pr_reviews": pr_reviews, "packages": packages, "conflicts": conflicts, "conflict_rule_proposals": conflict_rule_proposals, "policy_prs": policy_prs,
-            "guard_requests": guard_requests, "design_decisions": designs, "financial_queues": financial}
+    return {
+        "pr_reviews": pr_reviews,
+        "packages": packages,
+        "conflicts": conflicts,
+        "conflict_rule_proposals": conflict_rule_proposals,
+        "policy_prs": policy_prs,
+        "guard_requests": guard_requests,
+        "design_decisions": designs,
+        "financial_queues": financial,
+    }
 
 
 def state_root() -> Path:
     """The persistent-state root the decision ledger lives under (``<root>/data/governance``)."""
     from scripts.lib.approval_package import governance_dir
+
     return governance_dir().parent.parent
 
 
@@ -449,6 +614,7 @@ def default_ctx() -> Ctx:
     except ImportError:  # pragma: no cover - imported without scripts/ on sys.path
         from scripts.lib import cc_auth  # type: ignore
     from scripts.lib.approval_package import governance_dir
+
     cfg = cc_auth.load_config()
 
     def approved():
@@ -458,18 +624,25 @@ def default_ctx() -> Ctx:
     ledger = core.DecisionLedger(governance_dir() / "operator_decisions.jsonl", approved=approved)
     sources = _default_sources(ROOT)
     sources["rule_proposals"] = ledger.proposal_rows
-    return Ctx(principal=cc_auth.current_principal,
-               listener=lambda: (cc_auth.current_request_context() or {}).get("listener"),
-               csrf=lambda m, p: cc_auth.command_csrf_check(cfg, m, p), allowed_logins=cfg.allowed_logins,
-               sources=sources, ledger=ledger,
-               policy=git_policy,
-               can_read=lambda: cc_auth.current_principal() == "service-token")
+    return Ctx(
+        principal=cc_auth.current_principal,
+        listener=lambda: (cc_auth.current_request_context() or {}).get("listener"),
+        csrf=lambda m, p: cc_auth.command_csrf_check(cfg, m, p),
+        allowed_logins=cfg.allowed_logins,
+        sources=sources,
+        ledger=ledger,
+        policy=git_policy,
+        can_read=lambda: cc_auth.current_principal() == "service-token",
+    )
 
 
 def _operator(ctx: Ctx) -> str | None:
     actor = ctx.principal() or ""
-    if (actor.startswith("tailnet:") and ctx.listener() == "serve_proxy"
-            and actor[8:].strip().lower() in ctx.allowed_logins):
+    if (
+        actor.startswith("tailnet:")
+        and ctx.listener() == "serve_proxy"
+        and actor[8:].strip().lower() in ctx.allowed_logins
+    ):
         return actor
     return None
 
@@ -481,8 +654,11 @@ def queue(ctx: Ctx) -> dict:
 def queue_summary(*, root: Path = ROOT, state_root: Path | None = None, now: datetime | None = None) -> dict:
     """Scoped administrative projection; never silently replaces the financial approval total."""
     from scripts.lib.approval_package import governance_dir
-    ledger = core.DecisionLedger((state_root / "data/governance" if state_root else governance_dir()) / "operator_decisions.jsonl",
-                                 approved=lambda: False)
+
+    ledger = core.DecisionLedger(
+        (state_root / "data/governance" if state_root else governance_dir()) / "operator_decisions.jsonl",
+        approved=lambda: False,
+    )
     sources = _default_sources(root)
     sources["rule_proposals"] = ledger.proposal_rows
     data = core.queue_projection(sources, decisions=ledger.rows(), now=now or core.utc_now())
@@ -491,9 +667,62 @@ def queue_summary(*, root: Path = ROOT, state_root: Path | None = None, now: dat
         kind = row.get("financial_kind") if row["kind"] == "FINANCIAL" else row["kind"].lower()
         by_type[kind] = by_type.get(kind, 0) + 1
     return {key: data[key] for key in ("pending_count", "known_pending_count", "complete", "gaps", "as_of")} | {
-        "scope": "all_operator_approvals", "by_type": by_type, "total": data["pending_count"],
-        "source": "operator_approvals_api.queue_summary", "stale": False,
-        "gap": None if data["complete"] else {"reason": "Global queue incomplete", "gaps": data["gaps"]}}
+        "scope": "all_operator_approvals",
+        "by_type": by_type,
+        "total": data["pending_count"],
+        "source": "operator_approvals_api.queue_summary",
+        "stale": False,
+        "gap": None if data["complete"] else {"reason": "Global queue incomplete", "gaps": data["gaps"]},
+    }
+
+
+def _retained_reader(ctx: Ctx, ident: str) -> dict:
+    """Read an exact retained document, without granting decision eligibility.
+
+    Unlike the transaction-only _current resolver, a reader may show a partial
+    source's retained row. Never choose the first duplicate or silently truncate
+    identity checks; this bounded projection performs no ledger writes.
+    """
+    matches = []
+    gaps = []
+    for source, load in ctx.sources.items():
+        try:
+            batch = load()
+        except Exception:
+            gaps.append((source, "Source could not be read"))
+            continue
+        reason = None
+        if isinstance(batch, dict):
+            reason = str(batch["gap"])[:160] if batch.get("gap") else None
+            batch = batch.get("rows")
+        if not isinstance(batch, (list, tuple)):
+            raise core.Refused("SOURCE_UNAVAILABLE", 503)
+        # A cap is a refusal, never a false unique match or an empty population.
+        if len(batch) > 500:
+            raise core.Refused("READER_SOURCE_LIMIT", 503)
+        if reason:
+            gaps.append((source, reason))
+        for row in batch:
+            if not isinstance(row, dict) or not isinstance(row.get("id"), str):
+                raise core.Refused("SOURCE_UNAVAILABLE", 503)
+            if row["id"] == ident:
+                matches.append((source, row))
+    if len(matches) > 1:
+        raise core.Refused("DUPLICATE_APPROVAL_ID", 503)
+    if not matches:
+        raise core.Refused("ITEM_UNAVAILABLE", 404)
+    source, row = matches[0]
+    own_gap = next((reason for name, reason in gaps if name == source), None)
+    reason = own_gap or ("Another approval source is incomplete; identity coverage is partial" if gaps else None)
+    return {
+        **row,
+        "reader_context": {
+            "state": "partial" if gaps else "complete",
+            "source": source,
+            "reason": reason,
+            "decision_eligible": not gaps,
+        },
+    }
 
 
 def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = None):
@@ -503,7 +732,7 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
     try:
         ctx = ctx or default_ctx()
         method = method.upper()
-        sub = base[len(PREFIX):]
+        sub = base[len(PREFIX) :]
         actor = _operator(ctx)
         if method == "GET":
             if not actor and not ctx.can_read():
@@ -524,7 +753,7 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
                 except (TypeError, ValueError):
                     offset = 0
                 data["filtered_count"], data["offset"] = len(data["items"]), offset
-                data["items"] = data["items"][offset:offset + 50]
+                data["items"] = data["items"][offset : offset + 50]
                 # Queue cards do not ship whole documents; the reader loads just the chosen item.
                 data["items"] = [_queue_card(it) for it in data["items"]]
                 data["resolved"] = [_queue_card(it) for it in data.get("resolved") or []]
@@ -556,7 +785,7 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
                         offset = max(0, int(raw_offset))
                     except (TypeError, ValueError):
                         offset = 0
-                    data["rules"] = selected[offset:offset + 40]
+                    data["rules"] = selected[offset : offset + 40]
                     data["total_rules"] = len(all_rules)
                     data["section_total"] = len(selected)
                     data["offset"] = offset
@@ -565,19 +794,31 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
                 return 200, {"ok": True, "data": data}
             if sub == "/pr-reviews/summary":
                 from scripts.lib import pr_review_view
+
                 items = [r for r in queue(ctx)["items"] if r["kind"] == "MERGE"]
-                return 200, {"ok": True, "data": pr_review_view.summary(
-                    state_root=state_root(), root=ROOT, items=items,
-                    decisions_approved=lambda: ctx.ledger.approved())}
+                return 200, {
+                    "ok": True,
+                    "data": pr_review_view.summary(
+                        state_root=state_root(),
+                        root=ROOT,
+                        items=items,
+                        decisions_approved=lambda: ctx.ledger.approved(),
+                    ),
+                }
             if sub.startswith("/approvals/"):
                 # The reader encodes ids ("policy:42" -> "policy%3A42"); the server does not decode paths.
-                ident = unquote(sub[len("/approvals/"):])
-                data = _current(ctx, ident)()
+                ident = unquote(sub[len("/approvals/") :])
+                data = _retained_reader(ctx, ident)
                 if data["kind"] == "MERGE":
                     from scripts.lib import pr_review_view
-                    data = {**data, "thread": pr_review_view.thread(state_root=state_root(), root=ROOT, pr=int(data["pr"]),
-                                                                     ledger_rows=ctx.ledger.rows()),
-                            "decisions_store_approved": bool(ctx.ledger.approved())}
+
+                    data = {
+                        **data,
+                        "thread": pr_review_view.thread(
+                            state_root=state_root(), root=ROOT, pr=int(data["pr"]), ledger_rows=ctx.ledger.rows()
+                        ),
+                        "decisions_store_approved": bool(ctx.ledger.approved()),
+                    }
                 return 200, {"ok": True, "data": data}
             raise core.Refused("NOT_FOUND", 404)
         if method != "POST":
@@ -634,4 +875,5 @@ def _current(ctx: Ctx, ident: str):
         if matches:
             raise core.Refused("DUPLICATE_APPROVAL_ID", 503)
         raise core.Refused("ITEM_UNAVAILABLE", 404)
+
     return current

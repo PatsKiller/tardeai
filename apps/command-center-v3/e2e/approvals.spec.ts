@@ -187,3 +187,89 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
       readMarkers: approvedReadMarkers, proof: 'Real browser taps, viewport bounds, actual W11 components; synthetic intercepted APIs only.' }, null, 2))
   })
 }
+
+
+for (const width of [390, 1440]) {
+  test(`partial source retained reader is usable and sends no POST ${width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 })
+    await page.clock.install({ time: new Date('2032-04-12T14:00:00Z') })
+    const posts: string[] = [], errors: string[] = [], forbidden: string[] = [], gets: string[] = []
+    let sourceComplete = false, partialDelivered = false
+    const postsAfterPartial: string[] = []
+    const partial = { ...items[0], id: 'design:synthetic', title: 'Retained design fixture', kind: 'ACTIVATE',
+      source: 'design_registry', reader_context: { state: 'partial', source: 'design_decisions',
+        reason: 'Synthetic design scan incomplete', decision_eligible: false } }
+    page.on('pageerror', error => errors.push(error.message))
+    await page.route('**/*', async route => {
+      const request = route.request(), url = new URL(request.url())
+      if (url.origin !== 'http://w11-approvals-fixture.test') { forbidden.push(url.pathname); return route.abort() }
+      if (request.method() !== 'GET') {
+        posts.push(request.method() + ' ' + url.pathname)
+        if (partialDelivered) postsAfterPartial.push(request.method() + ' ' + url.pathname)
+        if (sourceComplete && (url.pathname.endsWith('/open') || url.pathname.endsWith('/read'))) return route.fulfill({ json: { ok: true, data: { review_id: 'synthetic-review' } } })
+        return route.fulfill({ status: 403, json: { ok: false, error: 'ITEM_UNAVAILABLE' } })
+      }
+      if (request.isNavigationRequest()) return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script>${js}</script></body></html>` })
+      gets.push(url.pathname)
+      const respond = (data: unknown) => route.fulfill({ json: { ok: true, data } })
+      if (url.pathname === '/api/v2/governance/approvals') {
+        const { document: doc, ...card } = partial
+        return respond({ items: [{ ...card, document_sha: doc.document_sha, version: doc.version }], pending_count: null,
+          known_pending_count: 1, complete: false, gaps: [{ source: 'design_decisions', reason: 'Synthetic design scan incomplete' }],
+          as_of: '2032-04-12T14:00:00Z', recent: [], filtered_count: 1, offset: 0 })
+      }
+      if (decodeURIComponent(url.pathname) === '/api/v2/governance/approvals/design:synthetic') {
+        partialDelivered = !sourceComplete
+        return respond(sourceComplete ? { ...partial, reader_context: { state: 'complete', source: 'design_decisions', reason: null, decision_eligible: true } } : partial)
+      }
+      // Optional independent desk cards cannot reach real services in this fixture.
+      return route.fulfill({ status: 503, json: { ok: false, error: 'SOURCE_UNAVAILABLE' } })
+    })
+    await page.goto('http://w11-approvals-fixture.test/approvals')
+    await expect(page.getByText('Retained design fixture', { exact: true })).toBeVisible()
+    await page.getByRole('link', { name: 'Read & decide', exact: true }).click()
+    await expect(page.getByTestId('partial-source-reader')).toContainText('Synthetic design scan incomplete')
+    await expect(page.getByRole('heading', { name: 'Retained design fixture', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Start reading', exact: true })).toBeDisabled()
+    await expect(page.getByTestId('approve-button')).toBeDisabled()
+    await page.getByLabel('Decision comment').fill('Synthetic inspection only')
+    await expect(page.getByRole('button', { name: 'Request changes', exact: true })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Reject', exact: true })).toBeDisabled()
+    await page.getByLabel('Question about this change').fill('Synthetic inspection question')
+    await expect(page.getByRole('button', { name: 'Ask the CIO with this section', exact: true })).toBeDisabled()
+    for (const name of ['Changes only', 'Whole document, highlighted', 'Side by side']) {
+      await page.getByRole('button', { name, exact: true }).click()
+      await expect(page.getByRole('article', { name: 'Document wording' })).toContainText('Every page names its source.')
+      await page.locator('[data-read-target="change_0"]').first().scrollIntoViewIfNeeded()
+      await page.clock.runFor(3400)
+    }
+    await page.getByText('Exact version', { exact: true }).click()
+    await expect(page.getByText('Version 20.2.0 · PR #42', { exact: true })).toBeVisible()
+    await page.getByTestId('partial-source-reader').getByRole('button', { name: 'Reload document' }).click()
+    await expect(page.getByRole('button', { name: 'Start reading', exact: true })).toBeDisabled()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    expect(gets.some(p => decodeURIComponent(p).endsWith('/approvals/design:synthetic'))).toBe(true)
+    expect(posts).toEqual([]); expect(errors).toEqual([]); expect(forbidden).toEqual([])
+    // A complete reader can start a review. Reloading the same document from a now
+    // partial source must fence the old observer's automatic cleanup/read markers.
+    sourceComplete = true
+    await page.reload()
+    await page.getByRole('button', { name: 'Start reading', exact: true }).click()
+    await page.locator('[data-read-target="change_0"]').first().scrollIntoViewIfNeeded()
+    await page.clock.runFor(100)
+    await expect.poll(() => posts.some(p => p.endsWith('/read'))).toBe(true)
+    await page.getByTestId('approve-button').click()
+    await expect(page.getByRole('alert').filter({ hasText: 'still unread' })).toBeVisible()
+    sourceComplete = false
+    // Scrolling to Reload may legitimately leave an old complete-source block;
+    // only requests after the partial GET is delivered count as partial context.
+    postsAfterPartial.length = 0
+    await page.getByRole('button', { name: 'Reload document', exact: true }).click()
+    await expect(page.getByTestId('partial-source-reader')).toBeVisible()
+    await page.clock.runFor(4000)
+    expect(postsAfterPartial).toEqual([])
+    await expect(page.getByRole('button', { name: 'Start reading', exact: true })).toBeDisabled()
+    fs.writeFileSync(testInfo.outputPath(`partial-reader-${width}.json`), JSON.stringify({ width, gets, posts, errors, forbidden,
+      proof: 'Actual queue-to-reader navigation; exact retained wording/version; incomplete-source controls disabled; synthetic APIs only.' }, null, 2))
+  })
+}
