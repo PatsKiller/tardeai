@@ -18,6 +18,11 @@ import { sectorDisplayLabel, sectorSource } from './analyticsAdapter'
 import { displayOf, identitySecondLine } from './displayIdentity'
 import { decimal, marketCapText, money, multiple, pct, price, shares, signedMoney, signedPct, unavailable } from './format'
 
+// Audit H (BAH 101.30%): a provider's institutional-ownership percent can exceed 100% (filings are dated and lagged
+// differently from shares outstanding, and shares lent for short sales can be counted by both lender and buyer). The
+// reading is printed as published, never clamped or corrected, and this note says why it can exceed 100%.
+export const OWNERSHIP_OVER_100 = 'above 100%: provider filings and share counts are dated differently and lent shares can be counted twice; shown as published, not clamped'
+
 export interface DetailField {
   label: string
   value: string
@@ -118,7 +123,7 @@ export function fundamentalsFields(row: HoldingsRow): DetailField[] {
     { label: 'Performance, year to date', value: f.perfYtdPct === null ? missing('YTD performance') : pct(f.perfYtdPct), source: 'wire perf_ytd_pct · percent as published' },
     { label: 'Short interest (float)', value: f.shortFloatPct === null ? missing('short float') : pct(f.shortFloatPct), source: 'wire short_float_pct · percent of float as published' },
     { label: 'Insider ownership', value: f.insiderOwnPct === null ? missing('insider ownership') : pct(f.insiderOwnPct), source: 'wire insider_own_pct · percent as published' },
-    { label: 'Institutional ownership', value: f.instOwnPct === null ? missing('institutional ownership') : pct(f.instOwnPct), source: 'wire inst_own_pct · percent as published' },
+    { label: 'Institutional ownership', value: f.instOwnPct === null ? missing('institutional ownership') : pct(f.instOwnPct), source: f.instOwnPct !== null && f.instOwnPct > 100 ? `wire inst_own_pct · percent as published · ${OWNERSHIP_OVER_100}` : 'wire inst_own_pct · percent as published' },
     { label: 'Analyst rating', value: f.analystRating ?? missing('analyst rating'), source: 'wire analyst_rating · the provider’s own label, shown as text with no colour verdict' },
     {
       label: 'Assessment',

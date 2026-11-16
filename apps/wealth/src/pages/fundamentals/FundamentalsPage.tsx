@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useDrawer } from '../../components/Drawer'
 import { WealthIcon, WealthStatus, SignedValue } from '../../components/WealthStatus'
 import type { HoldingsBook, HoldingsRow } from '../portfolio/contract'
-import { detailHeading, detailSections } from '../portfolio/detail'
+import { detailHeading, detailSections, OWNERSHIP_OVER_100 } from '../portfolio/detail'
 import { FIXTURE_BOOK } from '../portfolio/fixtures'
 import { money, marketCapText, multiple, decimal, pct, price, notCurrent, servedFreshnessLine } from '../portfolio/format'
 import { isFundRow } from '../portfolio/analyticsAdapter'
@@ -57,7 +57,7 @@ export function FundamentalsPage({book=FIXTURE_BOOK,loading=false,error=null,not
    case 'size':return <>{lens==='income'?<><span>{r.yieldPct===null?'Yield unavailable':<>Schedule yield {percent(r.yieldPct)}</>}</span><small>{fund?'Fund size unavailable':marketCapText(r.marketCapB)}</small></>:<><span>{fund?'Fund size unavailable':marketCapText(r.marketCapB)}</span><small>{r.yieldPct===null?'Yield unavailable':<>Schedule yield {percent(r.yieldPct)}</>}</small></>}{flag(r)}{lens==='income'?<a className="fv-context-link" href="/wealth/portfolio/income">Calendar & forecast →</a>:null}</>
    case 'performance':return <>YTD <SignedPercent value={fu?.perfYtdPct??null}/><small>Since purchase <SignedPercent value={g.gainPct}/>{g.rows.length>1?<span className="fv-tag">derived</span>:null}</small><small>Unrealized <SignedValue value={g.gain.value}>{money(g.gain.value)}</SignedValue>{g.rows.length>1?<span className="fv-tag">derived</span>:null}</small>{g.gain.n<g.gain.m||g.basis.n<g.basis.m?<small><WealthStatus icon="warning" tone="amber" label="Partial gain / basis" detail={'Unrealized '+coverage(g.gain.n,g.gain.m)+'; basis '+coverage(g.basis.n,g.basis.m)+' account rows. Quote '+(r.priceAsOf||'not served')+'. Missing basis is never zero.'}/></small>:null}</>
    case 'trend':return <><SignedPercent value={fu?.sma200Pct??null}/> vs 200d<small>{percent(fu?.week52HighPct??null)} from 52-week high</small><small>RSI {decimal(fu?.rsi??null)}</small></>
-   case 'risk':return <>{lens==='risk'?<><span>Insider {percent(fu?.insiderOwnPct??null)}</span><small>Institutional {percent(fu?.instOwnPct??null)}</small><small>Beta {decimal(fu?.beta??null)} · short {percent(fu?.shortFloatPct??null)}</small></>:<><span>Beta {decimal(fu?.beta??null)}</span><small>Short {percent(fu?.shortFloatPct??null)}</small><small>Insider {percent(fu?.insiderOwnPct??null)} · institutional {percent(fu?.instOwnPct??null)}</small></>}<Protection rows={g.rows}/></>
+   case 'risk':return <>{lens==='risk'?<><span>Insider {percent(fu?.insiderOwnPct??null)}</span><small>Institutional {percent(fu?.instOwnPct??null)}{(fu?.instOwnPct??0)>100?<abbr title={OWNERSHIP_OVER_100}> · above 100%, as published</abbr>:null}</small><small>Beta {decimal(fu?.beta??null)} · short {percent(fu?.shortFloatPct??null)}</small></>:<><span>Beta {decimal(fu?.beta??null)}</span><small>Short {percent(fu?.shortFloatPct??null)}</small><small>Insider {percent(fu?.insiderOwnPct??null)} · institutional {percent(fu?.instOwnPct??null)}</small></>}<Protection rows={g.rows}/></>
   }
  }
  const row=(g:DisplayGroup,child=false)=><tr key={(child?'child-':'')+g.key} className={child?'fv-child':undefined} data-symbol={g.symbol}>

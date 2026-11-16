@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url'
 import {createRequire,Module} from 'node:module'
 const APP=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),require=createRequire(import.meta.url)
 const {buildSync}=require('esbuild')
-const code=buildSync({stdin:{contents:"export * from './src/pages/portfolio/workspaceV2/adapter'; export * from './src/pages/portfolio/workspaceV2/discovery'; export * from './src/pages/portfolio/fixtures'; export {normalizeAccountKey} from './src/pages/portfolio/accountLabel'; export * as fv from './src/pages/fundamentals/modelV2'; export * as inc from './src/pages/portfolio/income/incomeAdapter'; export {servedFreshnessLine,lastKnownSentence,overLimitPhrase} from './src/pages/portfolio/format'",resolveDir:APP,loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',jsx:'automatic',external:['react','react-dom','react-router-dom','react/jsx-runtime'],loader:{'.css':'empty'},logLevel:'silent'}).outputFiles[0].text
+const code=buildSync({stdin:{contents:"export * from './src/pages/portfolio/workspaceV2/adapter'; export * from './src/pages/portfolio/workspaceV2/discovery'; export * from './src/pages/portfolio/fixtures'; export {normalizeAccountKey} from './src/pages/portfolio/accountLabel'; export * as fv from './src/pages/fundamentals/modelV2'; export * as inc from './src/pages/portfolio/income/incomeAdapter'; export {OWNERSHIP_OVER_100,detailSections} from './src/pages/portfolio/detail'; export {servedFreshnessLine,lastKnownSentence,overLimitPhrase} from './src/pages/portfolio/format'",resolveDir:APP,loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',jsx:'automatic',external:['react','react-dom','react-router-dom','react/jsx-runtime'],loader:{'.css':'empty'},logLevel:'silent'}).outputFiles[0].text
 const filename=path.join(APP,'portfolio-audit.cjs'),module=new Module(filename);module.filename=filename;module.paths=Module._nodeModulePaths(APP);module._compile(code,filename)
 const a=module.exports
 
@@ -129,4 +129,11 @@ test('F: account refs are stable across payer order and never positional; unknow
   const s=a.inc.incomeScope(m1,'household')
   assert.equal(s.scheduledAnnual,100); assert.equal(s.unscheduledAnnual,75)
   assert.deepEqual(s.unscheduled.map(l=>l.symbol),['QZB','QZC'])
+})
+
+test('H: ownership above 100% is printed as published with an explanation, never clamped',()=>{
+  const r=row({fundamentals:{sector:'Technology',instOwnPct:101.3}})
+  const flat=JSON.stringify(a.detailSections(r))
+  assert.ok(flat.includes('101.30%'),'raw value kept'); assert.ok(flat.includes('not clamped'))
+  assert.ok(!JSON.stringify(a.detailSections(row({fundamentals:{sector:'Technology',instOwnPct:70}}))).includes('not clamped'))
 })
