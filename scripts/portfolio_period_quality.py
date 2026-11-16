@@ -1430,8 +1430,11 @@ def add_performance_contract_fields(result: dict, state_dir: Path, series: list[
             has_result = (cell.get("display_change") if cell.get("display_change") is not None else cell.get("change")) is not None
             if str(cell.get("source") or "") == "synthesized":
                 eligibility = {"status": "unknown", "source": "cell is a synthesized shell; no stored result for this window"}
+            elif data.get("current_value") is None:
+                eligibility = {"status": "unknown", "source": "no current value served for this account"}
             elif has_result:
-                eligibility = {"status": "eligible", "source": "a result is served for this window"}
+                # No eligibility registry exists; a number is not evidence (R2). cio_truth marks these cells UNVERIFIED.
+                eligibility = {"status": "unknown", "source": "no eligibility registry; a result is served but not certified"}
             elif cv <= 0:
                 eligibility = {"status": "ineligible", "source": "no live holdings value for this account"}
             else:

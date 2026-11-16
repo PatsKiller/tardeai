@@ -1545,12 +1545,16 @@ def _add_performance_contract(out: dict, p: dict, census: dict) -> None:
 
     block = out.setdefault("performance_contract", {"version": "PerformanceContract@v1"})
     periods, accounts = block.setdefault("periods", {}), block.setdefault("accounts", {})
+    # Household cells (performance_history, annotated) carry no end value, so their end clock is NOT the holdings mark
+    # clock and is not proven: end_date is served null with a reason (R1). 1D has no proven economic-day value either.
+    household_reason = "the household cell's end value is not served, so its observation date is not proven to be the mark clock"
     for key, cell in (out.get("periods") or {}).items():
         if isinstance(cell, dict):
             entry = periods.setdefault(key, {})
-            entry.update(end_date=end_date, observation_clock=clock(cell))
-            if reason:
-                entry["end_date_reason"] = reason
+            entry.update(end_date=None, end_date_reason=household_reason,
+                         observation_clock={"start": {"date": cell.get("start_date"), "source": "performance cell start_date"},
+                                            "end": {"as_of": None, "date": None, "source": "not proven"},
+                                            "batch_built_at": p.get("valuation_as_of")})
     for name, acct in (out.get("accounts") or {}).items():
         live = _number((acct or {}).get("current_value"))
         for key, cell in ((acct or {}).get("periods") or {}).items():
@@ -1558,20 +1562,25 @@ def _add_performance_contract(out: dict, p: dict, census: dict) -> None:
                 continue
             entry = accounts.setdefault(name, {}).setdefault(key, {})
             ev = _number(cell.get("end_value"))
+            start = str(cell.get("start_date") or "")[:10]
             if live is not None and ev is not None and abs(ev - live) < 0.01 and end_date:
-                entry.update(end_date=end_date, observation_clock=clock(cell))
+                if start and start >= end_date:
+                    entry.update(end_date=None, observation_clock=None,
+                                 end_date_reason="window start is not before the end date; interval not served")
+                else:
+                    entry.update(end_date=end_date, observation_clock=clock(cell))
             else:
                 entry.update(end_date=None, observation_clock=None,
                              end_date_reason=("end value is not the live holdings value, so its observation date is not served"
                                               if ev is not None else "no end value served"))
-    # Counts plus stable account refs from the SAME stored-row census. The legacy ``missing_accounts`` /
+    # Counts plus internal account keys (never rendered) from the SAME stored-row census. The legacy ``missing_accounts`` /
     # ``represented_account_count`` keys stay None (economic day is unproven); these name the stored-row census.
     refs = lambda key: list(census.get("stored_row_evidence", {}).get("census", {}).get(key) or [])  # noqa: E731
     pnl = out["today_pnl"]
     represented = refs("contributing_accounts") + refs("zero_change_accounts")
-    pnl["represented_accounts"] = {"count": len(represented), "refs": sorted(represented),
+    pnl["represented_accounts"] = {"count": len(represented), "internal_keys": sorted(represented),
                                    "basis": "stored holding-row day change census, not economic day P&L"}
-    pnl["missing_accounts_stored_rows"] = {"count": len(refs("missing_accounts")), "refs": refs("missing_accounts"),
+    pnl["missing_accounts_stored_rows"] = {"count": len(refs("missing_accounts")), "internal_keys": refs("missing_accounts"),
                                            "basis": "stored holding-row day change census, not economic day P&L"}
 
 

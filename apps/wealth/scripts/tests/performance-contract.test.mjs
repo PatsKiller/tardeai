@@ -21,14 +21,14 @@ const contractBody = (withContract) => ({
   accounts: { syn_a: { current_value: 1, periods: { '1W': cell(), '1M': residual } }, syn_b: { current_value: 1, periods: { '1W': cell({ change: null, change_pct: null }) } } },
   today_pnl: { status: 'UNKNOWN', observation_clock: { as_of: null, status: 'UNKNOWN' }, mark_batch_at: OLD, batch_built_at: OLD,
     stored_row_evidence: { source_values: [{ account_id: 'syn_a' }, { account_id: 'syn_b' }, { account_id: 'syn_c' }] },
-    ...(withContract ? { represented_accounts: { count: 1, refs: ['syn_a'] }, missing_accounts_stored_rows: { count: 2, refs: ['syn_b', 'syn_c'] } } : {}) },
+    ...(withContract ? { represented_accounts: { count: 1, internal_keys: ['syn_a'] }, missing_accounts_stored_rows: { count: 2, internal_keys: ['syn_b', 'syn_c'] } } : {}) },
   market_session: { latest_open_session: '2040-06-04' }, clock_provenance: { quote: { as_of: OLD, status: 'OK' }, valuation: { as_of: OLD, status: 'OK' } },
   ...(withContract ? { performance_contract: { version: 'PerformanceContract@v1',
-    periods: { '1W': { end_date: '2040-06-01', observation_clock: { end: { as_of: OLD, date: '2040-06-01' } }, external_flows: null, external_flows_reason: 'no ledger' } },
+    periods: { '1W': { end_date: null, end_date_reason: 'not proven', observation_clock: { end: { as_of: null, date: null } }, external_flows: null, external_flows_reason: 'no ledger' } },
     accounts: { syn_a: {
-      '1W': { eligibility: { status: 'eligible', source: 'a result is served' }, anchor: { snapshot_id: 'snap-1', date: '2040-05-01', source: 'last stored snapshot on or before the start date', start_value_matches_snapshot: true },
+      '1W': { eligibility: { status: 'eligible', source: 'synthetic registry' }, anchor: { snapshot_id: 'snap-1', date: '2040-05-01', source: 'last stored snapshot on or before the start date', start_value_matches_snapshot: true },
         residual_allocated: false, raw_change: 100, raw_change_pct: 1, end_date: '2040-06-01', observation_clock: { end: { as_of: OLD, date: '2040-06-01' } }, external_flows: null, external_flows_reason: 'no dated external-flow ledger' },
-      '1M': { eligibility: { status: 'eligible', source: 'a result is served' }, anchor: { snapshot_id: null, date: '2040-05-01', source: 'last stored snapshot on or before the start date' },
+      '1M': { eligibility: { status: 'eligible', source: 'synthetic registry' }, anchor: { snapshot_id: null, date: '2040-05-01', source: 'last stored snapshot on or before the start date' },
         residual_allocated: true, raw_change: 9000, raw_change_pct: 90, end_date: '2040-06-01', external_flows: null, external_flows_reason: 'no dated external-flow ledger' } },
       syn_b: { '1W': { eligibility: { status: 'unknown', source: 'no result for this window; the producer does not say why' }, anchor: { snapshot_id: null, date: null, source: 'no stored snapshot' }, residual_allocated: false, raw_change: null, raw_change_pct: null, end_date: null, end_date_reason: 'no end value served', external_flows: null, external_flows_reason: 'no ledger' } } } } } : {}),
 })
@@ -38,7 +38,7 @@ const html = (b, period) => { const r = mod.adaptPerformance(b, NOW, null); asse
 
 test('contract served: eligibility, interval, anchor, flows and the served census render', () => {
   const h = html(contractBody(true), '1W')
-  assert.match(h, /Eligibility: eligible · a result is served/)
+  assert.match(h, /Eligibility: eligible · synthetic registry/)
   assert.match(h, /Interval: 2040-05-01 → 2040-06-01/)
   assert.match(h, /Start anchor: snapshot snap-1 dated 2040-05-01/)
   assert.match(h, /Eligibility: unknown · no result for this window/)
@@ -64,4 +64,14 @@ test('old backend (no contract): everything says not served, residual stays with
   assert.doesNotMatch(h, /Producer stored-row census/)
   assert.match(h, /No performance result for 1/)
   assert.match(h, /not zero/)
+})
+
+test('probe p1: an unverified account 1D figure with eligibility unknown is refused, never shown as eligible', () => {
+  const b = contractBody(true)
+  b.accounts.syn_a.periods['1D'] = cell({ change: -555, change_pct: -5, start_date: '2040-06-03' })
+  b.performance_contract.accounts.syn_a['1D'] = { eligibility: { status: 'unknown', source: 'no eligibility registry; a result is served but not certified' },
+    anchor: { snapshot_id: null, date: null, source: 'none' }, residual_allocated: false, raw_change: -555, raw_change_pct: -5, end_date: null, end_date_reason: 'x', external_flows: null, external_flows_reason: 'none' }
+  const h = html(b, '1D')
+  assert.doesNotMatch(h, /Eligibility: eligible/)
+  assert.doesNotMatch(h, /555/)
 })

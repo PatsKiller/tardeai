@@ -52,7 +52,7 @@ def test_contract_block_carries_eligibility_anchor_and_raw_nav(tmp_path):
     block = out["performance_contract"]
     assert "performance_contract_error" not in out
     alpha_w = block["accounts"]["syn_alpha"]["1W"]
-    assert alpha_w["eligibility"]["status"] == "eligible"
+    assert alpha_w["eligibility"]["status"] == "unknown"  # a number is not eligibility evidence (R2)
     assert alpha_w["anchor"] == {"snapshot_id": "2040-01-08", "date": "2040-01-08",
                                  "source": "last stored snapshot on or before the start date", "start_value_matches_snapshot": True}
     assert block["accounts"]["syn_alpha"]["1M"]["eligibility"]["status"] == "unknown"  # no result, no reason served
@@ -79,9 +79,9 @@ def test_an_account_without_cells_is_named_by_the_census_not_given_a_result(tmp_
     gamma = block["accounts"]["syn_gamma"]["YTD"]
     assert gamma["eligibility"]["status"] == "unknown" and gamma["raw_change"] is None
     pnl = out["today_pnl"]
-    assert pnl["represented_accounts"]["count"] == len(pnl["represented_accounts"]["refs"])
-    assert pnl["missing_accounts_stored_rows"]["refs"] == ["syn_beta"]  # QZB row has no day_change: missing, not zero
-    assert "syn_alpha" in pnl["represented_accounts"]["refs"]
+    assert pnl["represented_accounts"]["count"] == len(pnl["represented_accounts"]["internal_keys"])
+    assert pnl["missing_accounts_stored_rows"]["internal_keys"] == ["syn_beta"]  # QZB row has no day_change: missing, not zero
+    assert "syn_alpha" in pnl["represented_accounts"]["internal_keys"]
     # legacy keys keep their meaning
     assert pnl["missing_accounts"] is None and pnl["represented_account_count"] is None
 
@@ -91,7 +91,7 @@ def test_end_date_and_observation_clock_come_from_the_mark_clock_or_are_null_wit
                                     holdings_doc=deepcopy(HOLDINGS), now=NOW)
     block = out["performance_contract"]
     hh = block["periods"]["1W"]
-    assert hh["end_date"] == "2040-01-15" and hh["observation_clock"]["end"]["source"].startswith("holdings.last_repriced")
+    assert hh["end_date"] is None and hh["end_date_reason"]  # household end value unproven (R1)
     live = block["accounts"]["syn_alpha"]["1W"]
     assert live["end_date"] == "2040-01-15" and live["observation_clock"]["start"]["date"] == "2040-01-08"
     stale = block["accounts"]["syn_beta"]["3M"]  # end value 5 is not the live holdings value 200
@@ -127,3 +127,39 @@ def test_residual_allocated_cell_is_flagged_with_raw_nav_beside_it(tmp_path):
     assert entries["1M"]["residual_allocated"] is False and entries["1M"]["raw_change"] == 3.0
     assert entries["1W"]["anchor"]["date"] is None  # empty series: no anchor invented
     assert cell["display_change"] == 120.0  # the cell itself is untouched
+
+
+def test_household_end_date_is_not_the_pricing_date_when_history_ends_earlier(tmp_path):
+    """Reviewer probe p2: history ends before the mark; no household cell may claim the mark date."""
+    res = _result()
+    res["periods"]["1D"] = {"change": None, "change_pct": None, "start_date": "2040-01-14"}
+    out = truth.performance_payload(ppq.annotate_performance_result(res, _state(tmp_path), deepcopy(HOLDINGS)),
+                                    holdings_doc=deepcopy(HOLDINGS), now=NOW)
+    for key, entry in out["performance_contract"]["periods"].items():
+        assert entry["end_date"] != "2040-01-15" and entry["end_date"] is None and entry["end_date_reason"], key
+
+
+def test_account_figure_without_registry_is_unknown_not_eligible_probe_p1(tmp_path):
+    result = {"periods": {}, "accounts": {"syn_alpha": {"current_value": 1000.0, "periods": {
+        "1D": {"change": -555.0, "change_pct": -5.0, "start_date": "2040-01-14", "start_value": 1555.0, "end_value": 1000.0}}}}}
+    ppq.add_performance_contract_fields(result, _state(tmp_path), [], None)
+    status = result["performance_contract"]["accounts"]["syn_alpha"]["1D"]["eligibility"]
+    assert status["status"] == "unknown" and status["source"]
+
+
+def test_missing_current_value_is_unknown_never_ineligible(tmp_path):
+    state = _state(tmp_path)
+    for acct in ({"periods": {"1W": {"change": None, "change_pct": None, "start_date": "2040-01-08"}}},
+                 {"current_value": None, "periods": {"1W": {"change": None, "change_pct": None, "start_date": "2040-01-08"}}}):
+        result = {"periods": {}, "accounts": {"syn_alpha": acct}}
+        ppq.add_performance_contract_fields(result, state, [], None)
+        assert result["performance_contract"]["accounts"]["syn_alpha"]["1W"]["eligibility"]["status"] == "unknown"
+
+
+def test_window_start_not_before_end_is_not_served_as_an_interval(tmp_path):
+    res = {"current_value": 1000, "periods": {}, "accounts": {"syn_alpha": {"current_value": 1000, "periods": {
+        "1W": {"change": 1, "change_pct": 1, "start_date": "2040-01-16", "start_value": 999, "end_value": 1000}}}}}
+    out = truth.performance_payload(ppq.annotate_performance_result(res, _state(tmp_path), deepcopy(HOLDINGS)),
+                                    holdings_doc=deepcopy(HOLDINGS), now=NOW)
+    e = out["performance_contract"]["accounts"]["syn_alpha"]["1W"]
+    assert e["end_date"] is None and e["end_date_reason"]
