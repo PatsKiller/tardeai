@@ -47,3 +47,6 @@
 .home-v2-filter-disclosure{margin:4px 0;color:var(--text-muted);font-size:11px}.home-v2-filter-disclosure>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;gap:6px;color:var(--accent-text)}.home-v2-filter-disclosure>summary::before{content:"▸"}.home-v2-filter-disclosure[open]>summary::before{content:"▾"}.home-v2-filter-disclosure .home-v2-row-filters{margin-top:0}.home-v2-handoff{position:static;width:auto;max-width:100%;height:auto;overflow:visible}
 
 .home-v2-stance-line{font-size:16px;line-height:1.4}
+
+/* Read-only status text must not intercept neighboring Evidence controls. */
+.home-v2 .wealth-tooltip{pointer-events:none}
