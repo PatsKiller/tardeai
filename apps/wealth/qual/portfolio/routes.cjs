@@ -22,7 +22,12 @@ module.exports = {
       ready: ['QZDIVQ'], populated: ['QZDIVQ', 'QZDIVM', 'Synthetic Taxable', 'Forecast payers'] },
     { id: 'allocation', path: '/wealth/portfolio/allocation', status: 'built', reads: ['/api/v2/portfolio/holdings'],
       ready: ['Where the book is allocated', 'matching rows'], populated: ['Where the book is allocated', 'matching rows', 'Technology'] },
-    { id: 'retirement', path: '/wealth/portfolio/retirement', status: 'not-built', reads: [] },
-    { id: 'levels', path: '/wealth/portfolio/levels', status: 'not-built', reads: [] },
+    // Partial pages (2026-11-16): `ready`/`populated` prove the served state rendered; INTERACTIONS in run.cjs assert the
+    // truthful partial states (Unknown for zero-fills and producer defaults, withheld projections, levels freshness Unknown).
+    { id: 'retirement', path: '/wealth/portfolio/retirement', status: 'built', reads: ['/api/v2/retirement', '/api/v2/retirement/planning-research'],
+      ready: ['Retirement roadmap', 'Synthetic milestone QZRET'], populated: ['Synthetic milestone QZRET', '$123,456', '2045-06-01', 'Synthetic planning theme', 'Not served, so not shown'] },
+    // Levels reads nothing until an explicit submit, so its declared reads are empty and lifecycle cases skip it.
+    { id: 'levels', path: '/wealth/portfolio/levels', status: 'built', reads: [],
+      ready: ['Levels and valuation', 'Nothing is requested until you do'], populated: ['Read levels', 'Valuation is not wired', 'fetches market data from an external provider'] },
   ],
 }

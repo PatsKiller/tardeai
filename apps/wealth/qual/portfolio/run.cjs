@@ -252,6 +252,44 @@ const INTERACTIONS = {
     await page.close()
   },
 
+  async retirement(browser, route, width) {
+    const R = 'retirement'
+    const { page } = await open(browser, width)
+    await goReady(page, route)
+    const t = await H.mainText(page)
+    const cell = async k => page.locator('main tr', { has: page.locator('th', { hasText: k }) }).locator('td').first().innerText().catch(() => 'absent')
+    for (const k of ['Start age', 'Annual conversion input', 'Years available', 'Days remaining', 'Yield on the served total', 'Roth', 'Balance']) {
+      const v = await cell(k)
+      add(R, width, 'unknown-not-placeholder:' + k, /^Unknown/.test(v.trim()), v.slice(0, 120))
+    }
+    add(R, width, 'producer-defaults-not-printed', !t.includes('68.5') && !t.includes('50,000') && !/\b0(\.0+)?%/.test(t) && !t.includes('$0'), '')
+    add(R, width, 'end-age-served-as-date', (await cell('End age')).includes('2045-06-01 (served as a date'), await cell('End age'))
+    add(R, width, 'no-self-compared-delta-row', (await cell('Roadmap minus holdings')) === 'absent', '')
+    add(R, width, 'projections-and-brief-withheld', !/77700\d|777,00\d/.test(t) && !t.includes('FIXED GROWTH TEXT') && /Projected balances/.test(t), '')
+    await page.locator('main details summary', { hasText: 'Synthetic planning theme' }).click().catch(() => {}); await page.waitForTimeout(100)
+    const rt = await H.mainText(page)
+    add(R, width, 'research-missing-counts-not-zero', rt.includes('count not served') && rt.includes('sources not served') && !/\b0 sources/.test(rt), rt.slice(rt.indexOf('Synthetic planning theme'), rt.indexOf('Synthetic planning theme') + 160).replace(/\s+/g, ' '))
+    await page.close()
+  },
+
+  async levels(browser, route, width) {
+    const R = 'levels'
+    const { page, ctl } = await open(browser, width)
+    await goReady(page, route)
+    const lv = () => ctl.hits['/api/v2/indicators/levels'] || 0
+    add(R, width, 'no-read-before-submit', lv() === 0, `hits ${lv()}`)
+    await page.getByLabel('Symbol').fill('qz lv'); await page.getByRole('button', { name: 'Read levels' }).click(); await page.waitForTimeout(200)
+    add(R, width, 'invalid-symbol-requests-nothing', lv() === 0 && /Nothing was requested/.test(await H.mainText(page)), `hits ${lv()}`)
+    await page.getByLabel('Symbol').fill('qzlv'); await page.getByRole('button', { name: 'Read levels' }).click()
+    const ok = await H.waitText(page, ['Fib 50.0%'], 8000)
+    const t = await H.mainText(page)
+    add(R, width, 'valid-symbol-one-read-served', ok && lv() === 1 && (await page.locator('[data-state="served"]').count()) === 1, `hits ${lv()}`)
+    add(R, width, 'levels-freshness-unknown', /freshness is Unknown/.test(t), '')
+    add(R, width, 'valuation-not-wired-stated', /Valuation is not wired/.test(t), '')
+    await common(page, ctl, route, width, 'served')
+    await page.close()
+  },
+
   async performance(browser, route, width) {
     const R = 'performance'
     const { page } = await open(browser, width)
@@ -309,7 +347,7 @@ async function honestWait(page, timeout) {
 
 async function lifecycle(browser) {
   for (const width of [390, 1280]) {
-    for (const route of live) {
+    for (const route of live.filter(r => r.reads.length)) {
       const reads = route.reads
       // P1 race: header settles first, the page read is still in flight.
       {
@@ -358,7 +396,7 @@ async function lifecycle(browser) {
       }
     }
     // Timeout (heavy readers wait 8 s): all routes in parallel, one width.
-    if (width === 390) await Promise.all(live.map(async route => {
+    if (width === 390) await Promise.all(live.filter(r => r.reads.length).map(async route => {
       const { page, ctl } = await open(browser, width, c => { for (const p of route.reads) c.behave[p] = () => 'hang' })
       await page.goto(H.url(route.path), { waitUntil: 'domcontentloaded' })
       const left = await honestWait(page, 25000)

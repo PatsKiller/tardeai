@@ -165,12 +165,34 @@ function headerBody(now, pollAfterS = 60) {
 }
 
 // Every endpoint the five live Portfolio routes (and the shell) read. Anything else is reported as unfixtured.
+// Shaped like api_v2 retirement() when holdings.json has a total, the roadmap stores no golden window, years or loan
+// days, and dividend_calendar.json is missing: total == canonical_total (delta 0), start_age 68.5 and annual_conversion
+// 50000 are producer defaults, years/days/annual/yield are zero-fills, end_age is a date string. Synthetic values only.
+function retirementBody(now) {
+  return { as_of: iso(now).slice(0, 10), snapshot_source: 'synthetic roadmap (generated ' + iso(now - 86400000) + ')', current_age: 60, key_dates: {},
+    accounts: { total: 123456, roth: 0, traditional: 0, taxable: 0 }, canonical_total: 123456, snapshot_delta: 0.0,
+    loan: { balance: 0, deadline: '', days_remaining: 0, monthly_to_payoff: 0 },
+    golden_window: { start_age: 68.5, end_age: '2045-06-01', start_year: null, end_year: 2045, annual_conversion: 50000, bracket_ceiling: '', years_available: 0, optimal_annual_conversion: 50000, projected_roth_at_start: 0, narrative: '' },
+    dividend_income: { annual: 0, annual_total: 0, monthly_avg: 0, yield_pct: 0.0, qualified_annual: 0, current_month: {}, top_payers: [] },
+    timeline: [{ year: 2041, age: 61, milestone: 'Synthetic milestone QZRET' }],
+    intelligence_brief: ['Portfolio: $123,456 FIXED GROWTH TEXT'], projections: { conservative: 777001, base: 777002, aggressive: 777003 } }
+}
+function researchBody(now) {
+  return { ok: true, advisory_only: true, as_of: iso(now), total: 1,
+    themes: [{ theme: 'Synthetic planning theme', items: [{ topic: 'QZ planning topic', status: null, confidence: null, at: null }] }] }
+}
+function levelsBody() {
+  return { ok: true, symbol: 'QZLV', levels: [{ type: 'fib_0.5', label: 'Fib 50.0%', price: 10.5 }, { type: 'stop', label: 'Stop', price: 9 }] }
+}
 const ENDPOINTS = {
   '/api/v2/wealth/operating-header': headerBody,
   '/api/v2/portfolio/holdings': holdingsBody,
   '/api/v2/portfolio/performance': performanceBody,
   '/api/v2/overview': overviewBody,
   '/api/v2/dividends': dividendsBody,
+  '/api/v2/retirement': retirementBody,
+  '/api/v2/retirement/planning-research': researchBody,
+  '/api/v2/indicators/levels': levelsBody,
 }
 
 // Counts derived from the fixture (not hard-coded in the cases) so a fixture edit cannot silently desync them.
@@ -193,4 +215,4 @@ function expectations(now = Date.now()) {
   return { rows: rows.length, byProtection: by, rothRows: rows.filter(r => r.account_key === ACCOUNTS.roth.key).length }
 }
 
-module.exports = { ACCOUNTS, SMALL, RAW_KEY_RE, HOLDINGS_COLUMNS, ENDPOINTS, holdingsBody, overviewBody, performanceBody, dividendsBody, headerBody, expectations, iso }
+module.exports = { ACCOUNTS, SMALL, RAW_KEY_RE, HOLDINGS_COLUMNS, ENDPOINTS, holdingsBody, overviewBody, performanceBody, dividendsBody, headerBody, retirementBody, researchBody, levelsBody, expectations, iso }
