@@ -123,3 +123,10 @@ test('an explicit unknown field clock never borrows the newer section observatio
  assert.ok(field);assert.match(field[0],/source clock not served/)
  assert.doesNotMatch(field[0],new RegExp(at));assert.match(html,new RegExp('dateTime="'+at+'"'))
 })
+
+test('an explicit unknown row observation stays unknown in its drawer with section context labelled separately',()=>{
+ const html=render('evidence',{row:{label:'Held movement observation',clock:null,source:'Synthetic stored movement'},section:section({clock:at})})
+ const observation=html.split('<h3>Observation time</h3>')[1].split('<h3>Producer build time')[0]
+ assert.match(observation,/source time not served/);assert.doesNotMatch(observation,/<time/)
+ assert.match(html,/Section context observation · separate from this item/);assert.match(html,new RegExp('dateTime="'+at+'"'))
+})
