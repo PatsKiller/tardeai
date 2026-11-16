@@ -4,7 +4,12 @@ import { getJson } from '../../../api/client'
 import { adaptLevels, levelsPathFor, type LevelsState } from './levelsAdapter'
 import { LevelsPage } from './LevelsPage'
 
-/** One GET per submitted symbol, on user action only. No poll, no write. */
+/**
+ * One GET per submitted symbol, on user action only; no poll, and nothing is written client-side. The backend is not
+ * read-only for this route: on a cache miss `_indicator_levels_handler` fetches market data from an external
+ * provider, computes the levels and writes its cache (FE review L2-7). The explicit submit is the gate, and the page
+ * says so before the user submits.
+ */
 export function LevelsLive() {
   const [draft, setDraft] = useState('')
   const [bad, setBad] = useState(false)
