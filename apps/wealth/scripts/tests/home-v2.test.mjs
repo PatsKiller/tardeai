@@ -121,3 +121,31 @@ test('a metrics-only panel does not claim its absent row layout is missing evide
  const html=render('panel',{id:'temperature',title:'Synthetic engine',icon:'thermometer',section:section({metrics:[{label:'Score',value:'0'}]})})
  assert.match(html,/>0<\/span>/);assert.doesNotMatch(html,/No rows supplied/)
 })
+
+
+test('explicit compact presentations keep the same bounded row identities and contextual destination',()=>{
+ for(const presentation of ['default','stops','reentry','engine','sector']){
+  const html=render('panel',{id:'variant',title:'Synthetic variant',icon:'gear',presentation,section:section({rows}),limit:3})
+  assert.equal((html.match(/data-home-record="true"/g)||[]).length,3)
+  const renderedRows=[...html.matchAll(/<article\b[^>]*data-home-record="true"[^>]*>/g)].map(m=>m[0])
+  assert.equal(renderedRows.length,3);assert.ok(renderedRows.every(tag=>tag.includes(`data-home-presentation="${presentation}"`)))
+  for(const i of [0,1,2])assert.ok(html.includes('hv_query=TEST'+i+'&amp;hv_account=synthetic'))
+  assert.doesNotMatch(html,/Synthetic issuer 3/);assert.match(html,/Browse 10 per page/)
+ }
+})
+test('page wiring assigns compact semantics to stops re-entry engines and sectors without exchanging populations',()=>{
+ const row=label=>({label,clock:'2040-01-02T03:04:05Z',facts:[{label:'Stored reading',value:'Synthetic value'}]})
+ const today=render('today',{sections:{stops:section({rows:[row('Stop source')]})}})
+ const needs=render('needs',{sections:{protect:section({rows:[row('Protection task')]}),reentry:section({rows:[row('Re-entry source')]})}})
+ const outlook=render('outlook',{sections:{engineDifferences:section({rows:[row('Engine source')]}),sectors:section({rows:[row('Sector source')]})}})
+ const panel=(html,id)=>html.split(`data-home-panel="${id}"`)[1].split('</section>')[0]
+ for(const [html,id,presentation,label] of [[today,'stops','stops','Stop source'],[needs,'reentry','reentry','Re-entry source'],[outlook,'engineDifferences','engine','Engine source'],[outlook,'sectors','sector','Sector source']]){
+  const body=panel(html,id);assert.ok(body.includes(label));assert.ok(body.includes(`data-home-presentation="${presentation}"`),id)
+ }
+})
+test('compact tile evidence remains accessible while scoped zero reading and independent observation stay visible',()=>{
+ const clock='2040-01-02T03:01:00Z',html=render('today',{sections:{tiles:section({metrics:[{label:'Portfolio',value:'0',state:'grey',clock,qualifier:'Synthetic household scope · stored value only'}]})}})
+ assert.match(html,/aria-label="Evidence: Portfolio"/);assert.match(html,/title="Evidence"/)
+ assert.match(html,/Synthetic household scope · stored value only/);assert.ok(html.includes(`dateTime="${clock}"`));assert.match(html,/>0<\/span>/)
+ assert.doesNotMatch(html,/▲ 0|▼ 0/)
+})

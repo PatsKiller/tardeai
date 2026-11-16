@@ -283,3 +283,51 @@ test('compact stance preserves verbatim source meaning and gauge policy provenan
  const stance=section({summary:'Independent source coverage remains visible',notes:[sentence],links:[{label:'Generic owning desk',href:'/v3/risk'}],gauge:{clock:at,source:'Synthetic policy',policyVersion:'SyntheticPolicy@v1',scoreLabel:'Stored score',marker:'30%',bands:[{width:'100%',state:'grey'}],ticks:[],qualifier}})
  const html=render('today',{sections:{stance}});assert.ok(html.includes(sentence));assert.match(html,/Independent source coverage remains visible/);assert.match(html,/Score scale only · policy in Evidence/);assert.ok(html.includes(qualifier));assert.match(html,/SyntheticPolicy@v1/);assert.ok(html.includes(`dateTime="${at}"`));assert.doesNotMatch(html,/Generic owning desk/)
 })
+
+
+// Rendered operator meaning is the contract; variants may change layout, never saved truth.
+const visibleCopy=html=>html.replace(/<span\b[^>]*role="tooltip"[^>]*>[\s\S]*?<\/span>/g,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim()
+const conditionRow={id:'synthetic-conditions',label:'Synthetic retained setup',clock:at,state:'amber',conditions:[{label:'Source joined',value:true},{label:'Saved setup',value:false},{label:'Validation current',value:null}]}
+test('compact re-entry gives each tri-state an accessible name and distinct saved meaning',()=>{
+ const html=render('panel',{id:'reentry',title:'Re-entry watch',icon:'swap',presentation:'reentry',section:section({rows:[conditionRow]})}),copy=visibleCopy(html)
+ assert.deepEqual([...html.matchAll(/data-condition-state="([^"]+)"/g)].map(m=>m[1]),['true','false','unknown'])
+ for(const text of ['Source joined: met','Saved setup: not met','Validation current: unknown'])assert.ok(html.includes(`aria-label="${text}"`),text)
+ assert.equal((html.match(/role="img" tabindex="0"/gi)||[]).length,3)
+ assert.equal((html.match(/role="tooltip"/g)||[]).length>=3,true)
+ assert.ok(!copy.includes('current truth unknown'));assert.match(html,/data-tone="green"/)
+ for(const icon of ['check','ban','na'])assert.ok(html.includes(`data-icon="${icon}"`),icon)
+})
+test('compact historical conditions share one visible qualification without losing each saved tri-state',()=>{
+ const cases=[{section:{readFailed:true}},{section:{verdict:'stale'}},{section:{verdict:'expired'}},{row:{state:'grey'}},{row:{clock:null}}]
+ for(const variant of cases){
+  const row={...conditionRow,...variant.row},s=section({rows:[row],...variant.section})
+  const html=render('panel',{id:'reentry',title:'Re-entry watch',icon:'swap',presentation:'reentry',section:s}),copy=visibleCopy(html)
+  assert.equal(copy.split('current truth unknown').length-1,1,JSON.stringify(variant));assert.match(copy,/saved/i)
+  if(row.clock===null){assert.match(copy,/observation time (?:not served|unknown)/i);assert.equal((copy.match(/observation time (?:not served|unknown)/gi)||[]).length,1)}
+  assert.deepEqual([...html.matchAll(/data-condition-state="([^"]+)"/g)].map(m=>m[1]),['true','false','unknown'])
+  for(const text of ['Source joined: saved met; current truth unknown','Saved setup: saved not met; current truth unknown','Validation current: saved unknown; current truth unknown'])assert.ok(html.includes(`aria-label="${text}"`),text)
+  assert.equal((html.match(/role="img" tabindex="0"/gi)||[]).length,3)
+  assert.doesNotMatch(html,/data-tone="green"/)
+  const detail=visibleCopy(render('evidence',{row,section:s}))
+  for(const text of ['Source joined: saved met; current truth unknown','Saved setup: saved not met; current truth unknown','Validation current: saved unknown; current truth unknown'])assert.ok(detail.includes(text),text)
+ }
+})
+test('compact stop layout preserves known position time and explicitly unknown order time with full raw evidence',()=>{
+ const orderAt='2040-01-02T03:01:00Z'
+ const row={id:'synthetic-stop',version:'SyntheticVersion-9',label:'Synthetic partial protection',clock:at,summaryFacts:[{label:'Protection',value:'Partial resting coverage',state:'amber'},{label:'Position observation',value:at},{label:'Order observation',value:null}],facts:[{label:'Protection',value:'Partial resting coverage',state:'amber'},{label:'Covered shares',value:'0.4985'},{label:'Uncovered shares',value:'0.025'},{label:'Canonical order verdict',value:'PROTECTED',clock:orderAt}],reason:'Proof remains independently dated'}
+ const html=render('panel',{id:'stops',title:'Stops',icon:'shield',presentation:'stops',section:section({clock:built,rows:[row]})}),copy=visibleCopy(html)
+ for(const text of ['Partial resting coverage','Positions','Orders','not served'])assert.ok(copy.includes(text),text)
+ assert.ok(html.includes(`dateTime="${at}"`));assert.doesNotMatch(html,/Canonical order verdict/)
+ const full=render('evidence',{row,section:section({clock:built})})
+ for(const text of ['synthetic-stop','SyntheticVersion-9','0.4985','0.025','Canonical order verdict','PROTECTED','Proof remains independently dated',orderAt])assert.ok(full.includes(text),text)
+})
+test('compact variants preserve independent narrative and full details rather than replacing them with derived values',()=>{
+ const row={id:'synthetic-layout',version:'SyntheticVersion-4',label:'Synthetic source comparison',clock:at,summary:'Distinct retained summary',detail:'Distinct complete source detail',href:'/v3/health',summaryFacts:[{label:'Engine A',value:'Recorded side A'},{label:'Engine B',value:'Recorded side B'}],facts:[{label:'Engine A',value:'Recorded side A',clock:at},{label:'Engine B',value:'Recorded side B',clock:null},{label:'Exact zero',value:'0'},{label:'Missing exposure',value:null,qualifier:'Exposure not measured'},{label:'Source calculation',value:'SyntheticCalc-v3'}]}
+ for(const presentation of ['default','stops','reentry','engine','sector']){
+  const main=render('panel',{id:'comparison',title:'Comparison',icon:'gear',presentation,section:section({rows:[row]})}),copy=visibleCopy(main)
+  for(const text of ['Distinct retained summary','Engine A','Recorded side A','Engine B','Recorded side B'])assert.ok(copy.includes(text),presentation+': '+text)
+  assert.match(main,/href="\/v3\/health"/);assert.doesNotMatch(main,/Source calculation/)
+  const detail=visibleCopy(render('evidence',{row,section:section({})}))
+  for(const text of ['synthetic-layout','SyntheticVersion-4','Distinct retained summary','Distinct complete source detail','Exact zero','Missing exposure','Exposure not measured','SyntheticCalc-v3'])assert.ok(detail.includes(text),text)
+ }
+})
