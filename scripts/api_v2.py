@@ -4980,6 +4980,27 @@ def _holding_price_fallback(position, t_snap, e_cache):
     return 0.0, "none", ""
 
 
+def _holdings_pct_basis(stored_pct, mv, total_mv, stored_at, derived_at):
+    """``portfolio_pct_basis`` (portfolio audit 2026-11-16, D2): which value and clock ``portfolio_pct`` was computed on.
+
+    Additive and descriptive only: it mirrors the branch ``portfolio_holdings`` takes for ``portfolio_pct`` and changes
+    no value. ``repricer_stored`` is the percent ``portfolio_repricer`` stored on the row (row market_value at that pass
+    over the account-summary total). The value it divided is not retained in the document, so ``value_usd`` is null:
+    it is never back-filled from today's row value. ``derived_at_read`` is this read's mark over the stored book total,
+    both served. ``not_computed`` is the served ``0`` placeholder: no basis exists for it.
+    """
+    if stored_pct:
+        return {"source": "repricer_stored", "value_field": "holdings[].market_value at the repricer pass",
+                "value_usd": None, "denominator_field": "sum(account_summaries[].total_value) at the repricer pass",
+                "denominator_usd": None, "snapshot_field": "last_repriced", "snapshot_at": stored_at or None}
+    if total_mv > 0 and mv > 0:
+        return {"source": "derived_at_read", "value_field": "market_value", "value_usd": mv,
+                "denominator_field": "portfolio_totals.total_value", "denominator_usd": total_mv,
+                "snapshot_field": "price_as_of", "snapshot_at": derived_at or None}
+    return {"source": "not_computed", "value_field": None, "value_usd": None, "denominator_field": None,
+            "denominator_usd": None, "snapshot_field": None, "snapshot_at": None}
+
+
 def portfolio_holdings():
     h = _load_json(STATE_DIR / "holdings.json") or {}
     ec = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
@@ -5181,6 +5202,9 @@ def portfolio_holdings():
                     "source_timestamp": h.get("last_repriced") or p.get("updated_at") or p.get("as_of"),
                     "market_value": _mv,
                     "portfolio_pct": _ppct or 0,
+                    "portfolio_pct_basis": _holdings_pct_basis(
+                        p.get("portfolio_pct"), _mv, _total_mv, h.get("last_repriced"),
+                        h.get("last_repriced", "") or h.get("as_of", "")),
                     "day_change": 0.0,
                     "day_change_pct": 0.0,
                     "sector": "Cash",
@@ -5397,6 +5421,8 @@ def portfolio_holdings():
                 "source_timestamp": _px_ts,  # quote fetch time → protective-stop freshness gate (null = unknown)
                 "market_value": _mv,
                 "portfolio_pct": _ppct or 0,
+                "portfolio_pct_basis": _holdings_pct_basis(
+                    p.get("portfolio_pct"), _mv, _total_mv, h.get("last_repriced"), _price_as_of),
                 "day_change": _day_chg,
                 "day_change_pct": _day_pct,
                 "sector": e_cache.get("sector") or t_snap.get("sector") or p.get("sector_type", ""),
@@ -50667,7 +50693,51 @@ def _cio_holdings_with_evidence():
     """
     from lib.broker_route_evidence import attach
 
-    return attach(_cio_truth_readers().holdings_payload(portfolio_holdings(), db_query=_db_query))
+    out = attach(_cio_truth_readers().holdings_payload(portfolio_holdings(), db_query=_db_query))
+    # Portfolio audit 2026-11-16 (F2/A): additive account identity, so the page never prints a raw key and one
+    # registry-aliased account is one account. Never raises; a failure serves nothing new, never a guess.
+    try:
+        for _k, _v in _holdings_account_identity(out).items():
+            out.setdefault(_k, _v)
+    except Exception:  # noqa: BLE001 -- the payload is served unchanged without the additive keys
+        pass
+    return out
+
+
+def _holdings_account_identity(payload: dict) -> dict:
+    """``account_labels`` / ``account_label_source`` / ``account_aliases`` for every account key the holdings payload
+    names (rows, reconciliation, read scope). ``account_aliases`` maps a served key to its registry canonical key
+    only where the two differ. Keys that look like account numbers are never echoed (``account_display``)."""
+    keys: set[str] = set()
+    for r in payload.get("holdings") or []:
+        if isinstance(r, dict):
+            for f in ("account", "account_key", "account_id"):
+                if str(r.get(f) or "").strip():
+                    keys.add(str(r[f]))
+    for a in ((payload.get("reconciliation") or {}).get("accounts") or []):
+        if isinstance(a, dict) and str(a.get("account") or "").strip():
+            keys.add(str(a["account"]))
+    for k in (((payload.get("scope_coverage") or {}).get("scope") or {}).get("accounts") or []):
+        if str(k or "").strip():
+            keys.add(str(k))
+    keys = {k for k in keys if not _acct_disp.looks_like_number(k)}
+    aliases = {}
+    for k in sorted(keys):
+        canonical = _acct_disp.canonical_key(k)
+        if canonical and canonical != k and not _acct_disp.looks_like_number(canonical):
+            aliases[k] = canonical
+    canon = sorted({aliases.get(k, k) for k in keys})
+    labels = _acct_disp.labels_map(canon)
+    registry = set(_acct_disp.labels_map(None))
+    source = {}
+    for k in canon:
+        if k in registry:
+            source[k] = "registry"
+        elif labels.get(k) == _acct_disp.UNLABELLED:
+            source[k] = "unlabelled"
+        else:
+            source[k] = "derived"
+    return {"account_labels": labels, "account_label_source": source, "account_aliases": aliases}
 
 
 def _market_event_active_api(query=None):

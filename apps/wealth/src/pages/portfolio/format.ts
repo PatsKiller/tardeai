@@ -6,7 +6,7 @@
 //   * marketCapB arrives in MILLIONS. `marketCapText` divides by 1000 to reach billions and never
 //     multiplies into dollars.
 
-import type { HoldingsFreshness, ServedFreshness } from './contract'
+import type { HoldingsFreshness, Population, ServedFreshness } from './contract'
 
 const MONEY = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const MONEY_WHOLE = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
@@ -194,4 +194,37 @@ export function lastKnownSentence(f: HoldingsFreshness): string {
   const clock = s.clockLabel ?? s.clock ?? 'source'
   const aged = s.ageSeconds === null ? 'of unknown age' : `${age(s.ageSeconds)} old`
   return `This is the last available snapshot; the ${clock} clock is ${aged}, ${overLimitPhrase(s.ageSeconds, s.limitSeconds, s.gap)}.`
+}
+
+const READ_BASIS_WORDS: Record<NonNullable<Population['readRowsBasis']>, string> = {
+  'scope_coverage.rows_read': 'the producer’s count of this read (scope_coverage.rows_read)',
+  'scope_coverage.scopes.holdings.all_rows': 'the producer’s all-rows scope (scope_coverage.scopes)',
+  rendered: 'rows rendered; the producer served no read count, so omissions are unknown',
+}
+
+/**
+ * The population block as text lines, for the Holdings population disclosure (A1–A4). Each count names its basis;
+ * two populations are printed side by side and never subtracted. Accounts appear as display text and stable refs
+ * only (the Population fields already carry no raw keys). Broker completeness is printed as unverified.
+ */
+export function populationLines(pop: Population): string[] {
+  const out: string[] = []
+  const basis = READ_BASIS_WORDS[pop.readRowsBasis ?? 'scope_coverage.rows_read']
+  out.push(`${pop.readRows} rows read (${basis}) · ${pop.renderedRows} rendered`)
+  for (const e of pop.excluded) out.push(`${e.count} ${e.label}: ${e.rule}`)
+  for (const l of pop.listedNotCounted) out.push(`${l.count} ${l.reason} (${l.scope})`)
+  const m = pop.measurePopulation
+  if (m !== null) {
+    out.push(`Account-value measure: ${m.rowCount} rows${m.measuredRows === null ? '' : `, ${m.measuredRows} measured`} — ${m.basis}. A different population from the read; not compared by subtraction.`)
+  }
+  for (const a of pop.aliasedAccounts) {
+    const how = a.basis === 'key-prefix' ? 'matched by key prefix (client heuristic; no registry alias served)' : 'one account in the account registry'
+    out.push(`${a.label ?? a.rowKey}: scope ${a.scopeKey} and rows ${a.rowKey} are ${how}`)
+  }
+  if (pop.scopeAccountsWithoutRows.length > 0) out.push(`In the read scope with no rows: ${pop.scopeAccountsWithoutRows.join(', ')}`)
+  for (const d of pop.duplicateRows ?? []) out.push(`${d.symbol} in ${d.accountLabel} is served on ${d.rows} rows; each is listed as served`)
+  out.push(pop.completeness === 'BROKER_COMPLETENESS_UNVERIFIED'
+    ? 'Broker completeness: unverified — no producer reconciliation receipt'
+    : `Broker completeness: ${pop.completeness}`)
+  return out
 }

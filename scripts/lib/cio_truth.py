@@ -1794,6 +1794,25 @@ def basis_for(position: dict, *, mark=None) -> dict:
             "conflicts": conflicts}
 
 
+def _pct_basis_after_merge(fact: dict, row: dict, stored_at) -> dict:
+    """``portfolio_pct_basis`` for the MERGED row (portfolio audit 2026-11-16, D2). Additive, describes only.
+
+    The merge lets a holdings-document fact override the API row, so the served ``portfolio_pct`` is the stored
+    repricer percent whenever the fact carries the key — and the basis must say so. A fact without the key keeps the
+    API row's value and therefore its basis; a row with neither has no basis to declare.
+    """
+    if "portfolio_pct" in fact:
+        if fact.get("portfolio_pct"):
+            return {"source": "repricer_stored", "value_field": "holdings[].market_value at the repricer pass",
+                    "value_usd": None,
+                    "denominator_field": "sum(account_summaries[].total_value) at the repricer pass",
+                    "denominator_usd": None, "snapshot_field": "last_repriced", "snapshot_at": stored_at or None}
+    elif isinstance(row.get("portfolio_pct_basis"), dict):
+        return deepcopy(row["portfolio_pct_basis"])
+    return {"source": "not_computed", "value_field": None, "value_usd": None, "denominator_field": None,
+            "denominator_usd": None, "snapshot_field": None, "snapshot_at": None}
+
+
 def holdings_payload(payload, *, root=None, now=None, db_query=None, inputs=None, document=None) -> dict:
     """Keep enrichment fields; quote, valuation, basis and stops share CIO truth."""
     doc = document or resolve(root, now, db_query=db_query, inputs=inputs)
@@ -1805,6 +1824,7 @@ def holdings_payload(payload, *, root=None, now=None, db_query=None, inputs=None
     for fact in doc["portfolio"]["holdings"]:
         key = fact["account_id"], str(fact.get("symbol") or "").upper()
         row = {**previous.get(key, {}), **deepcopy(fact)}
+        row["portfolio_pct_basis"] = _pct_basis_after_merge(fact, row, doc["portfolio"].get("quote_as_of"))
         # current_price is a legacy display alias, never a second quote read.
         row["current_price"] = row.get("price")
         basis = basis_for(row, mark=_number(row.get("price")))

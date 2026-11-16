@@ -21,11 +21,13 @@
 
 import type {
   AccountTotal, BookMeasure, BookSource, ClockProvenance, ClockRole, DeclaredClock, FibLadder, HoldingsBook,
-  HoldingsCounts, HoldingsFreshness, HoldingsRow, HoldingsSession, ListedNotCounted, Population,
-  PopulationExclusion, MeasurePopulation, Protection, ProtectionState, RowFundamentals, RowKind, ServedFreshness, ServedIdentity,
+  DuplicateRowGroup, HoldingsCounts, HoldingsFreshness, HoldingsRow, HoldingsSession, ListedNotCounted, Population,
+  PopulationExclusion, MeasurePopulation, PortfolioPctBasis, Protection, ProtectionState, RowFundamentals, RowKind,
+  ServedFreshness, ServedIdentity,
 } from './contract'
 import { PORTFOLIO_HOLDINGS_CONTRACT_VERSION } from './contract'
-import { accountDisplayLabel, normalizeAccountKey } from './accountLabel'
+import { accountDisplayLabel, normalizeAccountKey, resolveAccountDisplay, stableAccountRef } from './accountLabel'
+import type { AccountAliasBasis, AccountDisplay } from './accountLabel'
 import { attachDisplayIdentity, nameSourceFrom } from './displayIdentity'
 
 export interface AdaptResult {
@@ -41,6 +43,57 @@ const asObj = (v: unknown): Json => (isObj(v) ? v : {})
 const asArr = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null)
+
+/**
+ * The read's account identity (portfolio audit 2026-11-16, F2/A), from the additive top-level keys the producer
+ * serves: `account_aliases` {served key → registry canonical key}, `account_labels` {canonical → name} and
+ * `account_label_source` {canonical → registry|derived|unlabelled}. Each map is null when not served (an older
+ * backend), and every consumer then falls back explicitly — never to a guess.
+ */
+export interface AccountIdentity {
+  aliases: Record<string, string> | null
+  labels: Record<string, string> | null
+  sources: Record<string, string> | null
+}
+
+const strMap = (v: unknown): Record<string, string> | null => {
+  if (!isObj(v)) return null
+  const out: Record<string, string> = {}
+  for (const [k, x] of Object.entries(v)) if (typeof x === 'string' && x.trim() !== '') out[k] = x
+  return out
+}
+
+export function accountIdentityFrom(wire: Json): AccountIdentity {
+  return { aliases: strMap(wire.account_aliases), labels: strMap(wire.account_labels), sources: strMap(wire.account_label_source) }
+}
+
+/** The canonical key for a served key: the registry alias when the producer serves one, else the key unchanged. */
+export const canonicalAccountKey = (key: string, id: AccountIdentity): string => id.aliases?.[key] ?? key
+
+/** The display name for a CANONICAL key, from this read's maps and (as the older-backend path) a row's own label. */
+export function accountDisplayFor(key: string, id: AccountIdentity, rowLabel: string | null): AccountDisplay {
+  const served = id.labels === null && id.sources === null
+    ? null
+    : { label: id.labels?.[key] ?? null, source: id.sources?.[key] ?? null }
+  return resolveAccountDisplay(key, served, rowLabel)
+}
+
+const PCT_BASIS_SOURCES = ['repricer_stored', 'derived_at_read', 'not_computed'] as const
+
+/** D2: the served `portfolio_pct_basis`, carried as served. Null = not served (older backend). */
+function pctBasisFrom(v: unknown): PortfolioPctBasis | null {
+  if (!isObj(v)) return null
+  const src = str(v.source)
+  return {
+    source: (PCT_BASIS_SOURCES as readonly string[]).includes(src ?? '') ? src as PortfolioPctBasis['source'] : 'unrecognized',
+    valueField: str(v.value_field),
+    valueUsd: num(v.value_usd),
+    denominatorField: str(v.denominator_field),
+    denominatorUsd: num(v.denominator_usd),
+    snapshotField: str(v.snapshot_field),
+    snapshotAt: str(v.snapshot_at),
+  }
+}
 
 /** A clock role from `clock_provenance`. `position_list` is the DOCUMENT build clock — see contract's trap. */
 const CLOCK_ROLES: { key: string; role: ClockProvenance['role']; build: boolean }[] = [
@@ -174,7 +227,7 @@ function servedIdentityFrom(v: unknown): ServedIdentity | null {
   }
 }
 
-function rowFrom(wire: Json, floorUsd: number | null): HoldingsRow | null {
+function rowFrom(wire: Json, floorUsd: number | null, id: AccountIdentity): HoldingsRow | null {
   const symbol = str(wire.symbol)
   if (symbol === null) return null
   const isCash = wire.is_cash === true || str(wire.asset_type) === 'CASH'
@@ -192,10 +245,15 @@ function rowFrom(wire: Json, floorUsd: number | null): HoldingsRow | null {
     : basisTotal !== null && basisTotal !== 0 && shares > 0
       ? basisTotal / shares
       : null
-  const accountKey = str(wire.account_key) ?? str(wire.account_id) ?? str(wire.account) ?? ''
+  // A: the served key, folded to its registry canonical key when the producer serves the alias map — one account
+  // reached through an alias is one account. F2: the label is resolved with its provenance and is never the raw key.
+  const accountKey = canonicalAccountKey(str(wire.account_key) ?? str(wire.account_id) ?? str(wire.account) ?? '', id)
+  const display = accountDisplayFor(accountKey, id, str(wire.account_label))
   return {
     accountKey,
-    accountLabel: str(wire.account_label) ?? str(wire.account) ?? accountKey,
+    accountLabel: display.label,
+    accountLabelBasis: display.basis,
+    accountRef: display.ref,
     symbol,
     name: str(wire.name) ?? str(wire.company) ?? symbol,
     // The identity inputs beside the unchanged `name` (spec R2/R5, additive): the two raw sources, the ladder
@@ -217,6 +275,8 @@ function rowFrom(wire: Json, floorUsd: number | null): HoldingsRow | null {
     // Percent of the cash-inclusive book, served. A missing weight is 0 only because the contract's field is a
     // number; it is counted as a malformed cell so the coverage note can say so.
     portfolioPct: num(wire.portfolio_pct) ?? 0,
+    // D2: the basis that value was computed on, as served; null when the producer serves none.
+    portfolioPctBasis: pctBasisFrom(wire.portfolio_pct_basis),
     dayChange: num(wire.day_change),
     dayChangePct: num(wire.day_change_pct),
     marketCapB: num(wire.market_cap_b),
@@ -274,11 +334,23 @@ function measuresFrom(wire: Json): BookMeasure[] {
   return out
 }
 
-function populationFrom(wire: Json, rows: HoldingsRow[], coverage: string[]): Population {
+/** Text for an account in the population block: its display name and stable ref — never the raw key. */
+const accountText = (d: AccountDisplay): string => d.basis === 'fallback' ? d.label : `${d.label} · ${d.ref}`
+
+function populationFrom(wire: Json, rows: HoldingsRow[], coverage: string[], id: AccountIdentity): Population {
   const sc = asObj(wire.scope_coverage)
   const renderedRows = rows.length
-  const readRows = num(sc.rows_read) ?? num(asObj(sc.scopes)['holdings.all_rows']) ?? renderedRows
+  const servedRead = num(sc.rows_read)
+  const servedAll = num(asObj(sc.scopes)['holdings.all_rows'])
+  const readRowsBasis: Population['readRowsBasis'] = servedRead !== null
+    ? 'scope_coverage.rows_read'
+    : servedAll !== null ? 'scope_coverage.scopes.holdings.all_rows' : 'rendered'
+  const readRows = servedRead ?? servedAll ?? renderedRows
+  if (readRowsBasis === 'rendered') {
+    coverage.push('the producer serves no read count (scope_coverage.rows_read): whether rows were omitted is unknown')
+  }
   const excluded: PopulationExclusion[] = []
+  // Same population on both sides: the producer's count of THIS read and the rows it listed.
   const gap = readRows - renderedRows
   if (gap > 0) {
     excluded.push({
@@ -297,22 +369,55 @@ function populationFrom(wire: Json, rows: HoldingsRow[], coverage: string[]): Po
   }))
   const priceable = asObj(sc.priceable)
   const measureRows = num(priceable.row_count)
+  // A2: a DIFFERENT population. Both counts are shown with their basis; neither is subtracted from the other.
   const measurePopulation: MeasurePopulation | null = measureRows === null ? null : {
     measure: 'account_value',
     rowCount: measureRows,
     measuredRows: num(priceable.measured_rows),
-    differenceFromRead: measureRows - readRows,
+    differenceFromRead: 0,
+    basis: 'rows the account-value measure counts (scope_coverage.priceable.row_count) — its own population, not this read',
   }
   const rowKeys = Array.from(new Set(rows.map(r => r.accountKey)))
   const scopeKeys = asArr(asObj(sc.scope).accounts).map(str).filter((k): k is string => k !== null)
-  const aliasedAccounts: { scopeKey: string; rowKey: string }[] = []
+  const aliasedAccounts: Population['aliasedAccounts'] = []
   const scopeAccountsWithoutRows: string[] = []
+  const rowLabelFor = (k: string) => rows.find(r => r.accountKey === k)?.accountLabel ?? null
   for (const k of scopeKeys) {
-    const hit = normalizeAccountKey(k, rowKeys)
-    if (hit === null) scopeAccountsWithoutRows.push(k)
-    else if (hit !== k) aliasedAccounts.push({ scopeKey: k, rowKey: hit })
+    // The producer's registry alias first; the client prefix heuristic only when no alias map is served.
+    const canonical = canonicalAccountKey(k, id)
+    let hit: string | null = rowKeys.includes(canonical) ? canonical : null
+    let basis: AccountAliasBasis = 'registry'
+    if (hit === null && id.aliases === null) {
+      hit = normalizeAccountKey(k, rowKeys)
+      basis = 'key-prefix'
+    }
+    if (hit === null) {
+      scopeAccountsWithoutRows.push(accountText(accountDisplayFor(canonical, id, null)))
+    } else if (hit !== k) {
+      const d = accountDisplayFor(hit, id, rowLabelFor(hit))
+      aliasedAccounts.push({ scopeKey: stableAccountRef(k), rowKey: d.ref, label: d.label, basis })
+    }
   }
-  return { readRows, renderedRows, excluded, listedNotCounted, floorUsd: num(sc.min_position_usd), measurePopulation, scopeAccountsWithoutRows, aliasedAccounts, completeness: 'BROKER_COMPLETENESS_UNVERIFIED' }
+  // Rows that share one (canonical account, symbol) identity, listed as served: not merged, not subtracted.
+  const groups = new Map<string, HoldingsRow[]>()
+  for (const r of rows) {
+    const k = `${r.accountKey}\u0000${r.symbol}`
+    groups.set(k, [...(groups.get(k) ?? []), r])
+  }
+  const duplicateRows: DuplicateRowGroup[] = []
+  for (const g of groups.values()) {
+    if (g.length < 2) continue
+    duplicateRows.push({ accountLabel: g[0].accountLabel, accountRef: g[0].accountRef ?? stableAccountRef(g[0].accountKey),
+      symbol: g[0].symbol, rows: g.length })
+  }
+  if (duplicateRows.length > 0) {
+    coverage.push(`${duplicateRows.length} account/security identit${duplicateRows.length === 1 ? 'y is' : 'ies are'} served on more than one row; each row is listed as served and none is merged or subtracted`)
+  }
+  return {
+    readRows, readRowsBasis, renderedRows, excluded, listedNotCounted, floorUsd: num(sc.min_position_usd),
+    measurePopulation, scopeAccountsWithoutRows, aliasedAccounts, duplicateRows,
+    completeness: 'BROKER_COMPLETENESS_UNVERIFIED',
+  }
 }
 
 function countsFrom(wire: Json, rows: HoldingsRow[], coverage: string[]): HoldingsCounts {
@@ -367,12 +472,22 @@ export function accountsFrom(wire: Json): AccountTotal[] | null {
     const rowLabel = str(row.account_label)
     if (rowKey !== null && rowLabel !== null && !rowLabels.has(rowKey)) rowLabels.set(rowKey, rowLabel)
   }
+  const id = accountIdentityFrom(wire)
   return list.map(a => {
     const end = asObj(a.end_equity)
     const key = str(a.account) ?? ''
+    const canonical = canonicalAccountKey(key, id)
+    // The producer's own name map (F2) is preferred over the block's label; the legacy join stays the last resort.
+    const served = str(a.account_label) ?? id.labels?.[canonical] ?? null
+    const display = accountDisplayFor(canonical, id, served ?? rowLabels.get(key) ?? rowLabels.get(canonical) ?? null)
     return {
       accountKey: key,
-      accountLabel: accountDisplayLabel(key, str(a.account_label), rowLabels.get(key) ?? null),
+      // Legacy join (pinned by shell-logic): a raw key survives here ONLY when nothing was served anywhere.
+      // Renderers should print `displayLabel` instead, which never is a key (READY instruction for HoldingsPage).
+      accountLabel: accountDisplayLabel(key, served, rowLabels.get(key) ?? null),
+      displayLabel: display.label,
+      labelBasis: display.basis,
+      accountRef: display.ref,
       totalUsd: num(end.value_usd),
       // The reconciliation serves ending equity per account, not cash per account; null, never 0.
       cashUsd: null,
@@ -459,8 +574,9 @@ export function adaptHoldings(body: unknown): AdaptResult {
   const floorUsd = num(sc.min_position_usd)
   const rows: HoldingsRow[] = []
   let malformed = 0
+  const identity = accountIdentityFrom(wire)
   for (const h of holdings) {
-    const row = isObj(h) ? rowFrom(h, floorUsd) : null
+    const row = isObj(h) ? rowFrom(h, floorUsd, identity) : null
     if (row === null) malformed += 1
     else rows.push(row)
   }
@@ -468,7 +584,7 @@ export function adaptHoldings(body: unknown): AdaptResult {
   // One display identity per symbol, resolved once over the whole book (spec R1/R2): every row of a symbol then
   // renders the same name and the same status. Attaching copies the rows, so no later reader can hold one without.
   const identified = attachDisplayIdentity(rows)
-  const population = populationFrom(wire, identified, coverage)
+  const population = populationFrom(wire, identified, coverage, identity)
   const counts = countsFrom(wire, identified, coverage)
   const positions = asObj(asObj(wire.clock_provenance).positions)
   // F-1 (ledger 2026-11-15T0325Z): the book's as-of is the QUOTE clock when `truth.as_of` carries it. The page

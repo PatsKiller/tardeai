@@ -23,6 +23,7 @@
 // an absence.
 
 import type { ValuationAssessment } from '../../contracts/valuation'
+import type { AccountAliasBasis, AccountLabelBasis } from './accountLabel'
 
 export const PORTFOLIO_HOLDINGS_CONTRACT_VERSION = 'portfolio-holdings@2' as const
 
@@ -144,9 +145,16 @@ export interface ResolvedIdentity {
 }
 
 export interface HoldingsRow {
-  /** Stable key: `${accountKey}:${symbol}` — the same key valuation-assessment@1 uses. */
+  /** Stable key: `${accountKey}:${symbol}` — the same key valuation-assessment@1 uses. The CANONICAL account key:
+   *  a key the producer's registry aliases (`account_aliases`) is folded to its canonical key here, so one account
+   *  reached through an alias is one account. A data key only — never rendered (use `accountLabel`/`accountRef`). */
   accountKey: string
+  /** The display name, resolved by `resolveAccountDisplay` (accountLabel.ts). Never a raw key or a number. */
   accountLabel: string
+  /** Where `accountLabel` came from (registry / derived / served / fallback). Absent on hand-authored rows. */
+  accountLabelBasis?: AccountLabelBasis
+  /** Stable, key-free reference for the account (`acct-xxxxxxxx`), printable where a key would have been. */
+  accountRef?: string
   symbol: string
   /** Today's `str(name) ?? str(company) ?? symbol` — UNCHANGED by the identity work: search and the selector's
    *  consumers read it and must keep their results (spec R7). Surfaces display `identity` instead. */
@@ -181,8 +189,14 @@ export interface HoldingsRow {
   marketValue: number | null
   gainLoss: number | null
   gainLossPct: number | null // percent
-  /** PERCENT of the cash-inclusive book. */
+  /** PERCENT of the cash-inclusive book. The served `portfolio_pct`; `0` when the wire served none (legacy: the
+   *  field is a number). Whether a value exists, and on which basis, is `portfolioPctBasis`. */
   portfolioPct: number
+  /**
+   * D2 (audit 2026-11-16): the basis the producer computed `portfolio_pct` on — `holdings[].portfolio_pct_basis`.
+   * `null` (or absent) = the producer did not serve it (an older backend): the drawer says "basis not served".
+   */
+  portfolioPctBasis?: PortfolioPctBasis | null
   dayChange: number | null
   dayChangePct: number | null
   marketCapB: number | null // MILLIONS
@@ -310,6 +324,33 @@ export interface PopulationExclusion {
   rule: string
 }
 
+/** The served basis of `portfolio_pct` (wire `portfolio_pct_basis`), carried as served. */
+export type PortfolioPctBasisSource = 'repricer_stored' | 'derived_at_read' | 'not_computed' | 'unrecognized'
+export interface PortfolioPctBasis {
+  source: PortfolioPctBasisSource
+  /** The value the percent divided, in the producer's words (`market_value`, or the stored repricer value). */
+  valueField: string | null
+  /** The value in dollars, when the producer retained it (derived at read); null for a stored percent. */
+  valueUsd: number | null
+  denominatorField: string | null
+  denominatorUsd: number | null
+  /** Which clock dates the basis (`last_repriced` / `price_as_of`) and its instant; null = not served. */
+  snapshotField: string | null
+  snapshotAt: string | null
+}
+
+// Account-name provenance and alias basis are defined beside their resolver (accountLabel.ts, import-free so the
+// shell gate can load it directly) and re-exported here as part of the contract.
+export type { AccountLabelBasis, AccountAliasBasis } from './accountLabel'
+
+/** Rows that share one (canonical account, symbol) identity. Listed as served — never merged, never subtracted. */
+export interface DuplicateRowGroup {
+  accountLabel: string
+  accountRef: string
+  symbol: string
+  rows: number
+}
+
 /** A served measure that counts its own rows; a population beside the read, never a subtrahend of it. */
 export interface MeasurePopulation {
   /** The wire measure name, e.g. `account_value`. */
@@ -318,8 +359,15 @@ export interface MeasurePopulation {
   rowCount: number
   /** Rows with a measured price move (`priceable.measured_rows`), or null when not served. */
   measuredRows: number | null
-  /** `rowCount − readRows`, labelled as a cross-population difference, never as an omission. */
+  /**
+   * DEPRECATED, always 0 (audit 2026-11-16 A2): the measure's rows and the read's rows are DIFFERENT populations,
+   * and subtracting one from the other is forbidden — it is how "3 omitted" was printed about rows this read never
+   * contained. Kept only so an older renderer that reads it compiles and prints no difference. Show the two counts
+   * side by side with `basis` instead (format.ts `populationLines`).
+   */
   differenceFromRead: number
+  /** What the count measures, in words: printed beside the read count, never subtracted from it. */
+  basis: string
 }
 
 export type BrokerCompleteness = 'BROKER_COMPLETENESS_UNVERIFIED' | 'BROKER_COMPLETENESS_VERIFIED'
@@ -327,6 +375,9 @@ export type BrokerCompleteness = 'BROKER_COMPLETENESS_UNVERIFIED' | 'BROKER_COMP
 export interface Population {
   /** Rows this read returned (`scope_coverage.rows_read`, else `holdings.all_rows`, else the rendered count). */
   readRows: number
+  /** Which field `readRows` came from. `rendered` means the producer served no read count: no omission can then be
+   *  claimed or denied, and the population says so instead of "none omitted". Absent on hand-authored books. */
+  readRowsBasis?: 'scope_coverage.rows_read' | 'scope_coverage.scopes.holdings.all_rows' | 'rendered'
   /** Rows in this book; must equal `rows.length`. */
   renderedRows: number
   /** Removals inside this read only — `readRows − renderedRows`; never a cross-population difference. */
@@ -336,10 +387,17 @@ export interface Population {
   floorUsd: number | null
   /** The account-value measure's own population, or null when the producer serves no row count. */
   measurePopulation: MeasurePopulation | null
-  /** Scope account keys with no rendered row after alias normalization (reason-coded, never inferred empty). */
+  /** Scope accounts with no rendered row after alias normalization, as DISPLAY text (`label · acct-ref`) — never a
+   *  raw key (Wealth UI rule). Reason-coded, never inferred empty. */
   scopeAccountsWithoutRows: string[]
-  /** Scope keys that matched a row key only through alias normalization, as `scopeKey -> rowKey`. */
-  aliasedAccounts: { scopeKey: string; rowKey: string }[]
+  /**
+   * Scope accounts that matched a row account only through an alias. `scopeKey`/`rowKey` are the STABLE REFS of the
+   * two served keys (never the raw keys); `label` is the one account's display name and `basis` says whether the
+   * producer's registry or the client heuristic made the match. One aliased account is one account.
+   */
+  aliasedAccounts: { scopeKey: string; rowKey: string; label?: string; basis?: AccountAliasBasis }[]
+  /** (canonical account, symbol) identities served on more than one row. Absent on hand-authored books. */
+  duplicateRows?: DuplicateRowGroup[]
   /** Only a producer reconciliation receipt may promote this; the client never does. */
   completeness: BrokerCompleteness
 }
@@ -350,8 +408,17 @@ export interface Population {
  * today, while the document build constructs `total_usd`/`cash_usd` per account.
  */
 export interface AccountTotal {
+  /** Data key (canonical after served aliases). Never rendered. */
   accountKey: string
+  /**
+   * Legacy joined label (`accountDisplayLabel`): may still be the raw key when nothing was served anywhere, so it
+   * must not be rendered. Render `displayLabel`.
+   */
   accountLabel: string
+  /** Display name from `resolveAccountDisplay`; never a raw key (the stable ref stands in when no name is served). */
+  displayLabel?: string
+  labelBasis?: AccountLabelBasis
+  accountRef?: string
   totalUsd: number | null
   cashUsd: number | null
   asOf: string | null

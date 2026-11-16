@@ -14,6 +14,7 @@
 // Pure: no React, no DOM — the invariants can pin it.
 
 import type { HoldingsRow } from './contract'
+import { accountLabelSource, resolveAccountDisplay, stableAccountRef } from './accountLabel'
 import { sectorDisplayLabel, sectorSource } from './analyticsAdapter'
 import { displayOf, identitySecondLine } from './displayIdentity'
 import { decimal, marketCapText, money, multiple, pct, price, shares, signedMoney, signedPct, unavailable } from './format'
@@ -30,20 +31,82 @@ export interface DetailField {
   source: string
 }
 
+/** The row's account as rendered: its resolved name and stable ref. The raw key is never printed (F2). */
+function rowAccount(row: HoldingsRow) {
+  if (row.accountLabelBasis !== undefined) {
+    return { label: row.accountLabel, basis: row.accountLabelBasis, ref: row.accountRef ?? stableAccountRef(row.accountKey) }
+  }
+  // A hand-built row with no resolved basis: resolve here, so a raw key can never reach the drawer.
+  return resolveAccountDisplay(row.accountKey, null, row.accountLabel)
+}
+
 export function detailHeading(row: HoldingsRow): { title: string; eyebrow: string } {
   // The eyebrow is the table cell's own second line plus the account key (spec T6 parity): the resolved identity,
   // never the per-row `name`, so the drawer cannot name an instrument differently from the row that opened it.
   const identity = displayOf(row)
+  const account = rowAccount(row)
   return {
     title: row.symbol,
-    eyebrow: `${identitySecondLine(identity, row.symbol, row.accountLabel)} · ${row.accountKey}`,
+    // HELD (lead integration): the suffix is still the raw key because scripts/tests/shell-logic.test.mjs (SPCX/T5+T6,
+    // not this lane's file) pins `${line} · ${row.accountKey}`. The flip to the stable ref is one atomic patch with
+    // that assertion; see the population-contracts READY file.
+    eyebrow: `${identitySecondLine(identity, row.symbol, account.label)} · ${row.accountKey}`,
   }
+}
+
+/**
+ * D2: the weight and the basis it was computed on. The served `portfolio_pct_basis` names the value field, the
+ * denominator and the snapshot clock. The drawer reconciles the percent to this row's market value only when the
+ * basis divided that same value; otherwise it says the bases differ and prints no derived number.
+ */
+export function weightFields(row: HoldingsRow): DetailField[] {
+  const b = row.portfolioPctBasis
+  if (b === undefined || b === null) {
+    return [
+      { label: 'Weight of book', value: pct(row.portfolioPct), source: 'served percent of the cash-inclusive book' },
+      { label: 'Weight basis', value: unavailable('basis not served'), source: 'the producer serves no portfolio_pct_basis on this read; the percent cannot be reconciled' },
+    ]
+  }
+  if (b.source === 'not_computed') {
+    return [
+      { label: 'Weight of book', value: unavailable('no percent computed'), source: 'portfolio_pct_basis not_computed: the served 0 is a placeholder, not a weight' },
+      { label: 'Weight basis', value: 'none', source: 'the producer computed no percent for this row (no stored percent, no positive value and total)' },
+    ]
+  }
+  const weight: DetailField = { label: 'Weight of book', value: pct(row.portfolioPct), source: 'served percent of the cash-inclusive book' }
+  if (b.source === 'repricer_stored') {
+    return [weight, {
+      label: 'Weight basis',
+      value: 'stored percent; not reconcilable to this row',
+      source: `computed by the repricer on ${b.valueField ?? 'its row value'} over ${b.denominatorField ?? 'its total'}`
+        + `${b.snapshotAt ? ` at ${b.snapshotAt}` : ' (no snapshot clock served)'}; that value is not retained, so it cannot be reconciled to this row's market value`,
+    }]
+  }
+  if (b.source === 'derived_at_read') {
+    const sameValue = b.valueUsd !== null && row.marketValue !== null && Math.abs(b.valueUsd - row.marketValue) < 0.005
+    if (sameValue && b.denominatorUsd !== null && b.denominatorUsd > 0) {
+      const recomputed = (b.valueUsd as number) / b.denominatorUsd * 100
+      const agrees = Math.abs(recomputed - row.portfolioPct) <= 0.0001
+      return [weight, {
+        label: 'Weight basis',
+        value: `${money(b.valueUsd)} ÷ ${money(b.denominatorUsd)} = ${pct(recomputed, 2)}`,
+        source: `this row's market value over ${b.denominatorField ?? 'the served total'}${b.snapshotAt ? `, marked ${b.snapshotAt}` : ''}; `
+          + (agrees ? 'reconciles to the served percent' : 'does NOT reconcile to the served percent (shown as served)'),
+      }]
+    }
+    return [weight, {
+      label: 'Weight basis',
+      value: 'bases differ',
+      source: `the percent was computed on ${b.valueField ?? 'a served value'}${b.snapshotAt ? ` at ${b.snapshotAt}` : ''}; this row's market value is a different mark, so no reconciled number is shown`,
+    }]
+  }
+  return [weight, { label: 'Weight basis', value: unavailable('basis not recognised'), source: 'the producer served a portfolio_pct_basis source this page does not know; not interpreted' }]
 }
 
 /** Position: what the account holds, at the served marks. */
 export function positionFields(row: HoldingsRow): DetailField[] {
   return [
-    { label: 'Account', value: row.accountLabel, source: `account key ${row.accountKey}` },
+    { label: 'Account', value: rowAccount(row).label, source: accountLabelSource(rowAccount(row)) },
     { label: 'Kind', value: row.kind === 'CASH' ? 'Cash' : 'Security', source: 'served asset type' },
     { label: 'Shares', value: shares(row.shares), source: 'served shares' },
     {
@@ -66,7 +129,7 @@ export function positionFields(row: HoldingsRow): DetailField[] {
       value: row.dayChange === null ? unavailable('no day change served') : `${signedMoney(row.dayChange)} · ${signedPct(row.dayChangePct)}`,
       source: 'served; the wire declares no day-change clock (day_pnl UNKNOWN), so this is not a current-day figure',
     },
-    { label: 'Weight of book', value: pct(row.portfolioPct), source: 'served percent of the cash-inclusive book' },
+    ...weightFields(row),
     {
       label: 'Gain / loss',
       value:

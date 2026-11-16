@@ -173,9 +173,14 @@ export function checkBook(book: HoldingsBook): string[] {
   if (pop.readRows - pop.renderedRows !== excluded) {
     out.push(`population gap ${pop.readRows - pop.renderedRows} != excluded ${excluded}`)
   }
-  // Audit A: a cross-population measure count must never feed the omission arithmetic.
-  if (pop.measurePopulation && pop.measurePopulation.differenceFromRead !== pop.measurePopulation.rowCount - pop.readRows) {
-    out.push('measurePopulation.differenceFromRead is not rowCount − readRows')
+  // Audit A / A2: a cross-population measure count must never feed the omission arithmetic, nor be subtracted
+  // from the read: the two counts are shown side by side, each with its basis.
+  if (pop.measurePopulation) {
+    if (pop.measurePopulation.differenceFromRead !== 0) out.push('measurePopulation subtracts one population from another')
+    if (!pop.measurePopulation.basis?.trim()) out.push('measurePopulation does not state its basis')
+  }
+  for (const a of pop.aliasedAccounts) {
+    if (!/^acct-[0-9a-f]{8}$/.test(a.scopeKey) || !/^acct-[0-9a-f]{8}$/.test(a.rowKey)) out.push('aliasedAccounts carries a raw key')
   }
   if (pop.completeness !== 'BROKER_COMPLETENESS_UNVERIFIED') out.push('fixture claims broker completeness')
   for (const e of pop.excluded) {

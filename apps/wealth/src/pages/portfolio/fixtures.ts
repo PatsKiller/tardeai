@@ -368,7 +368,11 @@ export const FIXTURE_BOOK: HoldingsBook = {
       { reason: 'market value under $100: listed, not counted', count: 1, scope: 'holdings.held_under_100' },
     ],
     floorUsd: 100,
-    measurePopulation: { measure: 'account_value', rowCount: 12, measuredRows: 8, differenceFromRead: 2 },
+    // A2: its own population, shown beside the read with its basis; never subtracted from it (deprecated field = 0).
+    measurePopulation: {
+      measure: 'account_value', rowCount: 12, measuredRows: 8, differenceFromRead: 0,
+      basis: 'rows the account-value measure counts (scope_coverage.priceable.row_count) — its own population, not this read',
+    },
     scopeAccountsWithoutRows: [],
     aliasedAccounts: [],
     completeness: 'BROKER_COMPLETENESS_UNVERIFIED',

@@ -10,6 +10,7 @@ import { createClient } from '../../api/client'
 import type { Envelope } from '../../api/client'
 import { READERS, specFor } from '../../api/readers'
 import { adaptHoldings } from './adapter'
+import { stableAccountRef } from './accountLabel'
 import type { HoldingsBook } from './contract'
 import { detailFields, detailHeading, detailSections } from './detail'
 import { lastKnownSentence, notCurrent } from './format'
@@ -118,7 +119,10 @@ function book(dataOver: Record<string, unknown> = {}, rootOver: Record<string, u
   eq('A readRows comes from rows_read', b.population.readRows, 3)
   eq('C3 renderedRows is the rows actually rendered', b.population.renderedRows, 5)
   eq('A measure population keeps its own count', b.population.measurePopulation?.rowCount, 6)
-  eq('A measure difference is cross-population', b.population.measurePopulation?.differenceFromRead, 3)
+  // A2: two populations are shown side by side with their bases; the deprecated difference is never computed.
+  eq('A2 measure population is never subtracted from the read', b.population.measurePopulation?.differenceFromRead, 0)
+  check('A2 measure population states its basis', /priceable\.row_count/.test(b.population.measurePopulation?.basis ?? ''))
+  eq('A1 the read count names its basis', b.population.readRowsBasis, 'scope_coverage.rows_read')
   eq('A completeness is unverified until a producer receipt', b.population.completeness, 'BROKER_COMPLETENESS_UNVERIFIED')
   // The wire's scope_coverage.excluded is the under-floor population — listed, not omitted.
   eq('C3 listed-not-counted keeps its count', b.population.listedNotCounted[0]?.count, 2)
@@ -136,8 +140,12 @@ function book(dataOver: Record<string, unknown> = {}, rootOver: Record<string, u
   eq('A measure count does not become an omission', g.population.excluded.reduce((t, e) => t + e.count, 0), 2)
   // Alias normalization: a scope key that extends a row key resolves to it; an unmatched key is reported.
   const aliased = book({ scope_coverage: { ...sc, scope: { accounts: ['acct_a_ira', 'acct_zz'] } } })
-  eq('A alias scope key resolves to the row key', aliased.population.aliasedAccounts[0]?.rowKey, 'acct_a')
-  eq('A unmatched scope account is reported', aliased.population.scopeAccountsWithoutRows.join(','), 'acct_zz')
+  // F2: the population block carries stable refs and display text, never the raw keys.
+  eq('A alias scope key resolves to the row account (as its ref)', aliased.population.aliasedAccounts[0]?.rowKey, stableAccountRef('acct_a'))
+  eq('A alias without a served map is the client heuristic', aliased.population.aliasedAccounts[0]?.basis, 'key-prefix')
+  check('A unmatched scope account is reported without its key', aliased.population.scopeAccountsWithoutRows.length === 1
+    && aliased.population.scopeAccountsWithoutRows[0].includes(stableAccountRef('acct_zz'))
+    && !aliased.population.scopeAccountsWithoutRows[0].includes('acct_zz'), aliased.population.scopeAccountsWithoutRows.join(','))
 }
 {
   const b = book()
