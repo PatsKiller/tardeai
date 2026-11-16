@@ -559,7 +559,9 @@ test('F2: an unserved stale limit renders as "limit not served", never 0 s', () 
 test('F2: a served 0.5 h limit is still 1800 s and keeps its wording', () => {
   const { freshnessLine } = compileGateModules().holdingsTable
   assert.equal(freshnessLine(41, 1800, false), '41 s old · stale after 30 min')
-  assert.equal(freshnessLine(41, 1800, true), 'Last available snapshot — 41 s old, past the 30 min limit. These values are not current.')
+  assert.equal(freshnessLine(2400, 1800, true), 'Last available snapshot — 40 min old, past the 30 min limit. These values are not current.')
+  // Audit D/H5: an age inside the limit never reads "past the limit".
+  assert.equal(freshnessLine(41, 1800, true), 'Last available snapshot — 41 s old, within the 30 min limit, but not current for another reason (cause not served). These values are not current.')
 })
 
 // ---- P: a served price is not a dollar amount (lead-approved 2026-11-15T04:35Z, option 1) -----

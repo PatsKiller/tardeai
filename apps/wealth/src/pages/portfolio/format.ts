@@ -131,6 +131,20 @@ export function decimal(value: number | null): string {
   return value === null ? unavailable('not published for this instrument') : PCT2.format(value)
 }
 
+/**
+ * Portfolio audit 2026-11-16 (D, H5): "3 min old, past the 30 min limit" printed whenever the verdict was not FRESH,
+ * even when the printed clock was inside its limit and the verdict came from another domain (a missing stop clock).
+ * The words "past the limit" are now printed only when the served age actually exceeds the served limit; otherwise the
+ * sentence keeps the age and limit and says the verdict has another cause, quoting the producer's gap when served.
+ */
+export function overLimitPhrase(ageSeconds: number | null, limitSeconds: number | null, gap: string | null = null): string {
+  const limit = limitSeconds === null ? 'limit not served' : age(limitSeconds)
+  if (ageSeconds !== null && limitSeconds !== null && ageSeconds > limitSeconds) return `past the ${limit} limit`
+  if (ageSeconds !== null && limitSeconds !== null)
+    return `within the ${limit} limit, but not current for another reason${gap ? ` (${gap})` : ' (cause not served)'}`
+  return `against a ${limit}; whether it is past the limit cannot be computed`
+}
+
 /** The producer's verdict over its SOURCE clocks: which clock, how old, and the limit it applied. */
 export function servedFreshnessLine(f: ServedFreshness): string {
   const clock = f.clockLabel ?? f.clock ?? 'source'
@@ -140,7 +154,7 @@ export function servedFreshnessLine(f: ServedFreshness): string {
   if (f.status === 'FRESH') return `${clock} clock ${aged} · stale after ${limit}`
   // R2 (review 2026-11-15T1704Z, check 4): a producer verdict is not a validated last-success receipt. The page
   // reserves "Last known good <time>" for a stored receipt and says "Last available snapshot" everywhere else.
-  return `Last available snapshot — ${clock} clock ${aged}, past the ${limit} limit. These values are not current.`
+  return `Last available snapshot — ${clock} clock ${aged}, ${overLimitPhrase(f.ageSeconds, f.limitSeconds, f.gap)}. These values are not current.`
 }
 
 /**
@@ -169,7 +183,7 @@ export function lastKnownSentence(f: HoldingsFreshness): string {
   if (s === null) {
     // No producer verdict: the numbers are the RESPONSE's cache facts, so whatever is printed says cache age.
     const aged = f.ageSeconds === null ? 'of unknown age' : `${age(f.ageSeconds)} old`
-    return `This is the last available snapshot, ${aged} in the cache, past the ${f.staleAfterSeconds === null ? 'stale limit — limit not served.' : `${age(f.staleAfterSeconds)} limit.`}`
+    return `This is the last available snapshot, ${aged} in the cache, ${overLimitPhrase(f.ageSeconds, f.staleAfterSeconds)}.`
   }
   if (s.status === 'UNKNOWN') {
     // The producer published no verdict and said why. The session strip and the Read status notice already print
@@ -179,5 +193,5 @@ export function lastKnownSentence(f: HoldingsFreshness): string {
   }
   const clock = s.clockLabel ?? s.clock ?? 'source'
   const aged = s.ageSeconds === null ? 'of unknown age' : `${age(s.ageSeconds)} old`
-  return `This is the last available snapshot; the ${clock} clock is ${aged}, past the ${s.limitSeconds === null ? 'stale limit — limit not served.' : `${age(s.limitSeconds)} limit.`}`
+  return `This is the last available snapshot; the ${clock} clock is ${aged}, ${overLimitPhrase(s.ageSeconds, s.limitSeconds, s.gap)}.`
 }

@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url'
 import {createRequire,Module} from 'node:module'
 const APP=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),require=createRequire(import.meta.url)
 const {buildSync}=require('esbuild')
-const code=buildSync({stdin:{contents:"export * from './src/pages/portfolio/workspaceV2/adapter'; export * from './src/pages/portfolio/workspaceV2/discovery'; export * from './src/pages/portfolio/fixtures'; export {normalizeAccountKey} from './src/pages/portfolio/accountLabel'; export * as fv from './src/pages/fundamentals/modelV2'",resolveDir:APP,loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',jsx:'automatic',external:['react','react-dom','react-router-dom','react/jsx-runtime'],loader:{'.css':'empty'},logLevel:'silent'}).outputFiles[0].text
+const code=buildSync({stdin:{contents:"export * from './src/pages/portfolio/workspaceV2/adapter'; export * from './src/pages/portfolio/workspaceV2/discovery'; export * from './src/pages/portfolio/fixtures'; export {normalizeAccountKey} from './src/pages/portfolio/accountLabel'; export * as fv from './src/pages/fundamentals/modelV2'; export {servedFreshnessLine,lastKnownSentence,overLimitPhrase} from './src/pages/portfolio/format'",resolveDir:APP,loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',jsx:'automatic',external:['react','react-dom','react-router-dom','react/jsx-runtime'],loader:{'.css':'empty'},logLevel:'silent'}).outputFiles[0].text
 const filename=path.join(APP,'portfolio-audit.cjs'),module=new Module(filename);module.filename=filename;module.paths=Module._nodeModulePaths(APP);module._compile(code,filename)
 const a=module.exports
 
@@ -107,4 +107,14 @@ test('B parity: Fundamentals search opens the section that holds the match; empt
   assert.deepEqual(a.fv.revealSectionsFv(fview(),''),[])
   const none=fview({query:'QZNOPE'}),d=a.fv.disclosureFv(rows.length,none,new Set())
   assert.equal(d.matching,0); assert.equal(d.filteredOut,rows.length); assert.deepEqual(a.fv.revealSectionsFv(none,'QZNOPE'),[])
+})
+
+test('D/H5: "past the limit" only when the served age exceeds the served limit',()=>{
+  const sf=(o)=>({status:'STALE',stale:true,clock:'quote',clockLabel:'QUOTE',asOf:'2040-01-01T12:00:00Z',ageSeconds:180,limitSeconds:1800,limitSource:null,gap:'stops clock missing for one account',...o})
+  const inside=a.servedFreshnessLine(sf())
+  assert.ok(!/past the/.test(inside),inside); assert.ok(inside.includes('within the 30 min limit')&&inside.includes('stops clock missing'),inside)
+  assert.ok(/past the 30 min limit/.test(a.servedFreshnessLine(sf({ageSeconds:2400}))))
+  assert.ok(/cannot be computed/.test(a.overLimitPhrase(null,1800)))
+  const lk=a.lastKnownSentence({withdrawn:false,stale:true,ageSeconds:null,staleAfterSeconds:null,served:sf()})
+  assert.ok(!/past the/.test(lk),lk)
 })

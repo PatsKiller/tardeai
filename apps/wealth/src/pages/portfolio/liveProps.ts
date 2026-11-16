@@ -103,7 +103,14 @@ export function holdingsProps(env: Envelope<unknown> | null, now: number): Holdi
     const clock = served.clockLabel ?? served.clock ?? 'a source'
     const ageS = served.ageSeconds === null ? 'of unknown age' : ageText(served.ageSeconds)
     const limit = served.limitSeconds === null ? 'limit not served' : `limit ${served.limitSeconds} s`
-    const why = `Not current: the ${clock} clock is ${ageS}, past the ${limit} the producer applied${
+    // Audit D/H5: "past the limit" only when the served age exceeds the served limit; a STALE verdict whose printed
+    // clock is inside its limit came from another cause, and the producer's gap is quoted instead.
+    const over = served.ageSeconds !== null && served.limitSeconds !== null && served.ageSeconds > served.limitSeconds
+    const relation = over ? `past the ${limit} the producer applied`
+      : served.ageSeconds !== null && served.limitSeconds !== null
+        ? `within the ${limit} the producer applied, but marked not current for another reason${served.gap === null ? ' (cause not served)' : ` (${served.gap})`}`
+        : `against the ${limit} the producer applied; whether it is past the limit cannot be computed`
+    const why = `Not current: the ${clock} clock is ${ageS}, ${relation}${
       served.limitSource === null ? '' : ` (${served.limitSource})`}. Every number below is the last served value.`
     return none({ book: asLastKnown(res.book, null, why), notice: why })
   }

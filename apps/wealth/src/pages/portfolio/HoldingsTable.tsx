@@ -18,7 +18,7 @@ import { Tag, type Tone } from '../../components/primitives'
 import { assessmentSummary, peCellText } from './cells'
 import type { HoldingsRow, Protection } from './contract'
 import { displayOf, identitySecondLine, identityShowsName } from './displayIdentity'
-import { age, marketCapText, money, moneyTone, multiple, pct, price, shares, signedMoney, signedPct, toneClass, unavailable } from './format'
+import { age, marketCapText, money, moneyTone, multiple, overLimitPhrase, pct, price, shares, signedMoney, signedPct, toneClass, unavailable } from './format'
 import type { Preset } from './presets'
 
 /**
@@ -438,7 +438,7 @@ export function freshnessLine(ageSeconds: number | null, staleAfterSeconds: numb
   // line says "last available snapshot" — the receipt-gated "Last known good <time>" exists only in the panel.
   if (staleAfterSeconds === null)
     return `Last available snapshot — ${aged}; the response served no stale limit (limit not served). These values are not current.`
-  return `Last available snapshot — ${aged}, past the ${limit} limit. These values are not current.`
+  return `Last available snapshot — ${aged}, ${overLimitPhrase(ageSeconds, staleAfterSeconds)}. These values are not current.`
 }
 
 // ---- CSV export ----------------------------------------------------------------------------------------------
