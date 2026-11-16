@@ -93,3 +93,25 @@ test('Fundamentals page: ownership above 100% is shown as published with the exp
   assert.ok(risk.includes('101.30%')); assert.ok(risk.includes('above 100%, as published')); assert.ok(risk.includes('not clamped'))
   assert.ok(!fund('?fv_lens=risk&fv_query=QZBIG').includes('above 100%, as published'))
 })
+
+test('Fundamentals page: forced-open controls are truthfully disabled with the reason (no dead Collapse buttons)',()=>{
+  const btn=(h,re)=>(h.match(new RegExp('<button[^>]*'+re+'[^>]*>'))||[])[0]||''
+  // Normal state: the controls are live and say Expand.
+  const d=fund('')
+  assert.ok(btn(d,'Expand QZDUP account positions')&&!/disabled/.test(btn(d,'Expand QZDUP account positions')),'group expander is live by default')
+  assert.ok(!/fv-forced/.test(d))
+  // Show all: group + section buttons cannot do anything, so they are disabled and the page says why.
+  const all=fund('?fv_show=all')
+  assert.ok(/disabled/.test(btn(all,'QZDUP account positions \\(expanded because Show all is on\\)')),'group button disabled under show all')
+  assert.ok(!/aria-label="Collapse QZDUP/.test(all),'no Collapse label that cannot collapse')
+  assert.ok(all.includes('Expanded because Show all is on.'))
+  assert.ok(all.includes('Shown because Show all is on.')&&/disabled=""[^>]*aria-expanded="true">▾ Small positions/.test(all)||/<button[^>]*disabled[^>]*>▾ Small positions/.test(all),'small section button disabled')
+  assert.ok(/<button[^>]*disabled[^>]*>▾ Cash/.test(all),'cash section button disabled')
+  // Search: forced sections are disabled with the search reason, matching rows stay visible, group expanders stay live.
+  const q=fund('?fv_query=QZSB')
+  assert.ok(q.includes('QZSB')&&!/collapsed \(/.test(fvStatus(q)))
+  assert.ok(q.includes('Shown because a search is active'))
+  assert.ok(/<button[^>]*disabled[^>]*>▾ Small positions/.test(q))
+  const qd=fund('?fv_query=QZDUP')
+  assert.ok(qd.includes('QZDUP')&&!/disabled=""[^>]*>[^<]*QZDUP/.test(qd),'group expander for a matching group stays live under search')
+})
