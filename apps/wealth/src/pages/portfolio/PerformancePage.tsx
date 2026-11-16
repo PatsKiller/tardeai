@@ -4,9 +4,10 @@ import { AsOf } from '../../components/StateView'
 import { Note, Panel, Tag } from '../../components/primitives'
 import {
   PERFORMANCE_WINDOWS, accountCoverageText, clockHasEvidence, coverageText, measureWarnings, methodText, missingMeasure,
-  numberClass, numberIsKnown, numberText, pageState, performanceAccountLabel,
+  RESIDUAL_FLAG, contractLines, numberClass, numberIsKnown, numberText, pageState, performanceAccountLabel,
 } from './performanceView'
 import type { PerformanceMeasure, PerformancePageProps, PerformanceWindow } from './performanceView'
+import { signedMoney, signedPct } from './format'
 import './semantic.css'
 
 // Scoped layout additions keep the approved shell/panel typography and semantic tokens intact.
@@ -44,6 +45,7 @@ function Measure({ measure, window, scope, allowHouseholdEstimate = false }: {
     return <p className="money-unknown">Unknown — account measure not served — owner: {measure.owner}</p>
   }
   const warnings = measureWarnings(measure)
+  const lines = contractLines(measure.contract, measure.startAt, measure.endAt)
   const reasons = [...new Set([measure.amount, measure.percent].filter(number => !numberIsKnown(number))
     .map(number => numberText(number, 'amount', measure.owner)))]
   return <div className="performance-measure" data-method={measure.method}>
@@ -54,6 +56,11 @@ function Measure({ measure, window, scope, allowHouseholdEstimate = false }: {
       <div><dt>Change (%)</dt><dd className={numberClass(measure.percent, measure)}>{numberIsKnown(measure.percent) ? numberText(measure.percent, 'percent', measure.owner) : 'Unknown'}</dd></div>
     </dl>
     {reasons.length > 0 && <p className="money-unknown">{reasons.join(' · ')}</p>}
+    {measure.contract?.residualAllocated === true && <div className="note warn" data-residual-allocated="true">! {RESIDUAL_FLAG}.
+      {' '}Allocated {numberIsKnown({ value: measure.contract.allocatedAmount, unknownReason: null }) ? signedMoney(measure.contract.allocatedAmount) : 'unknown'}
+      {' · '}{numberIsKnown({ value: measure.contract.allocatedPercent, unknownReason: null }) ? signedPct(measure.contract.allocatedPercent) : 'unknown'}
+      {' '}beside raw NAV change {numberText(measure.amount, 'amount', measure.owner)} (includes deposits and withdrawals).</div>}
+    <p className="performance-provenance" data-contract-line="true">{lines.slice(0, 2).join(' · ')}</p>
     <details><summary>Method &amp; interval details</summary><div className="performance-provenance" aria-label="Measure provenance">
       <div>Scope: {scope} · Coverage: {coverageText(measure)}</div>
       <div>Source: {measure.source || 'not served'} · owner: {measure.owner}</div>
@@ -70,7 +77,8 @@ function Measure({ measure, window, scope, allowHouseholdEstimate = false }: {
       <p>{window === 'YTD' ? 'Calendar year to date; pin clock/source shown above when supplied.'
         : window === 'Latest session' ? 'Holdings price movement is an estimate, not reconciled investment profit.'
           : 'Rolling window; actual snapshot bounds may cover a shorter interval.'}</p>
-      <p>Actual start: {measure.startAt ?? 'unknown'} · Actual end: {measure.endAt ?? 'unknown'}</p>
+      <p>Actual start: {measure.startAt ?? 'unknown'} · Actual end: {measure.endAt ?? 'not served'}</p>
+      {lines.map((l, i) => <p key={i}>{l}</p>)}
       {measure.method === 'household-estimate' && <p>{measure.methodNote} Household only; not individual account profit.</p>}
       {measure.note && <p>{measure.note}</p>}
     </details>

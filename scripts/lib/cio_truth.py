@@ -1522,7 +1522,57 @@ def performance_payload(payload, *, root=None, now=None, holdings_doc=None, docu
                           baseline_note=("start_value is derived as current_value - change; it is not an "
                                          "observed prior-close total (LQ-20261113-3124R). The observed "
                                          "prior-close equity is account_value_change_1d.start"))
+    _add_performance_contract(out, p, census)
     return out
+
+
+def _et_date(value) -> str | None:
+    at = _timestamp(value)
+    return at.astimezone(ZoneInfo("America/New_York")).date().isoformat() if at else None
+
+
+def _add_performance_contract(out: dict, p: dict, census: dict) -> None:
+    """Additive Performance contract (portfolio audit 2026-11-16, HANDOFF section 4 items 2, 3, 6) in the top-level
+    ``performance_contract`` block (cells stay byte-identical). Existing keys are never rewritten. ``end_date`` is the date of the mark clock the end value was read at; a cell whose end value is
+    not the live holdings value has no end clock here, so it is served null with a reason."""
+    end_date, end_clock = _et_date(p.get("quote_as_of")), p.get("quote_as_of")
+    reason = None if end_date else "the holdings mark clock is not served"
+
+    def clock(cell: dict) -> dict:
+        return {"start": {"date": cell.get("start_date"), "source": "performance cell start_date"},
+                "end": {"as_of": end_clock, "date": end_date, "source": "holdings.last_repriced (mark clock)"},
+                "batch_built_at": p.get("valuation_as_of")}
+
+    block = out.setdefault("performance_contract", {"version": "PerformanceContract@v1"})
+    periods, accounts = block.setdefault("periods", {}), block.setdefault("accounts", {})
+    for key, cell in (out.get("periods") or {}).items():
+        if isinstance(cell, dict):
+            entry = periods.setdefault(key, {})
+            entry.update(end_date=end_date, observation_clock=clock(cell))
+            if reason:
+                entry["end_date_reason"] = reason
+    for name, acct in (out.get("accounts") or {}).items():
+        live = _number((acct or {}).get("current_value"))
+        for key, cell in ((acct or {}).get("periods") or {}).items():
+            if not isinstance(cell, dict):
+                continue
+            entry = accounts.setdefault(name, {}).setdefault(key, {})
+            ev = _number(cell.get("end_value"))
+            if live is not None and ev is not None and abs(ev - live) < 0.01 and end_date:
+                entry.update(end_date=end_date, observation_clock=clock(cell))
+            else:
+                entry.update(end_date=None, observation_clock=None,
+                             end_date_reason=("end value is not the live holdings value, so its observation date is not served"
+                                              if ev is not None else "no end value served"))
+    # Counts plus stable account refs from the SAME stored-row census. The legacy ``missing_accounts`` /
+    # ``represented_account_count`` keys stay None (economic day is unproven); these name the stored-row census.
+    refs = lambda key: list(census.get("stored_row_evidence", {}).get("census", {}).get(key) or [])  # noqa: E731
+    pnl = out["today_pnl"]
+    represented = refs("contributing_accounts") + refs("zero_change_accounts")
+    pnl["represented_accounts"] = {"count": len(represented), "refs": sorted(represented),
+                                   "basis": "stored holding-row day change census, not economic day P&L"}
+    pnl["missing_accounts_stored_rows"] = {"count": len(refs("missing_accounts")), "refs": refs("missing_accounts"),
+                                           "basis": "stored holding-row day change census, not economic day P&L"}
 
 
 

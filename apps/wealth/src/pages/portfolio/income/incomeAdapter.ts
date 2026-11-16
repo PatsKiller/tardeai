@@ -3,7 +3,7 @@ import { accountDisplayLabel } from '../accountLabel.ts'
 import { record, rows, text, number, safeText, state } from '../../home/homeAdapter.ts'
 import type { Read, Row } from '../../home/homeAdapter.ts'
 export const INCOME_PATH = '/api/v2/dividends'
-export interface IncomeLeg { ref: string; scope: string; account: string; symbol: string; yield: number | null; annual: number | null; monthly: number | null; frequency: string; tax: string; safety: string; placed: boolean | null }
+export interface IncomeLeg { ref: string; scope: string; account: string; symbol: string; yield: number | null; annual: number | null; monthly: number | null; frequency: string; tax: string; safety: string; placed: boolean | null; months: number[] | null }
 export interface IncomeMonth { month: number | null; name: string; total: number | null; symbols: string[] }
 export interface IncomeDate { symbol: string; exDate: string; payDate: string; perShare: number | null; estimate: number | null }
 /** Where an account name came from. Only `registry` is a resolved name; `served` is a name the producer sent without
@@ -47,7 +47,7 @@ export function incomeModel(r: Row): Income {
   annual: hasData === true && raw.length ? number(r.total_annual) : null,
   monthly: hasData === true && raw.length ? number(r.monthly_average) : null,
   // One emitted row is one leg, including repeated symbol/account pairs. No browser split or deduplication.
-  legs: hasData === true ? raw.map((p, i) => ({ref:`leg-${i}`,scope:accountFor(p).ref,account:accountFor(p).label,symbol:safeText(p.symbol),yield:number(p.yield_pct),annual:number(p.annual_income),monthly:number(p.monthly_amort),frequency:safeText(p.frequency),tax:'Unknown',safety:'Unknown',placed:Array.isArray(p.months) ? p.months.length > 0 : null})) : [],
+  legs: hasData === true ? raw.map((p, i) => ({ref:`leg-${i}`,scope:accountFor(p).ref,account:accountFor(p).label,symbol:safeText(p.symbol),yield:number(p.yield_pct),annual:number(p.annual_income),monthly:number(p.monthly_amort),frequency:safeText(p.frequency),tax:'Unknown',safety:'Unknown',placed:Array.isArray(p.months) ? p.months.length > 0 : null,months:Array.isArray(p.months) ? p.months.map(v => number(v)).filter((v): v is number => v !== null && v >= 1 && v <= 12) : null})) : [],
   accounts, months: hasData === true && raw.length ? rows(r.monthly_summary).map(m => ({month:number(m.month),name:safeText(m.month_name),total:number(m.total),symbols:Array.isArray(m.symbols) ? m.symbols.map(v => safeText(v)).filter(Boolean) : []})) : [],
   dates: hasData === true && raw.length ? rows(r.ex_div_alerts).map(d => ({symbol:safeText(d.symbol),exDate:text(d.ex_date),payDate:text(d.pay_date),perShare:number(d.amount),estimate:number(d.total_income)})) : [],
   tax:'Unknown',safety:'Unknown',
@@ -65,6 +65,37 @@ export function incomeState(read: Read, now: number): RenderState<Income> {
  return out
 }
 const sum = (legs: IncomeLeg[], key: 'annual' | 'monthly'): number | null => legs.length && legs.every(l => l[key] !== null) ? legs.reduce((total, l) => total + (l[key] as number), 0) : null
+export interface IncomeAccountRow { ref: string; label: string; nameSource: AccountNameSource; legs: number; annual: number | null; scheduledAnnual: number | null; unscheduledAnnual: number | null; placedAnnual: number | null; unplacedAnnual: number | null; months: (number | null)[] | null; monthsSum: number | null; expectedPlaced: number | null; gap: number | null }
+const r2 = (v: number) => Math.round(v * 100) / 100
+/** Account x month grid. The producer serves months only for the household; each leg serves its observed months, so a
+ * leg's annual is spread equally over them (the calendar's stated rule). Null whenever any leg's months are not served. */
+export function accountMonthRow(legs: IncomeLeg[]): (number | null)[] | null {
+ if (!legs.length || legs.some(l => l.months === null || l.annual === null)) return null
+ const out = Array.from({length: 12}, () => 0)
+ for (const l of legs) if (l.months!.length) for (const m of l.months!) out[m - 1] += (l.annual as number) / l.months!.length
+ return out.map(v => r2(v))
+}
+export function incomeAccountRows(model: Income): IncomeAccountRow[] {
+ return model.accounts.filter(a => model.legs.some(l => l.scope === a.ref)).map(a => {
+  const legs = model.legs.filter(l => l.scope === a.ref), placed = legs.filter(l => l.placed === true), un = legs.filter(l => l.placed === false)
+  const months = accountMonthRow(legs), monthsSum = months ? r2(months.reduce((t: number, v) => t + (v as number), 0)) : null
+  const placedAnnual = sum(placed, 'annual') ?? (placed.length ? null : 0), unplacedAnnual = sum(un, 'annual') ?? (un.length ? null : 0)
+  const known = legs.every(l => l.placed !== null)
+  const expectedPlaced = known ? placedAnnual : null
+  return { ref: a.ref, label: a.label, nameSource: a.nameSource, legs: legs.length, annual: sum(legs, 'annual'),
+   scheduledAnnual: sum(legs.filter(isScheduled), 'annual') ?? (legs.some(isScheduled) ? null : 0), unscheduledAnnual: sum(legs.filter(l => !isScheduled(l)), 'annual') ?? (legs.some(l => !isScheduled(l)) ? null : 0),
+   placedAnnual: known ? placedAnnual : null, unplacedAnnual: known ? unplacedAnnual : null, months, monthsSum, expectedPlaced,
+   gap: monthsSum !== null && expectedPlaced !== null ? r2(monthsSum - expectedPlaced) + 0 : null }
+ })
+}
+/** Largest per-month gap between the account rows (summed) and the served household months; null if either is not served. */
+export function gridVsServed(model: Income): number | null {
+ const rowsAll = incomeAccountRows(model)
+ if (!rowsAll.length || rowsAll.some(r => r.months === null) || model.months.length !== 12 || model.months.some(m => m.total === null || m.month === null)) return null
+ let worst = 0
+ for (const m of model.months) { const col = rowsAll.reduce((t: number, r) => t + ((r.months as number[])[(m.month as number) - 1]), 0); worst = Math.max(worst, Math.abs(r2(col - (m.total as number)))) }
+ return r2(worst)
+}
 export function incomeScope(model: Income, scope: string) {
  const household = scope === 'household', account = model.accounts.find(a => a.ref === scope)
  const legs = household ? model.legs : model.legs.filter(p => p.scope === scope)
@@ -91,6 +122,8 @@ export function incomeScope(model: Income, scope: string) {
   placed: placedLegs, unplaced: unplacedLegs,
   placedAnnual: sum(placedLegs,'annual') ?? (placedLegs.length ? null : 0), unplacedAnnual: sum(unplacedLegs,'annual') ?? (unplacedLegs.length ? null : 0),
   monthsSum, placedExpected, monthsGap: monthsGap === 0 ? 0 : monthsGap,
+  accountRows: household ? incomeAccountRows(model) : incomeAccountRows(model).filter(r => r.ref === scope),
+  gridVsServed: household ? gridVsServed(model) : null,
  }
 }
 export function allocationLabel(method: string): string {

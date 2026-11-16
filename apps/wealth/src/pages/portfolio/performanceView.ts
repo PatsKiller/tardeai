@@ -22,7 +22,26 @@ export interface PerformanceClock {
   freshness: 'fresh' | 'stale' | 'unknown'
 }
 
+/** Portfolio audit 2026-11-16 (section 4): producer-served interval/eligibility/anchor/residual evidence for one cell.
+ * Every field is null when the producer does not serve it; the page then says "not served". */
+export interface PerformanceContractEvidence {
+  /** True when the response carried a `performance_contract` entry for this cell. */
+  served: boolean
+  eligibility: { status: 'eligible' | 'ineligible' | 'unknown'; source: string } | null
+  endDate: string | null
+  endDateReason: string | null
+  anchor: { snapshotId: string | null; date: string | null; source: string | null; matches: boolean | null } | null
+  residualAllocated: boolean | null
+  rawAmount: number | null
+  rawPercent: number | null
+  /** The residual-allocated figures (display_change), shown only beside the raw NAV change and flagged. */
+  allocatedAmount: number | null
+  allocatedPercent: number | null
+  externalFlows: string
+}
+
 interface MeasureEvidence {
+  contract?: PerformanceContractEvidence
   amount: PerformanceNumber
   percent: PerformanceNumber
   qualifiers: readonly PerformanceQualifier[]
@@ -71,6 +90,8 @@ export interface PerformanceAccountCoverage {
   holdingAccounts: number | null
   /** Accounts with a performance row. */
   withResults: number
+  /** Producer census (today_pnl.represented_accounts / missing_accounts_stored_rows); null when not served. */
+  servedCensus?: { represented: number; missing: number } | null
   /** Holding accounts with no performance row, by display label only (never an account key). */
   missing: string[]
 }
@@ -215,8 +236,25 @@ export function accountCoverageText(c: PerformanceAccountCoverage): string {
   if (c.holdingAccounts === null) {
     return `${c.withResults} account${c.withResults === 1 ? '' : 's'} with performance rows. Accounts holding positions are not served in this response, so missing account results cannot be counted.`
   }
-  const base = `${c.withResults} account${c.withResults === 1 ? '' : 's'} with performance rows; ${c.holdingAccounts} account${c.holdingAccounts === 1 ? '' : 's'} hold positions.`
+  const census = c.servedCensus ? ` Producer stored-row census: ${c.servedCensus.represented} represented, ${c.servedCensus.missing} missing a day change (not economic P&L).` : ''
+  const base = `${c.withResults} account${c.withResults === 1 ? '' : 's'} with performance rows; ${c.holdingAccounts} account${c.holdingAccounts === 1 ? '' : 's'} hold positions.${census}`
   return c.missing.length
     ? `${base} No performance result for ${c.missing.length}: ${c.missing.join(', ')}. Their change is unknown, not zero, and is not in any account row below.`
     : `${base} Every account holding positions has a performance row.`
+}
+
+
+export const RESIDUAL_FLAG = 'Includes household residual allocation, not account profit'
+/** Plain lines for the contract evidence; "not served" whenever the producer did not send the field. */
+export function contractLines(c: PerformanceContractEvidence | undefined, startAt: string | null, endAt: string | null): string[] {
+  const money = (v: number | null) => v === null ? 'unknown' : signedMoney(v)
+  const pct = (v: number | null) => v === null ? 'unknown' : signedPct(v)
+  if (!c || !c.served) return ['Eligibility: not served', `Interval: ${startAt ?? 'start not served'} → ${endAt ?? 'end not served'}`, 'Start anchor: not served', 'External flows: not served']
+  return [
+    c.eligibility ? `Eligibility: ${c.eligibility.status} · ${c.eligibility.source}` : 'Eligibility: not served',
+    `Interval: ${startAt ?? 'start not served'} → ${c.endDate ?? endAt ?? `end not served${c.endDateReason ? ` (${c.endDateReason})` : ''}`}`,
+    c.anchor ? `Start anchor: ${c.anchor.date ? `snapshot ${c.anchor.snapshotId ?? 'id not served'} dated ${c.anchor.date}` : 'no snapshot found'} · ${c.anchor.source ?? 'source not served'}${c.anchor.matches === false ? ' · start value differs from the snapshot' : ''}` : 'Start anchor: not served',
+    ...(c.residualAllocated === true ? [`Raw NAV change (before household residual allocation): ${money(c.rawAmount)} · ${pct(c.rawPercent)}`] : []),
+    `External flows: ${c.externalFlows}`,
+  ]
 }

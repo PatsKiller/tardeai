@@ -4,7 +4,7 @@ import { accountDisplayLabel } from './accountLabel.ts'
 import type { Envelope } from '../../api/client'
 import type {
   PerformanceAccount, PerformanceAccountCoverage, PerformanceClock, PerformanceHouseholdPeriod, PerformanceMeasure,
-  PerformanceNumber, PerformanceObservation, PerformancePageProps, PerformanceQualifier, PerformanceWindow,
+  PerformanceContractEvidence, PerformanceNumber, PerformanceObservation, PerformancePageProps, PerformanceQualifier, PerformanceWindow,
 } from './performanceView'
 
 export const PERFORMANCE_PATH = '/api/v2/portfolio/performance'
@@ -59,14 +59,39 @@ function coverage(cell: Obj): PerformanceObservation['coverage'] {
   return included !== null && total !== null && included <= total
     ? { included, total } : { included: null, total: null }
 }
-function refusedAccount(cell: Obj, account: Obj, day: boolean): string | null {
+/** The producer's `performance_contract` entry for one cell (accounts[key][period] or periods[period]); {} when absent. */
+function contractCell(root: Obj, period: string, key: string | null): Obj {
+  const c = obj(root.performance_contract)
+  return key === null ? obj(obj(c.periods)[period]) : obj(obj(obj(c.accounts)[key])[period])
+}
+function contractEvidence(entry: Obj, cell: Obj): PerformanceContractEvidence {
+  const e = obj(entry.eligibility), a = obj(entry.anchor)
+  const status = e.status === 'eligible' || e.status === 'ineligible' || e.status === 'unknown' ? e.status : null
+  const flows = entry.external_flows
+  return {
+    served: Object.keys(entry).length > 0,
+    eligibility: status !== null && text(e.source) !== null ? { status, source: text(e.source) as string } : null,
+    endDate: text(entry.end_date), endDateReason: text(entry.end_date_reason),
+    anchor: Object.keys(a).length ? { snapshotId: text(a.snapshot_id), date: text(a.date), source: text(a.source), matches: typeof a.start_value_matches_snapshot === 'boolean' ? a.start_value_matches_snapshot : null } : null,
+    residualAllocated: typeof entry.residual_allocated === 'boolean' ? entry.residual_allocated : null,
+    rawAmount: num(entry.raw_change), rawPercent: num(entry.raw_change_pct),
+    allocatedAmount: num(cell.display_change), allocatedPercent: num(cell.display_change_pct),
+    externalFlows: Array.isArray(flows) ? `${flows.length} dated flow${flows.length === 1 ? '' : 's'} served`
+      : !own(entry, 'external_flows') ? 'not served' : `not served — ${text(entry.external_flows_reason) ?? 'no reason given'}`,
+  }
+}
+function refusedAccount(cell: Obj, account: Obj, day: boolean, entry: Obj): string | null {
   if (unavailable(account) || unavailable(cell)) return 'source reports account measure unavailable'
-  // No API evidence presently certifies account eligibility. Do not infer it from a broker/key.
-  const eligibility = obj(account.eligibility)
+  // Do not infer eligibility from a broker/key: only the producer's per-cell (or legacy per-account) statement counts.
+  const eligibility = Object.keys(obj(entry.eligibility)).length ? obj(entry.eligibility) : obj(account.eligibility)
   if (eligibility.status !== 'eligible' || text(eligibility.source) === null) return 'account eligibility unknown'
-  if (/residual/i.test(String(cell.adjustment_method ?? '')) || /residual/i.test(String(cell.source ?? ''))
-    || strings(cell.flags).some(f => /residual/i.test(f))) return 'household-residual account estimate withheld'
-  if (text(cell.provenance_note) !== null || cell.linked_start_value != null || cell.economic_start_value != null
+  // A residual-allocated cell is shown only as its raw NAV change (served beside the flag); without raw NAV it is withheld.
+  const residual = /residual/i.test(String(cell.adjustment_method ?? '')) || /residual/i.test(String(cell.source ?? ''))
+    || strings(cell.flags).some(f => /residual/i.test(f))
+  const rawServed = entry.residual_allocated === true && num(entry.raw_change) !== null
+  if (residual && !rawServed) return 'household-residual account estimate withheld'
+  const linkedSame = cell.linked_start_value == null || (rawServed && cell.economic_start_value == null && cell.linked_start_value === cell.start_value)
+  if (text(cell.provenance_note) !== null || !linkedSame || cell.economic_start_value != null
     || cell.rewrote_extreme_nav === true) return 'substituted account anchor; raw provenance unproven'
   if (!text(cell.source) || ['unknown', 'synthesized', 'sum_accounts'].includes(String(cell.source))) return 'raw account source not established'
   if (day && cell.snapshot_replaced === true) return 'replaced account day anchor; source evidence unproven'
@@ -77,7 +102,8 @@ function pinNote(cell: Obj, root: Obj): string {
   const created = text(pin.created_at)
   return `YTD pin date: ${text(cell.ytd_pin_date) ?? text(pin.pin_date) ?? 'unknown'}; snapshot: ${text(cell.ytd_pin_snapshot) ?? text(pin.end_snapshot) ?? 'unknown'}; source: ${text(pin.source) ?? 'unknown'}; created: ${created ?? 'unknown'}${created && instant(created) === null ? ' (zone unknown; not a UTC observation)' : ''}; version: ${text(pin.pin_version) ?? 'unknown'}.`
 }
-function observation(cell: Obj, root: Obj, period: string, nowMs: number, account: Obj | null): PerformanceObservation {
+function observation(cell: Obj, root: Obj, period: string, nowMs: number, account: Obj | null, key: string | null = null): PerformanceObservation {
+  const entry = contractCell(root, period, key)
   const day = period === '1D', today = obj(root.today_pnl)
   const clocks: PerformanceClock[] = []
   if (day) {
@@ -89,19 +115,22 @@ function observation(cell: Obj, root: Obj, period: string, nowMs: number, accoun
       if (Object.keys(c).length || fallback != null) clocks.push(clock(label, Object.keys(c).length ? c : { as_of: fallback }, nowMs))
     }
   } else {
-    clocks.push(clock('Period observation (not the request time)', obj(cell.observation_clock), nowMs))
+    const oc = Object.keys(obj(cell.observation_clock)).length ? obj(cell.observation_clock) : obj(obj(entry.observation_clock).end)
+    clocks.push(clock('Period observation (not the request time)', oc, nowMs))
   }
   if (period === 'YTD') clocks.push(clock('YTD pin creation (not market observation)', { as_of: obj(root.ytd_pin).created_at }, nowMs))
   const flags = strings(cell.flags)
   const qualifiers: PerformanceQualifier[] = []
   if (day || cell.estimated === true || /estimat|repriced|funding|transfer/i.test(String(cell.quality ?? '') + String(cell.source ?? ''))) qualifiers.push('estimated')
-  if (cell.partial_history === true || flags.length || cell.complete === false || account !== null && !Object.keys(obj(account.eligibility)).length) qualifiers.push('partial')
+  if (cell.partial_history === true || flags.length || cell.complete === false || account !== null && !Object.keys(obj(account.eligibility)).length && !Object.keys(obj(entry.eligibility)).length) qualifiers.push('partial')
   if (cell.stale === true || String(cell.status).toUpperCase() === 'STALE' || clocks.some(c => c.freshness === 'stale')) qualifiers.push('stale')
   let why = unavailable(root) ? 'source reports performance status unavailable' : unavailable(cell) ? 'source reports measure unavailable' : null
-  if (account !== null) why = refusedAccount(cell, account, day) ?? why
+  if (account !== null) why = refusedAccount(cell, account, day, entry) ?? why
   else if (!day && cell.source === 'sum_accounts' && !own(cell, 'nav_change')) why = 'raw household NAV not served separately from account display sum'
-  const amount = !day && account === null && own(cell, 'nav_change') ? cell.nav_change : cell.change
-  const percent = !day && account === null && own(cell, 'nav_change_pct') ? cell.nav_change_pct : cell.change_pct
+  const contract = contractEvidence(entry, cell)
+  const rawAccount = account !== null && !day && contract.residualAllocated === true && contract.rawAmount !== null
+  const amount = rawAccount ? contract.rawAmount : !day && account === null && own(cell, 'nav_change') ? cell.nav_change : cell.change
+  const percent = rawAccount ? contract.rawPercent : !day && account === null && own(cell, 'nav_change_pct') ? cell.nav_change_pct : cell.change_pct
   // No free-text account adjustment/flow explanation: these fields may describe allocated residuals.
   const notes = [
     `Source quality: ${text(cell.quality) ?? 'unknown'}; flags: ${flags.join(', ') || 'none served'}.`,
@@ -113,7 +142,7 @@ function observation(cell: Obj, root: Obj, period: string, nowMs: number, accoun
   const observedSession = day ? text(cell.attributed_session) : null
   return { method: day ? 'holdings-price-move' : 'raw-nav', amount: value(amount, why), percent: value(percent, why),
     qualifiers: [...new Set(qualifiers)], owner: OWNER, source: text(cell.source) ?? 'not served', clocks,
-    coverage: coverage(cell), startAt: text(cell.start_date), endAt: text(cell.end_date),
+    coverage: coverage(cell), startAt: text(cell.start_date), endAt: text(cell.end_date) ?? contract.endDate, contract,
     attributedSession: observedSession, note: notes.join(' ') }
 }
 
@@ -139,11 +168,12 @@ export function adaptPerformance(body: unknown, nowMs: number, accountKey: strin
       const raw = obj(rawAccounts[key]), periods = obj(raw.periods)
       const eligibility = obj(raw.eligibility)
       const eligible = eligibility.status === 'eligible' && text(eligibility.source) !== null
+      const perWindow = Object.values(obj(obj(obj(root.performance_contract).accounts)[key])).filter(e => obj(obj(e).eligibility).status === 'eligible').length
       const label = accountDisplayLabel(key, labels.get(key) ?? null, text(raw.account_label) ?? text(raw.display_label))
       return { key, sourceOrdinal: keys.indexOf(key) + 1, availablePeriods: WINDOWS.filter(([, period]) => own(periods, period)).map(([label]) => label), label: label === key ? null : label,
-        scopeNote: eligible ? 'Source-declared eligible account.'
+        scopeNote: eligible ? 'Source-declared eligible account.' : perWindow > 0 ? `Source-declared eligible for ${perWindow} window${perWindow === 1 ? '' : 's'}; eligibility is stated per window below.`
           : 'Account eligibility unknown; no real-account scope inferred.',
-        periods: Object.fromEntries(WINDOWS.map(([label, period]) => [label, observation(obj(periods[period]), root, period, nowMs, raw)])) }
+        periods: Object.fromEntries(WINDOWS.map(([label, period]) => [label, observation(obj(periods[period]), root, period, nowMs, raw, key)])) }
     })
     const household: PerformancePageProps['household'] = {}
     if (accountKey === null) for (const [label, period] of WINDOWS) {
@@ -167,6 +197,7 @@ export function adaptPerformance(body: unknown, nowMs: number, accountKey: strin
       ? [...new Set(served.map(r => text(obj(r).account_id)).filter((k): k is string => k !== null))] : null
     const accountCoverage: PerformanceAccountCoverage | null = accountKey !== null ? null : {
       holdingAccounts: held === null ? null : held.length, withResults: keys.length,
+      ...(() => { const t = obj(root.today_pnl), r = obj(t.represented_accounts), m = obj(t.missing_accounts_stored_rows), a = count(r.count), b = count(m.count); return a !== null && b !== null ? { servedCensus: { represented: a, missing: b } } : {} })(),
       missing: (held ?? []).filter(k => !own(rawAccounts, k)).map(k => {
         const label = accountDisplayLabel(k, labels.get(k) ?? null, null)
         return label === k ? 'Unlabelled account' : label

@@ -60,3 +60,22 @@ test('F wired: the Income page prints placement, the registry name and the fallb
   assert.match(html,/shown by a stable reference/)
   assert.doesNotMatch(html,/syn_reg|syn_der|Syn Der/)
 })
+
+test('per-account reconciliation rows: scheduled/unscheduled, placed/not placed, twelve-month sum, retained gap',()=>{
+  const rows=a.inc.incomeScope(a.inc.incomeModel(incBody()),'household').accountRows
+  assert.equal(rows.length,2)
+  const reg=rows.find(r=>r.annual===40.01),der=rows.find(r=>r.annual===17)
+  assert.equal(reg.scheduledAnnual,40.01);assert.equal(reg.unscheduledAnnual,0);assert.equal(reg.unplacedAnnual,0)
+  assert.equal(reg.months.length,12);assert.equal(reg.monthsSum,40);assert.equal(reg.gap,-0.01)
+  assert.equal(der.scheduledAnnual,10);assert.equal(der.unscheduledAnnual,7)
+  assert.equal(der.placedAnnual,10);assert.equal(der.unplacedAnnual,7)
+  assert.equal(reg.nameSource,'registry');assert.equal(der.nameSource,'fallback')
+})
+test('per-account reconciliation: the old payload (no months, no labels) is "not served", never a guess',()=>{
+  const old=incBody({account_labels:undefined,account_label_source:undefined,unplaced:undefined,unplaced_annual:undefined})
+  old.payers=old.payers.map(({months,...p})=>p)
+  const rows=a.inc.incomeScope(a.inc.incomeModel(old),'household').accountRows
+  for(const r of rows){assert.equal(r.months,null);assert.equal(r.monthsSum,null);assert.equal(r.nameSource,'fallback')}
+  assert.equal(a.inc.incomeScope(a.inc.incomeModel(old),'household').gridVsServed,null)
+  assert.doesNotMatch(incomeHtml(old),/Error|undefined|NaN/)
+})

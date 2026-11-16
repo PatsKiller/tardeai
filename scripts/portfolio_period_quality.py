@@ -1376,7 +1376,87 @@ def annotate_performance_result(result: dict, state_dir: Path, holdings: dict | 
         "Fidelity 401k+Rollover is one economic sleeve. 1D = live market day. "
         "All-accounts = sum of account display rows. Force YTD refresh: YTD_PIN_FORCE=1."
     )
+    # Portfolio audit 2026-11-16 (E/§4): additive contract fields only; existing keys/values are never rewritten.
+    try:
+        add_performance_contract_fields(result, state_dir, series, holdings)
+    except Exception as exc:  # noqa: BLE001 -- a failure is named, never silently dropped
+        result["performance_contract_error"] = f"{type(exc).__name__}: {exc}"[:160]
     return result
+
+
+_EXTERNAL_FLOWS_REASON = (
+    "the producer holds only an estimated household-residual flow per snapshot interval "
+    "(estimated_net_flow), not a dated external-flow ledger; none is served"
+)
+
+
+def _is_residual_cell(cell: dict) -> bool:
+    flags = cell.get("flags") or []
+    return bool(
+        "ex_transfer_residual" in flags
+        or str(cell.get("display_label") or "").startswith("≈ market")
+        or str(cell.get("adjustment_method") or "").endswith("residual")
+    )
+
+
+def _snapshot_ids(state_dir: Path) -> dict[str, str]:
+    """snapshot date -> snapshot file stem (the stored snapshot's id), from file names only."""
+    snap_dir = Path(state_dir) / "snapshots"
+    out: dict[str, str] = {}
+    if snap_dir.is_dir():
+        for f in sorted(snap_dir.glob("*.json")):
+            out.setdefault(f.stem[:10], f.stem)
+    return out
+
+
+def add_performance_contract_fields(result: dict, state_dir: Path, series: list[dict], holdings: dict | None) -> None:
+    """Additive Performance contract (HANDOFF section 4 items 1, 4, 5) as the top-level ``performance_contract`` block
+    (accounts[acct][period] and periods[period]): ``eligibility``, ``anchor``, ``residual_allocated``,
+    ``raw_change``/``raw_change_pct``, ``external_flows`` (+ reason). It is a parallel block, not new keys inside the
+    cells, because the cells are pinned byte-for-byte by existing readers and tests. Values are read from the cell and
+    the snapshot series the producer already holds; anything it does not hold is served null with a reason."""
+    ids = _snapshot_ids(state_dir)
+    block: dict[str, Any] = {"version": "PerformanceContract@v1", "accounts": {}, "periods": {}}
+    for acct, data in (result.get("accounts") or {}).items():
+        if not isinstance(data, dict):
+            continue
+        cv = _f(data.get("current_value"))
+        for period, cell in (data.get("periods") or {}).items():
+            if not isinstance(cell, dict):
+                continue
+            residual = _is_residual_cell(cell)
+            raw_change = cell.get("nav_change") if cell.get("nav_change") is not None else cell.get("change")
+            raw_pct = cell.get("nav_change_pct") if cell.get("nav_change") is not None else cell.get("change_pct")
+            has_result = (cell.get("display_change") if cell.get("display_change") is not None else cell.get("change")) is not None
+            if str(cell.get("source") or "") == "synthesized":
+                eligibility = {"status": "unknown", "source": "cell is a synthesized shell; no stored result for this window"}
+            elif has_result:
+                eligibility = {"status": "eligible", "source": "a result is served for this window"}
+            elif cv <= 0:
+                eligibility = {"status": "ineligible", "source": "no live holdings value for this account"}
+            else:
+                eligibility = {"status": "unknown", "source": "no result for this window; the producer does not say why"}
+            start = str(cell.get("start_date") or "")[:10]
+            anchor = {"snapshot_id": None, "date": None, "source": "no start date served"}
+            if start:
+                val, snap_date, partial = account_nav_at(series, acct, start, allow_partial=True)
+                if snap_date is None:
+                    anchor = {"snapshot_id": None, "date": None, "source": "no stored snapshot for this account at or after the start date"}
+                else:
+                    sv = cell.get("start_value")
+                    matches = None if sv is None or val is None else abs(_f(sv) - val) < 0.01
+                    anchor = {"snapshot_id": ids.get(snap_date), "date": snap_date,
+                              "source": ("first stored snapshot after the start date (history begins late)" if partial
+                                         else "last stored snapshot on or before the start date"),
+                              "start_value_matches_snapshot": matches}
+            block["accounts"].setdefault(acct, {})[period] = {
+                "eligibility": eligibility, "anchor": anchor, "residual_allocated": residual,
+                "raw_change": raw_change, "raw_change_pct": raw_pct,
+                "external_flows": None, "external_flows_reason": _EXTERNAL_FLOWS_REASON}
+    for period, cell in (result.get("periods") or {}).items():
+        if isinstance(cell, dict):
+            block["periods"][period] = {"external_flows": None, "external_flows_reason": _EXTERNAL_FLOWS_REASON}
+    result["performance_contract"] = block
 
 
 def _default_start(period: str) -> str:
