@@ -1630,8 +1630,8 @@ test('SPCX/T1+T2: one symbol prints ONE name and ONE label, in the cell text AND
     `Qzeta Space Holdings · ${LABEL} · Synthetic B`,
   ])
   // T2: the title carries the same string — the accessible name may not drop the caveat the visible line prints.
-  assert.equal(cells[0].title, `Qzeta Space Holdings · ${LABEL} · Synthetic A · account acct_a`)
-  assert.equal(cells[1].title, `Qzeta Space Holdings · ${LABEL} · Synthetic B · account acct_b`)
+  assert.equal(cells[0].title, `Qzeta Space Holdings · ${LABEL} · Synthetic A · ${book.rows[0].accountRef}`)
+  assert.equal(cells[1].title, `Qzeta Space Holdings · ${LABEL} · Synthetic B · ${book.rows[1].accountRef}`)
 })
 
 test('SPCX/T3: a ticker-as-name never wins, a carried name carries no label, and R4b never prints the ticker twice', () => {
@@ -1658,11 +1658,11 @@ test('SPCX/T3: a ticker-as-name never wins, a carried name carries no label, and
   const cells = securityCellText(book)
   // The carried row: its own name, no label, in text and title alike.
   assert.equal(cells[0].text, 'Qzeta Carried Corp · Synthetic A')
-  assert.equal(cells[0].title, 'Qzeta Carried Corp · Synthetic A · account acct_a')
+  assert.equal(cells[0].title, `Qzeta Carried Corp · Synthetic A · ${bySym('QZCA').accountRef}`)
   assert.doesNotMatch(cells[0].text + cells[0].title, /identity unverified/)
   // R4b: the symbol-only row carries the account label ALONE — no second ticker, no dangling separator.
   assert.equal(cells[2].text, 'Synthetic C')
-  assert.equal(cells[2].title, 'Synthetic C · account acct_c')
+  assert.equal(cells[2].title, `Synthetic C · ${bySym('QZSL').accountRef}`)
   assert.doesNotMatch(cells[2].text, /QZSL/)
 })
 
@@ -1725,7 +1725,7 @@ test('SPCX/T5+T6: identity is read-time only (fixture source unchanged), and tab
   const cardLine = cardHtml.match(/<small class="muted">([\s\S]*?)<\/small>/)
   assert.ok(cardLine !== null, 'the card must render its identity line')
   assert.equal(cardLine[1].replace(/<[^>]+>/g, ''), line)
-  assert.equal(detail.detailHeading(row).eyebrow, `${line} · ${row.accountKey}`)
+  assert.equal(detail.detailHeading(row).eyebrow, `${line} · ${row.accountRef}`)
 
   // The fixture book is authored to the same shape, so its names still render (never a symbol-only book).
   assert.ok(fixtures.FIXTURE_BOOK.rows.every(r => r.identity), 'every fixture row carries a resolved identity')
