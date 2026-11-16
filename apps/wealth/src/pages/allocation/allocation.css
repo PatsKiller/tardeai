@@ -35,3 +35,15 @@
 @media (max-width: 480px) {
   .alloc-methodology { padding: 8px 11px; }
 }
+
+/* Drilldown (audit 2026-11-16, G1): the active filters and their reset are always visible while a drill is on.
+ * Wraps instead of scrolling, so a drill never widens the page (checked at 390 and 1440). */
+.alloc-drill { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; min-width: 0; }
+.alloc-drill-lead { color: var(--wm-pa-muted); }
+.alloc-chip { border: 1px solid currentColor; border-radius: 999px; padding: 2px 10px; overflow-wrap: anywhere; }
+.alloc-reset { min-height: 36px; }
+.alloc-link { background: none; border: 0; padding: 4px 0; min-height: 32px; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+.alloc-link[aria-pressed='true'] { font-weight: 700; }
+.alloc-basis { margin: 0 0 6px; color: var(--wm-pa-muted); font-size: 0.85em; overflow-wrap: anywhere; }
+.alloc-recon p { margin: 6px 0; overflow-wrap: anywhere; }
+.alloc-pair > * { min-width: 0; }

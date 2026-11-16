@@ -40,6 +40,19 @@ import type { PortfolioView } from '../portfolio/analytics/portfolio-analytics.m
 import { useBookScope } from '../portfolio/snapshot'
 import { buildAllocationModel, readStatus } from './allocationView'
 import type { AllocationModel, SleeveBasis, Sleeve } from './allocationView'
+import { derivePortfolioView } from '../portfolio/analytics/portfolio-analytics.mjs'
+import {
+  SERVED_PCT_NOTE,
+  VALUE_BASIS,
+  WEIGHT_BASIS,
+  accountSlices,
+  drillChips,
+  isDrilled,
+  reconcileWithHoldings,
+  rowSlices,
+  toggleAccount,
+  toggleSector,
+} from './drillView'
 import '../portfolio/analytics/analytics.css'
 import './allocation.css'
 
@@ -52,6 +65,9 @@ export interface AllocationPageProps {
   notice?: string | null
   /** The read's own clock in ms (unused for arithmetic here; kept so the route can pass it like Holdings). */
   nowMs?: number | null
+  /** Initial drill, for a static render of an already-drilled page (tests, shared links). Clicks change it. */
+  initialSector?: string
+  initialQuery?: string
 }
 
 // The reviewed AnalyticsPanel's empty states, unchanged: the same selector withholding the same weights must
@@ -83,9 +99,11 @@ function derive(book: HoldingsBook, scope: string, sector: string, query: string
  *  same way (classes, copy and empty states); the data is the selector's own `sectors`. */
 function SleeveChart({
   view,
+  active,
   onSector,
 }: {
   view: PortfolioView<AnalyticsRow>
+  active: string
   onSector: (key: string) => void
 }) {
   if (view.rows.length === 0) return <div className="wm-pa-empty">{EMPTY_NO_MATCH}</div>
@@ -130,16 +148,20 @@ function SleeveChart({
         </text>
       </svg>
       <div className="wm-pa-legend">
+        <p className="alloc-basis" data-basis="selected">
+          {WEIGHT_BASIS.selected}: each percent is the sleeve’s value over the selected view’s valued total.
+        </p>
         {view.sectors.map(s => (
           <button
             key={s.key}
             type="button"
             onClick={() => onSector(s.key)}
-            aria-label={`Filter sleeve: ${displaySectorKey(s.key)}`}
+            aria-pressed={active === s.key}
+            aria-label={`${active === s.key ? 'Clear sleeve filter' : 'Filter sleeve'}: ${displaySectorKey(s.key)}`}
           >
             <span className="wm-pa-dot" style={{ background: s.color }} />
             <span>{displaySectorKey(s.key)}</span>
-            <b>{s.known ? percentText(s.weight) : 'Unknown'}</b>
+            <b title={`${WEIGHT_BASIS.selected}`}>{s.known ? percentText(s.weight) : 'Unknown'}</b>
           </button>
         ))}
       </div>
@@ -171,9 +193,11 @@ export function AllocationPage({
   error = null,
   notice = null,
   nowMs = null,
+  initialSector = '',
+  initialQuery = '',
 }: AllocationPageProps) {
-  const [sector, setSector] = useState('')
-  const [query, setQuery] = useState('')
+  const [sector, setSector] = useState(initialSector)
+  const [query, setQuery] = useState(initialQuery)
   const [announcement, setAnnouncement] = useState('')
   const { scope, setScope } = useBookScope()
 
@@ -239,6 +263,24 @@ export function AllocationPage({
   const readState = readStatus(notice, view.snapshot, fresh.line)
   const accountLabel = scope === 'ALL' ? 'all accounts' : (accounts.find(a => a.key === scope)?.label ?? scope)
   const bookAccountCount = accounts.length
+  const drill = { sector, scope, query }
+  const chips = drillChips(drill, displaySectorKey, k => accounts.find(a => a.key === k)?.label ?? k)
+  const resetDrill = () => {
+    setScope('ALL')
+    setSector('')
+    setQuery('')
+    setAnnouncement('Drill reset: all accounts, all sleeves, no search.')
+  }
+  const normalizedRows = normalizeBook(book)
+  const bookSnapshot = snapshotFor(book)
+  const accountRowsView = accountSlices(
+    accounts,
+    key => derivePortfolioView(normalizedRows, { account: key, sector: '', query: '', currency: null }, bookSnapshot) as PortfolioView<AnalyticsRow>,
+    bookView,
+  )
+  const rowList = rowSlices(view, bookView, r => (r.isCash ? 'Cash & sweep' : r.sector && r.sector.trim() !== '' ? r.sector.trim() : 'Unclassified'))
+  const recon = reconcileWithHoldings(normalizedRows, bookView.currencyValid ? bookView.total : null, bookView.coverage)
+  const reconSelected = reconcileWithHoldings(view.rows, view.currencyValid ? view.total : null, view.coverage)
 
   return (
     <section className="wm-pa" aria-label="Allocation">
@@ -288,16 +330,27 @@ export function AllocationPage({
         </label>
         <button
           type="button"
-          onClick={() => {
-            setScope('ALL')
-            setSector('')
-            setQuery('')
-            setAnnouncement('Filters reset: all accounts, all sleeves.')
-          }}
+          onClick={resetDrill}
         >
           Reset filters
         </button>
       </div>
+
+      {isDrilled(drill) && (
+        <div className="alloc-drill" role="group" aria-label="Active drill filters" data-drill="active">
+          <span className="alloc-drill-lead">
+            Showing {view.rows.length} of {bookView.rows.length} rows, filtered by
+          </span>
+          {chips.map(c => (
+            <span key={c.kind} className="alloc-chip" data-chip={c.kind}>
+              {c.label}
+            </span>
+          ))}
+          <button type="button" className="alloc-reset" data-reset="drill" onClick={resetDrill}>
+            Reset drill
+          </button>
+        </div>
+      )}
 
       <div className="wm-pa-status" aria-live="polite">
         {view.rows.length} matching rows · {view.securityCount} investment securities ·{' '}
@@ -386,9 +439,9 @@ export function AllocationPage({
         <article className="wm-pa-panel">
           <div className="wm-pa-panelhead">
             <h3>Sleeve allocation</h3>
-            <span>Selected view · click to filter</span>
+            <span>{WEIGHT_BASIS.selected} · click a sleeve to filter</span>
           </div>
-          <SleeveChart view={view} onSector={setSector} />
+          <SleeveChart view={view} active={sector} onSector={k => setSector(toggleSector(sector, k))} />
           <p className="wm-pa-foot">
             Percentages are of the selected view ({coverageText(view.coverage.valued, view.coverage.total)}),
             not of the book — the sleeves table states both. Direct instrument classification. Funds
@@ -414,20 +467,30 @@ export function AllocationPage({
                       Book amount
                     </th>
                     <th scope="col" style={NUM}>
-                      Weight of book
+                      {WEIGHT_BASIS.book}
                     </th>
                     <th scope="col" style={NUM}>
                       Selected amount
                     </th>
                     <th scope="col" style={NUM}>
-                      Weight of selected view
+                      {WEIGHT_BASIS.selected}
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   {model.sleeves.map(s => (
                     <tr key={s.key}>
-                      <td>{displaySectorKey(s.key)}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="alloc-link"
+                          aria-pressed={sector === s.key}
+                          aria-label={`${sector === s.key ? 'Clear sleeve filter' : 'Filter sleeve'}: ${displaySectorKey(s.key)}`}
+                          onClick={() => setSector(toggleSector(sector, s.key))}
+                        >
+                          {displaySectorKey(s.key)}
+                        </button>
+                      </td>
                       <td style={NUM} title={`${s.book.valued}/${s.book.count} book rows valued`}>
                         {amountText(s.book, bookView.scope.currency)}
                       </td>
@@ -458,6 +521,125 @@ export function AllocationPage({
           </p>
         </article>
       </div>
+
+      <div className="alloc-pair">
+        <article className="wm-pa-panel" data-panel="accounts">
+          <div className="wm-pa-panelhead">
+            <h3>Accounts</h3>
+            <span>{WEIGHT_BASIS.book} · click an account to filter</span>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Account</th>
+                  <th scope="col" style={NUM}>
+                    Value
+                  </th>
+                  <th scope="col" style={NUM}>
+                    {WEIGHT_BASIS.book}
+                  </th>
+                  <th scope="col" style={NUM}>
+                    Rows valued
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {accountRowsView.map(a => (
+                  <tr key={a.key}>
+                    <td>
+                      <button
+                        type="button"
+                        className="alloc-link"
+                        aria-pressed={scope === a.key}
+                        aria-label={`${scope === a.key ? 'Clear account filter' : 'Filter account'}: ${a.label}`}
+                        onClick={() => setScope(toggleAccount(scope, a.key))}
+                      >
+                        {a.label}
+                      </button>
+                    </td>
+                    <td style={NUM}>{a.amount === null ? 'Unknown' : moneyText(a.amount, bookView.scope.currency)}</td>
+                    <td style={NUM}>{a.weightOfBook === null ? (a.valued === 0 ? 'Unknown' : '—') : percentText(a.weightOfBook)}</td>
+                    <td style={NUM}>
+                      {a.valued}/{a.count}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="wm-pa-foot">
+            Each account’s value is the sum of its rows’ published market value; its weight divides by the book
+            total above. Value basis: {VALUE_BASIS}.
+          </p>
+        </article>
+
+        <article className="wm-pa-panel" data-panel="rows">
+          <div className="wm-pa-panelhead">
+            <h3>Holdings in this view</h3>
+            <span>
+              {rowList.length} of {bookView.rows.length} rows
+            </span>
+          </div>
+          {rowList.length === 0 ? (
+            <div className="wm-pa-empty">{EMPTY_NO_MATCH}</div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Holding</th>
+                    <th scope="col">Account</th>
+                    <th scope="col">Sleeve</th>
+                    <th scope="col" style={NUM}>
+                      Value
+                    </th>
+                    <th scope="col" style={NUM}>
+                      {WEIGHT_BASIS.book}
+                    </th>
+                    <th scope="col" style={NUM}>
+                      {WEIGHT_BASIS.selected}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rowList.map(r => (
+                    <tr key={r.rowId} data-row={r.symbol}>
+                      <td>{r.symbol}</td>
+                      <td>{r.accountLabel}</td>
+                      <td>{displaySectorKey(r.sleeveKey)}</td>
+                      <td style={NUM}>{r.value === null ? 'Unknown' : moneyText(r.value, currency)}</td>
+                      <td style={NUM}>{r.weightOfBook === null ? (r.value === null ? 'Unknown' : '—') : percentText(r.weightOfBook)}</td>
+                      <td style={NUM}>{r.weightOfSelected === null ? (r.value === null ? 'Unknown' : '—') : percentText(r.weightOfSelected)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="wm-pa-foot">
+            These are the rows the filters kept, so a drill changes this list and every figure above together.
+            A weight is the row’s published value over the named total; “Unknown” = no published value.
+          </p>
+        </article>
+      </div>
+
+      <section className="note blue alloc-recon" data-recon={recon.status} aria-label="Reconciliation with Holdings">
+        <p>
+          <strong>Value basis, one for the whole page.</strong> {VALUE_BASIS}. Allocation total{' '}
+          {recon.allocationTotal === null ? 'Unknown' : moneyText(recon.allocationTotal, bookView.scope.currency)}
+          {' · '}Holdings total on the same basis{' '}
+          {recon.holdingsTotal === null ? 'Unknown' : moneyText(recon.holdingsTotal, bookView.scope.currency)}
+          {recon.difference !== null && recon.status === 'differs' ? ` · difference ${moneyText(recon.difference, bookView.scope.currency)}` : ''}.
+        </p>
+        <p data-recon-text="book">{recon.text}</p>
+        {isDrilled(drill) && (
+          <p data-recon-text="selected">
+            Selected view: {reconSelected.text.replace(/^Reconciles to the Holdings total/, 'Reconciles to the Holdings sum of the same rows')}
+          </p>
+        )}
+        <p>{SERVED_PCT_NOTE}</p>
+      </section>
 
       <p className="wm-pa-context">
         Both columns come from the one reviewed selector the Holdings page renders — this page derives no total,
