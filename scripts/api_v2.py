@@ -9399,7 +9399,33 @@ def dividends():
         "monthly_summary": d.get("monthly_summary", {}),
         "ex_div_alerts": d.get("ex_div_alerts", []),
         "last_updated": d.get("last_updated", ""),
+        # Portfolio audit 2026-11-16 (F2/F3). Month placement is by observed ex-date months, so payers with no
+        # observed month are served as ``unplaced`` and the twelve months sum to total − unplaced (± per-month
+        # rounding). The bases say how each figure was built. None = the stored calendar does not say.
+        "monthly_summary_basis": d.get("monthly_summary_basis"),
+        "monthly_average_basis": d.get("monthly_average_basis"),
+        "unplaced_annual": d.get("unplaced_annual"),
+        "unplaced": d.get("unplaced") if isinstance(d.get("unplaced"), list) else None,
+        # Income is one GET by contract, so the account names travel with the legs. The source says whether the
+        # name is the registry's (``registry``) or only derived from the key (``derived``/``unlabelled``).
+        **_dividend_account_labels(by_account),
     }
+
+
+def _dividend_account_labels(by_account: dict) -> dict:
+    """``account_labels`` + ``account_label_source`` for the served account keys; never an account number."""
+    keys = sorted(str(k) for k in by_account if str(k or "").strip() and k != "_unassigned")
+    labels = _acct_disp.labels_map(keys)
+    registry = set(_acct_disp.labels_map(None))
+    source = {}
+    for k in keys:
+        if _acct_disp.canonical_key(k) in registry:
+            source[k] = "registry"
+        elif labels.get(k) == _acct_disp.UNLABELLED:
+            source[k] = "unlabelled"
+        else:
+            source[k] = "derived"
+    return {"account_labels": labels, "account_label_source": source}
 
 
 def retirement():
