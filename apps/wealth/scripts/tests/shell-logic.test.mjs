@@ -1794,3 +1794,32 @@ test('SPCX/CSV: the exported Security field is the identity line, so two account
   assert.equal(fields[0], `QZSP ${displayIdentity.identitySecondLine(book.rows[0].identity, 'QZSP', 'Synthetic A')}`)
   assert.equal(fields[3], `QZSL ${displayIdentity.identitySecondLine(book.rows[3].identity, 'QZSL', 'Synthetic D')}`)
 })
+
+// H01 independent-review counterexamples (codex, 2026-11-16T14:17Z), kept as permanent regressions.
+const H01_PATH = '/api/v2/wealth/home-v2'
+test('H01: settled polls detach their AbortSignal listeners (no per-poll listener leak)', async () => {
+  const ctl = new AbortController(); let adds = 0, removes = 0
+  const add = ctl.signal.addEventListener.bind(ctl.signal), rem = ctl.signal.removeEventListener.bind(ctl.signal)
+  ctl.signal.addEventListener = (...a) => { adds++; return add(...a) }
+  ctl.signal.removeEventListener = (...a) => { removes++; return rem(...a) }
+  const c = createClient({ now: () => NOW, fetchImpl: async () => jsonResponse({ value: 'synthetic' }) })
+  for (let i = 0; i < 20; i++) await c.get(H01_PATH, { signal: ctl.signal })
+  assert.equal(adds - removes, 0)
+})
+test('H01: an already-aborted caller never starts a transport', async () => {
+  let starts = 0; const ctl = new AbortController(); ctl.abort()
+  const c = createClient({ now: () => NOW, fetchImpl: async () => { starts++; return jsonResponse({ value: 'synthetic' }) } })
+  const r = await c.get(H01_PATH, { signal: ctl.signal })
+  assert.equal(starts, 0); assert.equal(r.data, null); assert.equal(c.inflightCount(), 0)
+})
+test('H01: an abandoned late response cannot replace a newer last-good snapshot', async () => {
+  const gates = []; let calls = 0
+  const c = createClient({ now: () => NOW, fetchImpl: () => { calls++; if (calls === 3) return Promise.resolve(jsonResponse({}, 503)); return new Promise(r => gates.push(r)) } })
+  const old = new AbortController(); const p1 = c.get(H01_PATH, { signal: old.signal }); old.abort()
+  const p2 = c.get(H01_PATH)
+  gates[1](jsonResponse({ value: 'NEW', source_at: '2040-01-02T00:00:00Z' }))
+  assert.equal((await p2).data.value, 'NEW')
+  gates[0](jsonResponse({ value: 'OLD', source_at: '2040-01-01T00:00:00Z' })); await p1
+  const failed = await c.get(H01_PATH)
+  assert.equal(failed.data, null); assert.equal(failed.lastGood.value, 'NEW'); assert.equal(failed.lastGood.source_at, '2040-01-02T00:00:00Z')
+})
