@@ -185,6 +185,79 @@ test('single-flight: concurrent reads of one path share one request', async () =
   assert.equal(c.inflightCount(), 0)
 })
 
+// P1 2026-11-16: the Home dashboard read was aborted ~7 ms after the shared header settled, because the page
+// restarted its read; the replacement read was handed the same aborted promise and the phone stayed empty.
+function abortableFetch(log) {
+  return (_path, init) => new Promise((resolve, reject) => {
+    const n = log.started.push(init.signal)
+    const gate = { resolve: () => resolve(jsonResponse({ n })) }
+    log.gates.push(gate)
+    init.signal.addEventListener('abort', () => { log.aborted++; reject(new DOMException('aborted', 'AbortError')) })
+  })
+}
+
+test('single-flight: a replacement read never receives an aborted request (cleanup then re-subscribe)', async () => {
+  const log = { started: [], gates: [], aborted: 0 }
+  const c = createClient({ now: () => NOW, fetchImpl: abortableFetch(log) })
+  const first = new AbortController()
+  const p1 = c.get('/api/v2/x', { signal: first.signal })
+  first.abort()                       // React effect cleanup: the only holder leaves
+  const second = new AbortController()
+  const p2 = c.get('/api/v2/x', { signal: second.signal })  // replacement effect, same tick
+  assert.notEqual(p1, p2)
+  assert.equal(log.started.length, 2)
+  assert.equal(log.aborted, 1)
+  log.gates[1].resolve()
+  const e = await p2
+  assert.equal(e.ok, true)
+  assert.deepEqual(e.data, { n: 2 })
+  const old = await p1
+  assert.equal(old.ok, false)
+  assert.equal(c.inflightCount(), 0)
+})
+
+test('single-flight: one caller leaving does not abort the request another caller still holds', async () => {
+  const log = { started: [], gates: [], aborted: 0 }
+  const c = createClient({ now: () => NOW, fetchImpl: abortableFetch(log) })
+  const a = new AbortController(), b = new AbortController()
+  const pa = c.get('/api/v2/x', { signal: a.signal })
+  const pb = c.get('/api/v2/x', { signal: b.signal })
+  assert.equal(pa, pb)
+  a.abort()
+  assert.equal(log.aborted, 0)
+  assert.equal(c.inflightCount(), 1)
+  log.gates[0].resolve()
+  const e = await pb
+  assert.equal(e.ok, true)
+  assert.equal(log.started.length, 1)
+  b.abort()                           // leaving after it settled is a no-op
+  assert.equal(log.aborted, 0)
+})
+
+test('single-flight: the last holder leaving aborts the request; an already-aborted caller starts nothing durable', async () => {
+  const log = { started: [], gates: [], aborted: 0 }
+  const c = createClient({ now: () => NOW, fetchImpl: abortableFetch(log) })
+  const a = new AbortController(), b = new AbortController()
+  c.get('/api/v2/x', { signal: a.signal }); c.get('/api/v2/x', { signal: b.signal })
+  a.abort(); b.abort()
+  assert.equal(log.aborted, 1)
+  assert.equal(c.inflightCount(), 0)
+  const dead = new AbortController(); dead.abort()
+  await c.get('/api/v2/y', { signal: dead.signal })
+  assert.equal(c.inflightCount(), 0)
+})
+
+test('single-flight: a timeout is not shared with a later caller', async () => {
+  const log = { started: [], gates: [], aborted: 0 }
+  const reg = [{ ...specFor('/api/v2/x', READERS), path: '/api/v2/x', timeoutMs: 5 }]
+  const c = createClient({ now: () => NOW, registry: reg, fetchImpl: abortableFetch(log) })
+  const e1 = await c.get('/api/v2/x')
+  assert.equal(e1.timedOut, true)
+  const p2 = c.get('/api/v2/x')
+  log.gates[1].resolve()
+  assert.equal((await p2).ok, true)
+})
+
 test('last good with age survives a failed read', async () => {
   let t = NOW, n = 0
   const c = createClient({ now: () => t, fetchImpl: async () => (++n === 1 ? jsonResponse({ v: 1 }) : jsonResponse({ e: 1 }, 503)) })

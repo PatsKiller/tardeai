@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getJson } from '../../api/client'
 import { useDrawer } from '../../components/Drawer'
 import { Note } from '../../components/primitives'
@@ -11,8 +11,12 @@ import type { Read } from './homeAdapter'
 import { homeV2Model } from './homeV2Adapter'
 import { useOperatingHeader } from '../../shell/OperatingHeader'
 
+// The refresh interval arrives later from the shared header (60 or 300 s). It is read through a ref so a header
+// timing change re-times the next poll instead of aborting and resetting the read in flight (P1 2026-11-16).
 export function useReads(paths:Record<string,string>,refreshSeconds?:number) {
  const [reads,setReads]=useState<Record<string,Read>>({}),key=JSON.stringify(paths)
+ const every=useRef(refreshSeconds),retime=useRef<(()=>void)|null>(null)
+ useEffect(()=>{const changed=every.current!==refreshSeconds;every.current=refreshSeconds;if(changed)retime.current?.()},[refreshSeconds])
  useEffect(()=>{
   const ctl=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined
   setReads({})
@@ -21,11 +25,18 @@ export function useReads(paths:Record<string,string>,refreshSeconds?:number) {
     const read=await getJson<unknown>(path,ctl.signal)
     if(!ctl.signal.aborted)setReads(previous=>({...previous,[name]:read}))
    }))
-   if(refreshSeconds&&!ctl.signal.aborted)timer=setTimeout(()=>void refresh(),refreshSeconds*1000)
+   busy=false;schedule()
   }
+  let busy=true
+  function schedule(){
+   if(timer!==undefined){clearTimeout(timer);timer=undefined}
+   const secs=every.current
+   if(secs&&!busy&&!ctl.signal.aborted)timer=setTimeout(()=>{timer=undefined;busy=true;void refresh()},secs*1000)
+  }
+  retime.current=schedule
   void refresh()
-  return()=>{ctl.abort();if(timer!==undefined)clearTimeout(timer)}
- },[key,refreshSeconds])
+  return()=>{ctl.abort();retime.current=null;if(timer!==undefined)clearTimeout(timer)}
+ },[key])
  return reads
 }
 function CioContext({now,labels}:{now:number;labels:Map<string,string>}) {

@@ -3,7 +3,7 @@
 // Wealth app has no write path, approval path or order path of its own.
 //
 // Shell guarantees (lead GO 2026-11-14T2313Z):
-//  * single-flight: concurrent reads of one path share one request;
+//  * single-flight: concurrent reads of one path share one request, aborted only when every caller has left;
 //  * last good with age: a failed read keeps the last good body and says how old it is;
 //  * per-reader timeout from the registry, so a slow 200 cannot stall the shell;
 //  * heavy readers refuse a shell-originated read;
@@ -43,16 +43,17 @@ export function createClient(deps: ClientDeps = {}) {
   const doFetch: typeof fetch = deps.fetchImpl ?? ((input, init) => fetch(input, init))
   const now = deps.now ?? (() => Date.now())
   const registry = deps.registry ?? READERS
-  const inflight = new Map<string, Promise<Envelope<unknown>>>()
+  // One shared request per path. It belongs to the client, not to its first caller: it is aborted only when
+  // every subscriber has gone (each caller's signal releases its own hold), and an aborted flight is never
+  // handed to a later caller. A caller without a signal holds the request until it settles.
+  interface Flight { p: Promise<Envelope<unknown>>; ctl: AbortController; holders: number }
+  const inflight = new Map<string, Flight>()
   const lastGood = new Map<string, { data: unknown; at: number }>()
 
-  async function once<T>(path: string, spec: ReaderSpec, signal?: AbortSignal): Promise<Envelope<T>> {
+  async function once<T>(path: string, spec: ReaderSpec, ctl: AbortController): Promise<Envelope<T>> {
     const started = now()
-    const ctl = new AbortController()
     let timedOut = false
     const timer = setTimeout(() => { timedOut = true; ctl.abort() }, spec.timeoutMs)
-    const onOuterAbort = () => ctl.abort()
-    signal?.addEventListener('abort', onOuterAbort)
     let status = 0
     let data: T | null = null
     let error: string | null = null
@@ -66,7 +67,6 @@ export function createClient(deps: ClientDeps = {}) {
       error = timedOut ? `timed out after ${spec.timeoutMs} ms` : String(e)
     } finally {
       clearTimeout(timer)
-      signal?.removeEventListener('abort', onOuterAbort)
     }
     if (data !== null) lastGood.set(path, { data, at: started })
     const lg = lastGood.get(path)
@@ -86,11 +86,27 @@ export function createClient(deps: ClientDeps = {}) {
     if (spec.heavy && (opts.from ?? 'page') === 'shell') {
       throw new HeavyReaderFromShell(`${spec.path} is a heavy reader; only its own page may fetch it`)
     }
-    const pending = inflight.get(path)
-    if (pending) return pending as Promise<Envelope<T>>
-    const p = once<T>(path, spec, opts.signal).finally(() => inflight.delete(path))
-    inflight.set(path, p as Promise<Envelope<unknown>>)
-    return p
+    let f = inflight.get(path)
+    if (!f || f.ctl.signal.aborted) {
+      const ctl = new AbortController()
+      const flight: Flight = { ctl, holders: 0, p: Promise.resolve(null as unknown as Envelope<unknown>) }
+      flight.p = once<unknown>(path, spec, ctl).finally(() => { if (inflight.get(path) === flight) inflight.delete(path) })
+      inflight.set(path, flight)
+      f = flight
+    }
+    const flight = f
+    const signal = opts.signal
+    if (!signal?.aborted) {
+      flight.holders += 1
+      signal?.addEventListener('abort', () => {
+        flight.holders -= 1
+        if (flight.holders <= 0 && inflight.get(path) === flight) { inflight.delete(path); flight.ctl.abort() }
+      }, { once: true })
+    } else if (flight.holders <= 0) {
+      // Nobody else wants it and the only caller already left: do not keep a request no one reads.
+      inflight.delete(path); flight.ctl.abort()
+    }
+    return flight.p as Promise<Envelope<T>>
   }
 
   return { get, inflightCount: () => inflight.size }
