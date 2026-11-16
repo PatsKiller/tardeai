@@ -28,6 +28,7 @@
 
 import type { ClockRole, HoldingsBook, HoldingsRow } from './contract'
 import { notCurrent } from './format'
+import { accountFallbackLabel, stableAccountRef } from './accountLabel'
 import type { AnalyticsRowInput, AnalyticsSnapshot, SnapshotClock } from './analytics/portfolio-analytics.mjs'
 
 /** The page's declared contract currency (the table foot says so, and the adapter formats dollars). */
@@ -106,7 +107,7 @@ export interface AccountChoice {
 export function accountOptions(rows: AnalyticsRow[]): AccountChoice[] {
   const seen = new Map<string, string>()
   for (const r of rows) {
-    if (r.accountId !== '' && !seen.has(r.accountId)) seen.set(r.accountId, r.accountName || r.accountId)
+    if (r.accountId !== '' && !seen.has(r.accountId)) seen.set(r.accountId, r.accountName || accountFallbackLabel(stableAccountRef(r.accountId)))
   }
   return [...seen.entries()]
     .map(([key, label]) => ({ key, label }))

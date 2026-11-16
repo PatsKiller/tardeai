@@ -24,6 +24,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { HoldingsBook } from '../portfolio/contract'
+import { accountFallbackLabel, stableAccountRef } from '../portfolio/accountLabel'
 import {
   accountOptions,
   coverageText,
@@ -261,10 +262,10 @@ export function AllocationPage({
   // (a health-unproven read), so the strip never says nothing over an unmeasured one.
   const fresh = freshnessCopy(view.snapshot)
   const readState = readStatus(notice, view.snapshot, fresh.line)
-  const accountLabel = scope === 'ALL' ? 'all accounts' : (accounts.find(a => a.key === scope)?.label ?? scope)
+  const accountLabel = scope === 'ALL' ? 'all accounts' : (accounts.find(a => a.key === scope)?.label ?? accountFallbackLabel(stableAccountRef(scope)))
   const bookAccountCount = accounts.length
   const drill = { sector, scope, query }
-  const chips = drillChips(drill, displaySectorKey, k => accounts.find(a => a.key === k)?.label ?? k)
+  const chips = drillChips(drill, displaySectorKey, k => accounts.find(a => a.key === k)?.label ?? accountFallbackLabel(stableAccountRef(k)))
   const resetDrill = () => {
     setScope('ALL')
     setSector('')

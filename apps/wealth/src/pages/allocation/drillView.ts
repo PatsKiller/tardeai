@@ -14,6 +14,7 @@ import type { HoldingsBook } from '../portfolio/contract'
 import type { AnalyticsRow } from '../portfolio/analyticsAdapter'
 import type { PortfolioView } from '../portfolio/analytics/portfolio-analytics.mjs'
 import { totals } from '../portfolio/workspaceV2/adapter'
+import { accountFallbackLabel, stableAccountRef } from '../portfolio/accountLabel'
 
 /** The value basis every amount and weight on this page shares. */
 export const VALUE_BASIS =
@@ -96,7 +97,8 @@ export function rowSlices(
       symbol: r.symbol ?? r.securityId,
       name: r.name ?? '',
       accountId: r.accountId,
-      accountLabel: r.accountName || r.accountId,
+      // F2: never the raw key (FE review L2-6); the fallback carries the stable ref.
+      accountLabel: r.accountName || accountFallbackLabel(stableAccountRef(r.accountId)),
       sleeveKey: sleeveKeyOf(r),
       isCash: r.isCash,
       value: typeof r.marketValue === 'number' ? r.marketValue : null,
