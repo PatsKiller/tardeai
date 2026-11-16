@@ -1,0 +1,55 @@
+name: wealth-home-read-lifecycle
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/wealth-home-read-lifecycle.yml'
+      - 'apps/wealth/tests/home-read-lifecycle.browser.mjs'
+      - 'apps/wealth/src/api/**'
+      - 'apps/wealth/package.json'
+      - 'apps/wealth/src/pages/home/**'
+      - 'apps/wealth/src/shell/OperatingHeader*'
+      - 'apps/wealth/src/shell/operatingHeaderModel.ts'
+      - 'apps/wealth/src/components/StateView.tsx'
+      - 'apps/wealth/src/components/primitives.tsx'
+      - 'apps/wealth/src/components/Drawer.tsx'
+      - 'apps/command-center-v3/package.json'
+      - 'apps/command-center-v3/package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wealth-home-read-lifecycle-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  home-read-lifecycle:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - run: npm ci
+        working-directory: apps/command-center-v3
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/command-center-v3
+      - name: Actual Home lifecycle with deferred synthetic GETs only
+        run: node apps/wealth/tests/home-read-lifecycle.browser.mjs --out "$RUNNER_TEMP/home-read-lifecycle"
+      - name: Upload synthetic lifecycle evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wealth-home-read-lifecycle-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/home-read-lifecycle/
+          if-no-files-found: error

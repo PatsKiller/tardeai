@@ -190,7 +190,7 @@ test('known complete zero, missing queue, unpublished queue and stale observatio
 test('generic owning desk links expose an honest subject/account/record handoff rather than fabricated deep-link completion',()=>{
  const html=render('evidence',{row:{id:'synthetic-task:7',version:'2',label:'Review synthetic protection',symbol:'SYN',scopeLabel:'Synthetic family account',href:'/v3/risk',cta:'Review canonical quantity coverage'},section:section({})})
  for(const text of['Subject-specific review handoff','SYN','Synthetic family account','synthetic-task:7','selecting this exact record is not supported','Review canonical quantity coverage'])assert.ok(html.includes(text),text)
- assert.doesNotMatch(html,/risk\?symbol|risk#synthetic/)
+ assert.doesNotMatch(html,/risk\?symbol|risk#synthetic/);assert.match(html,/<section class="home-v2-handoff">/);assert.doesNotMatch(html,/<aside/)
 })
 test('typed public publisher and engine labels survive while unrelated opaque identifiers remain withheld',()=>{
  const model=adapt(payload({today:{news:section({rows:[{label:'Synthetic story',facts:[{label:'Publisher',value:'sec_edgar'},{label:'Engine',value:'market_risk'},{label:'Publisher',value:'synthetic_broker_account'}]}]})}}))
@@ -267,4 +267,12 @@ test('journal Evidence retains source calculation quality verdict and evaluation
  for(const value of ['Calculation version','Synthetic calculation v2','partial known basis','Source freshness verdict','stale','0 seconds at source evaluation',built])assert.ok(detail.includes(value),value)
  const invalid=adapt(payload({today:{tiles:section({metrics:[{label:'Realized P/L',value:'0',evaluated_at:'2040-01-02T03:10:00',age_s:-1}]})}})).today.tiles.metrics[0]
  assert.equal(invalid.evaluatedAt,null);assert.equal(invalid.ageSeconds,null)
+})
+
+test('compact default filters remain discoverable and duplicate subject CTAs stay in full Evidence',()=>{
+ const row={label:'Synthetic subject',href:'/v3/risk',cta:'Review specific retained subject',links:[{label:'Supporting reader',href:'/v3/health'}],clock:at,facts:[{label:'Protection',value:'Unknown'},{label:'Position observation',value:at},{label:'Order observation',value:null}],summaryFacts:[{label:'Position observation',value:at},{label:'Order observation',value:null}]}
+ const html=render('panel',{id:'movers',title:'Movers',icon:'pulse',section:section({rows:[row]})})
+ assert.match(html,/<details class="home-v2-filter-disclosure">/);assert.match(html,/Find or filter/);assert.doesNotMatch(html,/<details[^>]* open/);assert.match(html,/Symbol, account or record/);assert.match(html,/Synthetic subject/)
+ assert.doesNotMatch(html,/Review specific retained subject|Supporting reader/);assert.ok(html.includes(`dateTime="${at}"`));assert.doesNotMatch(html,/>Observation ·/)
+ const full=render('evidence',{row,section:section({})});assert.match(full,/Review specific retained subject/);assert.match(full,/Supporting reader/);assert.match(full,/Position observation/);assert.match(full,/2040/)
 })
