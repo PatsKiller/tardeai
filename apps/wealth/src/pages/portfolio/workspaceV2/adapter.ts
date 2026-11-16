@@ -2,7 +2,7 @@
 import type { HoldingsBook, HoldingsRow } from '../contract'
 import { displayOf } from '../displayIdentity'
 import { allocationOf, sectorOf } from '../../fundamentals/modelV2'
-import { matchesProtection, protectionFilterValue } from './discovery'
+import { matchesProtection } from './discovery'
 export { sectorOf } from '../../fundamentals/modelV2'
 export type Period = 'session' | 'purchase'
 export interface Filters {period:Period; sector:string; account:string; result:string; protection:string; size:string; query:string; group:string}
@@ -25,7 +25,7 @@ export function fromSearch(p:URLSearchParams):Filters {
  if(!['','gainers','losers'].includes(f.result))f.result=''
  // Audit C1: one normalized class per row; a legacy PROTECTED link now means verified-active only.
  // The raw URL value is kept (old bookmarks round-trip); matching always goes through the normalized class.
- if(protectionFilterValue(f.protection)==='')f.protection=''
+ // An unrecognized non-empty value is KEPT so it matches nothing (fail closed); the page says so. It is never read as "all rows".
  if(!['','small','material','large','unpriced'].includes(f.size))f.size=''
  return f
 }
