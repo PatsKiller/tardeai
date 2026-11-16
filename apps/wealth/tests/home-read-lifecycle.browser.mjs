@@ -102,14 +102,15 @@ async function check(id, value) {
   checks.push(id)
 }
 async function scenario(name, run) {
-  const page = await fresh()
+  let page
   try {
+    page = await fresh()
     await run(page)
     await check(name + ': only admitted synthetic GETs', await page.evaluate(() => window.violations === 0) && page.fixtureEscaped.length === 0)
   } catch (error) {
     failures.push({ scenario: name, error: String(error.message) })
   } finally {
-    await page.close()
+    if (page) await page.close()
   }
 }
 async function bootProbe(page, seconds = 60, suffix = '') {

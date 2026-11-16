@@ -276,3 +276,10 @@ test('compact default filters remain discoverable and duplicate subject CTAs sta
  assert.doesNotMatch(html,/Review specific retained subject|Supporting reader/);assert.ok(html.includes(`dateTime="${at}"`));assert.doesNotMatch(html,/>Observation ·/)
  const full=render('evidence',{row,section:section({})});assert.match(full,/Review specific retained subject/);assert.match(full,/Supporting reader/);assert.match(full,/Position observation/);assert.match(full,/2040/)
 })
+
+test('compact stance preserves verbatim source meaning and gauge policy provenance without main generic navigation',()=>{
+ const sentence='Dated synthetic stance remains qualified by its independent engine record.'
+ const qualifier='Score alone does not determine tier: synthetic gates and hysteresis remain authoritative.'
+ const stance=section({summary:'Independent source coverage remains visible',notes:[sentence],links:[{label:'Generic owning desk',href:'/v3/risk'}],gauge:{clock:at,source:'Synthetic policy',policyVersion:'SyntheticPolicy@v1',scoreLabel:'Stored score',marker:'30%',bands:[{width:'100%',state:'grey'}],ticks:[],qualifier}})
+ const html=render('today',{sections:{stance}});assert.ok(html.includes(sentence));assert.match(html,/Independent source coverage remains visible/);assert.match(html,/Score scale only · policy in Evidence/);assert.ok(html.includes(qualifier));assert.match(html,/SyntheticPolicy@v1/);assert.ok(html.includes(`dateTime="${at}"`));assert.doesNotMatch(html,/Generic owning desk/)
+})
