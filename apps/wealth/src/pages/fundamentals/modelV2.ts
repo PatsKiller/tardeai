@@ -150,3 +150,26 @@ export function exportCsv(v:ReturnType<typeof viewOf>,f:Filters):string {
  for(const r of v.rows)lines.push([r.symbol,r.accountLabel,r.assetType,sectorOf(r),r.shares,r.marketValue,r.avgCost,r.gainLoss,r.gainLossPct,r.fundamentals?.peTrailing??null,r.fundamentals?.peForward??null,r.yieldPct,r.profileUpdatedAt,r.priceAsOf,f.group||'security',f.lens||'valuation'])
  return lines.map(row=>row.map(csvField).join(',')).join('\r\n')+'\r\n'
 }
+
+// Portfolio audit 2026-11-16 (B parity with Holdings): a collapsed Small or Cash section must never hide a row
+// without saying so. `fv_show=all` opens both sections; a non-empty search opens the section holding a match; the
+// disclosure line counts book rows, matching rows, filtered-out rows and rows still collapsed, and names them.
+export const showAllFv=(p:URLSearchParams)=>p.get('fv_show')==='all'
+export function withShowAllFv(p:URLSearchParams,on:boolean):URLSearchParams{const n=new URLSearchParams(p);if(on)n.set('fv_show','all');else n.delete('fv_show');return n}
+type FvView=ReturnType<typeof viewOf>
+/** Sections a query must open: rows only reach small/cash when they already passed selectRows' query filter. */
+export function revealSectionsFv(v:FvView,query:string):string[]{
+ if(!query.trim())return []
+ const out:string[]=[];if(v.small.length)out.push('small');if(v.cashGroups.length)out.push('cash');return out
+}
+export function disclosureFv(totalRows:number,v:FvView,open:ReadonlySet<string>){
+ const smallRows=v.small.flatMap(g=>g.rows),cashRows=v.cashGroups.flatMap(g=>g.rows)
+ const hidden=[...(open.has('small')?[]:smallRows),...(open.has('cash')?[]:cashRows)]
+ const matching=v.rows.length
+ return {total:totalRows,matching,filteredOut:totalRows-matching,visible:matching-hidden.length,collapsed:hidden.length,collapsedSymbols:[...new Set(hidden.map(r=>r.symbol))].sort()}
+}
+export function disclosureTextFv(d:ReturnType<typeof disclosureFv>):string{
+ const parts=[`${d.matching} of ${d.total} account positions match`];if(d.filteredOut)parts.push(`${d.filteredOut} filtered out`)
+ parts.push(`${d.visible} shown`);if(d.collapsed)parts.push(`${d.collapsed} collapsed (${d.collapsedSymbols.join(', ')})`)
+ return parts.join(' · ')
+}

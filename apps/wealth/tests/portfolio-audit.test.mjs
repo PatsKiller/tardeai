@@ -89,3 +89,22 @@ test('A: alias normalization is unique-prefix only and never guesses',()=>{
   assert.equal(a.normalizeAccountKey('syn',['syn_a','syn_b']),null)
   assert.equal(a.normalizeAccountKey('other',['syn_a']),null)
 })
+
+const fview=(f={})=>a.fv.viewOf(book,{...a.fv.DEFAULT,...f})
+test('B parity: Fundamentals discloses collapsed small/cash rows by name and Show all opens them',()=>{
+  const v=fview(),d=a.fv.disclosureFv(rows.length,v,new Set())
+  assert.equal(d.matching,rows.length); assert.equal(d.filteredOut,0)
+  for(const s of SMALL)assert.ok(d.collapsedSymbols.includes(s),s)
+  assert.ok(d.collapsedSymbols.includes('QZCASH')); assert.ok(!d.collapsedSymbols.includes('QZPIN'),'pinned loser stays visible')
+  assert.equal(a.fv.disclosureFv(rows.length,v,new Set(['small','cash'])).collapsed,0)
+  const p=a.fv.withShowAllFv(new URLSearchParams('fv_query=x'),true)
+  assert.equal(a.fv.showAllFv(p),true); assert.equal(a.fv.showAllFv(a.fv.withShowAllFv(p,false)),false)
+  assert.ok(a.fv.disclosureTextFv(d).includes('collapsed ('))
+})
+test('B parity: Fundamentals search opens the section that holds the match; empty search opens nothing',()=>{
+  for(const s of SMALL)assert.deepEqual(a.fv.revealSectionsFv(fview({query:s.toLowerCase()}),s),['small'],s)
+  assert.deepEqual(a.fv.revealSectionsFv(fview({query:'sweep'}),'sweep'),['cash'])
+  assert.deepEqual(a.fv.revealSectionsFv(fview(),''),[])
+  const none=fview({query:'QZNOPE'}),d=a.fv.disclosureFv(rows.length,none,new Set())
+  assert.equal(d.matching,0); assert.equal(d.filteredOut,rows.length); assert.deepEqual(a.fv.revealSectionsFv(none,'QZNOPE'),[])
+})
