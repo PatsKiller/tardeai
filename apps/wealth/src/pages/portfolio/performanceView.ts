@@ -65,6 +65,16 @@ export interface PerformanceAccount {
   periods: Partial<Record<PerformanceWindow, PerformanceObservation>>
 }
 
+/** Portfolio audit 2026-11-16 (E): which accounts that hold positions have no performance row at all. */
+export interface PerformanceAccountCoverage {
+  /** Distinct accounts with stored holding rows in this response; null when the response does not serve them. */
+  holdingAccounts: number | null
+  /** Accounts with a performance row. */
+  withResults: number
+  /** Holding accounts with no performance row, by display label only (never an account key). */
+  missing: string[]
+}
+
 export interface PerformancePageProps {
   /** Already scoped by the caller. This component neither filters nor re-aggregates accounts. */
   accounts: readonly PerformanceAccount[]
@@ -76,6 +86,8 @@ export interface PerformancePageProps {
   selectedPeriod?: PerformanceWindow | null
   onPeriodChange?: (period: PerformanceWindow) => void
   showHousehold?: boolean
+  /** Household view only; undefined for fixtures and single-account scope. */
+  accountCoverage?: PerformanceAccountCoverage | null
 }
 
 export function performanceAccountLabel(account: PerformanceAccount): string {
@@ -196,4 +208,15 @@ export const SYNTHETIC_PERFORMANCE_PROPS: PerformancePageProps = {
     { key: 'synthetic-b', label: 'Account B', scopeNote: 'Eligibility not established — owner: Account source team', periods: {} },
     { key: 'synthetic-c', label: 'Account C', scopeNote: 'Synthetic account membership; history not served', periods: {} },
   ],
+}
+
+/** E: plain disclosure of missing account results. Counts only; names are display labels from the adapter. */
+export function accountCoverageText(c: PerformanceAccountCoverage): string {
+  if (c.holdingAccounts === null) {
+    return `${c.withResults} account${c.withResults === 1 ? '' : 's'} with performance rows. Accounts holding positions are not served in this response, so missing account results cannot be counted.`
+  }
+  const base = `${c.withResults} account${c.withResults === 1 ? '' : 's'} with performance rows; ${c.holdingAccounts} account${c.holdingAccounts === 1 ? '' : 's'} hold positions.`
+  return c.missing.length
+    ? `${base} No performance result for ${c.missing.length}: ${c.missing.join(', ')}. Their change is unknown, not zero, and is not in any account row below.`
+    : `${base} Every account holding positions has a performance row.`
 }

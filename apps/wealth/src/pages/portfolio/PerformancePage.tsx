@@ -3,7 +3,7 @@
 import { AsOf } from '../../components/StateView'
 import { Note, Panel, Tag } from '../../components/primitives'
 import {
-  PERFORMANCE_WINDOWS, clockHasEvidence, coverageText, measureWarnings, methodText, missingMeasure,
+  PERFORMANCE_WINDOWS, accountCoverageText, clockHasEvidence, coverageText, measureWarnings, methodText, missingMeasure,
   numberClass, numberIsKnown, numberText, pageState, performanceAccountLabel,
 } from './performanceView'
 import type { PerformanceMeasure, PerformancePageProps, PerformanceWindow } from './performanceView'
@@ -97,6 +97,7 @@ export function PerformancePage(props: PerformancePageProps) {
         : state === 'partial' ? <div className="note warn">! Partial performance view — some measures are estimated, stale or unavailable.
           Open evidence for the source gap and actual interval.</div>
           : <Note>Supplied measures are shown below. Compare actual intervals and flow treatment before interpreting a change as investment performance.</Note>}
+      {props.accountCoverage && <Note>{accountCoverageText(props.accountCoverage)}</Note>}
       {props.showHousehold !== false && <Panel title="Household" sub="Source-supplied scope; membership is not inferred from these rows.">
         <div className="performance-grid">{windows.map(window => {
           const period = props.household[window]

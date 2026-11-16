@@ -319,3 +319,28 @@ named('C-PERF-B labels: label failures preserve Performance values, old clocks a
     assert.doesNotMatch(final, /Rejected label/)
   }
 })
+
+// Portfolio audit 2026-11-16 (E): a holding account with no performance row is disclosed, by label, never by key.
+test('E missing account results: holding accounts without a performance row are counted and named by label', () => {
+  const b = body()
+  b.today_pnl.stored_row_evidence = { source_values: [
+    { account_id: 'synthetic-account-a' }, { account_id: 'synthetic-account-b' },
+    { account_id: 'synthetic-account-c' }, { account_id: 'synthetic-account-c' }, { account_id: 'synthetic-account-d' }] }
+  const labels = new Map([['synthetic-account-c', 'Account C']])
+  const { props } = adaptPerformance(b, NOW, null, labels)
+  assert.deepEqual(props.accountCoverage, { holdingAccounts: 4, withResults: 2, missing: ['Account C', 'Unlabelled account'] })
+  const html = render(props)
+  assert.match(html, /2 accounts with performance rows; 4 accounts hold positions/)
+  assert.match(html, /No performance result for 2: Account C, Unlabelled account/)
+  assert.match(html, /unknown, not zero/)
+  assert.doesNotMatch(html, /synthetic-account-[cd]/)
+})
+
+test('E missing account results: an unserved holding census is said, not counted as complete', () => {
+  const { props } = adaptPerformance(body(), NOW)
+  assert.equal(props.accountCoverage.holdingAccounts, null)
+  assert.deepEqual(props.accountCoverage.missing, [])
+  assert.match(render(props), /missing account results cannot be counted/)
+  const scoped = adaptPerformance(body(), NOW, 'synthetic-account-a').props
+  assert.equal(scoped.accountCoverage, null)
+})

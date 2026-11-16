@@ -3,7 +3,7 @@
 import { accountDisplayLabel } from './accountLabel.ts'
 import type { Envelope } from '../../api/client'
 import type {
-  PerformanceAccount, PerformanceClock, PerformanceHouseholdPeriod, PerformanceMeasure,
+  PerformanceAccount, PerformanceAccountCoverage, PerformanceClock, PerformanceHouseholdPeriod, PerformanceMeasure,
   PerformanceNumber, PerformanceObservation, PerformancePageProps, PerformanceQualifier, PerformanceWindow,
 } from './performanceView'
 
@@ -161,13 +161,25 @@ export function adaptPerformance(body: unknown, nowMs: number, accountKey: strin
     // Scrub dynamic account keys even from producer text. Never synthesize broker/display labels.
     const availablePeriods = WINDOWS.filter(([label, period]) => own(obj(root.periods), period)
       || accounts.some(a => a.availablePeriods?.includes(label))).map(([label]) => label)
-    const props: PerformancePageProps = { accounts, household, gapOwner: OWNER, availablePeriods }
-    const scrub = (s: string) => keys.reduce((out, key) => key ? out.split(key).join('account identifier withheld') : out, s)
+    // E: a holding account with no performance row is a missing result, not an omission to stay silent about.
+    const served = obj(obj(root.today_pnl).stored_row_evidence).source_values
+    const held = Array.isArray(served)
+      ? [...new Set(served.map(r => text(obj(r).account_id)).filter((k): k is string => k !== null))] : null
+    const accountCoverage: PerformanceAccountCoverage | null = accountKey !== null ? null : {
+      holdingAccounts: held === null ? null : held.length, withResults: keys.length,
+      missing: (held ?? []).filter(k => !own(rawAccounts, k)).map(k => {
+        const label = accountDisplayLabel(k, labels.get(k) ?? null, null)
+        return label === k ? 'Unlabelled account' : label
+      }) }
+    const props: PerformancePageProps = { accounts, household, gapOwner: OWNER, availablePeriods, accountCoverage }
+    const idKeys = [...keys, ...(held ?? [])]
+    const scrub = (s: string) => idKeys.reduce((out, key) => key ? out.split(key).join('account identifier withheld') : out, s)
     for (const account of props.accounts) {
       account.label = account.label === account.key ? null : account.label === null ? null : scrub(account.label)
       account.scopeNote = scrub(account.scopeNote)
       for (const m of Object.values(account.periods)) if (m) scrubMeasure(m, scrub)
     }
+    if (accountCoverage) accountCoverage.missing = accountCoverage.missing.map(scrub)
     for (const row of Object.values(household)) { if (row?.observation) scrubMeasure(row.observation, scrub); if (row?.estimate) scrubMeasure(row.estimate, scrub) }
     return { props, reason: sourceUnavailable ? `Unknown — source reports performance status ${text(root.status) ?? 'unavailable'}; values withheld, source clocks retained — owner: ${OWNER}` : null }
   } catch {
