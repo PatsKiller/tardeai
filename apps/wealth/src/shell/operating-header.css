@@ -12,3 +12,19 @@
 @media(min-width:1000px){.wealth-operating-region{position:sticky;top:0}}
 @media(max-width:1279px){.wealth-operating-header{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:760px){.wealth-operating-region{position:static;padding:10px}.wealth-operating-header{grid-template-columns:repeat(2,minmax(0,1fr))}.wealth-operating-cell:nth-child(odd) .wealth-tooltip{inset-inline-start:0;inset-inline-end:auto}.wealth-operating-cell:nth-child(even) .wealth-tooltip{inset-inline-start:auto;inset-inline-end:0}}
+
+.wealth-operating-label{background:none;border:0;border-radius:0;padding:0;text-align:left;font:inherit;font-size:11px;cursor:pointer;color:var(--text-muted)}
+.wealth-operating-label:hover{text-decoration:underline;color:var(--text)}
+.wealth-operating-label:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.wealth-operating-secondary-text small{display:block;font-size:11px;color:var(--text-muted);line-height:1.4;margin-top:4px}
+.wealth-operating-clock{font-size:11px!important}
+.wealth-operating-review{display:inline-block;font-size:11px;margin-top:5px}
+.wealth-operating-expand{display:none}
+.wealth-operating-detail{line-height:1.6;overflow-wrap:anywhere}
+@media(max-width:760px){
+ .wealth-operating-header[data-expanded="false"] .wealth-operating-secondary{display:none}
+ .wealth-operating-cell{padding:8px}
+ .wealth-operating-secondary-text{display:none}
+ .wealth-operating-cell>.wealth-status{font-size:15px}
+ .wealth-operating-expand{display:block;margin-top:8px;font-size:11px;padding:7px 9px;max-width:100%;text-align:left}
+}

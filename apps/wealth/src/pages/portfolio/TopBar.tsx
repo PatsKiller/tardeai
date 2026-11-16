@@ -103,7 +103,7 @@ export function PortfolioTopBar({ controlsOnly = false }: { controlsOnly?: boole
       <label>
         <span className="mini-label">Portfolio scope</span>
         <br />
-        {pathname.replace(/\/$/, '') === '/portfolio/performance' ? <PerformanceAccountSelect /> : book === null ? (
+        {pathname.replace(/\/$/, '') === '/portfolio/performance' ? <PerformanceAccountSelect /> : controlsOnly && pathname.startsWith('/home/') ? <span className="household-scope" role="status">Household · all accounts</span> : book === null ? (
           <select id="account" aria-label="Portfolio account scope" disabled value="ALL" title={NOT_READ}>
             <option value="ALL">All accounts · not read here</option>
           </select>

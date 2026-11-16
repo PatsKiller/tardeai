@@ -201,3 +201,23 @@ await test('generation change fences late results without relying on transport a
 await test('request exceptions become explicit failures and do not stop independent reads',async()=>{const results=[];await m.readStoredNewsBatch(['A','B'],new AbortController().signal,async symbol=>{if(symbol==='A')throw new Error('synthetic');return read(symbol)},r=>results.push(r));assert.equal(results.length,2);assert.ok(results.find(r=>r.symbol==='A').error);assert.equal(results.find(r=>r.symbol==='B').error,null)})
 assert.equal(cases,26)
 })
+
+
+test('mixed known gaps stay visible in primary protection summary before pending records',()=>{
+ const pending=row();pending.protection.reason='Pending activation'
+ const gap=row({accountKey:'SYN_B',protection:{state:'GAP'}})
+ const mixed=a.protectionSummary([pending,gap]);assert.match(mixed.label,/gap/i);assert.equal(mixed.tone,'loss');assert.equal(mixed.icon,'unlocked');assert.match(mixed.detail,/1 gap/)
+ const active=a.protectionSummary([row(),gap]);assert.match(active.label,/reported gap/);assert.equal(active.icon,'locked');assert.equal(active.tone,'partial')
+ const below=a.protectionSummary([pending,row({marketValue:99,protection:{state:'GAP'}})]);assert.equal(below.tone,'partial')
+ const unknown=a.protectionSummary([pending,row({protection:null})]);assert.doesNotMatch(unknown.label,/gap/i)
+})
+test('exact holding links reveal the existing small/account row without altering floor or loss pins',()=>{
+ const rs=[row({symbol:'QZSM',marketValue:20,gainLoss:0}),row({symbol:'QZSM',accountKey:'SYN_B',accountLabel:'Synthetic B',marketValue:30,gainLoss:0}),row({symbol:'QZPIN',marketValue:10,gainLoss:-100}),row({symbol:'QZOTHER',marketValue:10,gainLoss:0})]
+ const f={...a.DEFAULT,query:' qzsm ',account:'SYN_B'},v=a.workspace(book(rs),f),target=a.holdingLinkTarget(v.groups,f)
+ assert.deepEqual(target,{expand:['small'],rowKey:'small-0'});assert.equal(v.groups[0].kind,'small');assert.equal(v.groups[0].children[0].rows[0].accountKey,'SYN_B')
+ const all=view(rs);assert.equal(all.groups.find(g=>g.label==='QZPIN').kind,'security');assert.equal(all.groups.find(g=>g.kind==='small').rows.length,3)
+ assert.equal(a.holdingLinkTarget(all.groups,{query:'QZ',account:''}),null);assert.equal(a.holdingLinkTarget(all.groups,{query:'',account:'SYN_B'}),null)
+ assert.equal(a.holdingLinkTarget(all.groups,{query:'QZSM',account:'SYN_MISSING'}),null)
+ const flat=view(rs,{query:'QZSM',account:'SYN_B',group:'account'});assert.deepEqual(a.holdingLinkTarget(flat.groups,f),{expand:[],rowKey:'row-0'})
+ const pinned=view(rs,{query:'QZPIN'});assert.deepEqual(a.holdingLinkTarget(pinned.groups,{query:'QZPIN',account:''}),{expand:['security-QZPIN'],rowKey:'security-QZPIN-0'})
+})

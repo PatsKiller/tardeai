@@ -106,6 +106,20 @@ export function workspace(book:HoldingsBook,f:Filters) {
  return {allocation,sectorChips,rows,groups,totals:t,contributors,detractors,other,material,newsSymbols,reconciliation,identities,gaps:material.filter(r=>r.protection?.state==='GAP'&&r.assetType!=='MUTUAL_FUND')}
 }
 
+/** Resolve an exact symbol deep link to the existing display row; floor and loss rules stay unchanged. */
+export function holdingLinkTarget(groups:Group[],f:Pick<Filters,'query'|'account'>):{expand:string[];rowKey:string}|null {
+ const symbol=f.query.trim().toUpperCase()
+ if(!symbol)return null
+ const matches=(r:HoldingsRow)=>r.symbol.toUpperCase()===symbol&&(!f.account||r.accountKey===f.account)
+ for(const g of groups) {
+  if(!g.rows.some(matches))continue
+  if(g.kind==='account')return {expand:[],rowKey:g.key}
+  const child=g.children.find(c=>c.rows.some(matches))
+  if(child)return {expand:[g.key],rowKey:child.key}
+ }
+ return null
+}
+
 /** Display reported protection without promoting pending, undated or stale records to active. */
 export function protectionSummary(rows:HoldingsRow[]) {
  const applicable=rows.filter(r=>r.kind!=='CASH'&&r.assetType!=='MUTUAL_FUND')
@@ -118,7 +132,8 @@ export function protectionSummary(rows:HoldingsRow[]) {
  const detail=active+' current recorded · '+(recorded-active)+' pending/stale · '+gaps+' gap · '+unknown+' unknown of '+m+' applicable rows. '+notes
  if(!m)return {icon:'na' as const,tone:'unknown',label:rows.every(r=>r.kind==='CASH')?'Cash · not applicable':'Resting stop not applicable',detail:'Applicability from served asset type. '+notes}
  if(active===m)return {icon:'locked' as const,tone:'gain',label:'Protected · recorded',detail}
- if(active>0)return {icon:'locked' as const,tone:'partial',label:'Partially protected',detail}
+ if(active>0)return {icon:'locked' as const,tone:'partial',label:gaps?'Partially protected · '+gaps+' reported gap'+(gaps===1?'':'s'):'Partially protected',detail}
+ if(recorded&&materialGap)return {icon:'unlocked' as const,tone:'loss',label:'Reported gap · other records pending or not current',detail}
  if(recorded)return {icon:'unlocked' as const,tone:'partial',label:'Recorded · pending or not current',detail}
  if(gaps===m)return {icon:'unlocked' as const,tone:materialGap?'loss':'unknown',label:materialGap?'Unprotected · reported gap':'Reported gap · below floor or value unknown',detail}
  if(unknown===m)return {icon:'na' as const,tone:'unknown',label:'Protection unknown',detail}

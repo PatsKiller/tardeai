@@ -5,7 +5,7 @@ import type { HoldingsBook, HoldingsRow } from '../contract'
 import { displayOf } from '../displayIdentity'
 import { useBookScope } from '../snapshot'
 import { notCurrent, price as servedPrice } from '../format'
-import { DEFAULT, fromSearch, searchFor, workspace, coverage, sectorOf, exportCsv, periodValue } from './adapter'
+import { DEFAULT, fromSearch, searchFor, workspace, coverage, sectorOf, exportCsv, periodValue, holdingLinkTarget } from './adapter'
 import type { Aggregate, Group, Filters } from './adapter'
 import { WorkspaceIcon } from './icons'
 import { WealthStatus, SignedValue } from '../../../components/WealthStatus'
@@ -26,6 +26,17 @@ export function HoldingsWorkspace({book,notice,evidence,onRowOpen}:{book:Holding
  useEffect(()=>{if(!initialized.current){initialized.current=true;if(!params.has('hv_account')&&scope!=='ALL'){setParams(searchFor(params,{...parsed,account:scope}),{replace:true});return}}setScope(parsed.account||'ALL')},[params.toString()])
  useEffect(()=>{if(priorScope.current!==scope){priorScope.current=scope;if((parsed.account||'ALL')!==scope)setParams(searchFor(params,{...parsed,account:scope==='ALL'?'':scope}))}},[scope])
  const f=parsed,view=useMemo(()=>workspace(book,f),[book,params.toString()])
+ const target=holdingLinkTarget(view.groups,f),targetSignature=target?JSON.stringify([f.query.trim().toUpperCase(),f.account,f.group,target.rowKey]):''
+ const rowNodes=useRef(new Map<string,HTMLTableRowElement>()),focusedTarget=useRef('')
+ useEffect(()=>{
+  if(!target){focusedTarget.current='';return}
+  setExpanded(old=>{const missing=target.expand.filter(key=>!old.has(key));return missing.length?new Set([...old,...missing]):old})
+ },[targetSignature])
+ useEffect(()=>{
+  if(!target||focusedTarget.current===targetSignature)return
+  const node=rowNodes.current.get(target.rowKey)
+  if(node){node.focus({preventScroll:true});node.scrollIntoView({block:'nearest'});focusedTarget.current=targetSignature}
+ },[targetSignature,expanded])
  const update=(patch:Partial<Filters>)=>{const next={...f,...patch};setParams(searchFor(params,next));if(patch.account!==undefined)setScope(patch.account||'ALL')}
  const reset=()=>{setParams(searchFor(params,DEFAULT));setScope('ALL');setExpanded(new Set())}
  const accounts=[...new Map(book.rows.map(r=>[r.accountKey,r.accountLabel])).entries()]
@@ -35,7 +46,7 @@ export function HoldingsWorkspace({book,notice,evidence,onRowOpen}:{book:Holding
  const expand=(key:string)=>setExpanded(old=>{const n=new Set(old);n.has(key)?n.delete(key):n.add(key);return n})
  const download=()=>{const url=URL.createObjectURL(new Blob([exportCsv(view,f)],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='holdings-filtered.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),0)}
  const protection=(rows:HoldingsRow[])=>{const p=protectionSummary(rows);return <WealthStatus className="hv-status" icon={p.icon==='locked'?'closed':p.icon==='unlocked'?'open':'na'} dataIcon={p.icon} tone={p.tone==='gain'?'green':p.tone==='partial'?'amber':p.tone==='loss'?'red':'grey'} label={p.label} detail={p.detail}/> }
- const row=(g:Group,child=false)=><tr className={child?'hv-child':undefined} key={g.key} data-group={g.key}>
+ const row=(g:Group,child=false)=><tr className={child?'hv-child':undefined} key={g.key} data-group={g.key} ref={node=>{if(node)rowNodes.current.set(g.key,node);else rowNodes.current.delete(g.key)}} tabIndex={target?.rowKey===g.key?-1:undefined} aria-label={target?.rowKey===g.key?'Selected holding: '+g.label+' · '+g.rows[0].accountLabel:undefined}>
   <th scope="row"><div className="hv-security">{!child&&g.kind!=='account'?<button className="hv-expand" aria-expanded={expanded.has(g.key)} aria-label={`${expanded.has(g.key)?'Collapse':'Expand'} ${g.label}`} onClick={()=>expand(g.key)}>{expanded.has(g.key)?'▾':'▸'}</button>:null}<div><span className="hv-ticker" aria-hidden="true">{g.cash?'$':g.kind==='small'?String(g.rows.length):g.label.slice(0,2)}</span><strong>{g.label}</strong>{g.kind==='security'||g.kind==='account'?<small>{displayOf(g.rows[0]).nameText}{displayOf(g.rows[0]).label?<><br/>{displayOf(g.rows[0]).label}</>:null}</small>:null}<small>{[...new Set(g.rows.map(sectorOf))].join(' · ')}</small><small>{g.rows.length} account row{g.rows.length===1?'':'s'} · {qty(g.shares.value)} shares{g.cash?' / sweep units':''}{g.rows.length>1?<span className="hv-tag">grouped</span>:null}</small><small>{[...new Set(g.rows.map(r=>r.accountLabel))].join(' · ')}</small>{(child||g.kind==='account')?<button className="hv-link" onClick={e=>onRowOpen(g.rows[0],e.currentTarget)}>Evidence & details</button>:null}</div></div></th>
   <td data-label="Price / average cost">{g.kind==='small'?'Multiple securities · see account rows':g.kind==='cash'?'Cash / sweep · see account rows':g.mixedPrice?'Mixed served marks':mark(g.price)}<small>Average {g.kind==='small'||g.kind==='cash'?'not applicable to this summary':mark(g.cost.value)}{g.kind==='security'&&g.rows.length>1?' · blended, derived':''}</small>{g.cost.n<g.cost.m?<small>{coverage(g.cost)}</small>:null}</td>
   <td data-label="Value"><Value a={g.value} asOf={book.asOf}/><small>{pct(g.weight)} of filtered value</small><small>{g.cash?'Not applicable to cash':pct(g.investedWeight)+' of filtered invested · derived'}</small></td>
