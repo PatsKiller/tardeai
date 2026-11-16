@@ -258,3 +258,13 @@ test('gauge provenance retains its independent clock and source policy rather th
  const html=render('today',{sections:model.today})
  assert.match(html,/Gauge observation/);assert.ok(html.includes(built));assert.match(html,/Synthetic scale v1/)
 })
+
+test('journal Evidence retains source calculation quality verdict and evaluation metadata without deriving currentness or age',()=>{
+ const model=adapt(payload({today:{tiles:section({metrics:[{label:'Realized P/L',value:'$12.34',clock:at,calculationVersion:'Synthetic calculation v2',quality:'partial known basis',verdict:'stale',evaluated_at:built,age_s:0}]})}}))
+ const fact=model.today.tiles.metrics[0]
+ assert.equal(fact.calculationVersion,'Synthetic calculation v2');assert.equal(fact.quality,'partial known basis');assert.equal(fact.verdict,'stale');assert.equal(fact.evaluatedAt,built);assert.equal(fact.ageSeconds,0)
+ const detail=render('evidence',{row:{label:'Scoped journal',facts:[fact]}})
+ for(const value of ['Calculation version','Synthetic calculation v2','partial known basis','Source freshness verdict','stale','0 seconds at source evaluation',built])assert.ok(detail.includes(value),value)
+ const invalid=adapt(payload({today:{tiles:section({metrics:[{label:'Realized P/L',value:'0',evaluated_at:'2040-01-02T03:10:00',age_s:-1}]})}})).today.tiles.metrics[0]
+ assert.equal(invalid.evaluatedAt,null);assert.equal(invalid.ageSeconds,null)
+})

@@ -225,13 +225,13 @@ test('T2 the protection panel binds its separate stored section and keeps incide
   const fs = await import('node:fs')
   const today = fs.readFileSync(new URL('../../src/pages/home/HomeTodayPage.tsx', import.meta.url), 'utf8')
   const needs = fs.readFileSync(new URL('../../src/pages/home/HomeNeedsPage.tsx', import.meta.url), 'utf8')
-  const parts = fs.readFileSync(new URL('../../src/pages/home/HomeV2Parts.tsx', import.meta.url), 'utf8')
   assert.match(today, /id="stops"[^>]*section=\{sections.stops\}/)
   assert.match(needs, /id="protect"[^>]*section=\{sections.protect\}/)
   assert.match(needs, /recorded incidents · history, not current gaps/)
   assert.match(needs, /useState\(false\)/)
   assert.match(needs, /hidden=\{!history\}/)
-  assert.match(parts, /!section\?\.available\?<HomeUnavailable/)
+  // Actual unavailable/known-zero/stale rendering is exercised by the registered
+  // home-corrective.test.mjs SSR scenarios; do not pin JSX branch spelling here.
   assert.doesNotMatch(today, /protection-card exception/)
   assert.doesNotMatch(today, /items\.map\(/)
 })
