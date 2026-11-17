@@ -139,6 +139,22 @@ test('mobile header touch targets are 44px with real taps, focus and retained ev
     const expand=page.locator('.wealth-operating-expand')
     if(await expand.isVisible())await expand.tap()
     assert.equal(await page.locator('.wealth-operating-label:visible').count(),8)
+    // Every cell must expose its retained explanation without escaping any of the three grids.
+    // Test actual focus, mouse hover and touch targets rather than CSS selector declarations.
+    for(const id of ['session','session_pl','account_value','temperature','regime','vix','operating_mode','health']){
+     const trigger=page.locator(`[data-header-cell="${id}"] .wealth-status`).first()
+     const tooltip=trigger.locator('[role="tooltip"]')
+     const withinViewport=async(mode)=>{
+      assert.equal(await tooltip.isVisible(),true,`${width} ${id} ${mode}: tooltip visible`)
+      assert.ok((await tooltip.textContent()).trim().length>0,`${width} ${id} ${mode}: retained detail`)
+      const box=await tooltip.boundingBox()
+      assert.ok(box&&box.x>=0&&box.x+box.width<=width,`${width} ${id} ${mode}: horizontal bounds ${box?.x} / ${box?.width}`)
+     }
+     await trigger.focus();await withinViewport('focus')
+     await trigger.hover();await withinViewport('hover')
+     if(width<=768){await trigger.tap();await withinViewport('tap')}
+     await trigger.evaluate(e=>e.blur());await page.mouse.move(0,0)
+    }
     if(width<=768){
      const targets=await page.locator('.wealth-operating-region button,.wealth-operating-region a,.wealth-operating-region .wealth-status').evaluateAll(es=>es.filter(e=>e.getClientRects().length).map(e=>({width:e.getBoundingClientRect().width,height:e.getBoundingClientRect().height,kind:e.className})))
      assert.ok(targets.length>=18,'real menu, eight Details and eight tooltip triggers are present')

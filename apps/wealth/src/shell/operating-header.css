@@ -11,6 +11,11 @@
 .wealth-operating-cell:nth-child(n+5) .wealth-tooltip{inset-inline-start:auto;inset-inline-end:0}
 @media(min-width:1000px){.wealth-operating-region{position:sticky;top:0}}
 @media(max-width:1279px){.wealth-operating-header{grid-template-columns:repeat(4,minmax(0,1fr))}}
+/* The middle grid has four columns; align its edge tooltips to that grid, not the desktop eight. */
+@media(min-width:761px) and (max-width:1279px){
+ .wealth-operating-cell:nth-child(n) .wealth-tooltip{inset-inline-start:0;inset-inline-end:auto}
+ .wealth-operating-cell:nth-child(4n) .wealth-tooltip{inset-inline-start:auto;inset-inline-end:0}
+}
 @media(max-width:760px){.wealth-operating-region{position:static;padding:10px}.wealth-operating-header{grid-template-columns:repeat(2,minmax(0,1fr))}.wealth-operating-cell:nth-child(odd) .wealth-tooltip{inset-inline-start:0;inset-inline-end:auto}.wealth-operating-cell:nth-child(even) .wealth-tooltip{inset-inline-start:auto;inset-inline-end:0}}
 
 .wealth-operating-label{background:none;border:0;border-radius:0;padding:0;text-align:left;font:inherit;font-size:11px;cursor:pointer;color:var(--text-muted)}
