@@ -28,3 +28,13 @@
  .wealth-operating-cell>.wealth-status{font-size:15px}
  .wealth-operating-expand{display:block;margin-top:8px;font-size:11px;padding:7px 9px;max-width:100%;text-align:left}
 }
+
+/* Engine tier words use their own five-color vocabulary; freshness remains independent. */
+.wealth-operating-temperature-reading{display:flex;align-items:baseline;gap:4px;flex-wrap:wrap;font-size:16px;font-weight:650;line-height:1.4}
+.wealth-operating-tier>.wealth-status{color:inherit}
+.wealth-operating-score{color:var(--text)}
+.wealth-operating-cell>.wealth-operating-regime-metrics{font-size:11px}
+.wealth-operating-cell>.wealth-operating-freshness{display:flex;gap:5px;align-items:flex-start;font-size:11px;color:var(--status-amber)}
+.wealth-operating-freshness[data-tone="grey"]{color:var(--status-grey)}
+.wealth-operating-freshness svg{width:14px;height:14px;min-width:14px;flex:none;margin-top:1px}
+@media(max-width:760px){.wealth-operating-temperature-reading{font-size:15px}}

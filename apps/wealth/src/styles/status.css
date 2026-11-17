@@ -1,6 +1,6 @@
 /* Approved Wealth workspace palette, shared by all routes. Legacy sheets remain intact. */
 :root:root {
- --status-green:#34d399; --status-amber:#fbbf24; --status-red:#f87171; --status-grey:#93a1bb;
+ --status-green:#34d399; --status-blue:#60a5fa; --status-amber:#fbbf24; --status-orange:#fb923c; --status-red:#f87171; --status-grey:#93a1bb;
  --ground:#0a111e; --panel:#101a2c; --panel-inset:#0d1626; --row-hover:#132038;
  --line:#1c2940; --border:#2a3a57; --text:#e7edf7; --text-muted:#93a1bb; --amber-border:#5a4630;
  --accent:#6aa8ff; --accent-fill:#16294a; --accent-text:#8fbcff;

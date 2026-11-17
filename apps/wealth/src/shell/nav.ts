@@ -20,7 +20,7 @@ export const NAV: NavGroup[] = [
   g('protection', 'Risk & defense', 'Protect your book', [['exposure', 'Risk exposure'], ['coverage', 'Stop coverage'], ['defense', 'Defense plan'], ['hedges', 'Hedge alternatives'], ['scenarios', 'Stress scenarios'], ['review-log', 'Review history']]),
   g('watch', 'Watch', 'Ideas & conditions', [['overview', 'Overview'], ['my-list', 'My List'], ['suggestions', 'Suggestions'], ['prospects', 'Prospects'], ['setups', 'Setups'], ['sectors', 'Sectors'], ['discover', 'Discover'], ['alerts', 'Alerts'], ['pullbacks', 'Pullbacks']]),
   g('reposition', 'Reposition', 'Exit · rotate · redeploy', [['rotation', 'Defensive rotation'], ['reentry', 'Re-entry'], ['exits', 'Exit reviews'], ['capital', 'Capital book'], ['comparison', 'Plan comparison'], ['plan-lab', 'Plan lab'], ['event', 'Market events']]),
-  g('trade', 'Trade', 'Governed trade reviews', [['desk', 'Trade desk'], ['active', 'Active positions'], ['options', 'Options'], ['strategies', 'Strategies'], ['journal', 'Journal']]),
+  g('trade', 'Trade', 'Governed trade reviews', [['desk', 'Scalping desk'], ['options', 'Options'], ['strategies', 'Strategies'], ['journal', 'Journal']]),
   g('intel', 'CIO & research', 'Understand & remember', [['desk', 'CIO desk'], ['questions', 'My questions'], ['research', 'Research'], ['company-files', 'Company files'], ['reports', 'Reports'], ['communications', 'Investment alerts'], ['history', 'Decision history']]),
   g('ops', 'Operations', 'Readiness & recovery', [['health', 'Readiness'], ['jobs', 'Jobs & schedules'], ['data', 'Data quality'], ['incidents', 'Incidents'], ['releases', 'Releases'], ['agents', 'Agents & resources'], ['memory', 'Memory integrity'], ['delivery', 'Delivery audit']], 'PLATFORM'),
 ]

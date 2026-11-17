@@ -1,9 +1,9 @@
 import type { Market, Overview } from './homeAdapter'
 import type { RenderState } from '../../components/renderState'
-import { HomeSecondary, HomeEvidenceButton, HomeGauge, HomePanel, HomeRows, HomeFact } from './HomeV2Parts'
+import { HomeSecondary, HomeEvidenceButton, HomeGauge, HomePanel, HomeRows, HomeFact, homeKnownZero } from './HomeV2Parts'
 import type { HomeV2Sections } from './HomeV2Parts'
 export function HomeOutlookPage({sections={}}:{market?:RenderState<Market>;overview?:RenderState<Overview>;now?:number;sections?:HomeV2Sections}) {
- const disagreements=sections.disagreements,knownEmpty=disagreements?.available===true&&disagreements.rows?.length===0
+ const disagreements=sections.disagreements,knownEmpty=disagreements?.available===true&&disagreements.rows?.length===0&&homeKnownZero(disagreements)
  return <div className="home-v2" data-home-view="outlook"><section className="hero"><span className="home-v2-muted">Independent engines · dated evidence</span><HomeEvidenceButton sections={sections}/></section>
  <div className="home-v2-grid-two"><HomePanel id="temperature" presentation="engine" title="Temperature · market risk" icon="thermometer" section={sections.temperature}><div className="home-v2-metrics">{sections.temperature?.metrics?.map((f,i)=><HomeFact key={i} fact={f} section={sections.temperature} compact/>)}</div><HomeGauge section={sections.temperature}/><HomeRows section={sections.temperature} label="Market temperature" limit={3} presentation="engine"/></HomePanel><HomePanel id="regime" presentation="engine" title="Regime · separate engine" icon="compass" section={sections.regime}/></div>
  <HomePanel id="engineDifferences" presentation="engine" title="Where the engines differ" icon="warning" section={sections.engineDifferences} amber limit={4}/>
