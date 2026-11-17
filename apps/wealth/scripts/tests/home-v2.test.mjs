@@ -149,3 +149,16 @@ test('compact tile evidence remains accessible while scoped zero reading and ind
  assert.match(html,/Synthetic household scope · stored value only/);assert.ok(html.includes(`dateTime="${clock}"`));assert.match(html,/>0<\/span>/)
  assert.doesNotMatch(html,/▲ 0|▼ 0/)
 })
+
+test('ticker avatars remain decorative beside the complete symbol and preserve linked or unlinked identities',()=>{
+ const symbols=['X','TEST','TESTX','ABCDEF','BRK.B','TEST-A']
+ for(const linked of [true,false]){
+  const html=render('panel',{id:'movers',title:'Synthetic movers',icon:'pulse',section:section({rows:symbols.map((symbol,i)=>({id:symbol,label:i===2?'Synthetic distinct issuer':symbol,symbol,...(linked?{href:'/wealth/portfolio/holdings?hv_query='+encodeURIComponent(symbol)}:{}),clock:'2040-01-02T03:04:05Z'}))}),limit:6})
+  assert.deepEqual([...html.matchAll(/class="home-v2-ticker" aria-hidden="true">([^<]+)<\/span>/g)].map(x=>x[1]),symbols.map(s=>s.slice(0,2)))
+  assert.deepEqual([...html.matchAll(/class="home-v2-symbol">([^<]+)<\/strong>/g)].map(x=>x[1]),symbols)
+  assert.match(html,/Synthetic distinct issuer/)
+  assert.equal((html.match(/data-home-record="true"/g)||[]).length,symbols.length)
+  if(linked)for(const symbol of symbols)assert.ok(html.includes('href="/portfolio/holdings?hv_query='+encodeURIComponent(symbol)+'"'),symbol)
+  assert.doesNotMatch(html,/ABC…|TEST…|BRK…/)
+ }
+})

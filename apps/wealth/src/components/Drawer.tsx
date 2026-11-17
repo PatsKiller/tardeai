@@ -3,6 +3,7 @@
 // click on the dimmed overlay closes it. One drawer at a time, hosted by the shell (DrawerProvider).
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
 
 export interface DrawerContent {
   title: ReactNode
@@ -28,6 +29,9 @@ export function useDrawer(): DrawerApi {
 const FOCUSABLE = 'button,a,input,textarea,select,summary,[tabindex]'
 
 export function DrawerProvider({ children }: { children: ReactNode }) {
+  const { pathname, search } = useLocation()
+  const evidenceRoute = pathname + search
+  const route = useRef(evidenceRoute)
   const [content, setContent] = useState<DrawerContent | null>(null)
   const returnFocus = useRef<Element | null>(null)
   const drawerRef = useRef<HTMLElement | null>(null)
@@ -45,6 +49,16 @@ export function DrawerProvider({ children }: { children: ReactNode }) {
     if (el?.isConnected) el.focus()
   }, [])
 
+  // Query changes can select another account or subject, so dismiss obsolete evidence on either
+  // page or search navigation (including Back/Forward). Hash-only in-reader anchors may retain it.
+  // Do not restore focus to an opener from the previous evidence scope.
+  useEffect(() => {
+    if (route.current === evidenceRoute) return
+    route.current = evidenceRoute
+    returnFocus.current = null
+    setContent(null)
+  }, [evidenceRoute])
+
   useEffect(() => {
     document.body.classList.toggle('no-scroll', !!content)
     if (!content) return
@@ -60,7 +74,10 @@ export function DrawerProvider({ children }: { children: ReactNode }) {
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
     }
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.classList.remove('no-scroll')
+    }
   }, [content, close])
 
   return (

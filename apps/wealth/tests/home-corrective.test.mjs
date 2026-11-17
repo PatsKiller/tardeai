@@ -138,7 +138,7 @@ test('compact protection retains proof state, dated level and exact fractional c
  const card=render('panel',{id:'stops',title:'Stops',icon:'shield',section:section({rows:[row]})})
  assert.match(card,/Synthetic account/);assert.match(card,/Partial resting coverage/);assert.match(card,/0.4985/);assert.match(card,/0.025/);assert.match(card,/\$71.23/)
  assert.doesNotMatch(card,/Canonical order verdict|canonical applicability served/)
- assert.match(card,/Observation · source time not served/);assert.match(card,/home-v2-ticker">SYN/)
+ assert.match(card,/Observation · source time not served/);assert.match(card,/<span class="home-v2-ticker" aria-hidden="true">SY<\/span><strong class="home-v2-symbol">SYN<\/strong>/)
  const detail=render('evidence',{row,section:section({})})
  assert.match(detail,/Canonical order verdict/);assert.match(detail,/canonical applicability served/);assert.match(detail,/Synthetic stop producer/)
 })
@@ -205,7 +205,7 @@ test('partial source inventory retains total, returned cap and typed classificat
 test('Today has separate held and watch mover contracts and retains re-entry context on demand',()=>{
  const html=render('today',{sections:{movers:section({rows:[{label:'Held synthetic',symbol:'HELD',scope:'held'}]}),watchMovers:section({rows:[{label:'Watch synthetic',symbol:'WATCH',scope:'watch'}]}),watch:section({rows:[{label:'Retained re-entry synthetic'}]})}})
  assert.match(html,/Held synthetic/);assert.match(html,/Watch synthetic/);assert.match(html,/Open retained re-entry context/);assert.doesNotMatch(html,/Retained re-entry synthetic/)
- assert.match(html,/home-v2-ticker">HELD/);assert.match(html,/home-v2-ticker">WATCH/)
+ assert.match(html,/<span class="home-v2-ticker" aria-hidden="true">HE<\/span><strong class="home-v2-symbol">HELD<\/strong>/);assert.match(html,/<span class="home-v2-ticker" aria-hidden="true">WA<\/span><strong class="home-v2-symbol">WATCH<\/strong>/)
 })
 
 test('re-entry truth preserves unknown separately from false and displays real served names only',()=>{

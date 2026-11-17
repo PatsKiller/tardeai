@@ -1823,3 +1823,116 @@ test('H01: an abandoned late response cannot replace a newer last-good snapshot'
   const failed = await c.get(H01_PATH)
   assert.equal(failed.data, null); assert.equal(failed.lastGood.value, 'NEW'); assert.equal(failed.lastGood.source_at, '2040-01-02T00:00:00Z')
 })
+
+
+// A-F3: exercise the actual React drawer and MemoryRouter in an offline browser. Playwright is an
+// existing host QA dependency, not a new Wealth dependency. Missing browser tooling is a hard failure.
+test('A-F3: drawer route lifecycle, focus and scroll lock through actual React/MemoryRouter', { timeout: 45000 }, async t => {
+  const load = createRequire(import.meta.url)
+  const { buildSync } = load('esbuild')
+  const common = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: APP, encoding: 'utf8' })
+  assert.equal(common.status, 0, common.stderr)
+  const dependencies = process.env.WEALTH_BROWSER_DEPENDENCIES_ROOT || path.dirname(common.stdout.trim())
+  const { chromium } = createRequire(path.join(dependencies, 'package.json'))('playwright')
+  const fixture = `import React,{useState}from'react';import{createRoot}from'react-dom/client';
+import{MemoryRouter,useNavigate,useLocation}from'react-router-dom';import{DrawerProvider,useDrawer}from'./src/components/Drawer';
+function Probe(){const d=useDrawer(),nav=useNavigate(),loc=useLocation();
+window.go=x=>nav(x);window.route=loc.pathname+loc.search+loc.hash;
+window.replaceEvidence=()=>d.open({title:'Replacement evidence',body:<button id="replacement">Synthetic replacement</button>});
+const body=<><p>Synthetic retained evidence</p><button id="scope" onClick={()=>nav({pathname:loc.pathname,search:'?scope=synthetic',hash:'#evidence'})}>Change scope</button><button id="last">Last action</button></>;
+return <main key={loc.pathname}><h1 tabIndex={-1}>Synthetic route</h1><button id="opener" onClick={e=>d.open({title:'Synthetic evidence',body,origin:e.currentTarget})}>Open evidence</button><output id="location">{loc.pathname+loc.search+loc.hash}</output></main>}
+function Host(){const[show,setShow]=useState(true);window.unmountDrawer=()=>setShow(false);return show?<DrawerProvider><Probe/></DrawerProvider>:<main><h1>Unmounted fixture</h1></main>}
+createRoot(document.getElementById('root')).render(<MemoryRouter initialEntries={['/first']}><Host/></MemoryRouter>);`
+  const bundle = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: APP }, bundle: true,
+    write: false, platform: 'browser', format: 'iife', jsx: 'automatic', logLevel: 'silent',
+    define: { 'process.env.NODE_ENV': '"production"' } }).outputFiles[0].text
+  const browser = await chromium.launch({ headless: true })
+  const origin = 'http://drawer-lifecycle.invalid'
+  const cases = [
+    ['pathname navigation closes and never refocuses the removed opener', async page => {
+      await page.evaluate(() => window.go('/second'))
+      await page.waitForFunction(() => window.route === '/second')
+      await page.waitForFunction(() => !document.querySelector('[role="dialog"]'))
+      assert.equal(await page.locator('body.no-scroll').count(), 0)
+      assert.equal(await page.evaluate(() => document.activeElement?.isConnected), true)
+      assert.equal(await page.evaluate(() => document.activeElement?.id === 'opener'), false)
+    }],
+    ['back navigation closes', async page => {
+      await page.keyboard.press('Escape'); await page.evaluate(() => window.go('/second'))
+      await page.waitForFunction(() => window.route === '/second'); await page.locator('#opener').click()
+      await page.waitForSelector('[role="dialog"]'); await page.evaluate(() => window.go(-1))
+      await page.waitForFunction(() => window.route === '/first')
+      await page.waitForFunction(() => !document.querySelector('[role="dialog"]'))
+      assert.equal(await page.locator('body.no-scroll').count(), 0)
+    }],
+    ['forward navigation closes', async page => {
+      await page.keyboard.press('Escape'); await page.evaluate(() => window.go('/second'))
+      await page.waitForFunction(() => window.route === '/second'); await page.evaluate(() => window.go(-1))
+      await page.waitForFunction(() => window.route === '/first'); await page.locator('#opener').click()
+      await page.waitForSelector('[role="dialog"]'); await page.evaluate(() => window.go(1))
+      await page.waitForFunction(() => window.route === '/second')
+      await page.waitForFunction(() => !document.querySelector('[role="dialog"]'))
+    }],
+    ['query scope changes and query Back/Forward dismiss obsolete evidence', async page => {
+      await page.locator('#scope').click(); await page.waitForFunction(() => window.route === '/first?scope=synthetic#evidence')
+      await page.waitForFunction(() => !document.querySelector('[role="dialog"]'))
+      assert.equal(await page.locator('body.no-scroll').count(), 0)
+      await page.locator('#opener').click(); await page.waitForSelector('[role="dialog"]')
+      await page.evaluate(() => window.go(-1)); await page.waitForFunction(() => window.route === '/first')
+      await page.waitForFunction(() => !document.querySelector('[role="dialog"]'))
+      await page.locator('#opener').click(); await page.waitForSelector('[role="dialog"]')
+      await page.evaluate(() => window.go(1)); await page.waitForFunction(() => window.route === '/first?scope=synthetic#evidence')
+      await page.waitForFunction(() => !document.querySelector('[role="dialog"]'))
+    }],
+    ['hash-only anchors retain evidence and Escape returns focus', async page => {
+      await page.evaluate(() => window.go('/first#evidence')); await page.waitForFunction(() => window.route === '/first#evidence')
+      assert.equal(await page.locator('[role="dialog"]').count(), 1)
+      assert.equal(await page.locator('body.no-scroll').count(), 1)
+      await page.evaluate(() => window.go('/first#other')); await page.waitForFunction(() => window.route === '/first#other')
+      assert.equal(await page.locator('[role="dialog"]').count(), 1)
+      await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('[role="dialog"]'))
+      assert.equal(await page.evaluate(() => document.activeElement?.id), 'opener')
+    }],
+    ['same-path history entry retains evidence', async page => {
+      await page.evaluate(() => window.go('/first')); await page.waitForTimeout(30)
+      assert.equal(await page.locator('[role="dialog"]').count(), 1)
+    }],
+    ['replacement evidence retains the original return-focus target', async page => {
+      await page.evaluate(() => window.replaceEvidence()); await page.waitForSelector('#replacement')
+      assert.equal(await page.locator('#drawer-title').textContent(), 'Replacement evidence')
+      await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('[role="dialog"]'))
+      assert.equal(await page.evaluate(() => document.activeElement?.id), 'opener')
+    }],
+    ['Tab remains trapped and outside overlay closes', async page => {
+      await page.locator('#last').focus(); await page.keyboard.press('Tab')
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Close detail')
+      await page.keyboard.press('Shift+Tab'); assert.equal(await page.evaluate(() => document.activeElement?.id), 'last')
+      await page.locator('.overlay').dispatchEvent('click')
+      await page.waitForFunction(() => !document.querySelector('[role="dialog"]'))
+      assert.equal(await page.evaluate(() => document.activeElement?.id), 'opener')
+    }],
+    ['unmount clears scroll lock and leaves connected focus', async page => {
+      await page.evaluate(() => window.unmountDrawer()); await page.waitForFunction(() => !document.querySelector('[role="dialog"]'))
+      assert.equal(await page.locator('body.no-scroll').count(), 0)
+      assert.equal(await page.evaluate(() => document.activeElement?.isConnected), true)
+      await page.keyboard.press('Escape')
+    }],
+  ]
+  try {
+    for (const [name, run] of cases) await t.test(name, async () => {
+      const page = await browser.newPage(); page.setDefaultTimeout(2500)
+      const refused = [], errors = []
+      page.on('pageerror', error => errors.push(error.name))
+      await page.route('**/*', route => {
+        if (route.request().method() === 'GET' && route.request().url() === origin + '/')
+          return route.fulfill({ contentType: 'text/html', body: '<div id="root"></div><script>' + bundle + '</script>' })
+        refused.push('unexpected request'); return route.abort()
+      })
+      try {
+        await page.goto(origin + '/'); await page.locator('#opener').click(); await page.waitForSelector('[role="dialog"]')
+        assert.equal(await page.locator('body.no-scroll').count(), 1)
+        await run(page); assert.deepEqual(refused, []); assert.deepEqual(errors, [])
+      } finally { await page.close() }
+    })
+  } finally { await browser.close() }
+})
