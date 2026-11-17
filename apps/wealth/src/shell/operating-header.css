@@ -38,3 +38,16 @@
 .wealth-operating-freshness[data-tone="grey"]{color:var(--status-grey)}
 .wealth-operating-freshness svg{width:14px;height:14px;min-width:14px;flex:none;margin-top:1px}
 @media(max-width:760px){.wealth-operating-temperature-reading{font-size:15px}}
+
+/* Touch targets belong to the header only; desktop density and tooltip contents stay unchanged. */
+@media(max-width:768px){
+ .wealth-operating-label,
+ .wealth-operating-expand,
+ .wealth-operating-review,
+ .wealth-operating-cell .wealth-status,
+ .wealth-operating-detail a,
+ .wealth-operating-region>.scope>.mobile-menu{min-width:44px;min-height:44px}
+ .wealth-operating-label{width:100%}
+ .wealth-operating-review,.wealth-operating-detail a{display:inline-flex;align-items:center}
+ .wealth-operating-region>.scope>.mobile-menu{flex:none}
+}

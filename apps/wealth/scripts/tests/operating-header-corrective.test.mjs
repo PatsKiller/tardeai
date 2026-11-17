@@ -106,3 +106,52 @@ test('mode uses the exact approved target glyph and all eight cells stay in orde
  const model=headerModel(null);assert.deepEqual(model.cells.map(c=>c.id),['session','session_pl','account_value','temperature','regime','vix','operating_mode','health'])
  const c=semanticCell('operating_mode',{executionMode:null},{display:'Advisory · execution unknown'});assert.equal(c.icon,'target');const html=await reading(c);assert.match(html,/data-icon="target"/);assert.match(html,/r="9"/);assert.match(html,/r="4"/);assert.match(html,/execution unknown/)
 })
+
+// Actual transformed Shell/header controls and CSS, with synthetic stored GETs only. Browser tooling
+// is the existing host QA dependency; missing tooling or an unexpected request is a hard failure.
+test('mobile header touch targets are 44px with real taps, focus and retained evidence', {timeout:45000}, async()=>{
+ const {createRequire}=await import('node:module'),{spawnSync}=await import('node:child_process')
+ const load=createRequire(import.meta.url),common=spawnSync('git',['rev-parse','--path-format=absolute','--git-common-dir'],{cwd:app,encoding:'utf8'})
+ assert.equal(common.status,0,common.stderr)
+ const dependencies=process.env.WEALTH_BROWSER_DEPENDENCIES_ROOT||path.dirname(common.stdout.trim())
+ const {chromium}=createRequire(path.join(dependencies,'package.json'))('playwright')
+ const fixture=`import React from'react';import{createRoot}from'react-dom/client';import{MemoryRouter,Routes,Route}from'react-router-dom';import{Shell}from'./src/shell/Shell';createRoot(document.getElementById('root')).render(<MemoryRouter initialEntries={['/home/today']}><Routes><Route element={<Shell/>}><Route path="*" element={<p>Synthetic target fixture</p>}/></Route></Routes></MemoryRouter>);`
+ const bundle=await build({stdin:{contents:fixture,loader:'tsx',resolveDir:app},bundle:true,write:false,outdir:'/virtual/header-targets',platform:'browser',format:'iife',jsx:'automatic',logLevel:'silent',define:{'process.env.NODE_ENV':'"production"',__WEALTH_SOURCE_SHA__:'"synthetic"',__WEALTH_APP_VERSION__:'"synthetic"'}})
+ const js=bundle.outputFiles.find(f=>f.path.endsWith('.js')).text,css=bundle.outputFiles.find(f=>f.path.endsWith('.css')).text
+ const contract={schema:'WealthOperatingHeader@v1',as_of:'2040-01-01T00:01:00Z',cells:Object.fromEntries(['session','session_pl','account_value','temperature','regime','vix','operating_mode','health'].map(id=>[id,{value:{display:'Synthetic retained observation'},display:'Synthetic retained observation',clock:'2040-01-01T00:00:00Z',source:'Synthetic stored source',verdict:'partial',state:'grey',stale_after_s:3600}]))}
+ contract.cells.temperature.value={tier:'BLUE',score:25}
+ contract.cells.regime.value={label:'high_volatility',score:3,confidence:.5}
+ const browser=await chromium.launch({headless:true}),unexpected=[],origin='http://header-targets.invalid'
+ try{
+  for(const width of [390,412,768,1280,1440,1800]){
+   const context=await browser.newContext({viewport:{width,height:1000},hasTouch:width<=768})
+   try{
+    await context.route('**/*',route=>{
+     const request=route.request(),url=new URL(request.url())
+     if(request.method()!=='GET'||url.origin!==origin){unexpected.push('unapproved request');return route.abort()}
+     if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<!doctype html><html><head><link rel="stylesheet" href="/fixture.css"></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>'})
+     if(url.pathname==='/fixture.js')return route.fulfill({contentType:'text/javascript',body:js})
+     if(url.pathname==='/fixture.css')return route.fulfill({contentType:'text/css',body:css})
+     if(url.pathname==='/api/v2/wealth/operating-header')return route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,data:contract})})
+     unexpected.push('unapproved path');return route.abort()
+    })
+    const page=await context.newPage();await page.goto(origin);await page.locator('[data-header-cell="temperature"] [data-temperature-tier="BLUE"]').waitFor()
+    const expand=page.locator('.wealth-operating-expand')
+    if(await expand.isVisible())await expand.tap()
+    assert.equal(await page.locator('.wealth-operating-label:visible').count(),8)
+    if(width<=768){
+     const targets=await page.locator('.wealth-operating-region button,.wealth-operating-region a,.wealth-operating-region .wealth-status').evaluateAll(es=>es.filter(e=>e.getClientRects().length).map(e=>({width:e.getBoundingClientRect().width,height:e.getBoundingClientRect().height,kind:e.className})))
+     assert.ok(targets.length>=18,'real menu, eight Details and eight tooltip triggers are present')
+     for(const target of targets)assert.ok(target.width>=44&&target.height>=44,`${width}: ${target.kind} ${target.width}x${target.height}`)
+     const tooltip=page.locator('[data-header-cell="temperature"] .wealth-status').first();await tooltip.tap();assert.ok(await tooltip.locator('[role="tooltip"]').isVisible())
+     const health=page.locator('[data-header-cell="health"] .wealth-operating-label');await health.tap();await page.getByRole('dialog').waitFor()
+     const link=page.getByRole('dialog').getByRole('link',{name:'Review health findings',exact:true}),box=await link.boundingBox();assert.ok(box.width>=44&&box.height>=44)
+     await page.keyboard.press('Escape');assert.equal(await health.evaluate(e=>document.activeElement===e),true)
+     const menu=page.getByRole('button',{name:'Open navigation',exact:true});await menu.tap();assert.ok(await page.locator('body').evaluate(e=>e.classList.contains('menu-open')))
+    }
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`no overflow ${width}`)
+   }finally{await context.close()}
+  }
+  assert.deepEqual(unexpected,[])
+ }finally{await browser.close()}
+})
